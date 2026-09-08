@@ -128,6 +128,14 @@ the configured workspace.
 Agent execution and tool selection remain in the external runtime. Optional
 Triptych-level Chat uses the official Codex App Server client described in the
 Agent architecture chapter; it adds no Run or portable result browser. The
+Chat presentation uses standard `GroupBox` content groups and macOS grouped
+`TabView` navigation for Agent activity/details and context/account usage.
+Tab selection belongs only to the containing view; the child composer remains
+outside the tab subtree. Cards borrow existing request, material and execution
+values and add no transport, storage, policy or animation coordinator. Native
+symbol replacement is scoped to the delivery indicator; reduced motion keeps
+its textual state without an animated replacement.
+The
 Settings **Agent Integration** destination shows exact Codex and Claude Code MCP
 registration commands and reveals the bundled Core Protocol Skill. It does not
 store credentials or choose an Agent application.
@@ -150,12 +158,19 @@ Document editing controls consume no notification state. Its bell anchor is a st
 native toolbar item; the nonzero dot is only a presentation of the existing exact queue.
 
 `SystemNotificationService` owns App-level macOS delivery. The mutation router
-submits confirmed results; the service does not infer events from per-window
-refresh. `UNUserNotificationCenter` is attached at launch, with authorization
+submits confirmed results; Chat submits live terminal/input events with a
+conversation-owned validity check through its injected notification sink. The
+service does not infer events from per-window refresh or retained history.
+`UNUserNotificationCenter` is attached at launch, with authorization
 requested on the first eligible background event. Coalescing, activation
-cancellation and delegate suppression govern delivery. An opaque
-`AgentChangeNotificationRoute` carries identity only. The receiving window
-revalidates the receipt; cold-window handoff is memory-only and consumed once.
+cancellation and delegate suppression govern delivery. `SystemNotificationRoute`
+contains an exact Agent Change route or a Chat route with only opaque local IDs
+and event category. One transport, authorization task and coalescing owner serve
+both. Chat validity is checked before prompting and again before delivery. The
+receiving window revalidates the receipt or loads/selects the exact retained
+conversation; cold-window handoff is memory-only and consumed once. Chat opening
+requests Sidebar visibility through the existing native window action, without
+moving the document or toggling an already visible Chat closed.
 `WindowShellState` retains persistent operation issues without expiry;
 `ScholiumOperationIssueView` renders them in the Document region. Settings errors
 remain with their field/save owner. No delivery result changes source authority.

@@ -17,7 +17,8 @@ extension ScholiumCLI {
         let server = ScholiumMCPServer { request in
             try await bridge.call(ScholiumMCPBridgeRequest(
                 requestID: request.requestID, tool: request.tool,
-                arguments: request.arguments, conversationToken: token
+                arguments: request.arguments, conversationToken: token,
+                runtimeContext: request.runtimeContext
             ))
         }
         var parser = ZoteroMCPFrameParser()

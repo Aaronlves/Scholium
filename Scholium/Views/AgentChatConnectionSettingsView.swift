@@ -39,7 +39,7 @@ struct AgentChatConnectionSettingsView: View {
           if controller.account == nil {
             Button("Sign in with ChatGPT") { controller.login() }.disabled(controller.isBusy)
           }
-          Button("Disconnect") { Task { await controller.disconnect() } }
+          Button("Disconnect") { Task { await controller.disconnectByUser() } }
         }
       }
       if let error = controller.error { Text(error).font(.callout).foregroundStyle(.secondary) }
@@ -74,6 +74,11 @@ struct AgentChatConnectionSettingsView: View {
           }
         }.padding(.top, 8)
       }
+      Divider()
+      AgentChatCapabilitiesSettingsView(controller: controller, capabilities: controller.capabilities)
+    }
+    .task(id: controller.selected?.threadID) {
+      controller.capabilities.refresh(threadID: controller.selected?.threadID)
     }
     .onDisappear { fileSelectionTask?.cancel() }
   }

@@ -7,6 +7,97 @@ import Testing
 @Suite("Running App MCP router", .serialized)
 @MainActor
 struct MCPAppBridgeRequestRouterTests {
+    @Test("Update preview performs no editor flush or write and exactly matches the eventual source transformation")
+    func readOnlyUpdatePreview() async throws {
+        let fixture = try await Fixture.make()
+        defer { fixture.dispose() }
+        var flushes = 0
+        let router = MCPAppBridgeRequestRouter(runtime: fixture.runtime,
+            flushEditors: { _ in flushes += 1 }, openTriptychs: { [fixture.assignment] })
+        let handle = try await fixture.runtime.openWorkspace(id: fixture.assignment.id)
+        let file = fixture.topicsURL.deletingLastPathComponent().appendingPathComponent("Analyses/Alpha.md")
+        let source = try Data(contentsOf: file)
+        let fingerprint: MCPJSONValue = .object(["sha256": .string(fixture.analysisFingerprint.sha256),
+            "byte_count": .integer(fixture.analysisFingerprint.byteCount)])
+        let request = ScholiumMCPBridgeRequest(tool: .updateNote, arguments: [
+            "triptych_id": .string(fixture.assignment.id.uuidString), "note_id": .string(fixture.analysisNoteID.uuidString),
+            "expected_fingerprint": fingerprint, "mode": .string("body"), "content": .string("# Revised\r\n\r\nExact new body.\r\n")])
+        let preview = try await router.previewUpdate(request)
+        #expect(preview.noteID == fixture.analysisNoteID && preview.relativePath == "Alpha.md")
+        #expect(preview.comparison.startingRevision == fixture.analysisFingerprint && preview.comparison.startingHasUTF8BOM)
+        #expect(flushes == 0)
+        #expect(try Data(contentsOf: file) == source)
+        #expect(try await handle.agentCollaboration.agentChanges().isEmpty)
+        var completeSource = request.arguments
+        let replacement = "\u{feff}---\r\ncustom: 'keep quoted'\r\n---\r\nWhole replacement.\r\n"
+        completeSource["mode"] = .string("source")
+        completeSource["content"] = .string(replacement)
+        let whole = try await router.previewUpdate(.init(tool: .updateNote, arguments: completeSource))
+        #expect(whole.comparison.endingRevision == DocumentFingerprint(data: Data(replacement.utf8)))
+        #expect(whole.comparison.endingHasUTF8BOM && flushes == 0)
+        let result = try result(await router.handle(request))
+        #expect(try decodedFingerprint(result["after_fingerprint"]) == preview.comparison.endingRevision)
+        #expect(DocumentFingerprint(data: try Data(contentsOf: file)) == preview.comparison.endingRevision)
+        #expect(flushes == 1)
+        #expect(try await handle.agentCollaboration.agentChanges().count == 1)
+        await #expect(throws: ScholiumMCPFailure.self) { try await router.previewUpdate(request) }
+        #expect(flushes == 1)
+        let closed = MCPAppBridgeRequestRouter(runtime: fixture.runtime,
+            flushEditors: { _ in Issue.record("Preview must not flush") }, openTriptychs: { [] })
+        await #expect(throws: ScholiumMCPFailure.self) { try await closed.previewUpdate(request) }
+    }
+
+    @Test("Chat comparison preserves source on decline and rejects a later external revision after Allow Once")
+    func chatComparisonAdmission() async throws {
+        let fixture = try await Fixture.make()
+        defer { fixture.dispose() }
+        let router = MCPAppBridgeRequestRouter(runtime: fixture.runtime,
+            flushEditors: { _ in }, openTriptychs: { [fixture.assignment] })
+        let controller = AgentChatController(triptychID: fixture.assignment.id,
+            root: fixture.root.appendingPathComponent("Chat"), previewUpdate: router.previewUpdate, toolHandler: router.handle)
+        func wait(_ predicate: () -> Bool) async throws {
+            let deadline = ContinuousClock.now.advanced(by: .seconds(8))
+            while !predicate() {
+                try #require(ContinuousClock.now < deadline, "Chat comparison did not reach the expected state")
+                try await Task.sleep(for: .milliseconds(10))
+            }
+        }
+        try await wait { controller.isLoaded }
+        let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let executable = repository.appendingPathComponent("Tests/Fixtures/agent-chat-runtime.py")
+        controller.connect(executable: executable, home: controller.runtimeHome, cli: executable)
+        try await wait { controller.account != nil && controller.state == .ready }
+        controller.editDraft("hold source comparison"); controller.send()
+        try await wait { controller.state == .working && controller.selected?.pendingMessageID == nil }
+        let token = try #require(controller.token)
+        let arguments: [String: MCPJSONValue] = [
+            "note_id": .string(fixture.analysisNoteID.uuidString), "mode": .string("body"),
+            "content": .string("Proposed source from the Agent."), "expected_fingerprint": .object([
+                "sha256": .string(fixture.analysisFingerprint.sha256), "byte_count": .integer(fixture.analysisFingerprint.byteCount)])]
+        let file = fixture.topicsURL.deletingLastPathComponent().appendingPathComponent("Analyses/Alpha.md")
+        let original = try Data(contentsOf: file)
+        let declined = Task { await controller.handle(.init(tool: .updateNote, arguments: arguments, conversationToken: token, runtimeContext: controller.runtimeContext(for: token))) }
+        try await wait { !controller.approvals.isEmpty }
+        let approval = try #require(controller.approvals.first)
+        #expect(approval.updatePreview?.comparison.startingRevision == fixture.analysisFingerprint)
+        #expect(approval.detail == "Alpha.md" && controller.isAwaitingDecision(approval.id))
+        controller.answer(approval.id, allow: false)
+        #expect(await declined.value.error != nil)
+        #expect(try Data(contentsOf: file) == original)
+        #expect(!controller.isAwaitingDecision(approval.id))
+        let stale = Task { await controller.handle(.init(tool: .updateNote, arguments: arguments, conversationToken: token, runtimeContext: controller.runtimeContext(for: token))) }
+        try await wait { !controller.approvals.isEmpty }
+        let pending = try #require(controller.approvals.first)
+        let external = Data("External revision must survive.\r\n".utf8)
+        try external.write(to: file)
+        controller.answer(pending.id, allow: true)
+        #expect(await stale.value.error?.code == .staleRevision)
+        #expect(try Data(contentsOf: file) == external)
+        let handle = try await fixture.runtime.openWorkspace(id: fixture.assignment.id)
+        #expect(try await handle.agentCollaboration.agentChanges().isEmpty)
+        await controller.disconnect()
+    }
+
     @Test("Status, scoped Search, exact paging, and authored links share one current generation")
     func readOnlyToolsUseCurrentAppOwners() async throws {
         let fixture = try await Fixture.make()

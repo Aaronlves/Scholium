@@ -104,6 +104,8 @@ struct ContentView: View {
                         AgentChatView(controller: chat,
                             isVisible: shellState.libraryVisible && shellState.sidebarContent == .chat,
                             addSelection: { Task { await appState.addCurrentSelectionToChat() } },
+                            noteChoices: appState.workspaceCatalog?.notes ?? [],
+                            addNote: { note, conversationID in try await appState.addNoteToChat(note, conversationID: conversationID) },
                             openReference: { appState.openChatReference($0) },
                             openAttachment: { attachment in Task { await appState.openChatAttachment(attachment) } },
                             showInLibrary: { url in
@@ -409,8 +411,7 @@ struct ContentView: View {
             livePreviewCSS: appState.cssSnippetStore.livePreviewCSS,
             initialScrollFraction: path.map { appState.scrollPosition(for: $0) } ?? 0,
             requestedPresentationMode: appState.requestPresentationMode,
-            pendingSourceLine: appState.pendingSourceLine,
-            pendingSourceRange: appState.pendingSourceRange,
+            sourceLocationRequest: appState.documentController.sourceLocationRequest,
             identityAmbiguity: appState.currentDocumentIdentityAmbiguity,
             pendingIdentityRebinding: appState.currentDocumentPendingIdentityRebinding,
             identityMigrationFailureMessage: appState.currentDocumentIdentityMigrationFailure?.message,
@@ -419,8 +420,18 @@ struct ContentView: View {
     }
 
     private var documentFeatureActions: DocumentFeatureActions {
+        let documentKey = appState.currentDocumentDescriptor?.sessionKey
         let documentPath = appState.currentNote?.relativePath
         return DocumentFeatureActions(
+            askAgent: {
+                Task {
+                    guard appState.currentDocumentDescriptor?.sessionKey == documentKey else { return }
+                    if await appState.addCurrentSelectionToChat(),
+                       !appState.shellState.libraryVisible || appState.shellState.sidebarContent != .chat {
+                        windowCoordinator.actions.activateSidebar(.chat)
+                    }
+                }
+            },
             requestIdentityResolution: {
                 guard let path = documentPath else { return }
                 appState.requestIdentityResolution(for: path)
@@ -428,8 +439,7 @@ struct ContentView: View {
             retryIdentityRecovery: { await appState.retryIdentityRecovery() },
             beginSearch: { appState.searchController.begin($0) },
             clearRequestedPresentationMode: { appState.requestPresentationMode = nil },
-            clearPendingSourceLine: { appState.pendingSourceLine = nil },
-            clearPendingSourceRange: { appState.pendingSourceRange = nil },
+            consumeSourceLocation: { appState.documentController.consumeSourceLocation($0) },
             rememberScrollPosition: {
                 guard let path = documentPath else { return }
                 appState.rememberScrollPosition($0, for: path)
@@ -443,7 +453,6 @@ struct ContentView: View {
             rememberPresentationMode: {
                 appState.rememberPresentationMode($0)
             },
-            setPendingSourceLine: { appState.pendingSourceLine = $0 },
             setSidebarVisible: { windowCoordinator.actions.setLibraryVisible($0) },
             setResearchInspectorVisible: {
                 windowCoordinator.actions.setResearchInspectorVisible($0)

@@ -125,29 +125,41 @@ public struct ScholiumMCPFailure: Codable, Hashable, Sendable, Error {
     }
 }
 
-/// One authenticated request from the standalone stdio adapter to the
-/// currently running App. It carries no Agent identity, task, permission, or
-/// durable lifecycle state.
+/// Runtime-provided scope metadata; it never grants authority by itself.
+public struct ScholiumMCPRuntimeContext: Codable, Hashable, Sendable {
+    public let threadID: String
+    public let turnID: String
+
+    public init(threadID: String, turnID: String) {
+        self.threadID = threadID
+        self.turnID = turnID
+    }
+}
+
+/// An authenticated adapter request. The App owns all admission and permission decisions.
 public struct ScholiumMCPBridgeRequest: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 2
+    public static let currentSchemaVersion = 3
 
     public let schemaVersion: Int
     public let requestID: UUID
     public let tool: ScholiumMCPToolName
     public let arguments: [String: MCPJSONValue]
     public let conversationToken: UUID?
+    public let runtimeContext: ScholiumMCPRuntimeContext?
 
     public init(
         requestID: UUID = UUID(),
         tool: ScholiumMCPToolName,
         arguments: [String: MCPJSONValue] = [:],
-        conversationToken: UUID? = nil
+        conversationToken: UUID? = nil,
+        runtimeContext: ScholiumMCPRuntimeContext? = nil
     ) {
         schemaVersion = Self.currentSchemaVersion
         self.requestID = requestID
         self.tool = tool
         self.arguments = arguments
         self.conversationToken = conversationToken
+        self.runtimeContext = runtimeContext
     }
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
@@ -155,6 +167,7 @@ public struct ScholiumMCPBridgeRequest: Codable, Hashable, Sendable {
         case requestID = "request_id"
         case tool, arguments
         case conversationToken = "conversation_token"
+        case runtimeContext = "runtime_context"
     }
 
     public init(from decoder: Decoder) throws {
@@ -184,6 +197,7 @@ public struct ScholiumMCPBridgeRequest: Codable, Hashable, Sendable {
             forKey: .arguments
         ) ?? [:]
         conversationToken = try container.decodeIfPresent(UUID.self, forKey: .conversationToken)
+        runtimeContext = try container.decodeIfPresent(ScholiumMCPRuntimeContext.self, forKey: .runtimeContext)
     }
 }
 

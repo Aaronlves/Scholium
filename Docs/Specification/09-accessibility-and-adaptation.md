@@ -102,7 +102,15 @@ Metadata interaction; §18.6 owns state/action wording. Verify:
   only exact authored hierarchy. Visible title/heading padding and blank lines
   remain pointer-addressable under §18.4.
 - Review selection, Edit formatting and system spelling/grammar
-  routes remain accessible.
+  routes remain accessible. Ask Agent preserves the original selection while
+  handing focus to the existing Chat composer; its native action, menu and
+  shortcut share one capture path. The first Escape dismisses an open selection
+  action while preserving the selected passage; input-method composition takes
+  precedence. Neither edits or sends. Source mapping failure names
+  Edit/Source as the available repair. Returning a verified Chat passage restores
+  native selection in Review or opens its exact Source range; a read-only
+  rendering that cannot select the passage reports the limitation and retains
+  the supplied-text preview.
 - Suggestions expose one listbox selection while retaining editor focus and
   yield immediately to marked text. Find exposes query, options, count,
   navigation, replacement availability and close in keyboard order, then restores
@@ -172,6 +180,28 @@ configuration, and §§8 and 15 own integrations. Verify:
   target and status; file summaries distinguish reads, no-ops, recorded edits
   and runtime reports. Closing a comparison returns to its origin. Native
   transparency/contrast and Reduce Motion preserve readable status.
+- Chat capability menus announce current model, reasoning effort, web-search
+  mode and selected Skills. Context and account quota have separate names and
+  unavailable states. Find and branch retain focus and draft identity. Plans,
+  source lists, approvals and child work expose disclosure and exact targets;
+  background changes never move focus to another conversation. Paper/image
+  attachments have named picker, preview and removal routes. Compaction,
+  connection loss and Stop retain persistent text with native static alternatives
+  under Reduce Motion. These apply to §8.7 without implying runtime support.
+- Chat's floating composer and files entry never make the final reply or actions
+  unreachable. Transcript scrolling passes beneath native material; Reduce
+  Transparency retains the same scroll and reading boundaries. Command, material
+  and method candidates expose selection and count, keyboard navigation and a
+  named non-syntax entry. Composition owns its Return; Escape dismisses candidates
+  without discarding draft text. Reply-file overflow remains keyboard reachable
+  and distinguishes Agent results from unsent input attachments. The neutral latest
+  arrow retains a named action. Public-process disclosure retains every tool call,
+  current state and Find destination; collapse never hides an unresolved decision.
+  Reply Copy announces confirmation without moving focus; Sources identifies its
+  reply, source titles and destinations, with keyboard dismissal and return focus. Read evidence
+  exposes ranges, revision and missing coverage in text; disclosure never relies on
+  color. Supplied material previews retain their existing named controls and return
+  path, and remain distinct from cited sources.
 
 ### Agent Changes
 

@@ -28,7 +28,8 @@ extension WindowModel {
                 focuses: [.init(kind: .selectedPassage, text: selection.excerpt)])
             return RelatedMaterialsSeed(request: .init(seed: seed), attachment: .init(
                 noteID: stableID, vaultID: descriptor.reference.vaultID, relativePath: note.relativePath,
-                text: selection.excerpt, fingerprint: seed.fingerprint, sourceLine: selection.line, sourceRange: selection.sourceRange))
+                text: selection.excerpt, fingerprint: seed.fingerprint, sourceLine: selection.line,
+                sourceRange: selection.sourceRange, vaultRole: descriptor.reference.vaultRole))
         }, retrieve: { [discovery = capabilities.discovery] request in
             try await discovery.relatedContent(request)
         }, references: workspaceCatalog?.notes.map(\.reference) ?? [])

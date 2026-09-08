@@ -4,49 +4,24 @@ import ScholiumContracts
 import SwiftUI
 import UserNotifications
 
-/// Only opaque identity and revision data cross into macOS Notification Center.
-struct AgentChangeNotificationRoute: Codable, Hashable, Sendable {
-    let triptychID: UUID
-    let changeID: UUID
-    let noteID: UUID
-    let operation: AgentChangeOperation
-    let afterFingerprint: DocumentFingerprint?
-
-    init(_ change: AgentChange) {
-        triptychID = change.triptychID
-        changeID = change.id
-        noteID = change.noteID
-        operation = change.operation
-        afterFingerprint = change.afterFingerprint
-    }
-
-    var identifier: String { "scholium.agent-change.\(triptychID).\(noteID)" }
-
-    func matches(_ change: AgentChange) -> Bool {
-        triptychID == change.triptychID && changeID == change.id
-            && noteID == change.noteID && operation == change.operation
-            && afterFingerprint == change.afterFingerprint
-    }
-}
-
 @MainActor
 protocol SystemNotificationTransport: AnyObject {
     func authorizationStatus() async -> UNAuthorizationStatus
     func requestAuthorization() async throws -> Bool
-    func deliver(_ route: AgentChangeNotificationRoute) async throws
+    func deliver(_ route: SystemNotificationRoute) async throws
 }
 
 @MainActor
 final class SystemNotificationService: NSObject, ObservableObject, UNUserNotificationCenterDelegate {
     static let shared = SystemNotificationService()
     @Published private(set) var notificationWindowID: UUID?
-    @Published private(set) var pendingRoute: AgentChangeNotificationRoute?
+    @Published private(set) var pendingRoute: SystemNotificationRoute?
     private var transport: (any SystemNotificationTransport)?
     private let isActive: @MainActor () -> Bool
     private let delay: Duration
     private var deliveries: [String: (id: UUID, task: Task<Void, Never>)] = [:]
-    private var openingRoutes: [UUID: AgentChangeNotificationRoute] = [:]
-    private var windowRoutes: [UUID: @MainActor (AgentChangeNotificationRoute) -> Bool] = [:]
+    private var openingRoutes: [UUID: SystemNotificationRoute] = [:]
+    private var windowRoutes: [UUID: @MainActor (SystemNotificationRoute) -> Bool] = [:]
     private var authorizationRequest: Task<Bool, Never>?
     private var requestedAuthorization = false
 
@@ -69,14 +44,22 @@ final class SystemNotificationService: NSObject, ObservableObject, UNUserNotific
 
     /// Exactly one call after a successful MCP mutation, never from history reloads.
     func receive(_ change: AgentChange) {
-        guard change.state == .confirmed, transport != nil, !isActive() else { return }
-        let route = AgentChangeNotificationRoute(change)
+        guard change.state == .confirmed else { return }
+        schedule(.agentChange(AgentChangeNotificationRoute(change)), isCurrent: { true })
+    }
+
+    func receive(_ route: AgentChatNotificationRoute, isCurrent: @escaping @MainActor () -> Bool) {
+        schedule(.chat(route), isCurrent: isCurrent)
+    }
+
+    private func schedule(_ route: SystemNotificationRoute, isCurrent: @escaping @MainActor () -> Bool) {
+        guard transport != nil, !isActive(), isCurrent() else { return }
         deliveries[route.identifier]?.task.cancel()
         let deliveryID = UUID()
         let task = Task { [weak self, delay] in
             do { try await Task.sleep(for: delay) } catch { return }
             guard let self, !Task.isCancelled else { return }
-            await self.deliver(route)
+            await self.deliver(route, isCurrent: isCurrent)
             if self.deliveries[route.identifier]?.id == deliveryID {
                 self.deliveries[route.identifier] = nil
             }
@@ -89,9 +72,10 @@ final class SystemNotificationService: NSObject, ObservableObject, UNUserNotific
         deliveries.removeAll()
     }
 
-    private func deliver(_ route: AgentChangeNotificationRoute) async {
-        guard let transport, !isActive(), !Task.isCancelled else { return }
+    private func deliver(_ route: SystemNotificationRoute, isCurrent: @escaping @MainActor () -> Bool) async {
+        guard let transport, !isActive(), !Task.isCancelled, isCurrent() else { return }
         let status = await transport.authorizationStatus()
+        guard !isActive(), !Task.isCancelled, isCurrent() else { return }
         let authorized: Bool
         switch status {
         case .authorized, .provisional: authorized = true
@@ -109,12 +93,12 @@ final class SystemNotificationService: NSObject, ObservableObject, UNUserNotific
             }
         default: authorized = false
         }
-        guard authorized, !isActive(), !Task.isCancelled else { return }
+        guard authorized, !isActive(), !Task.isCancelled, isCurrent() else { return }
         // Notification failure cannot change the committed mutation's result.
         try? await transport.deliver(route)
     }
 
-    func registerWindow(id: UUID, open: @escaping @MainActor (AgentChangeNotificationRoute) -> Bool) {
+    func registerWindow(id: UUID, open: @escaping @MainActor (SystemNotificationRoute) -> Bool) {
         windowRoutes[id] = open
     }
 
@@ -124,7 +108,7 @@ final class SystemNotificationService: NSObject, ObservableObject, UNUserNotific
         if notificationWindowID == id { notificationWindowID = nil }
     }
 
-    func open(_ route: AgentChangeNotificationRoute) {
+    func open(_ route: SystemNotificationRoute) {
         for handler in windowRoutes.values {
             if handler(route) { return }
         }
@@ -132,19 +116,19 @@ final class SystemNotificationService: NSObject, ObservableObject, UNUserNotific
     }
 
     /// The one-shot click is memory-only; restored windows never replay it.
-    func prepareWindow(for route: AgentChangeNotificationRoute) -> TriptychWindowRoute {
+    func prepareWindow(for route: SystemNotificationRoute) -> TriptychWindowRoute {
         let window = TriptychWindowRoute(triptychID: route.triptychID)
         openingRoutes[window.windowID] = route
         notificationWindowID = window.windowID
         return window
     }
 
-    func takeOpeningRoute(windowID: UUID) -> AgentChangeNotificationRoute? {
+    func takeOpeningRoute(windowID: UUID) -> SystemNotificationRoute? {
         if notificationWindowID == windowID { notificationWindowID = nil }
         return openingRoutes.removeValue(forKey: windowID)
     }
 
-    func takePendingRoute() -> AgentChangeNotificationRoute? {
+    func takePendingRoute() -> SystemNotificationRoute? {
         defer { pendingRoute = nil }
         return pendingRoute
     }
@@ -160,7 +144,7 @@ final class SystemNotificationService: NSObject, ObservableObject, UNUserNotific
     ) async {
         guard response.actionIdentifier == UNNotificationDefaultActionIdentifier,
               let data = response.notification.request.content.userInfo["route"] as? Data,
-              let route = try? JSONDecoder().decode(AgentChangeNotificationRoute.self, from: data),
+              let route = try? JSONDecoder().decode(SystemNotificationRoute.self, from: data),
               response.notification.request.identifier == route.identifier else { return }
         await MainActor.run { self.open(route) }
     }
@@ -176,10 +160,10 @@ private final class MacSystemNotificationTransport: SystemNotificationTransport 
     func requestAuthorization() async throws -> Bool {
         try await center.requestAuthorization(options: [.alert])
     }
-    func deliver(_ route: AgentChangeNotificationRoute) async throws {
+    func deliver(_ route: SystemNotificationRoute) async throws {
         let content = UNMutableNotificationContent()
-        content.title = String(localized: "Agent Changes", table: "Localizable", bundle: .module)
-        content.body = String(localized: "An Agent changed a Note. Open Scholium to inspect the change.", table: "Localizable", bundle: .module)
+        content.title = route.title
+        content.body = route.body
         content.userInfo = ["route": try JSONEncoder().encode(route)]
         content.threadIdentifier = route.triptychID.uuidString
         try await center.add(UNNotificationRequest(identifier: route.identifier, content: content, trigger: nil))

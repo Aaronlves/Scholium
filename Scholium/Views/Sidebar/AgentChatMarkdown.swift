@@ -134,12 +134,15 @@ struct AgentChatTimelineItem: Identifiable {
   let messages: [AgentChatMessage]
   let showsSpeaker: Bool
   var id: String { messages[0].id }
-  var isActivity: Bool { messages[0].role == .operation }
+  var isProcess: Bool { Self.isProcess(messages[0]) }
+  static func isProcess(_ message: AgentChatMessage) -> Bool {
+    message.role == .operation || message.phase == .commentary || message.plan != nil
+  }
 
   static func group(_ messages: [AgentChatMessage]) -> [Self] {
     var items: [Self] = []
     for message in messages {
-      if message.role == .operation, items.last?.isActivity == true {
+      if Self.isProcess(message), items.last?.isProcess == true, items.last?.messages.last?.turnID == message.turnID {
         let previous = items.removeLast()
         items.append(.init(messages: previous.messages + [message], showsSpeaker: false))
       } else {

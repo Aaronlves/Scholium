@@ -2,6 +2,17 @@
 
 [IMPLEMENTATION_STATUS.md](../IMPLEMENTATION_STATUS.md) · Current user-facing reachability.
 
+Selection Actions now use the existing native floating surface in Review, Edit
+and Source. Ask Agent and the View-menu shortcut stage a checked passage in the
+existing Chat composer, preserve its draft, and never send automatically.
+Review currently maps source-identical blocks; formatted/synthesized blocks
+require Edit or Source. Material source opening verifies the excerpt and revision,
+then restores its exact Review selection where renderable, otherwise its Source
+range for editable Notes. Unrepresentable read-only ranges retain their preview
+and a visible limitation. Ordinary line references retain line arrival. Native
+composer first-responder transitions now drive the focus binding; revealing
+already-visible Chat does not toggle the Sidebar closed.
+
 ## App root and workspace shell
 
 - Ordinary command buttons share a native style adapter with neutral Ink;
@@ -212,6 +223,159 @@
   MCP registration commands, live App/bridge/CLI availability, and a Finder
   route to the bundled Core Protocol Skill.
 - Optional in-app Codex Chat appears beside Library in the left sidebar.
+  Agent Integration now exposes runtime method discovery, inspection and
+  effective enable/disable, plus MCP tool names and reported connection state.
+  Shared-setting writes have confirmation; active executions block changes.
+  Composer method selection persists in drafts and sent messages, sends explicit
+  Skill inputs and blocks unavailable choices. The installed official runtime
+  passed isolated local method discovery/disable/enable without inference.
+  Local folder association/removal is reachable through the native folder picker;
+  configuration-scoped launch preferences survive reconnect. Missing folders and
+  unconfirmed application have Refresh/removal repair routes. Official-runtime
+  checks confirm discovery and withdrawal without changing Skill bytes. Connected
+  Tools now offers native remote/local Add, Edit, enable/disable and Remove forms.
+  Version-checked saves preserve other configuration fields; stale forms have
+  explicit Reload. Advanced access fields name environment variables without
+  displaying values. Other-layer connections remain inspectable and noneditable.
+  Invocation-specific presentation remains open. Tools requiring
+  authentication now have Sign In and pending Continue Sign-In routes, with
+  runtime-confirmed results and configuration-bound shared-scope confirmation.
+  Fixture checks cover failure/retry, active-conversation availability, callback
+  scope, unsafe URL exclusion and disconnect; actual provider login remains unaccepted.
+  Light/dark offscreen Settings images were inspected; live folder-picker and
+  confirmation interaction acceptance remains open.
+  Add Material now offers a searchable native Note picker. Whole-Note source is
+  captured through the document/editor owner and attached to the original
+  conversation without sending. Chips and previews distinguish whole Notes from
+  passages, saved source from editor snapshots, and known vault roles. Current
+  history uses schema 7; unsupported archives remain preserved and nonauthorizing.
+  Saved-source capture and fixture sending preserve BOM, line endings and text;
+  a dirty unavailable editor rejects capture without substituting saved content.
+  Populated and empty picker renders were inspected in light/dark mode. Actual
+  editor-snapshot, picker keyboard/focus and VoiceOver acceptance remain open.
+  Local PDF, UTF-8 text and supported single-image files have picker, file-URL
+  paste and drop routes into retained snapshots. PDF input is extracted text by
+  page, with empty pages disclosed; images require reported model support.
+  Failed preparation preserves a visible material, and invalid retained files
+  preserve the draft before delivery. Details offer replacement, source location,
+  page coverage, system Quick Look and image thumbnails. Text/failed PDF detail
+  renders have light/dark evidence. Real file-panel, paste/drop, thumbnail/Quick
+  Look and provider image-input acceptance remain open.
+  The native message editor accepts explicit clipboard image paste and copy-drops
+  of image data without changing draft text, selection or text Undo. File references
+  outrank icon images; marked text and ordinary text transfer retain their native
+  editor route. Drag entry checks types without reading bytes; acceptance captures
+  the snapshot. Clipboard and drop origins remain distinct in preview, persistence
+  and provider input. TIFF conversion preserves captured bytes alongside the PNG.
+  Named-pasteboard, native drag-callback, actual text Undo and fixture-delivery
+  checks pass; light/dark detail renders were inspected. Physical cross-app image
+  drag, system Paste, installed-IME and complete adaptation acceptance remain open.
+  PDF details now offer explicit page-image selection, including scanned PDFs.
+  The native form accepts physical ranges, rejects invalid or excessive requests,
+  and prepares a replacement without sending. Original PDF and per-page image
+  fingerprints remain attached to the material. Native rendering and fixture
+  delivery verified selected-page-only input; the form and a generated page were
+  inspected offscreen. Actual provider interpretation and live sheet/IME/Quick
+  Look acceptance remain open.
+  Conversation-owned model/reasoning and web-search menus are wired to official
+  runtime configuration. Context and Usage opens reported token/quota values and
+  manual compaction; public plans have native disclosure and retained terminal
+  state. These additions have offscreen presentation evidence, not live UI or
+  signed-in inference acceptance.
+  Browsing and execution are independent: other conversations can run while one
+  waits for input. Each owns its approvals, Stop, error and tool token. Rows show
+  running, waiting and retained terminal states; the Chat selector reflects any
+  pending input. Light/dark offscreen list renders were inspected; no live
+  window or accessibility interaction acceptance is claimed.
+  The list searches retained titles and public messages, including plans and
+  supplied material passages, within its active/archived scope. Detail options
+  expose Find in Conversation and Rename. Find navigates matching messages,
+  reveals matching activities and preserves input; native fields keep marked
+  text intact. These routes have deterministic and offscreen component evidence;
+  live scrolling/focus and human accessibility acceptance remain open.
+  Native detail/message menus now branch through a selected ended turn and
+  open the original conversation. A confirmed branch keeps settings, exact
+  retained messages and prior receipt identities; unsent input remains with
+  the original. Pending creation has Cancel even for an archived source. The
+  deterministic runtime covers truncation, persistence, resumed branch input,
+  failure, cancellation, disconnect and selection changes. Branch list images
+  were inspected; live menu/focus and signed-in official fork acceptance remain open.
+  Edit Earlier Request and the message menu now prepare an opening request in a
+  branch before its turn. The first request yields empty history; later requests
+  keep earlier exchanges. Original text, materials and methods enter the ordinary
+  draft without sending, and the origin records the excluded boundary. Same-turn
+  additional input has no independent edit action. Fixture checks cover exact
+  boundaries, preserved source drafts, explicit sending and failed confirmation;
+  live menu/composer focus and official-runtime execution remain unaccepted.
+  Research questions now use a separate native form with unselected choices,
+  option descriptions, permitted custom answers, secure fields and Reply/Skip.
+  Answers remain with their owning conversation until runtime confirmation;
+  pending submission is read-only. Public records preserve nonsecret responses
+  and distinguish pending input from approval; secrets are excluded. Invalid
+  forms fail without an allow-operation action. Fixture tests and light/dark
+  renders cover these states; provider question execution, native option/field
+  keyboard interaction, IME and VoiceOver remain unaccepted.
+  Ask-mode Note updates now offer a read-only exact comparison before approval.
+  Preview and execution share the Application source transformation; opening
+  the preview neither flushes editors nor creates an Agent Change. Its sheet
+  reuses the existing comparison surface and answers the exact request. Native
+  light/dark images were inspected, including corrected shared comparison
+  localization. Real file-operation tests cover untouched preview/decline and
+  stale rejection after approval. Live sheet keyboard/focus and provider-driven
+  modification acceptance remain open.
+  Runtime approvals now present actual command/terminal input, network destination,
+  file effects/diffs and complete requested permission rules with optional technical
+  detail. Once, turn and session grants are separate explicit actions; submitted
+  decisions await exact confirmation. Unsupported persistent policy amendments
+  cannot grant access. Tool-origin input identifies its tool and offers Stop Turn;
+  secret answers/options and tool arguments stay out of retained history. Focused
+  protocol checks and light/dark native renders cover these paths; actual provider
+  approval execution and live keyboard/focus/accessibility remain unaccepted.
+  Public delegation now displays coordination requests, target identities/states
+  and attributed reports through native disclosure. Completed coordination calls
+  remain distinct from child completion and retain their visible reports.
+  Search, saving, branching and reconnect preserve these observations; they do
+  not create child conversations or authorize child tools. Light/dark narrow
+  renders were inspected. Reported targets now open a native Agent detail after
+  runtime ancestry verification, including descendants reached through multiple
+  parents. Public history supports explicit older pages and excludes private
+  reasoning; nontext material is separately disclosed. Stop rereads the exact
+  active turn, requests interruption and checks for its end without stopping the
+  parent or siblings. Disconnected snapshots are labelled prior observations.
+  Reports inside the detail open verified destinations within one native
+  navigation stack. Back retains the earlier inspection and its separate draft;
+  Done closes all inspections without stopping execution. Revisited targets
+  return to their existing position, and the original parent opens its local
+  conversation. Closed or disconnected inspections cannot open more targets.
+  Scope, pagination, cancellation and stale-turn tests cover this slice; direct
+  messaging, child approvals and live-provider/native interaction acceptance
+  remain open.
+  Child detail now provides Ask Parent and Open Parent, with a separate retained
+  adjustment draft. Parent receipt, unavailable and unknown delivery have distinct
+  native labels. Ordinary parent drafts/materials/method selections and visible
+  conversations remain independent. Public adjustment targets remain inspectable
+  in history and editable branches; a branch cannot send to an original target
+  unless it is explicitly removed or the researcher returns to the parent.
+  Offscreen light/dark detail and narrow branch images cover this presentation;
+  live keyboard/IME, accessibility and provider delivery remain unaccepted.
+  Questions, operation approvals, material provenance/content, PDF page selection
+  and child adjustment input now use native grouped content cards. Agent detail
+  and Context/Account Usage use macOS grouped tabs, with a stable composer and
+  persistent state outside the tab content. System surfaces own the material;
+  no extra glass or custom selection plate wraps research text. A disposable
+  live QA journey verified tab switching, retained Chinese pasted draft/focus,
+  parent receipt, question selection/Skip, and light/dark native presentation.
+  This is synthetic-runtime Computer Use evidence, not provider or human motion,
+  IME, VoiceOver or full visual-adaptation acceptance.
+  Background Chat completion, failure and pending input now use the shared macOS
+  notification service with generic content, per-conversation coalescing and
+  validity checks before delivery. Answered/stopped/superseded requests become
+  ineligible; history hydration does not notify. Click routing opens exact retained
+  or archived Chat without connecting, sending or changing the current Note.
+  Window-model checks preserve unsaved source and unrelated drafts. Narrow
+  light/dark destination renders were inspected, including native placeholder
+  contrast and localized speaker/model labels. Actual system authorization,
+  delivered banners, clicks and cold-launch acceptance remain open.
   Outline and statistics entries are withdrawn; Inspector modes share layout. Chat provides
   history, draft retention, connection/sign-in, permission, native approval
   requests, sending, steering, interruption and stable Note references. Idle chats
@@ -234,11 +398,22 @@
   clicks, character-level caret placement, Undo, conversation draft retention,
   disconnected Return preservation and one successful multiline send through the
   simulated runtime. Installed-IME and real inference acceptance remain open.
-  Current activity remains visible; completed activity is expandable.
-  An explicit file/count popover contains rows distinguishing recorded edits, read/no-op outcomes and runtime reports,
-  with exact receipt comparison routes. Foundation Markdown intents retain
-  paragraphs, quotes, lists, code and comparison rows. Consecutive operation
-  messages share a native disclosure. Confirmed changes open their exact review.
+  Current activity lives on the Agent side of the transcript. Runtime-labelled
+  public commentary and individual tool calls share a per-turn process disclosure,
+  which collapses after completion while final answers remain visible. Unknown
+  phases are not hidden as presumed reasoning. Reply files use compact unfilled
+  cards; a clear floating file count opens operation history with exact comparisons.
+  The composer floats over scrolling content, with native bottom clearance and a
+  neutral latest-arrow action. /, @ and $ open bounded native candidate lists;
+  the editor preserves marked text, exact query replacement and native Undo.
+  Final replies provide Copy and Sources. Sources retains explicit Note, web and
+  other locators independently of file-operation records; opening uses existing
+  Note or external-URL owners. Same-turn scoped Note reads now expose revision,
+  actual line coverage and bounded exact excerpts; completed runtime web open/find
+  reports expose access only. Supplied materials have a separate disclosure using
+  existing previews. Missing observations remain unknown. Foundation Markdown retains paragraphs, quotes,
+  lists, code and comparison rows. The bounded live research loop now passes;
+  Verification records the remaining accessibility and integration limits.
 
 - **Agent Changes** has a menu entry listing the most recent receipt per Note;
   exact receipt links open only that change. Older evidence remains retained. Closing a notification does not

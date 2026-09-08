@@ -125,8 +125,8 @@ Scholium does not become:
 
 - a general LLM chat product, project/task management, a plugin marketplace, fourth
   vault, or All Notes mode;
-- a self-built Agent harness, private-reasoning monitor, background Agent
-  manager, cloud orchestrator, or second proposal/approval lifecycle;
+- a self-built Agent harness, private-reasoning monitor, independent execution
+  scheduler, cloud orchestrator, or second proposal/approval lifecycle;
 - an automatic judge of philosophical support, truth, sufficiency, settlement,
   prose authorization, quality, or researcher competence;
 - a Zotero replacement, embedded PDF reader, proprietary backup format, or
@@ -136,7 +136,8 @@ Scholium does not become:
 The target keeps one protected Core Protocol, one fixed local MCP tool surface,
 optional researcher-owned method Skills, and bounded Zotero/local Agent
 transports. Finder remains authoritative for Markdown and attachment bytes;
-the external host owns its Skills; Zotero remains authoritative for its library
+the selected runtime owns its Skills and tools, with in-app management under §8.7;
+Zotero remains authoritative for its library
 and PDFs; external Agents remain authoritative for optional open-ended work.
 
 Outside Beta/1.0 are document/project/HTML/PDF/DOCX export, executable
@@ -149,8 +150,9 @@ reader remains excluded.
 chrome/navigation, and complete RTL input acceptance remain deferred; exact
 Unicode preservation is mandatory.
 
-§8 owns method-Skill authority and runtime scope. This boundary creates no
-additional registration or credential store.
+§8 owns method-Skill authority and runtime scope. The in-app client may manage
+runtime-owned Skills, tools, concurrent and scheduled work under §8.7 without
+creating a Skill marketplace, second execution loop or credential store.
 
 Scholium defines no separate durable Agent memory or ontology. Analyses, Topics, Works,
 and authored Markdown remain the research context. Chat provides explicit selection

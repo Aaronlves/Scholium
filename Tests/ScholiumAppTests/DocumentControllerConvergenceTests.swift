@@ -7,6 +7,30 @@ import Testing
 @Suite("Document controller convergence")
 @MainActor
 struct DocumentControllerConvergenceTests {
+    @Test("Source navigation is document-bound and stale acknowledgements cannot consume a newer activation")
+    func sourceNavigationOwnership() throws {
+        let controller = DocumentController(), vault = UUID()
+        controller.selectUnavailableDocument(vaultID: vault, relativePath: "First.md")
+        controller.requestSourceLocation(line: 2)
+        let old = try #require(controller.sourceLocationRequest)
+        controller.selectUnavailableDocument(vaultID: vault, relativePath: "Second.md")
+        #expect(controller.sourceLocationRequest == nil)
+        controller.requestSourceLocation(line: 2)
+        let current = try #require(controller.sourceLocationRequest)
+        controller.consumeSourceLocation(old.id)
+        #expect(controller.sourceLocationRequest == current)
+        controller.requestSourceLocation(line: 2)
+        let repeated = try #require(controller.sourceLocationRequest)
+        #expect(repeated.id != current.id)
+        controller.consumeSourceLocation(current.id)
+        #expect(controller.sourceLocationRequest == repeated)
+        controller.consumeSourceLocation(repeated.id)
+        #expect(controller.sourceLocationRequest == nil)
+        controller.requestSourceLocation(line: 4)
+        controller.clearSelectionAfterClosingLastTab()
+        #expect(controller.sourceLocationRequest == nil)
+    }
+
     @Test("Managed creation installs exact source directly into one Edit session")
     func managedCreationStartsInEdit() throws {
         let vaultID = UUID()
@@ -20,7 +44,8 @@ struct DocumentControllerConvergenceTests {
         )
         let controller = DocumentController()
         controller.requestedPresentationMode = .source
-        controller.pendingSourceLine = 99
+        controller.selectUnavailableDocument(vaultID: vaultID, relativePath: "Previous.md")
+        controller.requestSourceLocation(line: 99)
 
         controller.installOpenedDocument(
             created,
@@ -35,7 +60,7 @@ struct DocumentControllerConvergenceTests {
         )))
         #expect(controller.currentPresentationMode == .livePreview)
         #expect(controller.requestedPresentationMode == nil)
-        #expect(controller.pendingSourceLine == nil)
+        #expect(controller.sourceLocationRequest == nil)
         #expect(session.presentationMode == .livePreview)
         #expect(session.activeEditorMode == .livePreview)
         #expect(session.retainsEditorSurface)

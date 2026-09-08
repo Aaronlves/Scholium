@@ -1733,7 +1733,7 @@ struct WindowControllerArchitectureTests {
 
         for documentOwnedState in [
             "@Published private(set) var sourceMutationGeneration",
-            "@Published var pendingSourceLine",
+            "@Published private(set) var sourceLocationRequest",
             "@Published var requestPresentationMode",
             "@Published var noteIdentityByPath",
             "@Published var identityAmbiguities",

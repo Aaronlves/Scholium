@@ -1,0 +1,34 @@
+import {afterEach, describe, expect, it, vi} from "vitest";
+import {createNativeFloatingBridge, type NativeFloatingPayload} from "../native-floating";
+import {createSelectionActions, type SelectionActionTarget} from "../selection-actions";
+afterEach(() => vi.unstubAllGlobals());
+describe("source selection action", () => {
+  it("rejects an old selection and retains dismissal until selection changes", () => {
+    vi.stubGlobal("window", {});
+    const sent: NativeFloatingPayload[] = [];
+    const bridge = createNativeFloatingBridge(surface => sent.push(surface));
+    let target: SelectionActionTarget | null = {key: "revision:1:2", anchor: {left: 1, top: 2, bottom: 3}};
+    const actions = createSelectionActions(bridge, () => target);
+    actions.update();
+    const first = sent.at(-1)!.id;
+    target = {...target, key: "revision:4:5"};
+    expect(bridge.event(first, "choose", 0)).toBe(false);
+    actions.update();
+    const current = sent.at(-1)!.id;
+    expect(bridge.event(first, "choose", 0)).toBe(false);
+    expect(bridge.event(current, "choose", 0)).toBe(true);
+    const count = sent.length;
+    actions.update();
+    expect(sent).toHaveLength(count);
+    target = null; actions.update();
+    target = {key: "revision:4:5", anchor: {left: 1, top: 2, bottom: 3}};
+    actions.update();
+    expect(sent.at(-1)!.kind).toBe("selection");
+    expect(actions.dismiss()).toBe(true);
+    expect(sent.at(-1)!.kind).toBe("hidden");
+    expect(actions.dismiss()).toBe(false);
+    const dismissedCount = sent.length;
+    actions.update();
+    expect(sent).toHaveLength(dismissedCount);
+  });
+});

@@ -142,9 +142,10 @@ struct AppCompositionRootTests {
         #expect(first.discoveryController.library.sourceScope == .library)
         #expect(second.discoveryController.library.sourceScope == .library)
 
-        first.pendingSourceLine = 17
-        #expect(first.documentController.pendingSourceLine == 17)
-        #expect(second.documentController.pendingSourceLine == nil)
+        first.documentController.selectDocument(.workspace(descriptor))
+        first.documentController.requestSourceLocation(line: 17)
+        #expect(first.documentController.sourceLocationRequest?.line == 17)
+        #expect(second.documentController.sourceLocationRequest?.line == nil)
 
         let mutationTarget = NoteMutationTarget(
             documentID: VaultQualifiedNoteID(
@@ -1356,9 +1357,9 @@ struct AppCompositionRootTests {
             await window.waitForPendingDocumentTransitionsForTesting()
             #expect(window.currentNote?.relativePath == "Target.md")
             #expect(window.requestPresentationMode == before)
-            #expect(window.pendingSourceLine == 3)
+            #expect(window.documentController.sourceLocationRequest?.line == 3)
             window.requestPresentationMode = nil
-            window.pendingSourceLine = nil
+            if let request = window.documentController.sourceLocationRequest { window.documentController.consumeSourceLocation(request.id) }
         }
         let note = try #require(window.currentNote)
         let revision = note.workspaceSnapshot?.metadata?.revision
@@ -1406,7 +1407,7 @@ struct AppCompositionRootTests {
         await window.waitForPendingDocumentTransitionsForTesting()
         #expect(!window.shellState.operationIssues.contains { $0.id == retainedIssue.id })
         #expect(window.requestPresentationMode == modeBeforeCrossVaultLink)
-        #expect(window.pendingSourceLine == nil)
+        #expect(window.documentController.sourceLocationRequest?.line == nil)
         #expect(try Data(contentsOf: analyses.appendingPathComponent("Source.md")) == Data(source.utf8))
     }
 

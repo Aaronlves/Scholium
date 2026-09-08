@@ -20,6 +20,15 @@ exact empty body has a distinct quiet state; malformed YAML, whitespace,
 unavailable source, and render failure are not Empty.
 
 Edit keeps text selection unobscured, without a floating formatting toolbar.
+A nonempty body selection offers one compact **Ask Agent** action beside the
+selection in Review, Edit and Source. It uses the existing native floating
+surface, leaves the selected text unobscured, and adds no document padding.
+Activating it stages the passage under §8.7 and moves focus to Chat. Selection
+changes, scrolling, Escape, composition, mode changes and document departure
+dismiss the action. The named View-menu action and its keyboard shortcut remain
+equivalent routes; no automatic transmission or second inline conversation is
+introduced. A source range that cannot be verified remains unavailable.
+
 Formatting and insertion remain available through native Format/Insert menus,
 keyboard shortcuts, and exact Markdown input. These routes preserve the current
 selection and share the existing source transaction and Undo behavior.

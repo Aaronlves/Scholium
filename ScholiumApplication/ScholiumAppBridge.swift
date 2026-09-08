@@ -272,6 +272,9 @@ public final class ScholiumAppBridgeServer: @unchecked Sendable {
         -> ScholiumMCPBridgeResponse
 
     private let queue = DispatchQueue(label: "com.scholium.app-bridge")
+    private let peerQueue = DispatchQueue(label: "com.scholium.app-bridge.peers", attributes: .concurrent)
+    private let draining = DispatchGroup()
+    private static let maximumConcurrentRequests = 32
     private let containerURL: URL
     private let authenticationURL: URL
     private let port: UInt16
@@ -282,7 +285,8 @@ public final class ScholiumAppBridgeServer: @unchecked Sendable {
     private var listener: Int32 = -1
     private var stopping = false
     private var secret = Data()
-    private var handlerTask: Task<Void, Never>?
+    private var peers: Set<Int32> = []
+    private var handlerTasks: [UUID: Task<Void, Never>] = [:]
 
     public init(
         applicationSupportURL: URL,
@@ -304,36 +308,33 @@ public final class ScholiumAppBridgeServer: @unchecked Sendable {
     deinit { stop() }
 
     public func stop() {
-        lock.withLock {
-            guard !stopping else { return }
+        let tasks: [Task<Void, Never>] = lock.withLock {
+            guard !stopping else { return [] }
             stopping = true
-            handlerTask?.cancel()
+            // Workers close their own descriptors. Shutdown interrupts blocking I/O.
+            for peer in peers { Darwin.shutdown(peer, SHUT_RDWR) }
             if listener >= 0 {
                 Darwin.shutdown(listener, SHUT_RDWR)
                 Darwin.close(listener)
                 listener = -1
             }
             try? AppBridgeIO.removeSecret(at: authenticationURL)
+            return Array(handlerTasks.values)
         }
+        // Cancellation callbacks may reenter an owner; never invoke them under our lock.
+        for task in tasks { task.cancel() }
     }
 
     public func stopAndWait(
         timeout: TimeInterval = ScholiumAppBridgeLocation.timeout
     ) async -> Bool {
         stop()
-        let task = lock.withLock { handlerTask }
-        guard let task else { return true }
-        return await withTaskGroup(of: Bool.self) { group in
-            group.addTask { await task.value; return true }
-            group.addTask {
-                try? await Task.sleep(
-                    for: .seconds(min(max(timeout, 0.1), 30))
-                )
-                return false
+        return await withCheckedContinuation { continuation in
+            let waiter = AppBridgeDrainWaiter(continuation)
+            draining.notify(queue: .global(qos: .utility)) { waiter.finish(true) }
+            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + min(max(timeout, 0.1), 30)) {
+                waiter.finish(false)
             }
-            let result = await group.next() ?? false
-            group.cancelAll()
-            return result
         }
     }
 
@@ -369,7 +370,11 @@ public final class ScholiumAppBridgeServer: @unchecked Sendable {
             throw ScholiumAppBridgeError.systemCall("listen", errno)
         }
         secret = try AppBridgeIO.installSecret(at: authenticationURL)
-        queue.async { [weak self] in self?.acceptLoop() }
+        draining.enter()
+        queue.async { [self] in
+            defer { draining.leave() }
+            acceptLoop()
+        }
     }
 
     private func acceptLoop() {
@@ -381,8 +386,23 @@ public final class ScholiumAppBridgeServer: @unchecked Sendable {
                 if errno == EINTR { continue }
                 return
             }
-            handle(peer)
-            Darwin.close(peer)
+            let admitted = lock.withLock {
+                guard !stopping, peers.count < Self.maximumConcurrentRequests else { return false }
+                peers.insert(peer)
+                draining.enter()
+                return true
+            }
+            guard admitted else { Darwin.close(peer); continue }
+            peerQueue.async { [self] in
+                defer {
+                    lock.withLock {
+                        peers.remove(peer)
+                        Darwin.close(peer)
+                    }
+                    draining.leave()
+                }
+                handle(peer)
+            }
         }
     }
 
@@ -422,19 +442,29 @@ public final class ScholiumAppBridgeServer: @unchecked Sendable {
             let box = AppBridgeResultBox()
             let semaphore = DispatchSemaphore(value: 0)
             let operation = handler
-            let task = Task {
-                do {
-                    try Task.checkCancellation()
-                    box.result = .success(try await operation(request))
-                } catch {
-                    box.result = .failure(error)
+            let executionID = UUID()
+            let task: Task<Void, Never>? = lock.withLock {
+                guard !stopping, handlerTasks.count < Self.maximumConcurrentRequests else { return nil }
+                draining.enter()
+                let task = Task { [self] in
+                    defer {
+                        _ = lock.withLock { handlerTasks.removeValue(forKey: executionID) }
+                        semaphore.signal()
+                        draining.leave()
+                    }
+                    do {
+                        try Task.checkCancellation()
+                        box.result = .success(try await operation(request))
+                    } catch {
+                        box.result = .failure(error)
+                    }
                 }
-                semaphore.signal()
+                handlerTasks[executionID] = task
+                return task
             }
-            lock.withLock { handlerTask = task }
+            guard let task else { throw ScholiumAppBridgeError.permissionDenied }
             let budget = request.mcpRequest.conversationToken == nil ? operationTimeout : 590
             let finished = semaphore.wait(timeout: .now() + budget) == .success
-            lock.withLock { handlerTask = nil }
             guard finished else {
                 task.cancel()
                 throw ScholiumAppBridgeError.outcomeUnknown
@@ -462,6 +492,21 @@ public final class ScholiumAppBridgeServer: @unchecked Sendable {
                 try? AppBridgeIO.writeFrame(data, to: peer)
             }
         }
+    }
+}
+
+/// Exactly one deadline/drain winner resumes the waiter. Source tasks may finish later.
+private final class AppBridgeDrainWaiter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<Bool, Never>?
+    init(_ continuation: CheckedContinuation<Bool, Never>) { self.continuation = continuation }
+    func finish(_ drained: Bool) {
+        let reply = lock.withLock {
+            let reply = continuation
+            continuation = nil
+            return reply
+        }
+        reply?.resume(returning: drained)
     }
 }
 

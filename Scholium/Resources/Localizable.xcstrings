@@ -1,6 +1,26 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Codex returned an invalid protocol message." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法识别 Codex 返回的数据。本地记录已保留。"
+          }
+        }
+      }
+    },
+    "This passage cannot be selected in Review. Its supplied text remains available in Chat." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法在阅读视图中选中这段文字。仍可在聊天中查看所附原文。"
+          }
+        }
+      }
+    },
 "Confirming a previous note moves its portable identity and window state to the current location. Scholium does not change the Markdown file.": {
   "localizations": {
     "en": {
@@ -157,22 +177,6 @@
         "stringUnit": {
           "state": "translated",
           "value": "所附片段"
-        }
-      }
-    }
-  },
-  "This attached passage is from an earlier version. Its saved location may have changed.": {
-    "localizations": {
-      "en": {
-        "stringUnit": {
-          "state": "translated",
-          "value": "This attached passage is from an earlier version. Its saved location may have changed."
-        }
-      },
-      "zh-Hans": {
-        "stringUnit": {
-          "state": "translated",
-          "value": "所附片段来自较早版本，原来的位置可能已经改变。"
         }
       }
     }
@@ -21683,7 +21687,3136 @@
           }
         }
       }
-    }
-  },
+    },
+    "%lld Pages" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 页"
+          }
+        }
+      }
+    },
+    "%lld min" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 分钟"
+          }
+        }
+      }
+    },
+    "%lld%% used" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已用 %lld%%"
+          }
+        }
+      }
+    },
+    "1–5, 8" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1–5、8"
+          }
+        }
+      }
+    },
+    "A conversation could not finish. Open Scholium to inspect it." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一段对话未能完成。打开 Scholium 查看。"
+          }
+        }
+      }
+    },
+    "A conversation has finished. Open Scholium to read the response." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一段对话已完成。打开 Scholium 阅读回复。"
+          }
+        }
+      }
+    },
+    "A conversation needs your input. Open Scholium to respond." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一段对话需要你的输入。打开 Scholium 回应。"
+          }
+        }
+      }
+    },
+    "A selected method is unavailable. Refresh Methods or remove it to continue." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "所选方法不可用，请刷新方法列表或移除它后继续。"
+          }
+        }
+      }
+    },
+    "A tool connection already uses this name." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已有工具连接使用此名称。"
+          }
+        }
+      }
+    },
+    "Account Usage" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "账户用量"
+          }
+        }
+      }
+    },
+    "Account usage is unavailable." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "暂时无法获取账户用量。"
+          }
+        }
+      }
+    },
+    "Add" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "添加"
+          }
+        }
+      }
+    },
+    "Add Methods Folder…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "添加方法文件夹…"
+          }
+        }
+      }
+    },
+    "Add Tool" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "添加工具"
+          }
+        }
+      }
+    },
+    "Add Tool…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "添加工具…"
+          }
+        }
+      }
+    },
+    "Add page images or choose a PDF with selectable text." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请添加页面图片，或选择包含可选文字的 PDF。"
+          }
+        }
+      }
+    },
+    "Additional material was supplied with this request." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此请求还包含其他材料。"
+          }
+        }
+      }
+    },
+    "Advanced" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "高级"
+          }
+        }
+      }
+    },
+    "Agent" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agent"
+          }
+        }
+      }
+    },
+    "Agent Activity" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "活动"
+          }
+        }
+      }
+    },
+    "Agent Collaboration" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agent 协作"
+          }
+        }
+      }
+    },
+    "Agent Finished" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agent 已结束"
+          }
+        }
+      }
+    },
+    "Agent Interaction" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agent 交互"
+          }
+        }
+      }
+    },
+    "Agent Interrupted" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agent 已中断"
+          }
+        }
+      }
+    },
+    "Agent Not Found" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未找到 Agent"
+          }
+        }
+      }
+    },
+    "Agent Report" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agent 报告"
+          }
+        }
+      }
+    },
+    "Agent Started" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agent 已启动"
+          }
+        }
+      }
+    },
+    "Agent Target Actions" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agent 目标操作"
+          }
+        }
+      }
+    },
+    "All Files" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "所有文件"
+          }
+        }
+      }
+    },
+    "Allow for Session" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "允许本次会话"
+          }
+        }
+      }
+    },
+    "Allow for This Turn" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "允许本轮"
+          }
+        }
+      }
+    },
+    "Answer Hidden" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "回答已隐藏"
+          }
+        }
+      }
+    },
+    "Apply Change" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "应用更改"
+          }
+        }
+      }
+    },
+    "Arguments" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "参数"
+          }
+        }
+      }
+    },
+    "Arguments — One per Line" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "参数——每行一个"
+          }
+        }
+      }
+    },
+    "Ask Agent" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "询问 Agent"
+          }
+        }
+      }
+    },
+    "Ask Parent" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请父 Agent 协调"
+          }
+        }
+      }
+    },
+    "Ask Parent: %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请父 Agent 协调：%@"
+          }
+        }
+      }
+    },
+    "Assign Follow-up" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "追加任务"
+          }
+        }
+      }
+    },
+    "Associated Folders" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "关联的文件夹"
+          }
+        }
+      }
+    },
+    "Bearer Token Variable" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "持有者令牌变量"
+          }
+        }
+      }
+    },
+    "Branch Conversation" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分支讨论"
+          }
+        }
+      }
+    },
+    "Branch creation was stopped. No new conversation has been confirmed." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分支创建已停止，尚未确认新讨论。"
+          }
+        }
+      }
+    },
+    "Branch from This Turn" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "从此轮分出讨论"
+          }
+        }
+      }
+    },
+    "Branch: %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分支：%@"
+          }
+        }
+      }
+    },
+    "Cached" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "缓存"
+          }
+        }
+      }
+    },
+    "Cancelled" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已取消"
+          }
+        }
+      }
+    },
+    "Change Shared Codex Settings?" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更改共享的 Codex 设置？"
+          }
+        }
+      }
+    },
+    "Chat Actions" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "聊天操作"
+          }
+        }
+      }
+    },
+    "Choose File…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "选择文件…"
+          }
+        }
+      }
+    },
+    "Choose Note" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "选择 Note"
+          }
+        }
+      }
+    },
+    "Choose Note…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "选择 Note…"
+          }
+        }
+      }
+    },
+    "Choose a model with image input or remove the image." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请选择支持图片输入的模型，或移除此图片。"
+          }
+        }
+      }
+    },
+    "Choose an available model and reasoning level." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请选择可用的模型和推理强度。"
+          }
+        }
+      }
+    },
+    "Choose up to 20 pages for one image input." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一次图片输入最多可选择 20 页。"
+          }
+        }
+      }
+    },
+    "Cited location not read" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未读取引用位置"
+          }
+        }
+      }
+    },
+    "Clipboard" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "剪贴板"
+          }
+        }
+      }
+    },
+    "Clipboard Image" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "剪贴板图片"
+          }
+        }
+      }
+    },
+    "Close Agent" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "关闭 Agent"
+          }
+        }
+      }
+    },
+    "Closed" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已关闭"
+          }
+        }
+      }
+    },
+    "Codex manages sign-in credentials for this shared settings folder." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Codex 会管理此共享设置文件夹中的登录凭据。"
+          }
+        }
+      }
+    },
+    "Codex sent an ambiguous interaction request. Reconnect to continue." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Codex 的交互请求身份不明确。请重新连接后继续。"
+          }
+        }
+      }
+    },
+    "Compact Context" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "压缩上下文"
+          }
+        }
+      }
+    },
+    "Compacting Context…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在压缩上下文…"
+          }
+        }
+      }
+    },
+    "Confirm whether existing access settings may be used with the new destination." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请确认是否将现有访问设置用于新目标。"
+          }
+        }
+      }
+    },
+    "Connected Tools" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已连接工具"
+          }
+        }
+      }
+    },
+    "Connection" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "连接"
+          }
+        }
+      }
+    },
+    "Connection Failed" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "连接失败"
+          }
+        }
+      }
+    },
+    "Connection Status Unavailable" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "连接状态不可用"
+          }
+        }
+      }
+    },
+    "Context" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "上下文"
+          }
+        }
+      }
+    },
+    "Context Window" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "上下文窗口"
+          }
+        }
+      }
+    },
+    "Context and Usage" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "上下文与用量"
+          }
+        }
+      }
+    },
+    "Context compaction could not be confirmed: %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法确认上下文压缩结果：%@"
+          }
+        }
+      }
+    },
+    "Continue Sign-In" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "继续登录"
+          }
+        }
+      }
+    },
+    "Conversation Title" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "对话标题"
+          }
+        }
+      }
+    },
+    "Converted to PNG" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已转换为 PNG"
+          }
+        }
+      }
+    },
+    "Copied" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已复制"
+          }
+        }
+      }
+    },
+    "Copy Reply" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "复制回复"
+          }
+        }
+      }
+    },
+    "Create File" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "创建文件"
+          }
+        }
+      }
+    },
+    "Creating Branch…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在创建分支…"
+          }
+        }
+      }
+    },
+    "Decision" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "决定"
+          }
+        }
+      }
+    },
+    "Declared Tools: %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "声明的工具：%@"
+          }
+        }
+      }
+    },
+    "Delegated Request" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "委派请求"
+          }
+        }
+      }
+    },
+    "Delete File" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "删除文件"
+          }
+        }
+      }
+    },
+    "Deny File Access" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "禁止文件访问"
+          }
+        }
+      }
+    },
+    "Draft Answer" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "回答草稿"
+          }
+        }
+      }
+    },
+    "Drag and Drop" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "拖放"
+          }
+        }
+      }
+    },
+    "Dropped Image" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "拖入的图片"
+          }
+        }
+      }
+    },
+    "Edit Earlier Request" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "修改先前提问"
+          }
+        }
+      }
+    },
+    "Edit File" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "编辑文件"
+          }
+        }
+      }
+    },
+    "Edit Tool" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "编辑工具"
+          }
+        }
+      }
+    },
+    "Edit in New Branch" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在新分支中修改"
+          }
+        }
+      }
+    },
+    "Editor Snapshot" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "编辑器快照"
+          }
+        }
+      }
+    },
+    "Edit…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "编辑…"
+          }
+        }
+      }
+    },
+    "Enter a connection name without line breaks or control characters." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请输入不含换行或控制字符的连接名称。"
+          }
+        }
+      }
+    },
+    "Enter a program or a valid HTTPS server address. Local servers may use HTTP on the loopback address." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请输入程序或有效的 HTTPS 服务器地址。本地服务器可以使用回环地址上的 HTTP。"
+          }
+        }
+      }
+    },
+    "Enter environment variable names only, without values, spaces or equals signs." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请仅填写环境变量名，不含变量值、空格或等号。"
+          }
+        }
+      }
+    },
+    "Enter valid PDF page numbers, such as 1–5, 8." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请输入有效的 PDF 页码，例如 1–5、8。"
+          }
+        }
+      }
+    },
+    "Environment Variables" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "环境变量"
+          }
+        }
+      }
+    },
+    "Environment Variables — One per Line" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "环境变量 — 每行一个"
+          }
+        }
+      }
+    },
+    "Environment settings are managed by the runtime configuration." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "环境设置由运行时配置管理。"
+          }
+        }
+      }
+    },
+    "Execution Environment" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "执行环境"
+          }
+        }
+      }
+    },
+    "Extra High" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "极高"
+          }
+        }
+      }
+    },
+    "Extracted Text · %lld Pages" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "提取文字 · %lld 页"
+          }
+        }
+      }
+    },
+    "File could not be read" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法读取文件"
+          }
+        }
+      }
+    },
+    "File exceeds the input limit" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "文件超出输入限制"
+          }
+        }
+      }
+    },
+    "Find in Conversation" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在对话中查找"
+          }
+        }
+      }
+    },
+    "Find in Page" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "页面内查找"
+          }
+        }
+      }
+    },
+    "Finish editing with the input method, then try adding the Note again." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请先完成输入法组字，再尝试添加此 Note。"
+          }
+        }
+      }
+    },
+    "Finish preparing the current material before adding another." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请等待当前材料准备完成，再添加其他材料。"
+          }
+        }
+      }
+    },
+    "Finish the current operation before changing method folders." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请等待当前操作完成，再更改方法文件夹。"
+          }
+        }
+      }
+    },
+    "From Agent" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "发起 Agent"
+          }
+        }
+      }
+    },
+    "Full Text Snapshot" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "完整文字快照"
+          }
+        }
+      }
+    },
+    "Full source received" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已接收完整源文"
+          }
+        }
+      }
+    },
+    "High" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "高"
+          }
+        }
+      }
+    },
+    "Idle" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "空闲"
+          }
+        }
+      }
+    },
+    "Image Snapshot" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "图片快照"
+          }
+        }
+      }
+    },
+    "Image preview is unavailable. Try Quick Look." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "图片预览不可用。请尝试快速查看。"
+          }
+        }
+      }
+    },
+    "Interrupt Agent" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "中断 Agent"
+          }
+        }
+      }
+    },
+    "Interruption Not Yet Confirmed" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尚未确认中断"
+          }
+        }
+      }
+    },
+    "Last Observed: %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "先前状态：%@"
+          }
+        }
+      }
+    },
+    "Latest Turn" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最近一轮"
+          }
+        }
+      }
+    },
+    "List Agents" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "查看 Agent"
+          }
+        }
+      }
+    },
+    "Live" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "实时"
+          }
+        }
+      }
+    },
+    "Load Earlier Activity" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "载入较早活动"
+          }
+        }
+      }
+    },
+    "Loading Conversation…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在载入对话…"
+          }
+        }
+      }
+    },
+    "Loading Methods…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在载入方法…"
+          }
+        }
+      }
+    },
+    "Local" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "本地"
+          }
+        }
+      }
+    },
+    "Low" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "低"
+          }
+        }
+      }
+    },
+    "Manage Methods…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "管理方法…"
+          }
+        }
+      }
+    },
+    "Managed Configuration" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "由其他配置管理"
+          }
+        }
+      }
+    },
+    "Matching Message" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "匹配消息"
+          }
+        }
+      }
+    },
+    "Materials for This Turn" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "本轮材料"
+          }
+        }
+      }
+    },
+    "Maximum" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最高"
+          }
+        }
+      }
+    },
+    "Message %lld of %lld" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "第 %lld 条，共 %lld 条"
+          }
+        }
+      }
+    },
+    "Message Agent" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "联系 Agent"
+          }
+        }
+      }
+    },
+    "Methods" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "研究方法"
+          }
+        }
+      }
+    },
+    "Methods and Tools" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "方法与工具"
+          }
+        }
+      }
+    },
+    "Minimal" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最低"
+          }
+        }
+      }
+    },
+    "Model and Reasoning" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "模型与推理"
+          }
+        }
+      }
+    },
+    "More Approval Options" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更多审批选项"
+          }
+        }
+      }
+    },
+    "More Files: %lld" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更多文件：%lld"
+          }
+        }
+      }
+    },
+    "Network Access" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "网络访问"
+          }
+        }
+      }
+    },
+    "Network Access: Disabled" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "网络访问：禁用"
+          }
+        }
+      }
+    },
+    "Network Access: Enabled" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "网络访问：启用"
+          }
+        }
+      }
+    },
+    "Network Destination" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "网络目标"
+          }
+        }
+      }
+    },
+    "Next Matching Message" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下一条匹配消息"
+          }
+        }
+      }
+    },
+    "No Agents Reported" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未报告 Agent"
+          }
+        }
+      }
+    },
+    "No Connected Tools" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有已连接工具"
+          }
+        }
+      }
+    },
+    "No Matches" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有匹配结果"
+          }
+        }
+      }
+    },
+    "No Matching Conversations" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有匹配的对话"
+          }
+        }
+      }
+    },
+    "No Methods Found" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未发现研究方法"
+          }
+        }
+      }
+    },
+    "No Notes Available" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "暂无可用的 Note"
+          }
+        }
+      }
+    },
+    "No Public Activity" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尚无公开活动"
+          }
+        }
+      }
+    },
+    "No reading range recorded for this turn" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "本轮未记录读取范围"
+          }
+        }
+      }
+    },
+    "No source text returned" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未返回源文"
+          }
+        }
+      }
+    },
+    "No text could be extracted" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未能提取文字"
+          }
+        }
+      }
+    },
+    "Not Available" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "暂无数据"
+          }
+        }
+      }
+    },
+    "Not Confirmed" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未确认"
+          }
+        }
+      }
+    },
+    "Not Running" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未在运行"
+          }
+        }
+      }
+    },
+    "Not Started" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尚未启动"
+          }
+        }
+      }
+    },
+    "Note" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "笔记"
+          }
+        }
+      }
+    },
+    "Off" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "关闭"
+          }
+        }
+      }
+    },
+    "Open Agent" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开 Agent"
+          }
+        }
+      }
+    },
+    "Open Original Conversation" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开原讨论"
+          }
+        }
+      }
+    },
+    "Open Page" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开网页"
+          }
+        }
+      }
+    },
+    "Open Parent" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开父会话"
+          }
+        }
+      }
+    },
+    "Optional" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "可选"
+          }
+        }
+      }
+    },
+    "PDF is locked" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "PDF 已锁定"
+          }
+        }
+      }
+    },
+    "Page %lld" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "第 %lld 页"
+          }
+        }
+      }
+    },
+    "Page Images · %lld Pages" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "页面图片 · %lld 页"
+          }
+        }
+      }
+    },
+    "Page images: %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "页面图片：%@"
+          }
+        }
+      }
+    },
+    "Pages without extracted text: %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未提取到文字的页码：%@"
+          }
+        }
+      }
+    },
+    "Parent Agent" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "父 Agent"
+          }
+        }
+      }
+    },
+    "Parent Receipt Not Confirmed" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尚未确认父 Agent 收到"
+          }
+        }
+      }
+    },
+    "Parent Unavailable" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "父 Agent 暂不可用"
+          }
+        }
+      }
+    },
+    "Pattern" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "路径匹配"
+          }
+        }
+      }
+    },
+    "Pattern Scan Depth: %lld" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "路径匹配扫描深度：%lld"
+          }
+        }
+      }
+    },
+    "Pending" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "待执行"
+          }
+        }
+      }
+    },
+    "Physical page numbers · Up to 20 pages" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "PDF 物理页码 · 最多 20 页"
+          }
+        }
+      }
+    },
+    "Plan" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "计划"
+          }
+        }
+      }
+    },
+    "Preparing Material" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在准备材料"
+          }
+        }
+      }
+    },
+    "Preparing Page Images" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在准备页面图片"
+          }
+        }
+      }
+    },
+    "Preparing Sign-In…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在准备登录…"
+          }
+        }
+      }
+    },
+    "Preview excerpt" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "预览节选"
+          }
+        }
+      }
+    },
+    "Previous Matching Message" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "上一条匹配消息"
+          }
+        }
+      }
+    },
+    "Process" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "处理过程"
+          }
+        }
+      }
+    },
+    "Program" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "程序"
+          }
+        }
+      }
+    },
+    "Project Roots" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "项目根目录"
+          }
+        }
+      }
+    },
+    "Proposed Source" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "拟议原文"
+          }
+        }
+      }
+    },
+    "Proposed insertion" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "拟新增"
+          }
+        }
+      }
+    },
+    "Read Files" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "读取文件"
+          }
+        }
+      }
+    },
+    "Read a different version" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "读取的是其他版本"
+          }
+        }
+      }
+    },
+    "Read from line %lld, %lld lines" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "第 %lld 行起，共 %lld 行"
+          }
+        }
+      }
+    },
+    "Read lines %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已读取第 %@ 行"
+          }
+        }
+      }
+    },
+    "Reading Note" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在读取 Note"
+          }
+        }
+      }
+    },
+    "Reading PDF" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在读取 PDF"
+          }
+        }
+      }
+    },
+    "Reasoning" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "推理强度"
+          }
+        }
+      }
+    },
+    "Received by Parent" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "父 Agent 已收到"
+          }
+        }
+      }
+    },
+    "Reconnect and reopen this Agent." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重新连接后，再打开此 Agent。"
+          }
+        }
+      }
+    },
+    "Reference" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "引用"
+          }
+        }
+      }
+    },
+    "Referenced Files" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "引用文件"
+          }
+        }
+      }
+    },
+    "Refresh Methods" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "刷新方法列表"
+          }
+        }
+      }
+    },
+    "Refresh Methods when the current operation finishes to apply folder changes." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当前操作完成后，请刷新方法列表以应用文件夹更改。"
+          }
+        }
+      }
+    },
+    "Remote" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "远程"
+          }
+        }
+      }
+    },
+    "Remove Agent Target" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移除 Agent 目标"
+          }
+        }
+      }
+    },
+    "Remove Association" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "解除关联"
+          }
+        }
+      }
+    },
+    "Remove Association: %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "解除关联：%@"
+          }
+        }
+      }
+    },
+    "Remove Method" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移除方法"
+          }
+        }
+      }
+    },
+    "Remove Method: %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移除方法：%@"
+          }
+        }
+      }
+    },
+    "Remove Tool?" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移除工具？"
+          }
+        }
+      }
+    },
+    "Remove Tool…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移除工具…"
+          }
+        }
+      }
+    },
+    "Remove the configuration for %@? Its program and sign-in credentials will be kept." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移除 %@ 的配置？程序和登录凭据会保留。"
+          }
+        }
+      }
+    },
+    "Rename Conversation" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重命名对话"
+          }
+        }
+      }
+    },
+    "Rename Conversation…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重命名对话…"
+          }
+        }
+      }
+    },
+    "Replace File…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "替换文件…"
+          }
+        }
+      }
+    },
+    "Replace or remove the unavailable material before sending." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请替换或移除不可用的材料后再发送。"
+          }
+        }
+      }
+    },
+    "Reported Agent States" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已报告的 Agent 状态"
+          }
+        }
+      }
+    },
+    "Request" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请求"
+          }
+        }
+      }
+    },
+    "Request Access" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请求访问"
+          }
+        }
+      }
+    },
+    "Requested Method: %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请求的方法：%@"
+          }
+        }
+      }
+    },
+    "Requested Session Write Folder" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请求本次会话写入的文件夹"
+          }
+        }
+      }
+    },
+    "Resets" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重置时间"
+          }
+        }
+      }
+    },
+    "Resume Agent" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "恢复 Agent"
+          }
+        }
+      }
+    },
+    "Reuse Existing Access Settings" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "沿用现有访问设置"
+          }
+        }
+      }
+    },
+    "Run Tool" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "运行工具"
+          }
+        }
+      }
+    },
+    "Runtime Approval" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "运行时审批"
+          }
+        }
+      }
+    },
+    "Runtime Error" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "运行时错误"
+          }
+        }
+      }
+    },
+    "Runtime File Proposal" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "运行时文件修改提案"
+          }
+        }
+      }
+    },
+    "Runtime Minimum Files" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "运行时必需文件"
+          }
+        }
+      }
+    },
+    "Runtime Temporary Directory" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "运行时临时目录"
+          }
+        }
+      }
+    },
+    "Save Shared Tool Settings?" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保存共享工具设置？"
+          }
+        }
+      }
+    },
+    "Saved Source" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已保存源文"
+          }
+        }
+      }
+    },
+    "Saved Source → Proposed Source" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已保存原文 → 拟议原文"
+          }
+        }
+      }
+    },
+    "Saved. Another configuration overrides this connection." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已保存，但另一份配置覆盖了此连接。"
+          }
+        }
+      }
+    },
+    "Scholium Codex Settings" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scholium 的 Codex 设置"
+          }
+        }
+      }
+    },
+    "Search Conversations" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "搜索对话"
+          }
+        }
+      }
+    },
+    "Select an exact passage in Edit or Source if the reading selection cannot be located." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法定位阅读选段时，请在编辑或源码模式选择原文。"
+          }
+        }
+      }
+    },
+    "Send Terminal Input" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "发送终端输入"
+          }
+        }
+      }
+    },
+    "Sending to Parent" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在发送给父 Agent"
+          }
+        }
+      }
+    },
+    "Server Address" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "服务器地址"
+          }
+        }
+      }
+    },
+    "Shared Codex Settings" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "共享的 Codex 设置"
+          }
+        }
+      }
+    },
+    "Sign In" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "登录"
+          }
+        }
+      }
+    },
+    "Sign In Using Shared Settings?" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用共享设置登录？"
+          }
+        }
+      }
+    },
+    "Signed In: %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已登录：%@"
+          }
+        }
+      }
+    },
+    "Skip" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "跳过"
+          }
+        }
+      }
+    },
+    "Some pasted files could not be read. Choose them with the file picker." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "部分粘贴的文件无法读取。请通过文件选择器添加。"
+          }
+        }
+      }
+    },
+    "Source version: %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "来源版本：%@"
+          }
+        }
+      }
+    },
+    "Sources" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "来源"
+          }
+        }
+      }
+    },
+    "Start Agent" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "启动 Agent"
+          }
+        }
+      }
+    },
+    "Starting" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在启动"
+          }
+        }
+      }
+    },
+    "State Unavailable" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "状态不可用"
+          }
+        }
+      }
+    },
+    "Stop Agent" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "停止 Agent"
+          }
+        }
+      }
+    },
+    "Stop Turn" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "停止本轮"
+          }
+        }
+      }
+    },
+    "Submitted Answer" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已提交的回答"
+          }
+        }
+      }
+    },
+    "The Agent did not confirm this request. Refresh its state." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尚未确认此请求。请刷新 Agent 状态。"
+          }
+        }
+      }
+    },
+    "The Agent is unavailable in this conversation." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此对话中的 Agent 不可用。"
+          }
+        }
+      }
+    },
+    "The Agent target could not be verified. Reopen it before sending." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法核实 Agent 目标。请重新打开后发送。"
+          }
+        }
+      }
+    },
+    "The Agent's active turn changed. Review its current state before stopping it." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此 Agent 已开始另一轮工作。请核对当前状态后再停止。"
+          }
+        }
+      }
+    },
+    "The Agent's relationship or history could not be verified." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法核实此 Agent 的所属关系或历史。"
+          }
+        }
+      }
+    },
+    "The Note changed while it was being read. Choose it again after the Library refreshes." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此 Note 在读取期间发生了变化。请等待文库刷新后重新选择。"
+          }
+        }
+      }
+    },
+    "The Note or conversation is no longer available." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此 Note 或对话已不可用。"
+          }
+        }
+      }
+    },
+    "The PDF pages could not be prepared. The previous material is retained." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未能准备 PDF 页面。原有材料已保留。"
+          }
+        }
+      }
+    },
+    "The cited line is outside the recorded reading ranges." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "引用位置不在记录的读取范围内。"
+          }
+        }
+      }
+    },
+    "The connection changed. Choose the methods folder again." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "连接已改变，请重新选择方法文件夹。"
+          }
+        }
+      }
+    },
+    "The connection changed. Review the setting again." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "连接已改变，请重新检查设置。"
+          }
+        }
+      }
+    },
+    "The connection or running operation changed. Reload before saving." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "连接或运行状态已改变，请重新载入后保存。"
+          }
+        }
+      }
+    },
+    "The conversation branch could not be confirmed. The original conversation is preserved. %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法确认分支创建结果，原讨论已保留。%@"
+          }
+        }
+      }
+    },
+    "The current editor snapshot is unavailable. Keep the Note open and try again." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当前编辑器快照不可用。请保持 Note 打开后重试。"
+          }
+        }
+      }
+    },
+    "The delegated-work report could not be read." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法读取委派工作报告。"
+          }
+        }
+      }
+    },
+    "The previous turn has ended. Your input is preserved; send it as a new request." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "上一轮已结束。输入已保留，可作为新请求发送。"
+          }
+        }
+      }
+    },
+    "The proposed changes could not be compared. Read the Note again before retrying." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法比较拟议修改。请重新读取笔记后再尝试。"
+          }
+        }
+      }
+    },
+    "The response was not confirmed. Stop this turn before continuing." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "回答未获确认。请先停止本轮讨论，再继续。"
+          }
+        }
+      }
+    },
+    "The retained PDF is unavailable or locked. Replace it and try again." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保留的 PDF 不可用或已锁定。请替换后重试。"
+          }
+        }
+      }
+    },
+    "The retained file %@ is missing or changed. Replace or remove it before sending." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保留的文件 %@ 已丢失或改变。请替换或移除后再发送。"
+          }
+        }
+      }
+    },
+    "The retained file is unavailable. Replace it to capture a new snapshot." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保留的文件不可用。请替换文件以保存新的快照。"
+          }
+        }
+      }
+    },
+    "The runtime kept a different method setting." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "运行时保留了不同的方法设置。"
+          }
+        }
+      }
+    },
+    "The runtime reported access, without full-text reading coverage." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "运行时报告了访问，未提供全文读取范围。"
+          }
+        }
+      }
+    },
+    "The tool configuration could not be reloaded." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法重新载入工具配置。"
+          }
+        }
+      }
+    },
+    "The tool configuration could not be saved." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法保存工具配置。"
+          }
+        }
+      }
+    },
+    "This Agent belongs to the original conversation." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此 Agent 属于原会话。"
+          }
+        }
+      }
+    },
+    "This changes %@ for clients using the same Codex settings folder." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此更改会影响使用同一 Codex 设置文件夹的客户端中的 %@。"
+          }
+        }
+      }
+    },
+    "This connection is managed by another configuration or by Scholium." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此连接由另一份配置或 Scholium 管理。"
+          }
+        }
+      }
+    },
+    "This conversation is no longer available." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此对话已不可用。"
+          }
+        }
+      }
+    },
+    "This message contains too much material. Send fewer files or shorter passages." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此消息的材料过多。请减少文件数量或缩短选段后发送。"
+          }
+        }
+      }
+    },
+    "This operation's scope could not be displayed. No permission was granted." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法显示此操作的范围，未授予权限。"
+          }
+        }
+      }
+    },
+    "This question could not be displayed. No answer was sent." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法显示此问题，未发送回答。"
+          }
+        }
+      }
+    },
+    "This reference is from a different version. The Note was opened without selecting a passage." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "原文版本已变化。已打开笔记，未定位段落。"
+          }
+        }
+      }
+    },
+    "This reference location could not be verified. The Note was opened without selecting a passage." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法核验引用位置。已打开笔记，未定位段落。"
+          }
+        }
+      }
+    },
+    "This request has no supported grant here." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此请求没有可在此授予的权限。"
+          }
+        }
+      }
+    },
+    "This setting also applies to other clients using this Codex settings folder." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此设置也适用于使用该 Codex 设置文件夹的其他客户端。"
+          }
+        }
+      }
+    },
+    "Tool Input Request" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "工具输入请求"
+          }
+        }
+      }
+    },
+    "Tool sign-in is unavailable. Refresh the connection status and try again." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "工具登录暂不可用，请刷新连接状态后重试。"
+          }
+        }
+      }
+    },
+    "Tool sign-in was not completed." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "工具登录未完成。"
+          }
+        }
+      }
+    },
+    "Total Tokens" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "累计 Token"
+          }
+        }
+      }
+    },
+    "Ultra" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "超高"
+          }
+        }
+      }
+    },
+    "Unavailable: %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不可用：%@"
+          }
+        }
+      }
+    },
+    "Unsupported file format" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不支持的文件格式"
+          }
+        }
+      }
+    },
+    "Up to 20 MB per file, 1 MB of text, or 40 million image pixels." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每个文件不超过 20 MB，文字不超过 1 MB，图片不超过 4000 万像素。"
+          }
+        }
+      }
+    },
+    "Use Page Images" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用页面图片"
+          }
+        }
+      }
+    },
+    "Use Page Images…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用页面图片…"
+          }
+        }
+      }
+    },
+    "Use Pages" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用所选页面"
+          }
+        }
+      }
+    },
+    "Use UTF-8 text, a PDF, or a single PNG, JPEG, WebP or GIF image." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请使用 UTF-8 文本、PDF，或单帧 PNG、JPEG、WebP、GIF 图片。"
+          }
+        }
+      }
+    },
+    "Variable names only. Values come from the runtime environment." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "仅填写变量名。变量值来自运行时环境。"
+          }
+        }
+      }
+    },
+    "Wait for Agents" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "等待 Agent"
+          }
+        }
+      }
+    },
+    "Waiting for Confirmation…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "等待确认…"
+          }
+        }
+      }
+    },
+    "Web Access Reported" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "网页访问记录"
+          }
+        }
+      }
+    },
+    "Web Search" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "网络搜索"
+          }
+        }
+      }
+    },
+    "Whole Note" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "整篇 Note"
+          }
+        }
+      }
+    },
+    "Working Directory" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "工作目录"
+          }
+        }
+      }
+    },
+    "Write Files" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "写入文件"
+          }
+        }
+      }
+    },
+    "Write an Answer" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自行回答"
+          }
+        }
+      }
+    },
+    "Applying Settings…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在应用设置…"
+          }
+        }
+      }
+    }},
   "version" : "1.0"
 }

@@ -2,6 +2,22 @@
 export const arrivalDuration = 1400;
 export const arrivalClass = "scholium-arrival-target";
 
+function sourceRangeElement(root: HTMLElement, lower: number, upper: number): HTMLElement | undefined {
+  if (!Number.isSafeInteger(lower) || !Number.isSafeInteger(upper) || lower < 0 || upper <= lower || upper - lower > 32000) return;
+  return [...root.querySelectorAll<HTMLElement>('[data-source-utf16-start][data-source-utf16-end]')]
+    .filter(element => Number(element.dataset.sourceUtf16Start) <= lower
+      && Number(element.dataset.sourceUtf16End) >= upper
+      && (element.textContent?.length ?? 0) <= 64000)
+    .sort((a, b) => (Number(a.dataset.sourceUtf16End) - Number(a.dataset.sourceUtf16Start))
+      - (Number(b.dataset.sourceUtf16End) - Number(b.dataset.sourceUtf16Start)))[0];
+}
+
+export function readerSourceRangeCandidate(root: HTMLElement, lower: number, upper: number) {
+  const element = sourceRangeElement(root, lower, upper);
+  return element ? {blockLower: Number(element.dataset.sourceUtf16Start),
+    blockUpper: Number(element.dataset.sourceUtf16End), blockText: element.textContent ?? ''} : null;
+}
+
 export function createReaderArrival(root: HTMLElement) {
   let marker: HTMLElement | null = null;
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -49,5 +65,31 @@ export function createReaderArrival(root: HTMLElement) {
   }
   owner?.addEventListener('resize', clear);
   function destroy() { clear(); owner?.removeEventListener('resize', clear); }
-  return {reveal, clear, destroy};
+  function revealRange(lower: number, upper: number, expected: NonNullable<ReturnType<typeof readerSourceRangeCandidate>>) {
+    const target = sourceRangeElement(root, lower, upper);
+    const candidate = readerSourceRangeCandidate(root, lower, upper);
+    if (!owner || !target || !candidate || candidate.blockLower !== expected.blockLower
+      || candidate.blockUpper !== expected.blockUpper || candidate.blockText !== expected.blockText) return false;
+    const from = lower - candidate.blockLower, to = upper - candidate.blockLower;
+    if (from < 0 || to > candidate.blockText.length) return false;
+    const walker = root.ownerDocument.createTreeWalker(target, 4 /* SHOW_TEXT */);
+    let offset = 0, start: [Node, number] | undefined, end: [Node, number] | undefined;
+    while (walker.nextNode()) {
+      const node = walker.currentNode, length = node.textContent?.length ?? 0;
+      if (!start && from >= offset && from <= offset + length) start = [node, from - offset];
+      if (!end && to >= offset && to <= offset + length) end = [node, to - offset];
+      offset += length;
+    }
+    if (!start || !end) return false;
+    const range = root.ownerDocument.createRange();
+    range.setStart(...start); range.setEnd(...end);
+    if (range.toString() !== candidate.blockText.slice(from, to)) return false;
+    const selection = owner.getSelection();
+    if (!selection) return false;
+    clear(); selection.removeAllRanges(); selection.addRange(range);
+    const rect = range.getBoundingClientRect();
+    owner.scrollBy({top: rect.top - owner.innerHeight / 3, behavior: 'auto'});
+    return true;
+  }
+  return {reveal, rangeCandidate: (lower: number, upper: number) => readerSourceRangeCandidate(root, lower, upper), revealRange, clear, destroy};
 }

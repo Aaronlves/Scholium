@@ -106,9 +106,19 @@ public actor ScholiumMCPServer {
             } else {
                 arguments = [:]
             }
+            let metadata = params["_meta"]?.objectValue?["x-codex-turn-metadata"]?.objectValue
+            let context: ScholiumMCPRuntimeContext?
+            if let thread = metadata?["thread_id"]?.stringValue,
+               let turn = metadata?["turn_id"]?.stringValue,
+               !thread.isEmpty, !turn.isEmpty, thread.utf8.count <= 256, turn.utf8.count <= 256 {
+                context = .init(threadID: thread, turnID: turn)
+            } else {
+                context = nil
+            }
             let result = try await callBridge(ScholiumMCPBridgeRequest(
                 tool: tool,
-                arguments: arguments
+                arguments: arguments,
+                runtimeContext: context
             ))
             return toolResult(result, isError: false)
         } catch let failure as ScholiumMCPFailure {

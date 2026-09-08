@@ -161,6 +161,9 @@ while IFS= read -r file; do
     "${ROOT}/Scholium/Services/ScholiumAppBridgeRequestRouter.swift"|\
     "${ROOT}/Scholium/Services/WindowSession.swift"|\
     "${ROOT}/Scholium/Services/AgentChatController.swift"|\
+    "${ROOT}/Scholium/Services/AgentChatExecutionState.swift"|\
+    "${ROOT}/Scholium/Services/AgentChatCapabilitiesController.swift"|\
+    "${ROOT}/Scholium/Services/AgentChatChildController.swift"|\
     "${ROOT}/Scholium/Views/AgentIntegrationSettingsView.swift"|\
     "${ROOT}/ScholiumCLI/CLIContext.swift"|\
     "${ROOT}/ScholiumCLI/MCPCommandHandler.swift") ;;

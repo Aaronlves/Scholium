@@ -19,7 +19,8 @@ struct RelatedMaterialCard: Identifiable, Sendable {
         guard let stableID = reference.stableNoteID.flatMap(UUID.init(uuidString:)) else { return nil }
         return AgentChatAttachment(noteID: stableID, vaultID: reference.vaultID,
             relativePath: reference.relativePath, text: passage.source,
-            fingerprint: candidate.fingerprint, sourceLine: line, sourceRange: passage.range)
+            fingerprint: candidate.fingerprint, sourceLine: line, sourceRange: passage.range,
+            source: .savedSource, vaultRole: reference.vaultRole)
     }
 }
 

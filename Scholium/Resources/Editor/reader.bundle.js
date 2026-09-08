@@ -1,8 +1,66 @@
 "use strict";
 (() => {
+  // selection-actions.ts
+  function createSelectionActions(floating, current) {
+    let id = null;
+    let key = null;
+    let dismissed = null;
+    function hide() {
+      if (id !== null) floating.hide(id);
+      id = null;
+      key = null;
+    }
+    function dismiss() {
+      const visible = id !== null;
+      if (key !== null) dismissed = key;
+      hide();
+      return visible;
+    }
+    return {
+      dismiss,
+      update(target = current()) {
+        if (!target) {
+          hide();
+          dismissed = null;
+          return;
+        }
+        if (target.key === key || target.key === dismissed) return;
+        hide();
+        key = target.key;
+        id = floating.show({
+          kind: "selection",
+          ...target.anchor,
+          html: "",
+          css: "",
+          items: [],
+          selected: -1
+        }, {
+          dismiss,
+          choose: () => {
+            const valid = current()?.key === target.key;
+            dismiss();
+            return valid;
+          }
+        });
+      }
+    };
+  }
+
   // arrival-highlight.ts
   var arrivalDuration = 1400;
   var arrivalClass = "scholium-arrival-target";
+  function sourceRangeElement(root, lower, upper) {
+    if (!Number.isSafeInteger(lower) || !Number.isSafeInteger(upper) || lower < 0 || upper <= lower || upper - lower > 32e3) return;
+    return [...root.querySelectorAll("[data-source-utf16-start][data-source-utf16-end]")].filter((element) => Number(element.dataset.sourceUtf16Start) <= lower && Number(element.dataset.sourceUtf16End) >= upper && (element.textContent?.length ?? 0) <= 64e3).sort((a, b) => Number(a.dataset.sourceUtf16End) - Number(a.dataset.sourceUtf16Start) - (Number(b.dataset.sourceUtf16End) - Number(b.dataset.sourceUtf16Start)))[0];
+  }
+  function readerSourceRangeCandidate(root, lower, upper) {
+    const element = sourceRangeElement(root, lower, upper);
+    return element ? {
+      blockLower: Number(element.dataset.sourceUtf16Start),
+      blockUpper: Number(element.dataset.sourceUtf16End),
+      blockText: element.textContent ?? ""
+    } : null;
+  }
   function createReaderArrival(root) {
     let marker = null;
     let timer;
@@ -49,7 +107,39 @@
       clear();
       owner?.removeEventListener("resize", clear);
     }
-    return { reveal, clear, destroy };
+    function revealRange(lower, upper, expected) {
+      const target = sourceRangeElement(root, lower, upper);
+      const candidate = readerSourceRangeCandidate(root, lower, upper);
+      if (!owner || !target || !candidate || candidate.blockLower !== expected.blockLower || candidate.blockUpper !== expected.blockUpper || candidate.blockText !== expected.blockText) return false;
+      const from = lower - candidate.blockLower, to = upper - candidate.blockLower;
+      if (from < 0 || to > candidate.blockText.length) return false;
+      const walker = root.ownerDocument.createTreeWalker(
+        target,
+        4
+        /* SHOW_TEXT */
+      );
+      let offset = 0, start, end;
+      while (walker.nextNode()) {
+        const node = walker.currentNode, length = node.textContent?.length ?? 0;
+        if (!start && from >= offset && from <= offset + length) start = [node, from - offset];
+        if (!end && to >= offset && to <= offset + length) end = [node, to - offset];
+        offset += length;
+      }
+      if (!start || !end) return false;
+      const range = root.ownerDocument.createRange();
+      range.setStart(...start);
+      range.setEnd(...end);
+      if (range.toString() !== candidate.blockText.slice(from, to)) return false;
+      const selection = owner.getSelection();
+      if (!selection) return false;
+      clear();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      const rect = range.getBoundingClientRect();
+      owner.scrollBy({ top: rect.top - owner.innerHeight / 3, behavior: "auto" });
+      return true;
+    }
+    return { reveal, rangeCandidate: (lower, upper) => readerSourceRangeCandidate(root, lower, upper), revealRange, clear, destroy };
   }
 
   // native-floating.ts
@@ -75,7 +165,9 @@
         if (action === "enter") callbacks.enter?.();
         else if (action === "leave") callbacks.leave?.();
         else if (action === "dismiss") callbacks.dismiss();
-        else if ((action === "select" || action === "choose") && Number.isInteger(index) && current.surface.kind === "suggestions" && index >= 0 && index < current.surface.items.length) {
+        else if (action === "choose" && current.surface.kind === "selection" && index === 0) {
+          return callbacks.choose?.(index) !== false;
+        } else if ((action === "select" || action === "choose") && Number.isInteger(index) && current.surface.kind === "suggestions" && index >= 0 && index < current.surface.items.length) {
           if (action === "select") callbacks.select?.(index);
           else callbacks.choose?.(index);
         } else return false;
@@ -427,7 +519,7 @@
   function validatedReaderConfiguration(value) {
     if (!value || typeof value !== "object") return null;
     const config = value;
-    if (config.version !== 3 || typeof config.documentID !== "string" || !config.documentID || config.documentID.length > 4096 || typeof config.fingerprint !== "string" || !config.fingerprint || config.fingerprint.length > 256 || !Number.isSafeInteger(config.loadGeneration) || Number(config.loadGeneration) < 0 || typeof config.selectionEnabled !== "boolean" || typeof config.testingEnabled !== "boolean" || typeof config.presentationCSS !== "string" || typeof config.userCSS !== "string" || !config.localization || typeof config.localization !== "object" || !config.localization.strings || typeof config.localization.strings !== "object" || !Array.isArray(config.linkPreviews) || config.linkPreviews.length > 128) return null;
+    if (config.version !== 5 || typeof config.documentID !== "string" || !config.documentID || config.documentID.length > 4096 || typeof config.fingerprint !== "string" || !config.fingerprint || config.fingerprint.length > 256 || !Number.isSafeInteger(config.loadGeneration) || Number(config.loadGeneration) < 0 || typeof config.selectionEnabled !== "boolean" || typeof config.testingEnabled !== "boolean" || typeof config.presentationCSS !== "string" || typeof config.userCSS !== "string" || !config.localization || typeof config.localization !== "object" || !config.localization.strings || typeof config.localization.strings !== "object" || !Array.isArray(config.linkPreviews) || config.linkPreviews.length > 128) return null;
     return config;
   }
 
@@ -1071,7 +1163,31 @@
     if (selectionEnabled) {
       const reviewDocument = document.getElementById("scholium-document");
       const reviewMermaidElements = reviewDocument ? [...reviewDocument.querySelectorAll('[data-scholium-protected="mermaid"]')] : [];
+      const selectionActions = createSelectionActions(nativeFloating, () => {
+        const selection = window.getSelection();
+        if (!reviewSelectionSurfaceActive || reviewPointerSelectionActive || !selection || selection.rangeCount !== 1 || selection.isCollapsed || !reviewDocument) return null;
+        const range = selection.getRangeAt(0);
+        if (!reviewDocument.contains(range.startContainer) || !reviewDocument.contains(range.endContainer) || rangeIntersectsMermaid(range)) return null;
+        const text = boundedReviewRangeText(range, reviewDocument, 2e3);
+        if (!text) return null;
+        const before = reviewContextBefore(range, reviewDocument, 80);
+        const rect = range.getBoundingClientRect();
+        if (rect.bottom < 0 || rect.top > window.innerHeight) return null;
+        return {
+          key: `${fingerprint}:${text}:${before}:${rect.top}:${rect.bottom}`,
+          anchor: { left: rect.left, top: rect.top, bottom: rect.bottom }
+        };
+      });
+      window.addEventListener("scroll", () => selectionActions.dismiss(), { passive: true });
+      document.addEventListener("keydown", (event) => {
+        const dismissed = selectionActions.dismiss();
+        if (event.key === "Escape" && !event.isComposing && dismissed) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+      }, true);
       const clearReviewSelection = () => {
+        selectionActions.update();
         post("selectionChanged");
       };
       const nodeBelongsToMermaid = (node) => {
@@ -1119,7 +1235,24 @@
         const endSourceElement = (range.endContainer instanceof Element ? range.endContainer : range.endContainer.parentElement)?.closest("[data-source-line]") ?? null;
         const startLine = Number(sourceElement ? sourceElement.dataset.sourceLine : "1");
         const endLine = Number(endSourceElement ? endSourceElement.dataset.sourceEndLine || endSourceElement.dataset.sourceLine : String(startLine));
+        const common = range.commonAncestorContainer;
+        const block = (common instanceof Element ? common : common.parentElement)?.closest("[data-source-utf16-start][data-source-utf16-end]");
+        const beforeRange = document.createRange();
+        let sourceMapping = {};
+        if (block && block.textContent && block.textContent.length <= 64e3) {
+          beforeRange.selectNodeContents(block);
+          beforeRange.setEnd(range.startContainer, range.startOffset);
+          const selectionLower = beforeRange.toString().length;
+          sourceMapping = {
+            blockLower: Number(block.dataset.sourceUtf16Start),
+            blockUpper: Number(block.dataset.sourceUtf16End),
+            blockText: block.textContent,
+            selectionLower,
+            selectionUpper: selectionLower + range.toString().length
+          };
+        }
         const payload = {
+          ...sourceMapping,
           text,
           contextBefore: reviewContextBefore(range, main, 80),
           contextAfter: reviewContextAfter(range, main, 80),
@@ -1127,6 +1260,7 @@
           endLine: Math.max(startLine, endLine)
         };
         post("selectionChanged", payload);
+        selectionActions.update();
       };
       document.addEventListener("selectionchange", updateReviewSelection);
       reviewDocument?.addEventListener("pointerdown", (event) => {

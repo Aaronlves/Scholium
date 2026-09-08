@@ -12,6 +12,7 @@ struct SystemNotificationServiceTests {
         let transport = FakeNotificationTransport()
         let foreground = SystemNotificationService(transport: transport, delay: .zero, isActive: { true })
         foreground.receive(change())
+        foreground.receive(.init(triptychID: UUID(), conversationID: UUID(), event: .inputRequired), isCurrent: { true })
         let background = SystemNotificationService(transport: transport, delay: .zero, isActive: { false })
         background.receive(change(state: .outcomeUncertain))
         try await Task.sleep(for: .milliseconds(20))
@@ -30,7 +31,7 @@ struct SystemNotificationServiceTests {
         service.receive(latest)
         try await eventually { transport.delivered.count == 1 }
         #expect(transport.authorizationRequests == 1)
-        #expect(transport.delivered.first == AgentChangeNotificationRoute(latest))
+        #expect(transport.delivered.first == .agentChange(AgentChangeNotificationRoute(latest)))
         service.receive(change())
         try await eventually { transport.delivered.count == 2 }
         #expect(transport.authorizationRequests == 1)
@@ -55,7 +56,7 @@ struct SystemNotificationServiceTests {
         let service = SystemNotificationService(transport: transport, delay: .zero, isActive: { false })
         service.receive(change())
         try await eventually { transport.authorizationRequests == 1 }
-        service.receive(change())
+        service.receive(.init(triptychID: UUID(), conversationID: UUID(), event: .completed), isCurrent: { true })
         try await eventually { transport.delivered.count == 2 }
         #expect(transport.authorizationRequests == 1)
     }
@@ -102,14 +103,15 @@ struct SystemNotificationServiceTests {
     func exactRoutingAndPrivacy() throws {
         let service = SystemNotificationService()
         let receipt = change()
-        let route = AgentChangeNotificationRoute(receipt)
+        let changeRoute = AgentChangeNotificationRoute(receipt)
+        let route = SystemNotificationRoute.agentChange(changeRoute)
         let data = try JSONEncoder().encode(route)
         let payload = String(decoding: data, as: UTF8.self)
         #expect(!payload.contains("private-note.md"))
         #expect(!payload.contains("relativePath"))
-        #expect(route.matches(receipt))
-        #expect(!route.matches(change(noteID: receipt.noteID, triptychID: receipt.triptychID)))
-        var opened: [AgentChangeNotificationRoute] = []
+        #expect(changeRoute.matches(receipt))
+        #expect(!changeRoute.matches(change(noteID: receipt.noteID, triptychID: receipt.triptychID)))
+        var opened: [SystemNotificationRoute] = []
         let windowID = UUID()
         service.registerWindow(id: windowID) { opened.append($0); return true }
         service.open(route)
@@ -124,7 +126,7 @@ struct SystemNotificationServiceTests {
     @Test("Cold-window click handoff is consumed once and never enters window restoration")
     func coldWindowHandoff() throws {
         let service = SystemNotificationService()
-        let route = AgentChangeNotificationRoute(change())
+        let route = SystemNotificationRoute.agentChange(AgentChangeNotificationRoute(change()))
         let window = service.prepareWindow(for: route)
         let restored = try JSONDecoder().decode(TriptychWindowRoute.self, from: JSONEncoder().encode(window))
         #expect(restored.triptychID == route.triptychID)
@@ -145,6 +147,48 @@ struct SystemNotificationServiceTests {
         #expect(shell.operationIssues.first?.id == first.id)
         shell.dismissOperationIssue(id: first.id)
         #expect(shell.operationIssues.map(\.message) == ["Save failed"])
+    }
+
+    @Test("Chat bursts coalesce per conversation without exposing research content")
+    func chatCoalescing() async throws {
+        let transport = FakeNotificationTransport(status: .authorized)
+        let service = SystemNotificationService(transport: transport, delay: .milliseconds(10), isActive: { false })
+        let triptych = UUID(), conversation = UUID()
+        let first = AgentChatNotificationRoute(triptychID: triptych, conversationID: conversation, event: .completed)
+        let latest = AgentChatNotificationRoute(triptychID: triptych, conversationID: conversation, event: .inputRequired)
+        let other = AgentChatNotificationRoute(triptychID: triptych, conversationID: UUID(), event: .failed)
+        service.receive(first, isCurrent: { true })
+        service.receive(latest, isCurrent: { true })
+        service.receive(other, isCurrent: { true })
+        try await eventually { transport.delivered.count == 2 }
+        #expect(Set(transport.delivered) == [.chat(latest), .chat(other)])
+        let route = SystemNotificationRoute.chat(latest)
+        let payload = try JSONSerialization.jsonObject(with: JSONEncoder().encode(latest)) as? [String: Any]
+        #expect(Set(payload?.keys.map { $0 } ?? []) == ["triptychID", "conversationID", "event"])
+        #expect(!route.body.contains(conversation.uuidString) && !route.body.isEmpty)
+        #expect(try JSONDecoder().decode(SystemNotificationRoute.self, from: JSONEncoder().encode(route)) == route)
+        let window = service.prepareWindow(for: route)
+        #expect(window.triptychID == triptych && service.takeOpeningRoute(windowID: window.windowID) == route)
+        #expect(service.takeOpeningRoute(windowID: window.windowID) == nil)
+    }
+
+    @Test("Answered Chat requests are checked before prompting and again after authorization")
+    func supersededChat() async throws {
+        let route = AgentChatNotificationRoute(triptychID: UUID(), conversationID: UUID(), event: .inputRequired)
+        let transport = FakeNotificationTransport()
+        let state = NotificationValidity()
+        let service = SystemNotificationService(transport: transport, delay: .milliseconds(10), isActive: { false })
+        service.receive(route, isCurrent: { state.current })
+        state.current = false
+        try await Task.sleep(for: .milliseconds(30))
+        #expect(transport.statusReads == 0 && transport.delivered.isEmpty)
+        state.current = true
+        transport.authorizationDelay = .milliseconds(30)
+        service.receive(route, isCurrent: { state.current })
+        try await eventually { transport.authorizationRequests == 1 }
+        state.current = false
+        try await eventually { transport.status == .authorized }
+        #expect(transport.delivered.isEmpty)
     }
 
     private func change(noteID: UUID = UUID(), triptychID: UUID = UUID(),
@@ -172,7 +216,7 @@ private final class FakeNotificationTransport: SystemNotificationTransport {
     var authorizationDelay: Duration = .zero
     var authorizationRequests = 0
     var statusReads = 0
-    var delivered: [AgentChangeNotificationRoute] = []
+    var delivered: [SystemNotificationRoute] = []
     init(status: UNAuthorizationStatus = .notDetermined) { self.status = status }
     func authorizationStatus() async -> UNAuthorizationStatus {
         statusReads += 1
@@ -184,5 +228,8 @@ private final class FakeNotificationTransport: SystemNotificationTransport {
         status = grantAuthorization ? .authorized : .denied
         return grantAuthorization
     }
-    func deliver(_ route: AgentChangeNotificationRoute) async throws { delivered.append(route) }
+    func deliver(_ route: SystemNotificationRoute) async throws { delivered.append(route) }
 }
+
+@MainActor
+private final class NotificationValidity { var current = true }

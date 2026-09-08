@@ -66,24 +66,110 @@ implements no model/tool loop. Runtime authentication remains in the selected
 Codex configuration directory. No credentials or raw stderr are copied to logs.
 
 `WorkspaceStore.chatRegistry` owns one `AgentChatController` per Triptych across
-windows. The controller owns selection, public messages, drafts, permission,
-input delivery, approvals and one active turn. `AgentChatStorage` atomically
+windows. The controller owns the conversation inventory, visible selection, public
+messages, drafts and permission. Each conversation has one `AgentChatExecutionState`
+value for its turn admission, connection route, input delivery, approvals, errors and task handles.
+`AgentChatStorage` atomically
 persists versioned machine-local history under `Chat/<triptych-id>`; a corrupt
 archive blocks overwriting it. The default Codex home is `Chat/Codex`.
 
-The runtime config registers the existing CLI MCP server with an execution token.
-The CLI forwards that token in bridge schema 2. The App routes token-bearing
-requests through the registry, binds the Triptych, applies conversation policy,
+The Chat controller retains successful connection intent per Triptych in its
+machine-local preferences; the existing configured paths and runtime login keep
+their owners. Loading a previously connected Triptych restores only transport
+and public history. Unexpected transport failure invalidates execution admission
+before a bounded controller-owned reconnection task; explicit Disconnect and
+shutdown cancel that task. Only explicit Disconnect clears saved connection
+intent. Recovery never replays input or source operations.
+
+The runtime config registers the existing CLI MCP server with a connection-local
+conversation route, retained across ordinary turns. MCP request metadata supplies
+the issuing runtime thread and turn; the CLI forwards that context and route in
+bridge schema 3. The App registry resolves the conversation route and its current
+execution owner requires the exact active runtime thread/turn before admission
+and again after an approval wait. Stop and completion revoke turn admission,
+not the reusable transport route; connection replacement invalidates every route.
+The App binds the Triptych, applies conversation policy,
 then calls the same `MCPAppBridgeRequestRouter`. External clients retain their
 ordinary route and seven unchanged public tools. Ask-mode Note writes wait for
 one native client approval; runtime approval requests are answered separately
 only when they concern a different runtime operation.
 
-`WindowChatActions` captures checked editor selection and resolves stable Note
-references through the current catalog. `AgentChatView` consumes the shared controller;
-it owns list/detail navigation, file popover and configuration input. Navigating back
-does not stop the shared turn. Other conversations cannot become the execution target
-while it is busy. Direct receipt sheets load only their requested change; a conversation
+`WindowChatActions` captures checked editor or exactly mapped Review selection,
+or whole-Note source, and
+resolves stable Note references through the current catalog. Whole-Note capture
+uses the document reader or the retained editor's checked snapshot; unavailable
+dirty editors never fall back to disk. `AgentChatNotePicker` owns only query,
+selection and its cancellable capture task. The presentation request and capture
+retain the target conversation, so a selection change cannot redirect material.
+Attachments retain exact text, fingerprint, extent, source kind and known vault
+role; previews display the supplied text rather than reconstructing it from
+rendered prose.
+
+`AgentChatMaterialStore` owns file copies beneath each Triptych's machine-local
+Chat directory. Coordinated bounded reads capture original bytes; strict UTF-8
+decoding preserves BOM, PDFKit supplies page-indexed text, and ImageIO validates
+supported single images. The immutable `AgentChatLocalMaterial` records the
+source location, fingerprint, representation, page coverage and preparation issue.
+The Chat controller owns conversation-scoped preparation/cancellation and only
+attaches confirmed results to that conversation. File picker, file-URL paste and
+drop call the same operation. The native message editor captures pasteboard
+materials only on explicit Paste or accepted copy-drop; drag entry inspects
+types without loading bytes. Ordinary text drag/paste retains NSTextView ownership.
+`AgentChatLocalMaterial.Source` records a file URL or a typed image-capture origin;
+clipboard and dropped snapshots have no invented filesystem origin. The shared
+material preparation owner stages both capture routes. Supported image encodings retain
+their bytes; TIFF conversion retains both captured encoding and normalized PNG
+with independent fingerprints. All representations share the existing material
+preparation, validation and disposal owner. Explicit replacement/removal releases an unused
+copy only after history saving succeeds and no draft/message retains its identity.
+Cancelled unpublished copies are discarded without changing original files.
+
+Send validates retained copies before adding a delivery-pending message. Failure
+keeps the draft and material; Stop during this preparation cancels without a
+runtime turn. Prepared text and page coverage enter text input; supported images
+use `localImage` input. The original file is never reread at delivery. Native
+material detail views own disclosure and system Quick Look/thumbnail tasks,
+without a second document reader, bibliography store or inference loop.
+PDF page-image preparation uses the same task and attachment owner. The store
+validates the retained PDF, parses an explicit bounded physical-page selection,
+and creates a new PDF copy plus fingerprinted PNG derivatives. Failed or cancelled
+unpublished derivatives are removed together. Replacements keep their draft
+position; retained message/branch references keep their original material files.
+Send validates every selected derivative and pairs each image input with its
+physical page identity. `AgentChatPDFPagesView` owns sheet state and delegates
+rendering; its form and shared material-label projection own presentation only.
+`AgentChatView` consumes the shared controller;
+it owns list/detail navigation, file popover and configuration input. The native
+composer retains text selection, marked text and Undo; actual native first-responder
+transitions report focus to its presentation binding. Its scroll host alone applies
+editor geometry; proposed-size measurement uses a read-only attributed-text copy
+and cannot resize the live editor or its accessibility frame. Its completion owner tracks
+only the current query range and candidate selection. Candidate actions capture the
+conversation and never rewrite the whole draft. Reply-file cards project references
+and completed operation output without manufacturing read or change receipts.
+Public assistant phase metadata is retained on the message by streaming and history
+reconciliation. Timeline grouping uses explicit turn and phase metadata; a process
+disclosure owns only expansion, keeping each tool item distinct from the final answer.
+Reply actions copy the original reply text and project its explicit link destinations
+into Sources. Successful scoped App reads retain a bounded exact excerpt, source
+fingerprint and returned line range as `AgentChatSourceObservation` on their
+existing activity. Public completed web open/find events retain access observations
+only. `AgentChatReplySourceContext` projects observations preceding the reply in
+the same confirmed turn, merging Note coverage only within one source revision.
+Supplied materials remain separate from explicit citations and reuse existing
+material previews. This projection performs no network fetching or source-authority
+inference; Note navigation and external URL opening retain their existing owners.
+A native bottom safe-area inset owns floating-control clearance; transcript geometry
+follows the latest reply only while the researcher is not reading earlier content.
+Navigating back
+does not stop work. Other conversations can be viewed, drafted and run concurrently.
+Every asynchronous operation captures its conversation identity and connection
+generation; incoming thread IDs and bridge tokens resolve their owner independently
+of visible selection. Input preparation captures the original active turn before
+awaiting material or target validation. That same identity selects and validates
+the steering request; completion cannot turn it into a new start. A pending send
+retains its message identity so cancellation cleanup cannot release a newer send.
+Direct receipt sheets load only their requested change; a conversation
 scope filters by its complete retained receipt IDs without collapsing successive changes
 to a Note. Storage retains complete evidence. The controller owns archive/restore and
 excludes archived conversations from sending. Machine path discovery and one-click
@@ -96,15 +182,270 @@ its connection without global logout.
 Conversation-token bridge requests allow 590 seconds for researcher input and
 execution, with a 600-second client deadline. Cancellation removes ungranted
 approvals before returning. Ordinary external requests keep the existing
-25/30-second budgets; the local bridge remains serialized.
+25/30-second budgets. The bridge listener admits at most 32 peer connections;
+blocking authenticated I/O runs on a concurrent dispatch queue. Active handler
+tasks have the same independent bound, including operations still finishing after
+transport timeout. A lock owns descriptors, admission and handler registration;
+source transactions keep their existing workspace owner.
+
+Stop revokes only the addressed turn admission and pending approvals. Disconnect
+revokes all conversation admissions before closing the shared runtime. Toolbar
+input-needed presentation derives from all pending approvals through one publisher.
+Bridge shutdown stops admission, interrupts peer I/O and cancels registered handlers.
+A dispatch group tracks the listener, peers and admitted operations; a one-shot continuation
+reports drain completion or its deadline without waiting indefinitely for a source
+transaction that must finish despite cancellation. Peer workers close their own sockets.
 
 `AgentChatMarkdown` uses Foundation Markdown presentation intents with native
 SwiftUI text, lists, code and comparison rows. `AgentChatTimelineItem` groups
 contiguous operation messages for disclosure without shortening public replies.
-`AgentChatActivityProjection` translates public runtime items and App bridge
-receipts into typed activity. The controller publishes bridge activity before
+`CodexChatTranscript` owns public item, turn and transcript-event decoding for
+live delivery, history restoration and child inspection. Contracts carry typed
+public content, phase, turn status and item identity; no raw child-history items
+cross that boundary. Its activity decoder retains `CodexChatActivity` as the
+single tool projection. Controllers apply decoded values to their existing state
+without reinterpreting wire fields. Opaque Application-owned operation contexts
+remain ephemeral within execution state for approval codecs and tool questions;
+they are neither public messages nor persisted history. Invalid history is fully
+rejected before reconciliation. Turn values distinguish full items, identity-only
+summaries and unloaded items; lifecycle acknowledgements need no invented history.
+`AgentChatActivityProjection` owns localization
+and connection-loss presentation. The controller publishes App bridge activity before
 waiting or executing, updates the same message at completion, and suppresses
 the duplicate runtime envelope for its registered Scholium tools. Reopened
 unfinished activity is interrupted or uncertain until authoritative runtime
 history supplies a terminal result. `AgentChatFileSummary` projects observed
 file effects and receipt identities; it owns neither filesystem state nor Undo.
+
+`CodexChatDelegation` projects public coordination and child-lifecycle items into
+an immutable `AgentChatDelegation` on the existing activity message. Sender,
+targets, exact prompt/results and independently reported target states remain
+distinct from the coordinating call's status. Runtime IDs and paths are data,
+not adopted conversations or tool admission. Native disclosure owns presentation
+only; search reads these retained values. Branch/reconnect preserves original
+report provenance, including lifecycle records without their own sender field.
+No child execution registry, inferred live state or competing scheduler is added.
+
+`CodexChatChildReader` verifies runtime parent chains to the original local
+conversation and reads legacy or paginated public turn history without resuming.
+It rejects cyclic/unrelated ancestry, incomplete item projections and ambiguous
+pages; private reasoning is excluded. `AgentChatChildController` owns one native
+inspection's cancellable requests, snapshot, page cursor and pending interruption.
+Its transport closure is bound to the originating connection and parent scope;
+opening from a branch retains the original parent. An exact child turn is reread
+before interruption and briefly checked afterward; acknowledgment alone leaves
+an unconfirmed state. Disconnect and closing revoke inspection actions without
+changing parent/sibling execution or bridge tokens. The inspector reuses native
+Markdown and the activity projection, displaying managed tool invocations as
+runtime reports without creating Agent Change receipts. It persists no second
+child conversation, inferred live state or source material.
+
+`AgentChatChildInspector` owns the sheet's native navigation path and inspection
+lifetimes. Each child controller validates a target against its decoded public
+report before using a connection-bound factory from the conversation owner.
+That factory retains the original local conversation scope at every depth.
+Navigation holds transient inspection identities only; popping cancels removed
+inspections and dismissing cancels the whole path. The detail view does not
+cancel itself merely because another destination covers it. Existing draft,
+runtime and source owners remain unchanged.
+
+Child adjustment drafts are keyed by runtime child identity in the original
+`AgentChatConversation`. The inspector observes that owner through a narrow
+`AgentChatParentCoordination` port; it keeps no writable draft copy or send task.
+Ask Parent supplies an immutable message to the same admission and delivery
+worker as the ordinary composer, with ancestry checked before local admission.
+It consumes only the matching child draft. An `AgentChatCoordinationTarget`
+retains public routing context separately from exact user text, including in
+search, branch history and editable branch drafts. Receiving parent identity
+must match; target removal is explicit. Parent acknowledgment never becomes
+child-delivery evidence. Closing the inspector cancels reads, not admitted sends.
+
+Live turn completion and pending interaction admission produce generic Chat
+notification events through the registry's injected sink. Their validity stays
+with the execution: superseded turns, answered input, Stop and disconnect cannot
+deliver an old alert. No notification event is replayed from persistence or
+hydration. Initial history loading has its own task so a cold notification can
+await it without connecting; load failure leaves the requested conversation
+unavailable. Opening consumes only the exact local conversation identity and
+requests ordinary detail presentation. System delivery and window routing remain
+owned by [Source Layout and Presentation](03-source-layout-and-presentation.md#presentation).
+
+Chat presentation boundary values live in Contracts: `AgentChatQuestion`,
+`AgentChatRuntimeApproval`, `AgentChatChildHistory` and structured material
+failures. Application owns question decoding, public activity parsing, child
+history validation and approval-response encoding. An approval codec retains
+the exact requested permission payload privately; its immutable presentation
+lists the supported decisions. Only the originating reply closure retains the
+codec and may encode a selected decision for that exact request.
+
+`AgentChatReference` carries a validated Note/vault identity, optional line and
+exact-source SHA-256 in client-local URLs. `WindowChatActions` routes attachments
+and answer references through the window's existing document transition queue.
+Only that window owner publishes a verified source location after reading current
+document source or the editor's checked text snapshot. A missing, changed or
+unverifiable revision clears the requested passage location and retains an
+informational notice; it creates no source write or second navigation queue.
+
+`AgentChatController`, `AgentChatCapabilitiesController` and
+`AgentChatChildController` are bounded App composition owners for conversation
+execution, configuration/authentication and one child inspection, respectively.
+They may import Application; their views and presentation helpers may import
+only Contracts. A tool edit retains a revision and a read-only access-warning
+projection; saving returns to the capabilities owner, which requires the same
+configuration revision and still uses the runtime's versioned write. There is
+no second editable configuration snapshot or alternate writer in the form.
+
+`CodexChatCapabilities` in Application translates the official runtime catalog,
+configuration defaults, plans, context usage and quota responses into Contracts
+values. Model discovery follows the runtime cursor; provider picker IDs remain
+distinct from execution model names. `ScholiumAgentIntegrationResources` owns
+executable discovery and checks, leaving the frontend without filesystem I/O.
+
+Conversations own `AgentChatPreferences` and the latest reported context usage;
+public plan messages retain the runtime turn identity and observed run outcome.
+The controller applies model, effort and web-search configuration at turn
+admission. Compaction is an execution state whose acknowledgement is not its
+completion; runtime events and Stop own its terminal state. Account quotas are
+connection observations, fetched through the transport and cleared on disconnect.
+`AgentChatRuntimeControls` renders these values with native controls and has no
+transport, persistence or source authority. The current machine-local archive
+version is 10; unsupported archives remain byte-unchanged and block overwrite.
+
+The same connection owner coordinates pending thread-static setting renewal.
+Conversation preferences retain desired values; connection-scoped observations
+track application. Renewal closes admission before checking runtime idleness,
+including loaded descendants and background commands. Connection identity and
+cancellation guard replacement, preserving the existing archive and sign-in;
+presentation owns no parallel reconnect or replay loop.
+Connection construction awaits capability initialization before publishing
+readiness. The capability owner applies saved method roots through its private
+connection-initialization route; ordinary configuration edits retain the existing
+idle admission check. Renewal cannot block its own initialization.
+
+Turn completion expires pending interactions independently of runtime tool
+observations. Item events and restored item statuses own tool outcomes; an ended
+turn cannot manufacture an interruption. Connection invalidation marks running
+runtime observations uncertain while revoking all execution admission.
+
+`AgentChatSearch` derives literal matches and passages directly from retained
+public conversation values. It owns no index, provider access or source reads.
+`AgentChatFindState` retains only the view's query and matching-message selection;
+streaming updates preserve that selection while it still matches. The view maps
+message identity to grouped timeline identity and reveals matching activities.
+`ContextSearchField` keeps AppKit field-editor, marked-text and focus ownership;
+optional Find callbacks leave other search surfaces' Return/Escape behavior intact.
+Rename captures its conversation identity before the alert, independently of selection.
+
+Messages retain runtime turn identity from correlated turn-start responses and
+public events/history, including the turn captured before an admitted bridge
+operation awaits input or a source transaction. `CodexChatBranch` validates the
+runtime prefix and projects exactly attributed public messages; it refuses an
+unknown boundary instead of dropping unattributed history. Branch creation owns
+the idle source conversation's operation task and cancellable `branching` state.
+`thread/fork` receives `lastTurnId` for inclusive branches or `beforeTurnId` for
+editing an opening request, plus `deferGoalContinuation` and a fresh
+connection route without active turn admission. The latter prepares the selected request's exact text, materials
+and method choices in the ordinary draft, including an empty retained prefix
+before the first turn. Origin records whether its boundary is included. Only a
+confirmed exact runtime prefix creates a local branch;
+the next explicit send admits its confirmed turn on that retained route. Branches retain original
+receipt identities and an immediate source-conversation/turn link. Late or
+cancelled creation does not select or admit a new conversation. Other selected
+discussions remain selected when the original source is no longer being viewed.
+
+Runtime research questions use `CodexChatQuestions` decoding into `AgentChatQuestion` and the
+same conversation-owned pending-interaction queue as approvals. Their native
+form owns presentation only; answer drafts and submission state live in
+`AgentChatExecutionState`. Reply writes the exact requested answer mapping once,
+then awaits the matching thread/request `serverRequest/resolved` event. Skip
+sends an empty mapping for ordinary input. Correlated MCP input retains its tool
+identity and transient arguments; its alternative action stops the owning turn.
+Stop, disconnect and turn completion revoke unresolved
+input instead of inferring confirmation or replaying it. Public activity retains
+question text, nonsecret option descriptions and labelled nonsecret draft/submitted
+responses; secret values remain ephemeral and are discarded at resolution or
+termination. Active forms replace their duplicate activity row except during
+Find. Reopening displays interrupted public records without restoring request
+authority or secret input.
+
+`CodexChatRuntimeApproval` strictly projects supported command, terminal input,
+network, file and permission requests without inferring effective access. Native
+presentation shares its typed decisions and complete scope; raw details remain
+transient. Initialize requests experimental metadata so per-command additional
+permissions are not omitted; this requests protocol information, not execution
+permission. `AgentChatInteractionReply` keeps Note, question and runtime responses
+distinct. Runtime replies freeze the exact pending request until its correlated
+resolution; item completion separately owns the operation outcome. Persistent
+policy amendments have no granting action. Public approval records retain the
+request and chosen scope without creating Agent Change receipts.
+
+Pending server-request IDs are unique across the shared connection. Ambiguity
+immediately invalidates every execution admission before asynchronous transport
+teardown. Queued replies recheck connection generation and exact turn before I/O;
+stale callbacks cannot answer a replacement execution. One execution invalidation
+owner handles both normal disconnect and ambiguous-request teardown.
+
+Ask-mode Note updates obtain an `AgentNoteUpdatePreview` through the same App
+router and Application collaboration owner that later execute the request.
+`prepareAgentNoteUpdate` is the single saved-revision validation and body/source
+transformation path shared by preview and execution. Preview builds the existing
+exact-source comparison without flushing App editors or preparing an Agent Change;
+execution repeats preparation and retains its ordinary editor, revision and
+transaction checks. The App preview route checks an open Triptych and is not an
+additional external MCP tool. The controller captures the preview with its
+request, checks execution admission after awaiting it, and refuses unconfirmed
+comparisons. The native comparison sheet reuses `ExactSourceComparisonView` and
+answers the same pending request identity; presentation holds no write authority.
+
+`AgentChatCapabilitiesController` owns connection-scoped method/tool observations,
+refresh and configuration-write tasks, with generation checks and disconnect
+invalidation. It does not persist an installed inventory or edit configuration
+files. `CodexChatMethods` translates Skills discovery/configuration and paginated
+MCP status; the official runtime owns the effective configuration. The Chat
+controller forwards capability observation for Send availability and refuses
+configuration changes during its active executions. Selected methods are draft
+values; sent messages retain immutable request labels and explicit runtime
+Skill inputs, independently of observed invocation events. Unknown or disabled
+choices remain visible and non-sending. The connection Settings owner refreshes
+inventory for its selected thread; its native capability subview owns only
+disclosure and shared-setting confirmation presentation.
+
+Associated method folders are launch preferences in UserDefaults, keyed by the
+normalized selected Codex configuration path. The capability owner reads the
+latest preference before editing or refreshing, so separate connections merge
+folder choices instead of overwriting a stale projection. Each process tracks
+whether it has applied that preference through `skills/extraRoots/set`; a
+background inventory refresh cannot apply new roots or retry a failed request.
+Explicit Refresh validates folders and reapplies them when idle. The Application
+boundary validates local directories without reading or changing Skill contents.
+Settings uses the existing window-owned folder picker and captures configuration
+scope across its asynchronous result. Removal changes only the launch preference
+and process discovery roots; source directories and Skill bytes remain untouched.
+
+Tool authentication has a separate connection-generation-bound task in the
+capability owner, so ordinary inventory refresh cannot cancel or falsely confirm
+it. `mcpServer/oauth/login` returns an ephemeral validated HTTPS URL; only the
+explicit Sign In action opens it. A matching tool/thread
+`mcpServer/oauthLogin/completed` event clears the pending URL and refreshes current
+inventory. Authentication completion does not manufacture connection readiness.
+The URL, pending request and result notice never enter conversation persistence.
+Shared-setting confirmations capture the configuration path before presentation;
+the native view rejects applying them after that scope changes.
+
+`CodexChatToolConfiguration` projects editable connection fields from effective
+runtime settings and retains the exact writable user-layer version. Known
+overrides make a connection inspectable but noneditable; runtime-added defaults
+do not become user configuration. Version-checked `config/batchWrite` changes
+only edited fields and requests the runtime's live reload. Unknown fields and
+credential values are not rewritten. The view owns its unsaved form; the
+capability owner scopes saves and explicit reloads to the captured connection.
+Failed or stale writes retain the form without an automatic retry. The
+application-managed Scholium bridge has no user edit/removal route.
+
+Advanced access projection contains environment variable names only. Unsupported
+structured environment references remain runtime-owned and cannot be flattened
+into a text editor. Neither the form nor Chat persistence reads credential
+values. The App Server launch retains its existing inherited-environment filter;
+the runtime can load its own configuration-folder environment. Changing a server
+destination checks whether existing access settings would be reused and requires
+an explicit choice. Settings saving remains distinct from connection readiness.

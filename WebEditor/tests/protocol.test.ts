@@ -31,7 +31,7 @@ const dialect = {
 
 describe("editor protocol", () => {
   it("uses the coalesced interaction bridge protocol", () => {
-    expect(EDITOR_PROTOCOL_VERSION).toBe(27);
+    expect(EDITOR_PROTOCOL_VERSION).toBe(28);
   });
   it("accepts only a boolean YAML visibility choice", () => {
   });

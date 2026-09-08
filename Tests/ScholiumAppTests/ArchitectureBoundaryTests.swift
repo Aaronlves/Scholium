@@ -3,6 +3,19 @@ import Testing
 
 @Suite("Modular monolith boundaries")
 struct ArchitectureBoundaryTests {
+    @Test("Public Chat wire interpretation stays in Application")
+    func chatTranscriptBoundary() throws {
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        for path in ["Scholium/Services/AgentChatController.swift", "Scholium/Services/AgentChatChildController.swift"] {
+            let source = try String(contentsOf: root.appendingPathComponent(path), encoding: .utf8)
+            for token in ["CodexChatActivity.parse", "CodexChatCapabilities.plan(", "CodexChatCapabilities.contextUsage(", "Phase.init(rawValue:", "item[\"type\"]"] {
+                #expect(!source.contains(token), "Public transcript interpretation escaped Application: \(path)")
+            }
+        }
+        let child = try String(contentsOf: root.appendingPathComponent("ScholiumContracts/AgentChatChildHistory.swift"), encoding: .utf8)
+        #expect(!child.contains("MCPJSONValue"))
+    }
+
     @Test("Package graph prevents frontend access to Core")
     func packageGraphIsCompilerEnforced() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
@@ -37,6 +50,10 @@ struct ArchitectureBoundaryTests {
             "Scholium/App/Window/WindowWorkspaceController.swift",
             "Scholium/Services/MCPAppBridgeRequestRouter.swift",
             "Scholium/Services/AgentChatController.swift",
+            "Scholium/Services/AgentChatExecutionState.swift",
+            // Feature composition roots; presentation leaves still consume Contracts only.
+            "Scholium/Services/AgentChatCapabilitiesController.swift",
+            "Scholium/Services/AgentChatChildController.swift",
             "Scholium/Services/ScholiumAppBridgeRequestRouter.swift",
             "Scholium/Services/WindowSession.swift",
             "Scholium/Views/AgentIntegrationSettingsView.swift",

@@ -6,6 +6,41 @@ import WebKit
 @testable import ScholiumApp
 
 extension MarkdownEditorWebViewIntegrationTests {
+    @Test("Review restores an exact repeated-text range and rejects unrendered Markdown syntax")
+    func reviewChatSourceRange() async throws {
+        let source = "重复 😀 same same.\r\n\r\nFormatted **word**.\r\n"
+        let document = NoteDocument(relativePath: "ChatRange.md", rawContent: source)
+        let harness = ReadHarness(source: source, htmlBody: SafeMarkdownRenderer.render(document).htmlBody,
+            fingerprint: document.fingerprint.sha256, initialAnchor: nil, initialScrollFraction: 0)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        let last = (source as NSString).range(of: "same", options: .backwards)
+        harness.requestSourceRange(.init(utf16LowerBound: last.location, utf16UpperBound: NSMaxRange(last),
+            line: 1, column: 1, endLine: 1, endColumn: 1))
+        try await harness.waitUntilSourceLineReached(1)
+        #expect(try await harness.callBridgeJavaScript("return window.getSelection().toString();") as? String == "same")
+        harness.requestSourceRange(.init(utf16LowerBound: last.location, utf16UpperBound: NSMaxRange(last),
+            line: 1, column: 1, endLine: 1, endColumn: 1), fingerprint: DocumentFingerprint(content: "Older revision").sha256)
+        let revisionDeadline = ContinuousClock.now.advanced(by: .seconds(5))
+        while !harness.sourceRevisionChanged {
+            try #require(ContinuousClock.now < revisionDeadline)
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(!harness.sourceRangeUnavailable)
+        #expect(try await harness.callBridgeJavaScript("return window.getSelection().toString();") as? String == "same")
+        let offset = try await harness.callBridgeJavaScript("const s=window.getSelection(); const r=document.createRange(); r.selectNodeContents(s.anchorNode.parentElement); r.setEnd(s.anchorNode,s.anchorOffset); return r.toString().length;") as? Int
+        #expect(offset == last.location)
+        let syntax = (source as NSString).range(of: "**word**")
+        harness.requestSourceRange(.init(utf16LowerBound: syntax.location, utf16UpperBound: NSMaxRange(syntax),
+            line: 3, column: 1, endLine: 3, endColumn: 1))
+        let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+        while !harness.sourceRangeUnavailable {
+            try #require(ContinuousClock.now < deadline)
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(try await harness.callBridgeJavaScript("return window.getSelection().toString();") as? String == "same")
+    }
+
     @Test("Review arrival is temporary, repeatable and preserves a reading selection")
     func reviewArrivalFeedback() async throws {
         let source = "First paragraph.\n\nSecond paragraph. " + String(repeating: "Long wrapped context remains readable. ", count: 35) + "\n"
@@ -1519,7 +1554,13 @@ extension MarkdownEditorWebViewIntegrationTests {
         @Published var presentationCSS = ""
         @Published var userCSS = ""
         @Published var surfaceIdentity = 0
-        @Published var targetSourceLine: Int?
+        @Published var sourceLocationRequest: DocumentSourceLocationRequest?
+        func requestSourceLocation(line: Int?, range: SearchSourceRange? = nil, fingerprint: String? = nil) {
+            sourceLocationRequest = line.map { .init(id: UUID(), target: .unavailable(vaultID: UUID(), relativePath: "Fixture.md"),
+                line: $0, range: range, requiresExactSelection: range != nil, sourceFingerprint: fingerprint) }
+        }
+        var sourceRangeUnavailable = false
+        var sourceRevisionChanged = false
         @Published var reachedSourceLine: Int?
         @Published var linkPreviews: [DocumentLinkPreview] = []
         @Published var linkPreviewRevision = "no-previews"
@@ -1920,14 +1961,23 @@ extension MarkdownEditorWebViewIntegrationTests {
 
         func requestSourceLine(_ line: Int) {
             sourceBox.reachedSourceLine = nil
-            sourceBox.targetSourceLine = line
+            sourceBox.requestSourceLocation(line: line)
+        }
+
+        var sourceRangeUnavailable: Bool { sourceBox.sourceRangeUnavailable }
+        var sourceRevisionChanged: Bool { sourceBox.sourceRevisionChanged }
+        func requestSourceRange(_ range: SearchSourceRange, fingerprint: String? = nil) {
+            sourceBox.sourceRangeUnavailable = false
+            sourceBox.sourceRevisionChanged = false
+            sourceBox.reachedSourceLine = nil
+            sourceBox.requestSourceLocation(line: range.line, range: range, fingerprint: fingerprint)
         }
 
         func recreateSurface(targetSourceLine: Int? = nil) {
             sourceBox.isReady = false
             sourceBox.capturedAnchor = nil
             sourceBox.reachedSourceLine = nil
-            sourceBox.targetSourceLine = targetSourceLine
+            sourceBox.requestSourceLocation(line: targetSourceLine)
             sourceBox.surfaceIdentity += 1
         }
 
@@ -2502,11 +2552,21 @@ extension MarkdownEditorWebViewIntegrationTests {
                     sourceBox.observeScrollAnchor($0)
                     sourceBox.capturedAnchor = $0
                 },
-                targetSourceLine: sourceBox.targetSourceLine,
-                onSourceLineReached: {
-                    let reached = sourceBox.targetSourceLine
-                    sourceBox.reachedSourceLine = reached
-                    sourceBox.targetSourceLine = nil
+                sourceLocationRequest: sourceBox.sourceLocationRequest,
+                onSourceRangeUnavailable: { id in
+                    guard sourceBox.sourceLocationRequest?.id == id else { return }
+                    sourceBox.sourceRangeUnavailable = true
+                    sourceBox.sourceLocationRequest = nil
+                },
+                onSourceRevisionChanged: { id in
+                    guard sourceBox.sourceLocationRequest?.id == id else { return }
+                    sourceBox.sourceRevisionChanged = true
+                    sourceBox.sourceLocationRequest = nil
+                },
+                onSourceLocationReached: { id in
+                    guard sourceBox.sourceLocationRequest?.id == id else { return }
+                    sourceBox.reachedSourceLine = sourceBox.sourceLocationRequest?.line
+                    sourceBox.sourceLocationRequest = nil
                 }
             )
             #if DEBUG

@@ -703,6 +703,34 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         flushPendingSourceRange()
     }
 
+    /// Applies an original-source locator through the existing generation-checked bridge.
+    func revealSourceLocation(_ request: DocumentSourceLocationRequest) async throws {
+        guard isReady, isLoaded, !isComposing, let webView else { throw SessionError.unavailable }
+        if let expected = request.sourceFingerprint,
+           DocumentFingerprint(content: checkedSource).sha256 != expected {
+            throw DocumentSourceLocationFailure.sourceChanged
+        }
+        let operation: MarkdownEditorOperation
+        if let range = request.range {
+            guard range.utf16UpperBound >= range.utf16LowerBound,
+                  let from = sourceOffsetMap.editorUTF16Offset(forSourceUTF16Offset: range.utf16LowerBound),
+                  let to = sourceOffsetMap.editorUTF16Offset(forSourceUTF16Offset: range.utf16UpperBound)
+            else { throw SessionError.invalidResult }
+            operation = .revealSourceRange(fromUTF16: from, toUTF16: to)
+        } else if let line = request.line, line > 0 {
+            operation = .goToLine(line, focusesEditor: true)
+        } else { throw SessionError.invalidResult }
+        let documentID = self.documentID
+        let focusRevision = focusRequestRevision
+        // No suspension separates revision/offset validation from capturing the
+        // bridge generation. A later editor change rejects this operation.
+        _ = try await send(operation, in: webView)
+        guard !Task.isCancelled, self.webView === webView, self.documentID == documentID,
+              focusRequestRevision == focusRevision,
+              webView.window?.makeFirstResponder(webView) == true else { return }
+        try await focusAndWait(.editor)
+    }
+
     func setScrollFraction(_ fraction: Double) {
         let normalized = min(1, max(0, fraction))
         pendingScrollFraction = normalized

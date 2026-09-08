@@ -2,7 +2,7 @@ import {describe, expect, it} from "vitest";
 import {validatedReaderConfiguration} from "../reader-configuration";
 
 const currentConfiguration = {
-  version: 3,
+  version: 5,
   documentID: "work-001",
   fingerprint: "a".repeat(64),
   loadGeneration: 3,

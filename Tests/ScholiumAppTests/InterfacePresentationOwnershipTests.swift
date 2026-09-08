@@ -19,8 +19,13 @@ struct InterfacePresentationOwnershipTests {
                              "Scholium/Views/Sidebar/OverviewNotificationsView.swift": 1,
                              "Scholium/Views/Sidebar/ResearchInspectorContentView.swift": 2,
                              "Scholium/Views/Note/DocumentFindPanel.swift": 3,
-                             "Scholium/Views/Sidebar/AgentChatView.swift": 6,
-                             "Scholium/Views/Sidebar/AgentChatMaterialChip.swift": 3],
+                             "Scholium/Views/Sidebar/AgentChatView.swift": 7,
+                             "Scholium/Views/Sidebar/AgentChatComposerCompletion.swift": 1,
+                             "Scholium/Views/Sidebar/AgentChatReplyActions.swift": 2,
+                             "Scholium/Views/Sidebar/AgentChatResultFiles.swift": 3,
+                             "Scholium/Views/Sidebar/AgentChatChildView.swift": 1,
+                             "Scholium/Views/Sidebar/AgentChatMaterialChip.swift": 3,
+                             "Scholium/Views/Sidebar/AgentChatLocalMaterialChip.swift": 2],
             Comment(rawValue: diagnostic(for: directStyles)))
     let menuStyles = try occurrenceInventory(
       pattern: #"\.menuStyle\s*\(\s*\."#, extensions: ["swift"]
@@ -32,7 +37,8 @@ struct InterfacePresentationOwnershipTests {
                            "Scholium/Views/Sidebar/OverviewAttachmentsView.swift": 2,
                            "Scholium/Views/Sidebar/ResearchInspectorContentView.swift": 1,
                            "Scholium/Views/Note/DocumentFindPanel.swift": 1,
-                           "Scholium/Views/Sidebar/AgentChatView.swift": 1],
+                           "Scholium/Views/Sidebar/AgentChatResultFiles.swift": 1,
+                           "Scholium/Views/Sidebar/AgentChatChildView.swift": 1],
             Comment(rawValue: diagnostic(for: menuStyles)))
     let prominentStyles = try occurrenceInventory(
       pattern: #"\.(borderedProminent|glassProminent)\b"#,
@@ -48,7 +54,16 @@ struct InterfacePresentationOwnershipTests {
     let tintOwners = try occurrenceInventory(pattern: #"\.tint\s*\("#, extensions: ["swift"])
     #expect(tintOwners == [
       "Scholium/Views/Sidebar/AgentChatView.swift": 1,
+      // Native suggestion and source popovers do not inherit workspace Accent.
+      "Scholium/Views/Sidebar/AgentChatComposerCompletion.swift": 1,
+      "Scholium/Views/Sidebar/AgentChatReplyActions.swift": 1,
+      // Auxiliary account tabs reset inherited tint to the native system accent.
+      "Scholium/Views/Sidebar/AgentChatRuntimeControls.swift": 1,
+      "Scholium/Views/Sidebar/AgentChatChildInspector.swift": 1,
       "Scholium/Views/Sidebar/AgentChatMaterialChip.swift": 1,
+      "Scholium/Views/Sidebar/AgentChatLocalMaterialChip.swift": 1,
+      "Scholium/Views/Sidebar/AgentChatPDFPagesView.swift": 1,
+      "Scholium/Views/Sidebar/AgentChatNotePicker.swift": 1,
       "Scholium/App/ScholiumApp.swift": 3,
       "Scholium/UI/Components/ScholiumButtons.swift": 3,
       "Scholium/UI/Components/ScholiumSidebarHeaderControl.swift": 1,

@@ -21,7 +21,7 @@ public actor AgentChatStorage {
       (values.fileSize ?? 0) <= 64 * 1_024 * 1_024
     else { throw CocoaError(.fileReadCorruptFile) }
     let archive = try JSONDecoder().decode(Archive.self, from: Data(contentsOf: url))
-    guard archive.version == 1,
+    guard archive.version == 10,
       Set(archive.conversations.map(\.id)).count == archive.conversations.count
     else {
       throw CocoaError(.fileReadCorruptFile)
@@ -37,7 +37,7 @@ public actor AgentChatStorage {
     {
       throw CocoaError(.fileWriteInvalidFileName)
     }
-    let data = try JSONEncoder().encode(Archive(version: 1, conversations: conversations))
+    let data = try JSONEncoder().encode(Archive(version: 10, conversations: conversations))
     guard data.count <= 64 * 1_024 * 1_024 else { throw CocoaError(.fileWriteOutOfSpace) }
     try data.write(to: url, options: .atomic)
     try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)

@@ -9,6 +9,72 @@ import WebKit
 @Suite("Markdown editor WKWebView integration", .serialized)
 @MainActor
 struct MarkdownEditorWebViewIntegrationTests {
+    @Test("Chat source return aligns native DOM selection in Edit and Source")
+    func sourceReturnNativeSelection() async throws {
+        let source = "\u{FEFF}---\r\nsummary: Synthetic fixture\r\n---\r\n\r\n# 正文标题\r\n\r\n文件名、正文标题 😀与来源标题。\r\n"
+        let excerpt = "正文标题 😀"
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        let expected = (source as NSString).range(of: excerpt)
+        let request = DocumentSourceLocationRequest(id: UUID(),
+            target: .unavailable(vaultID: UUID(), relativePath: "Fixture.md"), line: 7,
+            range: SearchSourceRange(utf16LowerBound: expected.location,
+                utf16UpperBound: NSMaxRange(expected), line: 7, column: 5, endLine: 7, endColumn: 12),
+            requiresExactSelection: true, sourceFingerprint: DocumentFingerprint(content: source).sha256)
+        for mode in [MarkdownEditorMode.livePreview, .source] {
+            harness.session.setMode(mode)
+            try await harness.waitUntilPresentedMode(mode)
+            try await harness.session.revealSourceLocation(request)
+            let snapshot = try await harness.session.selectedSourceSnapshot()
+            let nativeText = try await harness.callPageJavaScript("return window.getSelection()?.toString();") as? String
+            #expect(nativeText == excerpt && snapshot.excerpt == excerpt)
+            #expect(snapshot.source == source && !harness.session.isDirty)
+            #expect(snapshot.sourceRange.utf16LowerBound == expected.location)
+            #expect(snapshot.sourceRange.utf16UpperBound == NSMaxRange(expected))
+        }
+        await harness.closeAndDrain()
+    }
+
+    @Test("Source navigation maps CRLF and Unicode exactly and rejects a changed revision")
+    func revisionBoundSourceNavigation() async throws {
+        let source = "\u{FEFF}# Fixture\r\n\r\n中文 😀 same same\r\n"
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        harness.session.setMode(.source)
+        try await harness.waitUntilPresentedMode(.source)
+        let match = (source as NSString).range(of: "same", options: .backwards)
+        let range = SearchSourceRange(utf16LowerBound: match.location, utf16UpperBound: NSMaxRange(match),
+            line: 3, column: 1, endLine: 3, endColumn: 1)
+        let request = DocumentSourceLocationRequest(id: UUID(), target: .unavailable(vaultID: UUID(), relativePath: "Fixture.md"),
+            line: 3, range: range, requiresExactSelection: true, sourceFingerprint: DocumentFingerprint(content: source).sha256)
+        let webView = try #require(harness.session.webView)
+        let window = try #require(webView.window)
+        let input = NSTextView(frame: NSRect(x: 0, y: 0, width: 100, height: 40))
+        window.contentView?.addSubview(input)
+        #expect(window.makeFirstResponder(input))
+        try await harness.session.revealSourceLocation(request)
+        let responder = try #require(window.firstResponder as? NSView)
+        #expect(responder === webView || responder.isDescendant(of: webView))
+        let snapshot = try await harness.session.selectedSourceSnapshot()
+        #expect(snapshot.excerpt == "same" && snapshot.sourceRange.utf16LowerBound == match.location)
+        #expect(snapshot.source == source)
+        _ = try await harness.callPageJavaScript("document.execCommand('insertText', false, 'changed');")
+        let changed = try await harness.session.currentText(for: harness.documentID)
+        let selection = harness.session.context?.selections
+        #expect(window.makeFirstResponder(input))
+        do {
+            try await harness.session.revealSourceLocation(request)
+            Issue.record("An obsolete source range was applied")
+        } catch DocumentSourceLocationFailure.sourceChanged {}
+        #expect(window.firstResponder === input)
+        #expect(harness.session.context?.selections == selection)
+        #expect(try await harness.session.currentText(for: harness.documentID) == changed)
+        input.removeFromSuperview()
+        await harness.closeAndDrain()
+    }
+
     @Test("Chat receives the current unsaved Unicode selection without changing source or Undo")
     func chatSelectionSnapshot() async throws {
         let source = "\u{FEFF}# Fixture\r\n\r\n中文 😀 passage\r\nnext line\r\n"

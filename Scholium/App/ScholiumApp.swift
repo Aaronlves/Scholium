@@ -695,7 +695,10 @@ private struct ScholiumWindowObservedRoot: View {
             .task(id: hasReadyWorkspace) {
                 guard hasReadyWorkspace,
                       let notification = SystemNotificationService.shared.takeOpeningRoute(windowID: route.windowID) else { return }
-                await appState.openNotifiedAgentChange(notification)
+                if let sidebar = await appState.openSystemNotification(notification),
+                   !shellState.libraryVisible || shellState.sidebarContent != sidebar {
+                    windowCoordinator.actions.activateSidebar(sidebar)
+                }
             }
             .task(id: presentationRouter.fileImport) {
                 await selectMarkdownFilesForImportIfRequested()
@@ -732,7 +735,12 @@ private struct ScholiumWindowObservedRoot: View {
                     [weak appState, weak windowCoordinator] notification in
                     guard let appState, appState.workspaceAssignment?.id == notification.triptychID else { return false }
                     windowCoordinator?.makeKeyAndOrderFront()
-                    Task { await appState.openNotifiedAgentChange(notification) }
+                    Task {
+                        if let sidebar = await appState.openSystemNotification(notification),
+                           !appState.shellState.libraryVisible || appState.shellState.sidebarContent != sidebar {
+                            windowCoordinator?.actions.activateSidebar(sidebar)
+                        }
+                    }
                     return true
                 }
                 windowCoordinator.activate(
@@ -1390,9 +1398,11 @@ private struct ScholiumSidebarCommandContent: View {
         }
         .disabled(appState?.currentNote == nil)
         Button("Add Selection to Chat") {
-            Task { await appState?.addCurrentSelectionToChat() }
-            if appState?.shellState.sidebarContent != .chat || appState?.shellState.libraryVisible != true {
-                workspaceWindowActions?.activateSidebar(.chat)
+            Task {
+                if await appState?.addCurrentSelectionToChat() == true,
+                   appState?.shellState.sidebarContent != .chat || appState?.shellState.libraryVisible != true {
+                    workspaceWindowActions?.activateSidebar(.chat)
+                }
             }
         }
         .keyboardShortcut("l", modifiers: [.command, .shift])
@@ -2361,16 +2371,6 @@ final class WindowModel: ObservableObject {
         set { documentController.sourceMutationGeneration = newValue }
     }
 
-    var pendingSourceLine: Int? {
-        get { documentController.pendingSourceLine }
-        set { documentController.pendingSourceLine = newValue }
-    }
-
-    var pendingSourceRange: SearchSourceRange? {
-        get { documentController.pendingSourceRange }
-        set { documentController.pendingSourceRange = newValue }
-    }
-
     var lastSaveError: String? {
         get { documentController.lastSaveError }
         set { documentController.setSaveError(newValue) }
@@ -2745,8 +2745,9 @@ final class WindowModel: ObservableObject {
     /// mutated concurrently by two window transitions. Replacement navigation
     /// still flushes CodeMirror's exact text, but skips serializing selection,
     /// scroll, and undo state that will be discarded with the replaced tab.
-    private func enqueueDocumentTransition(
+    func enqueueDocumentTransition(
         preservingCurrentEditorState: Bool = true,
+        retainingCurrentDocument target: DocumentSessionKey? = nil,
         _ operation: @escaping @MainActor () async throws -> Void,
         didFail customFailure: (@MainActor (Error) -> Void)? = nil,
         didSucceed: (@MainActor () -> Void)? = nil,
@@ -2755,6 +2756,7 @@ final class WindowModel: ObservableObject {
         documentTransitionCoordinator.enqueue(
             prepare: { [weak self] in
                 guard let self else { throw CancellationError() }
+                if let target, self.currentDocumentDescriptor?.sessionKey == target { return }
                 try await self.flushRegisteredEditorIfNeeded(
                     capturingEditorState: preservingCurrentEditorState
                 )
@@ -3011,8 +3013,9 @@ final class WindowModel: ObservableObject {
     ) {
         enqueueDocumentTransition(preservingCurrentEditorState: false) { [weak self] in
             guard let self else { return }
-            self.pendingSourceLine = max(1, sourceLine)
             self.openNote(path)
+            guard self.selectedDocumentPath == path else { return }
+            self.documentController.requestSourceLocation(line: max(1, sourceLine))
             self.requestPresentationMode = mode
         }
     }
@@ -5140,7 +5143,7 @@ final class WindowModel: ObservableObject {
         }
     }
 
-    private func activateWorkspaceReference(
+    func activateWorkspaceReference(
         _ reference: VaultNoteReference,
         tabActivation: DocumentTabActivation,
         recordsNavigationHistory: Bool = true,
@@ -5573,8 +5576,7 @@ final class WindowModel: ObservableObject {
                 tabActivation: .place(.replaceSelected)
             )
             if let inspectorMode { self.researchController.selectInspectorMode(inspectorMode) }
-            self.pendingSourceRange = nil
-            self.pendingSourceLine = line.map { max(1, $0) }
+            self.documentController.requestSourceLocation(line: line.map { max(1, $0) })
             // Read-only destinations already enter Review through DocumentController.
             // Ordinary navigation must not turn that exception into an edit warning.
             self.requestPresentationMode = mode == nil
@@ -5594,8 +5596,7 @@ final class WindowModel: ObservableObject {
                 reference,
                 tabActivation: .place(.replaceSelected)
             )
-            self.pendingSourceRange = sourceRange
-            self.pendingSourceLine = sourceRange?.line ?? max(1, fallbackLine)
+            self.documentController.requestSourceLocation(line: sourceRange?.line ?? max(1, fallbackLine), range: sourceRange)
             self.requestPresentationMode = .source
         }
     }
@@ -5923,8 +5924,7 @@ final class WindowModel: ObservableObject {
         workspaceProjectionController.reset()
         shellState.resetWorkspaceSessions()
         documentController.resetPresentationState()
-        pendingSourceLine = nil
-        pendingSourceRange = nil
+        documentController.requestSourceLocation(line: nil)
         clearMetadataFilters()
         currentRegisteredVault = nil
         currentVaultRole = .other

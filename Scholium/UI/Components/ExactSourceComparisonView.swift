@@ -137,6 +137,7 @@ enum ExactSourceComparisonPresentation {
 /// Source comparison review. Input and consequential actions remain with their
 /// respective owners.
 struct ExactSourceComparisonView: View {
+    @Environment(\.locale) private var locale
     let comparison: ExactSourceComparison
     let startingLabel: LocalizedStringResource
     let endingLabel: LocalizedStringResource
@@ -195,7 +196,7 @@ struct ExactSourceComparisonView: View {
             }
             .font(ScholiumTypography.interface(.sectionTitle))
 
-            DisclosureGroup("Revision Details") {
+            DisclosureGroup {
                 ViewThatFits(in: .horizontal) {
                     HStack(
                         alignment: .top,
@@ -233,7 +234,7 @@ struct ExactSourceComparisonView: View {
                     }
                 }
                 .padding(.top, ScholiumGrid.Spacing.inlineControlGap)
-            }
+            } label: { Text("Revision Details", bundle: .module) }
             .scholiumActivationPointer()
             .font(ScholiumTypography.interface(.compact))
         }
@@ -252,7 +253,9 @@ struct ExactSourceComparisonView: View {
             Text(short(fingerprint))
                 .font(ScholiumTypography.exact(.small))
                 .textSelection(.enabled)
-            Text(hasBOM ? "UTF-8 BOM present" : "No UTF-8 BOM")
+            Text(hasBOM
+                ? LocalizedStringResource("UTF-8 BOM present", locale: locale, bundle: .module)
+                : LocalizedStringResource("No UTF-8 BOM", locale: locale, bundle: .module))
                 .font(ScholiumTypography.interface(.small))
                 .scholiumForeground(.secondaryText)
             ForEach(lineEndings, id: \.self) { ending in
@@ -320,10 +323,7 @@ struct ExactSourceComparisonView: View {
         Button {
             expandedFoldIDs.insert(id)
         } label: {
-            Label(
-                "\(count) unchanged lines",
-                systemImage: "ellipsis"
-            )
+            Label { Text("\(count) unchanged lines", bundle: .module) } icon: { Image(systemName: "ellipsis") }
             .font(ScholiumTypography.interface(.small, emphasis: .strong))
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, ScholiumGrid.Spacing.nestedContentInset)
@@ -333,7 +333,7 @@ struct ExactSourceComparisonView: View {
         .scholiumActivationPointer()
         .scholiumButtonStyle(.plain)
         .scholiumForeground(.secondaryText)
-        .accessibilityHint("Shows the folded unchanged lines")
+        .accessibilityHint(Text("Shows the folded unchanged lines", bundle: .module))
         .accessibilityIdentifier("\(identifierPrefix).unchanged.\(id)")
     }
 
@@ -349,7 +349,7 @@ struct ExactSourceComparisonView: View {
         for kind: ExactSourceComparisonLineKind
     ) -> LocalizedStringResource {
         switch kind {
-        case .unchanged: "Unchanged"
+        case .unchanged: .init("Unchanged", locale: locale, bundle: .module)
         case .startingOnly: startingOnlyLabel
         case .endingOnly: endingOnlyLabel
         }
@@ -362,7 +362,7 @@ struct ExactSourceComparisonView: View {
             .compactMap { $0.map(String.init) }
             .joined(separator: " ")
         let content = line.text.isEmpty
-            ? String(localized: "Blank line")
+            ? ScholiumL10n.string("Blank line", locale: locale)
             : line.text
         return "\(lineNumbers) \(content)"
     }
@@ -403,9 +403,9 @@ struct ExactSourceComparisonView: View {
         _ ending: ExactSourceComparisonLineEnding
     ) -> LocalizedStringResource {
         switch ending {
-        case .lf: "Line ending: LF"
-        case .crlf: "Line ending: CRLF"
-        case .none: "No line ending"
+        case .lf: .init("Line ending: LF", locale: locale, bundle: .module)
+        case .crlf: .init("Line ending: CRLF", locale: locale, bundle: .module)
+        case .none: .init("No line ending", locale: locale, bundle: .module)
         }
     }
 

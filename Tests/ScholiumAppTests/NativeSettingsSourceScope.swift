@@ -9,6 +9,8 @@ enum NativeSettingsSourceScope {
         "Scholium/Views/HotkeySettingsView.swift",
         "Scholium/Views/AgentIntegrationSettingsView.swift",
         "Scholium/Views/AgentChatConnectionSettingsView.swift",
+        "Scholium/Views/AgentChatCapabilitiesSettingsView.swift",
+        "Scholium/Views/AgentChatToolEditor.swift",
     ]
 
     @Test("Settings uses system typography, colors and control styles")

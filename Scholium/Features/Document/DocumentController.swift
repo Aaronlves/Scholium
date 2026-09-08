@@ -49,6 +49,17 @@ enum DocumentEditingTarget: Hashable, Sendable {
     case unavailable(vaultID: UUID, relativePath: String)
 }
 
+struct DocumentSourceLocationRequest: Equatable, Sendable, Identifiable {
+    let id: UUID
+    let target: DocumentEditingTarget
+    let line: Int?
+    let range: SearchSourceRange?
+    let requiresExactSelection: Bool
+    let sourceFingerprint: String?
+}
+
+enum DocumentSourceLocationFailure: Error { case sourceChanged }
+
 extension DocumentEditingTarget {
     var isFallback: Bool {
         if case .workspace = self { return false }
@@ -138,15 +149,18 @@ final class DocumentController: ObservableObject {
     typealias IntentHandler = @MainActor (WindowIntent) -> Void
     typealias DocumentCommitHandler = @MainActor (SaveResult) async -> Void
 
-    @Published private(set) var selectedDocument: WindowSelectedDocument?
+    @Published private(set) var selectedDocument: WindowSelectedDocument? {
+        didSet {
+            if selectedDocument?.editingTarget != oldValue?.editingTarget { sourceLocationRequest = nil }
+        }
+    }
     @Published private(set) var chromeProjection = DocumentChromeProjection.empty
     @Published private(set) var currentPresentationMode: NotePresentationMode = .livePreview
     @Published private(set) var snapshots: [DocumentSessionKey: WorkspaceNoteSnapshot] = [:]
     @Published private(set) var editingDocumentPath: String?
     @Published private(set) var lastSaveError: String?
     @Published var sourceMutationGeneration: UInt64 = 0
-    @Published var pendingSourceLine: Int?
-    @Published var pendingSourceRange: SearchSourceRange?
+    @Published private(set) var sourceLocationRequest: DocumentSourceLocationRequest?
     @Published var requestedPresentationMode: NotePresentationMode?
     @Published var noteIdentityByPath: [String: UUID] = [:]
     @Published var identityAmbiguities: [NoteIdentityAmbiguity] = []
@@ -578,6 +592,22 @@ final class DocumentController: ObservableObject {
         refreshChromeProjection()
     }
 
+    func requestSourceLocation(line: Int?, range: SearchSourceRange? = nil, requiresExactSelection: Bool = false,
+        sourceFingerprint: String? = nil) {
+        guard let target = selectedDocument?.editingTarget, line != nil || range != nil else {
+            sourceLocationRequest = nil
+            return
+        }
+        sourceLocationRequest = .init(id: UUID(), target: target, line: line, range: range,
+            requiresExactSelection: requiresExactSelection, sourceFingerprint: sourceFingerprint)
+    }
+
+    func consumeSourceLocation(_ id: UUID) {
+        guard sourceLocationRequest?.id == id,
+              sourceLocationRequest?.target == selectedDocument?.editingTarget else { return }
+        sourceLocationRequest = nil
+    }
+
     func selectUnavailableDocument(vaultID: UUID, relativePath: String) {
         selectDocument(.unavailable(vaultID: vaultID, relativePath: relativePath))
     }
@@ -705,8 +735,7 @@ final class DocumentController: ObservableObject {
             // writable session as one MainActor transaction. SwiftUI therefore
             // never mounts an intermediate Review state for managed creation.
             requestedPresentationMode = nil
-            pendingSourceRange = nil
-            pendingSourceLine = nil
+            sourceLocationRequest = nil
             snapshots[key] = snapshot
             retainedReferences[key] = descriptor.reference
             let selectedSession = session(for: key)

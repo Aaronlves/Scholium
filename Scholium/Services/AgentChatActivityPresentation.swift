@@ -3,79 +3,42 @@ import ScholiumContracts
 
 /// A projection of public runtime events and App receipts, never a source writer.
 enum AgentChatActivityProjection {
-  static func kind(_ tool: ScholiumMCPToolName) -> AgentChatActivity.Kind {
-    switch tool {
-    case .readNote: .read
-    case .search, .listLinks, .workspaceStatus: .search
-    case .createNote: .create
-    case .updateNote: .update
-    case .trashNote: .trash
+  static func withLocalizedFailure(_ value: AgentChatActivity?) -> AgentChatActivity? {
+    guard var activity = value else { return nil }
+    if activity.kind == .delegation && activity.delegation == nil {
+      activity.detail = ScholiumL10n.string("The delegated-work report could not be read.")
     }
+    return activity
   }
 
-  static func runtime(_ item: [String: MCPJSONValue], completed: Bool) -> AgentChatActivity? {
-    let type = item["type"]?.stringValue ?? ""
-    // The App bridge records these exact calls, including approval and receipt.
-    if type == "mcpToolCall", item["server"]?.stringValue == "scholium",
-       ScholiumMCPToolName(rawValue: item["tool"]?.stringValue ?? "") != nil { return nil }
-    let kind: AgentChatActivity.Kind
-    switch type {
-    case "mcpToolCall": kind = .tool
-    case "commandExecution": kind = .command
-    case "fileChange": kind = .files
-    case "webSearch": kind = .webSearch
-    default: return nil
-    }
-    var status: AgentChatActivity.Status = completed ? .completed : .running
-    switch item["status"]?.stringValue {
-    case "failed": status = .failed
-    case "declined": status = .declined
-    case "inProgress": status = completed ? .uncertain : .running
-    default: break
-    }
-    if item["error"]?.objectValue != nil { status = .failed }
-    if completed, let exitCode = item["exitCode"]?.intValue, exitCode != 0 { status = .failed }
-    let subject = item["tool"]?.stringValue ?? item["command"]?.stringValue
-      ?? item["query"]?.stringValue ?? ""
-    var detail = item["error"]?.objectValue?["message"]?.stringValue
-      ?? item["aggregatedOutput"]?.stringValue ?? ""
-    let files: [AgentChatActivity.File] = (item["changes"]?.arrayValue ?? []).compactMap { value in
-      guard let file = value.objectValue, let path = file["path"]?.stringValue else { return nil }
-      let effect: AgentChatActivity.File.Effect
-      switch file["kind"]?.objectValue?["type"]?.stringValue {
-      case "add": effect = .created
-      case "delete": effect = .trashed
-      default: effect = .edited
-      }
-      if let diff = file["diff"]?.stringValue { detail += "\n" + path + "\n" + diff }
-      return .init(path: path, effect: status == .completed ? effect : nil)
-    }
-    return .init(kind: kind, status: status, source: .runtime, subject: subject,
-                 detail: String(detail.suffix(16_000)), files: files)
-  }
-
-  static func interrupted(_ activity: AgentChatActivity) -> AgentChatActivity {
+  static func afterConnectionLoss(_ activity: AgentChatActivity) -> AgentChatActivity {
     guard activity.status.isActive else { return activity }
     var result = activity
-    result.status = activity.status == .running && activity.kind.isMutation ? .uncertain : .interrupted
+    result.status = activity.status == .running && (activity.source == .runtime || activity.kind.isMutation)
+      ? .uncertain : .interrupted
     return result
   }
 }
 
 extension AgentChatActivity.Kind {
   var isMutation: Bool { [.create, .update, .trash, .files].contains(self) }
-  var label: String {
+  var label: String { label(locale: .current) }
+  func label(locale: Locale) -> String {
+    let key: String.LocalizationValue
     switch self {
-    case .read: String(localized: "Read Note")
-    case .search: String(localized: "Search Research Materials")
-    case .create: String(localized: "Create Note")
-    case .update: String(localized: "Edit Note")
-    case .trash: String(localized: "Move Note to Trash")
-    case .command: String(localized: "Run Command")
-    case .webSearch: String(localized: "Search the Web")
-    case .tool: String(localized: "Use Tool")
-    case .files: String(localized: "Change Files")
+    case .read: key = "Read Note"
+    case .search: key = "Search Research Materials"
+    case .create: key = "Create Note"
+    case .update: key = "Edit Note"
+    case .trash: key = "Move Note to Trash"
+    case .command: key = "Run Command"
+    case .webSearch: key = "Search the Web"
+    case .tool: key = "Use Tool"
+    case .files: key = "Change Files"
+    case .compaction: key = "Compact Context"
+    case .delegation: key = "Agent Collaboration"
     }
+    return ScholiumL10n.string(key, locale: locale)
   }
   var symbol: String {
     switch self {
@@ -86,26 +49,33 @@ extension AgentChatActivity.Kind {
     case .trash: "trash"
     case .command: "terminal"
     case .tool: "gearshape.2"
+    case .compaction: "arrow.down.right.and.arrow.up.left"
+    case .delegation: "person.2"
     }
   }
 }
 
 extension AgentChatActivity.Status {
-  var label: String {
+  var label: String { label(locale: .current) }
+  func label(locale: Locale) -> String {
+    let key: String.LocalizationValue
     switch self {
-    case .running: String(localized: "In Progress")
-    case .waitingForApproval: String(localized: "Waiting for Approval")
-    case .completed: String(localized: "Completed")
-    case .failed: String(localized: "Failed")
-    case .declined: String(localized: "Declined")
-    case .interrupted: String(localized: "Interrupted")
-    case .uncertain: String(localized: "Outcome Uncertain")
+    case .running: key = "In Progress"
+    case .waitingForApproval: key = "Waiting for Approval"
+    case .waitingForInput: key = "Input Requested"
+    case .completed: key = "Completed"
+    case .failed: key = "Failed"
+    case .declined: key = "Declined"
+    case .interrupted: key = "Interrupted"
+    case .uncertain: key = "Outcome Uncertain"
     }
+    return ScholiumL10n.string(key, locale: locale)
   }
   var symbol: String {
     switch self {
     case .running: "ellipsis"
     case .waitingForApproval: "hand.raised"
+    case .waitingForInput: "questionmark.bubble"
     case .completed: "checkmark"
     case .failed, .uncertain: "exclamationmark.triangle"
     case .declined: "xmark"

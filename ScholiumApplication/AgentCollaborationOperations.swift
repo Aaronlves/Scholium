@@ -19,6 +19,15 @@ public actor AgentCollaborationOperations: AgentCollaborationUseCases {
         return try await handle.createAgentNote(request)
     }
 
+    public func previewUpdateNote(
+        noteID: UUID, expectedFingerprint: DocumentFingerprint,
+        mode: AgentNoteUpdateMode, content: String
+    ) async throws -> AgentNoteUpdatePreview {
+        let handle = try await reference.requireHandle()
+        return try await handle.previewAgentNoteUpdate(
+            noteID: noteID, expectedFingerprint: expectedFingerprint, mode: mode, content: content)
+    }
+
     public func updateNote(
         noteID: UUID,
         expectedFingerprint: DocumentFingerprint,
@@ -148,12 +157,12 @@ extension WorkspaceHandle {
         }
     }
 
-    func updateAgentNote(
+    private func prepareAgentNoteUpdate(
         noteID: UUID,
         expectedFingerprint: DocumentFingerprint,
         mode: AgentNoteUpdateMode,
         content: String
-    ) async throws -> AgentNoteUpdateResult {
+    ) async throws -> (target: WorkspaceNoteSnapshot, current: NoteDocument, changeSet: NoteChangeSet, intended: NoteDocument) {
         try Self.validateAgentContent(content)
         let target = try await currentAgentNote(noteID: noteID)
         let current = try await loadDocument(target.id)
@@ -181,6 +190,27 @@ extension WorkspaceHandle {
         guard intended.fingerprint != current.fingerprint else {
             throw AgentCollaborationError.noChanges
         }
+        return (target, current, changeSet, intended)
+    }
+
+    func previewAgentNoteUpdate(
+        noteID: UUID, expectedFingerprint: DocumentFingerprint,
+        mode: AgentNoteUpdateMode, content: String
+    ) async throws -> AgentNoteUpdatePreview {
+        let prepared = try await prepareAgentNoteUpdate(
+            noteID: noteID, expectedFingerprint: expectedFingerprint, mode: mode, content: content)
+        let comparison = try ExactSourceComparisonBuilder.build(
+            startingData: prepared.current.sourceBytes, endingData: prepared.intended.sourceBytes,
+            startingRevision: prepared.current.fingerprint, endingRevision: prepared.intended.fingerprint)
+        return .init(noteID: noteID, relativePath: prepared.current.relativePath, comparison: comparison)
+    }
+
+    func updateAgentNote(
+        noteID: UUID, expectedFingerprint: DocumentFingerprint,
+        mode: AgentNoteUpdateMode, content: String
+    ) async throws -> AgentNoteUpdateResult {
+        let (target, current, changeSet, intended) = try await prepareAgentNoteUpdate(
+            noteID: noteID, expectedFingerprint: expectedFingerprint, mode: mode, content: content)
         let prepared = try await services.agentChangeStore.prepare(
             operation: .update,
             noteID: noteID,

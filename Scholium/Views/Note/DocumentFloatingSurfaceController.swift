@@ -3,7 +3,7 @@ import WebKit
 
 /// A bounded read-only projection, never an editor/source operation.
 struct DocumentFloatingSurface: Codable, Equatable, Sendable {
-    enum Kind: String, Codable, Sendable { case preview, suggestions, hidden }
+    enum Kind: String, Codable, Sendable { case preview, suggestions, selection, hidden }
     struct Item: Codable, Equatable, Sendable {
         let label: String
         let detail: String
@@ -37,6 +37,8 @@ struct DocumentFloatingSurface: Codable, Equatable, Sendable {
             guard !result.html.isEmpty, result.items.isEmpty, result.selected == -1 else { return nil }
         case .suggestions:
             guard result.html.isEmpty, result.css.isEmpty, !result.items.isEmpty else { return nil }
+        case .selection:
+            guard result.html.isEmpty, result.css.isEmpty, result.items.isEmpty, result.selected == -1 else { return nil }
         case .hidden:
             guard result.html.isEmpty, result.css.isEmpty, result.items.isEmpty else { return nil }
         }
@@ -70,6 +72,11 @@ final class DocumentFloatingSurfaceController: NSObject, WKNavigationDelegate {
         guard webView.window != nil, webView.bounds.width > 24, webView.bounds.height > 24,
               let viewport = webView.superview as? DocumentWebViewContainer else { return }
         if let surface, value.id <= surface.id { return }
+        if value.kind == .selection,
+           value.bottom + 52 > webView.bounds.height - 12, value.top < 64 {
+            dismiss()
+            return
+        }
         let isSamePreview = surface?.kind == .preview && value.kind == .preview
             && surface?.html == value.html && surface?.css == value.css
         self.event = event
@@ -157,6 +164,22 @@ final class DocumentFloatingSurfaceController: NSObject, WKNavigationDelegate {
                 layout(height: glass.frame.height)
             }
             glass.setAccessibilityChildren(glass.contentView.map { [$0] })
+        case .selection:
+            preview?.stopLoading()
+            preview = nil
+            suggestions = nil
+            let button = NSButton(title: ScholiumL10n.string("Ask Agent"), target: self, action: #selector(askAgent))
+            button.bezelStyle = .inline
+            button.image = NSImage(systemSymbolName: "text.bubble", accessibilityDescription: nil)
+            button.imagePosition = .imageLeading
+            button.setAccessibilityLabel(ScholiumL10n.string("Ask Agent"))
+            button.setAccessibilityIdentifier("scholium.document.askAgent")
+            button.sizeToFit()
+            preferredWidth = button.fittingSize.width + 24
+            glass.contentView = button
+            glass.setAccessibilityElement(false)
+            glass.setAccessibilityChildren([button])
+            layout(height: max(32, button.fittingSize.height + 12))
         case .hidden: break
         }
     }
@@ -178,6 +201,8 @@ final class DocumentFloatingSurfaceController: NSObject, WKNavigationDelegate {
         for observer in observers { NotificationCenter.default.removeObserver(observer) }
         observers.removeAll()
     }
+
+    @objc private func askAgent() { send("choose", index: 0) }
 
     private func send(_ action: String, index: Int = -1) {
         guard let surface else { return }

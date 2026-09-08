@@ -104,8 +104,7 @@ struct DocumentFeatureState {
     let livePreviewCSS: String
     let initialScrollFraction: Double
     let requestedPresentationMode: NotePresentationMode?
-    let pendingSourceLine: Int?
-    let pendingSourceRange: SearchSourceRange?
+    let sourceLocationRequest: DocumentSourceLocationRequest?
     let identityAmbiguity: NoteIdentityAmbiguity?
     let pendingIdentityRebinding: NoteIdentityPendingRebinding?
     let identityMigrationFailureMessage: String?
@@ -113,18 +112,17 @@ struct DocumentFeatureState {
 }
 
 struct DocumentFeatureActions {
+    var askAgent: @MainActor () -> Void = {}
     let requestIdentityResolution: @MainActor () -> Void
     let retryIdentityRecovery: @MainActor () async -> Void
     let beginSearch: @MainActor (SearchInvocation) -> Void
     let clearRequestedPresentationMode: @MainActor () -> Void
-    let clearPendingSourceLine: @MainActor () -> Void
-    let clearPendingSourceRange: @MainActor () -> Void
+    let consumeSourceLocation: @MainActor (UUID) -> Void
     let rememberScrollPosition: @MainActor (Double) -> Void
     let openInternalLink: @MainActor (String) -> Void
     let openExternalURL: @MainActor (URL) -> Void
     let enterCSSSafeMode: @MainActor (String) -> Void
     let rememberPresentationMode: @MainActor (NotePresentationMode) -> Void
-    let setPendingSourceLine: @MainActor (Int?) -> Void
     let setSidebarVisible: @MainActor (Bool) -> Void
     let setResearchInspectorVisible: @MainActor (Bool) -> Void
     let openingDocumentPresentationDidComplete: @MainActor () -> Void
@@ -428,11 +426,8 @@ struct NoteContentView: View {
             guard let requested else { return }
             selectPresentationMode(requested)
             actions.clearRequestedPresentationMode()
-            consumePendingSourceLocation()
         }
-        .onChange(of: state.pendingSourceRange) { _, range in
-            if range != nil { consumePendingSourceLocation() }
-        }
+        .task(id: sourceLocationExecutionID) { await consumePendingSourceLocation() }
         .onAppear {
             controller.observe(documentSession)
             applyPreparedPresentationModeIfAvailable()
@@ -473,7 +468,6 @@ struct NoteContentView: View {
             }
         }
         .onChange(of: editorSession.presentedMode) { _, presentedMode in
-            consumePendingSourceLocation()
             focusEditorIfPresented()
             if let presentedMode {
                 PerformanceProbe.shared.markEditorModeAcknowledged(
@@ -488,7 +482,6 @@ struct NoteContentView: View {
         }
         .onChange(of: editorSession.isLoaded) { _, loaded in
             guard loaded else { return }
-            consumePendingSourceLocation()
             focusEditorIfPresented()
         }
         .onReceive(NotificationCenter.default.publisher(
@@ -688,7 +681,8 @@ struct NoteContentView: View {
                 documentSession.observeScrollFraction($0)
                 actions.rememberScrollPosition($0)
             },
-            onScrollAnchorChange: { documentSession.observeScrollAnchor($0) }
+            onScrollAnchorChange: { documentSession.observeScrollAnchor($0) },
+            onAskAgent: actions.askAgent
         )
         .id(editorSession.viewReconstructionID)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -845,6 +839,7 @@ struct NoteContentView: View {
                 actions.openInternalLink($0)
             },
             onOpenExternalURL: actions.openExternalURL,
+            onAskAgent: actions.askAgent,
             onSelectionChange: { selection in
                 guard !isEditing else { return }
                 documentSession.readSelection = selection
@@ -895,10 +890,23 @@ struct NoteContentView: View {
                 documentSession.observeScrollAnchor($0)
                 publishDocumentInformation()
             },
-            targetSourceLine: isEditing ? nil : state.pendingSourceLine,
-            onSourceLineReached: {
+            sourceLocationRequest: isEditing ? nil : currentSourceLocationRequest,
+            onSourceRangeUnavailable: { id in
+                guard !isEditing, currentSourceLocationRequest?.id == id else { return }
+                if editingIsAvailable { selectPresentationMode(.source) }
+                else {
+                    actions.consumeSourceLocation(id)
+                    actions.notify(String(localized: "This passage cannot be selected in Review. Its supplied text remains available in Chat.", bundle: .module), .information)
+                }
+            },
+            onSourceRevisionChanged: { id in
+                guard currentSourceLocationRequest?.id == id else { return }
+                actions.consumeSourceLocation(id)
+                reportChangedSourceLocation()
+            },
+            onSourceLocationReached: { id in
                 guard !isEditing else { return }
-                actions.clearPendingSourceLine()
+                actions.consumeSourceLocation(id)
             }
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -1354,25 +1362,39 @@ struct NoteContentView: View {
         guard let requested = state.requestedPresentationMode else { return }
         selectPresentationMode(requested)
         actions.clearRequestedPresentationMode()
-        consumePendingSourceLocation()
     }
 
-    private func consumePendingSourceLocation() {
-        // Review consumes its locator only after the rendered block is reached.
-        guard isEditing, editorSession.isLoaded,
+    private var currentSourceLocationRequest: DocumentSourceLocationRequest? {
+        guard state.sourceLocationRequest?.target == target else { return nil }
+        return state.sourceLocationRequest
+    }
+
+    private var sourceLocationExecutionID: UUID? {
+        guard isEditing, editorSession.isLoaded, !editorSession.isComposing,
               let intendedMode = state.requestedPresentationMode?.editorMode
                 ?? documentSession.activeEditorMode,
-              editorSession.presentedMode == intendedMode else { return }
-        if let range = state.pendingSourceRange {
-            editorSession.revealSourceRange(
-                fromUTF16: range.utf16LowerBound,
-                toUTF16: range.utf16UpperBound
-            )
-            actions.clearPendingSourceRange()
-            actions.clearPendingSourceLine()
-        } else if let line = state.pendingSourceLine {
-            editorSession.goToLine(line)
-            actions.clearPendingSourceLine()
+              editorSession.presentedMode == intendedMode else { return nil }
+        return currentSourceLocationRequest?.id
+    }
+
+    private func reportChangedSourceLocation() {
+        actions.notify(String(localized: "This reference is from a different version. The Note was opened without selecting a passage.", bundle: .module), .information)
+    }
+
+    private func consumePendingSourceLocation() async {
+        guard let id = sourceLocationExecutionID, let request = currentSourceLocationRequest,
+              request.id == id else { return }
+        do {
+            try await editorSession.revealSourceLocation(request)
+            guard !Task.isCancelled else { return }
+            actions.consumeSourceLocation(id)
+        } catch {
+            guard !Task.isCancelled, currentSourceLocationRequest?.id == id else { return }
+            actions.consumeSourceLocation(id)
+            if error is DocumentSourceLocationFailure { reportChangedSourceLocation() }
+            else {
+                actions.notify(String(localized: "This reference location could not be verified. The Note was opened without selecting a passage.", bundle: .module), .information)
+            }
         }
     }
 
@@ -1590,8 +1612,7 @@ private struct ConflictComparisonSheet: View {
         livePreviewCSS: "",
         initialScrollFraction: 0,
         requestedPresentationMode: nil,
-        pendingSourceLine: nil,
-        pendingSourceRange: nil,
+        sourceLocationRequest: nil,
         identityAmbiguity: nil,
         pendingIdentityRebinding: nil,
         identityMigrationFailureMessage: nil,
@@ -1602,14 +1623,12 @@ private struct ConflictComparisonSheet: View {
         retryIdentityRecovery: {},
         beginSearch: { _ in },
         clearRequestedPresentationMode: {},
-        clearPendingSourceLine: {},
-        clearPendingSourceRange: {},
+        consumeSourceLocation: { _ in },
         rememberScrollPosition: { _ in },
         openInternalLink: { _ in },
         openExternalURL: { _ in },
         enterCSSSafeMode: { _ in },
         rememberPresentationMode: { _ in },
-        setPendingSourceLine: { _ in },
         setSidebarVisible: { _ in },
         setResearchInspectorVisible: { _ in },
         openingDocumentPresentationDidComplete: {},

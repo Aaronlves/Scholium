@@ -1,7 +1,7 @@
 /** Read-only presentation projection. Editing, selection and keyboard state stay in CodeMirror. */
 export interface NativeFloatingPayload {
   id: number;
-  kind: "preview" | "suggestions" | "hidden";
+  kind: "preview" | "suggestions" | "selection" | "hidden";
   left: number;
   top: number;
   bottom: number;
@@ -15,7 +15,7 @@ interface FloatingCallbacks {
   enter?(): void;
   leave?(): void;
   select?(index: number): void;
-  choose?(index: number): void;
+  choose?(index: number): boolean | void;
 }
 export function createNativeFloatingBridge(post: (surface: NativeFloatingPayload) => void) {
   let serial = 0;
@@ -39,6 +39,9 @@ export function createNativeFloatingBridge(post: (surface: NativeFloatingPayload
       if (action === "enter") callbacks.enter?.();
       else if (action === "leave") callbacks.leave?.();
       else if (action === "dismiss") callbacks.dismiss();
+      else if (action === "choose" && current.surface.kind === "selection" && index === 0) {
+        return callbacks.choose?.(index) !== false;
+      }
       else if ((action === "select" || action === "choose") && Number.isInteger(index)
         && current.surface.kind === "suggestions"
         && index >= 0 && index < current.surface.items.length) {

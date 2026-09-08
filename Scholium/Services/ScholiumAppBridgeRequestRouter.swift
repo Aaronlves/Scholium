@@ -39,4 +39,8 @@ final class ScholiumAppBridgeRequestRouter {
     func handleChatOperation(_ request: ScholiumMCPBridgeRequest) async -> ScholiumMCPBridgeResponse {
         await mcpRouter.handle(request)
     }
+
+    func previewChatUpdate(_ request: ScholiumMCPBridgeRequest) async throws -> AgentNoteUpdatePreview {
+        try await mcpRouter.previewUpdate(request)
+    }
 }

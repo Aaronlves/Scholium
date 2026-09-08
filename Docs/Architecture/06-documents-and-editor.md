@@ -400,8 +400,18 @@ Transient surfaces do no whole-Note work. Selection observation reports bounded
 information for document statistics and navigation; it creates no persisted
 research object. `DocumentWebViewContainer` owns viewport geometry and exposes
 WebKit and native floating siblings in one accessibility tree.
-`DocumentFloatingSurfaceController` owns Liquid Glass preview/suggestion
-containers. Versioned projections preserve source, focus, and viewport geometry;
+`DocumentFloatingSurfaceController` owns Liquid Glass preview, suggestion and selection-action
+containers. `selection-actions.ts` projects one explicit Ask Agent action through
+the same versioned bridge; pointer/keyboard selection remains document-owned.
+`MarkdownReviewSourceSelection` maps DOM offsets only when the complete rendered
+block equals its source span, excluding a terminating newline. Unsupported
+rendering remains unmappable; no excerpt search or source reconstruction occurs.
+`DocumentController` owns document-bound location requests carrying checked revisions.
+Switching documents invalidates them; only matching acknowledgements consume them.
+Review validates its revision and bounded DOM candidate before selection. Editor
+uses its exact-source offset map and generation-checked bridge; one request-scoped
+view task applies navigation or reports failure. Unmappable Chat ranges use Source;
+ordinary line arrival keeps its transient marker. Versioned projections preserve source, focus, and viewport geometry;
 preview builders stay detached from the document DOM. Scroll, resize, teardown,
 and context exit dismiss through the originating controller. Completion geometry
 uses one keyed CodeMirror measure with an idle fallback when WebKit throttles

@@ -14,10 +14,116 @@ This documentation cleanup changes no app code and closes no UI acceptance.
 
 ## In-app Chat acceptance
 
-- The first Codex client slice is implemented. Complete signed-in inference and
-  live official-runtime tool execution with a disposable Triptych before calling
-  the runtime integration accepted. The isolated official-runtime smoke covers
-  handshake, account/model queries and thread creation without inference.
+The expanded target is owned by Specification §8.7 in `12-agent-chat.md`.
+The bounded signed-in research loop now passes with the disposable 500-Note
+Triptych: multi-turn reading, native approvals, one exact update, comparison,
+Undo, restart restoration and Stop. CHAT-LIVE-01/02 are closed for that path;
+see Verification for the evidence and limits. Broader provider, concurrent and
+philosophical-work acceptance remains open. A real same-turn additional request,
+completion while viewing another conversation, independent draft preservation
+and automatic recovery from idle runtime-process loss now pass. Complete
+prolonged offline and in-flight source-operation crash recovery acceptance. Idle
+force-quit recovery of an already-persisted draft and exact Note attachment passes.
+Native composer measurement no longer mutates live editor geometry; direct AX
+clicks, multiline wrapping and Undo pass in the narrow QA sidebar. Complete assistive-technology and installed-IME
+acceptance. Public process, compact reply files, floating controls, Copy and
+reply-scoped Sources are implemented, including same-turn Note revision/range
+evidence, separate supplied materials and public web-access observations. Real
+Note reading, evidence restart retention and a new-thread webpage access pass;
+full physical adaptation and motion review remain open. Idle search-setting
+renewal is implemented with pending presentation, closed new-turn admission,
+runtime-wide idle checks and cancellation. Live QA changes a loaded conversation
+from disabled to live search, retains its identity, history, draft and sign-in,
+then completes a real web access. Runtime-active/background-command waiting,
+malformed observations and launch failure pass fixtures. Complete live delegated
+work waiting and provider-specific cached/disabled behavior. Live background-command
+waiting now passes: the tool remains running after the reply; settings renewal
+waits for command exit, then preserves the draft and login. Associated method roots
+are initialized before connection readiness; renewal, rejection/recovery and
+cancellation pass focused fixtures. Complete combined real-provider method-root
+restoration acceptance.
+Improve discovery guidance for the observed recoverable resources/list probe;
+it is not evidence that source reads or the connection failed.
+Complete live tool setup/configuration and real-provider authentication acceptance,
+declared-dependency availability and search-result provenance. Method discovery,
+inspection, effective enable/disable, local association/removal, explicit message
+selection and tool inventory have native implementation slices; verify the folder
+picker and shared-setting confirmation in a live window.
+Remote/local connection forms and version-checked configuration writes are
+implemented, including environment-variable references. Advanced header mappings,
+helper programs and structured remote-environment references retain their runtime
+configuration owner; the native form preserves those settings without editing them.
+The tool authentication client is wired to runtime OAuth requests/completion;
+complete browser/provider interaction acceptance when the researcher is available.
+Local file snapshots, page-indexed PDF text and image-input preparation are
+implemented. Complete actual provider input and native picker, file paste/drop,
+Quick Look and image-thumbnail acceptance. Explicit scanned-PDF page-image
+preparation and clipboard image paste are implemented. Complete physical Paste,
+text Undo and installed-IME acceptance. Bitmap-only image drop is implemented;
+complete physical cross-app drag acceptance.
+Version-checked source links and attachment opening are implemented; complete
+live passage selection and composition acceptance. Also complete live
+Note-picker/editor-snapshot acceptance, and delegated and supported scheduled execution. Public delegation requests,
+target states and reports are displayed and retained with their original runtime
+identities. Reported child opening and exact-turn interruption have an
+implementation slice with verified parent chains, paginated inspection and
+unconfirmed-interruption handling. Complete real-runtime and native sheet
+acceptance. Ask Parent now retains separate child drafts, revalidates ancestry,
+and uses the parent conversation's ordinary send/steer path with explicit
+parent-receipt states. Closing the inspector preserves admitted input. Search
+and branches retain exact target references; edited branches cannot silently
+retarget an original child. Complete real parent-mediated delivery and native
+composer acceptance. Nested report navigation now retains original parent scope
+within one native detail; complete real-provider acceptance. Direct child
+messaging, child approval routing and scoped tool admission still need integration;
+inspection grants none of those capabilities.
+The installed 0.153.4 schema exposes `canAcceptDirectInput`; its published
+runtime source rejects direct App Server input for multi-agent v2 spawned
+threads. Child messaging must honor that capability and distinguish any request
+sent through the parent from confirmed delivery to the child. Do not bypass this
+runtime ownership rule by forcing another agent mode.
+Background Chat outcome/input notifications are wired through the shared native
+notification service; complete actual macOS authorization, banner click and
+cold-launch acceptance when the researcher is available. Independent browsing and concurrent execution are implemented with
+per-conversation tool admission and a bounded concurrent authenticated bridge.
+Search, Find, Rename, exact-turn branching and editing an opening request in a
+new branch have native implementation slices.
+Branching still needs signed-in official-runtime and live menu/focus acceptance;
+unattributed or incomplete runtime history is rejected without creating a local branch.
+Complete real-runtime concurrency and live interaction acceptance. Model/reasoning/web-search choices,
+context/compaction, public plans and quota have a first implementation slice;
+complete their real-runtime and live interface acceptance. Native research
+questions now have scoped answers and confirmation; complete their provider,
+keyboard/IME and accessibility acceptance. Exact proposed Note update comparisons
+are implemented; complete their live sheet and provider-driven acceptance.
+Runtime command, terminal, network, file and permission approvals now have native
+scope/decision forms; complete real-provider execution and live interaction
+acceptance. Persistent command/network policy amendments remain unsupported and
+have no granting action. Tool-origin questions show their correlated identity
+and offer Stop Turn; complete provider-mediated tool authorization acceptance.
+The researcher reauthorized UI automation on 2026-09-08. Use disposable QA
+fixtures for current interaction checks; previous offscreen-only evidence does
+not become live acceptance. The native-card/tab slice has a live light/dark
+Computer Use journey, while provider interaction, complete adaptation and human
+acceptance remain open. Glass-backed offscreen bitmap renders can contain
+compositing artifacts; inspect the actual native window before judging them.
+
+- The bounded signed-in multi-turn research loop passed. Selection Actions also
+  has a real-provider Review-passage discussion; retain broader acceptance above.
+  Exact Review return, native Copy and the editable Source fallback now pass in
+  the live window. Read-only fallback is defensive: ordinary catalog references
+  expose stable identity only for resolved, editable Notes. Verify its behavior
+  during identity transitions; do not invent a read-only workflow for acceptance.
+  Document/request-bound navigation and repeated activation pass. Revision checks
+  at application and CRLF/Unicode offset conversion pass in native WebKit tests;
+  Edit/Source return and direct Copy pass live. Timed live filesystem races remain
+  outside this evidence.
+  Edit/Source native triple-click, floating Ask Agent and exact attachment handoff
+  pass live. Source return and native Copy match. Computer Use drag still does
+  not establish a range; Edit AX-selected text differs from the visible selection
+  and native Copy. Diagnose the WebKit/automation reporting boundary before
+  changing selection logic; retain human drag acceptance separately. Source AX and Review pointer selections also have
+  matching supplied excerpts.
 - MCP form/URL elicitation and paginated imported runtime history are not
   supported in this slice; unsupported server requests are rejected visibly.
   Conversations originate in Scholium and retain their own public history.

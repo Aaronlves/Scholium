@@ -186,6 +186,16 @@ public struct AgentNoteCreationResult: Sendable {
     }
 }
 
+/// Read-only comparison of one exact saved revision and its proposed replacement.
+public struct AgentNoteUpdatePreview: Sendable {
+    public let noteID: UUID
+    public let relativePath: String
+    public let comparison: ExactSourceComparison
+    public init(noteID: UUID, relativePath: String, comparison: ExactSourceComparison) {
+        self.noteID = noteID; self.relativePath = relativePath; self.comparison = comparison
+    }
+}
+
 public struct AgentNoteUpdateResult: Sendable {
     public let change: AgentChange
     public let noteID: UUID

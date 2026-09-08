@@ -32,6 +32,8 @@ struct MarkdownEditorWebView: NSViewRepresentable {
     let onScrollFractionChange: (Double) -> Void
     let onScrollAnchorChange: (EditorScrollAnchor) -> Void
 
+    var onAskAgent: (() -> Void)? = nil
+
     static func requiresMathRuntime(
         source: String,
         linkPreviews: [DocumentLinkPreview]
@@ -147,6 +149,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         if requiresMathRuntime {
             context.coordinator.requestMathRuntimeIfNeeded(in: webView)
         }
+        context.coordinator.onAskAgent = onAskAgent
         context.coordinator.performanceDocumentID = performanceDocumentID
         session.setPresentationCSS(presentationCSS)
         session.setDocumentTitle(documentTitle)
@@ -173,6 +176,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             webView.editorSession = session
             webView.onPasteImage = onPasteImage
         }
+        context.coordinator.onAskAgent = onAskAgent
         context.coordinator.performanceDocumentID = performanceDocumentID
         context.coordinator.onDocumentActivity = onDocumentActivity
         context.coordinator.onRequestSave = onRequestSave
@@ -355,6 +359,8 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             }
         }
 
+        var onAskAgent: (() -> Void)?
+
         func userContentController(
             _ userContentController: WKUserContentController,
             didReceive message: WKScriptMessage
@@ -364,7 +370,8 @@ struct MarkdownEditorWebView: NSViewRepresentable {
 
             switch payload {
             case .floatingSurface(let request):
-                guard validEnvelope(request.envelope), let webView = message.webView else { return }
+                guard validEnvelope(request.envelope), let webView = message.webView,
+                      request.surface.kind != .selection || onAskAgent != nil else { return }
                 session.floatingSurfaces.present(request.surface, in: webView) { [weak self, weak webView] id, action, index in
                     Task { @MainActor in
                         // Autosave rebases the disk fingerprint, not the live buffer
@@ -374,11 +381,15 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                               request.envelope.sessionID == self.session.sessionID.uuidString,
                               request.envelope.documentID == self.documentID,
                               request.envelope.documentVersion == self.session.generation else { return }
-                        _ = try? await webView.callAsyncJavaScript(
+                        let accepted = try? await webView.callAsyncJavaScript(
                             "return window.scholiumNativeFloatingEvent?.(id, action, index)",
                             arguments: ["id": id, "action": action, "index": index],
                             in: nil, contentWorld: .page
                         )
+                        if accepted as? Bool == true, request.surface.kind == .selection, action == "choose",
+                           self.session.webView === webView, request.envelope.documentVersion == self.session.generation {
+                            self.onAskAgent?()
+                        }
                     }
                 }
             case .ready:

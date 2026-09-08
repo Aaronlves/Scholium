@@ -13,7 +13,7 @@ export interface ReaderLocalization {
 
 
 export interface ReaderConfiguration {
-  version: 3;
+  version: 5;
   documentID: string;
   fingerprint: string;
   loadGeneration: number;
@@ -28,7 +28,7 @@ export interface ReaderConfiguration {
 export function validatedReaderConfiguration(value: unknown): ReaderConfiguration | null {
   if (!value || typeof value !== "object") return null;
   const config = value as Partial<ReaderConfiguration>;
-  if (config.version !== 3
+  if (config.version !== 5
       || typeof config.documentID !== "string" || !config.documentID
       || config.documentID.length > 4_096
       || typeof config.fingerprint !== "string" || !config.fingerprint

@@ -1,3 +1,4 @@
+import {createSelectionActions} from "./selection-actions";
 import {createReaderArrival} from "./arrival-highlight";
 import {createNativeFloatingBridge, previewSurface} from "./native-floating";
 import {installReviewFind, type ReviewFindRequest, type ReviewFindResult} from "./review-find";
@@ -722,7 +723,30 @@ async function initializeReader(value: unknown): Promise<void> {
     const reviewMermaidElements = reviewDocument
       ? [...reviewDocument.querySelectorAll('[data-scholium-protected="mermaid"]')]
       : [];
+    const selectionActions = createSelectionActions(nativeFloating, () => {
+      const selection = window.getSelection();
+      if (!reviewSelectionSurfaceActive || reviewPointerSelectionActive || !selection || selection.rangeCount !== 1
+          || selection.isCollapsed || !reviewDocument) return null;
+      const range = selection.getRangeAt(0);
+      if (!reviewDocument.contains(range.startContainer) || !reviewDocument.contains(range.endContainer)
+          || rangeIntersectsMermaid(range)) return null;
+      const text = boundedReviewRangeText(range, reviewDocument, 2000);
+      if (!text) return null;
+      const before = reviewContextBefore(range, reviewDocument, 80);
+      const rect = range.getBoundingClientRect();
+      if (rect.bottom < 0 || rect.top > window.innerHeight) return null;
+      return {key: `${fingerprint}:${text}:${before}:${rect.top}:${rect.bottom}`,
+        anchor: {left: rect.left, top: rect.top, bottom: rect.bottom}};
+    });
+    window.addEventListener('scroll', () => selectionActions.dismiss(), {passive: true});
+    document.addEventListener('keydown', event => {
+      const dismissed = selectionActions.dismiss();
+      if (event.key === 'Escape' && !event.isComposing && dismissed) {
+        event.preventDefault(); event.stopPropagation();
+      }
+    }, true);
     const clearReviewSelection = () => {
+      selectionActions.update();
       post('selectionChanged');
     };
     const nodeBelongsToMermaid = (node: Node) => {
@@ -777,7 +801,21 @@ async function initializeReader(value: unknown): Promise<void> {
       const endLine = Number(endSourceElement
         ? (endSourceElement.dataset.sourceEndLine || endSourceElement.dataset.sourceLine)
         : String(startLine));
+      const common = range.commonAncestorContainer;
+      const block = (common instanceof Element ? common : common.parentElement)
+        ?.closest<HTMLElement>('[data-source-utf16-start][data-source-utf16-end]');
+      const beforeRange = document.createRange();
+      let sourceMapping: Record<string, unknown> = {};
+      if (block && block.textContent && block.textContent.length <= 64000) {
+        beforeRange.selectNodeContents(block);
+        beforeRange.setEnd(range.startContainer, range.startOffset);
+        const selectionLower = beforeRange.toString().length;
+        sourceMapping = {blockLower: Number(block.dataset.sourceUtf16Start),
+          blockUpper: Number(block.dataset.sourceUtf16End), blockText: block.textContent,
+          selectionLower, selectionUpper: selectionLower + range.toString().length};
+      }
       const payload = {
+        ...sourceMapping,
         text,
         contextBefore: reviewContextBefore(range, main, 80),
         contextAfter: reviewContextAfter(range, main, 80),
@@ -785,6 +823,7 @@ async function initializeReader(value: unknown): Promise<void> {
         endLine: Math.max(startLine, endLine)
       };
       post('selectionChanged', payload);
+      selectionActions.update();
     };
     document.addEventListener('selectionchange', updateReviewSelection);
     reviewDocument?.addEventListener('pointerdown', event => {

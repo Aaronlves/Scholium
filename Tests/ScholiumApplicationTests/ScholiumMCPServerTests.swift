@@ -77,6 +77,31 @@ struct ScholiumMCPServerTests {
         #expect(requests[0].arguments.isEmpty)
     }
 
+    @Test("Runtime turn metadata stays separate from tool arguments across the bridge")
+    func runtimeContextIsTransportMetadata() async throws {
+        let recorder = MCPRequestRecorder()
+        let server = ScholiumMCPServer { request in
+            await recorder.record(request)
+            return .object(["status": .string("ok")])
+        }
+        _ = try await rpc(server, id: 1, method: "tools/call", params: [
+            "name": ScholiumMCPToolName.workspaceStatus.rawValue,
+            "arguments": [:],
+            "_meta": ["x-codex-turn-metadata": ["thread_id": "thread-1", "turn_id": "turn-1"]],
+        ])
+        _ = try await rpc(server, id: 2, method: "tools/call", params: [
+            "name": ScholiumMCPToolName.workspaceStatus.rawValue,
+            "arguments": [:],
+            "_meta": ["x-codex-turn-metadata": ["thread_id": "thread-1", "turn_id": ""]],
+        ])
+        let requests = await recorder.requests()
+        #expect(requests[0].runtimeContext == .init(threadID: "thread-1", turnID: "turn-1"))
+        #expect(requests.allSatisfy { $0.arguments.isEmpty && $0.conversationToken == nil })
+        #expect(requests[1].runtimeContext == nil)
+        let decoded = try JSONDecoder().decode(ScholiumMCPBridgeRequest.self, from: JSONEncoder().encode(requests[0]))
+        #expect(decoded == requests[0] && decoded.schemaVersion == 3)
+    }
+
     @Test("Expected App failures remain structured MCP tool failures")
     func domainFailureIsStructured() async throws {
         let server = ScholiumMCPServer { _ in

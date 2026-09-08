@@ -26,6 +26,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
     var linkPreviewRevision: String? = nil
     let onLinkClick: (String) -> Void
     let onOpenExternalURL: (URL) -> Void
+    var onAskAgent: (() -> Void)? = nil
     var onSelectionChange: ((MarkdownReviewSelection?) -> Void)? = nil
     /// Derived visibility only. Review remains the sole selection-surface
     /// owner; the coordinator transports mode changes to its retained page.
@@ -44,8 +45,10 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
     var onScrollRestoreConsumed: ((UInt64, String) -> Void)? = nil
     var onScrollFractionChange: ((Double) -> Void)? = nil
     var onScrollAnchorChange: ((EditorScrollAnchor) -> Void)? = nil
-    var targetSourceLine: Int? = nil
-    var onSourceLineReached: (() -> Void)? = nil
+    var sourceLocationRequest: DocumentSourceLocationRequest? = nil
+    var onSourceRangeUnavailable: ((UUID) -> Void)? = nil
+    var onSourceRevisionChanged: ((UUID) -> Void)? = nil
+    var onSourceLocationReached: ((UUID) -> Void)? = nil
     #if DEBUG
     var testingForcesFinalizationFailure = false
     var testingScrollRestoreDelayMilliseconds = 0
@@ -70,13 +73,16 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             onScrollRestoreConsumed: onScrollRestoreConsumed,
             onScrollFractionChange: onScrollFractionChange,
             onScrollAnchorChange: onScrollAnchorChange,
-            targetSourceLine: targetSourceLine,
-            onSourceLineReached: onSourceLineReached
+            sourceLocationRequest: sourceLocationRequest,
+            onSourceLocationReached: onSourceLocationReached
         )
         #if DEBUG
         coordinator.testingForcesFinalizationFailure = testingForcesFinalizationFailure
         coordinator.testingScrollRestoreDelayMilliseconds = testingScrollRestoreDelayMilliseconds
         #endif
+        coordinator.onAskAgent = onAskAgent
+        coordinator.onSourceRangeUnavailable = onSourceRangeUnavailable
+        coordinator.onSourceRevisionChanged = onSourceRevisionChanged
         return coordinator
     }
 
@@ -126,6 +132,9 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         context.coordinator.testingForcesFinalizationFailure = testingForcesFinalizationFailure
         context.coordinator.testingScrollRestoreDelayMilliseconds = testingScrollRestoreDelayMilliseconds
         #endif
+        context.coordinator.onAskAgent = onAskAgent
+        context.coordinator.onSourceRangeUnavailable = onSourceRangeUnavailable
+        context.coordinator.onSourceRevisionChanged = onSourceRevisionChanged
         context.coordinator.update(
             documentID: documentID,
             fingerprint: fingerprint,
@@ -144,8 +153,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             onScrollRestoreConsumed: onScrollRestoreConsumed,
             onScrollFractionChange: onScrollFractionChange,
             onScrollAnchorChange: onScrollAnchorChange,
-            targetSourceLine: targetSourceLine,
-            onSourceLineReached: onSourceLineReached,
+            sourceLocationRequest: sourceLocationRequest,
+            onSourceLocationReached: onSourceLocationReached,
             webView: webView
         )
         context.coordinator.loadIfNeeded(
@@ -189,6 +198,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         private var fingerprint: String
         private var onLinkClick: (String) -> Void
         private var onOpenExternalURL: (URL) -> Void
+        var onAskAgent: (() -> Void)?
         private var onSelectionChange: ((MarkdownReviewSelection?) -> Void)?
         private let selectionCoordinator: SafeMarkdownReadSelectionCoordinator
         private let floatingSurfaces = DocumentFloatingSurfaceController()
@@ -214,10 +224,13 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         private var onScrollFractionChange: ((Double) -> Void)?
 
         private var onScrollAnchorChange: ((EditorScrollAnchor) -> Void)?
+        private var selectionSource = ""
         private var sourceUTF16Length = 0
-        private var targetSourceLine: Int?
-        private var onSourceLineReached: (() -> Void)?
-        private var lastReachedSourceLine: Int?
+        private var sourceLocationRequest: DocumentSourceLocationRequest?
+        private var onSourceLocationReached: ((UUID) -> Void)?
+        private var lastReachedSourceLocationID: UUID?
+        var onSourceRangeUnavailable: ((UUID) -> Void)?
+        var onSourceRevisionChanged: ((UUID) -> Void)?
         private var loadedSignature: String?
         private var finalizedSignature: String?
         private var pageIsReady = false
@@ -245,8 +258,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             onScrollRestoreConsumed: ((UInt64, String) -> Void)?,
             onScrollFractionChange: ((Double) -> Void)?,
             onScrollAnchorChange: ((EditorScrollAnchor) -> Void)?,
-            targetSourceLine: Int?,
-            onSourceLineReached: (() -> Void)?
+            sourceLocationRequest: DocumentSourceLocationRequest?,
+            onSourceLocationReached: ((UUID) -> Void)?
         ) {
             self.documentID = documentID
             self.fingerprint = fingerprint
@@ -268,8 +281,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             )
             self.onScrollFractionChange = onScrollFractionChange
             self.onScrollAnchorChange = onScrollAnchorChange
-            self.targetSourceLine = targetSourceLine
-            self.onSourceLineReached = onSourceLineReached
+            self.sourceLocationRequest = sourceLocationRequest
+            self.onSourceLocationReached = onSourceLocationReached
         }
 
         func update(
@@ -290,8 +303,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             onScrollRestoreConsumed: ((UInt64, String) -> Void)?,
             onScrollFractionChange: ((Double) -> Void)?,
             onScrollAnchorChange: ((EditorScrollAnchor) -> Void)?,
-            targetSourceLine: Int?,
-            onSourceLineReached: (() -> Void)?,
+            sourceLocationRequest: DocumentSourceLocationRequest?,
+            onSourceLocationReached: ((UUID) -> Void)?,
             webView: WKWebView
         ) {
             let documentChanged = self.documentID != documentID || self.fingerprint != fingerprint
@@ -300,7 +313,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 finalizedSignature = nil
                 appliedLinkPreviewRevision = ""
                 loadingLinkPreviewRevision = ""
-                lastReachedSourceLine = nil
+                lastReachedSourceLocationID = nil
                 pageIsReady = false
                 selectionCoordinator.resetForDocumentChange()
                 findCoordinator.resetForDocumentChange()
@@ -330,9 +343,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             scrollRestoration.adoptCallerRequest(scrollRestoreRequest)
             self.onScrollFractionChange = onScrollFractionChange
             self.onScrollAnchorChange = onScrollAnchorChange
-            if targetSourceLine == nil { lastReachedSourceLine = nil }
-            self.targetSourceLine = targetSourceLine
-            self.onSourceLineReached = onSourceLineReached
+            self.sourceLocationRequest = sourceLocationRequest
+            self.onSourceLocationReached = onSourceLocationReached
             selectionCoordinator.update(isActive: selectionSurfaceIsActive)
             schedulePostLoadPositioningIfNeeded(in: webView)
             applySelectionCommandsIfNeeded(in: webView)
@@ -376,6 +388,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 applyFindRequestIfNeeded(in: webView)
                 return
             }
+            selectionSource = source
             sourceUTF16Length = source.utf16.count
             let publishesLoadingTransition = hasLoadedPage
                 || renderingReadinessIsAcknowledged
@@ -564,7 +577,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         ) {
             guard message.name == Self.messageHandlerName,
                   let payload = message.body as? [String: Any],
-                  payload["version"] as? Int == 3,
+                  payload["version"] as? Int == 5,
                   payload["documentID"] as? String == documentID,
                   payload["fingerprint"] as? String == fingerprint,
                   (payload["loadGeneration"] as? NSNumber)?.uint64Value == loadGeneration,
@@ -573,16 +586,19 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             switch type {
             case "floatingSurface":
                 guard let surface = DocumentFloatingSurface.decode(payload["surface"]),
-                      surface.kind != .suggestions, let webView = message.webView else { return }
+                      surface.kind != .suggestions, let webView = message.webView,
+                      surface.kind != .selection || onAskAgent != nil else { return }
                 let expectedGeneration = loadGeneration
                 floatingSurfaces.present(surface, in: webView) { [weak self, weak webView] id, action, index in
                     guard let self, let webView, self.loadGeneration == expectedGeneration else { return }
                     Task { @MainActor in
-                        _ = try? await webView.callAsyncJavaScript(
+                        let accepted = try? await webView.callAsyncJavaScript(
                             "return window.scholiumNativeFloatingEvent?.(id, action, index)",
                             arguments: ["id": id, "action": action, "index": index],
                             in: nil, contentWorld: SafeMarkdownReadWebView.bridgeContentWorld
                         )
+                        if accepted as? Bool == true, surface.kind == .selection, action == "choose",
+                           self.loadGeneration == expectedGeneration { self.onAskAgent?() }
                     }
                 }
             case "requestMermaidRuntime":
@@ -628,10 +644,19 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                   selected.utf16.count <= Self.maximumSelectionLength else { return nil }
             let contextBefore = String((payload["contextBefore"] as? String ?? "").suffix(80))
             let contextAfter = String((payload["contextAfter"] as? String ?? "").prefix(80))
+            var exact: Range<Int>?
+            if let lower = payload["blockLower"] as? Int, let upper = payload["blockUpper"] as? Int,
+               let text = payload["blockText"] as? String,
+               let start = payload["selectionLower"] as? Int, let end = payload["selectionUpper"] as? Int {
+                exact = MarkdownReviewSourceSelection.exactReviewRange(blockLower: lower, blockUpper: upper,
+                    blockText: text, selectionLower: start, selectionUpper: end, excerpt: selected, source: selectionSource)
+            }
             return MarkdownReviewSelection(
                 startLine: max(1, payload["startLine"] as? Int ?? 1),
                 endLine: max(1, payload["endLine"] as? Int ?? 1),
                 excerpt: selected,
+                utf16LowerBound: exact?.lowerBound,
+                utf16UpperBound: exact?.upperBound,
                 contextBefore: contextBefore,
                 contextAfter: contextAfter
             )
@@ -914,10 +939,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             let hasPendingRequest = scrollRestoration.hasPendingRequest(
                 fingerprint: fingerprint
             )
-            let hasPendingSourceLine = targetSourceLine.map {
-                $0 > 0 && $0 != lastReachedSourceLine
-            } == true
-            guard hasPendingRequest || hasPendingSourceLine else { return }
+            let hasPendingLocation = sourceLocationRequest.map { $0.id != lastReachedSourceLocationID } == true
+            guard hasPendingRequest || hasPendingLocation else { return }
 
             let generation = loadGeneration
             let finalization = loadFinalizationTask
@@ -1076,9 +1099,19 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             signature: String,
             in webView: WKWebView
         ) async {
-            guard let line = targetSourceLine,
+            guard let request = sourceLocationRequest, request.id != lastReachedSourceLocationID else { return }
+            guard isCurrentLoad(generation: generation, signature: signature, in: webView) else { return }
+            if let expected = request.sourceFingerprint, expected != fingerprint {
+                lastReachedSourceLocationID = request.id
+                onSourceRevisionChanged?(request.id)
+                return
+            }
+            if request.requiresExactSelection, let range = request.range {
+                await selectSourceRange(range, requestID: request.id, generation: generation, signature: signature, in: webView)
+                return
+            }
+            guard let line = request.line,
                   line > 0,
-                  line != lastReachedSourceLine,
                   isCurrentLoad(
                       generation: generation,
                       signature: signature,
@@ -1101,7 +1134,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             )
             guard let payload = result as? [String: Any],
                   payload["reached"] as? Bool == true,
-                  targetSourceLine == line,
+                  sourceLocationRequest?.id == request.id,
                   isCurrentLoad(
                       generation: generation,
                       signature: signature,
@@ -1111,8 +1144,45 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 fractionValue: payload["fraction"],
                 anchorValue: payload["anchor"]
             )
-            lastReachedSourceLine = line
-            onSourceLineReached?()
+            lastReachedSourceLocationID = request.id
+            onSourceLocationReached?(request.id)
+        }
+
+        private func selectSourceRange(_ range: SearchSourceRange, requestID: UUID, generation: UInt64,
+            signature: String, in webView: WKWebView) async {
+            func isCurrent() -> Bool {
+                !Task.isCancelled && sourceLocationRequest?.id == requestID
+                    && isCurrentLoad(generation: generation, signature: signature, in: webView)
+            }
+            guard isCurrent() else { return }
+            let lower = range.utf16LowerBound, upper = range.utf16UpperBound
+            let candidate = try? await webView.callAsyncJavaScript(
+                "return window.scholiumReadNavigation?.rangeCandidate(lower, upper) ?? null;",
+                arguments: ["lower": lower, "upper": upper], in: nil,
+                contentWorld: SafeMarkdownReadWebView.bridgeContentWorld)
+            guard isCurrent() else { return }
+            var reached = false
+            if lower >= 0, upper > lower, upper <= selectionSource.utf16.count,
+               let selected = Range(NSRange(location: lower, length: upper - lower), in: selectionSource),
+               let block = candidate as? [String: Any],
+               let blockLower = block["blockLower"] as? Int, let blockUpper = block["blockUpper"] as? Int,
+               let blockText = block["blockText"] as? String,
+               MarkdownReviewSourceSelection.exactReviewRange(blockLower: blockLower, blockUpper: blockUpper,
+                 blockText: blockText, selectionLower: lower - blockLower, selectionUpper: upper - blockLower,
+                 excerpt: String(selectionSource[selected]), source: selectionSource) == lower..<upper {
+                let result = try? await webView.callAsyncJavaScript(
+                    "return window.scholiumReadNavigation?.revealRange(lower, upper, expected) === true;",
+                    arguments: ["lower": lower, "upper": upper, "expected": block], in: nil,
+                    contentWorld: SafeMarkdownReadWebView.bridgeContentWorld)
+                reached = result as? Bool == true
+            }
+            guard isCurrent() else { return }
+            lastReachedSourceLocationID = requestID
+            if reached {
+                webView.window?.makeFirstResponder(webView)
+                onSourceLocationReached?(requestID)
+            }
+            else { onSourceRangeUnavailable?(requestID) }
         }
 
         func webView(
@@ -1281,7 +1351,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 )
             }
             let configuration = ReadBridgeConfiguration(
-                version: 3,
+                version: 5,
                 documentID: documentID,
                 fingerprint: fingerprint,
                 loadGeneration: loadGeneration,

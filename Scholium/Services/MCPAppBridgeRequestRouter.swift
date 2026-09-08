@@ -418,9 +418,9 @@ final class MCPAppBridgeRequestRouter {
         ])
     }
 
-    private func updateNote(
+    private func decodeUpdate(
         _ arguments: [String: MCPJSONValue]
-    ) async throws -> MCPJSONValue {
+    ) throws -> (triptychID: UUID, noteID: UUID, expected: DocumentFingerprint, mode: AgentNoteUpdateMode, content: String) {
         try requireOnly(
             arguments,
             keys: [
@@ -442,6 +442,23 @@ final class MCPAppBridgeRequestRouter {
             arguments["content"],
             name: "content"
         )
+        return (triptychID, noteID, expected, mode, content)
+    }
+
+    func previewUpdate(_ request: ScholiumMCPBridgeRequest) async throws -> AgentNoteUpdatePreview {
+        do {
+            guard request.tool == .updateNote else { throw invalid("tool", "Only Note updates have this comparison.") }
+            let (triptychID, noteID, expected, mode, content) = try decodeUpdate(request.arguments)
+            try requireOpenTriptych(triptychID)
+            let handle = try await runtime.openWorkspace(id: triptychID)
+            return try await handle.agentCollaboration.previewUpdateNote(
+                noteID: noteID, expectedFingerprint: expected, mode: mode, content: content)
+        } catch let failure as ScholiumMCPFailure { throw failure }
+        catch { throw Self.failure(for: error) }
+    }
+
+    private func updateNote(_ arguments: [String: MCPJSONValue]) async throws -> MCPJSONValue {
+        let (triptychID, noteID, expected, mode, content) = try decodeUpdate(arguments)
         _ = try await currentSnapshot(triptychID: triptychID)
         let handle = try await runtime.openWorkspace(id: triptychID)
         let result = try await handle.agentCollaboration.updateNote(
@@ -497,13 +514,7 @@ final class MCPAppBridgeRequestRouter {
     private func currentSnapshot(triptychID: UUID) async throws
         -> WorkspaceSnapshot
     {
-        guard openTriptychs().contains(where: { $0.id == triptychID }) else {
-            throw ScholiumMCPFailure(
-                code: .notFound,
-                message: "The requested Triptych is not open in Scholium.",
-                recovery: "Call workspace status and select one currently open Triptych."
-            )
-        }
+        try requireOpenTriptych(triptychID)
         try await flushEditors(triptychID)
         let handle = try await runtime.openWorkspace(id: triptychID)
         let snapshot = try await handle.discovery.refresh()
@@ -525,6 +536,14 @@ final class MCPAppBridgeRequestRouter {
             )
         }
         return snapshot
+    }
+
+    private func requireOpenTriptych(_ triptychID: UUID) throws {
+        guard openTriptychs().contains(where: { $0.id == triptychID }) else {
+            throw ScholiumMCPFailure(code: .notFound,
+                message: "The requested Triptych is not open in Scholium.",
+                recovery: "Call workspace status and select one currently open Triptych.")
+        }
     }
 
     private func statusValue(_ snapshot: WorkspaceSnapshot) async throws -> MCPJSONValue {

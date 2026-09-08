@@ -82,7 +82,16 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
     private var chatRegistryStorage: AgentChatRegistry?
     var chatRegistry: AgentChatRegistry {
         if let current = chatRegistryStorage { return current }
-        let registry = AgentChatRegistry(root: applicationSupportURL.appendingPathComponent("Chat")) { [weak self] request in
+        let registry = AgentChatRegistry(root: applicationSupportURL.appendingPathComponent("Chat"),
+            notificationSink: { route, isCurrent in
+                SystemNotificationService.shared.receive(route, isCurrent: isCurrent)
+            },
+            previewUpdate: { [weak self] request in
+                guard let router = self?.requestRouter else {
+                    throw AgentCollaborationError.invalidRequest("Scholium is unavailable.")
+                }
+                return try await router.previewChatUpdate(request)
+            }) { [weak self] request in
             guard let router = self?.requestRouter else {
                 return try! ScholiumMCPBridgeResponse(requestID: request.requestID, error: .init(
                     code: .appUnavailable, message: "Scholium is unavailable.", recovery: "Reconnect Chat."))

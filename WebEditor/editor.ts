@@ -1,3 +1,4 @@
+import {createSelectionActions} from "./selection-actions";
 import {canDisplaceSyntax, syntaxToken, syntaxPresentation} from "./syntax-presentation";
 import {editorArrivalHighlight, showEditorArrival} from "./editor-arrival-highlight";
 import {createNativeFloatingBridge} from "./native-floating";
@@ -1393,9 +1394,11 @@ const stateReporter = EditorView.updateListener.of((update) => {
   const isProgrammatic = update.transactions.some(
     (transaction) => transaction.annotation(programmaticDocumentChange) === true,
   );
-  if (isProgrammatic) return;
+  if (isProgrammatic) { selectionActions.dismiss(); return; }
   if (update.docChanged) dirty = true;
   if (!update.docChanged && !update.selectionSet) return;
+  selectionActions.dismiss();
+  if (update.selectionSet && !update.docChanged) measureSelectionAction(update.view);
 
   if (update.docChanged) {
     const input = pendingInputStartedAt;
@@ -1621,6 +1624,23 @@ const liveProjectionNavigation = createLiveProjectionNavigation({
 });
 
 const nativeFloating = createNativeFloatingBridge(surface => post({type: "floatingSurface", surface}));
+let selectingForAgent = false;
+function selectionActionTarget() {
+  if (selectingForAgent || editor.composing || lastDocumentFocusTarget === "title") return null;
+  const ranges = editor.state.selection.ranges;
+  if (ranges.length !== 1 || ranges[0].empty || ranges[0].to - ranges[0].from > 32000) return null;
+  const first = editor.coordsAtPos(ranges[0].from);
+  const last = editor.coordsAtPos(ranges[0].to);
+  if (!first || !last || last.bottom < 0 || first.top > window.innerHeight) return null;
+  return {key: `${bridgeSessionID}:${documentVersion}:${ranges[0].from}:${ranges[0].to}`,
+    anchor: {left: last.left, top: first.top, bottom: last.bottom}};
+}
+const selectionActions = createSelectionActions(nativeFloating, selectionActionTarget);
+function measureSelectionAction(view: EditorView) {
+  view.requestMeasure({key: selectionActions, read: selectionActionTarget,
+    write: target => selectionActions.update(target)});
+}
+
 
 const previewPopover = createPreviewPopoverController({
   nativeFloating,
@@ -1755,6 +1775,18 @@ const editorExtensions = [
       }),
 ];
 const editor = createMarkdownEditor(document.getElementById("editor")!, editorExtensions);
+editor.contentDOM.addEventListener("pointerdown", () => { selectingForAgent = true; selectionActions.dismiss(); });
+window.addEventListener("pointerup", () => { selectingForAgent = false; measureSelectionAction(editor); });
+editor.contentDOM.addEventListener("keyup", () => measureSelectionAction(editor));
+editor.contentDOM.addEventListener("keydown", event => {
+  const dismissed = selectionActions.dismiss();
+  if (event.key === "Escape" && !event.isComposing && dismissed) {
+    event.preventDefault(); event.stopPropagation();
+  }
+}, true);
+editor.contentDOM.addEventListener("compositionstart", () => selectionActions.dismiss());
+editor.scrollDOM.addEventListener("scroll", () => selectionActions.dismiss(), {passive: true});
+
 editor.contentDOM.addEventListener("focus", () => {
   setDocumentFocusTarget("editor");
 });

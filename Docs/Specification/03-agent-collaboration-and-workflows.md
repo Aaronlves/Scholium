@@ -1,6 +1,6 @@
 # Specification: Agent Collaboration and Research Workflows
 
-[SCHOLIUM_SPEC.md](../SCHOLIUM_SPEC.md) · Sections 8–11.
+[SCHOLIUM_SPEC.md](../SCHOLIUM_SPEC.md) · Sections 8–8.6 and 9–11.
 
 ## 8. Agent collaboration
 
@@ -253,62 +253,7 @@ Authored attribution and version references are research content, not authentica
 history or researcher acceptance. Agent Changes retain their distinct operation-
 evidence role under §8.4.
 
-### 8.7 In-app Chat
-
-Chat belongs to one Triptych and may reference several Notes across its vaults. Sending
-the first message starts a conversation without an academic task or Record. Library
-navigation and current Note changes do not change the active conversation or silently
-share another document. Conversation history, drafts, attachments and uncertain delivery
-survive reopening in machine-local storage. Titles derive from the first message; saving
-and reopening need no technical session-management decision. Archiving hides an idle
-conversation from the active list while preserving its messages, draft and modification
-links. Restoring makes it writable again; archived conversations cannot send or become
-active tool runs. Runtime history remains runtime-owned; a retained public projection is
-not a second writable Note or researcher endorsement.
-
-The researcher selects Ask for Approval or Full Access per conversation. Ask
-requires confirmation of each Scholium Note mutation and displays runtime
-approval requests. Full Access permits autonomous operations in the runtime's
-full-access environment and permits scoped MCP mutations without an additional
-proposal approval. Both preserve exact source, current revisions, live editors,
-readback, conflict and recovery. Full Access does not imply that arbitrary
-filesystem edits acquire Agent Change evidence. Raw edits remain external edits.
-A permission change applies only while the conversation is idle; it persists
-across turns. Runtime tools outside Scholium obey the actual runtime policy,
-not a simulated UI permission. Unsupported approval requests cannot run silently.
-
-One active execution owns a conversation's tool admission. In-app MCP calls bind
-an ephemeral execution token to the selected conversation and exact Triptych;
-a model-supplied other Triptych is rejected. The token is routing state, not
-research permission. Decline or Stop revokes pending approvals and new operation
-admission; already admitted source transactions finish or recover through their
-existing owner. Successful interruption is distinct from rollback. Uncertain
-requests are retained and never automatically resent. Continuing after an
-uncertain delivery is an explicit action that does not resend its old message.
-
-The client supports sending, streaming public answers, additional input,
-interruption, sign-in, disconnection and conversation reopening. Source excerpts
-come from one checked editor source/selection snapshot, retaining Note identity,
-source fingerprint and locator. Adding an excerpt prepares input without sending.
-No-selection and unavailable-editor states request an explicit selection rather
-than sharing the whole document. A Note reference opens its verified identity
-in the same Triptych; missing identities remain explicit and never fall back to
-an arbitrary path. Show in Library is a separate navigation action.
-
-One-click connection discovers an installed executable and the Scholium CLI, prepares
-its MCP configuration, and requests provider sign-in if needed. Advanced paths and
-connection management live in Settings. These machine paths, credentials and runtime
-data stay outside portable `.scholium`; existing Triptych control settings keep their
-current portable owner. A separate configuration directory is the default; choosing an
-existing runtime directory explicitly inherits its configuration and tools. Scholium
-does not copy credentials, change global host settings, or promise arbitrary
-desktop-thread adoption. Cloud inference and account usage remain subject to the
-provider; local execution does not imply offline inference. Normal Note work remains
-available without a runtime or sign-in.
-
-Chat adds no automatic Settle, durable philosophical verdict, argument graph,
-proposal lifecycle or autonomous research schedule. Research-context handoff is
-provider-neutral; adding runtime adapters does not change its Note-snapshot contract.
+The [In-app Agent Chat](12-agent-chat.md) chapter owns §8.7.
 
 ## 9. Analyses workflow
 

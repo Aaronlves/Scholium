@@ -481,7 +481,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
         let chat = appState.chatController
         if observedChat !== chat {
             chatObservation?.cancel(); observedChat = chat
-            chatObservation = chat?.$approvals.map { !$0.isEmpty }.removeDuplicates()
+            chatObservation = chat?.needsInputPublisher
                 .receive(on: DispatchQueue.main).sink { [weak self] _ in self?.refreshPresentation() }
         }
         refreshNotifications()
@@ -490,7 +490,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
             control.selectedSegment = shellState.libraryVisible ? shellState.sidebarContent.rawValue : -1
             let unavailable = appState.workspaceAssignment == nil
             control.setEnabled(!unavailable, forSegment: SidebarContent.chat.rawValue)
-            let awaitingInput = chat?.approvals.isEmpty == false
+            let awaitingInput = chat?.needsInput == true
             let title = unavailable ? ScholiumL10n.string("No Triptych Open")
                 : awaitingInput ? String(localized: "Chat Needs Your Input") : String(localized: "Chat")
             control.setToolTip(title, forSegment: SidebarContent.chat.rawValue)

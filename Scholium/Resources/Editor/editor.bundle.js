@@ -1,5 +1,51 @@
 "use strict";
 (() => {
+  // selection-actions.ts
+  function createSelectionActions(floating, current) {
+    let id2 = null;
+    let key = null;
+    let dismissed = null;
+    function hide() {
+      if (id2 !== null) floating.hide(id2);
+      id2 = null;
+      key = null;
+    }
+    function dismiss() {
+      const visible = id2 !== null;
+      if (key !== null) dismissed = key;
+      hide();
+      return visible;
+    }
+    return {
+      dismiss,
+      update(target = current()) {
+        if (!target) {
+          hide();
+          dismissed = null;
+          return;
+        }
+        if (target.key === key || target.key === dismissed) return;
+        hide();
+        key = target.key;
+        id2 = floating.show({
+          kind: "selection",
+          ...target.anchor,
+          html: "",
+          css: "",
+          items: [],
+          selected: -1
+        }, {
+          dismiss,
+          choose: () => {
+            const valid = current()?.key === target.key;
+            dismiss();
+            return valid;
+          }
+        });
+      }
+    };
+  }
+
   // node_modules/@marijn/find-cluster-break/src/index.js
   var rangeFrom = [];
   var rangeTo = [];
@@ -14068,7 +14114,9 @@
         if (action === "enter") callbacks.enter?.();
         else if (action === "leave") callbacks.leave?.();
         else if (action === "dismiss") callbacks.dismiss();
-        else if ((action === "select" || action === "choose") && Number.isInteger(index) && current.surface.kind === "suggestions" && index >= 0 && index < current.surface.items.length) {
+        else if (action === "choose" && current.surface.kind === "selection" && index === 0) {
+          return callbacks.choose?.(index) !== false;
+        } else if ((action === "select" || action === "choose") && Number.isInteger(index) && current.surface.kind === "suggestions" && index >= 0 && index < current.surface.items.length) {
           if (action === "select") callbacks.select?.(index);
           else callbacks.choose?.(index);
         } else return false;
@@ -21355,7 +21403,7 @@
   }
 
   // protocol.ts
-  var EDITOR_PROTOCOL_VERSION = 27;
+  var EDITOR_PROTOCOL_VERSION = 28;
   var MAX_INBOUND_BYTES = 25e5;
   var MAX_SOURCE_UTF8_BYTES = 8e6;
   var operationTypes = /* @__PURE__ */ new Set([
@@ -37161,9 +37209,14 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     const isProgrammatic = update.transactions.some(
       (transaction) => transaction.annotation(programmaticDocumentChange) === true
     );
-    if (isProgrammatic) return;
+    if (isProgrammatic) {
+      selectionActions.dismiss();
+      return;
+    }
     if (update.docChanged) dirty = true;
     if (!update.docChanged && !update.selectionSet) return;
+    selectionActions.dismiss();
+    if (update.selectionSet && !update.docChanged) measureSelectionAction(update.view);
     if (update.docChanged) {
       const input = pendingInputStartedAt;
       pendingInputStartedAt = null;
@@ -37351,6 +37404,27 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     mermaidPresentations: (state) => liveMermaidProjection.presentations(state)
   });
   var nativeFloating = createNativeFloatingBridge((surface) => post({ type: "floatingSurface", surface }));
+  var selectingForAgent = false;
+  function selectionActionTarget() {
+    if (selectingForAgent || editor.composing || lastDocumentFocusTarget === "title") return null;
+    const ranges = editor.state.selection.ranges;
+    if (ranges.length !== 1 || ranges[0].empty || ranges[0].to - ranges[0].from > 32e3) return null;
+    const first = editor.coordsAtPos(ranges[0].from);
+    const last = editor.coordsAtPos(ranges[0].to);
+    if (!first || !last || last.bottom < 0 || first.top > window.innerHeight) return null;
+    return {
+      key: `${bridgeSessionID}:${documentVersion}:${ranges[0].from}:${ranges[0].to}`,
+      anchor: { left: last.left, top: first.top, bottom: last.bottom }
+    };
+  }
+  var selectionActions = createSelectionActions(nativeFloating, selectionActionTarget);
+  function measureSelectionAction(view) {
+    view.requestMeasure({
+      key: selectionActions,
+      read: selectionActionTarget,
+      write: (target) => selectionActions.update(target)
+    });
+  }
   var previewPopover = createPreviewPopoverController({
     nativeFloating,
     previews: () => linkPreviews,
@@ -37465,6 +37539,24 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     })
   ];
   var editor = createMarkdownEditor(document.getElementById("editor"), editorExtensions);
+  editor.contentDOM.addEventListener("pointerdown", () => {
+    selectingForAgent = true;
+    selectionActions.dismiss();
+  });
+  window.addEventListener("pointerup", () => {
+    selectingForAgent = false;
+    measureSelectionAction(editor);
+  });
+  editor.contentDOM.addEventListener("keyup", () => measureSelectionAction(editor));
+  editor.contentDOM.addEventListener("keydown", (event) => {
+    const dismissed = selectionActions.dismiss();
+    if (event.key === "Escape" && !event.isComposing && dismissed) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  }, true);
+  editor.contentDOM.addEventListener("compositionstart", () => selectionActions.dismiss());
+  editor.scrollDOM.addEventListener("scroll", () => selectionActions.dismiss(), { passive: true });
   editor.contentDOM.addEventListener("focus", () => {
     setDocumentFocusTarget("editor");
   });

@@ -1,3 +1,4 @@
+import ScholiumApplication
 import Foundation
 import ScholiumContracts
 import Testing
@@ -10,7 +11,20 @@ enum NativeChatSourceScope {
     "Scholium/Views/Sidebar/AgentChatView.swift",
     "Scholium/Views/Sidebar/AgentChatMarkdown.swift",
     "Scholium/Views/Sidebar/AgentChatMaterialChip.swift",
+    "Scholium/Views/Sidebar/AgentChatLocalMaterialChip.swift",
+    "Scholium/Views/Sidebar/AgentChatPDFPagesView.swift",
+    "Scholium/Views/Sidebar/AgentChatNotePicker.swift",
     "Scholium/Views/Sidebar/AgentChatComposerInput.swift",
+    "Scholium/Views/Sidebar/AgentChatComposerCompletion.swift",
+    "Scholium/Views/Sidebar/AgentChatResultFiles.swift",
+    "Scholium/Views/Sidebar/AgentChatProcessView.swift",
+    "Scholium/Views/Sidebar/AgentChatReplyActions.swift",
+    "Scholium/Views/Sidebar/AgentChatRuntimeControls.swift",
+    "Scholium/Views/Sidebar/AgentChatFindBar.swift",
+    "Scholium/Views/Sidebar/AgentChatQuestionForm.swift",
+    "Scholium/Views/Sidebar/AgentChatRuntimeApprovalView.swift",
+    "Scholium/Views/Sidebar/AgentChatDelegationView.swift",
+    "Scholium/Views/Sidebar/AgentChatChildView.swift",
   ]
 }
 
@@ -25,6 +39,44 @@ enum NativeSidebarSourceScope {
 
 @Suite("Native research conversation presentation")
 struct AgentChatPresentationTests {
+  @Test("Sources retain web, Note and other explicit locators without manufacturing citations")
+  func replySources() {
+    let note = AgentChatReference.url(noteID: UUID())
+    let sources = AgentChatReplySource.collect("[Note](\(note)) [Web](https://example.org/source) [Again](https://example.org/source) [PDF](../paper.pdf) [Unsafe](javascript:alert) ordinary uncited text")
+    #expect(sources.count == 4)
+    #expect(sources[0].isNote && !sources[0].isWeb)
+    #expect(sources[1].isWeb && sources[1].destination == "example.org")
+    #expect(!sources[2].isWeb && !sources[2].isNote)
+    #expect(!sources[3].isWeb && !sources[3].isNote)
+  }
+
+  @Test("Public commentary and each tool call group only within their confirmed turn; final and unknown phases stay visible")
+  func processGrouping() {
+    var progress = AgentChatMessage(role: .assistant, text: "Checking", phase: .commentary)
+    progress.turnID = "one"
+    var operation = AgentChatMessage(role: .operation, text: "Read")
+    operation.turnID = "one"
+    var final = AgentChatMessage(role: .assistant, text: "Answer", phase: .finalAnswer)
+    final.turnID = "one"
+    var other = AgentChatMessage(role: .operation, text: "Another turn")
+    other.turnID = "two"
+    let unknown = AgentChatMessage(role: .assistant, text: "Unclassified answer")
+    let items = AgentChatTimelineItem.group([progress, operation, operation, final, other, unknown])
+    #expect(items.count == 4 && items[0].isProcess && items[0].messages.count == 3)
+    #expect(!items[1].isProcess && items[2].isProcess && !items[3].isProcess)
+    #expect(items.flatMap(\.messages) == [progress, operation, operation, final, other, unknown])
+  }
+
+  @Test("Reply cards preserve exact Note references without treating external URLs or paths as files")
+  func replyFileReferences() throws {
+    let note = UUID()
+    let url = AgentChatReference.url(noteID: note)
+    let text = "[论证](\(url)) and [again](\(url)) [website](https://example.org/paper.pdf) ordinary.md"
+    let files = AgentChatResultFile.collect(text)
+    #expect(files.count == 1 && files.first?.url == url && files.first?.title == "论证")
+    #expect(AgentChatFileSummary.collect([AgentChatMessage(role: .assistant, text: text)]).isEmpty)
+  }
+
   @Test("Long replies preserve paragraphs, quotation, argument numbering and exact code")
   func markdownBlocks() {
     let source =
@@ -44,7 +96,8 @@ struct AgentChatPresentationTests {
 
   @Test("Note citations remain links and comparison tables retain cells")
   func referencesAndTables() throws {
-    let url = AgentChatReference.url(noteID: UUID(), line: 5)
+    let url = AgentChatReference.url(noteID: UUID(), line: 5,
+      revision: DocumentFingerprint(content: "Exact source\r\n"), vaultID: UUID())
     let blocks = AgentChatMarkdownBlock.parse(
       "Read [this note](\(url)).\n\n| View | Objection |\n|---|---|\n| One | Two |")
     #expect(blocks.first?.text.runs.contains { $0.link == url } == true)
@@ -66,7 +119,7 @@ struct AgentChatPresentationTests {
     ]
     let items = AgentChatTimelineItem.group(messages)
     #expect(items.count == 5)
-    #expect(items[1].isActivity && items[1].messages.count == 2)
+    #expect(items[1].isProcess && items[1].messages.count == 2)
     #expect(items[1].messages[1].changeID == change)
     #expect(items[2].showsSpeaker && !items[3].showsSpeaker && items[4].showsSpeaker)
     #expect(items.flatMap(\.messages) == messages)
@@ -76,22 +129,22 @@ struct AgentChatPresentationTests {
   func runtimeEvidence() throws {
     let own: [String: MCPJSONValue] = ["type": .string("mcpToolCall"),
       "server": .string("scholium"), "tool": .string("scholium_update_note")]
-    #expect(AgentChatActivityProjection.runtime(own, completed: false) == nil)
+    #expect(AgentChatActivityProjection.withLocalizedFailure(CodexChatActivity.parse(own, completed: false)) == nil)
     let item: [String: MCPJSONValue] = ["type": .string("fileChange"), "status": .string("completed"),
       "changes": .array([.object(["path": .string("fixture.md"), "diff": .string("-old\n+new"),
         "kind": .object(["type": .string("update")])])])]
-    let activity = try #require(AgentChatActivityProjection.runtime(item, completed: true))
+    let activity = try #require(AgentChatActivityProjection.withLocalizedFailure(CodexChatActivity.parse(item, completed: true)))
     let message = AgentChatMessage(role: .operation, text: "", activity: activity)
     let file = try #require(AgentChatFileSummary.collect([message]).first)
     #expect(file.source == .runtime && file.changeIDs.isEmpty && file.file.effect == .edited)
     var pending = activity
     pending.status = .running
-    #expect(AgentChatActivityProjection.interrupted(pending).status == .uncertain)
+    #expect(AgentChatActivityProjection.afterConnectionLoss(pending).status == .uncertain)
     pending.status = .waitingForApproval
-    #expect(AgentChatActivityProjection.interrupted(pending).status == .interrupted)
+    #expect(AgentChatActivityProjection.afterConnectionLoss(pending).status == .interrupted)
     var failed = item
     failed["status"] = .string("failed")
-    let failure = try #require(AgentChatActivityProjection.runtime(failed, completed: true))
+    let failure = try #require(AgentChatActivityProjection.withLocalizedFailure(CodexChatActivity.parse(failed, completed: true)))
     #expect(failure.status == .failed && failure.files.first?.effect == nil)
   }
 

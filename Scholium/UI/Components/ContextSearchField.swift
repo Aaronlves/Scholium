@@ -11,16 +11,20 @@ struct ContextSearchField: NSViewRepresentable {
         let select: () -> Void
     }
     var options: [Option] = []
+    var focusRequest: UUID? = nil
+    var navigate: ((Bool) -> Void)? = nil
+    var dismiss: (() -> Void)? = nil
 
     func makeCoordinator() -> Coordinator {
         Coordinator(parent: self)
     }
 
-    func makeNSView(context: Context) -> NSSearchField {
-        let searchField = NSSearchField()
+    func makeNSView(context: Context) -> Field {
+        let searchField = Field()
         searchField.placeholderString = ScholiumL10n.dynamicString(prompt)
         searchField.sendsSearchStringImmediately = true
         searchField.target = context.coordinator
+        searchField.delegate = context.coordinator
         searchField.action = #selector(Coordinator.searchChanged(_:))
         searchField.setAccessibilityLabel(ScholiumL10n.dynamicString(prompt))
         searchField.setAccessibilityIdentifier(identifier)
@@ -31,20 +35,37 @@ struct ContextSearchField: NSViewRepresentable {
         return searchField
     }
 
-    func sizeThatFits(_ proposal: ProposedViewSize, nsView: NSSearchField, context: Context) -> CGSize? {
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView: Field, context: Context) -> CGSize? {
         CGSize(width: proposal.width ?? nsView.intrinsicContentSize.width,
                height: nsView.intrinsicContentSize.height)
     }
 
-    func updateNSView(_ searchField: NSSearchField, context: Context) {
+    func updateNSView(_ searchField: Field, context: Context) {
         context.coordinator.parent = self
         if (searchField.currentEditor() as? NSTextView)?.hasMarkedText() != true, searchField.stringValue != text {
             searchField.stringValue = text
         }
+        searchField.focusRequest = focusRequest
+    }
+
+    final class Field: NSSearchField {
+        var focusRequest: UUID? { didSet { applyFocus() } }
+        private var appliedFocus: UUID?
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            applyFocus()
+        }
+        private func applyFocus() {
+            guard let focusRequest, focusRequest != appliedFocus,
+                  (currentEditor() as? NSTextView)?.hasMarkedText() != true,
+                  let window, window.makeFirstResponder(self) else { return }
+            appliedFocus = focusRequest
+            currentEditor()?.selectAll(nil)
+        }
     }
 
     @MainActor
-    final class Coordinator: NSObject, NSMenuItemValidation {
+    final class Coordinator: NSObject, NSSearchFieldDelegate, NSMenuItemValidation {
         var parent: ContextSearchField
 
         init(parent: ContextSearchField) {
@@ -77,6 +98,19 @@ struct ContextSearchField: NSViewRepresentable {
         @objc func searchChanged(_ sender: NSSearchField) {
             guard (sender.currentEditor() as? NSTextView)?.hasMarkedText() != true else { return }
             parent.text = sender.stringValue
+        }
+
+        func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+            guard !textView.hasMarkedText() else { return false }
+            if commandSelector == #selector(NSResponder.insertNewline(_:)), let navigate = parent.navigate {
+                navigate(NSApp?.currentEvent?.modifierFlags.contains(.shift) == true)
+                return true
+            }
+            if commandSelector == #selector(NSResponder.cancelOperation(_:)), let dismiss = parent.dismiss {
+                dismiss()
+                return true
+            }
+            return false
         }
     }
 }
