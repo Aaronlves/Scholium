@@ -23,6 +23,7 @@ export interface EditorScrollCoordinator {
 export function createEditorScrollCoordinator(
   editor: EditorView,
   options: {
+    onScroll(): void;
     post(anchor: EditorScrollAnchor): void;
     flushPresentationGeometry(): void;
   },
@@ -63,6 +64,7 @@ export function createEditorScrollCoordinator(
   let sessionLongestFrame = 0;
   let sessionDroppedFrameCount = 0;
   editor.scrollDOM.addEventListener("scroll", () => {
+    options.onScroll();
     if (sessionStartedAt === null) sessionStartedAt = performance.now();
     if (measurementFrame === null) {
       measurementFrame = window.requestAnimationFrame(() => {

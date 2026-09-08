@@ -32473,6 +32473,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     let sessionLongestFrame = 0;
     let sessionDroppedFrameCount = 0;
     editor2.scrollDOM.addEventListener("scroll", () => {
+      options.onScroll();
       if (sessionStartedAt === null) sessionStartedAt = performance.now();
       if (measurementFrame === null) {
         measurementFrame = window.requestAnimationFrame(() => {
@@ -37556,7 +37557,6 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     }
   }, true);
   editor.contentDOM.addEventListener("compositionstart", () => selectionActions.dismiss());
-  editor.scrollDOM.addEventListener("scroll", () => selectionActions.dismiss(), { passive: true });
   editor.contentDOM.addEventListener("focus", () => {
     setDocumentFocusTarget("editor");
   });
@@ -37579,6 +37579,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     };
   }, { capture: true });
   var scrollCoordinator = createEditorScrollCoordinator(editor, {
+    onScroll: () => selectionActions.dismiss(),
     post: (scrollAnchor) => post({
       type: "scrollChanged",
       scrollFraction: scrollAnchor.fallbackFraction,

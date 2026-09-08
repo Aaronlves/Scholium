@@ -9,10 +9,11 @@ and child pages share typed decoding; old parsers are removed. Full history is
 validated atomically; lifecycle metadata confirms identity without inventing
 messages. Eighty-seven owning checks and build/localization pass. Live QA verifies
 history restoration, a new final reply and exact Copy, without replay; 500 Notes
-remain unchanged. QA is quit/removed with login retained. An expanded architecture
-run fails an unrelated editor scroll-listener assertion at
-`ArchitectureBoundaryTests:459`; no whole-app gate is claimed. Evidence:
-`.build/agent-chat-evolution/transcript-*`.
+remain unchanged. QA is quit/removed with login retained. The later scroll-owner
+correction removes the extra selection-action listener from the editor entry
+point; the coordinator dismisses immediately while anchor reports stay debounced.
+All 11 architecture and 230 editor checks pass; no whole-app gate is claimed.
+Evidence: `.build/agent-chat-evolution/transcript-*`, `scroll-owner-*`.
 
 **2026-09-08 — activity and connection renewal:** Sixty-eight checks cover
 independent tool outcomes, expired approvals, root initialization, failure,

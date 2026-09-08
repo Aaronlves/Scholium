@@ -127,23 +127,23 @@ materialized only for persistence, conflict, recovery, reconstruction,
 explicit commands, or diagnostics. The mirror reconciles against complete
 editor text before persistence.
 
-The native implementation preserves that single ownership while separating
-code-element responsibilities. `MarkdownEditorSession` alone owns the retained
+`MarkdownEditorSession` alone owns the retained
 WebView lifecycle, checked source mirror, generation, recovery, and pending
 requests. `MarkdownEditorBridgeAdapter` owns typed inbound decoding and
 outbound JavaScript dispatch;
 `MarkdownEditorNativeWebView` owns AppKit
 attachment, image paste, and the context menu; and
-`MarkdownEditorWebView` is the
-SwiftUI/WebKit composition and message-routing boundary. Debug-only WebKit
-snapshot probes and interaction drivers live in the two
-`MarkdownEditorSessionTesting*` files and are absent from Release builds. On
-the Web side, `editor.ts` remains the sole composition root and source/identity
+`MarkdownEditorWebView` composes SwiftUI/WebKit and routes messages. Debug-only
+WebKit probes and interaction drivers live in `MarkdownEditorSessionTesting*`.
+`editor.ts` remains the sole Web composition root and source/identity
 owner. `live-projection-index` owns the semantic catalog,
 `projected-widget-registry` pointer mapping, `live-selection` selection paint,
 and bounded components semantic widgets and layout. Source direction, actions,
 previews, suggestions, and scroll share one `EditorView`. None may
 persist Markdown or create another `EditorState`.
+`scroll-coordinator` owns the view's scroll observation and immediately notifies
+the composed selection-action controller to dismiss its floating surface;
+anchor reporting remains independently debounced.
 
 Secondary click follows one public event path. A CodeMirror DOM `contextmenu`
 handler preserves an existing clicked selection or moves the sole

@@ -1785,7 +1785,6 @@ editor.contentDOM.addEventListener("keydown", event => {
   }
 }, true);
 editor.contentDOM.addEventListener("compositionstart", () => selectionActions.dismiss());
-editor.scrollDOM.addEventListener("scroll", () => selectionActions.dismiss(), {passive: true});
 
 editor.contentDOM.addEventListener("focus", () => {
   setDocumentFocusTarget("editor");
@@ -1815,6 +1814,7 @@ editor.contentDOM.addEventListener("beforeinput", (event) => {
   };
 }, {capture: true});
 const scrollCoordinator = createEditorScrollCoordinator(editor, {
+  onScroll: () => selectionActions.dismiss(),
   post: (scrollAnchor) => post({
     type: "scrollChanged",
     scrollFraction: scrollAnchor.fallbackFraction,
