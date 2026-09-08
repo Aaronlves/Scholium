@@ -112,7 +112,7 @@ struct DocumentFeatureState {
 }
 
 struct DocumentFeatureActions {
-    var askAgent: @MainActor (AgentChatSelectionInquiry) -> Void = { _ in }
+    var askAgent: AgentSelectionInquiryHandler = { _, _ in nil }
     let requestIdentityResolution: @MainActor () -> Void
     let retryIdentityRecovery: @MainActor () async -> Void
     let beginSearch: @MainActor (SearchInvocation) -> Void

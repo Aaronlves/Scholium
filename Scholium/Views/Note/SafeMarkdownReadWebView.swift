@@ -26,7 +26,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
     var linkPreviewRevision: String? = nil
     let onLinkClick: (String) -> Void
     let onOpenExternalURL: (URL) -> Void
-    var onAskAgent: ((AgentChatSelectionInquiry) -> Void)? = nil
+    var onAskAgent: AgentSelectionInquiryHandler? = nil
     var onSelectionChange: ((MarkdownReviewSelection?) -> Void)? = nil
     /// Derived visibility only. Review remains the sole selection-surface
     /// owner; the coordinator transports mode changes to its retained page.
@@ -198,7 +198,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         private var fingerprint: String
         private var onLinkClick: (String) -> Void
         private var onOpenExternalURL: (URL) -> Void
-        var onAskAgent: ((AgentChatSelectionInquiry) -> Void)?
+        var onAskAgent: AgentSelectionInquiryHandler?
         private var onSelectionChange: ((MarkdownReviewSelection?) -> Void)?
         private let selectionCoordinator: SafeMarkdownReadSelectionCoordinator
         private let floatingSurfaces = DocumentFloatingSurfaceController()
@@ -589,18 +589,14 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                       surface.kind != .suggestions, let webView = message.webView,
                       surface.kind != .selection || onAskAgent != nil else { return }
                 let expectedGeneration = loadGeneration
-                floatingSurfaces.present(surface, in: webView) { [weak self, weak webView] id, action, index in
-                    guard let self, let webView, self.loadGeneration == expectedGeneration else { return }
-                    Task { @MainActor in
+                floatingSurfaces.present(surface, in: webView, inquire: onAskAgent) { [weak self, weak webView] id, action, index in
+                    guard let self, let webView, self.loadGeneration == expectedGeneration else { return false }
                         let accepted = try? await webView.callAsyncJavaScript(
                             "return window.scholiumNativeFloatingEvent?.(id, action, index)",
                             arguments: ["id": id, "action": action, "index": index],
                             in: nil, contentWorld: SafeMarkdownReadWebView.bridgeContentWorld
                         )
-                        if accepted as? Bool == true, surface.kind == .selection, action == "choose",
-                           let inquiry = AgentChatSelectionInquiry(rawValue: index),
-                           self.loadGeneration == expectedGeneration { self.onAskAgent?(inquiry) }
-                    }
+                        return accepted as? Bool == true && self.loadGeneration == expectedGeneration
                 }
             case "requestMermaidRuntime":
                 guard let webView = message.webView else { return }

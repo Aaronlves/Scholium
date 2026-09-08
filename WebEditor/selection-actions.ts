@@ -35,7 +35,6 @@ export function createSelectionActions(
         dismiss,
         choose: () => {
           const valid = current()?.key === target.key;
-          dismiss();
           return valid;
         },
       });

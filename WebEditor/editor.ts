@@ -1,3 +1,4 @@
+import {passageReplacement} from "./passage-replacement";
 import {createSelectionActions} from "./selection-actions";
 import {canDisplaceSyntax, syntaxToken, syntaxPresentation} from "./syntax-presentation";
 import {editorArrivalHighlight, showEditorArrival} from "./editor-arrival-highlight";
@@ -43,6 +44,7 @@ import {
 import {
   defaultKeymap,
   history,
+  isolateHistory,
   historyField,
   historyKeymap,
   redoDepth,
@@ -1633,7 +1635,7 @@ function selectionActionTarget() {
   const last = editor.coordsAtPos(ranges[0].to);
   if (!first || !last || last.bottom < 0 || first.top > window.innerHeight) return null;
   return {key: `${bridgeSessionID}:${documentVersion}:${ranges[0].from}:${ranges[0].to}`,
-    anchor: {left: last.left, top: first.top, bottom: last.bottom}};
+    anchor: {left: (first.left + last.left) / 2, top: first.top, bottom: last.bottom}};
 }
 const selectionActions = createSelectionActions(nativeFloating, selectionActionTarget);
 function measureSelectionAction(view: EditorView) {
@@ -2144,6 +2146,20 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
       text: exactEditorSource(),
       commitSuperseded: superseded,
     };
+  }
+  case "replacePassage": {
+    if (editor.composing || compositionGate.active) return rejected(request.requestID, documentVersion, "Finish composition before adopting a suggestion.");
+    const change = passageReplacement(exactEditorSource(), operation.expectedText,
+      operation.fromUTF16, operation.toUTF16, operation.replacement);
+    if (!change) return rejected(request.requestID, documentVersion, "The passage changed. Request a new suggestion.");
+    if (new TextEncoder().encode(applySourceChanges(editor.state.doc.toString(), [change])).byteLength > MAX_SOURCE_UTF8_BYTES) {
+      return rejected(request.requestID, documentVersion, "The suggestion is too large.");
+    }
+    editor.dispatch({changes: change,
+      selection: EditorSelection.single(change.from, change.from + change.insert.length),
+      annotations: [Transaction.userEvent.of("input.scholium.adopt"), isolateHistory.of("full")]});
+    lastUndoLabel = lastRedoLabel = "Adopt Suggestion";
+    return successfulResult(request.requestID, true, "Adopt Suggestion");
   }
   case "command": {
     const argument = operation.command === "pasteMarkdown"

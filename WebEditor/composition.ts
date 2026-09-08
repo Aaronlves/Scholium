@@ -6,7 +6,7 @@ export interface DeferredCompositionRequest<Request, Result> {
 export type CompositionRequestPolicy = "allow" | "defer" | "reject";
 
 export function compositionRequestPolicy(operationType: string): CompositionRequestPolicy {
-  if (operationType === "initialize") return "reject";
+  if (operationType === "initialize" || operationType === "replacePassage") return "reject";
   if ([
     "queryText",
     "querySelection",

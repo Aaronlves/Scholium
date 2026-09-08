@@ -46,17 +46,37 @@ selections offer Edit or Source. No-selection and unavailable-editor states
 request an explicit selection rather than sharing the whole document. Ask Agent
 stages that checked passage in the current conversation and focuses its ordinary
 composer without sending, replacing a draft, or granting a Note modification.
-The selection surface also offers Clarify Concepts, Examine Argument and Check
-Evidence. Each prepares an editable question alongside the checked passage in
-ordinary Chat; existing draft text is retained. These are inquiry starters, not
-academic task types, fixed methods, research scores or completion records.
-Clarification distinguishes a passage's usage and ambiguities from an Agent's
-interpretation. Argument examination distinguishes stated reasons, supplied
-premises and objections without forcing nonargumentative prose into a proof.
-Evidence checking distinguishes inspected sources, analysis Notes and inference;
-unavailable primary material leaves attribution and support explicitly unverified.
-The prepared question requests discussion without Note changes. Nothing is sent
-until the researcher reviews and sends the draft; adopting a result is separate.
+Selection actions provide Explain, Polish and a menu of custom operations. Explicit
+activation sends the checked passage in a separate ordinary conversation without
+consuming or replacing the current Chat draft. A native anchored result presents
+actual progress, Stop, errors and the public answer; Continue in Chat opens that
+same conversation for further questions or required approvals. Closing the result
+hides presentation without discarding history or implying cancellation. No fake
+waiting interval or duplicate runtime is introduced. Unavailable connection or
+source preserves the prepared request and exposes repair without automatic resending.
+Explain separates the passage's wording from interpretation. Polish preserves
+thesis, terminology, qualifications and citations, and returns proposed source
+without changing Notes. Custom actions request discussion or a
+proposal; they do not independently authorize source mutation. Ordinary runtime
+permissions remain in force. A completed Polish proposal can replace only the
+captured exact range after explicit Adopt, while the same editable document and
+full source revision still match and composition is inactive. Adoption is one
+editor Undo operation; changed source retains the proposal for Copy or Chat and
+requires a fresh request rather than fuzzy relocation or overwriting later edits.
+Review offers Copy and Continue in Chat, with adoption available in Edit/Source.
+
+Settings owns a machine-local ordered selection-action list: at most five
+custom actions, with name, prompt and enabled state, Add, Remove, reorder and
+Restore Defaults. Names are single-line and fit the width of six ordinary CJK
+characters; oversized names and empty prompts retain an invalid draft and cannot
+be saved. The settings editor previews actual labels. The defaults are Clarify
+Concepts, Examine Argument and Check Evidence. Clarification distinguishes usage
+from interpretation; argument examination separates stated and supplied premises
+without forcing nonargumentative prose into a proof; evidence checking separates
+inspected primary material, analysis Notes and inference, leaving unavailable
+sources unverified. These editable prompts are shortcuts, not installed Skills,
+research scores, task types or durable philosophical records. Exact source and
+locator attachment remain application-owned and require no template syntax.
 Opening a retained passage reveals its exact range only while the current source
 revision and range match; an older snapshot keeps its original attribution.
 For an exact Chat passage, Review restores the native text selection only when

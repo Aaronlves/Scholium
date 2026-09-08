@@ -94,10 +94,15 @@ ordinary route and seven unchanged public tools. Ask-mode Note writes wait for
 one native client approval; runtime approval requests are answered separately
 only when they concern a different runtime operation.
 
-`AgentChatSelectionInquiry` supplies three localized, editable inquiry starters;
-known native menu indices cross the existing selection-bound bridge. The Chat
-controller stages their text with the checked passage and retains the prior draft.
-No inquiry mode or research-result store is persisted.
+`AgentChatSelectionInquiry` carries native action instructions. `WindowChatActions`
+captures a checked passage, then revalidates the originating selection before
+Chat admission. Ask Agent retains the existing draft-only handoff; other actions
+create an ordinary Chat conversation without replacing the visible draft.
+`AgentSelectionResult` holds a reference to that conversation, and its native
+popover projects the Chat-owned state and final reply. Continue opens the same
+conversation; closing presentation neither cancels nor replays an admitted turn.
+Polish adoption returns to the same window/document session and uses a typed,
+full-source-checked editor range replacement, with ordinary editor Undo.
 `WindowChatActions` captures checked editor or exactly mapped Review selection,
 or whole-Note source, and
 resolves stable Note references through the current catalog. Whole-Note capture

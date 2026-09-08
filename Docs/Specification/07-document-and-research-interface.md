@@ -20,14 +20,23 @@ exact empty body has a distinct quiet state; malformed YAML, whitespace,
 unavailable source, and render failure are not Empty.
 
 Edit keeps text selection unobscured, without a floating formatting toolbar.
-A nonempty body selection offers one compact **Ask Agent** action beside the
-selection in Review, Edit and Source. It uses the existing native floating
-surface, leaves the selected text unobscured, and adds no document padding.
-Activating it stages the passage under §8.7 and moves focus to Chat. Selection
-changes, scrolling, Escape, composition, mode changes and document departure
-dismiss the action. The named View-menu action and its keyboard shortcut remain
-equivalent routes; no automatic transmission or second inline conversation is
-introduced. A source range that cannot be verified remains unavailable.
+A nonempty body selection offers one compact native selection surface beside the
+passage in Review, Edit and Source: Explain, Polish and More Actions. The native
+More Actions menu contains Ask Agent and enabled custom operations. Freeform
+instructions belong to the ordinary Chat composer; this surface has no duplicate
+input field or horizontally expanding action pages. The existing native glass
+container and standard AppKit controls remain the presentation foundation.
+Peer action labels and symbols share the native primary text color; native
+controls retain disabled and menu-selection treatment.
+Native layout and menu presentation own alignment and transitions; no custom
+refraction, control skin or independent animation engine is introduced. The
+surface retains its selection anchor and never adds document padding. A result
+opens in a bounded native popover under §8.7, without dimming content.
+Selection changes, scrolling, Escape, composition, mode changes and document
+departure dismiss the surface. Settings supplies the ordered custom operations
+and visible validation. Ask Agent, its View-menu action and shortcut retain the
+draft-only handoff to Chat under §8.7. A source range that cannot be verified
+remains unavailable.
 
 Formatting and insertion remain available through native Format/Insert menus,
 keyboard shortcuts, and exact Markdown input. These routes preserve the current

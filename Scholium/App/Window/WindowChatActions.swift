@@ -23,42 +23,88 @@ extension WindowModel {
 
   @MainActor @discardableResult
   func addCurrentSelectionToChat(inquiry: AgentChatSelectionInquiry = .ask) async -> Bool {
-    guard let chat = chatController, let note = currentNote,
-      let descriptor = currentDocumentDescriptor,
-      let noteID = note.workspaceSnapshot?.stableIdentity.resolvedID
-    else { return false }
-    let session = documentController.session(for: descriptor)
-    let selectedConversation = chat.selectedID
-    let mode = presentedDocumentMode
+    guard let chat = chatController else { return false }
+    let selected = chat.selectedID
     do {
-      let snapshot: MarkdownSourceSelectionSnapshot
-      if mode == .read {
-        guard !session.hasUnsavedChanges,
-          session.renderedReadFingerprint == note.document.fingerprint.sha256,
-          let selection = session.readSelection,
-          let captured = MarkdownReviewSourceSelection.review(selection, source: note.rawContent)
-        else { throw AgentChatNoteMaterialError.selectionUnavailable }
-        snapshot = captured
-      } else {
-        snapshot = try await session.editorSession.selectedSourceSnapshot()
-      }
-      guard currentDocumentDescriptor?.sessionKey == descriptor.sessionKey,
-        chatController === chat, chat.selectedID == selectedConversation, presentedDocumentMode == mode
-      else { return false }
+      let attachment = try await currentSelectionAttachment()
+      guard chatController === chat, selected == chat.selectedID else { return false }
       if chat.selected == nil || chat.selected?.archivedAt != nil { chat.newConversation() }
       guard let conversationID = chat.selectedID else { return false }
-      return chat.prepareSelectionInquiry([
-        .init(noteID: noteID, vaultID: descriptor.reference.vaultID,
-          relativePath: note.relativePath, text: snapshot.excerpt,
-          fingerprint: DocumentFingerprint(content: snapshot.source),
-          sourceLine: snapshot.line, sourceRange: snapshot.sourceRange,
-          source: mode == .read ? .savedSource : .editorSnapshot,
-          vaultRole: descriptor.reference.vaultRole)], inquiry: inquiry, to: conversationID)
+      return chat.prepareSelectionInquiry([attachment], inquiry: inquiry, to: conversationID)
     } catch {
-      reportOperationIssue(String(localized: "Select an exact passage in Edit or Source if the reading selection cannot be located."),
-        kind: .information)
+      reportOperationIssue(error.localizedDescription, kind: .information)
       return false
     }
+  }
+
+  @MainActor
+  func runSelectionInquiry(_ inquiry: AgentChatSelectionInquiry, validate: AgentSelectionValidation, continueInChat: @escaping () -> Void) async -> AgentSelectionResult? {
+    guard let chat = chatController, let descriptor = currentDocumentDescriptor else { return nil }
+    do {
+      let attachment = try await currentSelectionAttachment()
+      guard chatController === chat, currentDocumentDescriptor?.sessionKey == descriptor.sessionKey,
+            await validate(), !Task.isCancelled else { return nil }
+      if inquiry.question == nil {
+        if chat.attachContext([attachment]) { continueInChat() }
+        return nil
+      }
+      guard let id = chat.beginSelectionInquiry(inquiry, attachment: attachment) else { return nil }
+      let adopt: ((String) async throws -> Void)?
+      if inquiry.resultKind == .replacement, presentedDocumentMode != .read {
+        adopt = { [weak self, weak chat] replacement in
+          guard let self, let chat, self.chatController === chat,
+            self.currentDocumentDescriptor?.sessionKey == descriptor.sessionKey,
+            self.presentedDocumentMode != .read,
+            self.currentNote?.workspaceSnapshot?.capabilities.canEditSource == true,
+            let range = attachment.sourceRange else { throw AgentChatNoteMaterialError.changedSource }
+          let session = self.documentController.session(for: descriptor)
+          guard session.conflict == nil else { throw AgentChatNoteMaterialError.changedSource }
+          guard !session.editorSession.isComposing else { throw AgentChatNoteMaterialError.composing }
+          let snapshot = try await session.editorSession.currentTextSnapshot()
+          guard self.currentDocumentDescriptor?.sessionKey == descriptor.sessionKey,
+            self.presentedDocumentMode != .read, session.conflict == nil,
+            DocumentFingerprint(content: snapshot.text) == attachment.fingerprint,
+            let webView = session.editorSession.webView else { throw AgentChatNoteMaterialError.changedSource }
+          _ = try await session.editorSession.send(.replacePassage(expectedText: snapshot.text,
+            fromUTF16: range.utf16LowerBound, toUTF16: range.utf16UpperBound, replacement: replacement), in: webView)
+        }
+      } else { adopt = nil }
+      return AgentSelectionResult(chat: chat, conversationID: id, title: inquiry.title,
+        original: attachment.text, adopt: adopt, openReference: { [weak self, weak chat] url in
+          guard let self, let chat, self.chatController === chat else { return false }
+          return self.openChatReference(url)
+        }, continueInChat: { [weak self, weak chat] in
+          guard let self, let chat, self.chatController === chat else { return }
+          chat.select(id); chat.presentContext(in: id); continueInChat()
+        })
+    } catch {
+      reportOperationIssue(error.localizedDescription, kind: .information)
+      return nil
+    }
+  }
+
+  @MainActor
+  private func currentSelectionAttachment() async throws -> AgentChatAttachment {
+    guard let note = currentNote, let descriptor = currentDocumentDescriptor,
+      let noteID = note.workspaceSnapshot?.stableIdentity.resolvedID else { throw AgentChatNoteMaterialError.selectionUnavailable }
+    let session = documentController.session(for: descriptor)
+    let mode = presentedDocumentMode
+    let snapshot: MarkdownSourceSelectionSnapshot
+    if mode == .read {
+      guard !session.hasUnsavedChanges,
+        session.renderedReadFingerprint == note.document.fingerprint.sha256,
+        let selection = session.readSelection,
+        let captured = MarkdownReviewSourceSelection.review(selection, source: note.rawContent)
+      else { throw AgentChatNoteMaterialError.selectionUnavailable }
+      snapshot = captured
+    } else { snapshot = try await session.editorSession.selectedSourceSnapshot() }
+    guard currentDocumentDescriptor?.sessionKey == descriptor.sessionKey, presentedDocumentMode == mode else {
+      throw AgentChatNoteMaterialError.selectionUnavailable
+    }
+    return .init(noteID: noteID, vaultID: descriptor.reference.vaultID,
+      relativePath: note.relativePath, text: snapshot.excerpt, fingerprint: DocumentFingerprint(content: snapshot.source),
+      sourceLine: snapshot.line, sourceRange: snapshot.sourceRange,
+      source: mode == .read ? .savedSource : .editorSnapshot, vaultRole: descriptor.reference.vaultRole)
   }
 
   @MainActor

@@ -9,6 +9,30 @@ import WebKit
 @Suite("Markdown editor WKWebView integration", .serialized)
 @MainActor
 struct MarkdownEditorWebViewIntegrationTests {
+    @Test("Adoption crosses the real typed bridge and rejects the superseded source")
+    func adoptExactPassage() async throws {
+        let source = "\u{FEFF}---\r\nunknown: 'keep'\r\n---\n原文 😀。\r\n尾段\n"
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        let range = (source as NSString).range(of: "原文 😀。")
+        let web = try #require(harness.session.webView)
+        let operation = MarkdownEditorOperation.replacePassage(expectedText: source,
+            fromUTF16: range.location, toUTF16: NSMaxRange(range), replacement: "新的原文 😀。")
+        let encoded = try JSONEncoder().encode(operation)
+        #expect(try JSONDecoder().decode(MarkdownEditorOperation.self, from: encoded) == operation)
+        let result = try await harness.session.send(operation, in: web)
+        #expect(result.sourceChanged && result.undoLabel == "Adopt Suggestion")
+        let expected = source.replacingOccurrences(of: "原文 😀。", with: "新的原文 😀。")
+        #expect(try await harness.session.currentText() == expected)
+        do {
+            _ = try await harness.session.send(operation, in: web)
+            Issue.record("An old source revision must not replace later writing")
+        } catch { }
+        #expect(try await harness.session.currentText() == expected)
+        await harness.closeAndDrain()
+    }
+
     @Test("Chat source return aligns native DOM selection in Edit and Source")
     func sourceReturnNativeSelection() async throws {
         let source = "\u{FEFF}---\r\nsummary: Synthetic fixture\r\n---\r\n\r\n# 正文标题\r\n\r\n文件名、正文标题 😀与来源标题。\r\n"

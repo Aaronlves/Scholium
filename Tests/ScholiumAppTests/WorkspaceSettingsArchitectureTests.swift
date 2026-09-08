@@ -36,6 +36,7 @@ struct WorkspaceSettingsArchitectureTests {
                 "metadata",
                 "appearance",
                 "hotkeys",
+                "selectionActions",
                 "attention",
                 "research-guidance",
             ]

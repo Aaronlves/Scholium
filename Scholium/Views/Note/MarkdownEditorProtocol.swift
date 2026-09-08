@@ -1,7 +1,7 @@
 import Foundation
 import ScholiumContracts
 
-let markdownEditorProtocolVersion = 28
+let markdownEditorProtocolVersion = 29
 let markdownEditorMaximumInboundBytes = 2_500_000
 let markdownEditorMaximumSelectionRangeCount = 128
 
@@ -232,6 +232,7 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
     case clearDocumentFind
     case restoreRecovery(MarkdownEditorRecoverySnapshot)
     case acknowledgeCommittedSnapshot(expected: String, committed: String, fingerprint: String)
+    case replacePassage(expectedText: String, fromUTF16: Int, toUTF16: Int, replacement: String)
     case command(MarkdownEditorCommand, argument: String?)
     case markClean, focus, focusTitle, blur
 
@@ -240,7 +241,7 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
     /// queue behind one another or behind an obsolete content generation.
     var serializesSourceMutation: Bool {
         switch self {
-        case .initialize, .restoreRecovery, .acknowledgeCommittedSnapshot, .command:
+        case .initialize, .restoreRecovery, .acknowledgeCommittedSnapshot, .replacePassage, .command:
             true
         case .documentFind(let query):
             query.action == .replaceCurrent || query.action == .replaceAll
@@ -251,12 +252,12 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case type, text, mode, dialect, initialSelection, value, line, focusesEditor, fromUTF16, toUTF16, fraction, anchor, snapshot, x, y
-        case expectedText, committedText, committedFingerprint, command, argument
+        case replacement, expectedText, committedText, committedFingerprint, command, argument
     }
     private enum Kind: String, Codable {
         case initialize, positionDocumentTitle, setMode, setDocumentTitle, setPresentationCSS, setUserCSS, setLinkPreviews, showPreview, measureVisibleProjection, showPreviewAt, announceStatus
         case goToLine, revealSourceRange, setScrollFraction, setScrollAnchor, queryText, querySelection, queryContext, queryScrollAnchor, queryPerformance
-        case captureRecovery, restoreRecovery, acknowledgeCommittedSnapshot, command, documentFind, clearDocumentFind, markClean, focus, focusTitle, blur
+        case captureRecovery, restoreRecovery, acknowledgeCommittedSnapshot, replacePassage, command, documentFind, clearDocumentFind, markClean, focus, focusTitle, blur
     }
 
     init(from decoder: any Decoder) throws {
@@ -310,6 +311,11 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
                 committed: container.decode(String.self, forKey: .committedText),
                 fingerprint: container.decode(String.self, forKey: .committedFingerprint)
             )
+        case .replacePassage:
+            self = try .replacePassage(expectedText: container.decode(String.self, forKey: .expectedText),
+                fromUTF16: container.decode(Int.self, forKey: .fromUTF16),
+                toUTF16: container.decode(Int.self, forKey: .toUTF16),
+                replacement: container.decode(String.self, forKey: .replacement))
         case .command:
             self = try .command(
                 container.decode(MarkdownEditorCommand.self, forKey: .command),
@@ -373,6 +379,12 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
             try container.encode(expected, forKey: .expectedText)
             try container.encode(committed, forKey: .committedText)
             try container.encode(fingerprint, forKey: .committedFingerprint)
+        case let .replacePassage(expectedText, fromUTF16, toUTF16, replacement):
+            try container.encode(Kind.replacePassage, forKey: .type)
+            try container.encode(expectedText, forKey: .expectedText)
+            try container.encode(fromUTF16, forKey: .fromUTF16)
+            try container.encode(toUTF16, forKey: .toUTF16)
+            try container.encode(replacement, forKey: .replacement)
         case let .command(command, argument):
             try container.encode(Kind.command, forKey: .type)
             try container.encode(command, forKey: .command)

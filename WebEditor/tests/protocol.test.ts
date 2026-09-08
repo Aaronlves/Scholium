@@ -31,7 +31,7 @@ const dialect = {
 
 describe("editor protocol", () => {
   it("uses the coalesced interaction bridge protocol", () => {
-    expect(EDITOR_PROTOCOL_VERSION).toBe(28);
+    expect(EDITOR_PROTOCOL_VERSION).toBe(29);
   });
   it("accepts only a boolean YAML visibility choice", () => {
   });
@@ -228,3 +228,11 @@ describe("editor protocol", () => {
     expect(generationCanExecuteEditorRequest("queryText", 6, 5)).toBe(false);
   });
 });
+
+ it("admits only bounded exact-passage replacements with the current generation", () => {
+   const operation = {type: "replacePassage", expectedText: "Original", fromUTF16: 0, toUTF16: 8, replacement: "Proposal"};
+   expect(isEditorRequest({...request, operation})).toBe(true);
+   expect(isEditorRequest({...request, operation: {...operation, replacement: ""}})).toBe(false);
+   expect(isEditorRequest({...request, operation: {...operation, fromUTF16: -1}})).toBe(false);
+   expect(generationCanExecuteEditorRequest("replacePassage", 3, 4)).toBe(false);
+ });

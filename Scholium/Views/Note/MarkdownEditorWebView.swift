@@ -32,7 +32,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
     let onScrollFractionChange: (Double) -> Void
     let onScrollAnchorChange: (EditorScrollAnchor) -> Void
 
-    var onAskAgent: ((AgentChatSelectionInquiry) -> Void)? = nil
+    var onAskAgent: AgentSelectionInquiryHandler? = nil
 
     static func requiresMathRuntime(
         source: String,
@@ -359,7 +359,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             }
         }
 
-        var onAskAgent: ((AgentChatSelectionInquiry) -> Void)?
+        var onAskAgent: AgentSelectionInquiryHandler?
 
         func userContentController(
             _ userContentController: WKUserContentController,
@@ -372,26 +372,20 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             case .floatingSurface(let request):
                 guard validEnvelope(request.envelope), let webView = message.webView,
                       request.surface.kind != .selection || onAskAgent != nil else { return }
-                session.floatingSurfaces.present(request.surface, in: webView) { [weak self, weak webView] id, action, index in
-                    Task { @MainActor in
+                session.floatingSurfaces.present(request.surface, in: webView, inquire: onAskAgent) { [weak self, weak webView] id, action, index in
                         // Autosave rebases the disk fingerprint, not the live buffer
                         // revision. Validate that revision at event dispatch instead.
                         guard let self, let webView,
                               self.session.webView === webView,
                               request.envelope.sessionID == self.session.sessionID.uuidString,
                               request.envelope.documentID == self.documentID,
-                              request.envelope.documentVersion == self.session.generation else { return }
+                              request.envelope.documentVersion == self.session.generation else { return false }
                         let accepted = try? await webView.callAsyncJavaScript(
                             "return window.scholiumNativeFloatingEvent?.(id, action, index)",
                             arguments: ["id": id, "action": action, "index": index],
                             in: nil, contentWorld: .page
                         )
-                        if accepted as? Bool == true, request.surface.kind == .selection, action == "choose",
-                           let inquiry = AgentChatSelectionInquiry(rawValue: index),
-                           self.session.webView === webView, request.envelope.documentVersion == self.session.generation {
-                            self.onAskAgent?(inquiry)
-                        }
-                    }
+                        return accepted as? Bool == true
                 }
             case .ready:
                 signalReady()

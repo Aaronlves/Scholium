@@ -8,6 +8,7 @@ private enum ScholiumSettingsDestination: String, CaseIterable, Identifiable {
     case triptychs
     case appearance
     case hotkeys
+    case selectionActions
     case metadata
     case attention
     case agentIntegration
@@ -19,6 +20,7 @@ private enum ScholiumSettingsDestination: String, CaseIterable, Identifiable {
         .triptychs,
         .appearance,
         .hotkeys,
+        .selectionActions,
     ]
 
     static let triptych: [Self] = [
@@ -35,6 +37,7 @@ private enum ScholiumSettingsDestination: String, CaseIterable, Identifiable {
         switch self {
         case .triptychs: ScholiumL10n.Settings.triptychs
         case .appearance: ScholiumL10n.Settings.appearance
+        case .selectionActions: "Selection Actions"
         case .hotkeys: ScholiumL10n.Settings.hotkeys
         case .metadata: ScholiumL10n.Settings.metadata
         case .attention: ScholiumL10n.Settings.attention
@@ -57,6 +60,7 @@ private enum ScholiumSettingsDestination: String, CaseIterable, Identifiable {
         switch self {
         case .triptychs: "rectangle.3.group"
         case .appearance: "paintbrush"
+        case .selectionActions: "text.cursor"
         case .hotkeys: "keyboard"
         case .metadata: "list.bullet.rectangle"
         case .attention: "bell"
@@ -71,6 +75,7 @@ private enum ScholiumSettingsDestination: String, CaseIterable, Identifiable {
         case .triptychs: .triptychs
         case .metadata: .metadata
         case .appearance: .appearance
+        case .selectionActions: .selectionActions
         case .hotkeys: .hotkeys
         case .attention: .attention
         case .agentIntegration,
@@ -83,7 +88,7 @@ private enum ScholiumSettingsDestination: String, CaseIterable, Identifiable {
         switch self {
         case .agentIntegration: .agentIntegration
         case .externalToolsCitations: .externalToolsCitations
-        case .triptychs, .metadata, .appearance, .hotkeys,
+        case .triptychs, .metadata, .appearance, .hotkeys, .selectionActions,
              .attention: nil
         }
     }
@@ -94,6 +99,8 @@ private enum ScholiumSettingsDestination: String, CaseIterable, Identifiable {
             ["Triptychs", "folders", "locations", "registration", "workspace"]
         case .appearance:
             ["Appearance", "document", "typeface", "font", "line width", "headings", "callouts", "CSS"]
+        case .selectionActions:
+            ["Selection Actions", "选段操作", "prompt", "instruction", "Polish", "Explain"]
         case .hotkeys:
             ["Hotkeys", "keyboard", "shortcuts", "commands", "menu"]
                 + ScholiumHotkeyCommand.allCases.flatMap {
@@ -124,6 +131,7 @@ private enum ScholiumSettingsDestination: String, CaseIterable, Identifiable {
         case .triptychs: .triptychs
         case .metadata: .metadata
         case .appearance: .appearance
+        case .selectionActions: .selectionActions
         case .hotkeys: .hotkeys
         case .attention: .attention
         case .researchGuidance:
@@ -246,6 +254,8 @@ struct ScholiumSettingsView: View {
                 )
                 .padding(ScholiumGrid.Spacing.regionContentInset)
             }
+        case .selectionActions:
+            SelectionActionsSettingsView()
         case .hotkeys:
             HotkeySettingsView(searchQuery: searchQuery)
         case .attention:
@@ -326,6 +336,7 @@ private struct SettingsToolbarAttachment: NSViewRepresentable {
             switch destination {
             case .triptychs: size = NSSize(width: 760, height: 620)
             case .appearance: size = NSSize(width: 720, height: 550)
+            case .selectionActions: size = NSSize(width: 760, height: 620)
             case .hotkeys: size = NSSize(width: 760, height: 550)
             case .metadata: size = NSSize(width: 800, height: 560)
             case .attention: size = NSSize(width: 760, height: 330)

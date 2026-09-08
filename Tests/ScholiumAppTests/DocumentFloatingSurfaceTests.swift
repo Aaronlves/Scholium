@@ -29,35 +29,20 @@ struct DocumentFloatingSurfaceTests {
         #expect(DocumentFloatingSurface.decode(extra) == nil)
     }
 
-    @Test("Selection research menu stays compact and dispatches only a known inquiry")
-    func selectionResearchMenu() throws {
-        let webView = WKWebView()
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 300, height: 300),
-            styleMask: [.titled], backing: .buffered, defer: false)
-        window.isReleasedWhenClosed = false
-        let viewport = DocumentWebViewContainer(webView: webView)
-        window.contentView = viewport
-        window.layoutIfNeeded()
-        let controller = DocumentFloatingSurfaceController()
-        defer { controller.dismiss(); webView.stopLoading(); window.close() }
-        var picked: [Int] = []
-        controller.present(.init(id: 1, kind: .selection, left: 20, top: 40, bottom: 60,
-            html: "", css: "", items: [], selected: -1), in: webView) { _, action, index in
-                if action == "choose" { picked.append(index) }
-            }
-        let glass = try #require(viewport.subviews.compactMap { $0 as? NSGlassEffectView }.first)
-        let stack = try #require(glass.contentView as? NSStackView)
-        let menu = try #require(stack.arrangedSubviews.compactMap { $0 as? NSPopUpButton }.first?.menu)
-        #expect(glass.frame.width <= 276)
-        #expect(menu.items.dropFirst().map(\.tag) == [1, 2, 3])
-        for item in menu.items.dropFirst() {
-            #expect(NSApp.sendAction(try #require(item.action), to: item.target, from: item))
-        }
-        #expect(picked == [1, 2, 3])
-        controller.dismiss()
-        let oldItem = try #require(menu.items.last)
-        _ = NSApp.sendAction(try #require(oldItem.action), to: oldItem.target, from: oldItem)
-        #expect(picked == [1, 2, 3])
+    @Test("Selection actions use native layout and a menu without a duplicate composer")
+    func selectionActions() throws {
+        let bar = SelectionActionBar(actions: SelectionActionPreferences.defaultActions)
+        let menu = try #require(bar.arrangedSubviews.compactMap { $0 as? NSPopUpButton }.first?.menu)
+        #expect(!bar.arrangedSubviews.contains { $0 is NSTextField })
+        #expect(bar.preferredSize.width <= 340)
+        var chosen: AgentChatSelectionInquiry?
+        bar.onInquiry = { chosen = $0 }
+        let custom = try #require(menu.items.last)
+        #expect(NSApp.sendAction(try #require(custom.action), to: custom.target, from: custom))
+        #expect(chosen?.question == AgentChatSelectionInquiry.checkEvidence.question)
+        let ask = menu.items[1]
+        #expect(NSApp.sendAction(try #require(ask.action), to: ask.target, from: ask))
+        #expect(chosen == .ask)
     }
 
     @Test("Completion fits candidate content, remains stable on selection, and respects the viewport")
@@ -78,7 +63,7 @@ struct DocumentFloatingSurfaceTests {
             id += 1
             controller.present(DocumentFloatingSurface(id: id, kind: .suggestions,
                 left: 20, top: 40, bottom: 60, html: "", css: "", items: items, selected: selected),
-                in: webView) { _, _, _ in }
+                in: webView) { _, _, _ in true }
             let glass = try #require(viewport.subviews.compactMap { $0 as? NSGlassEffectView }.first)
             #expect(glass.frame.minX >= 12 && glass.frame.maxX <= webView.bounds.width - 12)
             return glass.frame.width
@@ -163,7 +148,7 @@ struct DocumentFloatingSurfaceTests {
         let originalBounds = webView.bounds
         let originalFrame = webView.frame
         let surface = try #require(DocumentFloatingSurface.decode(payload(id: 2)))
-        controller.present(surface, in: webView) { _, _, _ in }
+        controller.present(surface, in: webView) { _, _, _ in true }
         let glass = try #require(viewport.subviews.compactMap { $0 as? NSGlassEffectView }.first)
         #expect(glass.style == .regular)
         #expect(glass.frame.minX >= 12 && glass.frame.maxX <= webView.bounds.width - 12)
@@ -181,10 +166,10 @@ struct DocumentFloatingSurfaceTests {
         #expect(preview.configuration.defaultWebpagePreferences.allowsContentJavaScript == false)
         #expect(try await preview.evaluateJavaScript("getComputedStyle(document.body).backgroundColor") as? String == "rgba(0, 0, 0, 0)")
         controller.present(try #require(DocumentFloatingSurface.decode(payload(id: 1, kind: "hidden"))),
-                           in: webView) { _, _, _ in }
+                           in: webView) { _, _, _ in true }
         #expect(controller.previewWebView === preview)
         controller.present(try #require(DocumentFloatingSurface.decode(payload(id: 2, kind: "hidden"))),
-                           in: webView) { _, _, _ in }
+                           in: webView) { _, _, _ in true }
         #expect(controller.previewWebView == nil)
         #expect(viewport.subviews.compactMap { $0 as? NSGlassEffectView }.isEmpty)
         #expect(webView.frame == originalFrame && webView.bounds == originalBounds)

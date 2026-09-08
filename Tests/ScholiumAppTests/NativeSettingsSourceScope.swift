@@ -7,6 +7,7 @@ enum NativeSettingsSourceScope {
         "Scholium/UI/Foundation/ScholiumSettingsPresentation.swift",
         "Scholium/Views/WorkspaceSettingsView.swift",
         "Scholium/Views/HotkeySettingsView.swift",
+        "Scholium/Views/SelectionActionsSettingsView.swift",
         "Scholium/Views/AgentIntegrationSettingsView.swift",
         "Scholium/Views/AgentChatConnectionSettingsView.swift",
         "Scholium/Views/AgentChatCapabilitiesSettingsView.swift",

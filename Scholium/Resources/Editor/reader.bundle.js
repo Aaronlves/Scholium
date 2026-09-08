@@ -38,7 +38,6 @@
           dismiss,
           choose: () => {
             const valid = current()?.key === target.key;
-            dismiss();
             return valid;
           }
         });
@@ -165,7 +164,7 @@
         if (action === "enter") callbacks.enter?.();
         else if (action === "leave") callbacks.leave?.();
         else if (action === "dismiss") callbacks.dismiss();
-        else if (action === "choose" && current.surface.kind === "selection" && Number.isInteger(index) && index >= 0 && index <= 3) {
+        else if (action === "choose" && current.surface.kind === "selection" && Number.isInteger(index) && index === 0) {
           return callbacks.choose?.(index) !== false;
         } else if ((action === "select" || action === "choose") && Number.isInteger(index) && current.surface.kind === "suggestions" && index >= 0 && index < current.surface.items.length) {
           if (action === "select") callbacks.select?.(index);
@@ -1175,7 +1174,7 @@
         if (rect.bottom < 0 || rect.top > window.innerHeight) return null;
         return {
           key: `${fingerprint}:${text}:${before}:${rect.top}:${rect.bottom}`,
-          anchor: { left: rect.left, top: rect.top, bottom: rect.bottom }
+          anchor: { left: rect.left + rect.width / 2, top: rect.top, bottom: rect.bottom }
         };
       });
       window.addEventListener("scroll", () => selectionActions.dismiss(), { passive: true });

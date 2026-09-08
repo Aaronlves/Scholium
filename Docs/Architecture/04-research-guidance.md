@@ -57,3 +57,9 @@ parts of one revision-checked settings draft. It neither writes Note Metadata
 nor source. The selected Triptych's Chat controller supplies connection settings
 through the [Agent client](02-agent-collaboration.md#native-chat-client), not a
 second runtime owned by the preferences window.
+
+`SelectionActionPreferences` owns the ordered, enabled action definitions in
+machine-local UserDefaults. The Settings pane retains editable drafts, validates
+count, native label width and prompt size, and commits through that single owner.
+The native selection menu reads those definitions; it owns no settings copy or
+installed-Skill inventory.

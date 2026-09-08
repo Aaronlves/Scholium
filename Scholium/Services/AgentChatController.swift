@@ -597,6 +597,34 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
     persist()
   }
 
+  /// A selection action creates an ordinary conversation without moving the visible Chat or consuming its draft.
+  func beginSelectionInquiry(_ inquiry: AgentChatSelectionInquiry, attachment: AgentChatAttachment) -> UUID? {
+    guard isLoaded, let question = inquiry.question, !question.isEmpty else { return nil }
+    var conversation = AgentChatConversation(triptychID: triptychID)
+    conversation.preferences = selected?.preferences ?? .init()
+    conversation.title = inquiry.title
+    conversation.draft = question + "\n\n" + ScholiumL10n.string("Return an explanation or proposal only. Do not modify files or Notes.")
+    conversation.attachments = [attachment]
+    conversations.insert(conversation, at: 0)
+    executions[conversation.id] = .init()
+    persist()
+    let message = draftMessage(conversation)
+    if canSend(message: message, in: conversation) {
+      send(message, in: conversation, consumesDraft: true)
+    }
+    return conversation.id
+  }
+
+  func selectionResultError(in id: UUID) -> String? {
+    if let error = executions[id]?.error ?? connectionError { return error }
+    if connectionState == .disconnected { return ScholiumL10n.string("Connect in Chat to send this instruction.") }
+    if connectionState == .ready, account == nil { return ScholiumL10n.string("Sign in to continue.") }
+    if let conversation = conversation(id), !selectionIsAvailable(conversation.preferences) {
+      return ScholiumL10n.string("Choose an available model and reasoning level.")
+    }
+    return nil
+  }
+
   func newConversation() {
     guard isLoaded else { return }
     let conversation = AgentChatConversation(triptychID: triptychID)

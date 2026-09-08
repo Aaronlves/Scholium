@@ -1,5 +1,6 @@
 import AppKit
 import WebKit
+import SwiftUI
 
 /// A bounded read-only projection, never an editor/source operation.
 struct DocumentFloatingSurface: Codable, Equatable, Sendable {
@@ -57,13 +58,17 @@ final class DocumentFloatingSurfaceController: NSObject, WKNavigationDelegate {
     private var suggestions: NativeFloatingChoiceList?
     private var preferredWidth: CGFloat = 368
     var previewWebView: WKWebView? { preview }
-    private var event: ((Int, String, Int) -> Void)?
+    private var event: ((Int, String, Int) async -> Bool)?
+    private var selectionBar: SelectionActionBar?
+    private var resultPopover: NSPopover?
+    private var inquiryTask: Task<Void, Never>?
     private var observers: [NSObjectProtocol] = []
 
     func present(
         _ value: DocumentFloatingSurface,
         in webView: WKWebView,
-        event: @escaping (Int, String, Int) -> Void
+        inquire: AgentSelectionInquiryHandler? = nil,
+        event: @escaping (Int, String, Int) async -> Bool
     ) {
         if value.kind == .hidden {
             if surface?.id == value.id { dismiss() }
@@ -94,9 +99,10 @@ final class DocumentFloatingSurfaceController: NSObject, WKNavigationDelegate {
                 forName: NSWindow.didUpdateNotification, object: webView.window, queue: .main
             ) { [weak self] _ in
                 MainActor.assumeIsolated {
-                    guard let self, let owner = self.owner,
-                          let responder = owner.window?.firstResponder as? NSView,
-                          responder !== owner, !responder.isDescendant(of: owner),
+                    guard let self, self.resultPopover == nil, let owner = self.owner,
+                          let firstResponder = owner.window?.firstResponder as? NSView else { return }
+                    let responder = (firstResponder as? NSTextView)?.delegate as? NSView ?? firstResponder
+                    guard responder !== owner, !responder.isDescendant(of: owner),
                           self.glass.map({ !responder.isDescendant(of: $0) }) == true else { return }
                     self.send("dismiss")
                     self.dismiss()
@@ -168,35 +174,41 @@ final class DocumentFloatingSurfaceController: NSObject, WKNavigationDelegate {
             preview?.stopLoading()
             preview = nil
             suggestions = nil
-            let button = NSButton(title: ScholiumL10n.string("Ask Agent"), target: self, action: #selector(askAgent))
-            button.bezelStyle = .inline
-            button.image = NSImage(systemSymbolName: "text.bubble", accessibilityDescription: nil)
-            button.imagePosition = .imageLeading
-            button.setAccessibilityLabel(ScholiumL10n.string("Ask Agent"))
-            button.setAccessibilityIdentifier("scholium.document.askAgent")
-            button.sizeToFit()
-            let research = NSPopUpButton(frame: .zero, pullsDown: true)
-            research.bezelStyle = .inline
-            research.addItem(withTitle: ScholiumL10n.string("Research Passage"))
-            for inquiry in AgentChatSelectionInquiry.allCases where inquiry != .ask {
-                let item = NSMenuItem(title: inquiry.title, action: #selector(researchPassage(_:)), keyEquivalent: "")
-                item.target = self; item.tag = inquiry.rawValue
-                research.menu?.addItem(item)
+            let bar = SelectionActionBar(actions: SelectionActionPreferences.shared.actions)
+            selectionBar = bar
+            bar.onDismiss = { [weak self] in self?.send("dismiss"); self?.dismiss() }
+            bar.onInquiry = { [weak self] inquiry in
+                guard let self, self.inquiryTask == nil, self.resultPopover == nil,
+                      let surface = self.surface, let event = self.event else { return }
+                self.inquiryTask = Task { @MainActor [weak self] in
+                    defer { self?.inquiryTask = nil }
+                    guard await event(surface.id, "choose", 0), !Task.isCancelled,
+                          let self, self.surface?.id == surface.id else { return }
+                    guard let result = await inquire?(inquiry, { await event(surface.id, "choose", 0) }), !Task.isCancelled,
+                          self.surface?.id == surface.id else { return }
+                    let popover = NSPopover()
+                    popover.behavior = .transient
+                    popover.contentViewController = NSHostingController(rootView: AgentSelectionResultView(result: result, close: { [weak self] in self?.resultPopover?.close() }))
+                    self.resultPopover = popover
+                    popover.delegate = self
+                    popover.show(relativeTo: bar.bounds, of: bar, preferredEdge: .maxY)
+                }
             }
-            research.setAccessibilityLabel(ScholiumL10n.string("Research Passage"))
-            research.setAccessibilityIdentifier("scholium.document.researchPassage")
-            let actions = NSStackView(views: [button, research])
-            actions.orientation = .horizontal; actions.spacing = 8
-            preferredWidth = actions.fittingSize.width + 24
-            glass.contentView = actions
+            glass.contentView = bar
+            glass.cornerRadius = 20
+            if #available(macOS 27.0, *) { glass.effectIsInteractive = true }
             glass.setAccessibilityElement(false)
-            glass.setAccessibilityChildren([button, research])
-            layout(height: max(32, button.fittingSize.height + 12))
+            glass.setAccessibilityChildren([bar])
+            preferredWidth = bar.preferredSize.width
+            layout(height: bar.preferredSize.height)
         case .hidden: break
         }
     }
 
     func dismiss() {
+        inquiryTask?.cancel(); inquiryTask = nil
+        resultPopover?.close(); resultPopover = nil
+        selectionBar = nil
         preview?.stopLoading()
         preview?.navigationDelegate = nil
         if let preview, let owner,
@@ -214,24 +226,18 @@ final class DocumentFloatingSurfaceController: NSObject, WKNavigationDelegate {
         observers.removeAll()
     }
 
-    @objc private func researchPassage(_ sender: NSMenuItem) {
-        guard AgentChatSelectionInquiry(rawValue: sender.tag) != nil else { return }
-        send("choose", index: sender.tag)
-    }
-
-    @objc private func askAgent() { send("choose", index: 0) }
-
     private func send(_ action: String, index: Int = -1) {
-        guard let surface else { return }
-        event?(surface.id, action, index)
+        guard let surface, let event else { return }
+        Task { _ = await event(surface.id, action, index) }
     }
 
     private func layout(height: CGFloat) {
         guard let owner, let surface, let glass else { return }
         let bounds = owner.bounds
-        let width = min(preferredWidth, 368, bounds.width - 24)
+        let width = min(preferredWidth, surface.kind == .selection ? bounds.width - 24 : 368, bounds.width - 24)
         let height = min(height, 352, bounds.height - 24)
-        let x = min(max(12, surface.left), bounds.width - width - 12)
+        let anchorX = surface.kind == .selection ? surface.left - width / 2 : surface.left
+        let x = min(max(12, anchorX), bounds.width - width - 12)
         let below = surface.bottom + 8
         let top = below + height <= bounds.height - 12
             ? below : max(12, surface.top - height - 8)
@@ -290,4 +296,9 @@ private final class FloatingPreviewWebView: WKWebView {
     override func keyDown(with event: NSEvent) {
         if event.keyCode == 53 { onDismiss?() } else { super.keyDown(with: event) }
     }
+}
+
+
+extension DocumentFloatingSurfaceController: NSPopoverDelegate {
+    func popoverDidClose(_ notification: Notification) { resultPopover = nil }
 }

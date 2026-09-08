@@ -1,51 +1,5 @@
 "use strict";
 (() => {
-  // selection-actions.ts
-  function createSelectionActions(floating, current) {
-    let id2 = null;
-    let key = null;
-    let dismissed = null;
-    function hide() {
-      if (id2 !== null) floating.hide(id2);
-      id2 = null;
-      key = null;
-    }
-    function dismiss() {
-      const visible = id2 !== null;
-      if (key !== null) dismissed = key;
-      hide();
-      return visible;
-    }
-    return {
-      dismiss,
-      update(target = current()) {
-        if (!target) {
-          hide();
-          dismissed = null;
-          return;
-        }
-        if (target.key === key || target.key === dismissed) return;
-        hide();
-        key = target.key;
-        id2 = floating.show({
-          kind: "selection",
-          ...target.anchor,
-          html: "",
-          css: "",
-          items: [],
-          selected: -1
-        }, {
-          dismiss,
-          choose: () => {
-            const valid = current()?.key === target.key;
-            dismiss();
-            return valid;
-          }
-        });
-      }
-    };
-  }
-
   // node_modules/@marijn/find-cluster-break/src/index.js
   var rangeFrom = [];
   var rangeTo = [];
@@ -3492,6 +3446,185 @@
       i2 = findClusterBreak2(string2, i2);
     }
     return strict === true ? -1 : string2.length;
+  }
+
+  // state.ts
+  function normalizedDocumentText(text) {
+    return text.replace(/\r\n/g, "\n");
+  }
+  function replacementChange(currentText, requestedText) {
+    const targetText = normalizedDocumentText(requestedText);
+    let prefix = 0;
+    const sharedLength = Math.min(currentText.length, targetText.length);
+    while (prefix < sharedLength && currentText.charCodeAt(prefix) === targetText.charCodeAt(prefix)) prefix += 1;
+    let currentSuffix = currentText.length;
+    let targetSuffix = targetText.length;
+    while (currentSuffix > prefix && targetSuffix > prefix && currentText.charCodeAt(currentSuffix - 1) === targetText.charCodeAt(targetSuffix - 1)) {
+      currentSuffix -= 1;
+      targetSuffix -= 1;
+    }
+    return { from: prefix, to: currentSuffix, insert: targetText.slice(prefix, targetSuffix) };
+  }
+  function rope(source) {
+    return Text.of(source.split("\n"));
+  }
+  function crlfCount(source) {
+    let count2 = 0;
+    for (let index = source.indexOf("\r\n"); index >= 0; index = source.indexOf("\r\n", index + 2)) count2 += 1;
+    return count2;
+  }
+  function exactOffset(exact, normalized2, requestedOffset) {
+    if (!Number.isSafeInteger(requestedOffset) || requestedOffset < 0 || requestedOffset > normalized2.length) return null;
+    const normalizedLine = normalized2.lineAt(requestedOffset);
+    const exactLine = exact.line(normalizedLine.number);
+    const column = requestedOffset - normalizedLine.from;
+    return exactLine.from + column;
+  }
+  var ExactSourceMirror = class {
+    exact;
+    normalized;
+    crlfLineBreakCount;
+    constructor(source = "") {
+      this.exact = rope(source);
+      this.normalized = rope(normalizedDocumentText(source));
+      this.crlfLineBreakCount = crlfCount(source);
+    }
+    /**
+     * Materializing the complete String is intentionally an explicit snapshot
+     * boundary. Ordinary input only edits the persistent Text ropes below.
+     */
+    get text() {
+      return this.exact.toString();
+    }
+    replace(source) {
+      this.exact = rope(source);
+      this.normalized = rope(normalizedDocumentText(source));
+      this.crlfLineBreakCount = crlfCount(source);
+    }
+    apply(changes) {
+      if (changes.length === 0) return true;
+      const ordered = [...changes].map((change) => ({ ...change, insert: normalizedDocumentText(change.insert) })).sort((left, right) => left.from - right.from || left.to - right.to);
+      let previousTo = -1;
+      for (const change of ordered) {
+        if (change.from < previousTo || change.to < change.from) return false;
+        previousTo = change.to;
+      }
+      const usesCRLF = this.crlfLineBreakCount > 0;
+      const exactChanges = ordered.map((change) => {
+        const from = exactOffset(this.exact, this.normalized, change.from);
+        const to = exactOffset(this.exact, this.normalized, change.to);
+        if (from === null || to === null || to < from) return null;
+        if (change.removed !== void 0 && this.normalized.sliceString(change.from, change.to) !== change.removed) return null;
+        const exactInsert = usesCRLF ? change.insert.replaceAll("\n", "\r\n") : change.insert;
+        return {
+          ...change,
+          exactFrom: from,
+          exactTo: to,
+          exactInsert,
+          removedCRLFCount: crlfCount(this.exact.sliceString(from, to)),
+          insertedCRLFCount: crlfCount(exactInsert)
+        };
+      });
+      if (exactChanges.some((change) => change === null)) return false;
+      for (const change of exactChanges.filter((candidate) => candidate !== null).sort((left, right) => right.from - left.from)) {
+        this.exact = this.exact.replace(
+          change.exactFrom,
+          change.exactTo,
+          rope(change.exactInsert)
+        );
+        this.normalized = this.normalized.replace(
+          change.from,
+          change.to,
+          rope(change.insert)
+        );
+        this.crlfLineBreakCount += change.insertedCRLFCount - change.removedCRLFCount;
+      }
+      return true;
+    }
+  };
+  function isFrontmatterOpening(text) {
+    return /^---[ \t]*$/.test(text.replace(/^\uFEFF/, ""));
+  }
+  function frontmatterBoundary(doc2) {
+    if (!isFrontmatterOpening(doc2.line(1).text)) {
+      return { endLine: 0, unclosed: false };
+    }
+    if (doc2.lines < 2) return { endLine: 0, unclosed: true };
+    for (let number2 = 2; number2 <= doc2.lines; number2 += 1) {
+      if (/^---[ \t]*$/.test(doc2.line(number2).text)) {
+        return { endLine: number2, unclosed: false };
+      }
+    }
+    return { endLine: 0, unclosed: true };
+  }
+  function frontmatterEndLine(doc2) {
+    return frontmatterBoundary(doc2).endLine;
+  }
+  function frontmatterBodyOffset(doc2) {
+    const endLine = frontmatterEndLine(doc2);
+    if (endLine === 0) return 0;
+    return endLine < doc2.lines ? doc2.line(endLine + 1).from : doc2.line(endLine).to;
+  }
+
+  // passage-replacement.ts
+  function passageReplacement(source, expected, from, to, replacement) {
+    if (source !== expected || !Number.isSafeInteger(from) || !Number.isSafeInteger(to) || from < 0 || to <= from || to > source.length || replacement.length === 0) return null;
+    function boundary(offset) {
+      if (offset <= 0 || offset >= source.length) return true;
+      const before = source.charCodeAt(offset - 1), after = source.charCodeAt(offset);
+      return !(before === 13 && after === 10) && !(before >= 55296 && before <= 56319 && after >= 56320 && after <= 57343);
+    }
+    if (!boundary(from) || !boundary(to)) return null;
+    return {
+      from: normalizedDocumentText(source.slice(0, from)).length,
+      to: normalizedDocumentText(source.slice(0, to)).length,
+      insert: normalizedDocumentText(replacement)
+    };
+  }
+
+  // selection-actions.ts
+  function createSelectionActions(floating, current) {
+    let id2 = null;
+    let key = null;
+    let dismissed = null;
+    function hide() {
+      if (id2 !== null) floating.hide(id2);
+      id2 = null;
+      key = null;
+    }
+    function dismiss() {
+      const visible = id2 !== null;
+      if (key !== null) dismissed = key;
+      hide();
+      return visible;
+    }
+    return {
+      dismiss,
+      update(target = current()) {
+        if (!target) {
+          hide();
+          dismissed = null;
+          return;
+        }
+        if (target.key === key || target.key === dismissed) return;
+        hide();
+        key = target.key;
+        id2 = floating.show({
+          kind: "selection",
+          ...target.anchor,
+          html: "",
+          css: "",
+          items: [],
+          selected: -1
+        }, {
+          dismiss,
+          choose: () => {
+            const valid = current()?.key === target.key;
+            return valid;
+          }
+        });
+      }
+    };
   }
 
   // node_modules/style-mod/src/style-mod.js
@@ -14114,7 +14247,7 @@
         if (action === "enter") callbacks.enter?.();
         else if (action === "leave") callbacks.leave?.();
         else if (action === "dismiss") callbacks.dismiss();
-        else if (action === "choose" && current.surface.kind === "selection" && Number.isInteger(index) && index >= 0 && index <= 3) {
+        else if (action === "choose" && current.surface.kind === "selection" && Number.isInteger(index) && index === 0) {
           return callbacks.choose?.(index) !== false;
         } else if ((action === "select" || action === "choose") && Number.isInteger(index) && current.surface.kind === "suggestions" && index >= 0 && index < current.surface.items.length) {
           if (action === "select") callbacks.select?.(index);
@@ -21403,7 +21536,7 @@
   }
 
   // protocol.ts
-  var EDITOR_PROTOCOL_VERSION = 28;
+  var EDITOR_PROTOCOL_VERSION = 29;
   var MAX_INBOUND_BYTES = 25e5;
   var MAX_SOURCE_UTF8_BYTES = 8e6;
   var operationTypes = /* @__PURE__ */ new Set([
@@ -21430,6 +21563,7 @@
     "captureRecovery",
     "restoreRecovery",
     "acknowledgeCommittedSnapshot",
+    "replacePassage",
     "command",
     "documentFind",
     "clearDocumentFind",
@@ -21566,6 +21700,8 @@
         return validRecoverySnapshot(operation.snapshot);
       case "acknowledgeCommittedSnapshot":
         return typeof operation.expectedText === "string" && typeof operation.committedText === "string" && typeof operation.committedFingerprint === "string";
+      case "replacePassage":
+        return typeof operation.expectedText === "string" && typeof operation.replacement === "string" && operation.replacement.length > 0 && operation.replacement.length <= 5e5 && Number.isSafeInteger(operation.fromUTF16) && Number.isSafeInteger(operation.toUTF16) && Number(operation.fromUTF16) >= 0 && Number(operation.toUTF16) > Number(operation.fromUTF16);
       case "command":
         return typeof operation.command === "string" && commandTypes.has(operation.command) && (operation.argument === void 0 || typeof operation.argument === "string");
       case "documentFind": {
@@ -21602,7 +21738,7 @@
     if (typeof type !== "string" || !operationTypes.has(type)) return false;
     if (!validOperation(request.operation)) return false;
     try {
-      const sourceBearing = ["initialize", "acknowledgeCommittedSnapshot", "restoreRecovery"].includes(type);
+      const sourceBearing = ["initialize", "acknowledgeCommittedSnapshot", "restoreRecovery", "replacePassage"].includes(type);
       return encodedByteLength(value) <= (sourceBearing ? MAX_SOURCE_UTF8_BYTES + 512e3 : MAX_INBOUND_BYTES);
     } catch {
       return false;
@@ -31006,124 +31142,6 @@ ${fence}
     return projectionTopologySignature(previousLocal) === projectionTopologySignature(nextLocal);
   }
 
-  // state.ts
-  function normalizedDocumentText(text) {
-    return text.replace(/\r\n/g, "\n");
-  }
-  function replacementChange(currentText, requestedText) {
-    const targetText = normalizedDocumentText(requestedText);
-    let prefix = 0;
-    const sharedLength = Math.min(currentText.length, targetText.length);
-    while (prefix < sharedLength && currentText.charCodeAt(prefix) === targetText.charCodeAt(prefix)) prefix += 1;
-    let currentSuffix = currentText.length;
-    let targetSuffix = targetText.length;
-    while (currentSuffix > prefix && targetSuffix > prefix && currentText.charCodeAt(currentSuffix - 1) === targetText.charCodeAt(targetSuffix - 1)) {
-      currentSuffix -= 1;
-      targetSuffix -= 1;
-    }
-    return { from: prefix, to: currentSuffix, insert: targetText.slice(prefix, targetSuffix) };
-  }
-  function rope(source) {
-    return Text.of(source.split("\n"));
-  }
-  function crlfCount(source) {
-    let count2 = 0;
-    for (let index = source.indexOf("\r\n"); index >= 0; index = source.indexOf("\r\n", index + 2)) count2 += 1;
-    return count2;
-  }
-  function exactOffset(exact, normalized2, requestedOffset) {
-    if (!Number.isSafeInteger(requestedOffset) || requestedOffset < 0 || requestedOffset > normalized2.length) return null;
-    const normalizedLine = normalized2.lineAt(requestedOffset);
-    const exactLine = exact.line(normalizedLine.number);
-    const column = requestedOffset - normalizedLine.from;
-    return exactLine.from + column;
-  }
-  var ExactSourceMirror = class {
-    exact;
-    normalized;
-    crlfLineBreakCount;
-    constructor(source = "") {
-      this.exact = rope(source);
-      this.normalized = rope(normalizedDocumentText(source));
-      this.crlfLineBreakCount = crlfCount(source);
-    }
-    /**
-     * Materializing the complete String is intentionally an explicit snapshot
-     * boundary. Ordinary input only edits the persistent Text ropes below.
-     */
-    get text() {
-      return this.exact.toString();
-    }
-    replace(source) {
-      this.exact = rope(source);
-      this.normalized = rope(normalizedDocumentText(source));
-      this.crlfLineBreakCount = crlfCount(source);
-    }
-    apply(changes) {
-      if (changes.length === 0) return true;
-      const ordered = [...changes].map((change) => ({ ...change, insert: normalizedDocumentText(change.insert) })).sort((left, right) => left.from - right.from || left.to - right.to);
-      let previousTo = -1;
-      for (const change of ordered) {
-        if (change.from < previousTo || change.to < change.from) return false;
-        previousTo = change.to;
-      }
-      const usesCRLF = this.crlfLineBreakCount > 0;
-      const exactChanges = ordered.map((change) => {
-        const from = exactOffset(this.exact, this.normalized, change.from);
-        const to = exactOffset(this.exact, this.normalized, change.to);
-        if (from === null || to === null || to < from) return null;
-        if (change.removed !== void 0 && this.normalized.sliceString(change.from, change.to) !== change.removed) return null;
-        const exactInsert = usesCRLF ? change.insert.replaceAll("\n", "\r\n") : change.insert;
-        return {
-          ...change,
-          exactFrom: from,
-          exactTo: to,
-          exactInsert,
-          removedCRLFCount: crlfCount(this.exact.sliceString(from, to)),
-          insertedCRLFCount: crlfCount(exactInsert)
-        };
-      });
-      if (exactChanges.some((change) => change === null)) return false;
-      for (const change of exactChanges.filter((candidate) => candidate !== null).sort((left, right) => right.from - left.from)) {
-        this.exact = this.exact.replace(
-          change.exactFrom,
-          change.exactTo,
-          rope(change.exactInsert)
-        );
-        this.normalized = this.normalized.replace(
-          change.from,
-          change.to,
-          rope(change.insert)
-        );
-        this.crlfLineBreakCount += change.insertedCRLFCount - change.removedCRLFCount;
-      }
-      return true;
-    }
-  };
-  function isFrontmatterOpening(text) {
-    return /^---[ \t]*$/.test(text.replace(/^\uFEFF/, ""));
-  }
-  function frontmatterBoundary(doc2) {
-    if (!isFrontmatterOpening(doc2.line(1).text)) {
-      return { endLine: 0, unclosed: false };
-    }
-    if (doc2.lines < 2) return { endLine: 0, unclosed: true };
-    for (let number2 = 2; number2 <= doc2.lines; number2 += 1) {
-      if (/^---[ \t]*$/.test(doc2.line(number2).text)) {
-        return { endLine: number2, unclosed: false };
-      }
-    }
-    return { endLine: 0, unclosed: true };
-  }
-  function frontmatterEndLine(doc2) {
-    return frontmatterBoundary(doc2).endLine;
-  }
-  function frontmatterBodyOffset(doc2) {
-    const endLine = frontmatterEndLine(doc2);
-    if (endLine === 0) return 0;
-    return endLine < doc2.lines ? doc2.line(endLine + 1).from : doc2.line(endLine).to;
-  }
-
   // localization.ts
   var webInterfaceLocalizationKeys = [
     "YAML frontmatter",
@@ -31320,7 +31338,7 @@ ${fence}
 
   // composition.ts
   function compositionRequestPolicy(operationType) {
-    if (operationType === "initialize") return "reject";
+    if (operationType === "initialize" || operationType === "replacePassage") return "reject";
     if ([
       "queryText",
       "querySelection",
@@ -37415,7 +37433,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     if (!first || !last || last.bottom < 0 || first.top > window.innerHeight) return null;
     return {
       key: `${bridgeSessionID}:${documentVersion}:${ranges[0].from}:${ranges[0].to}`,
-      anchor: { left: last.left, top: first.top, bottom: last.bottom }
+      anchor: { left: (first.left + last.left) / 2, top: first.top, bottom: last.bottom }
     };
   }
   var selectionActions = createSelectionActions(nativeFloating, selectionActionTarget);
@@ -37955,6 +37973,27 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
           text: exactEditorSource(),
           commitSuperseded: superseded
         };
+      }
+      case "replacePassage": {
+        if (editor.composing || compositionGate.active) return rejected(request.requestID, documentVersion, "Finish composition before adopting a suggestion.");
+        const change = passageReplacement(
+          exactEditorSource(),
+          operation.expectedText,
+          operation.fromUTF16,
+          operation.toUTF16,
+          operation.replacement
+        );
+        if (!change) return rejected(request.requestID, documentVersion, "The passage changed. Request a new suggestion.");
+        if (new TextEncoder().encode(applySourceChanges(editor.state.doc.toString(), [change])).byteLength > MAX_SOURCE_UTF8_BYTES) {
+          return rejected(request.requestID, documentVersion, "The suggestion is too large.");
+        }
+        editor.dispatch({
+          changes: change,
+          selection: EditorSelection.single(change.from, change.from + change.insert.length),
+          annotations: [Transaction.userEvent.of("input.scholium.adopt"), isolateHistory.of("full")]
+        });
+        lastUndoLabel = lastRedoLabel = "Adopt Suggestion";
+        return successfulResult(request.requestID, true, "Adopt Suggestion");
       }
       case "command": {
         const argument = operation.command === "pasteMarkdown" ? editingFrontmatterSelection() ? decodeClipboardPayload(operation.argument).plainText : pasteAsMarkdown(decodeClipboardPayload(operation.argument)) : operation.argument;

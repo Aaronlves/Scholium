@@ -4,13 +4,13 @@
 
 ## Current verification snapshot
 
-**2026-09-08 — Chat and passage inquiry:** Prior checks cover quoting and materials. Inquiry adds 13 native and 231 editor checks;
-its localized concept/argument/evidence questions preserve drafts and checked
-passages. Edit/Review selection opens checked research drafts; unmappable Review ranges fail visibly. A signed-in synthetic argument case marks supplied premises as
-reconstruction and leaves Notes unchanged. Library menu/accessibility handoff, preview/Escape/removal and
-cross-paragraph quoting pass separately. Physical dragging, human accessibility
-and representative scholarly evaluation remain open. Evidence:
-`.build/agent-chat-evolution/{generic,continuous,library-chat,inquiry}-*`.
+**2026-09-09 — selection shortcuts:** Native buttons/menu replace the duplicate
+composer. Settings supports five bounded, ordered custom prompts. Checks pass (31 native, 234 editor); the real WebKit bridge verifies replacement
+and rejects stale source. Signed-in QA confirms exact capture, real Polish,
+Adopt and one-step Undo; native menu/settings and error recovery were inspected.
+Full integration remains red on App assertions; this is no release pass.
+Human accessibility/adaptation and representative scholarly evaluation remain open.
+Evidence: `.build/agent-chat-evolution/selection-*`; prior `inquiry-*`.
 
 **2026-09-08 — unified public transcript:** Shared typed decoding validates full
 history atomically and accepts lifecycle-only metadata without inventing messages.

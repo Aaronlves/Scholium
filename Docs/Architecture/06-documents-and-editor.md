@@ -401,8 +401,8 @@ information for document statistics and navigation; it creates no persisted
 research object. `DocumentWebViewContainer` owns viewport geometry and exposes
 WebKit and native floating siblings in one accessibility tree.
 `DocumentFloatingSurfaceController` owns Liquid Glass preview, suggestion and selection-action
-containers. `selection-actions.ts` projects one explicit Ask Agent action through
-the same versioned bridge; pointer/keyboard selection remains document-owned.
+containers. `SelectionActionBar` uses native controls and a menu, without another composer. The selection bridge revalidates identity before Chat admission;
+`replacePassage` checks source and range, preserving editor Undo.
 `MarkdownReviewSourceSelection` maps DOM offsets only when the complete rendered
 block equals its source span, excluding a terminating newline. Unsupported
 rendering remains unmappable; no excerpt search or source reconstruction occurs.

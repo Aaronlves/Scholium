@@ -736,7 +736,7 @@ async function initializeReader(value: unknown): Promise<void> {
       const rect = range.getBoundingClientRect();
       if (rect.bottom < 0 || rect.top > window.innerHeight) return null;
       return {key: `${fingerprint}:${text}:${before}:${rect.top}:${rect.bottom}`,
-        anchor: {left: rect.left, top: rect.top, bottom: rect.bottom}};
+        anchor: {left: rect.left + rect.width / 2, top: rect.top, bottom: rect.bottom}};
     });
     window.addEventListener('scroll', () => selectionActions.dismiss(), {passive: true});
     document.addEventListener('keydown', event => {

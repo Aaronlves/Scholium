@@ -41,7 +41,14 @@ import Testing
       #expect(!chat.prepareSelectionInquiry([material], inquiry: inquiry, to: id))
       #expect(chat.selected?.draft.isEmpty == true && chat.selected?.attachments.isEmpty == true)
     }
-    #expect(AgentChatSelectionInquiry(rawValue: 4) == nil)
+    let visible = chat.selectedID
+    chat.editDraft("Keep this draft")
+    let resultID = try #require(chat.beginSelectionInquiry(.polish, attachment: material))
+    #expect(chat.selectedID == visible && chat.selected?.draft == "Keep this draft")
+    let result = try #require(chat.conversations.first { $0.id == resultID })
+    #expect(result.attachments == [material] && result.permission == .ask)
+    #expect(result.messages.isEmpty && !result.draft.isEmpty)
+    #expect(chat.selectionResultError(in: resultID) != nil)
     await chat.disconnect()
   }
 }

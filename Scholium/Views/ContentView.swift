@@ -423,13 +423,10 @@ struct ContentView: View {
         let documentKey = appState.currentDocumentDescriptor?.sessionKey
         let documentPath = appState.currentNote?.relativePath
         return DocumentFeatureActions(
-            askAgent: { inquiry in
-                Task {
-                    guard appState.currentDocumentDescriptor?.sessionKey == documentKey else { return }
-                    if await appState.addCurrentSelectionToChat(inquiry: inquiry),
-                       !appState.shellState.libraryVisible || appState.shellState.sidebarContent != .chat {
-                        windowCoordinator.actions.activateSidebar(.chat)
-                    }
+            askAgent: { inquiry, validate in
+                guard appState.currentDocumentDescriptor?.sessionKey == documentKey else { return nil }
+                return await appState.runSelectionInquiry(inquiry, validate: validate) {
+                    windowCoordinator.actions.activateSidebar(.chat)
                 }
             },
             requestIdentityResolution: {

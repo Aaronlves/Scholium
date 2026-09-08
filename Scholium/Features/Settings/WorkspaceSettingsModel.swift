@@ -7,6 +7,7 @@ enum WorkspaceSettingsPane: String, CaseIterable, Identifiable, Sendable {
     case metadata
     case appearance
     case hotkeys
+    case selectionActions
     case attention
     case researchGuidance = "research-guidance"
 

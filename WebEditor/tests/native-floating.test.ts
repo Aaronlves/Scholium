@@ -31,9 +31,9 @@ describe("native floating projection", () => {
     const bridge = createNativeFloatingBridge(() => {});
     const surface = {...suggestions, kind: "selection" as const, items: [], selected: -1};
     const id = bridge.show(surface, {choose, dismiss() {}});
-    for (const index of [-1, 4, 0.5, NaN]) expect(bridge.event(id, "choose", index)).toBe(false);
-    for (const index of [0, 1, 2, 3]) expect(bridge.event(id, "choose", index)).toBe(true);
-    expect(choose.mock.calls.map(call => call[0])).toEqual([0, 1, 2, 3]);
+    for (const index of [-1, 1, 2, 3, 4, 0.5, NaN]) expect(bridge.event(id, "choose", index)).toBe(false);
+    for (const index of [0]) expect(bridge.event(id, "choose", index)).toBe(true);
+    expect(choose.mock.calls.map(call => call[0])).toEqual([0]);
     bridge.hide(id);
     expect(bridge.event(id, "choose", 1)).toBe(false);
   });
