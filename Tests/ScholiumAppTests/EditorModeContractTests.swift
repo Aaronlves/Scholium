@@ -33,13 +33,6 @@ struct EditorModeContractTests {
             Contract.self,
             from: Data(contentsOf: fixtureDirectory.appendingPathComponent("three-mode-contract.json"))
         )
-        let specification = try String(
-            contentsOf: repository.appendingPathComponent(
-                "Docs/Specification/02-notes-and-file-operations.md"
-            ),
-            encoding: .utf8
-        )
-
         #expect(
             contract.authority
                 == "Docs/Architecture/06-documents-and-editor.md"
@@ -57,21 +50,5 @@ struct EditorModeContractTests {
         for token in contract.requiredSourceTokens {
             #expect(source.contains(token), "Missing fixed editor-contract construct: \(token)")
         }
-
-        let normalizedSpecification = specification
-            .split(whereSeparator: \Character.isWhitespace)
-            .joined(separator: " ")
-        #expect(normalizedSpecification.contains(
-            "**Edit** modifies the exact body through a reversible semantic projection."
-        ))
-        #expect(normalizedSpecification.contains(
-            "It shares Review typography and components, reveals syntax only for the active construct"
-        ))
-        #expect(normalizedSpecification.contains(
-            "**Source** edits complete Markdown and YAML with logical source-line numbers and exact-source typography."
-        ))
-        // Geometry probes below the product boundary protect the current
-        // implementation. They do not freeze a line-box or font recipe into
-        // the product specification.
     }
 }

@@ -9,6 +9,7 @@ import Testing
 enum NativeChatSourceScope {
   static let paths: Set<String> = [
     "Scholium/Views/Sidebar/AgentChatView.swift",
+    "Scholium/Views/Sidebar/AgentChatSourceEvidenceView.swift",
     "Scholium/Views/Note/AgentSelectionResultView.swift",
     "Scholium/Views/Sidebar/AgentChatMarkdown.swift",
     "Scholium/Views/Sidebar/AgentChatSelectableText.swift",

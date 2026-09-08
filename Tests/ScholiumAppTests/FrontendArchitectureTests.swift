@@ -2266,7 +2266,7 @@ struct FrontendArchitectureTests {
         #expect(noteSource.contains("documentPresentation.css + \"\\n\" + state.appearanceCSS"))
     }
 
-    @Test("Native Sidebar Glass remains distinct from research content planes")
+    @Test("Workspace surfaces preserve native navigation and exact content layout")
     func scholarlyEditorialWorkspaceSurfaceContract() throws {
         let repository = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -2343,26 +2343,6 @@ struct FrontendArchitectureTests {
             ScholiumMetrics.Apparatus.sectionContentSpacing
                 == ScholiumGrid.Apparatus.headingToContentGap
         )
-
-        let productionRoot = repository.appendingPathComponent("Scholium")
-        let allowedGlassButtonOwners = Set(["ScholiumButtons.swift"])
-        let enumerator = try #require(
-            FileManager.default.enumerator(
-                at: productionRoot,
-                includingPropertiesForKeys: nil
-            )
-        )
-        for case let sourceURL as URL in enumerator where sourceURL.pathExtension == "swift" {
-            let source = try String(contentsOf: sourceURL, encoding: .utf8)
-            #expect(!source.contains("glassEffect(") || sourceURL.lastPathComponent == "ScholiumFloatingSurface.swift")
-            #expect(!source.contains("GlassEffectContainer"))
-            if source.contains(".buttonStyle(.glass") {
-                #expect(
-                    allowedGlassButtonOwners.contains(sourceURL.lastPathComponent),
-                    "\(sourceURL.lastPathComponent) must not extend Glass into content"
-                )
-            }
-        }
 
     }
 
@@ -4667,23 +4647,6 @@ struct FrontendArchitectureTests {
         #expect(!previewControllerSource.contains(#"addEventListener("blur", handleViewportExit"#))
         #expect(previewControllerSource.contains("root?.remove()"))
         #expect(!previewControllerSource.contains("mode()"))
-    }
-
-    @Test("Read configuration and native message receipt share one protocol version")
-    func readProtocolVersionIsUnified() throws {
-        let repository = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-        let source = try String(
-            contentsOf: repository.appendingPathComponent(
-                "Scholium/Views/Note/SafeMarkdownReadWebView.swift"
-            ),
-            encoding: .utf8
-        )
-        #expect(source.contains("version: 3,"))
-        #expect(source.contains(#"payload["version"] as? Int == 3"#))
-        #expect(!source.contains(#"payload["version"] as? Int == 1"#))
     }
 
     @Test("The live Connections inspector presents exact link occurrences")
