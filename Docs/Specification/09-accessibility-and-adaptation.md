@@ -133,8 +133,10 @@ Metadata interaction; §18.6 owns state/action wording. Verify:
 
 ### Inspector, Settings and integrations
 
-§18.5 owns Inspector composition and passage navigation, Appendix A owns field
-configuration, and §§8 and 15 own integrations. Verify:
+§18.5 owns Inspector composition and passage navigation,
+[Settings §18.2.1](13-settings.md) owns preference-window composition and
+interaction, Appendix A owns field configuration, and §§8 and 15 own
+integrations. Verify:
 
 - About/Links/Related Material is one named single-choice native group with selection,
   Help and keyboard traversal. No Document remains a distinct read-only state.

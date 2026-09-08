@@ -6,6 +6,7 @@
 
 Sections 1–17 own scholarly and workflow meaning. This chapter owns native shell
 and Library presentation without restating those workflows.
+[Settings §18.2.1](13-settings.md) owns the separate preferences window.
 
 ### 18.1 Interface principles
 
@@ -169,26 +170,7 @@ Menus follow task ownership:
   Advanced Search, Document mode/text size, and Inspector.
 - **Research**: Settle, and Agent Changes.
 - **Window**: standard windows plus Notifications.
-- **Settings**: one native preferences window with icon-and-label toolbar categories,
-  Settings search, and explicit Application, This Triptych, or This Mac scope.
-  Switching categories adjusts the window from its current top-left corner to
-  the pane’s preferred size within screen bounds, using native animation and
-  an immediate Reduce Motion result.
-
-Settings search indexes static page/control metadata, not research or Skill
-content. Triptychs, Document Appearance, and Hotkeys are Application settings;
-Metadata Profiles and Attention are Triptych settings; Agent Integration and
-Zotero are Research Guidance. Scope is explicit where a page mixes This
-Triptych and This Mac.
-
-Settings uses one content axis for controls and a trailing-aligned label column,
-with supporting copy beside its owner. Native collections hold field/shortcut
-rows and adjacent actions. Appearance controls and configuration-file editing
-belong to §18.4; Settings adds no nested advanced appearance editor.
-
-Hotkeys is machine-local and limited to frequent Scholium-specific menu
-commands. It requires Command, rejects conflicts and reserved shortcuts, and
-supports clear and restore. Standard macOS commands remain outside remapping.
+- **App**: Settings opens the single native preferences window under §18.2.1.
 
 #### Chat capability presentation
 
