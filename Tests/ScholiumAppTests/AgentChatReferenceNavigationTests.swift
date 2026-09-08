@@ -23,6 +23,7 @@ struct AgentChatReferenceNavigationTests {
     let source = "\u{FEFF}# 原文\r\n\r\nExact **source** 😀.\r\n"
     let file = analyses.appendingPathComponent("Source.md")
     try Data(source.utf8).write(to: file)
+    try Data("# Peer\n".utf8).write(to: analyses.appendingPathComponent("Peer.md"))
     let store = try WorkspaceStore(applicationSupportURL: root.appendingPathComponent("ApplicationSupport"))
     do {
       let configured = try await store.configureTriptychCapabilities(paperAnalysisURL: analyses,
@@ -33,11 +34,17 @@ struct AgentChatReferenceNavigationTests {
       let note = try #require(window.workspaceCatalog?.notes.first { $0.reference.relativePath == "Source.md" })
       let noteID = try #require(note.reference.stableNoteID.flatMap(UUID.init(uuidString:)))
       let fingerprint = DocumentFingerprint(content: source)
+      let peer = try #require(window.workspaceCatalog?.notes.first { $0.reference.relativePath == "Peer.md" })
+      let peerID = try #require(peer.reference.stableNoteID.flatMap(UUID.init(uuidString:)))
+      #expect(window.openChatReference(AgentChatReference.url(noteID: peerID)))
+      await window.waitForPendingDocumentTransitionsForTesting()
       let url = AgentChatReference.url(noteID: noteID, line: 3, revision: fingerprint, vaultID: note.reference.vaultID)
       #expect(window.openChatReference(url))
       await window.waitForPendingDocumentTransitionsForTesting()
       #expect(window.currentDocumentDescriptor?.sessionKey == DocumentSessionKey(vaultID: note.reference.vaultID, noteID: noteID))
       #expect(window.documentController.sourceLocationRequest?.line == 3)
+      #expect(window.documentTabController.allTabs.count == 2)
+      #expect(window.documentTabController.allTabs.contains { $0.document.workspaceDescriptor?.sessionKey.noteID == peerID })
       let exact = (source as NSString).range(of: "source")
       let passage = SearchSourceRange(utf16LowerBound: exact.location, utf16UpperBound: NSMaxRange(exact),
         line: 3, column: 9, endLine: 3, endColumn: 15)

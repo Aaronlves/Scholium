@@ -117,7 +117,9 @@ struct AgentChatLocalMaterialTests {
     #expect(stored.first { $0.id == owner }?.messages.first?.localMaterials == [material])
     for origin in [AgentChatLocalMaterial.CaptureOrigin.clipboard, .drop] {
       let count = controller.selected?.messages.count
-      await controller.addTransferredMaterials([.image(bytes)], origin: origin, to: owner)
+      await controller.addTransferredMaterials([.image(bytes)], origin: origin, to: owner) { _ in
+        Issue.record("Image input must not capture a Note")
+      }
       let captured = try #require(controller.selected?.localMaterials.first)
       #expect(captured.source == .imageCapture(origin) && captured.fingerprint == DocumentFingerprint(data: bytes))
       #expect(controller.selected?.messages.count == count && controller.selected?.pendingMessageID == nil)

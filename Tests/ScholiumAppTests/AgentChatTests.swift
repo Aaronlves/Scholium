@@ -8,6 +8,35 @@ import Testing
 @Suite("In-app Agent collaboration", .serialized)
 @MainActor
 struct AgentChatTests {
+  @Test("Reply quotes are delivered as Agent content, retained on history refresh and cleared only from the sent draft")
+  func quoteDelivery() async throws {
+    let root = try root()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let controller = AgentChatController(triptychID: UUID(), root: root, toolHandler: success)
+    try await connect(controller)
+    controller.editDraft("phased activity"); controller.send()
+    try await eventually { !controller.isBusy && controller.selected?.lastRunStatus == .completed }
+    let owner = try #require(controller.selectedID)
+    let finalReply = controller.selected?.messages.last { $0.role == .assistant && $0.phase == .finalAnswer }
+    let reply = try #require(finalReply)
+    #expect(controller.quoteReply(reply.id, selection: nil, in: owner))
+    controller.editDraft("Discuss this reply.")
+    controller.send()
+    try await eventually { !controller.isBusy && controller.selected?.draft.isEmpty == true }
+    let request = try JSONDecoder().decode(MCPJSONValue.self,
+      from: Data(contentsOf: controller.runtimeHome.appendingPathComponent("last-turn.json")))
+    let input = try #require(request.objectValue?["input"]?.arrayValue?.first?.objectValue?["text"]?.stringValue)
+    #expect(input.contains("Quoted Agent reply selected by the researcher"))
+    #expect(input.contains(reply.id))
+    #expect(controller.selected?.draftReplyQuotes == nil)
+    let sent = try #require(controller.selected?.messages.last(where: { $0.role == .user }))
+    #expect(sent.replyQuotes?.first?.text == reply.text && sent.text == "Discuss this reply.")
+    controller.select(owner)
+    try await eventually { !controller.isRefreshingHistory }
+    #expect(controller.selected?.messages.first(where: { $0.id == sent.id })?.replyQuotes == sent.replyQuotes)
+    await controller.disconnect()
+  }
+
   @Test("Malformed restored history leaves every retained message unchanged")
   func atomicHistoryReconciliation() async throws {
     let root = try root()

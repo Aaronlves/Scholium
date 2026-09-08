@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 import ScholiumContracts
 import SwiftUI
 
@@ -81,6 +82,8 @@ struct AgentChatMarkdownBlock: Identifiable {
 struct AgentChatMarkdown: View {
   let text: String
   var expandsToFillWidth = true
+  var quoteSelection: ((AgentChatReplySelection) -> Void)? = nil
+  @Environment(\.openURL) private var openURL
 
   var body: some View {
     let blocks = AgentChatMarkdownBlock.parse(text)
@@ -103,27 +106,38 @@ struct AgentChatMarkdown: View {
   }
 
   @ViewBuilder
+  private func selectable(_ text: AttributedString, block: AgentChatMarkdownBlock, cell: Int? = nil,
+    heading: Bool = false) -> some View {
+    if let quoteSelection {
+      AgentChatSelectableText(text: text, font: .preferredFont(forTextStyle: heading ? .headline : .body),
+        quote: { range, rendered in
+          quoteSelection(.init(blockID: block.id, cell: cell, range: range, renderedText: rendered))
+        }, openLink: { openURL($0) })
+    } else { Text(text).font(heading ? .headline : .body) }
+  }
+
+  @ViewBuilder
   private func blockView(_ block: AgentChatMarkdownBlock) -> some View {
     switch block.kind {
     case .prose:
-      Text(block.text)
+      selectable(block.text, block: block)
     case .heading:
-      Text(block.text).font(.headline).accessibilityAddTraits(.isHeader)
+      selectable(block.text, block: block, heading: true).accessibilityAddTraits(.isHeader)
     case .code:
       ScrollView(.horizontal) {
         Text(block.text).monospaced().fixedSize(horizontal: true, vertical: false)
       }
     case .quote:
-      Text(block.text).padding(.leading)
+      selectable(block.text, block: block).padding(.leading)
     case .list(let marker):
       HStack(alignment: .firstTextBaseline) {
         Text(marker)
-        Text(block.text)
+        selectable(block.text, block: block)
       }.padding(.leading, block.isQuoted ? nil : 0)
     case .tableRow(let header):
       HStack(alignment: .top) {
         ForEach(block.cells.indices, id: \.self) { index in
-          Text(block.cells[index]).frame(maxWidth: .infinity, alignment: .leading)
+          selectable(block.cells[index], block: block, cell: index, heading: header).frame(maxWidth: .infinity, alignment: .leading)
         }
       }.font(header ? .headline : .body)
     }

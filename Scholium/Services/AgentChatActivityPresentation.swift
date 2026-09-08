@@ -3,6 +3,19 @@ import ScholiumContracts
 
 /// A projection of public runtime events and App receipts, never a source writer.
 enum AgentChatActivityProjection {
+  static func title(_ activity: AgentChatActivity, locale: Locale = .current) -> String {
+    switch activity.kind {
+    case .command, .tool: ScholiumL10n.string("Working", locale: locale)
+    case .compaction: ScholiumL10n.string("Organizing Conversation", locale: locale)
+    default: activity.kind.label(locale: locale)
+    }
+  }
+
+  static func subject(_ activity: AgentChatActivity) -> String? {
+    guard activity.source == .scholium, [.read, .create, .update, .trash].contains(activity.kind),
+      let file = activity.files.first else { return nil }
+    return (file.path as NSString).lastPathComponent
+  }
   static func withLocalizedFailure(_ value: AgentChatActivity?) -> AgentChatActivity? {
     guard var activity = value else { return nil }
     if activity.kind == .delegation && activity.delegation == nil {

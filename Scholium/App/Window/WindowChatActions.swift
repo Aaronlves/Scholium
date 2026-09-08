@@ -133,7 +133,7 @@ extension WindowModel {
       }
       let alreadyCurrent = self.currentDocumentDescriptor?.sessionKey == target
       if !alreadyCurrent {
-        try await self.activateWorkspaceReference(reference, tabActivation: .place(.replaceSelected))
+        try await self.activateWorkspaceReference(reference, tabActivation: .place(.newTab))
       }
       let canEdit = self.currentNote?.workspaceSnapshot?.capabilities.canEditSource == true
       let status = try await self.chatSourceLocationStatus(reference: reference, target: target,

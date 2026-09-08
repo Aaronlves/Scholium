@@ -40,6 +40,13 @@ struct AgentChatView: View {
   @State private var showsRename = false
   @State private var renameTitle = ""
   @State private var messageIsFocused = false
+  @State private var replyNavigation: ReplyNavigation?
+
+  private struct ReplyNavigation: Equatable {
+    let id = UUID()
+    let conversationID: UUID
+    let messageID: String
+  }
 
   var body: some View {
     VStack(spacing: 0) {
@@ -154,6 +161,7 @@ struct AgentChatView: View {
             || controller.selected?.draft.isEmpty != true
             || controller.selected?.attachments.isEmpty != true
             || controller.selected?.localMaterials.isEmpty != true
+            || controller.selected?.draftReplyQuotes?.isEmpty == false
             || controller.selected?.selectedMethods?.isEmpty == false
             || controller.selected?.archivedAt != nil
           {
@@ -249,7 +257,8 @@ struct AgentChatView: View {
     if controller.isRenewingSettings {
       if let error = controller.settingsRenewalError {
         VStack(alignment: .leading, spacing: 6) {
-          Text(error).font(.caption).foregroundStyle(.secondary)
+          Text("Settings Could Not Be Applied").font(.caption)
+          DisclosureGroup("Operation Details") { Text(verbatim: error).textSelection(.enabled) }.font(.caption)
           Button("Retry") { controller.renewSettingsWhenIdle() }
         }.padding(8)
       } else {
@@ -265,7 +274,9 @@ struct AgentChatView: View {
     }
     if let error = controller.error {
       VStack(alignment: .leading, spacing: 6) {
-        Text(error).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+        Label("Conversation Needs Attention", systemImage: "exclamationmark.triangle").font(.caption)
+        DisclosureGroup("Operation Details") { Text(verbatim: error).textSelection(.enabled) }
+          .font(.caption).foregroundStyle(.secondary)
         if controller.state == .disconnected {
           Button("Agent Settings…") {
             UserDefaults.standard.set("research-guidance", forKey: "scholium.settings.selectedPane")
@@ -281,7 +292,7 @@ struct AgentChatView: View {
   private var visibleConversations: [AgentChatConversation] {
     controller.conversations.filter { ($0.archivedAt != nil) == showsArchived }
       .filter {
-        !$0.messages.isEmpty || !$0.draft.isEmpty || !$0.attachments.isEmpty || !$0.localMaterials.isEmpty || $0.selectedMethods?.isEmpty == false || $0.archivedAt != nil
+        !$0.messages.isEmpty || !$0.draft.isEmpty || !$0.attachments.isEmpty || !$0.localMaterials.isEmpty || $0.draftReplyQuotes?.isEmpty == false || $0.selectedMethods?.isEmpty == false || $0.archivedAt != nil
       }
       .filter { AgentChatSearch.contains($0, query: AgentChatSearch.query(conversationQuery)) }
       .sorted { $0.updatedAt > $1.updatedAt }
@@ -503,6 +514,14 @@ struct AgentChatView: View {
         .environment(
           \.openURL,
           OpenURLAction { url in
+            if url.scheme == "scholium-chat" {
+              guard let target = AgentChatReplyQuotation.target(url),
+                controller.conversations.contains(where: { $0.id == target.conversationID
+                  && $0.messages.contains(where: { $0.id == target.messageID }) }) else { return .discarded }
+              controller.select(target.conversationID)
+              replyNavigation = .init(conversationID: target.conversationID, messageID: target.messageID)
+              return .handled
+            }
             if url.scheme == "scholium-note" {
               _ = openReference(url)
               return .handled
@@ -549,6 +568,11 @@ struct AgentChatView: View {
             } else { composer }
           }
         }
+        .task(id: replyNavigation) {
+          guard let target = replyNavigation, target.conversationID == controller.selectedID else { return }
+          isAwayFromLatest = true
+          proxy.scrollTo(target.messageID, anchor: .top)
+        }
         .onChange(of: find.selectedID) { _, id in
           if let id, let item = AgentChatTimelineItem.group(timelineMessages)
             .first(where: { $0.messages.contains(where: { $0.id == id }) }) {
@@ -581,18 +605,21 @@ struct AgentChatView: View {
   }
 
   private func messageView(_ message: AgentChatMessage, showsSpeaker: Bool) -> some View {
-    VStack(alignment: message.role == .user ? .trailing : .leading, spacing: 6) {
+    let conversationID = controller.selectedID
+    return VStack(alignment: message.role == .user ? .trailing : .leading, spacing: 6) {
       if showsSpeaker {
         Text(message.role == .user ? ScholiumL10n.string("You", locale: locale) : "Codex")
           .font(.caption).foregroundStyle(.secondary)
       }
       VStack(alignment: .leading, spacing: 6) {
+        quoteCards(message.replyQuotes ?? [], editable: false)
         if let target = message.coordinationTarget {
           coordinationReference(target)
         }
         if let plan = message.plan { AgentChatPlanView(plan: plan) }
         if !message.text.isEmpty {
-          AgentChatMarkdown(text: message.text, expandsToFillWidth: message.role != .user)
+          AgentChatMarkdown(text: message.text, expandsToFillWidth: message.role != .user,
+            quoteSelection: canQuote(message) ? { selection in quote(message, selection: selection, in: conversationID) } : nil)
         }
         AgentChatResultFiles(files: AgentChatResultFile.collect(message.text),
           open: { _ = openReference($0) }, showInLibrary: showInLibrary,
@@ -641,12 +668,44 @@ struct AgentChatView: View {
         Button("Branch from This Turn") { controller.branch(through: turnID) }
           .disabled(!controller.canBranch || !controller.branchPoints.contains(where: { $0.turnID == turnID }))
       }
-      Button("Quote in Reply") {
-        controller.editDraft(
-          (controller.selected?.draft ?? "") + "\n> "
-            + message.text.replacingOccurrences(of: "\n", with: "\n> ") + "\n\n")
+      if canQuote(message) {
+        Button("Quote in Reply") { quote(message, selection: nil, in: conversationID) }
       }
     }
+  }
+
+  @ViewBuilder private func quoteCards(_ quotes: [AgentChatReplyQuote], editable: Bool) -> some View {
+    if !quotes.isEmpty {
+      let owner = controller.selectedID
+      ScrollView(.horizontal) {
+        HStack(spacing: 8) {
+          ForEach(quotes) { quote in
+            AgentChatReplyQuoteCard(quote: quote, openOriginal: {
+              guard controller.conversations.contains(where: { $0.id == quote.conversationID
+                && $0.messages.contains(where: { $0.id == quote.messageID }) }) else {
+                controller.reportMaterialError(ScholiumL10n.string("The original reply is unavailable."), in: owner ?? quote.conversationID)
+                return
+              }
+              controller.select(quote.conversationID)
+              replyNavigation = .init(conversationID: quote.conversationID, messageID: quote.messageID)
+            }, remove: editable ? {
+              if let owner { controller.removeReplyQuote(quote.id, in: owner) }
+            } : nil)
+          }
+        }.padding(.vertical, 4)
+      }.fixedSize(horizontal: false, vertical: true)
+    }
+  }
+
+  private func canQuote(_ message: AgentChatMessage) -> Bool {
+    message.role == .assistant && message.phase != .commentary && controller.selected?.archivedAt == nil
+      && (!controller.isBusy || message.turnID != controller.currentTurnID)
+  }
+
+  private func quote(_ message: AgentChatMessage, selection: AgentChatReplySelection?, in conversationID: UUID?) {
+    guard let id = conversationID,
+      controller.quoteReply(message.id, selection: selection, in: id) else { return }
+    messageIsFocused = true
   }
 
   private func coordinationReference(_ target: AgentChatCoordinationTarget, editable: Bool = false) -> some View {
@@ -671,20 +730,17 @@ struct AgentChatView: View {
             systemName: activity.status.isActive ? activity.kind.symbol : activity.status.symbol
           )
           .accessibilityHidden(true)
-          Text(activity.kind.label)
+          Text(AgentChatActivityProjection.title(activity, locale: locale))
           Spacer(minLength: 0)
           Text(activity.status.label).foregroundStyle(.secondary)
         }
-        if !activity.subject.isEmpty {
-          Text(activity.subject).foregroundStyle(.secondary).textSelection(.enabled)
+        if let subject = AgentChatActivityProjection.subject(activity) {
+          Text(verbatim: subject).foregroundStyle(.secondary).textSelection(.enabled)
         }
-        if !activity.detail.isEmpty {
-          if activity.status == .failed || activity.status == .uncertain {
-            Text(activity.detail).textSelection(.enabled)
-          } else {
-            DisclosureGroup("Operation Details") {
-              Text(activity.detail).monospaced().textSelection(.enabled)
-            }
+        if !activity.subject.isEmpty || !activity.detail.isEmpty {
+          DisclosureGroup("Operation Details") {
+            if !activity.subject.isEmpty { Text(verbatim: activity.subject).monospaced().textSelection(.enabled) }
+            if !activity.detail.isEmpty { Text(verbatim: activity.detail).monospaced().textSelection(.enabled) }
           }
         }
       }
@@ -721,8 +777,8 @@ struct AgentChatView: View {
                     ? String(localized: "Compacting Context…", bundle: .module)
                   : controller.state == .branching
                     ? String(localized: "Creating Branch…", bundle: .module)
-                  : activity?.kind.label ?? String(localized: "Codex is responding…"))
-          if let subject = activity?.subject, !subject.isEmpty {
+                  : activity.map { AgentChatActivityProjection.title($0, locale: locale) } ?? String(localized: "Codex is responding…"))
+          if let subject = activity.flatMap(AgentChatActivityProjection.subject) {
             Text(subject).lineLimit(2).help(subject)
           }
         }
@@ -984,6 +1040,7 @@ struct AgentChatView: View {
       if let message = controller.materialInputIssue ?? conversationID.flatMap({ controller.materialErrors[$0] }) {
         Text(message).font(.caption).foregroundStyle(.secondary)
       }
+      quoteCards(controller.selected?.draftReplyQuotes ?? [], editable: true)
       if let target = controller.selected?.draftCoordinationTarget {
         coordinationReference(target, editable: true)
         if target.parentThreadID != controller.selected?.threadID {
@@ -1009,7 +1066,10 @@ struct AgentChatView: View {
           }
           materialTask = Task { @MainActor in
             defer { materialTask = nil }
-            await controller.addTransferredMaterials(materials, origin: origin, to: conversationID)
+            await controller.addTransferredMaterials(materials, origin: origin, to: conversationID) { item in
+              let note = try AgentChatPasteboardSnapshot.resolve(item, in: noteChoices)
+              try await addNote(note, conversationID)
+            }
           }
         }
       )

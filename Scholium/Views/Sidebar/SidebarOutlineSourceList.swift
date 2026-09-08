@@ -93,7 +93,7 @@ struct SidebarOutlineSourceList: NSViewRepresentable {
         outlineView.setAccessibilityIdentifier("scholium.noteList")
         outlineView.setAccessibilityLabel(accessibilityLocationName)
         outlineView.registerForDraggedTypes(sidebarNativeDraggingTypes)
-        outlineView.setDraggingSourceOperationMask(.move, forLocal: true)
+        outlineView.setDraggingSourceOperationMask([.move, .copy], forLocal: true)
         outlineView.setDraggingSourceOperationMask([], forLocal: false)
 
         let column = NSTableColumn(identifier: Coordinator.columnIdentifier)

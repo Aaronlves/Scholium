@@ -50,6 +50,17 @@ public struct AgentChatCoordinationTarget: Codable, Equatable, Sendable {
   }
 }
 
+/// Researcher-selected Agent prose, distinct from Note and file snapshots.
+public struct AgentChatReplyQuote: Codable, Equatable, Identifiable, Sendable {
+  public let id: UUID
+  public let conversationID: UUID
+  public let messageID: String
+  public let text: String
+  public init(conversationID: UUID, messageID: String, text: String) {
+    id = UUID(); self.conversationID = conversationID; self.messageID = messageID; self.text = text
+  }
+}
+
 public struct AgentChatMessage: Codable, Equatable, Identifiable, Sendable {
   public enum Role: String, Codable, Sendable { case user, assistant, operation }
   public enum Phase: String, Codable, Sendable { case commentary; case finalAnswer = "final_answer" }
@@ -65,6 +76,7 @@ public struct AgentChatMessage: Codable, Equatable, Identifiable, Sendable {
   public var turnID: String?
   public var methods: [AgentChatMethodSelection]?
   public var coordinationTarget: AgentChatCoordinationTarget?
+  public var replyQuotes: [AgentChatReplyQuote]?
   public let attachments: [AgentChatAttachment]
   public let localMaterials: [AgentChatLocalMaterial]
 
@@ -139,6 +151,7 @@ public struct AgentChatConversation: Codable, Equatable, Identifiable, Sendable 
   public var messages: [AgentChatMessage]
   public var draft: String
   public var draftCoordinationTarget: AgentChatCoordinationTarget?
+  public var draftReplyQuotes: [AgentChatReplyQuote]?
   /// Unsent adjustments, keyed by the exact runtime child identity.
   public var childDrafts: [String: String] = [:]
   public var attachments: [AgentChatAttachment]

@@ -12,7 +12,7 @@ enum AgentChatSearch {
   }
 
   static func passage(in message: AgentChatMessage, query: String) -> String? {
-    var texts = [message.text]
+    var texts = [message.text] + (message.replyQuotes ?? []).map(\.text)
     if let target = message.coordinationTarget {
       texts += [target.name ?? "", target.childThreadID, target.parentThreadID]
     }

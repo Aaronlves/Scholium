@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 import ScholiumApplication
 import ScholiumContracts
 import Testing
@@ -44,7 +45,27 @@ struct AgentChatNoteMaterialTests {
       chat.editDraft("Discuss the supplied material.")
       chat.newConversation()
       let other = try #require(chat.selectedID)
-      try await window.addNoteToChat(note, conversationID: target)
+      let item = SidebarNoteDragItem(.init(documentID: .init(vaultID: note.reference.vaultID,
+        relativePath: note.reference.relativePath), stableNoteID: try #require(note.reference.stableNoteID.flatMap(UUID.init(uuidString:))),
+        revision: note.fingerprint))
+      let pasteboard = NSPasteboard(name: .init("note-drop-\(UUID())"))
+      defer { pasteboard.releaseGlobally() }
+      let payload = NSPasteboardItem()
+      payload.setData(try JSONEncoder().encode(item), forType: .init(SidebarNoteDragItem.pasteboardType))
+      payload.setString("file:///not-the-note.md", forType: .fileURL)
+      pasteboard.writeObjects([payload])
+      let captured = AgentChatPasteboardSnapshot.read(pasteboard)
+      #expect(captured.count == 1)
+      #expect(throws: AgentChatNoteMaterialError.self) { try AgentChatPasteboardSnapshot.resolve(item, in: []) }
+      await chat.addTransferredMaterials(captured, origin: .drop, to: target) { item in
+        let resolved = try AgentChatPasteboardSnapshot.resolve(item, in: window.workspaceCatalog?.notes ?? [])
+        try await window.addNoteToChat(resolved, conversationID: target)
+      }
+      let invalid = NSPasteboardItem()
+      invalid.setData(Data("invalid".utf8), forType: .init(SidebarNoteDragItem.pasteboardType))
+      invalid.setString("file:///not-the-note.md", forType: .fileURL)
+      pasteboard.clearContents(); pasteboard.writeObjects([invalid])
+      #expect(AgentChatPasteboardSnapshot.read(pasteboard).isEmpty)
       #expect(chat.selectedID == other && chat.selected?.attachments.isEmpty == true)
       let material = try #require(chat.conversations.first { $0.id == target }?.attachments.first)
       #expect(material.text == source && material.fingerprint == DocumentFingerprint(data: Data(source.utf8)))

@@ -150,8 +150,12 @@ and completed operation output without manufacturing read or change receipts.
 Public assistant phase metadata is retained on the message by streaming and history
 reconciliation. Timeline grouping uses explicit turn and phase metadata; a process
 disclosure owns only expansion, keeping each tool item distinct from the final answer.
-Reply actions copy the original reply text and project its explicit link destinations
-into Sources. Successful scoped App reads retain a bounded exact excerpt, source
+Reply actions copy original text and project explicit links into Sources.
+`AgentChatReplyTextView` owns native read-only selection and detached sizing;
+`AgentChatReplyQuotation` validates rendered block/range identity. The controller
+stages compact `AgentChatReplyQuote` values in the existing conversation draft,
+then retains them on the sent message. They are Agent prose, not Note snapshots;
+source navigation retains its conversation/reply identity and no independent archive. Successful scoped App reads retain a bounded exact excerpt, source
 fingerprint and returned line range as `AgentChatSourceObservation` on their
 existing activity. Public completed web open/find events retain access observations
 only. `AgentChatReplySourceContext` projects observations preceding the reply in

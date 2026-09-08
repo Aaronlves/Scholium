@@ -68,7 +68,7 @@ struct AgentChatChildView: View {
                     ? ScholiumL10n.string("Request", locale: locale)
                     : message.role == .assistant
                       ? ScholiumL10n.string("Agent", locale: locale)
-                      : message.activity?.kind.label(locale: locale) ?? ""
+                      : message.activity.map { AgentChatActivityProjection.title($0, locale: locale) } ?? ""
                 )
                 .font(.caption).foregroundStyle(.secondary)
                 if let activity = message.activity, let report = activity.delegation {
@@ -77,9 +77,10 @@ struct AgentChatChildView: View {
                     canOpenAgent: child.canInspectReports)
                 } else if let activity = message.activity {
                   Text(activity.status.label(locale: locale)).foregroundStyle(.secondary)
-                  if !activity.subject.isEmpty { Text(verbatim: activity.subject).textSelection(.enabled) }
-                  if !activity.detail.isEmpty {
+                  if let subject = AgentChatActivityProjection.subject(activity) { Text(verbatim: subject).textSelection(.enabled) }
+                  if !activity.detail.isEmpty || !activity.subject.isEmpty {
                     DisclosureGroup {
+                      if !activity.subject.isEmpty { Text(verbatim: activity.subject).monospaced().textSelection(.enabled) }
                       Text(verbatim: activity.detail).monospaced().textSelection(.enabled)
                     } label: {
                       Text("Operation Details", bundle: .module)

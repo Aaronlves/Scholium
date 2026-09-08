@@ -273,11 +273,25 @@ paywalls and failed retrieval remain explicit evidential limits.
 
 ### 8.7.4 Research materials and references
 
+Completed public replies support quoting a selected passage into the ordinary
+composer as a compact, removable quote card. It retains its conversation and reply locator;
+rendered reply text is Agent content, never an exact research-source capture.
+The researcher can inspect or remove the quote and edit the draft before sending. A named action and
+keyboard route accompany native selection; stale or departed replies cannot
+redirect a quote into another conversation. Existing draft text is preserved.
+
 The composer accepts explicitly selected Notes and checked editor passages,
 local documents and supported images. File selection, paste and drop are
 equivalent routes where applicable; a named picker remains available. Navigation
 alone never attaches or transmits a Note. Materials can be inspected and removed
 before sending without replacing the draft.
+Dragging a Library Note into the composer copies context through the same
+identity-checked capture as Choose Note; it never moves the file. Invalid or
+foreign Note identities are rejected without falling back to a local file.
+Chat source opening reuses an existing document tab or opens a new tab, preserving
+the previous document and Chat reading position. Triptych roles and workspace
+ownership remain unchanged. Material snapshots retain their preview; local files
+use Quick Look rather than creating persistent document tabs.
 
 The Note picker searches the current Triptych's known Note identities by title
 and path. Selection alone reads or transmits nothing; Add captures the whole
@@ -408,6 +422,12 @@ and individually inspectable tool calls for that turn; completion collapses the
 process, not the final answer. Missing phase metadata never justifies hiding an
 Agent message as presumed reasoning. The client does not expose raw reasoning
 items or reinterpret ordinary answer text as a private reasoning trace.
+Default progress names the action and outcome in ordinary research language.
+Each tool's commands, identifiers, paths, parameters and raw failure output remain
+in collapsed details, including after failure. A visible status still identifies
+failure or an uncertain outcome; required questions, permission scope and recovery
+actions cannot be hidden as technical detail. Native activity indicators reflect
+actual running state and use a static alternative under Reduce Motion.
 Live delivery, restored history and inspected Agent history interpret the same
 public item consistently: exact text, phase, turn identity and tool outcome must
 agree. Missing or unknown phase remains unclassified. Invalid attributed history

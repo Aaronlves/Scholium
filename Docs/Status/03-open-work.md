@@ -15,6 +15,14 @@ This documentation cleanup changes no app code and closes no UI acceptance.
 ## In-app Chat acceptance
 
 The expanded target is owned by Specification §8.7 in `12-agent-chat.md`.
+Current work prioritizes general Agent interaction before specialized research
+features. Reply-selection cards, quiet tool details, native Note-drop capture and
+tab-preserving source opening now have implementation slices. Complete physical
+Library-to-Chat dragging with the shared sidebar, cross-block reply selection,
+and full assistive-technology/adaptation acceptance. Optional partial adoption
+needs a separate revision-checked implementation; ordinary update approval stays
+one decision per proposal. Message queues and scheduled execution remain separate
+runtime-integration work, not implied by these interaction slices.
 The bounded signed-in research loop now passes with the disposable 500-Note
 Triptych: multi-turn reading, native approvals, one exact update, comparison,
 Undo, restart restoration and Stop. CHAT-LIVE-01/02 are closed for that path;

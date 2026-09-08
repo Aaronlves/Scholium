@@ -23,7 +23,9 @@ struct AgentChatVisualEvidenceTests {
         AgentChatProcessView(messages: process, isActive: false, hasFinalAnswer: true, forceExpanded: false) {
           AgentChatMarkdown(text: $0.text)
         }
-        AgentChatMarkdown(text: "这是一条用于检查排版的最终回复。")
+        AgentChatMarkdown(text: "这是一条用于检查排版的最终回复。保留 **原文依据** 与解释的区别，支持中文和 English 的自然换行。", quoteSelection: { _ in })
+        AgentChatReplyQuoteCard(quote: .init(conversationID: UUID(), messageID: "fixture",
+          text: "原文依据与解释的区别"), openOriginal: {}, remove: {})
         AgentChatResultFiles(files: AgentChatResultFile.collect(text), open: { _ in }, showInLibrary: { _ in }, showAll: {})
         AgentChatReplyActions(text: text, openNote: { _ in },
           context: .init(reply: .init(role: .assistant, text: text), history: []),

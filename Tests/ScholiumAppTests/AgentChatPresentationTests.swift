@@ -10,6 +10,8 @@ enum NativeChatSourceScope {
   static let paths: Set<String> = [
     "Scholium/Views/Sidebar/AgentChatView.swift",
     "Scholium/Views/Sidebar/AgentChatMarkdown.swift",
+    "Scholium/Views/Sidebar/AgentChatSelectableText.swift",
+    "Scholium/Views/Sidebar/AgentChatReplyQuoteCard.swift",
     "Scholium/Views/Sidebar/AgentChatMaterialChip.swift",
     "Scholium/Views/Sidebar/AgentChatLocalMaterialChip.swift",
     "Scholium/Views/Sidebar/AgentChatPDFPagesView.swift",
@@ -39,6 +41,18 @@ enum NativeSidebarSourceScope {
 
 @Suite("Native research conversation presentation")
 struct AgentChatPresentationTests {
+  @Test("Research progress never promotes raw commands or paths into its primary summary")
+  func quietProgress() {
+    let command = AgentChatActivity(kind: .command, status: .failed, source: .runtime,
+      subject: "cat /private/path/file", detail: "EACCES raw error")
+    #expect(AgentChatActivityProjection.title(command, locale: Locale(identifier: "zh-Hans")) == "正在处理")
+    #expect(AgentChatActivityProjection.subject(command) == nil)
+    let note = AgentChatActivity(kind: .read, status: .completed, source: .scholium,
+      subject: "internal-id", detail: "raw", files: [.init(path: "Analyses/原文.md")])
+    #expect(AgentChatActivityProjection.subject(note) == "原文.md")
+    #expect(command.detail == "EACCES raw error")
+  }
+
   @Test("Sources retain web, Note and other explicit locators without manufacturing citations")
   func replySources() {
     let note = AgentChatReference.url(noteID: UUID())

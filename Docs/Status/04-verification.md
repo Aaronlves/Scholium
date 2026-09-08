@@ -4,16 +4,22 @@
 
 ## Current verification snapshot
 
-**2026-09-08 — unified public transcript:** Live events, restored/branched history
-and child pages share typed decoding; old parsers are removed. Full history is
-validated atomically; lifecycle metadata confirms identity without inventing
-messages. Eighty-seven owning checks and build/localization pass. Live QA verifies
-history restoration, a new final reply and exact Copy, without replay; 500 Notes
-remain unchanged. QA is quit/removed with login retained. The later scroll-owner
-correction removes the extra selection-action listener from the editor entry
-point; the coordinator dismisses immediately while anchor reports stay debounced.
-All 11 architecture and 230 editor checks pass; no whole-app gate is claimed.
-Evidence: `.build/agent-chat-evolution/transcript-*`, `scroll-owner-*`.
+**2026-09-08 — general Chat interaction:** Fifty-one owning checks cover quote
+handoff/delivery/history, material capture, source navigation and architecture.
+QA selects four Chinese characters, stages a quote, previews/returns
+to its reply and receives the exact four characters from the signed-in runtime.
+Note picking/opening retains tabs and Chat context; tool
+subjects/details remain behind individual disclosures. Later native selection,
+detached-measurement and light/dark renders pass separately. This does not certify
+physical Library dragging, cross-block selection or full accessibility/adaptation.
+Evidence: `.build/agent-chat-evolution/generic-*`.
+
+**2026-09-08 — unified public transcript:** Shared typed decoding validates full
+history atomically and accepts lifecycle-only metadata without inventing messages.
+Eighty-seven checks, build/localization and live restoration/send/Copy pass without
+replay. All 500 Notes remain unchanged; QA is removed with login retained. The
+scroll-coordinator correction passes 11 architecture and 230 editor checks.
+Evidence: `.build/agent-chat-evolution/transcript-*`, `scroll-owner-*`; no whole-app gate.
 
 **2026-09-08 — activity and connection renewal:** Sixty-eight checks cover
 independent tool outcomes, expired approvals, root initialization, failure,
