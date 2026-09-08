@@ -12,6 +12,7 @@ enum SidebarNoteCommandSurface: Equatable {
 
 enum SidebarNoteCommand: String, Hashable, Identifiable {
     case openInNewTab
+    case addToChat
     case duplicate
     case rename
     case move
@@ -23,7 +24,7 @@ enum SidebarNoteCommand: String, Hashable, Identifiable {
 
     var requiresMutationTarget: Bool {
         switch self {
-        case .openInNewTab, .copyRelativePath, .revealInFinder:
+        case .openInNewTab, .addToChat, .copyRelativePath, .revealInFinder:
             false
         case .duplicate, .rename, .move, .moveToSystemTrash:
             true
@@ -33,6 +34,7 @@ enum SidebarNoteCommand: String, Hashable, Identifiable {
     var contextMenuTitle: LocalizedStringKey {
         switch self {
         case .openInNewTab: "Open in New Tab"
+        case .addToChat: "Add to Chat"
         case .duplicate: "Duplicate…"
         case .rename: "Rename…"
         case .move: "Move Note…"
@@ -45,6 +47,7 @@ enum SidebarNoteCommand: String, Hashable, Identifiable {
     var accessibilityTitle: LocalizedStringKey {
         switch self {
         case .openInNewTab: "Open in New Tab"
+        case .addToChat: "Add to Chat"
         case .duplicate: "Duplicate Note"
         case .rename: "Rename Note"
         case .move: "Move Note"
@@ -76,7 +79,7 @@ struct SidebarNoteCommandGroup: Hashable, Identifiable {
 func sidebarNoteCommandGroups() -> [SidebarNoteCommandGroup] {
     var groups = [SidebarNoteCommandGroup(
         kind: .opening,
-        commands: [.openInNewTab]
+        commands: [.openInNewTab, .addToChat]
     )]
 
     var editing: [SidebarNoteCommand] = []
@@ -103,6 +106,8 @@ struct SidebarTreeContext {
     let currentVaultID: UUID?
     let currentVaultRole: VaultRole
     let openNote: (WindowDocumentLocation, WindowOpenDisposition) -> Void
+    let canAddNoteToChat: (WindowDocumentLocation) -> Bool
+    let addNoteToChat: (WindowDocumentLocation) -> Void
     let requestFileOperation: (NoteFileRequest) -> Void
     let canMutateLibrary: Bool
     let createUntitledNote: (String?) -> Void
@@ -262,7 +267,8 @@ struct SidebarTreeNodeRow: View {
             Text(title)
         }
         .disabled(
-            command.requiresMutationTarget && NoteMutationTarget(note) == nil
+            command == .addToChat ? !context.canAddNoteToChat(note)
+                : command.requiresMutationTarget && NoteMutationTarget(note) == nil
         )
     }
 
@@ -273,6 +279,8 @@ struct SidebarTreeNodeRow: View {
         switch command {
         case .openInNewTab:
             context.openNote(note, .newTab)
+        case .addToChat:
+            context.addNoteToChat(note)
         case .duplicate, .rename, .move:
             guard let target = NoteMutationTarget(note) else {
                 context.showError(

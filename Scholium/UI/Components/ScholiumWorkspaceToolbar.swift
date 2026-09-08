@@ -114,6 +114,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
             item.action = nil
             item.isEnabled = false
             item.menuFormRepresentation = nil
+            (item.view as? ScholiumSidebarModeControl)?.invalidateNoteDrops()
             if let control = item.view as? NSControl {
                 control.target = nil
                 control.action = nil
@@ -679,8 +680,20 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
         let images = zip(symbols, labels).compactMap {
             ScholiumNativeToolbarPresentation.symbol(named: $0, accessibilityDescription: $1)
         }
-        let control = NSSegmentedControl(images: images, trackingMode: .selectOne,
+        let control = ScholiumSidebarModeControl(images: images, trackingMode: .selectOne,
                                          target: self, action: #selector(selectSidebarMode(_:)))
+        control.enableNoteDrops()
+        control.validateNotes = { [weak self] notes in
+            guard let self, !self.isInvalidated else { return false }
+            return self.appState.canAddNotesToChat(notes)
+        }
+        control.acceptNotes = { [weak self] notes in
+            guard let self, !self.isInvalidated, self.appState.addNotesToChat(notes) else { return false }
+            if self.appState.shellState.sidebarContent != .chat || !self.appState.shellState.libraryVisible {
+                self.activateSidebar(.chat)
+            }
+            return true
+        }
         for index in labels.indices {
             control.setToolTip(labels[index], forSegment: index)
             control.setImageScaling(.scaleProportionallyDown, forSegment: index)

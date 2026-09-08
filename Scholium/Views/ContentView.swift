@@ -423,10 +423,10 @@ struct ContentView: View {
         let documentKey = appState.currentDocumentDescriptor?.sessionKey
         let documentPath = appState.currentNote?.relativePath
         return DocumentFeatureActions(
-            askAgent: {
+            askAgent: { inquiry in
                 Task {
                     guard appState.currentDocumentDescriptor?.sessionKey == documentKey else { return }
-                    if await appState.addCurrentSelectionToChat(),
+                    if await appState.addCurrentSelectionToChat(inquiry: inquiry),
                        !appState.shellState.libraryVisible || appState.shellState.sidebarContent != .chat {
                         windowCoordinator.actions.activateSidebar(.chat)
                     }
@@ -542,6 +542,13 @@ struct ContentView: View {
                 propertyValues: propertyFilterOptions.valuesByKey
             ),
             openNote: { appState.requestOpenNote($0, disposition: $1) },
+            canAddNoteToChat: { appState.canAddLibraryNoteToChat($0) },
+            addNoteToChat: { note in
+                guard appState.addLibraryNoteToChat(note) else { return }
+                if appState.shellState.sidebarContent != .chat || !appState.shellState.libraryVisible {
+                    windowCoordinator.actions.activateSidebar(.chat)
+                }
+            },
             selectTriptychWorkspace: { appState.requestTriptychWorkspace($0) },
             createUntitledNote: {
                 appState.libraryMutationController.requestUntitledNoteCreation(in: $0)

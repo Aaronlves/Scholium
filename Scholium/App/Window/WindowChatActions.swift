@@ -22,7 +22,7 @@ extension WindowModel {
   }
 
   @MainActor @discardableResult
-  func addCurrentSelectionToChat() async -> Bool {
+  func addCurrentSelectionToChat(inquiry: AgentChatSelectionInquiry = .ask) async -> Bool {
     guard let chat = chatController, let note = currentNote,
       let descriptor = currentDocumentDescriptor,
       let noteID = note.workspaceSnapshot?.stableIdentity.resolvedID
@@ -47,18 +47,64 @@ extension WindowModel {
       else { return false }
       if chat.selected == nil || chat.selected?.archivedAt != nil { chat.newConversation() }
       guard let conversationID = chat.selectedID else { return false }
-      return chat.attachContext([
+      return chat.prepareSelectionInquiry([
         .init(noteID: noteID, vaultID: descriptor.reference.vaultID,
           relativePath: note.relativePath, text: snapshot.excerpt,
           fingerprint: DocumentFingerprint(content: snapshot.source),
           sourceLine: snapshot.line, sourceRange: snapshot.sourceRange,
           source: mode == .read ? .savedSource : .editorSnapshot,
-          vaultRole: descriptor.reference.vaultRole)], to: conversationID)
+          vaultRole: descriptor.reference.vaultRole)], inquiry: inquiry, to: conversationID)
     } catch {
       reportOperationIssue(String(localized: "Select an exact passage in Edit or Source if the reading selection cannot be located."),
         kind: .information)
       return false
     }
+  }
+
+  @MainActor
+  func canAddLibraryNoteToChat(_ note: WindowDocumentLocation) -> Bool {
+    guard let target = NoteMutationTarget(note) else { return false }
+    return canAddNotesToChat([SidebarNoteDragItem(target)])
+  }
+
+  @MainActor @discardableResult
+  func addLibraryNoteToChat(_ note: WindowDocumentLocation) -> Bool {
+    guard let target = NoteMutationTarget(note), addNotesToChat([SidebarNoteDragItem(target)]) else {
+      reportOperationIssue(AgentChatNoteMaterialError.unavailable.localizedDescription, kind: .information)
+      return false
+    }
+    return true
+  }
+
+  @MainActor
+  func canAddNotesToChat(_ items: [SidebarNoteDragItem]) -> Bool {
+    guard !items.isEmpty, let chat = chatController, chat.isLoaded,
+      workspaceAssignment?.id == chat.triptychID,
+      windowWorkspaceController.activeCapabilities != nil,
+      let notes = workspaceCatalog?.notes,
+      chat.selectedID.map({ !chat.preparingMaterials.contains($0) }) ?? true else { return false }
+    return items.allSatisfy { (try? AgentChatPasteboardSnapshot.resolve($0, in: notes)) != nil }
+  }
+
+  @MainActor @discardableResult
+  func addNotesToChat(_ items: [SidebarNoteDragItem]) -> Bool {
+    guard canAddNotesToChat(items), let chat = chatController,
+      let runtime = windowWorkspaceController.activeCapabilities?.runtimeIdentity else { return false }
+    if chat.selected == nil || chat.selected?.archivedAt != nil { chat.newConversation() }
+    guard let conversationID = chat.selectedID else { return false }
+    chat.presentContext(in: conversationID)
+    Task { @MainActor [weak self, weak chat] in
+      guard let self, let chat, self.chatController === chat,
+        self.windowWorkspaceController.activeCapabilities?.runtimeIdentity == runtime else { return }
+      await chat.addTransferredMaterials(items.map(AgentChatTransferredMaterial.note), origin: .drop,
+        to: conversationID) { [weak self] item in
+          guard let self, self.chatController === chat,
+            self.windowWorkspaceController.activeCapabilities?.runtimeIdentity == runtime else { throw CancellationError() }
+          let note = try AgentChatPasteboardSnapshot.resolve(item, in: self.workspaceCatalog?.notes ?? [])
+          try await self.addNoteToChat(note, conversationID: conversationID)
+        }
+    }
+    return true
   }
 
   @MainActor

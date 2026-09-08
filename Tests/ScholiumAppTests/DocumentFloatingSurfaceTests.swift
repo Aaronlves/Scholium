@@ -29,6 +29,37 @@ struct DocumentFloatingSurfaceTests {
         #expect(DocumentFloatingSurface.decode(extra) == nil)
     }
 
+    @Test("Selection research menu stays compact and dispatches only a known inquiry")
+    func selectionResearchMenu() throws {
+        let webView = WKWebView()
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 300, height: 300),
+            styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        let viewport = DocumentWebViewContainer(webView: webView)
+        window.contentView = viewport
+        window.layoutIfNeeded()
+        let controller = DocumentFloatingSurfaceController()
+        defer { controller.dismiss(); webView.stopLoading(); window.close() }
+        var picked: [Int] = []
+        controller.present(.init(id: 1, kind: .selection, left: 20, top: 40, bottom: 60,
+            html: "", css: "", items: [], selected: -1), in: webView) { _, action, index in
+                if action == "choose" { picked.append(index) }
+            }
+        let glass = try #require(viewport.subviews.compactMap { $0 as? NSGlassEffectView }.first)
+        let stack = try #require(glass.contentView as? NSStackView)
+        let menu = try #require(stack.arrangedSubviews.compactMap { $0 as? NSPopUpButton }.first?.menu)
+        #expect(glass.frame.width <= 276)
+        #expect(menu.items.dropFirst().map(\.tag) == [1, 2, 3])
+        for item in menu.items.dropFirst() {
+            #expect(NSApp.sendAction(try #require(item.action), to: item.target, from: item))
+        }
+        #expect(picked == [1, 2, 3])
+        controller.dismiss()
+        let oldItem = try #require(menu.items.last)
+        _ = NSApp.sendAction(try #require(oldItem.action), to: oldItem.target, from: oldItem)
+        #expect(picked == [1, 2, 3])
+    }
+
     @Test("Completion fits candidate content, remains stable on selection, and respects the viewport")
     func completionWidth() throws {
         _ = NSApplication.shared

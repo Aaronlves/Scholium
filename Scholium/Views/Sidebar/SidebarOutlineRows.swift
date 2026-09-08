@@ -250,6 +250,13 @@ final class SidebarOutlineRowView: SidebarSourceListRowView {
 final class SidebarOutlineView: NSOutlineView {
     private let selectionPresentation = SidebarSourceListSelectionPresentation()
     var selectionPresentationDidChange: (() -> Void)?
+    var chatAccessibilityAction: (() -> NSAccessibilityCustomAction?)?
+
+    override func accessibilityCustomActions() -> [NSAccessibilityCustomAction]? {
+        let native = super.accessibilityCustomActions() ?? []
+        guard let action = chatAccessibilityAction?() else { return native }
+        return native + [action]
+    }
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)

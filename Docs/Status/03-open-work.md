@@ -16,10 +16,15 @@ This documentation cleanup changes no app code and closes no UI acceptance.
 
 The expanded target is owned by Specification §8.7 in `12-agent-chat.md`.
 Current work prioritizes general Agent interaction before specialized research
-features. Reply-selection cards, quiet tool details, native Note-drop capture and
-tab-preserving source opening now have implementation slices. Complete physical
-Library-to-Chat dragging with the shared sidebar, cross-block reply selection,
-and full assistive-technology/adaptation acceptance. Optional partial adoption
+features. Passage research starters now prepare editable concept, argument and
+evidence questions with checked source context. Complete representative scholarly
+validation across ambiguous concepts, implicit premises and unavailable originals;
+passing interface checks alone does not establish philosophical benefit.
+Cross-block reply selection, quiet tool details, toolbar Chat Note-copy
+drops and tab-preserving source opening now have implementation slices. Keyboard
+cross-paragraph handoff and Library menu/native accessibility Add to Chat pass
+live. Complete physical Library-to-Chat dragging and human assistive-technology
+and adaptation acceptance. Optional partial adoption
 needs a separate revision-checked implementation; ordinary update approval stays
 one decision per proposal. Message queues and scheduled execution remain separate
 runtime-integration work, not implied by these interaction slices.

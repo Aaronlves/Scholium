@@ -25,6 +25,18 @@ describe("native floating projection", () => {
     expect(choose).toHaveBeenCalledTimes(1);
     expect(dismiss).not.toHaveBeenCalled();
   });
+  it("accepts only known selection inquiries and checks their current owner", () => {
+    vi.stubGlobal("window", {});
+    const choose = vi.fn((_index: number) => true);
+    const bridge = createNativeFloatingBridge(() => {});
+    const surface = {...suggestions, kind: "selection" as const, items: [], selected: -1};
+    const id = bridge.show(surface, {choose, dismiss() {}});
+    for (const index of [-1, 4, 0.5, NaN]) expect(bridge.event(id, "choose", index)).toBe(false);
+    for (const index of [0, 1, 2, 3]) expect(bridge.event(id, "choose", index)).toBe(true);
+    expect(choose.mock.calls.map(call => call[0])).toEqual([0, 1, 2, 3]);
+    bridge.hide(id);
+    expect(bridge.event(id, "choose", 1)).toBe(false);
+  });
   it("closes only the current projection with a bounded empty payload", () => {
     vi.stubGlobal("window", {});
     const sent: NativeFloatingPayload[] = [];

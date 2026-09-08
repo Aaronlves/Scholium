@@ -57,10 +57,18 @@ struct AgentChatNoteMaterialTests {
       let captured = AgentChatPasteboardSnapshot.read(pasteboard)
       #expect(captured.count == 1)
       #expect(throws: AgentChatNoteMaterialError.self) { try AgentChatPasteboardSnapshot.resolve(item, in: []) }
-      await chat.addTransferredMaterials(captured, origin: .drop, to: target) { item in
-        let resolved = try AgentChatPasteboardSnapshot.resolve(item, in: window.workspaceCatalog?.notes ?? [])
-        try await window.addNoteToChat(resolved, conversationID: target)
-      }
+      let libraryNote = try #require(window.notes.first { $0.relativePath == "Source.md" })
+      #expect(window.canAddNotesToChat([item]))
+      #expect(window.canAddLibraryNoteToChat(libraryNote))
+      let stale = SidebarNoteDragItem(.init(documentID: item.documentID, stableNoteID: item.stableNoteID,
+        revision: .init(content: "a different version")))
+      #expect(!window.canAddNotesToChat([stale]))
+      #expect(!window.addNotesToChat([stale]))
+      chat.select(target)
+      #expect(window.addLibraryNoteToChat(libraryNote))
+      #expect(chat.contextPresentationID != nil)
+      chat.select(other)
+      try await wait { chat.conversations.first { $0.id == target }?.attachments.isEmpty == false }
       let invalid = NSPasteboardItem()
       invalid.setData(Data("invalid".utf8), forType: .init(SidebarNoteDragItem.pasteboardType))
       invalid.setString("file:///not-the-note.md", forType: .fileURL)

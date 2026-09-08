@@ -46,6 +46,17 @@ selections offer Edit or Source. No-selection and unavailable-editor states
 request an explicit selection rather than sharing the whole document. Ask Agent
 stages that checked passage in the current conversation and focuses its ordinary
 composer without sending, replacing a draft, or granting a Note modification.
+The selection surface also offers Clarify Concepts, Examine Argument and Check
+Evidence. Each prepares an editable question alongside the checked passage in
+ordinary Chat; existing draft text is retained. These are inquiry starters, not
+academic task types, fixed methods, research scores or completion records.
+Clarification distinguishes a passage's usage and ambiguities from an Agent's
+interpretation. Argument examination distinguishes stated reasons, supplied
+premises and objections without forcing nonargumentative prose into a proof.
+Evidence checking distinguishes inspected sources, analysis Notes and inference;
+unavailable primary material leaves attribution and support explicitly unverified.
+The prepared question requests discussion without Note changes. Nothing is sent
+until the researcher reviews and sends the draft; adopting a result is separate.
 Opening a retained passage reveals its exact range only while the current source
 revision and range match; an older snapshot keeps its original attribution.
 For an exact Chat passage, Review restores the native text selection only when
@@ -279,6 +290,9 @@ rendered reply text is Agent content, never an exact research-source capture.
 The researcher can inspect or remove the quote and edit the draft before sending. A named action and
 keyboard route accompany native selection; stale or departed replies cannot
 redirect a quote into another conversation. Existing draft text is preserved.
+Selection can cross paragraphs, lists and table cells within one completed reply.
+Native Copy and quote handoff use the same rendered text and reading order;
+formatting remains a projection, with no reconstruction of writable source.
 
 The composer accepts explicitly selected Notes and checked editor passages,
 local documents and supported images. File selection, paste and drop are
@@ -288,6 +302,13 @@ before sending without replacing the draft.
 Dragging a Library Note into the composer copies context through the same
 identity-checked capture as Choose Note; it never moves the file. Invalid or
 foreign Note identities are rejected without falling back to a local file.
+When Library is visible, its Notes can also be dropped on the toolbar's Chat
+segment. Only an accepted drop opens Chat and prepares the copied context;
+hover and cancellation read nothing. The drop binds to that window's Triptych
+and destination conversation. Library Notes also expose Add to Chat through their
+context menu and named accessibility action; the existing picker remains available.
+All routes prepare inspectable context in the destination draft, without sending
+a message or navigating away from the current document.
 Chat source opening reuses an existing document tab or opens a new tab, preserving
 the previous document and Chat reading position. Triptych roles and workspace
 ownership remain unchanged. Material snapshots retain their preview; local files

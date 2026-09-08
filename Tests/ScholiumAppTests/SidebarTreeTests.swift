@@ -129,6 +129,7 @@ struct SidebarTreeTests {
         ).flatMap(\.commands)
         #expect(workspaceMenu == [
             .openInNewTab,
+            .addToChat,
             .duplicate,
             .rename,
             .move,
@@ -137,6 +138,45 @@ struct SidebarTreeTests {
             .revealInFinder,
         ])
 
+    }
+
+    @MainActor
+    @Test("Native Chat action follows the selected Note and rejects stale selection or teardown")
+    func nativeChatAccessibilityAction() throws {
+        let vaultID = UUID()
+        let notes = ["First.md", "Second.md"].map {
+            workspaceNote(vaultID: vaultID, stableID: UUID(), path: $0, source: "# Material\n")
+        }
+        let projection = LibraryTreeProjection(preorderedNotes: notes)
+        var available = true
+        var added: [String] = []
+        let configuration = makeSidebarCoordinatorConfiguration(
+            roots: projection.roots, notes: notes,
+            scope: .init(vaultID: vaultID, sourceScope: .library), expandedFolderIDs: [],
+            revealRequest: nil, requestedFocusPath: nil,
+            onConsumeRevealRequest: { _ in }, onFocusRequestHandled: {},
+            canAddNoteToChat: { _ in available }, addNoteToChat: { added.append($0.relativePath) })
+        let coordinator = SidebarOutlineSourceList.Coordinator(configuration: configuration)
+        let fixture = makeSidebarCoordinatorOutline(coordinator)
+        coordinator.apply(configuration: configuration)
+        defer { coordinator.detach(from: fixture.scrollView) }
+        let outline = fixture.outlineView
+        #expect(outline.chatAccessibilityAction?() == nil)
+        outline.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
+        let first = try #require(outline.accessibilityCustomActions()?.first { $0.name == "Add to Chat" })
+        #expect(first.handler?() == true)
+        #expect(added == ["First.md"])
+        outline.selectRowIndexes(IndexSet(integer: 1), byExtendingSelection: false)
+        #expect(first.handler?() == false)
+        let second = try #require(outline.chatAccessibilityAction?())
+        available = false
+        #expect(second.handler?() == false)
+        #expect(outline.chatAccessibilityAction?() == nil)
+        available = true
+        coordinator.detach(from: fixture.scrollView)
+        #expect(second.handler?() == false)
+        #expect(outline.chatAccessibilityAction == nil)
+        #expect(added == ["First.md"])
     }
 
     @Test("Library filter presentation counts only complete property filters")
@@ -1128,12 +1168,16 @@ private func makeSidebarCoordinatorConfiguration(
     revealRequest: DiscoveryLibraryRevealRequest?,
     requestedFocusPath: String?,
     onConsumeRevealRequest: @escaping (DiscoveryLibraryRevealRequest) -> Void,
-    onFocusRequestHandled: @escaping () -> Void
+    onFocusRequestHandled: @escaping () -> Void,
+    canAddNoteToChat: @escaping (WindowDocumentLocation) -> Bool = { _ in false },
+    addNoteToChat: @escaping (WindowDocumentLocation) -> Void = { _ in }
 ) -> SidebarOutlineSourceList {
     let context = SidebarTreeContext(
         currentVaultID: scope.vaultID,
         currentVaultRole: .other,
         openNote: { _, _ in },
+        canAddNoteToChat: canAddNoteToChat,
+        addNoteToChat: addNoteToChat,
         requestFileOperation: { _ in },
         canMutateLibrary: false,
         createUntitledNote: { _ in },

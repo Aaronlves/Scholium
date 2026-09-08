@@ -86,14 +86,23 @@ struct AgentChatMarkdown: View {
   @Environment(\.openURL) private var openURL
 
   var body: some View {
-    let blocks = AgentChatMarkdownBlock.parse(text)
-    VStack(alignment: .leading, spacing: 0) {
-      ForEach(Array(blocks.enumerated()), id: \.element.id) { index, block in
-        blockView(block).padding(.bottom, spacing(after: index, in: blocks))
+    Group {
+      if let quoteSelection {
+        AgentChatSelectableText(source: text,
+          quote: { range, rendered in
+            quoteSelection(.init(range: range, renderedText: rendered))
+          }, openLink: { openURL($0) })
+      } else {
+        let blocks = AgentChatMarkdownBlock.parse(text)
+        VStack(alignment: .leading, spacing: 0) {
+          ForEach(Array(blocks.enumerated()), id: \.element.id) { index, block in
+            blockView(block).padding(.bottom, spacing(after: index, in: blocks))
+          }
+        }
+        .font(.body)
+        .textSelection(.enabled)
       }
     }
-    .font(.body)
-    .textSelection(.enabled)
     .frame(maxWidth: expandsToFillWidth ? .infinity : nil, alignment: .leading)
   }
 
@@ -106,38 +115,27 @@ struct AgentChatMarkdown: View {
   }
 
   @ViewBuilder
-  private func selectable(_ text: AttributedString, block: AgentChatMarkdownBlock, cell: Int? = nil,
-    heading: Bool = false) -> some View {
-    if let quoteSelection {
-      AgentChatSelectableText(text: text, font: .preferredFont(forTextStyle: heading ? .headline : .body),
-        quote: { range, rendered in
-          quoteSelection(.init(blockID: block.id, cell: cell, range: range, renderedText: rendered))
-        }, openLink: { openURL($0) })
-    } else { Text(text).font(heading ? .headline : .body) }
-  }
-
-  @ViewBuilder
   private func blockView(_ block: AgentChatMarkdownBlock) -> some View {
     switch block.kind {
     case .prose:
-      selectable(block.text, block: block)
+      Text(block.text)
     case .heading:
-      selectable(block.text, block: block, heading: true).accessibilityAddTraits(.isHeader)
+      Text(block.text).font(.headline).accessibilityAddTraits(.isHeader)
     case .code:
       ScrollView(.horizontal) {
         Text(block.text).monospaced().fixedSize(horizontal: true, vertical: false)
       }
     case .quote:
-      selectable(block.text, block: block).padding(.leading)
+      Text(block.text).padding(.leading)
     case .list(let marker):
       HStack(alignment: .firstTextBaseline) {
         Text(marker)
-        selectable(block.text, block: block)
+        Text(block.text)
       }.padding(.leading, block.isQuoted ? nil : 0)
     case .tableRow(let header):
       HStack(alignment: .top) {
         ForEach(block.cells.indices, id: \.self) { index in
-          selectable(block.cells[index], block: block, cell: index, heading: header).frame(maxWidth: .infinity, alignment: .leading)
+          Text(block.cells[index]).frame(maxWidth: .infinity, alignment: .leading)
         }
       }.font(header ? .headline : .body)
     }

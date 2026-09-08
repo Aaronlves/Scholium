@@ -26,7 +26,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
     var linkPreviewRevision: String? = nil
     let onLinkClick: (String) -> Void
     let onOpenExternalURL: (URL) -> Void
-    var onAskAgent: (() -> Void)? = nil
+    var onAskAgent: ((AgentChatSelectionInquiry) -> Void)? = nil
     var onSelectionChange: ((MarkdownReviewSelection?) -> Void)? = nil
     /// Derived visibility only. Review remains the sole selection-surface
     /// owner; the coordinator transports mode changes to its retained page.
@@ -198,7 +198,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         private var fingerprint: String
         private var onLinkClick: (String) -> Void
         private var onOpenExternalURL: (URL) -> Void
-        var onAskAgent: (() -> Void)?
+        var onAskAgent: ((AgentChatSelectionInquiry) -> Void)?
         private var onSelectionChange: ((MarkdownReviewSelection?) -> Void)?
         private let selectionCoordinator: SafeMarkdownReadSelectionCoordinator
         private let floatingSurfaces = DocumentFloatingSurfaceController()
@@ -598,7 +598,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                             in: nil, contentWorld: SafeMarkdownReadWebView.bridgeContentWorld
                         )
                         if accepted as? Bool == true, surface.kind == .selection, action == "choose",
-                           self.loadGeneration == expectedGeneration { self.onAskAgent?() }
+                           let inquiry = AgentChatSelectionInquiry(rawValue: index),
+                           self.loadGeneration == expectedGeneration { self.onAskAgent?(inquiry) }
                     }
                 }
             case "requestMermaidRuntime":

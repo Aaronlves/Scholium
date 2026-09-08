@@ -39,7 +39,8 @@ export function createNativeFloatingBridge(post: (surface: NativeFloatingPayload
       if (action === "enter") callbacks.enter?.();
       else if (action === "leave") callbacks.leave?.();
       else if (action === "dismiss") callbacks.dismiss();
-      else if (action === "choose" && current.surface.kind === "selection" && index === 0) {
+      else if (action === "choose" && current.surface.kind === "selection"
+        && Number.isInteger(index) && index >= 0 && index <= 3) {
         return callbacks.choose?.(index) !== false;
       }
       else if ((action === "select" || action === "choose") && Number.isInteger(index)

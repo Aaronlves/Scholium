@@ -4,15 +4,13 @@
 
 ## Current verification snapshot
 
-**2026-09-08 — general Chat interaction:** Fifty-one owning checks cover quote
-handoff/delivery/history, material capture, source navigation and architecture.
-QA selects four Chinese characters, stages a quote, previews/returns
-to its reply and receives the exact four characters from the signed-in runtime.
-Note picking/opening retains tabs and Chat context; tool
-subjects/details remain behind individual disclosures. Later native selection,
-detached-measurement and light/dark renders pass separately. This does not certify
-physical Library dragging, cross-block selection or full accessibility/adaptation.
-Evidence: `.build/agent-chat-evolution/generic-*`.
+**2026-09-08 — Chat and passage inquiry:** Prior checks cover quoting and materials. Inquiry adds 13 native and 231 editor checks;
+its localized concept/argument/evidence questions preserve drafts and checked
+passages. Edit/Review selection opens checked research drafts; unmappable Review ranges fail visibly. A signed-in synthetic argument case marks supplied premises as
+reconstruction and leaves Notes unchanged. Library menu/accessibility handoff, preview/Escape/removal and
+cross-paragraph quoting pass separately. Physical dragging, human accessibility
+and representative scholarly evaluation remain open. Evidence:
+`.build/agent-chat-evolution/{generic,continuous,library-chat,inquiry}-*`.
 
 **2026-09-08 — unified public transcript:** Shared typed decoding validates full
 history atomically and accepts lifecycle-only metadata without inventing messages.

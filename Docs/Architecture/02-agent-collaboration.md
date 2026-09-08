@@ -94,6 +94,10 @@ ordinary route and seven unchanged public tools. Ask-mode Note writes wait for
 one native client approval; runtime approval requests are answered separately
 only when they concern a different runtime operation.
 
+`AgentChatSelectionInquiry` supplies three localized, editable inquiry starters;
+known native menu indices cross the existing selection-bound bridge. The Chat
+controller stages their text with the checked passage and retains the prior draft.
+No inquiry mode or research-result store is persisted.
 `WindowChatActions` captures checked editor or exactly mapped Review selection,
 or whole-Note source, and
 resolves stable Note references through the current catalog. Whole-Note capture
@@ -151,11 +155,19 @@ Public assistant phase metadata is retained on the message by streaming and hist
 reconciliation. Timeline grouping uses explicit turn and phase metadata; a process
 disclosure owns only expansion, keeping each tool item distinct from the final answer.
 Reply actions copy original text and project explicit links into Sources.
-`AgentChatReplyTextView` owns native read-only selection and detached sizing;
-`AgentChatReplyQuotation` validates rendered block/range identity. The controller
+`AgentChatReplyTextView` owns one native read-only selection across each completed
+reply, including native table cells, and measures on detached storage.
+`AgentChatReplyQuotation` validates the same rendered text and range. The controller
 stages compact `AgentChatReplyQuote` values in the existing conversation draft,
 then retains them on the sent message. They are Agent prose, not Note snapshots;
-source navigation retains its conversation/reply identity and no independent archive. Successful scoped App reads retain a bounded exact excerpt, source
+source navigation retains its conversation/reply identity and no independent archive.
+`ScholiumSidebarModeControl` accepts local Note copies only on the Chat segment.
+Library menu and accessibility actions reuse that same Note-copy admission.
+The native outline exposes the selected Note action; its coordinator binds the
+Note and rejects a changed selection or detached list before forwarding.
+`WindowChatActions` validates catalog identity, binds the destination at invocation,
+and delegates capture/cancellation to the existing material-preparation owner;
+hover performs no source read or navigation. Successful scoped App reads retain a bounded exact excerpt, source
 fingerprint and returned line range as `AgentChatSourceObservation` on their
 existing activity. Public completed web open/find events retain access observations
 only. `AgentChatReplySourceContext` projects observations preceding the reply in

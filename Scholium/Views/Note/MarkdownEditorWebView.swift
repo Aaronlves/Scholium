@@ -32,7 +32,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
     let onScrollFractionChange: (Double) -> Void
     let onScrollAnchorChange: (EditorScrollAnchor) -> Void
 
-    var onAskAgent: (() -> Void)? = nil
+    var onAskAgent: ((AgentChatSelectionInquiry) -> Void)? = nil
 
     static func requiresMathRuntime(
         source: String,
@@ -359,7 +359,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             }
         }
 
-        var onAskAgent: (() -> Void)?
+        var onAskAgent: ((AgentChatSelectionInquiry) -> Void)?
 
         func userContentController(
             _ userContentController: WKUserContentController,
@@ -387,8 +387,9 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                             in: nil, contentWorld: .page
                         )
                         if accepted as? Bool == true, request.surface.kind == .selection, action == "choose",
+                           let inquiry = AgentChatSelectionInquiry(rawValue: index),
                            self.session.webView === webView, request.envelope.documentVersion == self.session.generation {
-                            self.onAskAgent?()
+                            self.onAskAgent?(inquiry)
                         }
                     }
                 }

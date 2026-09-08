@@ -484,7 +484,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
     }
     try await saveNow()
     if let replaced { try await releaseMaterialIfUnreferenced(replaced) }
-    if selectedID == conversationID { contextPresentationID = UUID() }
+    presentContext(in: conversationID)
   }
 
   private func performMaterialPreparation(in conversationID: UUID, work: @escaping @MainActor () async throws -> Void) async -> Bool {
@@ -500,6 +500,10 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
     }
     materialTasks[conversationID] = operation
     return await withTaskCancellationHandler { await operation.value } onCancel: { operation.cancel() }
+  }
+
+  func presentContext(in conversationID: UUID) {
+    if selectedID == conversationID { contextPresentationID = UUID() }
   }
 
   func cancelMaterialPreparation(in conversationID: UUID) { materialTasks[conversationID]?.cancel() }
@@ -773,9 +777,20 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
       }
     }
     persist()
-    if selectedID == conversationID { contextPresentationID = UUID() }
+    presentContext(in: conversationID)
     return true
   }
+  func prepareSelectionInquiry(_ attachments: [AgentChatAttachment], inquiry: AgentChatSelectionInquiry,
+    to conversationID: UUID) -> Bool {
+    guard selectedID == conversationID, !attachments.isEmpty,
+      attachContext(attachments, to: conversationID) else { return false }
+    if let question = inquiry.question {
+      let draft = selected?.draft ?? ""
+      editDraft(draft.isEmpty ? question : draft + "\n\n" + question, in: conversationID)
+    }
+    return true
+  }
+
   func removeAttachment(_ id: UUID) {
     update { $0.attachments.removeAll { $0.id == id } }
     persist()

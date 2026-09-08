@@ -1,6 +1,118 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Clarify Concepts" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Clarify Concepts"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "澄清概念"
+          }
+        }
+      }
+    },
+    "Examine Argument" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Examine Argument"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "检验论证"
+          }
+        }
+      }
+    },
+    "Check Evidence" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Check Evidence"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "核对依据"
+          }
+        }
+      }
+    },
+    "Research Passage" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Research Passage"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "研究选段"
+          }
+        }
+      }
+    },
+    "Clarify the key concepts and distinctions in the attached passage, including ambiguities that affect its meaning. Separate the passage’s explicit wording from your interpretation. Discuss in Chat without changing Notes." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Clarify the key concepts and distinctions in the attached passage, including ambiguities that affect its meaning. Separate the passage’s explicit wording from your interpretation. Discuss in Chat without changing Notes."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请澄清所附选段中的关键概念与区分，指出影响其含义的歧义。区分原文明说的内容和你的解释。先在聊天中讨论，不修改笔记。"
+          }
+        }
+      }
+    },
+    "Examine the claim and reasons in the attached passage, any premises needed for the inference, and the most consequential objection. Distinguish stated premises from your reconstruction; do not force a nonargumentative passage into a proof. Discuss in Chat without changing Notes." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Examine the claim and reasons in the attached passage, any premises needed for the inference, and the most consequential objection. Distinguish stated premises from your reconstruction; do not force a nonargumentative passage into a proof. Discuss in Chat without changing Notes."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请检验所附选段的主张与理由、推论所需的前提及最关键的异议。区分原文明说的前提和你的重构；不要把非论证性的段落强行改写为证明。先在聊天中讨论，不修改笔记。"
+          }
+        }
+      }
+    },
+    "Check the grounds for the attached passage. Distinguish inspected primary sources, analysis Notes and your inferences. Cite only material you have read with its location; leave claims unverified where the required source is unavailable. Discuss in Chat without changing Notes." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Check the grounds for the attached passage. Distinguish inspected primary sources, analysis Notes and your inferences. Cite only material you have read with its location; leave claims unverified where the required source is unavailable. Discuss in Chat without changing Notes."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请核对所附选段的依据。区分实际查验的原始文献、分析笔记和你的推断。只引用读到的材料并注明位置；所需原文无法取得时，明确保留未核实状态。先在聊天中讨论，不修改笔记。"
+          }
+        }
+      }
+    },
     "Agent Reply" : {
       "localizations" : {
         "zh-Hans" : {

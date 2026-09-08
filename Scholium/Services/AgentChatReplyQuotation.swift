@@ -3,30 +3,28 @@ import ScholiumContracts
 
 /// A temporary selection in rendered Agent prose, not a research-source range.
 struct AgentChatReplySelection: Equatable {
-  let blockID: Int
-  let cell: Int?
   let range: NSRange
   let renderedText: String
 }
 
 enum AgentChatReplyQuotation {
-  static func passage(_ selection: AgentChatReplySelection, in reply: String) -> String? {
-    guard let block = AgentChatMarkdownBlock.parse(reply).first(where: { $0.id == selection.blockID }) else { return nil }
-    let text: String
-    if let cell = selection.cell {
-      guard block.cells.indices.contains(cell) else { return nil }
-      text = String(block.cells[cell].characters)
-    } else { text = String(block.text.characters) }
+  @MainActor static func passage(_ selection: AgentChatReplySelection, in reply: String) -> String?
+  {
+    let text = AgentChatSelectableText.renderReply(reply).string
     guard text == selection.renderedText, selection.range.length > 0,
-      let range = Range(selection.range, in: text) else { return nil }
+      let range = Range(selection.range, in: text)
+    else { return nil }
     return String(text[range])
   }
 
   static func url(conversationID: UUID, messageID: String) -> URL {
     var components = URLComponents()
-    components.scheme = "scholium-chat"; components.host = "reply"
-    components.queryItems = [.init(name: "conversation", value: conversationID.uuidString),
-      .init(name: "message", value: messageID)]
+    components.scheme = "scholium-chat"
+    components.host = "reply"
+    components.queryItems = [
+      .init(name: "conversation", value: conversationID.uuidString),
+      .init(name: "message", value: messageID),
+    ]
     return components.url!
   }
 
@@ -37,8 +35,10 @@ enum AgentChatReplyQuotation {
       let items = value.queryItems, items.count == 2,
       items.filter({ $0.name == "conversation" }).count == 1,
       items.filter({ $0.name == "message" }).count == 1,
-      let id = items.first(where: { $0.name == "conversation" })?.value.flatMap(UUID.init(uuidString:)),
-      let message = items.first(where: { $0.name == "message" })?.value, !message.isEmpty else { return nil }
+      let id = items.first(where: { $0.name == "conversation" })?.value.flatMap(
+        UUID.init(uuidString:)),
+      let message = items.first(where: { $0.name == "message" })?.value, !message.isEmpty
+    else { return nil }
     return (id, message)
   }
 

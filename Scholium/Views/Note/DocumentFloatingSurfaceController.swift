@@ -175,10 +175,22 @@ final class DocumentFloatingSurfaceController: NSObject, WKNavigationDelegate {
             button.setAccessibilityLabel(ScholiumL10n.string("Ask Agent"))
             button.setAccessibilityIdentifier("scholium.document.askAgent")
             button.sizeToFit()
-            preferredWidth = button.fittingSize.width + 24
-            glass.contentView = button
+            let research = NSPopUpButton(frame: .zero, pullsDown: true)
+            research.bezelStyle = .inline
+            research.addItem(withTitle: ScholiumL10n.string("Research Passage"))
+            for inquiry in AgentChatSelectionInquiry.allCases where inquiry != .ask {
+                let item = NSMenuItem(title: inquiry.title, action: #selector(researchPassage(_:)), keyEquivalent: "")
+                item.target = self; item.tag = inquiry.rawValue
+                research.menu?.addItem(item)
+            }
+            research.setAccessibilityLabel(ScholiumL10n.string("Research Passage"))
+            research.setAccessibilityIdentifier("scholium.document.researchPassage")
+            let actions = NSStackView(views: [button, research])
+            actions.orientation = .horizontal; actions.spacing = 8
+            preferredWidth = actions.fittingSize.width + 24
+            glass.contentView = actions
             glass.setAccessibilityElement(false)
-            glass.setAccessibilityChildren([button])
+            glass.setAccessibilityChildren([button, research])
             layout(height: max(32, button.fittingSize.height + 12))
         case .hidden: break
         }
@@ -200,6 +212,11 @@ final class DocumentFloatingSurfaceController: NSObject, WKNavigationDelegate {
         event = nil
         for observer in observers { NotificationCenter.default.removeObserver(observer) }
         observers.removeAll()
+    }
+
+    @objc private func researchPassage(_ sender: NSMenuItem) {
+        guard AgentChatSelectionInquiry(rawValue: sender.tag) != nil else { return }
+        send("choose", index: sender.tag)
     }
 
     @objc private func askAgent() { send("choose", index: 0) }

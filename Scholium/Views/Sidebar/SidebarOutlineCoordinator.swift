@@ -45,6 +45,20 @@ extension SidebarOutlineSourceList {
                 guard let self, let outlineView else { return }
                 self.refreshAvailableRows(in: outlineView)
             }
+            (outlineView as? SidebarOutlineView)?.chatAccessibilityAction = { [weak self, weak outlineView] in
+                guard let self, let outlineView, self.outlineView === outlineView, outlineView.selectedRow >= 0,
+                    let item = outlineView.item(atRow: outlineView.selectedRow) as? SidebarOutlineItem,
+                    let note = item.node.note, self.configuration.context.canAddNoteToChat(note) else { return nil }
+                let selectedID = item.id
+                return NSAccessibilityCustomAction(name: ScholiumL10n.string("Add to Chat", locale: self.configuration.locale)) {
+                    [weak self, weak outlineView] in
+                    guard let self, let outlineView, self.outlineView === outlineView,
+                        self.selectedItemID(in: outlineView) == selectedID,
+                        self.configuration.context.canAddNoteToChat(note) else { return false }
+                    self.configuration.context.addNoteToChat(note)
+                    return true
+                }
+            }
             (scrollView as? SidebarOutlineScrollView)?.rootMenuProvider = { [weak self] in
                 self?.makeRootMenu()
             }
@@ -53,6 +67,7 @@ extension SidebarOutlineSourceList {
         func detach(from scrollView: NSScrollView) {
             (scrollView as? SidebarOutlineScrollView)?.rootMenuProvider = nil
             (outlineView as? SidebarOutlineView)?.selectionPresentationDidChange = nil
+            (outlineView as? SidebarOutlineView)?.chatAccessibilityAction = nil
             self.outlineView = nil
             self.scrollView = nil
         }

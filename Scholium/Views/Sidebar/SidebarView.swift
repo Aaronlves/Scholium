@@ -36,6 +36,8 @@ struct SidebarContext {
     let sourceMutationGeneration: UInt64
     let filterOptions: SidebarLibraryFilterOptions
     let openNote: (WindowDocumentLocation, WindowOpenDisposition) -> Void
+    let canAddNoteToChat: (WindowDocumentLocation) -> Bool
+    let addNoteToChat: (WindowDocumentLocation) -> Void
     let selectTriptychWorkspace: (WorkspaceVaultSlot) -> Void
     let createUntitledNote: (String?) -> Void
     let createUntitledFolder: (String?) -> Void
@@ -328,6 +330,8 @@ struct SidebarView: View {
             currentVaultID: context.disclosureScope?.vaultID,
             currentVaultRole: context.currentVaultRole,
             openNote: context.openNote,
+            canAddNoteToChat: context.canAddNoteToChat,
+            addNoteToChat: context.addNoteToChat,
             requestFileOperation: { controller.requestFileOperation($0) },
             canMutateLibrary: context.canMutateLibrary,
             createUntitledNote: context.createUntitledNote,
