@@ -34,7 +34,14 @@ export function createEditorScrollCoordinator(
     const fallbackFraction = extent > 0
       ? Math.max(0, Math.min(1, editor.scrollDOM.scrollTop / extent))
       : 0;
-    const probeHeight = Math.max(0, editor.scrollDOM.scrollTop + 8);
+    // lineBlockAtHeight uses coordinates relative to the document top, while
+    // scrollTop is relative to the scroll container. Account for the
+    // document's measured top inset before probing the first visible block.
+    const scrollRect = editor.scrollDOM.getBoundingClientRect();
+    const probeHeight = Math.max(
+      0,
+      scrollRect.top + 8 - editor.documentTop,
+    );
     const block = editor.lineBlockAtHeight(probeHeight);
     const relativeBlockPosition = block.height > 0
       ? Math.max(0, Math.min(1, (probeHeight - block.top) / block.height))
@@ -124,7 +131,12 @@ export function createEditorScrollCoordinator(
       ? anchor.blockUTF16LowerBound + 1
       : anchor.sourceUTF16Offset;
     const block = editor.lineBlockAt(blockProbe);
-    return Math.max(0, block.top + block.height * relativePosition - 4);
+    const scrollRect = editor.scrollDOM.getBoundingClientRect();
+    const documentInset = editor.documentTop - scrollRect.top + editor.scrollDOM.scrollTop;
+    return Math.max(
+      0,
+      documentInset + block.top + block.height * relativePosition - 4,
+    );
   }
 
   let geometryReportScheduled = false;

@@ -571,14 +571,14 @@ final class DocumentController: ObservableObject {
         case .workspace(let descriptor):
             retainedReferences[descriptor.sessionKey] = descriptor.reference
             let selectedSession = session(for: descriptor.sessionKey)
+            if selectionChanged {
+                selectedSession.prepareForDocumentActivation()
+            }
             hydratePresentation(
                 of: selectedSession,
                 target: .workspace(descriptor.sessionKey),
                 path: descriptor.reference.relativePath
             )
-            if selectionChanged {
-                selectedSession.prepareForDocumentActivation()
-            }
             applyCurrentPresentationMode(
                 to: selectedSession,
                 target: .workspace(descriptor.sessionKey)

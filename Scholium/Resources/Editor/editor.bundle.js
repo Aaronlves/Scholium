@@ -32466,7 +32466,11 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     function currentAnchor() {
       const extent = Math.max(0, editor2.scrollDOM.scrollHeight - editor2.scrollDOM.clientHeight);
       const fallbackFraction = extent > 0 ? Math.max(0, Math.min(1, editor2.scrollDOM.scrollTop / extent)) : 0;
-      const probeHeight = Math.max(0, editor2.scrollDOM.scrollTop + 8);
+      const scrollRect = editor2.scrollDOM.getBoundingClientRect();
+      const probeHeight = Math.max(
+        0,
+        scrollRect.top + 8 - editor2.documentTop
+      );
       const block = editor2.lineBlockAtHeight(probeHeight);
       const relativeBlockPosition = block.height > 0 ? Math.max(0, Math.min(1, (probeHeight - block.top) / block.height)) : 0;
       return {
@@ -32536,7 +32540,12 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       const relativePosition = Math.max(0, Math.min(1, anchor.relativeBlockPosition));
       const blockProbe = anchor.sourceUTF16Offset === anchor.blockUTF16LowerBound && anchor.blockUTF16UpperBound > anchor.blockUTF16LowerBound ? anchor.blockUTF16LowerBound + 1 : anchor.sourceUTF16Offset;
       const block = editor2.lineBlockAt(blockProbe);
-      return Math.max(0, block.top + block.height * relativePosition - 4);
+      const scrollRect = editor2.scrollDOM.getBoundingClientRect();
+      const documentInset = editor2.documentTop - scrollRect.top + editor2.scrollDOM.scrollTop;
+      return Math.max(
+        0,
+        documentInset + block.top + block.height * relativePosition - 4
+      );
     }
     let geometryReportScheduled = false;
     let pendingGeometrySnapshot;

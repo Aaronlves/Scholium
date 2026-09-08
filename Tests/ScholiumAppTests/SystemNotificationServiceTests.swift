@@ -201,9 +201,12 @@ struct SystemNotificationServiceTests {
     }
 
     private func eventually(_ predicate: () -> Bool) async throws {
-        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+        // The full Swift test target runs native WebKit journeys concurrently;
+        // keep this assertion bounded without assuming the main actor is
+        // immediately available after the notification task is scheduled.
+        let deadline = ContinuousClock.now.advanced(by: .seconds(10))
         while !predicate(), ContinuousClock.now < deadline {
-            try await Task.sleep(for: .milliseconds(1))
+            try await Task.sleep(for: .milliseconds(10))
         }
         #expect(predicate())
     }

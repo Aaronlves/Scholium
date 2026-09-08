@@ -19,6 +19,7 @@ describe("source selection action", () => {
     const state = EditorState.create({doc: "text", selection: {anchor: 0, head: 4}});
     const scrollDOM = Object.assign(new EventTarget(), {
       scrollTop: 40, scrollHeight: 200, clientHeight: 100,
+      getBoundingClientRect: () => ({top: 0} as DOMRect),
     });
     const editor = {state, scrollDOM,
       lineBlockAtHeight: () => ({from: 0, to: 4, top: 0, height: 100}),

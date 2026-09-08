@@ -614,7 +614,7 @@ struct WindowControllerArchitectureTests {
         #expect(controllerSource.contains("@Published private(set) var selectedDocument"))
     }
 
-    @Test("The live Document presentation owns mode while activation starts at the title")
+    @Test("The live Document presentation owns mode while restoration keeps its viewport")
     func documentPresentationOwnsCurrentMode() {
         let reference = fixtureReference(path: "Topics/Presentation.md")
         let descriptor = WindowDocumentDescriptor(
@@ -636,7 +636,7 @@ struct WindowControllerArchitectureTests {
         #expect(session.presentationMode == .read)
         #expect(session.pendingEditorMode == .livePreview)
         #expect(controller.currentPresentationMode == .livePreview)
-        #expect(session.scrollFraction == 0)
+        #expect(session.scrollFraction == 0.64)
         let semanticAnchor = EditorScrollAnchor(
             sourceFingerprint: "revision-bound-fingerprint",
             sourceUTF16Offset: 12,
