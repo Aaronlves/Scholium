@@ -443,21 +443,76 @@ public actor ZoteroMCPServer {
             throw ZoteroMCPServiceError.importTargetChanged
         }
 
+        // The Connector imports into Zotero's current selection rather than
+        // accepting an explicit destination parameter. Re-read and resolve
+        // immediately before sending so the API resolution phase cannot
+        // authorize a selection that has already changed.
+        let finalTarget = try await selectedTarget()
+        guard finalTarget.isWritable,
+              finalTarget.fingerprint == currentTarget.fingerprint else {
+            throw ZoteroMCPServiceError.importTargetChanged
+        }
+        let finalResolvedTarget = try await resolve(target: finalTarget)
+        guard finalResolvedTarget == currentResolvedTarget else {
+            throw ZoteroMCPServiceError.importTargetChanged
+        }
+
+        let session = "scholium-\(UUID().uuidString.lowercased())"
         guard let request = ZoteroMCPRequestFactory.connector(
             endpoint: .importRecord(
-                session: "scholium-\(UUID().uuidString.lowercased())",
+                session: session,
                 contentType: kind.contentType,
                 content: Data(content.utf8)
             )
         ) else { throw ZoteroMCPServiceError.invalidRequest }
 
-        let response = try await sendConnector(request, isImport: true)
+        let response: ZoteroMCPHTTPResponse
+        do {
+            response = try await sendConnector(request, isImport: true)
+        } catch {
+            return .failure(uncertainImportValue(
+                kind: kind,
+                contentHash: contentHash,
+                selectedTarget: finalTarget.value,
+                importedKeys: [],
+                error: "The Connector response was lost after the import request was sent. Do not retry automatically; inspect Zotero and the selected destination first."
+            ))
+        }
         let importedKeys = importedItemKeys(from: response.body)
+
+        // The Connector has no destination argument. If Zotero's selection
+        // changed during the request, the response cannot be attributed to
+        // the reviewed target. Do not read back through the old route.
+        let postWriteTarget: SelectedTarget
+        do {
+            postWriteTarget = try await selectedTarget()
+        } catch {
+            return .failure(uncertainImportValue(
+                kind: kind,
+                contentHash: contentHash,
+                selectedTarget: finalTarget.value,
+                importedKeys: importedKeys,
+                error: "The import response arrived, but Zotero's destination could not be rechecked. Do not retry automatically; inspect Zotero before continuing."
+            ))
+        }
+        guard postWriteTarget.fingerprint == finalTarget.fingerprint else {
+            return .failure(uncertainImportValue(
+                kind: kind,
+                contentHash: contentHash,
+                selectedTarget: finalTarget.value,
+                postWriteTarget: postWriteTarget.value,
+                importedKeys: importedKeys,
+                error: "The Connector import may have completed while Zotero's selected destination changed. No destination or read-back claim is made."
+            ))
+        }
+
         guard !importedKeys.isEmpty else {
             return .failure(.object([
                 "status": .string("import-response-unverifiable"),
                 "write_may_have_completed": .bool(true),
-                "selected_target": currentTarget.value,
+                "selected_target": finalTarget.value,
+                "content_sha256": .string(contentHash),
+                "recovery": .string("Do not retry automatically. Inspect Zotero and confirm whether the selected destination received the import."),
                 "error": .string("Zotero accepted the import but returned no item keys for read-back."),
             ]))
         }
@@ -467,18 +522,18 @@ public actor ZoteroMCPServer {
         var destinationVerified = true
         for key in importedKeys {
             do {
-                guard let match = try await fetchItem(key, route: currentResolvedTarget.route) else {
+                guard let match = try await fetchItem(key, route: finalResolvedTarget.route) else {
                     destinationVerified = false
                     warnings.append(.string("An imported item could not be read back from the selected library."))
                     continue
                 }
                 let collectionKeys = decodedCollectionKeys(from: match.response.body)
-                if let expectedCollectionKey = currentResolvedTarget.collectionKey,
+                if let expectedCollectionKey = finalResolvedTarget.collectionKey,
                    !collectionKeys.contains(expectedCollectionKey) {
                     destinationVerified = false
                     warnings.append(.string("An imported item was not found in the selected collection."))
                 }
-                readBackItems.append(try metadataValue(match.item, route: currentResolvedTarget.route))
+                readBackItems.append(try metadataValue(match.item, route: finalResolvedTarget.route))
             } catch {
                 destinationVerified = false
                 warnings.append(.string("An imported item could not be verified through the local API."))
@@ -492,7 +547,7 @@ public actor ZoteroMCPServer {
                 "status": .string(verified ? "imported-and-verified" : "imported-verification-failed"),
                 "write_completed": .bool(true),
                 "kind": .string(kind.displayName),
-                "selected_target": currentTarget.value,
+                "selected_target": finalTarget.value,
                 "imported_item_keys": .array(importedKeys.map(ZoteroMCPJSONValue.string)),
                 "expected_item_count": .integer(recordCount),
                 "read_back_items": .array(readBackItems),
@@ -504,23 +559,45 @@ public actor ZoteroMCPServer {
         )
     }
 
+    private func uncertainImportValue(
+        kind: ImportKind,
+        contentHash: String,
+        selectedTarget: ZoteroMCPJSONValue,
+        postWriteTarget: ZoteroMCPJSONValue? = nil,
+        importedKeys: [String],
+        error: String
+    ) -> ZoteroMCPJSONValue {
+        var value: [String: ZoteroMCPJSONValue] = [
+            "status": .string("import-outcome-uncertain"),
+            "write_may_have_completed": .bool(true),
+            "kind": .string(kind.displayName),
+            "content_sha256": .string(contentHash),
+            "selected_target": selectedTarget,
+            "imported_item_keys": .array(importedKeys.map(ZoteroMCPJSONValue.string)),
+            "error": .string(error),
+            "recovery": .string("Do not retry automatically. Inspect Zotero and the selected destination before issuing a new dry run."),
+        ]
+        if let postWriteTarget {
+            value["post_write_target"] = postWriteTarget
+        }
+        return .object(value)
+    }
+
     private func resolve(target: SelectedTarget) async throws -> ResolvedTarget {
         let routes = try await libraryRoutes()
-        let matchingGroups = routes.filter { route in
-            route.groupID != nil && route.name == target.libraryName
-        }
-        let route: LibraryRoute
-        switch matchingGroups.count {
-        case 0:
-            route = .user
-        case 1:
-            route = matchingGroups[0]
-        default:
+        let matchingGroups = routes.filter { $0.groupID == target.libraryID }
+        guard matchingGroups.count <= 1 else {
             throw ZoteroMCPServiceError.ambiguousTarget
         }
+        let route = matchingGroups.first ?? .user
 
         guard target.isCollection else {
-            return ResolvedTarget(route: route, collectionKey: nil, collectionName: nil)
+            return ResolvedTarget(
+                route: route,
+                collectionKey: nil,
+                collectionName: nil,
+                connectorTargetID: target.selectedID
+            )
         }
         guard let request = ZoteroMCPRequestFactory.api(
             route: route,
@@ -535,7 +612,8 @@ public actor ZoteroMCPServer {
         return ResolvedTarget(
             route: route,
             collectionKey: collection.key,
-            collectionName: collection.data.name
+            collectionName: collection.data.name,
+            connectorTargetID: target.selectedID
         )
     }
 
@@ -1109,11 +1187,13 @@ private struct ResolvedTarget: Hashable, Sendable {
     let route: LibraryRoute
     let collectionKey: String?
     let collectionName: String?
+    let connectorTargetID: String?
 
     var value: ZoteroMCPJSONValue {
         var object = route.value.objectValue ?? [:]
         object["collection_key"] = collectionKey.map(ZoteroMCPJSONValue.string) ?? .null
         object["collection_name"] = collectionName.map(ZoteroMCPJSONValue.string) ?? .null
+        object["connector_target_id"] = connectorTargetID.map(ZoteroMCPJSONValue.string) ?? .null
         return .object(object)
     }
 }

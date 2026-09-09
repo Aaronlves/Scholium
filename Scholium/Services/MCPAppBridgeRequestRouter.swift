@@ -566,20 +566,20 @@ final class MCPAppBridgeRequestRouter {
             range: 1 ... 1_000
         )
         let snapshot = try await currentSnapshot(triptychID: triptychID)
-        let note = try resolveNote(noteID, snapshot: snapshot)
+        _ = try resolveNote(noteID, snapshot: snapshot)
         let handle = try await runtime.openWorkspace(id: triptychID)
-        let document = try await handle.documents.load(note.id)
+        let source = try await handle.agentCollaboration.currentNoteSource(noteID: noteID)
         let slice = try Self.exactLineSlice(
-            document.sourceBytes,
+            source.source,
             startLine: startLine,
             requestedLineCount: lineCount
         )
         return ok([
             "triptych_id": .string(triptychID.uuidString.lowercased()),
             "note_id": .string(noteID.uuidString.lowercased()),
-            "role": .string(Self.externalRole(note.vaultRole)),
-            "relative_path": .string(note.id.relativePath),
-            "fingerprint": fingerprintValue(document.fingerprint),
+            "role": .string(Self.externalRole(source.role)),
+            "relative_path": .string(source.note.relativePath),
+            "fingerprint": fingerprintValue(source.fingerprint),
             "start_line": .integer(startLine),
             "line_count": .integer(slice.lineCount),
             "start_utf8": .integer(slice.startUTF8),
@@ -627,7 +627,21 @@ final class MCPAppBridgeRequestRouter {
             if let existing = documents[edge.source] {
                 sourceDocument = existing
             } else {
-                sourceDocument = try await handle.documents.load(edge.source)
+                if let sourceID = stableIdentity(for: edge.source, snapshot: snapshot) {
+                    let current = try await handle.agentCollaboration.currentNoteSource(noteID: sourceID)
+                    guard current.note == edge.source,
+                          snapshot.document(id: edge.source)?.fingerprint == current.fingerprint,
+                          let content = NoteDocument.decodeUTF8PreservingBOM(current.source) else {
+                        throw ScholiumMCPFailure(
+                            code: .conflict,
+                            message: "The link source changed identity or revision during the read.",
+                            recovery: "Read workspace status and request the current links again."
+                        )
+                    }
+                    sourceDocument = NoteDocument(relativePath: current.note.relativePath, rawContent: content)
+                } else {
+                    sourceDocument = try await handle.documents.load(edge.source)
+                }
                 documents[edge.source] = sourceDocument
             }
             let occurrenceMarkup = Self.exactSubstring(

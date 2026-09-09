@@ -232,15 +232,94 @@ struct ZoteroMCPServerTests {
         #expect(destination["collection_key"] as? String == "COLL0001")
     }
 
+    @Test("Collection resolution uses the stable Connector library identity")
+    func previewResolvesGroupByStableLibraryID() async throws {
+        let client = MockZoteroMCPHTTPClient()
+        await client.enqueueJSON(
+            method: "POST",
+            path: "/connector/getSelectedCollection",
+            json: #"{"libraryID":42,"libraryName":"Renamed Group","libraryEditable":true,"filesEditable":true,"editable":true,"id":17,"name":"Selected Collection","targets":[],"tags":{}}"#
+        )
+        await client.enqueueJSON(
+            method: "GET",
+            path: "/api/users/0/groups",
+            json: #"[{"id":42,"data":{"id":42,"name":"Renamed Group","version":7},"links":{},"meta":{},"version":7}]"#
+        )
+        await client.enqueueJSON(
+            method: "GET",
+            path: "/api/groups/42/collections",
+            json: #"[{"key":"GROUPCOLL1","data":{"key":"GROUPCOLL1","name":"Selected Collection"}}]"#
+        )
+        let server = ZoteroMCPServer(client: client)
+
+        let preview = try await toolCall(
+            server,
+            id: 1,
+            name: "zotero_import_bibtex",
+            arguments: ["bibtex": "@book{one,title={One}}", "dry_run": true]
+        )
+        let destination = try object(try structuredContent(preview)["resolved_destination"])
+        #expect(destination["type"] as? String == "group")
+        #expect(destination["id"] as? Int == 42)
+        #expect(destination["connector_target_id"] as? String == "17")
+    }
+
+    @Test("A collection target ID is part of the dry-run binding even when names stay the same")
+    func collectionTargetIDChangeBlocksImport() async throws {
+        let client = MockZoteroMCPHTTPClient()
+        await client.enqueueJSON(
+            method: "POST",
+            path: "/connector/getSelectedCollection",
+            json: Self.targetJSON(libraryName: "My Library", selectedName: "My Library", selectedID: 17)
+        )
+        await client.enqueueJSON(method: "GET", path: "/api/users/0/groups", json: "[]")
+        await client.enqueueJSON(
+            method: "GET",
+            path: "/api/users/0/collections",
+            json: #"[{"key":"COLL0001","data":{"key":"COLL0001","name":"My Library"}}]"#
+        )
+        let server = ZoteroMCPServer(client: client)
+        let source = "@book{sample,title={Sample}}"
+        let preview = try await toolCall(
+            server,
+            id: 1,
+            name: "zotero_import_bibtex",
+            arguments: ["bibtex": source, "dry_run": true]
+        )
+        let token = try #require(try structuredContent(preview)["authorization_token"] as? String)
+        await client.enqueueJSON(
+            method: "POST",
+            path: "/connector/getSelectedCollection",
+            json: Self.targetJSON(libraryName: "My Library", selectedName: "My Library", selectedID: 18)
+        )
+        let result = try await toolCall(
+            server,
+            id: 2,
+            name: "zotero_import_bibtex",
+            arguments: [
+                "bibtex": source,
+                "dry_run": false,
+                "confirm": true,
+                "authorization_token": token,
+            ]
+        )
+        #expect(try toolIsError(result))
+        #expect(try structuredContent(result)["error"] as? String ==
+            "The selected Zotero destination changed after the dry run.")
+        #expect(await client.recordedRequests().allSatisfy { $0.url?.path != "/connector/import" })
+    }
+
     @Test("Confirmed import is one-shot and succeeds only after local API read-back")
     func importRequiresReadBackAndCannotReplay() async throws {
         let client = MockZoteroMCPHTTPClient()
-        for _ in 0..<2 {
+        for _ in 0..<4 {
             await client.enqueueJSON(
                 method: "POST",
                 path: "/connector/getSelectedCollection",
                 json: Self.targetJSON(libraryName: "My Library", selectedName: "My Library")
             )
+        }
+        for _ in 0..<3 {
             await client.enqueueJSON(method: "GET", path: "/api/users/0/groups", json: "[]")
         }
         await client.enqueueJSON(
@@ -296,6 +375,93 @@ struct ZoteroMCPServerTests {
         #expect(await client.recordedRequests().filter { $0.url?.path == "/connector/import" }.count == 1)
     }
 
+    @Test("A destination change after Connector response remains uncertain and skips read-back")
+    func importDestinationChangeAfterWriteIsUncertain() async throws {
+        let client = MockZoteroMCPHTTPClient()
+        for _ in 0..<3 {
+            await client.enqueueJSON(
+                method: "POST",
+                path: "/connector/getSelectedCollection",
+                json: Self.targetJSON(libraryName: "My Library", selectedName: "My Library")
+            )
+            await client.enqueueJSON(method: "GET", path: "/api/users/0/groups", json: "[]")
+        }
+        await client.enqueueJSON(
+            method: "POST",
+            path: "/connector/import",
+            statusCode: 201,
+            json: #"[{"key":"NEW00001","itemType":"book","title":"Sample"}]"#
+        )
+        await client.enqueueJSON(
+            method: "POST",
+            path: "/connector/getSelectedCollection",
+            json: Self.targetJSON(libraryName: "Another Library", selectedName: "Another Library", libraryID: 2)
+        )
+        let server = ZoteroMCPServer(client: client)
+        let source = "@book{sample,title={Sample}}"
+        let preview = try await toolCall(
+            server,
+            id: 1,
+            name: "zotero_import_bibtex",
+            arguments: ["bibtex": source, "dry_run": true]
+        )
+        let token = try #require(try structuredContent(preview)["authorization_token"] as? String)
+        let result = try await toolCall(
+            server,
+            id: 2,
+            name: "zotero_import_bibtex",
+            arguments: [
+                "bibtex": source,
+                "dry_run": false,
+                "confirm": true,
+                "authorization_token": token,
+            ]
+        )
+        let payload = try structuredContent(result)
+        #expect(try toolIsError(result))
+        #expect(payload["status"] as? String == "import-outcome-uncertain")
+        #expect(payload["write_may_have_completed"] as? Bool == true)
+        #expect(await client.recordedRequests().filter { $0.url?.path == "/api/users/0/items/NEW00001" }.isEmpty)
+    }
+
+    @Test("A lost Connector import response is reported as uncertain and is not replayed")
+    func importTransportFailureIsUncertain() async throws {
+        let client = MockZoteroMCPHTTPClient()
+        for _ in 0..<3 {
+            await client.enqueueJSON(
+                method: "POST",
+                path: "/connector/getSelectedCollection",
+                json: Self.targetJSON(libraryName: "My Library", selectedName: "My Library")
+            )
+            await client.enqueueJSON(method: "GET", path: "/api/users/0/groups", json: "[]")
+        }
+        let server = ZoteroMCPServer(client: client)
+        let source = "@book{sample,title={Sample}}"
+        let preview = try await toolCall(
+            server,
+            id: 1,
+            name: "zotero_import_bibtex",
+            arguments: ["bibtex": source, "dry_run": true]
+        )
+        let token = try #require(try structuredContent(preview)["authorization_token"] as? String)
+        let result = try await toolCall(
+            server,
+            id: 2,
+            name: "zotero_import_bibtex",
+            arguments: [
+                "bibtex": source,
+                "dry_run": false,
+                "confirm": true,
+                "authorization_token": token,
+            ]
+        )
+        let payload = try structuredContent(result)
+        #expect(try toolIsError(result))
+        #expect(payload["status"] as? String == "import-outcome-uncertain")
+        #expect(payload["write_may_have_completed"] as? Bool == true)
+        #expect(await client.recordedRequests().filter { $0.url?.path == "/connector/import" }.count == 1)
+    }
+
     @Test("The frame parser accepts line and Content-Length messages")
     func frameParserSupportsBothModes() throws {
         let lineBody = Data(#"{"jsonrpc":"2.0","id":1,"method":"ping"}"#.utf8)
@@ -331,10 +497,12 @@ struct ZoteroMCPServerTests {
     private static func targetJSON(
         libraryName: String,
         selectedName: String,
-        libraryID: Int = 1
+        libraryID: Int = 1,
+        selectedID: Int? = nil
     ) -> String {
-        """
-        {"libraryID":\(libraryID),"libraryName":"\(libraryName)","libraryEditable":true,"filesEditable":true,"editable":true,"id":null,"name":"\(selectedName)","targets":[],"tags":{}}
+        let selectedIDValue = selectedID.map(String.init) ?? "null"
+        return """
+        {"libraryID":\(libraryID),"libraryName":"\(libraryName)","libraryEditable":true,"filesEditable":true,"editable":true,"id":\(selectedIDValue),"name":"\(selectedName)","targets":[],"tags":{}}
         """
     }
 

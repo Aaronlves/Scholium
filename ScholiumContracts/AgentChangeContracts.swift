@@ -256,6 +256,7 @@ public struct AgentNoteTrashResult: Sendable {
 }
 
 public protocol AgentCollaborationUseCases: Sendable {
+    func currentNoteSource(noteID: UUID) async throws -> AgentNoteSource
     func createNote(_ request: ManagedNoteCreationRequest) async throws
         -> AgentNoteCreationResult
     func updateNote(

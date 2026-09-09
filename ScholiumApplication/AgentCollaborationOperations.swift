@@ -25,6 +25,27 @@ public actor AgentCollaborationOperations: AgentCollaborationUseCases {
             source: document.sourceBytes, startUTF8: startUTF8, endUTF8: endUTF8, expectedText: expectedText)
     }
 
+    /// Reads the current source only after re-binding the path read to the
+    /// stable Note identity. Delivery adapters use this for exact retrieval;
+    /// they must not load the snapshot path independently.
+    public func currentNoteSource(noteID: UUID) async throws -> AgentNoteSource {
+        let handle = try await reference.requireHandle()
+        let note = try await handle.currentAgentNote(noteID: noteID)
+        let document = try await handle.loadDocument(note.id)
+        guard let identity = try? await handle.resolvedIdentity(
+            for: note.id,
+            expectedRevision: document.fingerprint
+        ), identity.id == noteID else {
+            throw AgentCollaborationError.noteAmbiguous(noteID)
+        }
+        return AgentNoteSource(
+            note: note.id,
+            role: note.vaultRole,
+            fingerprint: document.fingerprint,
+            source: document.sourceBytes
+        )
+    }
+
     public func createNote(
         _ request: ManagedNoteCreationRequest
     ) async throws -> AgentNoteCreationResult {
