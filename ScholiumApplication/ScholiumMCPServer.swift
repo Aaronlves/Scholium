@@ -280,12 +280,13 @@ public actor ScholiumMCPServer {
         ),
         tool(
             .readNote,
-            description: "Read an exact current Markdown source slice by stable Note UUID.",
+            description: "Read exact Note prose by stable UUID. Set include_context to also inspect saved Metadata, its exact Zotero item binding and the first 20 related attachment pointers. These local records are not fresh Zotero data or proof of reading a paper. Continue attachment listings with scholium_list_attachments; read selected material with the corresponding attachment or Zotero tool.",
             properties: [
                 "triptych_id": uuidSchema("Open Triptych UUID."),
                 "note_id": uuidSchema("Stable Note UUID."),
                 "start_line": integerSchema(minimum: 1, maximum: nil, default: 1),
                 "line_count": integerSchema(minimum: 1, maximum: 1_000, default: 200),
+                "include_context": .object(["type": .string("boolean"), "default": .bool(false)]),
             ],
             required: ["triptych_id", "note_id"],
             readOnly: true,
@@ -387,6 +388,24 @@ public actor ScholiumMCPServer {
             destructive: true,
             idempotent: false
         ),
+        tool(.updateMetadata,
+            description: "Set or remove selected managed Metadata fields on one Note. Preserve every unmentioned value and all authored text. Read include_context first; supply its Metadata fingerprint, or explicit null for absence. An authorized write returns a reviewable, undoable record change; its ending fingerprint describes Metadata, not Markdown.",
+            properties: ["triptych_id": uuidSchema("Open Triptych UUID."), "note_id": uuidSchema("Stable Note UUID."),
+                "expected_fingerprint": fingerprintSchema, "expected_metadata_fingerprint": nullable(fingerprintSchema),
+                "set": .object(["type": .string("object"), "maxProperties": .integer(128), "additionalProperties": .bool(true)]),
+                "remove": .object(["type": .string("array"), "items": simpleSchema("string"), "maxItems": .integer(128), "uniqueItems": .bool(true)])],
+            required: ["triptych_id", "note_id", "expected_fingerprint", "expected_metadata_fingerprint"], readOnly: false, destructive: true, idempotent: false),
+        tool(.updateAttachment,
+            description: "Add, replace or remove a Note's document attachment relationship. Removal preserves files. For add/replace, choose a registered document attachment in this Triptych and supply its listing and file fingerprints from prior reads. Same-vault files are shared; cross-vault or referenced originals are copied from bounded verified bytes. No arbitrary path, URL, original-file overwrite or Markdown image removal is accepted. Returns a reviewable, undoable relationship change; fingerprints describe the relationship record.",
+            properties: ["triptych_id": uuidSchema("Open Triptych UUID."), "note_id": uuidSchema("Target Note UUID."),
+                "expected_fingerprint": fingerprintSchema, "expected_listing_fingerprint": fingerprintSchema,
+                "action": .object(["type": .string("string"), "enum": .array(["add", "replace", "remove"].map(MCPJSONValue.string))]),
+                "attachment_id": uuidSchema("New UUID for add; the existing relationship UUID for replace/remove."),
+                "source": closedObject(properties: ["note_id": uuidSchema("Source Note UUID."), "attachment_id": uuidSchema("Source document attachment UUID."),
+                    "expected_listing_fingerprint": fingerprintSchema, "expected_fingerprint": fingerprintSchema],
+                    required: ["note_id", "attachment_id", "expected_listing_fingerprint", "expected_fingerprint"])],
+            required: ["triptych_id", "note_id", "expected_fingerprint", "expected_listing_fingerprint", "action", "attachment_id"],
+            readOnly: false, destructive: true, idempotent: false),
         tool(.moveNote,
             description: "Execute the exact previously previewed same-vault Note move, preserving identity and recording all linked-source effects. A changed plan is rejected.",
             properties: ["triptych_id": uuidSchema("Open Triptych UUID."), "note_id": uuidSchema("Stable Note UUID."),
@@ -414,7 +433,7 @@ public actor ScholiumMCPServer {
                 "offset": integerSchema(minimum: 0, maximum: nil, default: 0), "limit": integerSchema(minimum: 1, maximum: 1000, default: 200)],
             required: ["triptych_id", "change_id"], readOnly: true, destructive: false, idempotent: true),
         tool(.undoChange,
-            description: "Undo only the explicitly requested eligible Note update while current source equals its recorded ending. Never automatically undo another task or repeat a completed write.",
+            description: "Undo only the explicitly requested eligible source, Metadata or attachment-relationship change while its current values equal the recorded ending. Use the receipt ending fingerprint, not a different Note-source fingerprint. Never automatically undo another task or repeat a completed write.",
             properties: ["triptych_id": uuidSchema("Open Triptych UUID."), "note_id": uuidSchema("Stable Note UUID bound to this change."),
                 "change_id": uuidSchema("Exact Agent Change UUID."), "expected_fingerprint": fingerprintSchema],
             required: ["triptych_id", "note_id", "change_id", "expected_fingerprint"], readOnly: false, destructive: true, idempotent: false),
@@ -551,7 +570,7 @@ public actor ScholiumMCPServer {
     private static let changeReceiptSchema = closedObject(properties: [
         "change_id": uuidSchema("Agent Change UUID."), "note_id": uuidSchema("Stable Note UUID."), "role": roleSchema,
         "affected_note_count": nonnegativeIntegerSchema,
-        "operation": .object(["type": .string("string"), "enum": .array(["create", "update", "trash", "move"].map(MCPJSONValue.string))]),
+        "operation": .object(["type": .string("string"), "enum": .array(["create", "update", "trash", "move", "metadata", "attachment"].map(MCPJSONValue.string))]),
         "state": .object(["type": .string("string"), "enum": .array(["prepared", "confirmed", "outcome_uncertain", "undone"].map(MCPJSONValue.string))]),
         "original_relative_path": nullable(simpleSchema("string")), "final_relative_path": nullable(simpleSchema("string")),
         "before_fingerprint": nullable(fingerprintSchema), "after_fingerprint": nullable(fingerprintSchema),
@@ -659,11 +678,12 @@ public actor ScholiumMCPServer {
                     "source": simpleSchema("string"),
                     "complete": booleanSchema,
                     "next_line": nullable(nonnegativeIntegerSchema),
+                    "context": nullable(noteContextSchema),
                 ],
                 required: [
                     "triptych_id", "note_id", "role", "relative_path",
                     "fingerprint", "start_line", "line_count", "start_utf8", "end_utf8", "source",
-                    "complete", "next_line",
+                    "complete", "next_line", "context",
                 ]
             )]
         case .showNote:
@@ -672,13 +692,7 @@ public actor ScholiumMCPServer {
                 "activated": booleanSchema, "location_requested": booleanSchema, "line": nullable(nonnegativeIntegerSchema)],
                 required: ["triptych_id", "window_id", "note_id", "relative_path", "fingerprint", "activated", "location_requested", "line"])]
         case .listAttachments:
-            [successSchema(properties: ["triptych_id": uuidSchema("Triptych UUID."), "note_id": uuidSchema("Note UUID."),
-                "note_fingerprint": fingerprintSchema, "listing_fingerprint": fingerprintSchema,
-                "offset": nonnegativeIntegerSchema, "total": nonnegativeIntegerSchema, "has_more": booleanSchema,
-                "attachments": arraySchema(closedObject(properties: ["attachment_id": uuidSchema("Attachment UUID."),
-                    "filename": simpleSchema("string"), "relationship": .object(["type": .string("string"), "enum": .array([.string("document"), .string("authoredImage")])]),
-                    "available": booleanSchema], required: ["attachment_id", "filename", "relationship", "available"]))],
-                required: ["triptych_id", "note_id", "note_fingerprint", "listing_fingerprint", "offset", "total", "has_more", "attachments"])]
+            [attachmentListingSchema]
         case .readAttachment:
             [successSchema(properties: ["triptych_id": uuidSchema("Triptych UUID."), "note_id": uuidSchema("Note UUID."),
                 "attachment_id": uuidSchema("Attachment UUID."), "filename": simpleSchema("string"), "note_fingerprint": fingerprintSchema,
@@ -761,7 +775,7 @@ public actor ScholiumMCPServer {
                     "relative_path", "fingerprint",
                 ]
             )]
-        case .updateNote:
+        case .updateNote, .updateMetadata, .updateAttachment:
             [successSchema(
                 properties: [
                     "triptych_id": uuidSchema("Open Triptych UUID."),
@@ -838,6 +852,35 @@ public actor ScholiumMCPServer {
         return .object([
             "oneOf": .array(successes + [failureSchema]),
         ])
+    }
+
+    private static var noteContextSchema: MCPJSONValue {
+        closedObject(properties: [
+            "metadata": nullable(closedObject(properties: [
+                "fingerprint": fingerprintSchema,
+                "fields": .object(["type": .string("object"), "additionalProperties": .bool(true)]),
+            ], required: ["fingerprint", "fields"])),
+            "zotero_binding": nullable(closedObject(properties: [
+                "library": .object(["oneOf": .array([
+                    closedObject(properties: ["kind": .object(["const": .string("user")])], required: ["kind"]),
+                    closedObject(properties: ["kind": .object(["const": .string("group")]),
+                        "group_id": .object(["type": .string("integer"), "minimum": .integer(1)])], required: ["kind", "group_id"]),
+                ])]),
+                "item_key": simpleSchema("string"), "reference": simpleSchema("string"),
+            ], required: ["library", "item_key", "reference"])),
+            "zotero_bindings_fingerprint": nullable(fingerprintSchema),
+            "attachments": attachmentListingSchema,
+        ], required: ["metadata", "zotero_binding", "zotero_bindings_fingerprint", "attachments"])
+    }
+
+    private static var attachmentListingSchema: MCPJSONValue {
+        successSchema(properties: ["triptych_id": uuidSchema("Triptych UUID."), "note_id": uuidSchema("Note UUID."),
+                "note_fingerprint": fingerprintSchema, "listing_fingerprint": fingerprintSchema,
+                "offset": nonnegativeIntegerSchema, "total": nonnegativeIntegerSchema, "has_more": booleanSchema,
+                "attachments": arraySchema(closedObject(properties: ["attachment_id": uuidSchema("Attachment UUID."),
+                    "filename": simpleSchema("string"), "relationship": .object(["type": .string("string"), "enum": .array([.string("document"), .string("authoredImage")])]),
+                    "available": booleanSchema], required: ["attachment_id", "filename", "relationship", "available"]))],
+                required: ["triptych_id", "note_id", "note_fingerprint", "listing_fingerprint", "offset", "total", "has_more", "attachments"])
     }
 
     private static func successSchema(

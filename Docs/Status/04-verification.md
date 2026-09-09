@@ -4,20 +4,26 @@
 
 ## Agent knowledge-base tools, 2026-09-09
 
-Integration: 1,388 tests (Core 360+3, Contracts 70, Application 165+1, App 789),
-with two App structure assertions repaired and rechecked separately. The gate log retains its nonzero exit. Public symbols, Release build/CLI and
-resources/docs/localization pass. Four task-introduced omissions are resolved.
-Evidence: `.build/agent-knowledge-tools/completion-audit.md`; Xcode 27 beta
-27A5218g, Swift 6.4/SDK 27; `d75bceac` plus uncommitted changes.
-Native focus/menu/IME/VoiceOver/adaptation and real Zotero/provider acceptance
-remain open; no release acceptance is implied.
+Integration: 1,388 tests; two App assertions repaired/rechecked separately.
+Gate nonzero; symbols, Release/CLI, resources/docs/localization pass.
+Evidence: `.build/agent-knowledge-tools/completion-audit.md`, Xcode 27 beta
+27A5218g; `d75bceac` plus then-uncommitted changes. Native adaptation and real
+Zotero/provider acceptance remain open.
 
 ## Current verification snapshot
 
-**2026-09-10 — Chat foundation:** 29 checks and Release/CLI pass.
+**2026-09-10 — Note context and record writes:** 18 MCP tools expose separated
+context, guarded Metadata/attachment edits, comparison and Undo. Integration:
+1,426 tests, one editor highlight-expiry failure; unchanged isolated recheck passes.
+Final owning, symbols, Release/CLI and authority checks pass. QA verifies
+writes, About refresh, source preservation and Undo. Evidence:
+`.build/agent-record-acceptance.md`. Real-provider and full accessibility/adaptation
+acceptance remain open.
+
+**2026-09-10 — Chat foundation:** 29 checks; Release/CLI pass.
 XCUITest verifies scrolling, stable extent and thumb dragging; QA verifies
 cross-table quotes and transient previews. `.build/agent-foundation-acceptance.md` preserves integration
-failures and owning rechecks. Researcher confirms scrolling. Packaging, large-history and accessibility/adaptation
+failures and owning rechecks. Scrolling confirmed. Packaging, large-history and accessibility/adaptation
 acceptance remain open.
 
 **2026-09-09 — selection shortcuts:** 31 native and 234 editor checks pass.
@@ -673,11 +679,9 @@ to the reachable chapters and outstanding acceptance to Open Work.
   is not an executed UI journey. Integration logs: `.build/codex-integration/`
   and `.build/verification/`.
 
-Chat QA used deterministic runtimes and nonprivate disposable Triptychs, not
-signed-in model inference. Real provider execution, human VoiceOver/IME and
-complete adaptation remain unaccepted. Retention of a QA app for researcher
-feedback was a dated session arrangement, not a claim about a currently running
-process.
+That Chat QA used deterministic runtimes and disposable Triptychs. Provider,
+VoiceOver/IME and adaptation acceptance remain open; retained QA availability
+was session-specific.
 
 ### Editor and source interaction
 

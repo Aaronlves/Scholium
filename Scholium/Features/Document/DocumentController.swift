@@ -1701,6 +1701,7 @@ final class DocumentController: ObservableObject {
         for document in documents {
             switch publishedLocation(of: document, in: workspace) {
             case .located(let vault, let note):
+                sessions.retainedSession(for: document.editingTarget)?.documentAttachmentsGeneration &+= 1
                 recordPublishedLocation(
                     document: document,
                     vault: vault,

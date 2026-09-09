@@ -2031,15 +2031,50 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     ) async throws -> WorkspaceMutationOutcome<NoteMetadataSnapshot> {
         try requireActive()
         let mutationLease = try await beginSourceMutation()
-        var ownsMutation = true
-        defer {
-            if ownsMutation { endSourceMutation(mutationLease) }
-        }
+        defer { endSourceMutation(mutationLease) }
+        return try await commitNoteMetadata(id, fields: fields, expectedRevision: expectedRevision)
+    }
+
+    /// Shared Metadata writer; callers hold the workspace source-mutation lease.
+    func commitNoteMetadata(_ id: VaultQualifiedNoteID, fields: [String: YAMLValue],
+                            expectedRevision: DocumentFingerprint?, agentTarget: (id: UUID, source: DocumentFingerprint)? = nil) async throws -> WorkspaceMutationOutcome<NoteMetadataSnapshot> {
         let registeredVault = try vault(id: id.vaultID)
         let document = try await repository(vaultID: id.vaultID).load(
             relativePath: id.relativePath
         )
-        let profile = WorkflowProfileResolver.resolve(vaultRole: registeredVault.role)
+        guard let identity = try await services.controlStore.identityRecord(
+            vaultID: id.vaultID,
+            relativePath: id.relativePath
+        ), identity.fingerprint == document.fingerprint else {
+            throw NoteMetadataError.identityUnavailableAtPath(id.relativePath)
+        }
+        if let agentTarget {
+            guard identity.id == agentTarget.id, document.fingerprint == agentTarget.source else {
+                throw AgentCollaborationError.staleRevision(expected: agentTarget.source, current: document.fingerprint)
+            }
+        }
+        let currentMetadata = try await services.controlStore.noteMetadata(
+            noteID: identity.id
+        )
+        try await validateMetadataFields(fields, role: registeredVault.role, current: currentMetadata)
+        let snapshot = try await services.controlStore.saveNoteMetadata(
+            noteID: identity.id,
+            fields: fields,
+            expectedRevision: expectedRevision
+        )
+        scheduleCommittedMutationRefresh(WorkspaceRefreshPayload(
+            publication: .explicit,
+            failureDisposition: .staleAfterCommittedMutation(
+                affectedVaultIDs: [id.vaultID]
+            ),
+            sourceCatalogPreparation: .none,
+            metadataChanges: [identity.id: snapshot]
+        ))
+        return WorkspaceMutationOutcome(committedValue: snapshot)
+    }
+
+    func validateMetadataFields(_ fields: [String: YAMLValue], role: VaultRole, current currentMetadata: NoteMetadataSnapshot?) async throws {
+        let profile = WorkflowProfileResolver.resolve(vaultRole: role)
         let metadataCatalog = try await services.controlStore.metadataCatalog()
         let issues = metadataCatalog.validate(
             fields: fields,
@@ -2048,15 +2083,6 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         guard issues.isEmpty else {
             throw DocumentCreationError.invalidMetadata(issues)
         }
-        guard let identity = try await services.controlStore.identityRecord(
-            vaultID: id.vaultID,
-            relativePath: id.relativePath
-        ), identity.fingerprint == document.fingerprint else {
-            throw NoteMetadataError.identityUnavailableAtPath(id.relativePath)
-        }
-        let currentMetadata = try await services.controlStore.noteMetadata(
-            noteID: identity.id
-        )
         let addedKeys = Set(fields.keys).subtracting(
             currentMetadata.map { Set($0.record.fields.keys) } ?? []
         )
@@ -2075,22 +2101,11 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 }
             )
         }
-        let snapshot = try await services.controlStore.saveNoteMetadata(
-            noteID: identity.id,
-            fields: fields,
-            expectedRevision: expectedRevision
-        )
-        scheduleCommittedMutationRefresh(WorkspaceRefreshPayload(
-            publication: .explicit,
-            failureDisposition: .staleAfterCommittedMutation(
-                affectedVaultIDs: [id.vaultID]
-            ),
-            sourceCatalogPreparation: .none,
-            metadataChanges: [identity.id: snapshot]
-        ))
-        endSourceMutation(mutationLease)
-        ownsMutation = false
-        return WorkspaceMutationOutcome(committedValue: snapshot)
+    }
+
+    func noteRecordDidChange(vaultID: UUID) {
+        scheduleCommittedMutationRefresh(WorkspaceRefreshPayload(publication: .explicit,
+            failureDisposition: .staleAfterCommittedMutation(affectedVaultIDs: [vaultID]), sourceCatalogPreparation: .none))
     }
 
     func noteMetadata(

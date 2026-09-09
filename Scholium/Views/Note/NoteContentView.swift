@@ -1002,7 +1002,7 @@ struct NoteContentView: View {
 
     private var documentAttachmentTaskIdentity: String {
         let stableID = documentAttachmentTarget?.noteID.uuidString ?? "unavailable"
-        return "\(stableID):\(note.relativePath):\(indexedImageAvailabilityGeneration)"
+        return "\(stableID):\(note.relativePath):\(indexedImageAvailabilityGeneration):\(documentSession.documentAttachmentsGeneration)"
     }
 
     @MainActor

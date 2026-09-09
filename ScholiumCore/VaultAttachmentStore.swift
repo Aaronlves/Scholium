@@ -111,6 +111,15 @@ public actor VaultAttachmentStore {
         } catch {
             throw DocumentAttachmentError.unsupportedDocument(sourceURL.path)
         }
+        return try copyDocumentSnapshot(data, filename: filename, attachmentID: attachmentID)
+    }
+
+    /// Copies an immutable document snapshot selected through an existing scoped owner.
+    public func copyDocumentSnapshot(_ data: Data, filename: String, attachmentID: UUID) throws -> PreparedVaultDocumentFile {
+        guard filename == URL(fileURLWithPath: filename).lastPathComponent,
+              !filename.isEmpty, filename != ".", filename != "..", !filename.contains("\0") else {
+            throw DocumentAttachmentError.unsupportedDocument(filename)
+        }
         let relativePath = try AttachmentRelativePath(
             "Attachments/\(attachmentID.uuidString.lowercased())/\(filename)"
         )

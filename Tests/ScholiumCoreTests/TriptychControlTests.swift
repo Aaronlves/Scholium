@@ -5,6 +5,32 @@ import ScholiumContracts
 
 @Suite("Portable Triptych control directory")
 struct TriptychControlTests {
+    @Test("Attachment replacement preserves an external final-window edit and reports uncertain post-swap results")
+    func attachmentReplacementConflictAndReadback() async throws {
+        let fixture = try Fixture(); defer { fixture.remove() }
+        let seed = TriptychControlStore(worksVaultURL: fixture.works)
+        let vault = UUID()
+        _ = try await seed.bootstrap(vaultIDs: [.paperAnalysis: UUID(), .topicKnowledge: UUID(), .output: vault])
+        let identity = try #require(try await seed.identity(forVaultID: vault, relativePath: "Work.md", fingerprint: .init(content: "Work")))
+        let original = try await seed.registerDocumentAttachment(noteID: identity.id, vaultID: vault, location: .absolutePath("/fixture/Original.pdf")).record
+        let replacement = DocumentAttachmentRecord(id: original.id, noteID: identity.id, vaultID: vault, location: .absolutePath("/fixture/Replacement.pdf"))
+        let external = DocumentAttachmentRecord(id: original.id, noteID: identity.id, vaultID: vault, location: .absolutePath("/fixture/External.pdf"))
+        let externalBytes = try AgentRecordChange.attachment(external)
+        let conflicting = TriptychControlStore(worksVaultURL: fixture.works, controlWriteHook: { url in try externalBytes.write(to: url, options: .atomic) })
+        await #expect(throws: DocumentAttachmentError.self) {
+            try await conflicting.replaceDocumentAttachment(original, with: replacement)
+        }
+        #expect(try await seed.documentAttachmentRecords(noteID: identity.id) == [external])
+        let uncertain = TriptychControlStore(worksVaultURL: fixture.works, controlWriteHook: { _ in }, controlPostSwapHook: { _ in throw POSIXError(.EIO) })
+        do {
+            try await uncertain.replaceDocumentAttachment(external, with: replacement)
+            Issue.record("A post-swap error must not be reported as a successful write.")
+        } catch let error as DocumentAttachmentError {
+            guard case .catalogCommitUncertain = error else { Issue.record("Unexpected error: \(error)"); return }
+        }
+        #expect(try await seed.documentAttachmentRecords(noteID: identity.id) == [replacement])
+    }
+
     @Test("Portable Note metadata is identity-keyed, revision-checked, and independent of YAML")
     func portableNoteMetadataLifecycle() async throws {
         let fixture = try Fixture(); defer { fixture.remove() }
@@ -71,6 +97,7 @@ struct TriptychControlTests {
         #expect(second.record.fields["title"] == .string("Revised managed title"))
 
         try await store.removeNoteMetadata(second)
+        await #expect(throws: NoteMetadataError.self) { try await store.removeNoteMetadata(second) }
         #expect(try await store.noteMetadata(noteID: identity.id) == nil)
     }
 
@@ -272,6 +299,7 @@ struct TriptychControlTests {
         #expect(try await store.documentAttachmentRecords().count == 2)
 
         try await store.removeDocumentAttachment(first.record)
+        await #expect(throws: DocumentAttachmentError.self) { try await store.removeDocumentAttachment(first.record) }
         #expect(try await store.documentAttachmentRecords(noteID: firstNote).isEmpty)
         #expect(try await store.documentAttachmentRecords(noteID: secondNote)
             == [second.record])

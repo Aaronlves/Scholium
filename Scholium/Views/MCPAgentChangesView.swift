@@ -19,6 +19,8 @@ enum AgentChangePresentation {
         switch operation {
         case .create: "Created by External Agent"
         case .update: "Updated by External Agent"
+        case .metadata: "Metadata"
+        case .attachment: "Attachments"
         case .trash: "Moved to System Trash"
         case .move: "Moved by External Agent"
         }
@@ -27,7 +29,7 @@ enum AgentChangePresentation {
     static func shortOperationTitle(for operation: AgentChangeOperation) -> LocalizedStringResource {
         switch operation {
         case .create: "Created"
-        case .update: "Edited"
+        case .update, .metadata, .attachment: "Edited"
         case .trash: "Moved to Trash"
         case .move: "Moved"
         }
@@ -36,7 +38,7 @@ enum AgentChangePresentation {
     static func operationSymbol(for operation: AgentChangeOperation) -> String {
         switch operation {
         case .create: "doc.badge.plus"
-        case .update: "pencil"
+        case .update, .metadata, .attachment: "pencil"
         case .trash: "trash"
         case .move: "folder"
         }
@@ -295,7 +297,7 @@ struct AgentChangesView: View {
                     .accessibilityIdentifier("scholium.agentChanges.markViewed")
                 }
 
-                if let review, review.change.operation == .update,
+                if let review, (review.change.operation == .update || review.change.operation.isRecordMutation),
                    review.change.state == .confirmed {
                     VStack(alignment: .trailing, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
                         Button(undoingID == review.change.id ? "Undoing…" : "Undo") {
@@ -460,7 +462,7 @@ private struct AgentChangeReviewContent: View {
     @ViewBuilder
     private var content: some View {
         switch review.change.operation {
-        case .update, .move:
+        case .update, .move, .metadata, .attachment:
             if review.change.operation == .move {
                 Text((review.change.originalRelativePath ?? "") + " → " + (review.change.finalRelativePath ?? "")).textSelection(.enabled)
             }

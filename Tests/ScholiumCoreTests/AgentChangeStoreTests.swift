@@ -5,6 +5,35 @@ import Testing
 
 @Suite("Agent Change store", .serialized)
 struct AgentChangeStoreTests {
+    @Test("Managed-record evidence survives reopening and refuses cross-Note or replacement-identity forgery")
+    func recordEvidenceBindings() async throws {
+        let fixture = try Fixture(); defer { fixture.dispose() }
+        let store = try AgentChangeStore(applicationSupportURL: fixture.root, triptychID: fixture.triptychID)
+        let note = UUID()
+        let before = try AgentRecordChange.metadata(nil)
+        let after = try AgentRecordChange.metadata(.init(noteID: note, fields: ["aliases": .array([.string("概念")])]))
+        let prepared = try await store.prepare(operation: .metadata, noteID: note, role: .topicKnowledge,
+            originalRelativePath: "Topic.md", finalRelativePath: "Topic.md", beforeData: before, afterData: after)
+        _ = try await store.confirm(id: prepared.id, observedAfterFingerprint: .init(data: after))
+        let reopened = try AgentChangeStore(applicationSupportURL: fixture.root, triptychID: fixture.triptychID)
+        #expect(try await reopened.evidence(id: prepared.id).beforeData == before)
+        _ = try await reopened.markUndone(id: prepared.id, restoredFingerprint: .init(data: before))
+        #expect(try await reopened.change(id: prepared.id).state == .undone)
+        await #expect(throws: AgentChangeError.self) {
+            try await store.prepare(operation: .metadata, noteID: UUID(), role: .topicKnowledge,
+                originalRelativePath: "Topic.md", finalRelativePath: "Topic.md", beforeData: before, afterData: after)
+        }
+        let vault = UUID()
+        let old = DocumentAttachmentRecord(id: UUID(), noteID: note, vaultID: vault,
+            location: .vaultRelative(try .init("Attachments/" + UUID().uuidString + "/a.pdf")))
+        let wrong = DocumentAttachmentRecord(id: UUID(), noteID: note, vaultID: vault, location: old.location)
+        await #expect(throws: AgentChangeError.self) {
+            try await store.prepare(operation: .attachment, noteID: note, role: .topicKnowledge,
+                originalRelativePath: "Topic.md", finalRelativePath: "Topic.md",
+                beforeData: AgentRecordChange.attachment(old), afterData: AgentRecordChange.attachment(wrong))
+        }
+    }
+
     @Test("Move evidence requires complete readback, survives reopening and rejects unknown nested authority")
     func moveEvidenceLifecycle() async throws {
         let fixture = try Fixture(); defer { fixture.dispose() }

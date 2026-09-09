@@ -876,12 +876,42 @@ public actor TriptychControlStore {
         }
     }
 
+    /// Replaces one existing relationship atomically. Files are never removed.
+    public func replaceDocumentAttachment(_ expected: DocumentAttachmentRecord, with replacement: DocumentAttachmentRecord) throws {
+        try withPortableControlLock {
+            guard expected.id == replacement.id, expected.noteID == replacement.noteID,
+                  expected.vaultID == replacement.vaultID,
+                  let identity = try identityRecord(id: expected.noteID), identity.vaultID == expected.vaultID else {
+                throw DocumentAttachmentError.catalogConflict
+            }
+            let records = try documentAttachmentRecords()
+            guard records.first(where: { $0.id == expected.id }) == expected,
+                  !records.contains(where: { $0.id != expected.id && $0.noteID == replacement.noteID && $0.location == replacement.location }) else {
+                throw DocumentAttachmentError.catalogConflict
+            }
+            let url = documentAttachmentRecordURL(id: expected.id)
+            let current = try Data(contentsOf: url, options: [.mappedIfSafe])
+            guard try decoder().decode(DocumentAttachmentRecord.self, from: current) == expected else {
+                throw DocumentAttachmentError.catalogConflict
+            }
+            do {
+                let candidate = try encodedData(replacement)
+                let readback = try replaceExactFile(at: url, expected: current, candidate: candidate,
+                                                   conflict: DocumentAttachmentError.catalogConflict)
+                guard readback == candidate else { throw DocumentAttachmentError.catalogCommitUncertain("Relationship readback differs.") }
+            } catch let error as TriptychControlError {
+                if case .controlFileCommitUncertain(let reason) = error { throw DocumentAttachmentError.catalogCommitUncertain(reason) }
+                throw error
+            }
+        }
+    }
+
     public func removeDocumentAttachment(
         _ expected: DocumentAttachmentRecord
     ) throws {
         try withPortableControlLock {
             let url = documentAttachmentRecordURL(id: expected.id)
-            guard fileManager.fileExists(atPath: url.path) else { return }
+            guard fileManager.fileExists(atPath: url.path) else { throw DocumentAttachmentError.catalogConflict }
             let expectedData = try encodedData(expected)
             let coordinator = NSFileCoordinator(filePresenter: nil)
             var coordinationError: NSError?
@@ -1138,14 +1168,14 @@ public actor TriptychControlStore {
     }
 
     /// Removes only the exact loaded metadata revision. This is used by
-    /// bounded creation rollback and permanent deletion; ordinary field edits
+    /// bounded creation rollback and exact Agent Change Undo; ordinary field edits
     /// retain an empty record instead of turning absence into an ambiguous
     /// write state.
     public func removeNoteMetadata(_ expected: NoteMetadataSnapshot) throws {
         try withPortableControlLock {
             let id = expected.record.noteID
             let url = noteMetadataRecordURL(noteID: id)
-            guard fileManager.fileExists(atPath: url.path) else { return }
+            guard fileManager.fileExists(atPath: url.path) else { throw NoteMetadataError.revisionConflict(id) }
             let coordinator = NSFileCoordinator(filePresenter: nil)
             var coordinationError: NSError?
             var outcome: Result<Void, Error>?

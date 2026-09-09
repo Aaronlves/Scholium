@@ -41,7 +41,9 @@ commits, retain the binding and report the partial outcome. Commit rereads the
 same server, library, item, source, binding, and Metadata revisions reviewed in
 the preview.
 
-Scholium MCP does not fold Zotero data into automatic Note context. A current
+An explicitly requested Note context (§8.3) exposes only its saved local binding
+and managed Metadata, without contacting Zotero. Scholium MCP does not fold fresh
+Zotero data into automatic Note context. A current
 task may use the separately configured Zotero MCP to read a fresh exact item or
 attachment route. That adapter grants no Scholium write, Markdown, or
 independent discovery authority, and bibliographic results are not cached as a

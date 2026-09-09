@@ -94,7 +94,8 @@ change its fingerprint, or alter editor selection, composition, Undo, scroll,
 or focus. Images and audiovisual files remain governed by their inline
 authoring routes and are rejected here. A failed operation rolls back only the
 new copied file and control state from that attempt; Note edits, renames, and
-deletion do not implicitly move or delete a document attachment.
+deletion do not implicitly move or delete a document attachment. Explicit Agent
+relationship replacement/removal follows §8.3 and preserves the files.
 
 Review and Edit preserve exact Markdown while presenting semantic Callouts,
 lists, quotations, tables, footnotes, mathematics, code, links, occurrence-owned

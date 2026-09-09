@@ -669,15 +669,16 @@ struct AgentChatTests {
     await controller.disconnect()
   }
 
-  @Test("Ask waits, decline and cancellation cannot write; Full Access remains Triptych scoped")
-  func permissionAdmission() async throws {
+  @Test("Ask waits, decline and cancellation cannot write; Full Access remains Triptych scoped",
+        arguments: [ScholiumMCPToolName.updateNote, .updateMetadata, .updateAttachment])
+  func permissionAdmission(tool: ScholiumMCPToolName) async throws {
     let root = try root()
     defer { try? FileManager.default.removeItem(at: root) }
     var writes = 0
     let triptych = UUID()
     let controller = AgentChatController(triptychID: triptych, root: root, previewUpdate: preview) { request in
       #expect(request.arguments["triptych_id"] == .string(triptych.uuidString.lowercased()))
-      if request.tool == .updateNote { writes += 1 }
+      if request.tool == tool { writes += 1 }
       return success(request)
     }
     try await connect(controller)
@@ -687,7 +688,7 @@ struct AgentChatTests {
       controller.state == .working && controller.selected?.pendingMessageID == nil
     }
     let token = try #require(controller.token)
-    let request = ScholiumMCPBridgeRequest(tool: .updateNote, conversationToken: token, runtimeContext: controller.runtimeContext(for: token))
+    let request = ScholiumMCPBridgeRequest(tool: tool, conversationToken: token, runtimeContext: controller.runtimeContext(for: token))
     let declined = Task { await controller.handle(request) }
     try await eventually { controller.approvals.count == 1 }
     #expect(writes == 0)
@@ -722,16 +723,16 @@ struct AgentChatTests {
     #expect(await controller.handle(request).error != nil)
     let current = try #require(controller.token)
     let wrong = ScholiumMCPBridgeRequest(
-      tool: .updateNote, arguments: ["triptych_id": .string(UUID().uuidString)],
+      tool: tool, arguments: ["triptych_id": .string(UUID().uuidString)],
       conversationToken: current, runtimeContext: controller.runtimeContext(for: current))
     #expect(await controller.handle(wrong).error != nil)
     #expect(writes == 1)
     #expect(
-      await controller.handle(.init(tool: .updateNote, conversationToken: current, runtimeContext: controller.runtimeContext(for: current))).error == nil)
+      await controller.handle(.init(tool: tool, conversationToken: current, runtimeContext: controller.runtimeContext(for: current))).error == nil)
     #expect(writes == 2 && controller.approvals.isEmpty)
     await controller.disconnect()
     #expect(
-      await controller.handle(.init(tool: .updateNote, conversationToken: current, runtimeContext: controller.runtimeContext(for: current))).error != nil)
+      await controller.handle(.init(tool: tool, conversationToken: current, runtimeContext: controller.runtimeContext(for: current))).error != nil)
   }
 
   @Test("Live bridge activity distinguishes reads, no-op updates, confirmed edits and failed writes")

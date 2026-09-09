@@ -31,11 +31,11 @@
 
 ## External Agent collaboration
 
-- `scholium mcp serve` exposes sixteen MCP tools:
+- `scholium mcp serve` exposes eighteen MCP tools:
   `scholium_workspace_status`, `scholium_browse`, `scholium_search`, `scholium_read_note`,
   `scholium_list_links`, `scholium_show_note`, `scholium_list_attachments`, `scholium_read_attachment`, `scholium_create_note`, `scholium_update_note`,
   `scholium_preview_move`, `scholium_move_note`, `scholium_list_changes`, `scholium_read_change`, `scholium_undo_change`,
-  and `scholium_trash_note`.
+  `scholium_update_metadata`, `scholium_update_attachment`, and `scholium_trash_note`.
 - The stdio server connects only to a running Scholium App for the current
   user. It does not launch the App, construct a headless workspace runtime, or
   read and write Triptych files itself.
@@ -46,6 +46,12 @@
 - Browse lists role roots or immediate directory/Note children, including empty
   directories, with bounded pagination and listing-revision checks. It reuses the
   current Library inventory and visibility rule; stable identities survive rename.
+- Agent Metadata patches and document-attachment add/replace/remove use current
+  Note/record versions, scoped Ask previews, Agent Changes and guarded Undo.
+  Attachment sources are existing registered documents; files survive unlink/Undo.
+- Note reads can explicitly include local managed Metadata and its revision,
+  the exact saved Analysis Zotero binding and a first attachment-list page.
+  This reuses current record owners and does not retrieve Zotero or file contents.
 - Attachment listing proves current document relationships or registered authored
   images. Reads preserve file fingerprints, UTF-8 slice offsets and explicit PDF
   page coverage. Existing bookmark/containment owners govern originals and copies;

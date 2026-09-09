@@ -49,7 +49,7 @@ struct ScholiumMCPServerTests {
         let recorder = MCPRequestRecorder()
         let server = ScholiumMCPServer { request in
             await recorder.record(request)
-            return .object(["schema_version": .integer(5), "status": .string("ok")])
+            return .object(["schema_version": .integer(6), "status": .string("ok")])
         }
 
         let initialized = try await rpc(
@@ -68,7 +68,12 @@ struct ScholiumMCPServerTests {
         let tools = try #require(listResult["tools"] as? [[String: Any]])
         #expect(tools.compactMap { $0["name"] as? String } ==
             ScholiumMCPToolName.allCases.map(\.rawValue))
-        #expect(tools.count == 16)
+        #expect(tools.count == 18)
+        let read = try #require(tools.first { $0["name"] as? String == "scholium_read_note" })
+        let readProperties = try object(object(read["inputSchema"])["properties"])
+        #expect(try object(readProperties["include_context"])["default"] as? Bool == false)
+        let readVariants = try #require(object(read["outputSchema"])["oneOf"] as? [[String: Any]])
+        #expect(try object(readVariants[0]["properties"])["context"] != nil)
         for tool in tools {
             let schema = try object(tool["inputSchema"])
             #expect(schema["additionalProperties"] as? Bool == false)
@@ -106,7 +111,7 @@ struct ScholiumMCPServerTests {
         let server = ScholiumMCPServer { request in
             await recorder.record(request)
             return .object([
-                "schema_version": .integer(5),
+                "schema_version": .integer(6),
                 "status": .string("ok"),
                 "current": .bool(false),
             ])
@@ -176,7 +181,7 @@ struct ScholiumMCPServerTests {
         let result = try object(response["result"])
         #expect(result["isError"] as? Bool == true)
         let structured = try object(result["structuredContent"])
-        #expect(structured["schema_version"] as? Int == 5)
+        #expect(structured["schema_version"] as? Int == 6)
         #expect(structured["status"] as? String == "failed")
         #expect(structured["code"] as? String == "workspace_not_ready")
         #expect(structured["recovery"] as? String == "Open one Triptych.")
