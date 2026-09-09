@@ -12,7 +12,7 @@ enum AgentChatActivityProjection {
   }
 
   static func subject(_ activity: AgentChatActivity) -> String? {
-    guard activity.source == .scholium, [.read, .create, .update, .trash].contains(activity.kind),
+    guard activity.source == .scholium, [.read, .readAttachment, .create, .update, .trash].contains(activity.kind),
       let file = activity.files.first else { return nil }
     return (file.path as NSString).lastPathComponent
   }
@@ -40,6 +40,7 @@ extension AgentChatActivity.Kind {
     let key: String.LocalizationValue
     switch self {
     case .read: key = "Read Note"
+    case .readAttachment: key = "Read Attachment"
     case .search: key = "Search Research Materials"
     case .create: key = "Create Note"
     case .update: key = "Edit Note"
@@ -55,7 +56,7 @@ extension AgentChatActivity.Kind {
   }
   var symbol: String {
     switch self {
-    case .read: "doc.text.magnifyingglass"
+    case .read, .readAttachment: "doc.text.magnifyingglass"
     case .search, .webSearch: "magnifyingglass"
     case .create: "doc.badge.plus"
     case .update, .files: "pencil.line"
@@ -105,9 +106,10 @@ extension AgentChatActivity.File.Effect {
     case .edited: String(localized: "Edited")
     case .unchanged: String(localized: "Unchanged")
     case .trashed: String(localized: "Moved to Trash")
+    case .moved: String(localized: "Moved")
     }
   }
-  var isMutation: Bool { self == .created || self == .edited || self == .trashed }
+  var isMutation: Bool { self == .created || self == .edited || self == .trashed || self == .moved }
 }
 
 struct AgentChatFileSummary: Identifiable {

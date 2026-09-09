@@ -2,13 +2,23 @@
 
 [IMPLEMENTATION_STATUS.md](../IMPLEMENTATION_STATUS.md) · Dated proof and its limits.
 
+## Agent knowledge-base tools, 2026-09-09
+
+Integration: 1,388 tests (Core 360+3, Contracts 70, Application 165+1, App 789),
+with two App structure assertions repaired and rechecked separately. The gate log retains its nonzero exit. Public symbols, Release build/CLI and
+resources/docs/localization pass. Four task-introduced omissions are resolved.
+Evidence: `.build/agent-knowledge-tools/completion-audit.md`; Xcode 27 beta
+27A5218g, Swift 6.4/SDK 27; `d75bceac` plus uncommitted changes.
+Native focus/menu/IME/VoiceOver/adaptation and real Zotero/provider acceptance
+remain open; no release acceptance is implied.
+
 ## Current verification snapshot
 
 **2026-09-09 — selection shortcuts:** Native buttons/menu replace the duplicate
 composer. Settings supports five bounded, ordered custom prompts. Checks pass (31 native, 234 editor); the real WebKit bridge verifies replacement
 and rejects stale source. Signed-in QA confirms exact capture, real Polish,
 Adopt and one-step Undo; native menu/settings and error recovery were inspected.
-Full integration remains red on App assertions; this is no release pass.
+This scoped evidence does not establish release acceptance.
 Human accessibility/adaptation and representative scholarly evaluation remain open.
 Evidence: `.build/agent-chat-evolution/selection-*`; prior `inquiry-*`.
 
@@ -146,20 +156,12 @@ the shared checkout contains unrelated work. One QA instance remains available
 within the ongoing researcher feedback session, with no active turn or test draft.
 
 
-**2026-09-08 — retired Action cleanup:** Removed the managed assessment
-registry, round/disposition APIs, special document restrictions, and detached
-Analyze Zotero context/resolution paths. Ordinary file operations now cover
-all Works subdirectories. The 187 owning tests pass, including exact-source
-creation, duplication, movement, and Trash preparation with an unreadable
-orphan assessment store left byte-unchanged. Documentation authority, interface
-localization, and bundled Core Protocol validation pass. The complete verifier
-stops at the pre-existing AgentChatController executable-probe I/O allowlist
-mismatch; this is not a complete-gate pass. Logs: `.build/action-cleanup/`.
-An additional 46 adjacent checks pass; one architecture assertion encounters
-the same existing I/O mismatch. Independent GPT 5.6 Luna (max) static review
-found no remaining blocking issue after obsolete UI journeys, fixtures, and
-README claims were removed. No GUI or human acceptance is claimed.
-
+**2026-09-08 — retired Action cleanup:** The 187 owning and 46 adjacent
+checks pass for removal of managed assessment/Analyze paths and ordinary Works
+file operations; orphan bytes remain unchanged. Documentation, localization and
+bundled Core Protocol checks pass. Full verification and an adjacent architecture
+assertion stop at the existing AgentChatController I/O allowlist mismatch.
+Evidence: `.build/action-cleanup/`; no complete gate or GUI acceptance.
 
 **2026-09-08 — native sidebar layout cleanup:** Sidebar-owned container/content
 insets replace the old Library aliases into the peripheral editorial grid. The

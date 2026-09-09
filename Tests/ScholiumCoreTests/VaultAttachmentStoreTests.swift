@@ -5,6 +5,28 @@ import Testing
 
 @Suite("Vault image attachments")
 struct VaultAttachmentStoreTests {
+    @Test("Bounded attachment reads refuse symlink parents and files and leave originals unchanged")
+    func boundedReadContainment() async throws {
+        let fixture = try Fixture(); defer { fixture.remove() }
+        let store = VaultAttachmentStore(vaultURL: fixture.vault)
+        let folder = fixture.vault.appendingPathComponent("Files")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let source = folder.appendingPathComponent("Exact.txt")
+        let bytes = Data("Exact\r\n".utf8); try bytes.write(to: source)
+        let path = try AttachmentRelativePath("Files/Exact.txt")
+        #expect(try await store.readContent(relativePath: path, maximumByteCount: bytes.count) == bytes)
+        await #expect(throws: Error.self) { try await store.readContent(relativePath: path, maximumByteCount: bytes.count - 1) }
+        let moved = fixture.root.appendingPathComponent("Outside")
+        try FileManager.default.moveItem(at: folder, to: moved)
+        try FileManager.default.createSymbolicLink(at: folder, withDestinationURL: moved)
+        await #expect(throws: Error.self) { try await store.readContent(relativePath: path, maximumByteCount: 100) }
+        try FileManager.default.removeItem(at: folder)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(at: source, withDestinationURL: moved.appendingPathComponent("Exact.txt"))
+        await #expect(throws: Error.self) { try await store.readContent(relativePath: path, maximumByteCount: 100) }
+        #expect(try Data(contentsOf: moved.appendingPathComponent("Exact.txt")) == bytes)
+    }
+
     @Test("External images copy exactly and rollback only the unchanged import")
     func externalImageCopyAndRollback() async throws {
         let fixture = try Fixture()

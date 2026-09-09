@@ -2,7 +2,7 @@ import Foundation
 
 public enum ScholiumMCPContract {
     public static let maximumDocumentUTF8ByteCount = 512 * 1_024
-    public static let currentToolSchemaVersion = 4
+    public static let currentToolSchemaVersion = 5
 }
 
 /// JSON values accepted at the MCP delivery boundary. Domain owners decode
@@ -82,11 +82,20 @@ public enum MCPJSONValue: Codable, Hashable, Sendable {
 
 public enum ScholiumMCPToolName: String, Codable, CaseIterable, Sendable {
     case workspaceStatus = "scholium_workspace_status"
+    case browse = "scholium_browse"
     case search = "scholium_search"
     case readNote = "scholium_read_note"
+    case showNote = "scholium_show_note"
+    case listAttachments = "scholium_list_attachments"
+    case readAttachment = "scholium_read_attachment"
     case listLinks = "scholium_list_links"
     case createNote = "scholium_create_note"
     case updateNote = "scholium_update_note"
+    case moveNote = "scholium_move_note"
+    case previewMove = "scholium_preview_move"
+    case listChanges = "scholium_list_changes"
+    case readChange = "scholium_read_change"
+    case undoChange = "scholium_undo_change"
     case trashNote = "scholium_trash_note"
 }
 
@@ -111,17 +120,41 @@ public struct ScholiumMCPFailure: Codable, Hashable, Sendable, Error {
     public let code: ScholiumMCPFailureCode
     public let message: String
     public let recovery: String
+    public let recoveryDetails: ScholiumMCPRecoveryDetails?
 
     public init(
         code: ScholiumMCPFailureCode,
         message: String,
-        recovery: String
+        recovery: String,
+        recoveryDetails: ScholiumMCPRecoveryDetails? = nil
     ) {
         schemaVersion = ScholiumMCPContract.currentToolSchemaVersion
         status = "failed"
         self.code = code
         self.message = message
         self.recovery = recovery
+        self.recoveryDetails = recoveryDetails
+    }
+}
+
+public struct ScholiumMCPRecoveryDetails: Codable, Hashable, Sendable {
+    public let recoveryID: UUID
+    public let files: [TriptychMutationRecoveryFile]
+    public let total: Int
+    public init(record: TriptychMutationRecoveryRecord) {
+        recoveryID = record.id; files = Array(record.files.prefix(100)); total = record.files.count
+    }
+    public var jsonValue: MCPJSONValue {
+        func fingerprint(_ value: DocumentFingerprint?) -> MCPJSONValue {
+            value.map { .object(["sha256": .string($0.sha256), "byte_count": .integer($0.byteCount)]) } ?? .null
+        }
+        return .object(["recovery_id": .string(recoveryID.uuidString.lowercased()), "total": .integer(total), "has_more": .bool(files.count < total),
+            "files": .array(files.map { file in .object([
+                "vault_id": file.vaultID.map { .string($0.uuidString.lowercased()) } ?? .null, "path": .string(file.path),
+                "alternate_path": file.alternatePath.map(MCPJSONValue.string) ?? .null, "role": .string(file.role.rawValue),
+                "before_fingerprint": fingerprint(file.beforeRevision), "intended_fingerprint": fingerprint(file.intendedRevision),
+                "observed_fingerprint": fingerprint(file.observedRevision), "state": .string(file.state.rawValue), "detail": .string(file.detail),
+            ]) })])
     }
 }
 

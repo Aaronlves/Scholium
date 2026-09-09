@@ -1,3 +1,4 @@
+import Foundation
 import ScholiumApplication
 import ScholiumContracts
 
@@ -12,6 +13,8 @@ final class ScholiumAppBridgeRequestRouter {
         runtime: WorkspaceRuntime,
         flushEditors: @escaping MCPAppBridgeRequestRouter.EditorFlusher,
         openTriptychs: @escaping MCPAppBridgeRequestRouter.OpenTriptychs,
+        displayWindows: @escaping @MainActor (UUID) -> [MCPJSONValue] = { _ in [] },
+        displayNote: @escaping @MainActor (UUID, AgentNoteDisplayTarget, ScholiumMCPBridgeRequest) async throws -> Void = { _, _, _ in throw WorkspaceStore.displayUnavailable() },
         didConfirmChange: @escaping @MainActor (AgentChange) -> Void = { _ in },
         chatHandler: (@MainActor (ScholiumMCPBridgeRequest) async -> ScholiumMCPBridgeResponse)? = nil
     ) {
@@ -20,7 +23,7 @@ final class ScholiumAppBridgeRequestRouter {
             runtime: runtime,
             flushEditors: flushEditors,
             openTriptychs: openTriptychs,
-            didConfirmChange: didConfirmChange
+            displayWindows: displayWindows, displayNote: displayNote, didConfirmChange: didConfirmChange
         )
     }
 

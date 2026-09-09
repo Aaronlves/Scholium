@@ -358,10 +358,14 @@ public actor TriptychMoveCoordinator {
         self.faultPlan = faultPlan
     }
 
-    public func move(
-        _ plan: IncomingLinkRewritePlan,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> TriptychMoveCommit {
+    /// Runs the same path/source/link preflight as execution without moving or recording source.
+    public func validate(_ plan: IncomingLinkRewritePlan, expectedRevision: DocumentFingerprint) async throws {
+        _ = try await prepareMove(plan, expectedRevision: expectedRevision)
+    }
+
+    private func prepareMove(_ plan: IncomingLinkRewritePlan, expectedRevision: DocumentFingerprint)
+        async throws -> (VaultRepository, NoteDocument, [PreparedRewrite]) {
+        try Task.checkCancellation()
         guard plan.movedNote.vaultID == plan.destination.vaultID else {
             throw TriptychTransactionError.invalidPlan("A note cannot change vault identity during an ordinary move.")
         }
@@ -430,6 +434,12 @@ public actor TriptychMoveCoordinator {
             throw TriptychTransactionError.preflightFailed(note: nil, detail: error.localizedDescription)
         }
 
+        return (sourceRepository, sourceBefore, prepared)
+    }
+
+    public func move(_ plan: IncomingLinkRewritePlan, expectedRevision: DocumentFingerprint) async throws -> TriptychMoveCommit {
+        let (sourceRepository, sourceBefore, prepared) = try await prepareMove(plan, expectedRevision: expectedRevision)
+        try Task.checkCancellation()
         var moveResult: NoteMoveResult?
         var applied: [AppliedRewrite] = []
         do {

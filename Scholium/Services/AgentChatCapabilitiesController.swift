@@ -24,6 +24,11 @@ final class AgentChatCapabilitiesController: ObservableObject {
   @Published private(set) var toolConnections: [AgentChatToolConnection] = []
   @Published private(set) var toolConfigurationError: String?
   @Published private(set) var toolConfigurationNotice: String?
+  static let zoteroServerName = "scholium-zotero"
+  @Published private(set) var zoteroLibraryInfo: ZoteroLibraryInfo?
+  @Published private(set) var isCheckingZotero = false
+  private var zoteroStatusTask: Task<Void, Never>?
+  private let zotero: (any ZoteroUseCases)?
   private var toolConfiguration: CodexChatToolConfiguration?
   private(set) var configurationHome: URL?
   private(set) var isShared = false
@@ -38,7 +43,7 @@ final class AgentChatCapabilitiesController: ObservableObject {
   private var authenticationThreadID: String?
   private let defaults: UserDefaults
   private var needsRootApplication = false
-  init(defaults: UserDefaults = .standard) { self.defaults = defaults }
+  init(defaults: UserDefaults = .standard, zotero: (any ZoteroUseCases)? = nil) { self.defaults = defaults; self.zotero = zotero }
   private var folderPreferenceKey: String? {
     configurationHome.map { "agent.methodFolders.\($0.standardizedFileURL.path)" }
   }
@@ -61,6 +66,7 @@ final class AgentChatCapabilitiesController: ObservableObject {
 
   func detach() {
     connectionGeneration = UUID()
+    zoteroStatusTask?.cancel(); zoteroStatusTask = nil; zoteroLibraryInfo = nil; isCheckingZotero = false
     authenticationTask?.cancel(); authenticationTask = nil
     authenticatingTool = nil; authorizationURL = nil; authenticationThreadID = nil
     authenticationNotice = nil; authenticationError = nil
@@ -146,6 +152,28 @@ final class AgentChatCapabilitiesController: ObservableObject {
 
   var canConfigureTools: Bool {
     isConnected && mayChange() && !isChanging && !isRefreshing && authenticatingTool == nil && toolConfiguration != nil
+  }
+
+  var zoteroConnection: AgentChatToolConnection? { toolConnections.first { $0.name == Self.zoteroServerName } }
+  var canCheckZotero: Bool { isConnected && zotero != nil && !isCheckingZotero }
+
+  func zoteroToolEdit(executable: URL?) -> AgentChatToolEdit? {
+    if zoteroConnection != nil { return editTool(named: Self.zoteroServerName) }
+    guard let executable, executable.isFileURL, var edit = editTool() else { return nil }
+    edit.connection = .init(name: Self.zoteroServerName, kind: .local, address: executable.path,
+      arguments: ZoteroMCPTransportDescriptor.supportedLocal.readOnlyArguments, enabled: true)
+    return edit
+  }
+
+  func checkZotero() {
+    guard canCheckZotero, let zotero else { return }
+    let connection = connectionGeneration
+    isCheckingZotero = true
+    zoteroStatusTask = Task { [weak self] in
+      let info = await zotero.libraryInfo()
+      guard let self, connectionGeneration == connection, !Task.isCancelled else { return }
+      zoteroLibraryInfo = info; isCheckingZotero = false; zoteroStatusTask = nil
+    }
   }
 
   func editTool(named name: String? = nil) -> AgentChatToolEdit? {

@@ -20,6 +20,7 @@ enum AgentChangePresentation {
         case .create: "Created by External Agent"
         case .update: "Updated by External Agent"
         case .trash: "Moved to System Trash"
+        case .move: "Moved by External Agent"
         }
     }
 
@@ -28,6 +29,7 @@ enum AgentChangePresentation {
         case .create: "doc.badge.plus"
         case .update: "pencil"
         case .trash: "trash"
+        case .move: "folder"
         }
     }
 
@@ -394,7 +396,17 @@ private struct AgentChangeReviewContent: View {
     @ViewBuilder
     private var content: some View {
         switch review.change.operation {
-        case .update:
+        case .update, .move:
+            if review.change.operation == .move {
+                Text((review.change.originalRelativePath ?? "") + " → " + (review.change.finalRelativePath ?? "")).textSelection(.enabled)
+            }
+            if let reason = review.undoUnavailableReason { Text(reason).textSelection(.enabled) }
+            ForEach(review.linkedComparisons, id: \.effect.noteID) { linked in
+                DisclosureGroup(linked.effect.destination.relativePath) {
+                    ExactSourceComparisonView(comparison: linked.comparison, startingLabel: "Before", endingLabel: "After",
+                        startingOnlyLabel: "Removed", endingOnlyLabel: "Inserted", identifierPrefix: "scholium.agentChanges.linked")
+                }
+            }
             if let comparison = review.comparison {
                 ExactSourceComparisonView(
                     comparison: comparison,

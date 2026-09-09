@@ -13,6 +13,7 @@ struct AgentChatExecutionState {
   var turnID: String?
   var routeToken: UUID?
   var admissionID: UUID?
+  var displayScope: AgentChatDisplayScope?
   var completedTurns: Set<String> = []
   /// Notification validity only; public run state retains its existing owner.
   var notificationTurnID: String?

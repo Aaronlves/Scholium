@@ -144,7 +144,7 @@ struct TriptychMoveCoordinatorTests {
         #expect(try await fixture.recovery.pending().count == 1)
         let reopened = try TriptychMutationRecoveryStore(
             storageURL: fixture.appSupport
-                .appendingPathComponent("Triptychs/\(fixture.triptychID.uuidString)")
+                .appendingPathComponent("Triptychs/\(fixture.triptychID.uuidString)/transactions", isDirectory: true)
         )
         #expect(try await reopened.pending().count == 1)
     }
@@ -603,8 +603,9 @@ struct TriptychMoveCoordinatorTests {
         let recovery: TriptychMutationRecoveryStore
 
         init() throws {
-            root = FileManager.default.temporaryDirectory
-                .appendingPathComponent("Scholium-Move-\(UUID().uuidString)", isDirectory: true)
+            let repositoryRoot = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+                .deletingLastPathComponent().deletingLastPathComponent()
+            root = repositoryRoot.appendingPathComponent(".build/agent-move-fixtures/\(UUID().uuidString)", isDirectory: true)
             appSupport = root.appendingPathComponent("Application Support", isDirectory: true)
             try FileManager.default.createDirectory(at: appSupport, withIntermediateDirectories: true)
             var built: [WorkspaceVaultSlot: VaultRepository] = [:]
@@ -612,7 +613,12 @@ struct TriptychMoveCoordinatorTests {
             for slot in WorkspaceVaultSlot.allCases {
                 let id = UUID()
                 let url = root.appendingPathComponent(slot.displayName, isDirectory: true)
-                try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+                let fixtureDirectory: String = switch slot {
+                case .paperAnalysis: "01-analyses"
+                case .topicKnowledge: "02-topics"
+                case .output: "03-works"
+                }
+                try FileManager.default.copyItem(at: repositoryRoot.appendingPathComponent("TestVaults/" + fixtureDirectory), to: url)
                 built[slot] = try VaultRepository(
                     vaultURL: url,
                     identity: VaultIdentity(id: id, canonicalPath: url.path, bookmarkData: nil),
@@ -624,7 +630,7 @@ struct TriptychMoveCoordinatorTests {
             repositories = built
             ids = vaultIDs
             recovery = try TriptychMutationRecoveryStore(
-                storageURL: appSupport.appendingPathComponent("Triptychs/\(triptychID.uuidString)")
+                storageURL: appSupport.appendingPathComponent("Triptychs/\(triptychID.uuidString)/transactions", isDirectory: true)
             )
         }
 

@@ -90,7 +90,7 @@ public actor ScholiumMCPServer {
                 throw ScholiumMCPFailure(
                     code: .invalidRequest,
                     message: "The requested Scholium MCP tool is unknown.",
-                    recovery: "Call tools/list and use one of the ten published tool names."
+                    recovery: "Call tools/list and use one of the published tool names."
                 )
             }
             let arguments: [String: MCPJSONValue]
@@ -120,7 +120,7 @@ public actor ScholiumMCPServer {
                 arguments: arguments,
                 runtimeContext: context
             ))
-            return toolResult(result, isError: false)
+            return toolResult(result, isError: false, includesImage: tool == .readAttachment)
         } catch let failure as ScholiumMCPFailure {
             return toolResult(failureValue(failure), isError: true)
         } catch let error as ScholiumAppBridgeError {
@@ -155,15 +155,18 @@ public actor ScholiumMCPServer {
         }
     }
 
-    private func toolResult(_ value: MCPJSONValue, isError: Bool) -> MCPJSONValue {
-        .object([
-            "content": .array([.object([
-                "type": .string("text"),
-                "text": .string(Self.jsonString(value)),
-            ])]),
-            "structuredContent": value,
-            "isError": .bool(isError),
-        ])
+    private func toolResult(_ value: MCPJSONValue, isError: Bool, includesImage: Bool = false) -> MCPJSONValue {
+        var textValue = value
+        var imageBlock: MCPJSONValue?
+        if includesImage, !isError, let image = value.objectValue?["image"]?.objectValue,
+           image["mime_type"]?.stringValue == "image/png", let data = image["data"]?.stringValue {
+            imageBlock = .object(["type": .string("image"), "mimeType": .string("image/png"), "data": .string(data)])
+            var object = value.objectValue ?? [:]; var metadata = image; metadata["data"] = nil
+            object["image"] = .object(metadata); textValue = .object(object)
+        }
+        var content: [MCPJSONValue] = [.object(["type": .string("text"), "text": .string(Self.jsonString(textValue))])]
+        if let imageBlock { content.append(imageBlock) }
+        return .object(["content": .array(content), "structuredContent": value, "isError": .bool(isError)])
     }
 
     private func failureValue(_ failure: ScholiumMCPFailure) -> MCPJSONValue {
@@ -173,6 +176,7 @@ public actor ScholiumMCPServer {
             "code": .string(failure.code.rawValue),
             "message": .string(failure.message),
             "recovery": .string(failure.recovery),
+            "recovery_details": failure.recoveryDetails?.jsonValue ?? .null,
         ])
     }
 
@@ -239,6 +243,18 @@ public actor ScholiumMCPServer {
             idempotent: true
         ),
         tool(
+            .browse,
+            description: "Browse role roots or immediate Library directory/Note children without a search query. Continue with the returned listing fingerprint.",
+            properties: [
+                "triptych_id": uuidSchema("Open Triptych UUID."), "role": roleSchema,
+                "directory": stringSchema("Exact vault-relative directory; empty means role root. Requires role."),
+                "limit": integerSchema(minimum: 1, maximum: 100, default: 20),
+                "offset": integerSchema(minimum: 0, maximum: nil, default: 0),
+                "expected_listing_fingerprint": fingerprintSchema,
+            ],
+            required: ["triptych_id"], readOnly: true, destructive: false, idempotent: true
+        ),
+        tool(
             .search,
             description: "Search current Notes in the authorized Triptych.",
             properties: [
@@ -276,6 +292,26 @@ public actor ScholiumMCPServer {
             destructive: false,
             idempotent: true
         ),
+        tool(.showNote, description: "Display an exact current Note or passage in its existing foreground window. External hosts must name a window from workspace_status; Chat uses its original visible window. Never foregrounds a background task.",
+            properties: ["triptych_id": uuidSchema("Open Triptych UUID."), "window_id": uuidSchema("Live window UUID; required outside in-app Chat."),
+                "note_id": uuidSchema("Stable Note UUID."), "expected_fingerprint": fingerprintSchema,
+                "start_utf8": integerSchema(minimum: 0, maximum: nil, default: 0), "end_utf8": integerSchema(minimum: 1, maximum: nil, default: 1),
+                "expected_text": stringSchema("Exact complete text for the requested source range, at most 64 KiB.")],
+            required: ["triptych_id", "note_id", "expected_fingerprint"],
+            alternatives: [.object(["required": .array(["start_utf8", "end_utf8", "expected_text"].map(MCPJSONValue.string))]),
+                .object(["not": .object(["anyOf": .array(["start_utf8", "end_utf8", "expected_text"].map { .object(["required": .array([.string($0)])]) })])])],
+            readOnly: false, destructive: false, idempotent: false),
+        tool(.listAttachments, description: "List the current Note's document attachments and registered authored images; metadata is not source reading.",
+            properties: ["triptych_id": uuidSchema("Open Triptych UUID."), "note_id": uuidSchema("Stable Note UUID."),
+                "offset": integerSchema(minimum: 0, maximum: nil, default: 0), "limit": integerSchema(minimum: 1, maximum: 100, default: 20),
+                "expected_listing_fingerprint": fingerprintSchema], required: ["triptych_id", "note_id"], readOnly: true, destructive: false, idempotent: true),
+        tool(.readAttachment, description: "Read one related current attachment. Text uses exact UTF-8 offsets; PDF reads require one explicit page. Image mode returns a bounded rendered PNG, never OCR.",
+            properties: ["triptych_id": uuidSchema("Open Triptych UUID."), "note_id": uuidSchema("Stable Note UUID."),
+                "attachment_id": uuidSchema("Attachment UUID from list_attachments."), "expected_note_fingerprint": fingerprintSchema,
+                "expected_fingerprint": fingerprintSchema, "mode": .object(["type": .string("string"), "enum": .array([.string("text"), .string("image")])]),
+                "page": integerSchema(minimum: 1, maximum: nil, default: 1), "start_utf8": integerSchema(minimum: 0, maximum: nil, default: 0),
+                "max_utf8": integerSchema(minimum: 1, maximum: 65_536, default: 16_384)],
+            required: ["triptych_id", "note_id", "attachment_id", "expected_note_fingerprint", "mode"], readOnly: true, destructive: false, idempotent: true),
         tool(
             .listLinks,
             description: "List authored incoming or outgoing link occurrences with source-owned annotations and exact locators.",
@@ -316,24 +352,72 @@ public actor ScholiumMCPServer {
         ),
         tool(
             .updateNote,
-            description: "Revision-check and update one Note body or complete source.",
+            description: "Revision-check one Note: replace body/source or apply exact UTF-8 range edits.",
             properties: [
                 "triptych_id": uuidSchema("Open Triptych UUID."),
                 "note_id": uuidSchema("Stable Note UUID."),
                 "expected_fingerprint": fingerprintSchema,
                 "mode": .object([
                     "type": .string("string"),
-                    "enum": .array([.string("body"), .string("source")]),
+                    "enum": .array([.string("body"), .string("source"), .string("edits")]),
                 ]),
-                "content": stringSchema("Replacement body or complete source."),
+                "content": stringSchema("Replacement body or complete source; omit for edits."),
+                "edits": .object([
+                    "type": .string("array"), "minItems": .integer(1), "maxItems": .integer(AgentSourceEdit.maximumCount),
+                    "items": closedObject(properties: [
+                        "start_utf8": .object(["type": .string("integer"), "minimum": .integer(0),
+                            "description": .string("Zero-based UTF-8 offset in the complete original source, including BOM and YAML.")]),
+                        "end_utf8": .object(["type": .string("integer"), "minimum": .integer(0),
+                            "description": .string("Exclusive UTF-8 offset; equal to start_utf8 for insertion.")]),
+                        "expected_text": stringSchema("Exact original bytes decoded as text; empty for insertion."),
+                        "replacement": stringSchema("Exact replacement; empty for deletion. No newline normalization."),
+                    ], required: ["start_utf8", "end_utf8", "expected_text", "replacement"]),
+                ]),
             ],
             required: [
-                "triptych_id", "note_id", "expected_fingerprint", "mode", "content",
+                "triptych_id", "note_id", "expected_fingerprint", "mode",
+            ],
+            alternatives: [
+                .object(["properties": .object(["mode": .object(["enum": .array([.string("body"), .string("source")])])]),
+                         "required": .array([.string("content")]), "not": .object(["required": .array([.string("edits")])])]),
+                .object(["properties": .object(["mode": .object(["const": .string("edits")])]),
+                         "required": .array([.string("edits")]), "not": .object(["required": .array([.string("content")])])]),
             ],
             readOnly: false,
             destructive: true,
             idempotent: false
         ),
+        tool(.moveNote,
+            description: "Execute the exact previously previewed same-vault Note move, preserving identity and recording all linked-source effects. A changed plan is rejected.",
+            properties: ["triptych_id": uuidSchema("Open Triptych UUID."), "note_id": uuidSchema("Stable Note UUID."),
+                "expected_fingerprint": fingerprintSchema, "relative_path": stringSchema("Exact destination .md path in the same vault."),
+                "expected_plan_fingerprint": fingerprintSchema],
+            required: ["triptych_id", "note_id", "expected_fingerprint", "relative_path", "expected_plan_fingerprint"],
+            readOnly: false, destructive: true, idempotent: false),
+        tool(.previewMove,
+            description: "Preview a same-role Note rename/move and exact incoming-link effects without changing source. Continue only with the full plan fingerprint.",
+            properties: ["triptych_id": uuidSchema("Open Triptych UUID."), "note_id": uuidSchema("Stable Note UUID."),
+                "expected_fingerprint": fingerprintSchema, "relative_path": stringSchema("Exact destination .md path in the same vault."),
+                "offset": integerSchema(minimum: 0, maximum: nil, default: 0), "limit": integerSchema(minimum: 1, maximum: 100, default: 20),
+                "expected_plan_fingerprint": fingerprintSchema], required: ["triptych_id", "note_id", "expected_fingerprint", "relative_path"],
+            readOnly: true, destructive: false, idempotent: true),
+        tool(.listChanges,
+            description: "List exact machine-local Agent Change receipts; history is not current source or mutation permission.",
+            properties: ["triptych_id": uuidSchema("Open Triptych UUID."), "note_id": uuidSchema("Optional stable Note UUID."),
+                "offset": integerSchema(minimum: 0, maximum: nil, default: 0), "limit": integerSchema(minimum: 1, maximum: 100, default: 20),
+                "expected_listing_fingerprint": fingerprintSchema], required: ["triptych_id"], readOnly: true, destructive: false, idempotent: true),
+        tool(.readChange,
+            description: "Read one retained change and a paged exact source comparison, with current Undo eligibility. No source is changed.",
+            properties: ["triptych_id": uuidSchema("Open Triptych UUID."), "change_id": uuidSchema("Exact Agent Change UUID."),
+                "note_id": uuidSchema("An affected Note UUID; defaults to the primary Note comparison."),
+                "effect_offset": integerSchema(minimum: 0, maximum: nil, default: 0), "effect_limit": integerSchema(minimum: 1, maximum: 100, default: 20),
+                "offset": integerSchema(minimum: 0, maximum: nil, default: 0), "limit": integerSchema(minimum: 1, maximum: 1000, default: 200)],
+            required: ["triptych_id", "change_id"], readOnly: true, destructive: false, idempotent: true),
+        tool(.undoChange,
+            description: "Undo only the explicitly requested eligible Note update while current source equals its recorded ending. Never automatically undo another task or repeat a completed write.",
+            properties: ["triptych_id": uuidSchema("Open Triptych UUID."), "note_id": uuidSchema("Stable Note UUID bound to this change."),
+                "change_id": uuidSchema("Exact Agent Change UUID."), "expected_fingerprint": fingerprintSchema],
+            required: ["triptych_id", "note_id", "change_id", "expected_fingerprint"], readOnly: false, destructive: true, idempotent: false),
         tool(
             .trashNote,
             description: "Move one exact current Note to macOS system Trash.",
@@ -354,6 +438,7 @@ public actor ScholiumMCPServer {
         description: String,
         properties: [String: MCPJSONValue],
         required: [String],
+        alternatives: [MCPJSONValue] = [],
         readOnly: Bool,
         destructive: Bool,
         idempotent: Bool
@@ -366,7 +451,7 @@ public actor ScholiumMCPServer {
                 "properties": .object(properties),
                 "required": .array(required.map(MCPJSONValue.string)),
                 "additionalProperties": .bool(false),
-            ]),
+            ].merging(alternatives.isEmpty ? [:] : ["oneOf": .array(alternatives)]) { _, value in value }),
             "outputSchema": outputSchema(for: name),
             "annotations": .object([
                 "readOnlyHint": .bool(readOnly),
@@ -458,6 +543,33 @@ public actor ScholiumMCPServer {
         ]
     )
 
+    private static let moveEffectSchema = closedObject(properties: [
+        "note_id": uuidSchema("Affected Note UUID."), "role": roleSchema, "source_relative_path": simpleSchema("string"), "relative_path": simpleSchema("string"),
+        "before_fingerprint": fingerprintSchema, "after_fingerprint": fingerprintSchema, "rewritten_occurrences": nonnegativeIntegerSchema,
+    ], required: ["note_id", "role", "source_relative_path", "relative_path", "before_fingerprint", "after_fingerprint", "rewritten_occurrences"])
+
+    private static let changeReceiptSchema = closedObject(properties: [
+        "change_id": uuidSchema("Agent Change UUID."), "note_id": uuidSchema("Stable Note UUID."), "role": roleSchema,
+        "affected_note_count": nonnegativeIntegerSchema,
+        "operation": .object(["type": .string("string"), "enum": .array(["create", "update", "trash", "move"].map(MCPJSONValue.string))]),
+        "state": .object(["type": .string("string"), "enum": .array(["prepared", "confirmed", "outcome_uncertain", "undone"].map(MCPJSONValue.string))]),
+        "original_relative_path": nullable(simpleSchema("string")), "final_relative_path": nullable(simpleSchema("string")),
+        "before_fingerprint": nullable(fingerprintSchema), "after_fingerprint": nullable(fingerprintSchema),
+        "created_at": simpleSchema("string"), "confirmed_at": nullable(simpleSchema("string")), "undone_at": nullable(simpleSchema("string")),
+    ], required: ["change_id", "note_id", "role", "affected_note_count", "operation", "state", "original_relative_path", "final_relative_path",
+                  "before_fingerprint", "after_fingerprint", "created_at", "confirmed_at", "undone_at"])
+
+    private static let changeComparisonSchema = closedObject(properties: [
+        "before_fingerprint": fingerprintSchema, "after_fingerprint": fingerprintSchema,
+        "before_has_bom": booleanSchema, "after_has_bom": booleanSchema,
+        "offset": nonnegativeIntegerSchema, "limit": nonnegativeIntegerSchema, "total": nonnegativeIntegerSchema, "has_more": booleanSchema,
+        "rows": arraySchema(closedObject(properties: [
+            "kind": .object(["type": .string("string"), "enum": .array(["unchanged", "removed", "added"].map(MCPJSONValue.string))]),
+            "before_line": nullable(nonnegativeIntegerSchema), "after_line": nullable(nonnegativeIntegerSchema), "text": simpleSchema("string"),
+            "line_ending": .object(["type": .string("string"), "enum": .array(["LF", "CRLF", "None"].map(MCPJSONValue.string))]),
+        ], required: ["kind", "before_line", "after_line", "text", "line_ending"])),
+    ], required: ["before_fingerprint", "after_fingerprint", "before_has_bom", "after_has_bom", "offset", "limit", "total", "has_more", "rows"])
+
     private static func outputSchema(
         for tool: ScholiumMCPToolName
     ) -> MCPJSONValue {
@@ -484,6 +596,7 @@ public actor ScholiumMCPServer {
                         "selection_required": booleanSchema,
                         "triptych_id": uuidSchema("Open Triptych UUID."),
                         "name": simpleSchema("string"),
+                        "windows": arraySchema(closedObject(properties: ["window_id": uuidSchema("Live window UUID."), "can_display": booleanSchema], required: ["window_id", "can_display"])),
                         "source_generation": generationSchema(
                             includesCount: true
                         ),
@@ -505,10 +618,23 @@ public actor ScholiumMCPServer {
                     required: [
                         "current", "selection_required", "triptych_id", "name",
                         "source_generation", "search_generation",
-                        "graph_generation", "vaults",
+                        "graph_generation", "vaults", "windows",
                     ]
                 ),
             ]
+        case .browse:
+            [successSchema(properties: [
+                "triptych_id": uuidSchema("Open Triptych UUID."), "role": nullable(roleSchema),
+                "directory": simpleSchema("string"), "listing_fingerprint": fingerprintSchema,
+                "offset": nonnegativeIntegerSchema, "limit": nonnegativeIntegerSchema,
+                "total": nonnegativeIntegerSchema, "has_more": booleanSchema,
+                "entries": arraySchema(closedObject(properties: [
+                    "kind": .object(["type": .string("string"), "enum": .array(["role", "directory", "note"].map(MCPJSONValue.string))]),
+                    "role": roleSchema, "relative_path": simpleSchema("string"), "title": simpleSchema("string"),
+                    "note_id": nullable(uuidSchema("Stable Note UUID; null for roles, directories or unresolved Notes.")),
+                    "fingerprint": nullable(fingerprintSchema),
+                ], required: ["kind", "role", "relative_path", "title", "note_id", "fingerprint"])),
+            ], required: ["triptych_id", "role", "directory", "listing_fingerprint", "offset", "limit", "total", "has_more", "entries"])]
         case .search:
             [successSchema(
                 properties: [
@@ -528,16 +654,41 @@ public actor ScholiumMCPServer {
                     "fingerprint": fingerprintSchema,
                     "start_line": nonnegativeIntegerSchema,
                     "line_count": nonnegativeIntegerSchema,
+                    "start_utf8": nonnegativeIntegerSchema,
+                    "end_utf8": nonnegativeIntegerSchema,
                     "source": simpleSchema("string"),
                     "complete": booleanSchema,
                     "next_line": nullable(nonnegativeIntegerSchema),
                 ],
                 required: [
                     "triptych_id", "note_id", "role", "relative_path",
-                    "fingerprint", "start_line", "line_count", "source",
+                    "fingerprint", "start_line", "line_count", "start_utf8", "end_utf8", "source",
                     "complete", "next_line",
                 ]
             )]
+        case .showNote:
+            [successSchema(properties: ["triptych_id": uuidSchema("Triptych UUID."), "window_id": uuidSchema("Window UUID."),
+                "note_id": uuidSchema("Note UUID."), "relative_path": simpleSchema("string"), "fingerprint": fingerprintSchema,
+                "activated": booleanSchema, "location_requested": booleanSchema, "line": nullable(nonnegativeIntegerSchema)],
+                required: ["triptych_id", "window_id", "note_id", "relative_path", "fingerprint", "activated", "location_requested", "line"])]
+        case .listAttachments:
+            [successSchema(properties: ["triptych_id": uuidSchema("Triptych UUID."), "note_id": uuidSchema("Note UUID."),
+                "note_fingerprint": fingerprintSchema, "listing_fingerprint": fingerprintSchema,
+                "offset": nonnegativeIntegerSchema, "total": nonnegativeIntegerSchema, "has_more": booleanSchema,
+                "attachments": arraySchema(closedObject(properties: ["attachment_id": uuidSchema("Attachment UUID."),
+                    "filename": simpleSchema("string"), "relationship": .object(["type": .string("string"), "enum": .array([.string("document"), .string("authoredImage")])]),
+                    "available": booleanSchema], required: ["attachment_id", "filename", "relationship", "available"]))],
+                required: ["triptych_id", "note_id", "note_fingerprint", "listing_fingerprint", "offset", "total", "has_more", "attachments"])]
+        case .readAttachment:
+            [successSchema(properties: ["triptych_id": uuidSchema("Triptych UUID."), "note_id": uuidSchema("Note UUID."),
+                "attachment_id": uuidSchema("Attachment UUID."), "filename": simpleSchema("string"), "note_fingerprint": fingerprintSchema,
+                "fingerprint": fingerprintSchema, "kind": .object(["type": .string("string"), "enum": .array(["utf8_text", "pdf_text", "image", "pdf_page_image"].map(MCPJSONValue.string))]),
+                "page": nullable(nonnegativeIntegerSchema), "total_pages": nullable(nonnegativeIntegerSchema), "text": nullable(simpleSchema("string")), "text_available": nullable(booleanSchema),
+                "start_utf8": nonnegativeIntegerSchema, "end_utf8": nonnegativeIntegerSchema, "total_utf8": nonnegativeIntegerSchema, "has_more": booleanSchema,
+                "image": nullable(closedObject(properties: ["mime_type": .object(["const": .string("image/png")]), "data": simpleSchema("string"),
+                    "pixel_width": nonnegativeIntegerSchema, "pixel_height": nonnegativeIntegerSchema], required: ["mime_type", "data", "pixel_width", "pixel_height"]))],
+                required: ["triptych_id", "note_id", "attachment_id", "filename", "note_fingerprint", "fingerprint", "kind", "page", "total_pages", "text", "text_available",
+                    "start_utf8", "end_utf8", "total_utf8", "has_more", "image"])]
         case .listLinks:
             [successSchema(
                 properties: [
@@ -627,6 +778,42 @@ public actor ScholiumMCPServer {
                     "readback_verified",
                 ]
             )]
+        case .moveNote:
+            [successSchema(properties: ["triptych_id": uuidSchema("Open Triptych UUID."), "note_id": uuidSchema("Stable Note UUID."), "change_id": uuidSchema("Agent Change UUID."),
+                "source_relative_path": simpleSchema("string"), "relative_path": simpleSchema("string"), "before_fingerprint": fingerprintSchema, "after_fingerprint": fingerprintSchema,
+                "readback_verified": booleanSchema, "effects": arraySchema(moveEffectSchema), "derived_refresh_warning": nullable(simpleSchema("string"))],
+                required: ["triptych_id", "note_id", "change_id", "source_relative_path", "relative_path", "before_fingerprint", "after_fingerprint", "readback_verified", "effects", "derived_refresh_warning"])]
+        case .previewMove:
+            [successSchema(properties: ["triptych_id": uuidSchema("Open Triptych UUID."), "note_id": uuidSchema("Stable Note UUID."), "role": roleSchema,
+                "source_relative_path": simpleSchema("string"), "relative_path": simpleSchema("string"), "fingerprint": fingerprintSchema,
+                "plan_fingerprint": fingerprintSchema, "can_move": booleanSchema, "offset": nonnegativeIntegerSchema, "limit": nonnegativeIntegerSchema,
+                "total": nonnegativeIntegerSchema, "has_more": booleanSchema,
+                "entries": arraySchema(closedObject(properties: [
+                    "kind": .object(["type": .string("string"), "enum": .array(["move", "link_rewrite", "blocked"].map(MCPJSONValue.string))]),
+                    "note_id": nullable(uuidSchema("Affected stable Note UUID.")), "role": roleSchema, "source_relative_path": simpleSchema("string"),
+                    "relative_path": nullable(simpleSchema("string")), "before_fingerprint": nullable(fingerprintSchema), "after_fingerprint": nullable(fingerprintSchema),
+                    "rewritten_occurrences": nonnegativeIntegerSchema, "source_locator": nullable(locatorSchema), "reason": nullable(simpleSchema("string")),
+                ], required: ["kind", "note_id", "role", "source_relative_path", "relative_path", "before_fingerprint", "after_fingerprint", "rewritten_occurrences", "source_locator", "reason"])),
+            ], required: ["triptych_id", "note_id", "role", "source_relative_path", "relative_path", "fingerprint", "plan_fingerprint", "can_move", "offset", "limit", "total", "has_more", "entries"])]
+        case .listChanges:
+            [successSchema(properties: ["triptych_id": uuidSchema("Open Triptych UUID."), "note_id": nullable(uuidSchema("Stable Note UUID.")),
+                "listing_fingerprint": fingerprintSchema, "offset": nonnegativeIntegerSchema, "limit": nonnegativeIntegerSchema,
+                "total": nonnegativeIntegerSchema, "has_more": booleanSchema, "changes": arraySchema(changeReceiptSchema)],
+                required: ["triptych_id", "note_id", "listing_fingerprint", "offset", "limit", "total", "has_more", "changes"])]
+        case .readChange:
+            [successSchema(properties: ["triptych_id": uuidSchema("Open Triptych UUID."), "change": changeReceiptSchema,
+                "ending_revision_state": nullable(.object(["type": .string("string"), "enum": .array(["current", "earlier_revision", "unavailable"].map(MCPJSONValue.string))])),
+                "can_undo": booleanSchema, "comparison": nullable(changeComparisonSchema),
+                "comparison_note_id": uuidSchema("Selected comparison Note UUID."), "undo_unavailable_reason": nullable(simpleSchema("string")),
+                "effects": closedObject(properties: ["offset": nonnegativeIntegerSchema, "limit": nonnegativeIntegerSchema, "total": nonnegativeIntegerSchema,
+                    "has_more": booleanSchema, "entries": arraySchema(moveEffectSchema)], required: ["offset", "limit", "total", "has_more", "entries"])],
+                required: ["triptych_id", "change", "ending_revision_state", "can_undo", "comparison", "comparison_note_id", "undo_unavailable_reason", "effects"])]
+        case .undoChange:
+            [successSchema(properties: ["triptych_id": uuidSchema("Open Triptych UUID."), "note_id": uuidSchema("Stable Note UUID."),
+                "change_id": uuidSchema("Original Agent Change UUID."), "relative_path": simpleSchema("string"),
+                "source_relative_path": simpleSchema("string"), "effects": arraySchema(moveEffectSchema),
+                "before_fingerprint": fingerprintSchema, "after_fingerprint": fingerprintSchema, "readback_verified": booleanSchema, "undone": booleanSchema],
+                required: ["triptych_id", "note_id", "change_id", "relative_path", "before_fingerprint", "after_fingerprint", "readback_verified", "undone", "source_relative_path", "effects"])]
         case .trashNote:
             [successSchema(
                 properties: [
@@ -672,6 +859,14 @@ public actor ScholiumMCPServer {
         )
     }
 
+    private static let recoveryDetailsSchema = closedObject(properties: [
+        "recovery_id": uuidSchema("Existing recovery record UUID."), "total": nonnegativeIntegerSchema, "has_more": booleanSchema,
+        "files": arraySchema(closedObject(properties: ["vault_id": nullable(uuidSchema("Affected vault UUID.")), "path": simpleSchema("string"),
+            "alternate_path": nullable(simpleSchema("string")), "role": simpleSchema("string"), "before_fingerprint": nullable(fingerprintSchema),
+            "intended_fingerprint": nullable(fingerprintSchema), "observed_fingerprint": nullable(fingerprintSchema), "state": simpleSchema("string"), "detail": simpleSchema("string")],
+            required: ["vault_id", "path", "alternate_path", "role", "before_fingerprint", "intended_fingerprint", "observed_fingerprint", "state", "detail"])),
+    ], required: ["recovery_id", "total", "has_more", "files"])
+
     private static let failureSchema = closedObject(
         properties: [
             "schema_version": .object([
@@ -692,6 +887,7 @@ public actor ScholiumMCPServer {
             ]),
             "message": simpleSchema("string"),
             "recovery": simpleSchema("string"),
+            "recovery_details": nullable(recoveryDetailsSchema),
         ],
         required: [
             "schema_version", "status", "code", "message", "recovery",

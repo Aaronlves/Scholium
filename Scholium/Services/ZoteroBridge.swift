@@ -46,12 +46,6 @@ actor ZoteroBridge {
     }
 
     nonisolated static func itemURL(binding: AnalysisZoteroBinding) -> URL? {
-        let path = switch binding.library {
-        case .user:
-            "library/items/\(binding.itemKey)"
-        case .group(let groupID):
-            "groups/\(groupID)/items/\(binding.itemKey)"
-        }
-        return URL(string: "zotero://select/\(path)")
+        try? ZoteroReference(library: binding.library, itemKey: binding.itemKey).url
     }
 }

@@ -110,9 +110,9 @@ struct LibraryTreeProjection {
         }
 
         folders
-            .filter(libraryPathIsVisible)
+            .filter(WorkspaceLibraryVisibility.includes)
             .forEach { registerFolder(actualPath: $0) }
-        for note in notes where libraryPathIsVisible(note.relativePath) {
+        for note in notes where WorkspaceLibraryVisibility.includes(note.relativePath) {
             let visibleParts = libraryCategoryRelativeDocumentPath(note.relativePath)
                 .split(separator: "/")
                 .map(String.init)
@@ -273,13 +273,6 @@ func libraryCategoryRelativeDocumentPath(_ path: String) -> String {
 
 func libraryCategoryRelativeFolderPath(_ path: String) -> String {
     return path
-}
-
-/// App-owned attachment storage remains available to file operations without
-/// masquerading as a researcher-authored Library folder or Note hierarchy.
-func libraryPathIsVisible(_ path: String) -> Bool {
-    path.split(separator: "/", omittingEmptySubsequences: true).first
-        != "Attachments"
 }
 
 /// Folder row identities that must be disclosed to reveal one exact document

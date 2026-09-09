@@ -9,7 +9,18 @@ struct AgentChatReplySource: Identifiable, Equatable {
   var id: String { url.absoluteString }
   var isNote: Bool { AgentChatReference.parse(url) != nil }
   var isWeb: Bool { ["https", "http"].contains(url.scheme?.lowercased() ?? "") && url.host != nil }
-  var destination: String { isNote ? ScholiumL10n.string("Note") : url.host ?? ScholiumL10n.string("Reference") }
+  var isZotero: Bool { (try? ZoteroReference(url: url)) != nil }
+  var destination: String {
+    if isNote { return ScholiumL10n.string("Note") }
+    if isZotero { return ScholiumL10n.string("Zotero") }
+    return url.host ?? ScholiumL10n.string("Reference")
+  }
+
+  /// Shared by reply links, child replies and the Sources popover.
+  static func externalURL(_ url: URL) -> URL? {
+    if let reference = try? ZoteroReference(url: url) { return reference.url }
+    return ["http", "https"].contains(url.scheme?.lowercased() ?? "") && url.host != nil ? url : nil
+  }
 
   static func collect(_ text: String) -> [Self] {
     guard let parsed = try? AttributedString(markdown: text,
@@ -84,6 +95,7 @@ struct AgentChatSourcesView: View {
       switch context?.evidence(for: source.url) {
       case .note: return height + 200
       case .web(let access): return height + 48 + CGFloat(access.count) * 24
+      case .zotero(let reports): return height + 80 + CGFloat(reports.count) * 120
       default: return height
       }
     }
@@ -105,7 +117,7 @@ struct AgentChatSourcesView: View {
                   VStack(alignment: .leading, spacing: 4) {
                     Label(source.destination, systemImage: source.isNote ? "doc.text" : source.isWeb ? "globe" : "doc")
                       .font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                    if source.isNote || source.isWeb {
+                    if source.isNote || source.isWeb || source.isZotero {
                       Button(source.title) {
                         open(source)
                       }.buttonStyle(.link)

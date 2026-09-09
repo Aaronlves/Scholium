@@ -1,10 +1,14 @@
 import Foundation
 
+public enum ZoteroMCPAccess: String, Sendable { case readOnly = "read-only", guardedImports = "guarded-imports" }
+
 public enum ZoteroMCPCapability: String, Codable, CaseIterable, Hashable, Sendable {
     case status
     case search
     case itemInspection = "item-inspection"
     case attachmentPointers = "attachment-pointers"
+    case annotationReading = "annotation-reading"
+    case originalReading = "original-reading"
     case selectedTarget = "selected-target"
     case bibtexImport = "bibtex-import"
     case risImport = "ris-import"
@@ -92,6 +96,8 @@ public struct ZoteroMCPTransportDescriptor: Codable, Hashable, Sendable {
         importsRequireReadBackVerification: true,
         sourceURL: "https://github.com/Aaronlves/Scholium"
     )
+
+    public var readOnlyArguments: [String] { clientConfiguration.arguments + ["--read-only"] }
 
     public var supportsGuardedImports: Bool {
         capabilities.contains(.bibtexImport)

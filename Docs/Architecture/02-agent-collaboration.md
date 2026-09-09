@@ -22,16 +22,71 @@ open Triptychs require the caller's exact stable Triptych identity.
 
 ## Fixed tool surface
 
-`ScholiumMCPToolName` defines exactly seven tools with closed schemas:
+`ScholiumMCPToolName` defines sixteen tools with closed schemas:
 
 - workspace status;
-- Note Search and exact Note reads;
+- current Library inventory browsing, Note Search and exact Note reads;
+- related attachment listing and bounded text/page/image reads;
+- exact-source Note/passage display in an explicitly scoped live window;
 - authored link occurrence listing; and
-- exact Note create, update, and system-Trash mutations.
+- exact Note create, update, move, and system-Trash mutations; and
+- Agent Change listing, comparison reads and fingerprint-guarded Undo; and
+- read-only, revision-bound move impact previews.
 
 The external MCP server exposes no Resources, Prompts, Tasks, model operation,
 Handoff, Research Action, acceptance, Review, Settle, or research-result
 endpoint. Tool availability is not write permission.
+
+Browse projects the current `WorkspaceVaultSnapshot` folders and Note identities
+without a second index. `WorkspaceLibraryVisibility` owns the shared Library/MCP
+attachment-storage exclusion. A sorted exact listing plus Triptych/role/directory
+scope produces the continuation fingerprint; changed listings reject old pages.
+Read slices retain their complete-source UTF-8 offsets for exact update ranges.
+`AgentNoteMoveOperations` projects the existing workspace move plan and shares
+`TriptychMoveCoordinator.prepareMove` validation with the actual writer. Its
+fingerprint binds all effect identities, paths, source revisions and blocked
+link locators, excluding disposable graph counters. `IncomingLinkRewriteBlock`
+carries its owning source fingerprint; presentation does not guess that version.
+The preview retains no execution authority or durable plan store. Execution
+recomputes its fingerprint inside `coordinatedMoveDocument`'s source lease.
+`AgentMoveEvidence` extends the existing Agent Change with primary move effects
+and exact linked-source preimages; coordinator readback confirms the full set.
+`AgentNoteMoveRecovery` verifies identity, revisions, vacant original path and
+current/future link resolution before feeding exact preimages to that same
+coordinator. It never substitutes canonical reverse-link spelling for Undo.
+The original receipt transitions only after complete inverse readback. Existing
+per-file transaction Recovery is bounded into the MCP failure envelope.
+
+`AgentAttachmentOperations` joins current Note identity/revision to document
+relationships or registered Markdown image locations. `VaultAttachmentStore`
+reads bounded descriptor-relative bytes; external references first acquire the
+existing `IndexedAttachmentAccessStore` exact-path bookmark lease. Relationship
+and Note revision are rechecked before returning. Core's shared
+`AgentAttachmentContentReader` uses PDFKit/ImageIO on that immutable snapshot: one page/text slice or bounded
+PNG derivative, with no material archive. MCP emits native image content beside
+structured coverage. Chat records attachment reads separately from Note source
+observations, displaying selected-page and empty-extraction evidence.
+
+`CodexZoteroReadReport` projects only identified completed runtime MCP results
+whose arguments, locator, representation, counts and fingerprints agree.
+`ZoteroReadReport` remains a nonauthorizing public report in the existing
+conversation activity, decoded identically for live and restored history.
+Sources matches its exact library/attachment/page/annotation before the reply
+in the same turn, shows server/tool and separate bounded text/comment excerpts,
+and never merges reports into verified whole-source coverage. It owns no new
+configuration trust flag, source archive or observation store.
+
+`AgentNoteDisplayTarget` validates exact complete-source ranges before any UI
+request. `WorkspaceStore` registers weak live-window presentation closures;
+`WorkspaceWindowCoordinator` owns the native key-window/sheet gate. Chat captures
+window and registration identities in its existing execution state at admission,
+then preserves transport context only for the checked display delivery. Hidden,
+switched or reopened windows cannot inherit that request. External calls require
+a current explicit window identity from workspace status. `WindowModel` uses its
+existing currency-aware transition queue, editor preparation, tabs and source
+location request; every suspension rechecks scope/source and supersession.
+Cancellation settles the waiting bridge call even when its queue entry is skipped.
+This activates navigation; it is not rendered-selection or focus evidence.
 
 ## Note mutation authority and evidence
 
@@ -39,7 +94,18 @@ Every Note mutation first flushes matching live editors and enters the existing
 workspace source-operation gate. Create proves an exact vacant `.md` path and
 commits the common managed scaffold plus stable Note identity. Update preserves
 either the complete YAML envelope or replaces the explicitly authorized full
-source, depending on its mode. Update and Trash compare the caller's exact
+source, depending on its mode. Exact multi-range edits use `AgentSourceEdit`
+against the complete fingerprint-bound UTF-8 source. The same pure transformation
+feeds Chat preview and the existing save/Agent Change transaction, validating
+old bytes, scalar boundaries, overlap, complete YAML and size before writing.
+`prepareAgentChangeUndo` supplies the same current-source/retained-preimage check
+for reverse preview and direct Undo. Undo changes the original evidence state;
+post-write evidence failure reports an uncertain outcome rather than retrying.
+Change queries read the existing store and page comparisons and move effects;
+linked Note queries find their containing move receipt. Chat reuses current-turn
+mutation admission and Ask comparisons for moves and Undo, showing each affected
+source. Successful activities project the verified moved/edited effects.
+Update and Trash compare the caller's exact
 fingerprint with current source before commit.
 
 Application repositories retain containment, atomic replacement, native Trash,
@@ -90,7 +156,7 @@ and again after an approval wait. Stop and completion revoke turn admission,
 not the reusable transport route; connection replacement invalidates every route.
 The App binds the Triptych, applies conversation policy,
 then calls the same `MCPAppBridgeRequestRouter`. External clients retain their
-ordinary route and seven unchanged public tools. Ask-mode Note writes wait for
+ordinary route and published public tools. Ask-mode Note writes wait for
 one native client approval; runtime approval requests are answered separately
 only when they concern a different runtime operation.
 
@@ -470,3 +536,11 @@ values. The App Server launch retains its existing inherited-environment filter;
 the runtime can load its own configuration-folder environment. Changing a server
 destination checks whether existing access settings would be reused and requires
 an explicit choice. Settings saving remains distinct from connection readiness.
+
+The Zotero preset reuses this configuration editor with the current bundled CLI
+and descriptor-owned `--read-only` arguments. Its enabled state remains in the
+selected runtime settings file, including after reconnect. No per-turn override
+or secondary preference rewrites it. Existing same-name connections remain
+inspectable/editable through their actual effective configuration. Explicit local
+API checks use the runtime-owned `ZoteroUseCases` and connection-generation-bound
+observations; they neither imply MCP readiness nor add conversation material.

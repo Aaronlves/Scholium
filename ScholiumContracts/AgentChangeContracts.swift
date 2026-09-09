@@ -4,6 +4,7 @@ public enum AgentChangeOperation: String, Codable, Hashable, Sendable {
     case create
     case update
     case trash
+    case move
 }
 
 public enum AgentChangeRecoveryState: String, Codable, Hashable, Sendable {
@@ -35,6 +36,7 @@ public struct AgentChange: Codable, Hashable, Identifiable, Sendable {
     public let createdAt: Date
     public let confirmedAt: Date?
     public let undoneAt: Date?
+    public let moveEffects: [AgentNoteMoveEffect]?
 
     public init(
         id: UUID,
@@ -49,7 +51,8 @@ public struct AgentChange: Codable, Hashable, Identifiable, Sendable {
         state: AgentChangeRecoveryState,
         createdAt: Date,
         confirmedAt: Date?,
-        undoneAt: Date?
+        undoneAt: Date?,
+        moveEffects: [AgentNoteMoveEffect]? = nil
     ) {
         self.id = id
         self.triptychID = triptychID
@@ -64,10 +67,11 @@ public struct AgentChange: Codable, Hashable, Identifiable, Sendable {
         self.createdAt = createdAt
         self.confirmedAt = confirmedAt
         self.undoneAt = undoneAt
+        self.moveEffects = moveEffects
     }
 
     public var isDirectUndoEligible: Bool {
-        operation == .update && state == .confirmed
+        (operation == .update || operation == .move) && state == .confirmed
             && beforeFingerprint != nil && afterFingerprint != nil
     }
 }
@@ -95,19 +99,22 @@ public struct AgentChangeEvidence: Sendable {
     public let change: AgentChange
     public let beforeData: Data?
     public let afterData: Data?
+    public let move: AgentMoveEvidence?
 
     public init(
         change: AgentChange,
         beforeData: Data?,
-        afterData: Data?
+        afterData: Data?,
+        move: AgentMoveEvidence? = nil
     ) {
         self.change = change
         self.beforeData = beforeData
         self.afterData = afterData
+        self.move = move
     }
 
     public func exactUpdateComparison() throws -> ExactSourceComparison {
-        guard change.operation == .update,
+        guard change.operation == .update || change.operation == .move,
               let beforeData,
               let afterData,
               let beforeFingerprint = change.beforeFingerprint,
@@ -141,27 +148,34 @@ public struct AgentChangeReview: Sendable {
     public let comparison: ExactSourceComparison?
     public let currentCreatedSource: String?
     public let endingRevisionState: AgentChangeEndingRevisionState?
+    public let linkedComparisons: [AgentMoveSourceComparison]
+    public let undoUnavailableReason: String?
 
     public init(
         change: AgentChange,
         comparison: ExactSourceComparison?,
         currentCreatedSource: String?,
-        endingRevisionState: AgentChangeEndingRevisionState?
+        endingRevisionState: AgentChangeEndingRevisionState?,
+        linkedComparisons: [AgentMoveSourceComparison] = [],
+        undoUnavailableReason: String? = nil
     ) {
         self.change = change
         self.comparison = comparison
         self.currentCreatedSource = currentCreatedSource
         self.endingRevisionState = endingRevisionState
+        self.linkedComparisons = linkedComparisons
+        self.undoUnavailableReason = undoUnavailableReason
     }
 
     public var isDirectUndoAvailable: Bool {
-        change.isDirectUndoEligible && endingRevisionState == .current
+        change.isDirectUndoEligible && endingRevisionState == .current && undoUnavailableReason == nil
     }
 }
 
-public enum AgentNoteUpdateMode: String, Codable, Hashable, Sendable {
-    case body
-    case source
+public enum AgentNoteUpdate: Hashable, Sendable {
+    case body(String)
+    case source(String)
+    case edits([AgentSourceEdit])
 }
 
 public struct AgentNoteCreationResult: Sendable {
@@ -191,8 +205,12 @@ public struct AgentNoteUpdatePreview: Sendable {
     public let noteID: UUID
     public let relativePath: String
     public let comparison: ExactSourceComparison
-    public init(noteID: UUID, relativePath: String, comparison: ExactSourceComparison) {
+    public let movePreview: AgentNoteMovePreview?
+    public let linkedComparisons: [AgentMoveSourceComparison]
+    public init(noteID: UUID, relativePath: String, comparison: ExactSourceComparison,
+                movePreview: AgentNoteMovePreview? = nil, linkedComparisons: [AgentMoveSourceComparison] = []) {
         self.noteID = noteID; self.relativePath = relativePath; self.comparison = comparison
+        self.movePreview = movePreview; self.linkedComparisons = linkedComparisons
     }
 }
 
@@ -243,8 +261,7 @@ public protocol AgentCollaborationUseCases: Sendable {
     func updateNote(
         noteID: UUID,
         expectedFingerprint: DocumentFingerprint,
-        mode: AgentNoteUpdateMode,
-        content: String
+        update: AgentNoteUpdate
     ) async throws -> AgentNoteUpdateResult
     func trashNote(
         noteID: UUID,

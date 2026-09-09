@@ -220,8 +220,8 @@ extension ScholiumCLI {
                 help: "Usage: scholium zotero mcp status [--probe] [--format text|json]"
             ),
             "zotero mcp serve": .init(
-                rule: .init(pathLength: 3),
-                help: "Usage: scholium zotero mcp serve"
+                rule: .init(pathLength: 3, options: ["--read-only": .flag]),
+                help: "Usage: scholium zotero mcp serve [--read-only]"
             ),
         ]
     }()

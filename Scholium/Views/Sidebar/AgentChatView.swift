@@ -526,7 +526,8 @@ struct AgentChatView: View {
               _ = openReference(url)
               return .handled
             }
-            return url.scheme == "https" || url.scheme == "http" ? .systemAction : .discarded
+            if let destination = AgentChatReplySource.externalURL(url) { return .systemAction(destination) }
+            return .discarded
           }
         )
         .simultaneousGesture(TapGesture().onEnded { completion.dismiss() })

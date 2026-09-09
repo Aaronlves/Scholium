@@ -12,6 +12,8 @@ final class MCPAppBridgeRequestRouter {
 
     private static let maximumReadResponseByteCount = 1_024 * 1_024
 
+    private let displayWindows: @MainActor (UUID) -> [MCPJSONValue]
+    private let displayNote: @MainActor (UUID, AgentNoteDisplayTarget, ScholiumMCPBridgeRequest) async throws -> Void
     private let runtime: WorkspaceRuntime
     private let flushEditors: EditorFlusher
     private let didConfirmChange: @MainActor (AgentChange) -> Void
@@ -21,8 +23,11 @@ final class MCPAppBridgeRequestRouter {
         runtime: WorkspaceRuntime,
         flushEditors: @escaping EditorFlusher,
         openTriptychs: @escaping OpenTriptychs,
+        displayWindows: @escaping @MainActor (UUID) -> [MCPJSONValue] = { _ in [] },
+        displayNote: @escaping @MainActor (UUID, AgentNoteDisplayTarget, ScholiumMCPBridgeRequest) async throws -> Void = { _, _, _ in throw WorkspaceStore.displayUnavailable() },
         didConfirmChange: @escaping @MainActor (AgentChange) -> Void = { _ in }
     ) {
+        self.displayWindows = displayWindows; self.displayNote = displayNote
         self.runtime = runtime
         self.flushEditors = flushEditors
         self.openTriptychs = openTriptychs
@@ -56,19 +61,362 @@ final class MCPAppBridgeRequestRouter {
         switch request.tool {
         case .workspaceStatus:
             return try await workspaceStatus(request.arguments)
+        case .browse:
+            return try await browse(request.arguments)
         case .search:
             return try await search(request.arguments)
+        case .showNote:
+            return try await showNote(request)
         case .readNote:
             return try await readNote(request.arguments)
+        case .listAttachments:
+            return try await listAttachments(request.arguments)
+        case .readAttachment:
+            return try await readAttachment(request.arguments)
         case .listLinks:
             return try await listLinks(request.arguments)
         case .createNote:
             return try await createNote(request.arguments)
         case .updateNote:
             return try await updateNote(request.arguments)
+        case .moveNote:
+            return try await moveNote(request.arguments)
+        case .previewMove:
+            return try await previewMove(request.arguments)
+        case .listChanges:
+            return try await listChanges(request.arguments)
+        case .readChange:
+            return try await readChange(request.arguments)
+        case .undoChange:
+            return try await undoChange(request.arguments)
         case .trashNote:
             return try await trashNote(request.arguments)
         }
+    }
+
+    private func showNote(_ request: ScholiumMCPBridgeRequest) async throws -> MCPJSONValue {
+        let args = request.arguments
+        try requireOnly(args, keys: ["triptych_id", "window_id", "note_id", "expected_fingerprint", "start_utf8", "end_utf8", "expected_text"])
+        let triptych = try requiredUUID(args["triptych_id"], name: "triptych_id")
+        let window = try requiredUUID(args["window_id"], name: "window_id")
+        let note = try requiredUUID(args["note_id"], name: "note_id")
+        try requireOpenTriptych(triptych)
+        guard displayWindows(triptych).contains(where: { $0.objectValue?["window_id"]?.stringValue.flatMap(UUID.init(uuidString:)) == window && $0.objectValue?["can_display"]?.boolValue == true }) else { throw WorkspaceStore.displayUnavailable() }
+        let handle = try await runtime.openWorkspace(id: triptych)
+        let target = try await handle.agentCollaboration.displayTarget(noteID: note, expectedFingerprint: requiredFingerprint(args["expected_fingerprint"]),
+            startUTF8: args["start_utf8"].map { try boundedInteger($0, name: "start_utf8", default: 0, range: 0...Int.max) },
+            endUTF8: args["end_utf8"].map { try boundedInteger($0, name: "end_utf8", default: 1, range: 1...Int.max) },
+            expectedText: args["expected_text"].map { try requiredStringAllowingEmpty($0, name: "expected_text") })
+        try Task.checkCancellation()
+        do { try await displayNote(window, target, request) }
+        catch let error as AgentChatNoteMaterialError {
+            throw ScholiumMCPFailure(code: .workspaceNotReady, message: error.localizedDescription,
+                recovery: "Keep the current editor intact, refresh the target source and request display again when the intended window is ready.")
+        } catch is CancellationError {
+            throw ScholiumMCPFailure(code: .workspaceNotReady, message: "The display request was cancelled or superseded.", recovery: "Request display again only from the intended current window and conversation.")
+        }
+        return ok(["triptych_id": .string(triptych.uuidString.lowercased()), "window_id": .string(window.uuidString.lowercased()),
+            "note_id": .string(note.uuidString.lowercased()), "relative_path": .string(target.note.relativePath), "fingerprint": fingerprintValue(target.fingerprint),
+            "location_requested": .bool(target.range != nil), "line": target.range.map { .integer($0.line) } ?? .null, "activated": .bool(true)])
+    }
+
+    private func listAttachments(_ arguments: [String: MCPJSONValue]) async throws -> MCPJSONValue {
+        try requireOnly(arguments, keys: ["triptych_id", "note_id", "offset", "limit", "expected_listing_fingerprint"])
+        let triptych = try requiredUUID(arguments["triptych_id"], name: "triptych_id")
+        let note = try requiredUUID(arguments["note_id"], name: "note_id")
+        let offset = try boundedInteger(arguments["offset"], name: "offset", default: 0, range: 0...Int.max)
+        let limit = try boundedInteger(arguments["limit"], name: "limit", default: 20, range: 1...100)
+        _ = try await currentSnapshot(triptychID: triptych)
+        let handle = try await runtime.openWorkspace(id: triptych)
+        let listing = try await handle.agentCollaboration.attachments(noteID: note)
+        let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
+        let binding: MCPJSONValue = .object(["triptych_id": .string(triptych.uuidString), "note_id": .string(note.uuidString),
+            "note_fingerprint": fingerprintValue(listing.noteFingerprint),
+            "attachments": try JSONDecoder().decode(MCPJSONValue.self, from: encoder.encode(listing.attachments))])
+        let fingerprint = DocumentFingerprint(data: try encoder.encode(binding))
+        if let expected = arguments["expected_listing_fingerprint"] {
+            guard try requiredFingerprint(expected) == fingerprint else { throw AgentCollaborationError.staleRevision(expected: try requiredFingerprint(expected), current: fingerprint) }
+        } else if offset > 0 { throw invalid("expected_listing_fingerprint", "Continue with the exact listing fingerprint.") }
+        let page = listing.attachments.dropFirst(min(offset, listing.attachments.count)).prefix(limit)
+        return .object(["schema_version": .integer(ScholiumMCPContract.currentToolSchemaVersion), "status": .string("ok"),
+            "triptych_id": .string(triptych.uuidString.lowercased()), "note_id": .string(note.uuidString.lowercased()),
+            "note_fingerprint": fingerprintValue(listing.noteFingerprint), "listing_fingerprint": fingerprintValue(fingerprint),
+            "offset": .integer(offset), "total": .integer(listing.attachments.count), "has_more": .bool(offset < listing.attachments.count - page.count),
+            "attachments": .array(page.map { .object(["attachment_id": .string($0.id.uuidString.lowercased()),
+                "filename": .string($0.filename), "relationship": .string($0.relationship.rawValue), "available": .bool($0.available)]) })])
+    }
+
+    private func readAttachment(_ arguments: [String: MCPJSONValue]) async throws -> MCPJSONValue {
+        try requireOnly(arguments, keys: ["triptych_id", "note_id", "attachment_id", "expected_note_fingerprint", "expected_fingerprint", "mode", "page", "start_utf8", "max_utf8"])
+        let triptych = try requiredUUID(arguments["triptych_id"], name: "triptych_id")
+        let note = try requiredUUID(arguments["note_id"], name: "note_id")
+        let attachment = try requiredUUID(arguments["attachment_id"], name: "attachment_id")
+        guard let mode = AgentAttachmentRead.Mode(rawValue: try requiredString(arguments["mode"], name: "mode")) else { throw invalid("mode", "Choose text or image.") }
+        if mode == .image, arguments["start_utf8"] != nil || arguments["max_utf8"] != nil { throw invalid("mode", "Image mode accepts no text offsets or limits.") }
+        let read = AgentAttachmentRead(mode: mode,
+            page: try arguments["page"].map { try boundedInteger($0, name: "page", default: 1, range: 1...Int.max) },
+            startUTF8: try boundedInteger(arguments["start_utf8"], name: "start_utf8", default: 0, range: 0...Int.max),
+            maximumUTF8: try boundedInteger(arguments["max_utf8"], name: "max_utf8", default: 16_384, range: 1...65_536),
+            expectedFingerprint: try arguments["expected_fingerprint"].map(requiredFingerprint))
+        let expectedNote = try requiredFingerprint(arguments["expected_note_fingerprint"])
+        _ = try await currentSnapshot(triptychID: triptych)
+        let handle = try await runtime.openWorkspace(id: triptych)
+        let content = try await handle.agentCollaboration.readAttachment(noteID: note, attachmentID: attachment, expectedNoteFingerprint: expectedNote, request: read)
+        return .object(["schema_version": .integer(ScholiumMCPContract.currentToolSchemaVersion), "status": .string("ok"),
+            "triptych_id": .string(triptych.uuidString.lowercased()), "note_id": .string(note.uuidString.lowercased()),
+            "attachment_id": .string(attachment.uuidString.lowercased()), "filename": .string(content.filename), "note_fingerprint": fingerprintValue(expectedNote),
+            "fingerprint": fingerprintValue(content.fingerprint), "kind": .string(content.kind), "page": content.page.map(MCPJSONValue.integer) ?? .null,
+            "total_pages": content.totalPages.map(MCPJSONValue.integer) ?? .null, "text": content.text.map(MCPJSONValue.string) ?? .null,
+            "text_available": content.text.map { .bool(!$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) } ?? .null,
+            "start_utf8": .integer(content.startUTF8), "end_utf8": .integer(content.endUTF8), "total_utf8": .integer(content.totalUTF8),
+            "has_more": .bool(content.endUTF8 < content.totalUTF8),
+            "image": content.imagePNG.map { .object(["mime_type": .string("image/png"), "data": .string($0.base64EncodedString()),
+                "pixel_width": .integer(content.pixelWidth ?? 0), "pixel_height": .integer(content.pixelHeight ?? 0)]) } ?? .null])
+    }
+
+    private func decodeMove(_ arguments: [String: MCPJSONValue]) throws -> (UUID, UUID, DocumentFingerprint, String, DocumentFingerprint) {
+        try requireOnly(arguments, keys: ["triptych_id", "note_id", "expected_fingerprint", "relative_path", "expected_plan_fingerprint"])
+        return (try requiredUUID(arguments["triptych_id"], name: "triptych_id"), try requiredUUID(arguments["note_id"], name: "note_id"),
+            try requiredFingerprint(arguments["expected_fingerprint"]), try requiredString(arguments["relative_path"], name: "relative_path"),
+            try requiredFingerprint(arguments["expected_plan_fingerprint"]))
+    }
+
+    private func moveEffectValue(_ effect: AgentNoteMoveEffect) -> MCPJSONValue {
+        .object(["note_id": .string(effect.noteID.uuidString.lowercased()), "role": .string(Self.externalRole(effect.role)),
+            "source_relative_path": .string(effect.source.relativePath), "relative_path": .string(effect.destination.relativePath),
+            "before_fingerprint": fingerprintValue(effect.beforeFingerprint), "after_fingerprint": fingerprintValue(effect.afterFingerprint),
+            "rewritten_occurrences": .integer(effect.rewrittenOccurrences)])
+    }
+
+    private func moveNote(_ arguments: [String: MCPJSONValue]) async throws -> MCPJSONValue {
+        let (triptychID, noteID, expected, path, planFingerprint) = try decodeMove(arguments)
+        _ = try await currentSnapshot(triptychID: triptychID)
+        let handle = try await runtime.openWorkspace(id: triptychID)
+        let result = try await handle.agentCollaboration.moveNote(noteID: noteID, expectedFingerprint: expected, to: path, expectedPlanFingerprint: planFingerprint)
+        didConfirmChange(result.change)
+        return ok(["triptych_id": .string(triptychID.uuidString.lowercased()), "note_id": .string(noteID.uuidString.lowercased()),
+            "change_id": .string(result.change.id.uuidString.lowercased()), "source_relative_path": .string(result.commit.movedNote.relativePath),
+            "relative_path": .string(result.commit.destination.relativePath), "before_fingerprint": fingerprintValue(result.commit.previousRevision),
+            "after_fingerprint": fingerprintValue(result.commit.committedRevision), "readback_verified": .bool(true),
+            "effects": .array((result.change.moveEffects ?? []).map(moveEffectValue)),
+            "derived_refresh_warning": result.derivedRefreshWarning.map(MCPJSONValue.string) ?? .null])
+    }
+
+    private func previewMove(_ arguments: [String: MCPJSONValue]) async throws -> MCPJSONValue {
+        try requireOnly(arguments, keys: ["triptych_id", "note_id", "expected_fingerprint", "relative_path", "offset", "limit", "expected_plan_fingerprint"])
+        let triptychID = try requiredUUID(arguments["triptych_id"], name: "triptych_id")
+        let noteID = try requiredUUID(arguments["note_id"], name: "note_id")
+        let expected = try requiredFingerprint(arguments["expected_fingerprint"])
+        let destination = try requiredString(arguments["relative_path"], name: "relative_path")
+        let offset = try boundedInteger(arguments["offset"], name: "offset", default: 0, range: 0...Int.max)
+        let limit = try boundedInteger(arguments["limit"], name: "limit", default: 20, range: 1...100)
+        let planFingerprint = try arguments["expected_plan_fingerprint"].map { try requiredFingerprint($0) }
+        guard offset == 0 || planFingerprint != nil else { throw invalid("expected_plan_fingerprint", "Continue with the full plan fingerprint from the first page.") }
+        _ = try await currentSnapshot(triptychID: triptychID)
+        let handle = try await runtime.openWorkspace(id: triptychID)
+        let preview = try await handle.agentCollaboration.previewMoveNote(noteID: noteID, expectedFingerprint: expected, to: destination)
+        guard planFingerprint == nil || planFingerprint == preview.planFingerprint else {
+            throw ScholiumMCPFailure(code: .staleRevision, message: "The move effects changed after the preview.", recovery: "Request a fresh preview before continuing.")
+        }
+        let effects: [MCPJSONValue] = preview.effects.map { effect in
+            .object(["kind": .string(effect.source == preview.source ? "move" : "link_rewrite"),
+                "note_id": .string(effect.noteID.uuidString.lowercased()), "role": .string(Self.externalRole(effect.role)),
+                "source_relative_path": .string(effect.source.relativePath), "relative_path": .string(effect.destination.relativePath),
+                "before_fingerprint": fingerprintValue(effect.beforeFingerprint), "after_fingerprint": fingerprintValue(effect.afterFingerprint),
+                "rewritten_occurrences": .integer(effect.rewrittenOccurrences), "source_locator": .null, "reason": .null])
+        }
+        let blockers: [MCPJSONValue] = preview.blockers.map { blocked in
+            let block = blocked.link
+            return .object(["kind": .string("blocked"), "note_id": .string(blocked.noteID.uuidString.lowercased()),
+                "role": .string(Self.externalRole(blocked.role)), "source_relative_path": .string(block.source.relativePath),
+                "relative_path": .null, "before_fingerprint": fingerprintValue(block.sourceFingerprint),
+                "after_fingerprint": .null, "rewritten_occurrences": .integer(0), "source_locator": Self.locatorValue(block.span), "reason": .string(block.reason)])
+        }
+        let entries = effects + blockers
+        let page = Array(entries.dropFirst(min(offset, entries.count)).prefix(limit))
+        return ok(["triptych_id": .string(triptychID.uuidString.lowercased()), "note_id": .string(noteID.uuidString.lowercased()),
+            "role": .string(Self.externalRole(preview.role)), "source_relative_path": .string(preview.source.relativePath),
+            "relative_path": .string(preview.destination.relativePath), "fingerprint": fingerprintValue(preview.expectedFingerprint),
+            "plan_fingerprint": fingerprintValue(preview.planFingerprint), "can_move": .bool(preview.blockers.isEmpty),
+            "offset": .integer(offset), "limit": .integer(limit), "total": .integer(entries.count),
+            "has_more": .bool(offset < entries.count && page.count < entries.count - offset), "entries": .array(page)])
+    }
+
+    private func changeValue(_ change: AgentChange) -> MCPJSONValue {
+        .object([
+            "change_id": .string(change.id.uuidString.lowercased()), "note_id": .string(change.noteID.uuidString.lowercased()),
+            "affected_note_count": .integer(change.moveEffects?.count ?? 1),
+            "operation": .string(change.operation.rawValue), "state": .string(change.state.rawValue),
+            "role": .string(Self.externalRole(change.role)),
+            "original_relative_path": change.originalRelativePath.map(MCPJSONValue.string) ?? .null,
+            "final_relative_path": change.finalRelativePath.map(MCPJSONValue.string) ?? .null,
+            "before_fingerprint": change.beforeFingerprint.map(fingerprintValue) ?? .null,
+            "after_fingerprint": change.afterFingerprint.map(fingerprintValue) ?? .null,
+            "created_at": .string(Self.timestamp(change.createdAt)),
+            "confirmed_at": change.confirmedAt.map { .string(Self.timestamp($0)) } ?? .null,
+            "undone_at": change.undoneAt.map { .string(Self.timestamp($0)) } ?? .null,
+        ])
+    }
+
+    private func listChanges(_ arguments: [String: MCPJSONValue]) async throws -> MCPJSONValue {
+        try requireOnly(arguments, keys: ["triptych_id", "note_id", "offset", "limit", "expected_listing_fingerprint"])
+        let triptychID = try requiredUUID(arguments["triptych_id"], name: "triptych_id")
+        let noteID = try optionalUUID(arguments["note_id"], name: "note_id")
+        let limit = try boundedInteger(arguments["limit"], name: "limit", default: 20, range: 1...100)
+        let offset = try boundedInteger(arguments["offset"], name: "offset", default: 0, range: 0...Int.max)
+        let expected = try arguments["expected_listing_fingerprint"].map { try requiredFingerprint($0) }
+        guard offset == 0 || expected != nil else { throw invalid("expected_listing_fingerprint", "Continue with the listing fingerprint returned by the first page.") }
+        try requireOpenTriptych(triptychID)
+        let handle = try await runtime.openWorkspace(id: triptychID)
+        let changes = try await handle.agentCollaboration.agentChanges().filter { noteID == nil || $0.noteID == noteID || $0.moveEffects?.contains(where: { $0.noteID == noteID }) == true }
+        let values = changes.map(changeValue)
+        let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
+        let fingerprint = DocumentFingerprint(data: try encoder.encode(MCPJSONValue.object([
+            "triptych_id": .string(triptychID.uuidString), "note_id": noteID.map { .string($0.uuidString) } ?? .null, "changes": .array(values)])))
+        guard expected == nil || expected == fingerprint else {
+            throw ScholiumMCPFailure(code: .staleRevision, message: "The change listing has changed.", recovery: "Read the first page again before continuing.")
+        }
+        let page = Array(values.dropFirst(min(offset, values.count)).prefix(limit))
+        return ok(["triptych_id": .string(triptychID.uuidString.lowercased()), "note_id": noteID.map { .string($0.uuidString.lowercased()) } ?? .null,
+            "listing_fingerprint": fingerprintValue(fingerprint), "offset": .integer(offset), "limit": .integer(limit),
+            "total": .integer(values.count), "has_more": .bool(offset < values.count && page.count < values.count - offset), "changes": .array(page)])
+    }
+
+    private func readChange(_ arguments: [String: MCPJSONValue]) async throws -> MCPJSONValue {
+        try requireOnly(arguments, keys: ["triptych_id", "change_id", "note_id", "offset", "limit", "effect_offset", "effect_limit"])
+        let triptychID = try requiredUUID(arguments["triptych_id"], name: "triptych_id")
+        let changeID = try requiredUUID(arguments["change_id"], name: "change_id")
+        let limit = try boundedInteger(arguments["limit"], name: "limit", default: 200, range: 1...1000)
+        let offset = try boundedInteger(arguments["offset"], name: "offset", default: 0, range: 0...Int.max)
+        try requireOpenTriptych(triptychID)
+        let handle = try await runtime.openWorkspace(id: triptychID)
+        let review = try await handle.agentCollaboration.agentChangeReview(id: changeID)
+        let selectedNote = try optionalUUID(arguments["note_id"], name: "note_id") ?? review.change.noteID
+        let sourceComparison: ExactSourceComparison?
+        if selectedNote == review.change.noteID { sourceComparison = review.comparison }
+        else {
+            guard let linked = review.linkedComparisons.first(where: { $0.effect.noteID == selectedNote }) else {
+                throw invalid("note_id", "This Note does not belong to the retained change.")
+            }
+            sourceComparison = linked.comparison
+        }
+        let effectOffset = try boundedInteger(arguments["effect_offset"], name: "effect_offset", default: 0, range: 0...Int.max)
+        let effectLimit = try boundedInteger(arguments["effect_limit"], name: "effect_limit", default: 20, range: 1...100)
+        let effects = review.change.moveEffects ?? []
+        let effectPage = Array(effects.dropFirst(min(effectOffset, effects.count)).prefix(effectLimit))
+        let ending: MCPJSONValue = switch review.endingRevisionState {
+        case .current: .string("current")
+        case .earlierRevision: .string("earlier_revision")
+        case .unavailable: .string("unavailable")
+        case nil: .null
+        }
+        var comparison: MCPJSONValue = .null
+        if let source = sourceComparison {
+            var rows: [MCPJSONValue] = []
+            var byteCount = 0
+            let encoder = JSONEncoder()
+            for line in source.lines.dropFirst(min(offset, source.lines.count)).prefix(limit) {
+                let kind = switch line.kind { case .unchanged: "unchanged"; case .startingOnly: "removed"; case .endingOnly: "added" }
+                let row: MCPJSONValue = .object(["kind": .string(kind), "before_line": line.startingLineNumber.map(MCPJSONValue.integer) ?? .null,
+                    "after_line": line.endingLineNumber.map(MCPJSONValue.integer) ?? .null, "text": .string(line.text), "line_ending": .string(line.lineEnding.rawValue)])
+                let count = try encoder.encode(row).count
+                guard count <= Self.maximumReadResponseByteCount else { throw invalid("limit", "One comparison row exceeds the response size; inspect the retained comparison in Scholium.") }
+                if byteCount + count > Self.maximumReadResponseByteCount { break }
+                rows.append(row); byteCount += count
+            }
+            comparison = .object(["before_fingerprint": fingerprintValue(source.startingRevision), "after_fingerprint": fingerprintValue(source.endingRevision),
+                "before_has_bom": .bool(source.startingHasUTF8BOM), "after_has_bom": .bool(source.endingHasUTF8BOM),
+                "offset": .integer(offset), "limit": .integer(limit), "total": .integer(source.lines.count),
+                "has_more": .bool(offset < source.lines.count && rows.count < source.lines.count - offset), "rows": .array(rows)])
+        }
+        return ok(["triptych_id": .string(triptychID.uuidString.lowercased()), "change": changeValue(review.change),
+            "ending_revision_state": ending, "can_undo": .bool(review.isDirectUndoAvailable), "comparison": comparison,
+            "comparison_note_id": .string(selectedNote.uuidString.lowercased()), "undo_unavailable_reason": review.undoUnavailableReason.map(MCPJSONValue.string) ?? .null,
+            "effects": .object(["offset": .integer(effectOffset), "limit": .integer(effectLimit), "total": .integer(effects.count),
+                "has_more": .bool(effectOffset < effects.count && effectPage.count < effects.count - effectOffset), "entries": .array(effectPage.map(moveEffectValue))])])
+    }
+
+    private func decodeUndo(_ arguments: [String: MCPJSONValue]) throws -> (UUID, UUID, UUID, DocumentFingerprint) {
+        try requireOnly(arguments, keys: ["triptych_id", "note_id", "change_id", "expected_fingerprint"])
+        return (try requiredUUID(arguments["triptych_id"], name: "triptych_id"), try requiredUUID(arguments["note_id"], name: "note_id"),
+                try requiredUUID(arguments["change_id"], name: "change_id"), try requiredFingerprint(arguments["expected_fingerprint"]))
+    }
+
+    private func undoChange(_ arguments: [String: MCPJSONValue]) async throws -> MCPJSONValue {
+        let (triptychID, noteID, changeID, expected) = try decodeUndo(arguments)
+        _ = try await currentSnapshot(triptychID: triptychID)
+        let handle = try await runtime.openWorkspace(id: triptychID)
+        let preview = try await handle.agentCollaboration.previewUndoAgentChange(id: changeID, expectedAfterFingerprint: expected)
+        guard preview.noteID == noteID else { throw invalid("note_id", "The change belongs to another Note.") }
+        let result = try await handle.agentCollaboration.undoAgentChange(id: changeID, expectedAfterFingerprint: expected)
+        return ok(["triptych_id": .string(triptychID.uuidString.lowercased()), "note_id": .string(noteID.uuidString.lowercased()),
+            "change_id": .string(changeID.uuidString.lowercased()), "source_relative_path": .string(preview.relativePath),
+            "relative_path": .string(preview.movePreview?.destination.relativePath ?? preview.relativePath),
+            "effects": .array((preview.movePreview?.effects ?? []).map(moveEffectValue)),
+            "before_fingerprint": fingerprintValue(expected), "after_fingerprint": fingerprintValue(result.restoredFingerprint),
+            "readback_verified": .bool(true), "undone": .bool(true)])
+    }
+
+    private func browse(_ arguments: [String: MCPJSONValue]) async throws -> MCPJSONValue {
+        try requireOnly(arguments, keys: ["triptych_id", "role", "directory", "limit", "offset", "expected_listing_fingerprint"])
+        let triptychID = try requiredUUID(arguments["triptych_id"], name: "triptych_id")
+        let role = try arguments["role"].map { try requiredExternalRole($0) }
+        let directory = try arguments["directory"].map { try requiredStringAllowingEmpty($0, name: "directory") } ?? ""
+        if !directory.isEmpty {
+            guard role != nil, (try? VaultRelativeFolderPath(directory)) != nil else {
+                throw invalid("directory", "Supply an exact vault-relative directory and its role.")
+            }
+        }
+        let limit = try boundedInteger(arguments["limit"], name: "limit", default: 20, range: 1...100)
+        let offset = try boundedInteger(arguments["offset"], name: "offset", default: 0, range: 0...Int.max)
+        let expected = try arguments["expected_listing_fingerprint"].map { try requiredFingerprint($0) }
+        guard offset == 0 || expected != nil else {
+            throw invalid("expected_listing_fingerprint", "Continue with the fingerprint returned by the first page.")
+        }
+        let snapshot = try await currentSnapshot(triptychID: triptychID)
+        var entries: [MCPJSONValue] = []
+        func entry(kind: String, role: VaultRole, path: String, title: String,
+                   noteID: UUID? = nil, fingerprint: DocumentFingerprint? = nil) -> MCPJSONValue {
+            .object(["kind": .string(kind), "role": .string(Self.externalRole(role)), "relative_path": .string(path),
+                     "title": .string(title), "note_id": noteID.map { .string($0.uuidString.lowercased()) } ?? .null,
+                     "fingerprint": fingerprint.map(fingerprintValue) ?? .null])
+        }
+        if let role {
+            guard let vault = snapshot.vaults.first(where: { $0.vault.role == role }) else {
+                throw ScholiumMCPFailure(code: .workspaceNotReady, message: "The selected role vault is unavailable.", recovery: "Restore vault access and refresh workspace status.")
+            }
+            guard WorkspaceLibraryVisibility.includes(directory), directory.isEmpty || vault.folders.contains(where: { $0.rawValue == directory }) else {
+                throw ScholiumMCPFailure(code: .notFound, message: "The directory is not in the current Library.", recovery: "Browse its parent and use a current directory path.")
+            }
+            func isChild(_ path: String) -> Bool {
+                WorkspaceLibraryVisibility.includes(path) && path.split(separator: "/").dropLast().joined(separator: "/") == directory
+            }
+            entries = vault.folders.filter { isChild($0.rawValue) }.sorted { $0.rawValue < $1.rawValue }.map {
+                entry(kind: "directory", role: role, path: $0.rawValue, title: String($0.components.last!))
+            }
+            entries += vault.documents.filter { isChild($0.id.relativePath) }.sorted { $0.id.relativePath < $1.id.relativePath }.map {
+                entry(kind: "note", role: role, path: $0.id.relativePath, title: ResearchNoteTitleResolver.resolve(document: $0.document),
+                      noteID: $0.stableIdentity.resolvedID, fingerprint: $0.fingerprint)
+            }
+        } else {
+            entries = WorkspaceVaultSlot.allCases.compactMap { slot in snapshot.vaults.first { $0.slot == slot } }.map {
+                entry(kind: "role", role: $0.vault.role, path: "", title: $0.vault.name)
+            }
+        }
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let fingerprint = DocumentFingerprint(data: try encoder.encode(MCPJSONValue.object([
+            "triptych_id": .string(triptychID.uuidString), "role": role.map { .string(Self.externalRole($0)) } ?? .null,
+            "directory": .string(directory), "entries": .array(entries),
+        ])))
+        guard expected == nil || expected == fingerprint else {
+            throw ScholiumMCPFailure(code: .staleRevision, message: "The directory listing changed between pages.", recovery: "Restart browsing this directory at offset zero.")
+        }
+        let page = Array(entries.dropFirst(min(offset, entries.count)).prefix(limit))
+        return ok(["triptych_id": .string(triptychID.uuidString.lowercased()), "role": role.map { .string(Self.externalRole($0)) } ?? .null,
+                   "directory": .string(directory), "listing_fingerprint": fingerprintValue(fingerprint),
+                   "offset": .integer(offset), "limit": .integer(limit), "total": .integer(entries.count),
+                   "has_more": .bool(offset < entries.count && page.count < entries.count - offset), "entries": .array(page)])
     }
 
     private func workspaceStatus(
@@ -234,6 +582,8 @@ final class MCPAppBridgeRequestRouter {
             "fingerprint": fingerprintValue(document.fingerprint),
             "start_line": .integer(startLine),
             "line_count": .integer(slice.lineCount),
+            "start_utf8": .integer(slice.startUTF8),
+            "end_utf8": .integer(slice.endUTF8),
             "source": .string(slice.source),
             "complete": .bool(slice.nextLine == nil),
             "next_line": slice.nextLine.map(MCPJSONValue.integer) ?? .null,
@@ -420,12 +770,12 @@ final class MCPAppBridgeRequestRouter {
 
     private func decodeUpdate(
         _ arguments: [String: MCPJSONValue]
-    ) throws -> (triptychID: UUID, noteID: UUID, expected: DocumentFingerprint, mode: AgentNoteUpdateMode, content: String) {
+    ) throws -> (triptychID: UUID, noteID: UUID, expected: DocumentFingerprint, update: AgentNoteUpdate) {
         try requireOnly(
             arguments,
             keys: [
                 "triptych_id", "note_id", "expected_fingerprint", "mode",
-                "content",
+                "content", "edits",
             ]
         )
         let triptychID = try requiredUUID(
@@ -435,37 +785,68 @@ final class MCPAppBridgeRequestRouter {
         let noteID = try requiredUUID(arguments["note_id"], name: "note_id")
         let expected = try requiredFingerprint(arguments["expected_fingerprint"])
         let rawMode = try requiredString(arguments["mode"], name: "mode")
-        guard let mode = AgentNoteUpdateMode(rawValue: rawMode) else {
-            throw invalid("mode", "Use body or source.")
+        let update: AgentNoteUpdate
+        switch rawMode {
+        case "body", "source":
+            guard arguments["edits"] == nil else { throw invalid("edits", "Use edits only with mode edits.") }
+            let content = try requiredStringAllowingEmpty(arguments["content"], name: "content")
+            update = rawMode == "body" ? .body(content) : .source(content)
+        case "edits":
+            guard arguments["content"] == nil,
+                  let values = arguments["edits"]?.arrayValue,
+                  (1...AgentSourceEdit.maximumCount).contains(values.count) else {
+                throw invalid("edits", "Supply 1–100 exact edits and omit content.")
+            }
+            update = .edits(try values.map { value in
+                guard let edit = value.objectValue else { throw invalid("edits", "Each edit must be an object.") }
+                try requireOnly(edit, keys: ["start_utf8", "end_utf8", "expected_text", "replacement"])
+                guard let start = edit["start_utf8"]?.intValue, let end = edit["end_utf8"]?.intValue else {
+                    throw invalid("edits", "Supply integer UTF-8 source offsets.")
+                }
+                return AgentSourceEdit(startUTF8: start, endUTF8: end,
+                    expectedText: try requiredStringAllowingEmpty(edit["expected_text"], name: "expected_text"),
+                    replacement: try requiredStringAllowingEmpty(edit["replacement"], name: "replacement"))
+            })
+        default: throw invalid("mode", "Use body, source or edits.")
         }
-        let content = try requiredStringAllowingEmpty(
-            arguments["content"],
-            name: "content"
-        )
-        return (triptychID, noteID, expected, mode, content)
+        return (triptychID, noteID, expected, update)
     }
 
     func previewUpdate(_ request: ScholiumMCPBridgeRequest) async throws -> AgentNoteUpdatePreview {
         do {
-            guard request.tool == .updateNote else { throw invalid("tool", "Only Note updates have this comparison.") }
-            let (triptychID, noteID, expected, mode, content) = try decodeUpdate(request.arguments)
+            if request.tool == .moveNote {
+                let (triptychID, noteID, expected, path, planFingerprint) = try decodeMove(request.arguments)
+                try requireOpenTriptych(triptychID)
+                let handle = try await runtime.openWorkspace(id: triptychID)
+                return try await handle.agentCollaboration.previewMoveMutation(noteID: noteID, expectedFingerprint: expected,
+                    to: path, expectedPlanFingerprint: planFingerprint)
+            }
+            if request.tool == .undoChange {
+                let (triptychID, noteID, changeID, expected) = try decodeUndo(request.arguments)
+                try requireOpenTriptych(triptychID)
+                let handle = try await runtime.openWorkspace(id: triptychID)
+                let preview = try await handle.agentCollaboration.previewUndoAgentChange(id: changeID, expectedAfterFingerprint: expected)
+                guard preview.noteID == noteID else { throw invalid("note_id", "The change belongs to another Note.") }
+                return preview
+            }
+            guard request.tool == .updateNote else { throw invalid("tool", "Only Note updates and Undo have this comparison.") }
+            let (triptychID, noteID, expected, update) = try decodeUpdate(request.arguments)
             try requireOpenTriptych(triptychID)
             let handle = try await runtime.openWorkspace(id: triptychID)
             return try await handle.agentCollaboration.previewUpdateNote(
-                noteID: noteID, expectedFingerprint: expected, mode: mode, content: content)
+                noteID: noteID, expectedFingerprint: expected, update: update)
         } catch let failure as ScholiumMCPFailure { throw failure }
         catch { throw Self.failure(for: error) }
     }
 
     private func updateNote(_ arguments: [String: MCPJSONValue]) async throws -> MCPJSONValue {
-        let (triptychID, noteID, expected, mode, content) = try decodeUpdate(arguments)
+        let (triptychID, noteID, expected, update) = try decodeUpdate(arguments)
         _ = try await currentSnapshot(triptychID: triptychID)
         let handle = try await runtime.openWorkspace(id: triptychID)
         let result = try await handle.agentCollaboration.updateNote(
             noteID: noteID,
             expectedFingerprint: expected,
-            mode: mode,
-            content: content
+            update: update
         )
         didConfirmChange(result.change)
         return ok([
@@ -553,6 +934,7 @@ final class MCPAppBridgeRequestRouter {
             "selection_required": .bool(false),
             "triptych_id": .string(snapshot.triptych.id.uuidString.lowercased()),
             "name": .string(snapshot.triptych.name),
+            "windows": .array(displayWindows(snapshot.triptych.id)),
             "source_generation": .object([
                 "manifest_sha256": .string(sourceHash),
                 "note_count": .integer(snapshot.vaults.flatMap(\.documents).count),
@@ -869,7 +1251,7 @@ final class MCPAppBridgeRequestRouter {
         _ data: Data,
         startLine: Int,
         requestedLineCount: Int
-    ) throws -> (source: String, lineCount: Int, nextLine: Int?) {
+    ) throws -> (source: String, lineCount: Int, nextLine: Int?, startUTF8: Int, endUTF8: Int) {
         if data.isEmpty {
             guard startLine == 1 else {
                 throw ScholiumMCPFailure(
@@ -878,7 +1260,7 @@ final class MCPAppBridgeRequestRouter {
                     recovery: "Begin at source line 1."
                 )
             }
-            return ("", 0, nil)
+            return ("", 0, nil, 0, 0)
         }
         var starts = [0]
         for (offset, byte) in data.enumerated()
@@ -915,9 +1297,7 @@ final class MCPAppBridgeRequestRouter {
         }
         let endOffset = endIndex < starts.count ? starts[endIndex] : data.count
         let slice = data.subdata(in: starts[startIndex] ..< endOffset)
-        let source = startIndex == 0
-            ? NoteDocument.decodeUTF8PreservingBOM(slice)
-            : String(data: slice, encoding: .utf8)
+        let source = NoteDocument.decodeUTF8PreservingBOM(slice)
         guard let source else {
             throw ScholiumMCPFailure(
                 code: .internalError,
@@ -926,7 +1306,7 @@ final class MCPAppBridgeRequestRouter {
             )
         }
         let nextLine = endIndex < starts.count ? endIndex + 1 : nil
-        return (source, endIndex - startIndex, nextLine)
+        return (source, endIndex - startIndex, nextLine, starts[startIndex], endOffset)
     }
 
     private static func failure(for error: Error) -> ScholiumMCPFailure {
@@ -1027,12 +1407,27 @@ final class MCPAppBridgeRequestRouter {
                 )
             }
         }
-        if error is AgentChangeError {
-            return ScholiumMCPFailure(
-                code: .operationUncertain,
-                message: "Scholium could not safely finalize the Agent Change evidence.",
-                recovery: "Do not retry automatically. Inspect Agent Changes and current Note source in the App."
-            )
+        if let error = error as? TriptychTransactionError {
+            switch error {
+            case .invalidPlan, .preflightFailed:
+                return .init(code: .invalidRequest, message: error.localizedDescription,
+                    recovery: "Inspect the target path, current source and link effects, then request a fresh preview.")
+            case .transactionRolledBack:
+                return .init(code: .conflict, message: error.localizedDescription, recovery: "The owner rolled back the move. Read current source and preview again.")
+            case .recoveryRequired(let record), .recoveryPersistenceFailed(let record, _):
+                return .init(code: .operationUncertain, message: error.localizedDescription,
+                    recovery: "Inspect the per-file Recovery evidence in Scholium. Do not repeat the move automatically.", recoveryDetails: .init(record: record))
+            }
+        }
+        if let error = error as? AgentChangeError {
+            switch error {
+            case .missing:
+                return .init(code: .notFound, message: "The Agent Change is unavailable.", recovery: "List current changes and use an exact change ID.")
+            case .undoUnavailable, .notConfirmed, .alreadyFinal, .mismatchedBinding:
+                return .init(code: .invalidRequest, message: error.localizedDescription, recovery: "Read the named change and its current state. Do not repeat a completed Undo.")
+            case .invalid, .unsafeStore, .sourceTooLarge:
+                return .init(code: .workspaceNotReady, message: error.localizedDescription, recovery: "Inspect Agent Changes in Scholium; retained evidence is unavailable and grants no restoration authority.")
+            }
         }
         if let error = error as? DocumentCreationError {
             switch error {

@@ -731,6 +731,13 @@ private struct ScholiumWindowObservedRoot: View {
             }
             .onAppear { [weak appState, weak windowCoordinator] in
                 guard let appState, let windowCoordinator else { return }
+                let displayWindow = AgentNoteDisplayWindow(state: { [weak appState, weak windowCoordinator] in
+                    appState?.agentNoteDisplayState(canDisplay: windowCoordinator?.canAcceptAgentDisplay == true)
+                }, display: { [weak appState] target, admitted in
+                    guard let appState else { throw WorkspaceStore.displayUnavailable() }
+                    try await appState.displayAgentNote(target, admitted: admitted)
+                })
+                appState.registerNoteDisplayWindow(displayWindow)
                 SystemNotificationService.shared.registerWindow(id: route.windowID) {
                     [weak appState, weak windowCoordinator] notification in
                     guard let appState, appState.workspaceAssignment?.id == notification.triptychID else { return false }
@@ -761,6 +768,7 @@ private struct ScholiumWindowObservedRoot: View {
                 windowCoordinator.update(reduceMotion: reduceMotion)
             }
             .onDisappear {
+                appState.unregisterNoteDisplayWindow()
                 SystemNotificationService.shared.unregisterWindow(id: route.windowID)
                 windowCoordinator.detach()
             }
@@ -2104,6 +2112,14 @@ final class WindowModel: ObservableObject {
         set { researchController.selectInspectorMode(newValue) }
     }
 
+    func registerNoteDisplayWindow(_ window: AgentNoteDisplayWindow) {
+        workspaceStore.registerNoteDisplayWindow(id: nativeWindowID, window: window)
+    }
+
+    func unregisterNoteDisplayWindow() {
+        workspaceStore.unregisterNoteDisplayWindow(id: nativeWindowID)
+    }
+
     var chatController: AgentChatController? {
         workspaceAssignment.map { workspaceStore.chatRegistry.controller(for: $0.id) }
     }
@@ -2809,8 +2825,10 @@ final class WindowModel: ObservableObject {
         )
     }
 
-    private func enqueueCurrencyAwareDocumentTransition(
+    func enqueueCurrencyAwareDocumentTransition(
         preservingCurrentEditorState: Bool = true,
+        retainingCurrentDocument target: DocumentSessionKey? = nil,
+        validateBeforePreparation: @escaping @MainActor () throws -> Void = {},
         _ operation: @escaping @MainActor (
             DocumentTransitionCoordinator.Currency
         ) async throws -> Void,
@@ -2821,6 +2839,8 @@ final class WindowModel: ObservableObject {
         documentTransitionCoordinator.enqueueCurrencyAware(
             prepare: { [weak self] in
                 guard let self else { throw CancellationError() }
+                try validateBeforePreparation()
+                if let target, self.currentDocumentDescriptor?.sessionKey == target { return }
                 try await self.flushRegisteredEditorIfNeeded(
                     capturingEditorState: preservingCurrentEditorState
                 )
@@ -5147,8 +5167,10 @@ final class WindowModel: ObservableObject {
         _ reference: VaultNoteReference,
         tabActivation: DocumentTabActivation,
         recordsNavigationHistory: Bool = true,
-        managedCreationBodyStartUTF16: Int? = nil
+        managedCreationBodyStartUTF16: Int? = nil,
+        validateDisplay: @MainActor () throws -> Void = {}
     ) async throws {
+        try validateDisplay()
         guard let vault = workspaceAssignment?.vaults.values.first(where: {
             $0.id == reference.vaultID
         }), let workspace = workspaceSlot(for: vault) else {
@@ -5167,6 +5189,7 @@ final class WindowModel: ObservableObject {
                 workspace,
                 sourceScope: .library,
                 validateDestination: {
+                    try validateDisplay()
                     guard self.workspaceProjectionController.cachedNote(
                         vaultID: reference.vaultID,
                         stableNoteID: requestedStableID,

@@ -31,9 +31,10 @@
 
 ## External Agent collaboration
 
-- `scholium mcp serve` exposes exactly seven MCP tools:
-  `scholium_workspace_status`, `scholium_search`, `scholium_read_note`,
-  `scholium_list_links`, `scholium_create_note`, `scholium_update_note`,
+- `scholium mcp serve` exposes sixteen MCP tools:
+  `scholium_workspace_status`, `scholium_browse`, `scholium_search`, `scholium_read_note`,
+  `scholium_list_links`, `scholium_show_note`, `scholium_list_attachments`, `scholium_read_attachment`, `scholium_create_note`, `scholium_update_note`,
+  `scholium_preview_move`, `scholium_move_note`, `scholium_list_changes`, `scholium_read_change`, `scholium_undo_change`,
   and `scholium_trash_note`.
 - The stdio server connects only to a running Scholium App for the current
   user. It does not launch the App, construct a headless workspace runtime, or
@@ -42,11 +43,27 @@
   require an exact stable Triptych identity. Every mutating request flushes
   matching live editors, enters the Application source-operation gate, and
   checks the exact target fingerprint where applicable.
+- Browse lists role roots or immediate directory/Note children, including empty
+  directories, with bounded pagination and listing-revision checks. It reuses the
+  current Library inventory and visibility rule; stable identities survive rename.
+- Attachment listing proves current document relationships or registered authored
+  images. Reads preserve file fingerprints, UTF-8 slice offsets and explicit PDF
+  page coverage. Existing bookmark/containment owners govern originals and copies;
+  PNG derivatives remain bounded, and empty extraction never implies a blank page.
+  Chat distinguishes these observations from Note reading and mutation evidence.
+- Note/passage display validates exact source and uses an explicitly named key
+  window. Chat binds display to its admitted visible conversation and window
+  instance. Changed, dirty, hidden, cancelled or superseded requests refuse;
+  successful dispatch retains existing tabs and uses the ordinary locator.
+  Native arrival/focus/selection remains human acceptance, not tool success.
 - Link listing returns one authored occurrence per row, including exact
   occurrence/link/annotation markup, annotation text, local context, source
   fingerprint, and whole/link/annotation locators. It exposes only authored
   occurrence data.
-- Create, update, and trash write machine-local Agent Change evidence. Each
+- Update accepts body/source replacement or 1–100 exact UTF-8 range edits in
+  one original revision. Insert, replace and delete share the same preview,
+  source writer and Agent Change; invalid or stale patches fail without mutation.
+- Create, update, move and trash write machine-local Agent Change evidence. Each
   update retains its own fingerprint-validated exact Before and After bytes;
   review compares the recorded After fingerprint with freshly loaded
   authoritative source and marks a superseded ending as an Earlier Revision.
@@ -54,12 +71,37 @@
   current. Create and trash retain their actual operation evidence without
   inventing an empty text preimage or deletion comparison. This evidence is not
   portable research history or a second source authority.
+- Move impact can be previewed through MCP: paged path/link effects and blockers
+  carry exact identities and revisions. Chat identifies this as a preview of the
+  current Note, with no write or Agent Change. Execution requires that exact
+  plan, preserves stable identity/Metadata, and records every linked-source rewrite
+  in one bounded Agent Change. Controlled inverse restores exact original bytes
+  only if all identities/revisions and restored link resolution remain safe;
+  partial failures retain existing per-file Recovery evidence.
+- Agent Changes can be listed and compared through MCP with bounded results.
+  Undo validates the exact Note/Change binding and current ending revision;
+  repeated or ineligible recovery is refused. Chat Ask uses the reverse comparison,
+  and successful Undo updates the original receipt without a new edit record.
 - Settings exposes Agent Integration instructions for Codex and Claude Code and
   reveals the bundled `scholium-core-protocol` Skill. External-host setup stores no credentials. In-app Chat separately retains
   public conversation state and selected runtime configuration.
 - The Core Protocol uses ordinary Note operations for explicitly requested
   question/discussion writing. Substantive discussion does not authorize an
   automatic write or create an application-managed inquiry lifecycle.
+
+- Chat offers a persistent Zotero read-only preset through its existing versioned
+  runtime configuration editor. Disabled state survives reconnect; active turns
+  block changes and same-name custom connections are retained. Local API checks
+  report disabled/unavailable/available separately from MCP connection state.
+  The first-party read-only CLI publishes seven read tools and rejects imports
+  before contacting Zotero. Annotation listing/selected reads verify the exact
+  PDF relationship and snapshot; text, comment, printed label and physical page
+  stay separate. Binding, Chat/Sources and MCP share validated Zotero locators.
+  Original reads verify bounded local bytes, metadata and API-resolved paths,
+  then return the selected text/page/image and original fingerprint through the
+  shared attachment reader. Sources retains matching runtime material reports
+  by turn/location, identifying server/tool, representation, fingerprint and
+  bounded excerpts without promoting reported access to independent verification.
 
 ## Deliberately unavailable
 

@@ -79,10 +79,12 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
     let cssSnippetStore: CSSSnippetStore
     let zoteroBridge: ZoteroBridge
     private var requestRouter: ScholiumAppBridgeRequestRouter?
+    var noteDisplayWindows: [UUID: AgentNoteDisplayWindow] = [:]
     private var chatRegistryStorage: AgentChatRegistry?
     var chatRegistry: AgentChatRegistry {
         if let current = chatRegistryStorage { return current }
-        let registry = AgentChatRegistry(root: applicationSupportURL.appendingPathComponent("Chat"),
+        let registry = AgentChatRegistry(root: applicationSupportURL.appendingPathComponent("Chat"), zotero: applicationRuntime.zotero,
+            displayWindow: { [weak self] triptych, conversation in self?.chatDisplayWindow(triptychID: triptych, conversationID: conversation) },
             notificationSink: { route, isCurrent in
                 SystemNotificationService.shared.receive(route, isCurrent: isCurrent)
             },
@@ -152,6 +154,11 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
                 openTriptychs: { [weak self] in
                     guard let self else { return [] }
                     return self.handles.values.map(\.assignment)
+                },
+                displayWindows: { [weak self] triptych in self?.displayWindowValues(triptychID: triptych) ?? [] },
+                displayNote: { [weak self] window, target, request in
+                    guard let self else { throw WorkspaceStore.displayUnavailable() }
+                    try await self.displayAgentNote(windowID: window, target: target, request: request)
                 },
                 didConfirmChange: { SystemNotificationService.shared.receive($0) },
                 chatHandler: { [weak self] request in
@@ -224,6 +231,7 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
     }
 
     func shutdownApplicationRuntime() async {
+        noteDisplayWindows.removeAll()
         await chatRegistry.shutdown()
         if let appBridge,
            !(await appBridge.stopAndWait()) {
@@ -258,8 +266,15 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
 
     @discardableResult
     func openExternal(_ url: URL) -> Bool {
+        let destination: URL
+        if url.scheme?.lowercased() == "zotero" {
+            guard let reference = try? ZoteroReference(url: url) else { return false }
+            destination = reference.url
+        } else {
+            destination = url
+        }
         #if canImport(AppKit)
-        return NSWorkspace.shared.open(url)
+        return NSWorkspace.shared.open(destination)
         #else
         return false
         #endif

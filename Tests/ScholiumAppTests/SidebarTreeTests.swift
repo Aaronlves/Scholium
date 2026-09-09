@@ -32,9 +32,9 @@ struct SidebarTreeTests {
             projection.roots.flatMap(\.children).map(\.id)
                 == ["Research/Visible.md"]
         )
-        #expect(!libraryPathIsVisible("Attachments"))
-        #expect(!libraryPathIsVisible("Attachments/id/file.pdf"))
-        #expect(libraryPathIsVisible("Research/Attachments.md"))
+        #expect(!WorkspaceLibraryVisibility.includes("Attachments"))
+        #expect(!WorkspaceLibraryVisibility.includes("Attachments/id/file.pdf"))
+        #expect(WorkspaceLibraryVisibility.includes("Research/Attachments.md"))
     }
 
     @Test("Window tree cache ignores unrelated presentation publications")

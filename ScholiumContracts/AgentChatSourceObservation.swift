@@ -4,6 +4,7 @@ import Foundation
 public enum AgentChatSourceObservation: Codable, Equatable, Sendable {
   case noteRead(NoteRead)
   case webAccess(WebAccess)
+  case zoteroReadReport(ZoteroReadReport)
 
   public struct NoteRead: Codable, Equatable, Sendable {
     public let noteID: UUID

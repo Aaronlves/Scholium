@@ -244,4 +244,7 @@ rejects inline media, performs exact copy and fingerprint-bound rollback, and
 never deletes an original reference. `IndexedAttachmentAccessStore` holds the
 machine-local bookmark and one explicit preview-lifetime access lease. Reads
 join the portable record to current availability without mutating either
-authority.
+authority. Agent reads use the same catalog/bookmark owners and
+`VaultAttachmentStore.readContent`: bounded descriptor reads with file and parent
+revalidation reject symbolic links, replacement and oversized content. Read
+bytes remain transient; extraction never writes a second attachment authority.

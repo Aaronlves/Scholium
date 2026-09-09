@@ -20,6 +20,35 @@ struct AgentChatSourceEvidenceView: View {
             Text("The runtime reported access, without full-text reading coverage.")
           }.padding(.top, 4)
         }
+      case .zotero(let reports):
+        DisclosureGroup("Zotero Read Reported", isExpanded: $isExpanded) {
+          VStack(alignment: .leading, spacing: 8) {
+            Text("The runtime reported returned material; file access and complete reading were not independently verified.")
+            ForEach(Array(reports.enumerated()), id: \.offset) { _, report in
+              VStack(alignment: .leading, spacing: 4) {
+                Text("Reported by \(report.server) · \(report.tool)")
+                representation(report.representation)
+                Text("Reported fingerprint: \(String(report.fingerprint.prefix(12)))")
+                  .help(report.fingerprint).textSelection(.enabled)
+                if let page = report.reference.page { Text("Physical page: \(page)") }
+                if let label = report.pageLabel, !label.isEmpty { Text("Page label: \(label)") }
+                if let range = report.range { Text("UTF-8 bytes \(range.start)–\(range.end) of \(range.total)") }
+                if !report.excerpt.isEmpty {
+                  if report.representation == .annotation { Text("Selected annotation text") }
+                  Text(verbatim: report.excerpt).font(.callout)
+                    .foregroundStyle(ScholiumNativeColorRole.label.color).textSelection(.enabled)
+                }
+                if report.excerptIsTruncated { Text("Preview excerpt") }
+                if let comment = report.comment, !comment.isEmpty {
+                  Text("Annotation comment")
+                  Text(verbatim: comment).font(.callout)
+                    .foregroundStyle(ScholiumNativeColorRole.label.color).textSelection(.enabled)
+                  if report.commentIsTruncated { Text("Preview excerpt") }
+                }
+              }
+            }
+          }.padding(.top, 4)
+        }
       case .note(let coverage):
         DisclosureGroup(isExpanded: $isExpanded) {
           VStack(alignment: .leading, spacing: 8) {
@@ -50,5 +79,15 @@ struct AgentChatSourceEvidenceView: View {
       }
     }
     .font(.caption).foregroundStyle(ScholiumNativeColorRole.secondaryLabel.color)
+  }
+
+  @ViewBuilder private func representation(_ kind: ZoteroReadReport.Representation) -> some View {
+    switch kind {
+    case .text: Text("Original text")
+    case .pdfText: Text("PDF text")
+    case .pdfImage: Text("PDF page image")
+    case .image: Text("Image")
+    case .annotation: Text("Annotation")
+    }
   }
 }

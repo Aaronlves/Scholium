@@ -3590,7 +3590,7 @@ struct FrontendArchitectureTests {
 
         let documentMove = try sourceSection(
             handleSource,
-            from: "private func coordinatedMoveDocument(",
+            from: "func coordinatedMoveDocument(",
             to: "private func coordinatedMoveFolder("
         )
         #expect(documentMove.contains("scheduleCommittedMutationRefresh(refreshPayload)"))
@@ -3609,7 +3609,7 @@ struct FrontendArchitectureTests {
         let folderPlan = try sourceSection(
             handleSource,
             from: "private func workspaceFolderMovePlan(",
-            to: "private func workspaceMovePlan("
+            to: "func workspaceMovePlan("
         )
         #expect(folderPlan.contains("snapshotCanAuthorizeFastPlan"))
         #expect(folderPlan.contains("graph.sourceManifestHash == sourceManifestHash"))

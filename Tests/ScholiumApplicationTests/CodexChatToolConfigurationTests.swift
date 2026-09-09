@@ -141,13 +141,21 @@ struct CodexChatToolConfigurationTests {
         arguments: [repository.appendingPathComponent("Tests/Fixtures/chat-tool-server.py").path, "--require-fixture-environment"],
         environmentVariables: ["SCHOLIUM_TOOL_FIXTURE_TOKEN"])
       #expect(try await runtime.writeChatTool(server, originalName: nil, snapshot: snapshot) == false)
-      let thread = try await runtime.request("thread/start", params: ["cwd": .string(root.path)])
+      // Match Scholium's per-turn server injection while retaining the saved optional server.
+      let thread = try await runtime.request("thread/start", params: ["cwd": .string(root.path),
+        "config": .object(["mcp_servers": .object(["scholium": .object([
+          "command": .string("/usr/bin/python3"),
+          "args": .array([.string(repository.appendingPathComponent("Tests/Fixtures/chat-tool-server.py").path)]),
+          "required": .bool(true), "tool_timeout_sec": .integer(600)
+        ])])])])
       let threadID = try #require(thread.objectValue?["thread"]?.objectValue?["id"]?.stringValue)
       let deadline = ContinuousClock.now.advanced(by: .seconds(12))
       var connected = false
       repeat {
         let tools = try await runtime.chatConnectedTools(threadID: threadID)
-        connected = tools.contains { $0.name == "local-fixture" && $0.tools.contains("fixture_echo") }
+        connected = ["local-fixture", "scholium"].allSatisfy { name in
+          tools.contains { $0.name == name && $0.tools.contains("fixture_echo") }
+        }
         if !connected { try await Task.sleep(for: .milliseconds(100)) }
       } while !connected && ContinuousClock.now < deadline
       #expect(connected)

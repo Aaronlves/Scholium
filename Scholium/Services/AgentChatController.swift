@@ -66,6 +66,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
   @Published private(set) var materialErrors: [UUID: String] = [:]
   private var materialTasks: [UUID: Task<Bool, Never>] = [:]
   private let toolHandler: @MainActor (ScholiumMCPBridgeRequest) async -> ScholiumMCPBridgeResponse
+  private let displayWindow: @MainActor (UUID) -> AgentChatDisplayScope?
   private let previewUpdate: @MainActor (ScholiumMCPBridgeRequest) async throws -> AgentNoteUpdatePreview
   private var runtime: CodexAppServer?
   private var eventTask: Task<Void, Never>?
@@ -76,6 +77,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
   private var quotaTask: Task<Void, Never>?
   private var connectionID: UUID?
   private var cliURL: URL?
+  var zoteroToolExecutable: URL? { cliURL }
   private var workingDirectory: URL?
   private var connectionDefaults: UserDefaults
   private var automaticConnection = false
@@ -87,6 +89,8 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
   init(
     triptychID: UUID, root: URL,
     methodDefaults: UserDefaults = .standard,
+    zotero: (any ZoteroUseCases)? = nil,
+    displayWindow: @escaping @MainActor (UUID) -> AgentChatDisplayScope? = { _ in nil },
     notificationSink: @escaping AgentChatNotificationSink = { _, _ in },
     previewUpdate: @escaping @MainActor (ScholiumMCPBridgeRequest) async throws -> AgentNoteUpdatePreview = { _ in
       throw AgentCollaborationError.invalidRequest("Note comparison is unavailable.")
@@ -95,10 +99,11 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
   ) {
     self.triptychID = triptychID
     self.toolHandler = toolHandler
+    self.displayWindow = displayWindow
     self.previewUpdate = previewUpdate
     self.notificationSink = notificationSink
     connectionDefaults = methodDefaults
-    capabilities = AgentChatCapabilitiesController(defaults: methodDefaults)
+    capabilities = AgentChatCapabilitiesController(defaults: methodDefaults, zotero: zotero)
     runtimeHome = root.appendingPathComponent("Codex", isDirectory: true)
     storage = AgentChatStorage(
       root: root.appendingPathComponent(triptychID.uuidString, isDirectory: true))
@@ -1175,6 +1180,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
     let scope = executions[conversationID]?.routeToken ?? UUID()
     executions[conversationID]?.routeToken = scope
     executions[conversationID]?.admissionID = UUID()
+    executions[conversationID]?.displayScope = displayWindow(conversationID)
     executions[conversationID]?.interruptRequestedTurnID = nil
     executions[conversationID]?.runtimeItems.removeAll()
     executions[conversationID]?.configuration = toolConfiguration(token: scope)
@@ -1636,6 +1642,13 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
     executions[conversationID]?.approvals.removeAll { $0.runtimeApproval != nil }
   }
 
+  func admitsDisplay(_ request: ScholiumMCPBridgeRequest, windowID: UUID) -> Bool {
+    guard let token = request.conversationToken, let owner = executionID(for: token), selectedID == owner,
+      let context = request.runtimeContext, context == runtimeContext(for: token), executions[owner]?.state == .working,
+      let scope = executions[owner]?.displayScope, scope.windowID == windowID, displayWindow(owner) == scope else { return false }
+    return conversation(owner)?.archivedAt == nil
+  }
+
   func handle(_ request: ScholiumMCPBridgeRequest) async -> ScholiumMCPBridgeResponse {
     func refusal(_ message: String) -> ScholiumMCPBridgeResponse {
       try! .init(
@@ -1680,11 +1693,11 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
     if kind.isMutation, owner.permission == .ask {
       var location = path
       var updatePreview: AgentNoteUpdatePreview?
-      if request.tool == .updateNote {
+      if request.tool == .updateNote || request.tool == .undoChange || request.tool == .moveNote {
         do {
           var arguments = request.arguments
           arguments["triptych_id"] = .string(triptychID.uuidString.lowercased())
-          let preview = try await previewUpdate(.init(tool: .updateNote, arguments: arguments))
+          let preview = try await previewUpdate(.init(tool: request.tool, arguments: arguments))
           updatePreview = preview
           location = preview.relativePath
         } catch {
@@ -1756,8 +1769,18 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
     record(.running)
     var arguments = request.arguments
     arguments["triptych_id"] = .string(triptychID.uuidString.lowercased())
+    if request.tool == .showNote {
+      guard let scope = executions[conversationID]?.displayScope, admitsDisplay(request, windowID: scope.windowID),
+        arguments["window_id"] == nil || arguments["window_id"]?.stringValue.flatMap(UUID.init(uuidString:)) == scope.windowID else {
+        activity.detail = String(localized: "Select this conversation in its original window before requesting display.")
+        record(.failed)
+        return refusal("The display request has no current originating window and conversation.")
+      }
+      arguments["window_id"] = .string(scope.windowID.uuidString.lowercased())
+    }
     let response = await toolHandler(
-      .init(requestID: request.requestID, tool: request.tool, arguments: arguments))
+      .init(requestID: request.requestID, tool: request.tool, arguments: arguments,
+        conversationToken: request.tool == .showNote ? request.conversationToken : nil, runtimeContext: request.tool == .showNote ? request.runtimeContext : nil))
     let result = response.result?.objectValue ?? [:]
     let changeID = result["change_id"]?.stringValue.flatMap(UUID.init(uuidString:))
     activity.status =
@@ -1779,8 +1802,13 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
       activity.status = .completed
       activity.detail = String(localized: "The content is unchanged; no write was made.")
     }
+    if request.tool == .previewMove, response.error == nil,
+      let from = result["source_relative_path"]?.stringValue, let to = result["relative_path"]?.stringValue {
+      activity.detail = String(localized: "Preview") + ": " + from + " → " + to
+    }
     let returnedPath =
-      result["relative_path"]?.stringValue
+      (request.tool == .previewMove ? result["source_relative_path"]?.stringValue : nil)
+      ?? result["relative_path"]?.stringValue
       ?? result["original_location"]?.objectValue?["relative_path"]?.stringValue ?? path
     let returnedID = result["note_id"]?.stringValue.flatMap(UUID.init(uuidString:)) ?? noteID
     if !returnedPath.isEmpty {
@@ -1805,8 +1833,30 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
       }
       activity.files = [.init(path: returnedPath, noteID: returnedID, effect: effect)]
     }
+    if (request.tool == .moveNote || request.tool == .undoChange), response.error == nil, result["readback_verified"]?.boolValue == true,
+      let effects = result["effects"]?.arrayValue, !effects.isEmpty {
+      activity.files = effects.compactMap { value in
+        guard let effect = value.objectValue, let path = effect["relative_path"]?.stringValue,
+          let id = effect["note_id"]?.stringValue.flatMap(UUID.init(uuidString:)) else { return nil }
+        return .init(path: path, noteID: id, effect: effect["source_relative_path"] == effect["relative_path"] ? .edited : .moved)
+      }
+    }
     if kind.isMutation, response.error == nil, activity.files.allSatisfy({ $0.effect == nil }) {
       activity.status = .uncertain
+    }
+    if request.tool == .showNote, response.error == nil {
+      activity.detail = result["location_requested"]?.boolValue == true ? String(localized: "Passage location requested.") : String(localized: "Note activated in the current window.")
+      activity.files = [.init(path: returnedPath, noteID: returnedID)]
+    }
+    if request.tool == .readAttachment, response.error == nil, let filename = result["filename"]?.stringValue {
+      activity.subject = filename
+      activity.files = [.init(path: filename, effect: .read)]
+      let image = result["image"]?.objectValue != nil
+      activity.detail = image ? String(localized: "Rendered image only; no extracted text or OCR.")
+        : String(localized: "Text excerpt only; original page appearance is not supplied.")
+      if result["text_available"]?.boolValue == false { activity.detail = String(localized: "This selection contains no readable text.") }
+      if let page = result["page"]?.intValue { activity.detail += "\n" + String(localized: "Page \(page)") }
+      if result["has_more"]?.boolValue == true { activity.detail += "\n" + String(localized: "More text remains in this selection.") }
     }
     if kind == .read, response.error == nil {
       activity.sourceObservation = AgentChatReadObservation.parse(result)
@@ -1994,8 +2044,13 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
     switch request.tool {
     case .createNote: String(localized: "Create Note")
     case .updateNote:
-      request.arguments["mode"]?.stringValue == "source"
-        ? String(localized: "Replace Note Source") : String(localized: "Replace Note Body")
+      switch request.arguments["mode"]?.stringValue {
+      case "source": String(localized: "Replace Note Source")
+      case "edits": String(localized: "Edit Note")
+      default: String(localized: "Replace Note Body")
+      }
+    case .moveNote: String(localized: "Move Note")
+    case .undoChange: String(localized: "Undo Agent Change?")
     case .trashNote: String(localized: "Move Note to Trash")
     default: String(localized: "Operation")
     }
@@ -2143,26 +2198,36 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
 final class AgentChatRegistry {
   private var controllers: [UUID: AgentChatController] = [:]
   private let root: URL
+  private let zotero: (any ZoteroUseCases)?
+  private let displayWindow: @MainActor (UUID, UUID) -> AgentChatDisplayScope?
   private let handler: @MainActor (ScholiumMCPBridgeRequest) async -> ScholiumMCPBridgeResponse
   private let previewUpdate: @MainActor (ScholiumMCPBridgeRequest) async throws -> AgentNoteUpdatePreview
   private let notificationSink: AgentChatNotificationSink
   init(
     root: URL,
+    zotero: (any ZoteroUseCases)? = nil,
+    displayWindow: @escaping @MainActor (UUID, UUID) -> AgentChatDisplayScope? = { _, _ in nil },
     notificationSink: @escaping AgentChatNotificationSink = { _, _ in },
     previewUpdate: @escaping @MainActor (ScholiumMCPBridgeRequest) async throws -> AgentNoteUpdatePreview,
     handler: @escaping @MainActor (ScholiumMCPBridgeRequest) async -> ScholiumMCPBridgeResponse
   ) {
-    self.root = root
+    self.root = root; self.zotero = zotero
+    self.displayWindow = displayWindow
     self.handler = handler
     self.previewUpdate = previewUpdate
     self.notificationSink = notificationSink
   }
   func controller(for triptychID: UUID) -> AgentChatController {
     if let current = controllers[triptychID] { return current }
-    let controller = AgentChatController(triptychID: triptychID, root: root, notificationSink: notificationSink,
+    let displayWindow = self.displayWindow
+    let controller = AgentChatController(triptychID: triptychID, root: root, zotero: zotero, displayWindow: { displayWindow(triptychID, $0) }, notificationSink: notificationSink,
       previewUpdate: previewUpdate, toolHandler: handler)
     controllers[triptychID] = controller
     return controller
+  }
+  func admitsDisplay(_ request: ScholiumMCPBridgeRequest, windowID: UUID) -> Bool {
+    guard let token = request.conversationToken, let owner = controllers.values.first(where: { $0.owns(token: token) }) else { return false }
+    return owner.admitsDisplay(request, windowID: windowID)
   }
   func handle(_ request: ScholiumMCPBridgeRequest) async -> ScholiumMCPBridgeResponse {
     if let token = request.conversationToken,

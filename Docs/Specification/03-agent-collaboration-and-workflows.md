@@ -11,7 +11,7 @@ optional in-app Chat (§8.7). External hosts retain their conversation ownership
 Scholium provides a native client for supported runtimes; authentication and
 the Agent execution loop remain runtime-owned. The researcher's
 current instruction supplies the task, scope, and any permission to create,
-modify, or move a Note to system Trash.
+modify, rename, move, undo a named change, or move a Note to system Trash.
 
 Scholium separates three instruction owners:
 
@@ -81,16 +81,27 @@ in §8.5 instead of becoming a second philosophical instruction source.
 
 ### 8.3 Tool contract
 
-The first release exposes exactly these tools:
+The local tool surface supports bounded knowledge-base operations. Tool availability
+never expands the current researcher request. The following contracts are shared
+by external hosts and in-app Chat:
 
 | Tool | Input | Result |
 | --- | --- | --- |
 | `scholium_workspace_status` | optional `triptych_id` | open Triptych candidates or one reconciled current Triptych with three-vault, source, Search, and graph generations |
+| `scholium_browse` | `triptych_id`; optional `role`, `directory`, `limit`, `offset`, `expected_listing_fingerprint` | bounded role roots or immediate directory/Note children, stable identities, exact source fingerprints, totals and listing fingerprint |
 | `scholium_search` | `triptych_id`, `query`; optional `roles`, `limit`, and `offset` | Note candidates with totals, continuation, freshness, identities, match reasons, snippets, and exact source fingerprints |
 | `scholium_read_note` | `triptych_id`, `note_id`; optional `start_line`, `line_count` | an exact current Markdown slice, complete/continuation state, and full Note fingerprint |
+| `scholium_list_attachments` | `triptych_id`, `note_id`; optional `offset`, `limit`, `expected_listing_fingerprint` | paged existing document relationships and registered authored images, availability and Note/listing fingerprints; metadata only |
+| `scholium_read_attachment` | `triptych_id`, `note_id`, `attachment_id`, `expected_note_fingerprint`, `mode`; optional `expected_fingerprint`, `page`, `start_utf8`, `max_utf8` | bounded current text or one image/PDF page, exact file fingerprint and explicit extraction/rendering coverage |
+| `scholium_show_note` | `triptych_id`, `note_id`, `expected_fingerprint`; optional `window_id` and complete `start_utf8`, `end_utf8`, `expected_text` range | named live-window navigation and exact passage-location request; no Note mutation or claim of rendered/assistive-technology arrival |
 | `scholium_list_links` | `triptych_id`, `note_id`, `direction`; optional `limit`, `offset` | raw incoming/outgoing authored occurrences with source/destination identities, exact link and optional annotation markup/text, local context, fingerprints, and whole/link/annotation source locators |
 | `scholium_create_note` | `triptych_id`, `role`, `relative_path`, `body`; optional `summary`, `keywords` | created stable Note identity, path, fingerprint, and `change_id` |
-| `scholium_update_note` | `triptych_id`, `note_id`, `expected_fingerprint`, `mode`, `content` | before/after fingerprints, path, readback state, and `change_id` |
+| `scholium_update_note` | `triptych_id`, `note_id`, `expected_fingerprint`, `mode`; mode-specific `content` or `edits` | before/after fingerprints, path, readback state, and `change_id` |
+| `scholium_preview_move` | `triptych_id`, `note_id`, `expected_fingerprint`, `relative_path`; optional `offset`, `limit`, `expected_plan_fingerprint` | paged paths, identities, source revisions, link counts, blockers and plan fingerprint |
+| `scholium_move_note` | `triptych_id`, `note_id`, `expected_fingerprint`, `relative_path`, `expected_plan_fingerprint` | identity-preserving same-role move with exact linked-source effects, one Agent Change, readback and recovery details |
+| `scholium_list_changes` | `triptych_id`; optional `note_id`, `limit`, `offset`, `expected_listing_fingerprint` | bounded machine-local mutation receipts and revision-bound continuation; no source bodies |
+| `scholium_read_change` | `triptych_id`, `change_id`; optional `note_id`, `offset`, `limit`, `effect_offset`, `effect_limit` | receipt, selected affected Note comparison, paged move effects, current/earlier/unavailable ending and current Undo eligibility |
+| `scholium_undo_change` | `triptych_id`, `note_id`, `change_id`, `expected_fingerprint` | the named eligible update or move restored through ordinary source recovery, exact restored fingerprints and original receipt; no new fabricated update |
 | `scholium_trash_note` | `triptych_id`, `note_id`, `expected_fingerprint` | the exact Note moved to macOS system Trash, original location, and `change_id` |
 
 External role values are only `analyses`, `topics`, and `works`. A Note is
@@ -110,7 +121,9 @@ philosophical relevance, evidential support, confidence, consensus, or truth sco
 
 Read defaults to 200 logical source lines and permits at most 1,000 per call,
 subject to a bounded response size. It preserves exact source bytes and reports
-the next line when more remains. Repeated reads can retrieve the complete Note.
+the next line when more remains. Every slice also returns zero-based full-source
+`start_utf8` and exclusive `end_utf8`, including BOM and YAML, so exact edits
+can use the returned version and location. Repeated reads can retrieve the complete Note.
 
 Link results expose one row per authored occurrence. Each row states requested
 and occurrence direction, source and destination identity/role/path when
@@ -126,18 +139,91 @@ Absolute paths, traversal, collision, and automatic renaming are invalid. It
 uses the common managed New Note scaffold; omitted `summary` and `keywords`
 remain empty authored values. It creates no bibliographic Metadata.
 
-Update has exactly two modes:
+Update has three mutually exclusive payload modes:
 
 - `body` replaces the Markdown body while preserving the complete YAML
   envelope and every other out-of-scope source byte; and
 - `source` replaces complete Markdown/YAML and is used only when the researcher
-  explicitly requests complete source or YAML modification.
+  explicitly requests complete source or YAML modification; and
+- `edits` applies 1–100 exact insertions, replacements or deletions against the
+  same complete source revision. Each edit supplies zero-based `start_utf8`,
+  `end_utf8` (exclusive), exact `expected_text`, and `replacement`. Ranges must
+  be UTF-8 scalar boundaries, nonoverlapping and unambiguous; coincident
+  insertion points are rejected. Empty ranges insert; empty replacements delete.
+  All ranges refer to the original revision, never an intermediate edit.
+  Unchanged bytes, including BOM, newline spelling and YAML, stay exact. An
+  edit touching YAML requires explicit researcher authority for that change.
+  No fuzzy relocation or permanent block identity is introduced. Invalid ranges,
+  mismatched old text or an invalid complete result reject the entire call.
+  Preview and execution use the same transformation and ordinary Agent Change
+  comparison and Undo. `content` and `edits` cannot be combined.
 
 One update call targets one Note. A request covering several named Notes uses
 separate calls and separate outcomes. No call automatically propagates to
 destination Notes, Metadata, links, or Settlement. Editing a link
 annotation is an ordinary source-Note update guarded by that Note's current
 fingerprint.
+
+Knowledge-base construction also provides bounded, paginated role/directory/Note
+browsing through the current Library inventory; identity-preserving Note move
+and rename through §5.3; and Note-related attachment listing and scoped reads.
+Browse defaults to 20 entries, at most 100, and exposes role roots when no role
+is supplied. A role selects its root or exact relative directory, including
+empty directories. It lists immediate children only, using the Library's
+attachment-storage visibility rule. Continuation requires the returned listing
+fingerprint; a changed inventory rejects continuation rather than silently
+skipping or repeating entries. A missing/inaccessible role or directory is an
+explicit failure; paths never select another vault or provide filesystem access.
+A move preview identifies affected resolved links, validates the current source,
+path occupancy and associated identities, and exposes a fingerprint of the complete
+planned effects. Pages contain at most 100 effects or blockers; continuation uses
+the same plan fingerprint and rejects changed effects. Preview moves nothing,
+creates no Agent Change and grants no execution authority. Execution rechecks
+that reviewed plan and reports actual per-item outcomes. A changed plan requires
+a fresh preview; it cannot silently add linked Notes to the approved effect set.
+Cross-role moves remain prohibited. It never simulates a move with create/trash.
+Attachment access proves the Note relationship and permitted file scope, returns
+exact version and text/page/image coverage, and reports missing, changed or
+unreadable content without substituting metadata for reading. Explicit Chat
+material permission and vault-related access remain separate.
+
+Attachment listing defaults to 20 entries (at most 100); later pages require
+its listing fingerprint. No catalog scan grants unrelated-file access. Reads
+require the current Note revision and an existing document relationship or an
+exact authored reference to a registered image in that Note's vault. Relative
+files remain inside the vault without following symbolic links; absolute originals
+require the existing exact-path read-only bookmark, with no access prompt.
+Each call reads at most 20 MiB, returning its file fingerprint. Text mode uses
+exact UTF-8 offsets (default 16 KiB, maximum 64 KiB); continuations require that
+file fingerprint. PDF text is extracted from one explicit one-based page, and
+its offsets belong to that extraction rather than the PDF bytes. Image mode
+returns a bounded PNG derivative (at most 1,024 pixels per edge and 512 KiB),
+with a PDF page required for page rendering. A rendered page is not extracted
+text or OCR; `text_available` explicitly describes whether the returned text slice
+contains readable text, without inferring a blank original page. Original bytes
+remain authoritative. Missing relationships,
+stale versions, locked/unsupported/unreadable files and out-of-range locators
+fail explicitly, preserving source and without staging a second material store.
+
+Session-bound Note/passage display validates identity, revision and location and
+uses existing tabs/navigation. Workspace status lists live window identities;
+external hosts must name one current key window. Chat captures its visible
+window at turn admission and cannot redirect display to another window or a
+newly selected conversation. Display never foregrounds a window. Hidden,
+closed, switched, dirty or composing contexts reject navigation; invalid versions
+and complete UTF-8 ranges reject before activation. Queued delivery rechecks
+window, conversation, source and reading context. Existing tabs and Document
+mode remain owned by navigation. Success confirms activation/location dispatch,
+not pixels, focus, selection painting or assistive-technology acceptance.
+Agent Change queries and comparisons reuse §8.4; restoration requires the current
+request, exact eligible change and unchanged ending revision. Completed writes
+are not replayed, and another task's changes are not automatically undone.
+
+Link explanations, merges and splits compose these general operations. Authored
+prose retains its philosophical meaning; Connections never infer support. A
+multi-Note plan exposes its targets and effects before mutation, returns separate
+outcomes and a continuation path after partial failure, and promises no cross-Note
+atomicity or automatic rollback.
 
 Trash accepts one current Note and uses only macOS system Trash. It has no
 permanent-delete, recursive-folder, or application-Trash variant.
@@ -158,7 +244,7 @@ An identical update returns `no_changes` before writing or preparing an Agent
 Change. It warrants no edit claim or automatic retry.
 
 Protocol parsing and unknown-method failures remain JSON-RPC errors. Tool
-annotations identify the four retrieval tools as read-only, local, and
+annotations identify retrieval tools as read-only, local, and
 idempotent; Note create is non-idempotent, while Note
 update/trash are destructive and non-idempotent. An
 annotation is a host hint, never authorization.
@@ -188,16 +274,53 @@ write lock. The App retains its ordinary dirty-editor, external-change,
 multiwindow, containment, atomic replacement, exact readback, and conflict
 owners.
 
-Every successful MCP **Note** mutation creates one machine-local **Agent
-Change** with a stable `change_id`, operation, Note identity and location, exact
+Every successful MCP Note create, update, move or Trash operation creates one
+machine-local **Agent Change** with a stable `change_id`, operation, Note identity and location, exact
 before/after evidence where applicable, and recovery state. It exists only to
 support accurate comparison, Earlier Revision presentation, and eligible
 direct Undo; it is not a research task, review state, completion
 marker, philosophical summary, or researcher acceptance. Created Notes have
 no fabricated empty preimage.
 
-Direct Undo restores one eligible updated Note only while current source still
-equals that Agent Change's final fingerprint. Separate calls remain separate
+Change listing defaults to 20 receipts (at most 100), optionally filtered by
+stable Note identity, including linked Notes affected by a move; continuation
+binds the returned listing fingerprint. Move reads select a comparison by affected
+`note_id` and independently page effects (20 by default, at most 100).
+Comparison reads default to 200 rows (at most 1,000) under the bounded response
+size, retaining exact line text, endings, Before/After positions and BOM state.
+Create and Trash retain their actual evidence without invented empty comparisons.
+Historical source is not the current Note or proof of researcher acceptance.
+
+The Undo tool requires one explicitly requested Note and Change identity plus
+the recorded ending fingerprint. Chat uses its current conversation/turn and
+mutation permission; Ask shows the exact reverse comparison. Querying or reading
+history never initiates Undo, selects another task's change or authorizes repair.
+Undo transitions its original receipt rather than inventing a second source
+edit record. A completed Undo is never executed again. Cancellation before source admission
+leaves bytes unchanged; uncertain source or evidence confirmation reports an
+uncertain outcome and does not automatically resend.
+
+A move records its primary Note plus the exact before/after bytes, identities
+and locations of every linked-source rewrite in the same Agent Change. It is
+one bounded operation, not a multi-Note workflow engine. Ask exposes the source
+and destination and all affected source comparisons before execution. Confirmed
+source and identity results remain distinct from delayed derived refresh.
+Move evidence is bounded to 1,000 affected Notes and 16 MiB of aggregate
+Before/After source, retaining the ordinary per-Note source limit.
+
+Direct Undo restores an eligible update only while current source still equals
+its final fingerprint. A move inverse additionally requires the recorded final
+locations and all affected Note identities/revisions, vacant original path, no
+new unreviewed link rewrites and unchanged link resolution under the restored
+exact source. It restores the original bytes through the same move coordinator;
+it does not approximate Undo by a newly canonicalized reverse rename. Any later
+source edit, path/identity drift or unsafe restored link refuses the whole inverse.
+The original move receipt becomes undone only after all readback succeeds.
+Partial failure retains the existing per-file Recovery evidence and exposes its
+actual outcomes through `recovery_details`: Recovery identity, total count and
+at most 100 file paths, roles, Before/intended/observed fingerprints and states.
+Remaining entries stay in the existing Recovery record. Neither move nor inverse
+promises cross-vault atomicity. Separate calls remain separate
 transactions; one failure never rolls back a confirmed sibling. Creation and
 system-Trash operations retain their own recovery contracts and do not acquire
 a fabricated source restore through Agent Changes.

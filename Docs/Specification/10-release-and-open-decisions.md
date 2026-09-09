@@ -38,7 +38,7 @@ state the accepted profile; an unaccepted optional profile is labelled
 
 **Agent Collaboration Beta/1.0** additionally covers applicable Research
 Guidance and Settings, Core Protocol discovery, user-scope Codex and Claude
-configuration, the seven MCP tools, multi-Triptych selection, App-unavailable
+configuration, the knowledge-base MCP tools, multi-Triptych selection, App-unavailable
 behavior, source/Search/graph currentness, exact paging, role filtering, fingerprinted Note create/update/system-Trash, Agent Changes, direct Undo, outcome-unknown recovery,
 incoming/outgoing authored link occurrences and annotations, Attention, Zotero read-only/unavailable behavior, and
 App/CLI/MCP parity. Exact initial frames and coordinates remain implementation

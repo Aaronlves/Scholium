@@ -46,11 +46,13 @@ public struct IncomingLinkRewritePlan: Hashable, Sendable {
 
 public struct IncomingLinkRewriteBlock: Codable, Hashable, Sendable {
     public let source: VaultQualifiedNoteID
+    public let sourceFingerprint: DocumentFingerprint
     public let span: SourceSpan
     public let reason: String
 
-    public init(source: VaultQualifiedNoteID, span: SourceSpan, reason: String) {
+    public init(source: VaultQualifiedNoteID, sourceFingerprint: DocumentFingerprint, span: SourceSpan, reason: String) {
         self.source = source
+        self.sourceFingerprint = sourceFingerprint
         self.span = span
         self.reason = reason
     }
@@ -159,6 +161,7 @@ public enum IncomingLinkRewriter {
             guard resolution == .resolved(destination) else {
                 blocked.append(IncomingLinkRewriteBlock(
                     source: edge.source,
+                    sourceFingerprint: document.fingerprint,
                     span: edge.occurrence.linkSpan,
                     reason: "The destination path would resolve this incoming link to another note or remain ambiguous."
                 ))
@@ -339,6 +342,7 @@ public enum IncomingLinkRewriter {
                 ) == .resolved(destination) else {
                     blocked.append(IncomingLinkRewriteBlock(
                         source: sourceID,
+                        sourceFingerprint: document.fingerprint,
                         span: occurrence.linkSpan,
                         reason: "The destination path would resolve this incoming link to another note or remain ambiguous."
                     ))
@@ -460,6 +464,7 @@ public enum IncomingLinkRewriter {
         let futureResolutionIndex = LinkGraphBuilder.ResolutionIndex(catalog: futureCatalog)
         var blocked: [IncomingLinkRewriteBlock] = []
         let safelyRewritable = incoming.filter { edge in
+            guard let document = documents[edge.source] else { return false }
             let futureSource = edge.source == source ? destination : edge.source
             let resolution = futureResolutionIndex.resolve(
                 destination.relativePath,
@@ -469,6 +474,7 @@ public enum IncomingLinkRewriter {
             guard resolution == .resolved(destination) else {
                 blocked.append(IncomingLinkRewriteBlock(
                     source: edge.source,
+                    sourceFingerprint: document.fingerprint,
                     span: edge.occurrence.linkSpan,
                     reason: "The destination path would resolve this incoming link to another note or remain ambiguous."
                 ))
@@ -612,6 +618,7 @@ public enum IncomingLinkRewriter {
                 ) == .resolved(destination) else {
                     blocked.append(IncomingLinkRewriteBlock(
                         source: sourceID,
+                        sourceFingerprint: document.fingerprint,
                         span: occurrence.linkSpan,
                         reason: "The destination path would resolve this incoming link to another note or remain ambiguous."
                     ))

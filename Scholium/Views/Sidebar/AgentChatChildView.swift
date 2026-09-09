@@ -189,7 +189,8 @@ struct AgentChatChildView: View {
       \.openURL,
       OpenURLAction { url in
         if AgentChatReference.parse(url) != nil { return openReference(url) ? .handled : .discarded }
-        return ["https", "http"].contains(url.scheme?.lowercased() ?? "") ? .systemAction : .discarded
+        if let destination = AgentChatReplySource.externalURL(url) { return .systemAction(destination) }
+        return .discarded
       })
   }
 

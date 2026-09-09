@@ -384,6 +384,12 @@ public enum ImageAttachmentError: LocalizedError, Equatable, Sendable {
 }
 
 public enum IndexedImageReferences {
+    public static func locations(in markdownSource: String, noteRelativePath: String) -> Set<AttachmentLocation> {
+        var collector = NoteImageLocationCollector(directory: noteRelativePath.split(separator: "/").dropLast().map(String.init))
+        collector.visit(Document(parsing: markdownSource, options: [.parseBlockDirectives, .parseSymbolLinks]))
+        return collector.locations
+    }
+
     public static func absolutePaths(in markdownSource: String) -> Set<String> {
         let document = Document(
             parsing: markdownSource,
@@ -392,6 +398,32 @@ public enum IndexedImageReferences {
         var collector = AbsoluteImagePathCollector()
         collector.visit(document)
         return collector.paths
+    }
+}
+
+private struct NoteImageLocationCollector: MarkupWalker {
+    let directory: [String]
+    var locations: Set<AttachmentLocation> = []
+    mutating func visitDocument(_ document: Document) { descendInto(document) }
+    mutating func visitImage(_ image: Image) {
+        guard let raw = image.source, let path = raw.removingPercentEncoding, !path.contains("\0") else { return }
+        if path.hasPrefix("/") {
+            if let location = try? AttachmentLocation(absolutePath: path) { locations.insert(location) }
+            return
+        }
+        guard URLComponents(string: raw)?.scheme == nil, !raw.hasPrefix("//") else { return }
+        var components = directory
+        for part in path.split(separator: "/", omittingEmptySubsequences: false) {
+            if part == "." { continue }
+            if part == ".." {
+                guard !components.isEmpty else { return }
+                components.removeLast()
+            } else {
+                guard !part.isEmpty else { return }
+                components.append(String(part))
+            }
+        }
+        if let relative = try? AttachmentRelativePath(components.joined(separator: "/")) { locations.insert(.vaultRelative(relative)) }
     }
 }
 

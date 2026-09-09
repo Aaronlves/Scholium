@@ -178,6 +178,49 @@ public actor VaultAttachmentStore {
         return isAvailable ? candidate.standardizedFileURL : nil
     }
 
+    /// Reads only a previously authorized location. Every relative component is
+    /// opened without following links; bytes and pathname must retain one identity.
+    public func readContent(relativePath: AttachmentRelativePath, maximumByteCount: Int) throws -> Data {
+        guard maximumByteCount > 0 else { throw CocoaError(.fileReadTooLarge) }
+        let candidate = canonicalRoot.appendingPathComponent(relativePath.rawValue)
+        let coordinator = NSFileCoordinator(filePresenter: nil)
+        var coordinationError: NSError?
+        var outcome: Result<Data, Error>?
+        coordinator.coordinate(readingItemAt: candidate, options: .withoutChanges, error: &coordinationError) { location in
+            outcome = Result {
+                guard location.standardizedFileURL == candidate.standardizedFileURL else { throw ImageAttachmentError.sourceChanged(relativePath.rawValue) }
+                return try self.withParentDescriptor(relativePath: relativePath, createDirectories: false) { parent, name in
+                    let fd = openat(parent, name, O_RDONLY | O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC)
+                    guard fd >= 0 else { throw POSIXError(Self.posixCode(errno)) }
+                    defer { Darwin.close(fd) }
+                    var before = stat()
+                    guard fstat(fd, &before) == 0, (before.st_mode & S_IFMT) == S_IFREG else { throw CocoaError(.fileReadUnsupportedScheme) }
+                    guard before.st_size >= 0, before.st_size <= maximumByteCount else { throw CocoaError(.fileReadTooLarge) }
+                    let bytes = try VaultDescriptorAccess.readAll(from: fd, maximumByteCount: maximumByteCount)
+                    var after = stat(); var current = stat()
+                    guard fstat(fd, &after) == 0, fstatat(parent, name, &current, AT_SYMLINK_NOFOLLOW) == 0,
+                          before.st_dev == after.st_dev, before.st_ino == after.st_ino,
+                          before.st_size == after.st_size, after.st_size == bytes.count,
+                          before.st_mtimespec.tv_sec == after.st_mtimespec.tv_sec, before.st_mtimespec.tv_nsec == after.st_mtimespec.tv_nsec,
+                          before.st_ctimespec.tv_sec == after.st_ctimespec.tv_sec, before.st_ctimespec.tv_nsec == after.st_ctimespec.tv_nsec,
+                          (current.st_mode & S_IFMT) == S_IFREG, current.st_dev == after.st_dev, current.st_ino == after.st_ino else {
+                        throw ImageAttachmentError.sourceChanged(relativePath.rawValue)
+                    }
+                    // Rewalk parents as well: a directory replacement must not retarget the read.
+                    try self.withParentDescriptor(relativePath: relativePath, createDirectories: false) { freshParent, freshName in
+                        var fresh = stat()
+                        guard fstatat(freshParent, freshName, &fresh, AT_SYMLINK_NOFOLLOW) == 0,
+                              fresh.st_dev == after.st_dev, fresh.st_ino == after.st_ino else { throw ImageAttachmentError.sourceChanged(relativePath.rawValue) }
+                    }
+                    return bytes
+                }
+            }
+        }
+        if let coordinationError { throw coordinationError }
+        guard let outcome else { throw CocoaError(.fileReadUnknown) }
+        return try outcome.get()
+    }
+
     public func removeCopiedDocumentIfExact(
         relativePath: AttachmentRelativePath,
         expectedFingerprint: DocumentFingerprint

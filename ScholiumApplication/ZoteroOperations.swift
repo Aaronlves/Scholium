@@ -2,19 +2,6 @@ import ScholiumContracts
 import Foundation
 import ScholiumCore
 
-final class ZoteroNoRedirectDelegate: NSObject, URLSessionTaskDelegate,
-    @unchecked Sendable {
-    func urlSession(
-        _ session: URLSession,
-        task: URLSessionTask,
-        willPerformHTTPRedirection response: HTTPURLResponse,
-        newRequest request: URLRequest,
-        completionHandler: @escaping (URLRequest?) -> Void
-    ) {
-        completionHandler(nil)
-    }
-}
-
 /// Runtime-owned, delivery-neutral access to Scholium's first-party Zotero
 /// transport. Delivery targets may parse frames and format reports, but Core
 /// locator and server authorities are composed only behind this boundary.
@@ -68,24 +55,21 @@ public actor ZoteroOperations: ZoteroUseCases {
 
     init(
         descriptor: ZoteroMCPTransportDescriptor = .supportedLocal,
-        server: ZoteroMCPServer = ZoteroMCPServer(),
         requestLoader: RequestLoader? = nil
     ) {
         self.descriptor = descriptor
-        self.server = server
         if let requestLoader {
             loadRequest = requestLoader
+            server = ZoteroMCPServer(client: ZoteroRequestLoaderClient(load: requestLoader))
         } else {
-            let configuration = URLSessionConfiguration.ephemeral
-            configuration.timeoutIntervalForRequest = 3
-            configuration.timeoutIntervalForResource = 15
-            configuration.waitsForConnectivity = false
-            let session = URLSession(
-                configuration: configuration,
-                delegate: ZoteroNoRedirectDelegate(),
-                delegateQueue: nil
-            )
-            loadRequest = { request in try await session.data(for: request) }
+            let client = ZoteroMCPURLSessionClient()
+            server = ZoteroMCPServer(client: client)
+            loadRequest = { request in
+                let result = try await client.send(request)
+                guard let url = request.url, let response = HTTPURLResponse(url: url, statusCode: result.statusCode,
+                    httpVersion: "HTTP/1.1", headerFields: result.headers) else { throw ZoteroUseCaseError.invalidResponse }
+                return (result.body, response)
+            }
         }
     }
 
@@ -114,8 +98,8 @@ public actor ZoteroOperations: ZoteroUseCases {
 
     /// Handles one unframed JSON-RPC body. Notifications intentionally return
     /// nil; framing remains a delivery concern for stdio callers.
-    public func handle(requestData: Data) async -> Data? {
-        await server.handle(requestData: requestData)
+    public func handle(requestData: Data, access: ZoteroMCPAccess) async -> Data? {
+        await server.handle(requestData: requestData, access: access)
     }
 
     public func libraryInfo() async -> ZoteroLibraryInfo {
@@ -380,5 +364,20 @@ public actor ZoteroOperations: ZoteroUseCases {
         guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines),
               !value.isEmpty else { return nil }
         return value
+    }
+}
+
+/// Foundation-only injection stays at Application; Core transport types never
+/// cross into delivery or boundary-test construction.
+private struct ZoteroRequestLoaderClient: ZoteroMCPHTTPClient {
+    let load: ZoteroOperations.RequestLoader
+    func send(_ request: URLRequest) async throws -> ZoteroMCPHTTPResponse {
+        let (body, response) = try await load(request)
+        guard let expectedURL = request.url, let response = response as? HTTPURLResponse,
+              response.url == expectedURL else { throw ZoteroUseCaseError.invalidResponse }
+        let headers = response.allHeaderFields.reduce(into: [String: String]()) { result, entry in
+            result[String(describing: entry.key)] = String(describing: entry.value)
+        }
+        return .init(statusCode: response.statusCode, headers: headers, body: body)
     }
 }

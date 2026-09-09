@@ -430,6 +430,15 @@ Supplied PDF text, page images and ordinary images retain their existing snapsho
 page coverage and preview owner; supplying a material is not proof it was used.
 Sources neither fetches content nor creates citations on opening, and never executes
 an arbitrary locator. Public observations remain nonauthorizing conversation data.
+Reply, child-reply and Sources links open the validated item/PDF/annotation
+references owned by §15.4 through the system. An unobserved Zotero read remains
+unknown even when its locator opens successfully.
+Zotero MCP reports require matching arguments, library/locator, representation,
+fingerprint and coverage. Label them **Zotero Read Reported**, with
+server/tool; names confer no authority. Preserve original/annotation
+text, images, versions and ranges throughout history. Show matching
+successful reports before this reply in its turn. Reports verify neither
+file access nor complete reading; malformed/truncated results remain unknown.
 
 
 Note passage links retain the supplied exact-source fingerprint and, when known,

@@ -416,6 +416,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
     private let appState: WindowModel
     private let lifecycleRegistry: ScholiumWindowLifecycleRegistry
     private weak var window: NSWindow?
+    var canAcceptAgentDisplay: Bool { window?.isKeyWindow == true && window?.attachedSheet == nil && !flushInFlight && !closeIsAuthorized }
     private weak var splitController: (any ScholiumWorkspaceSplitControlling)?
     // `NSWindow.delegate` is not an ownership boundary. Keep SwiftUI's
     // delegate alive while forwarding optional callbacks, then restore it.

@@ -93,6 +93,7 @@ struct AgentChatCapabilitiesSettingsView: View {
       }
       DisclosureGroup("Connected Tools", isExpanded: $showsTools) {
         VStack(alignment: .leading, spacing: 10) {
+          zoteroConnection
           Button("Add Tool…") { toolEdit = capabilities.editTool() }.disabled(!capabilities.canConfigureTools)
           if let error = capabilities.toolConfigurationError { Text(error).foregroundStyle(.secondary).textSelection(.enabled) }
           if let notice = capabilities.toolConfigurationNotice { Text(notice).foregroundStyle(.secondary) }
@@ -110,7 +111,7 @@ struct AgentChatCapabilitiesSettingsView: View {
           if capabilities.hasTools && capabilities.tools.isEmpty && capabilities.toolConnections.isEmpty {
             Text("No Connected Tools").foregroundStyle(.secondary)
           }
-          ForEach(Array(Set(capabilities.tools.map(\.name) + capabilities.toolConnections.map(\.name))).sorted(), id: \.self) { name in
+          ForEach(Array(Set(capabilities.tools.map(\.name) + capabilities.toolConnections.map(\.name))).filter { $0 != AgentChatCapabilitiesController.zoteroServerName }.sorted(), id: \.self) { name in
             toolRow(name)
           }
         }.padding(.top, 6)
@@ -143,6 +144,53 @@ struct AgentChatCapabilitiesSettingsView: View {
     }
   }
 
+  private var zoteroConnection: some View {
+    VStack(alignment: .leading, spacing: 6) {
+      if capabilities.zoteroConnection != nil || capabilities.tools.contains(where: { $0.name == AgentChatCapabilitiesController.zoteroServerName }) {
+        toolRow(AgentChatCapabilitiesController.zoteroServerName)
+      } else {
+        HStack {
+          VStack(alignment: .leading, spacing: 3) {
+            Text("Zotero")
+            Text("Not Configured").font(.caption).foregroundStyle(.secondary)
+          }
+          Spacer()
+          Button("Set Up Zotero…") { toolEdit = capabilities.zoteroToolEdit(executable: controller.zoteroToolExecutable) }
+            .disabled(!capabilities.canConfigureTools || controller.zoteroToolExecutable == nil)
+        }
+      }
+      if let connection = capabilities.zoteroConnection,
+        connection.kind != .local || connection.address != controller.zoteroToolExecutable?.path
+          || connection.arguments != ZoteroMCPTransportDescriptor.supportedLocal.readOnlyArguments {
+        Text("Custom Zotero Configuration").font(.caption).foregroundStyle(.secondary)
+      } else {
+        Text("The Zotero preset provides read-only tools. Saved configuration and local library availability are separate.")
+          .font(.caption).foregroundStyle(.secondary)
+      }
+      HStack {
+        Text("Local Zotero API").font(.caption)
+        if capabilities.isCheckingZotero { ProgressView().controlSize(.small) }
+        else if let info = capabilities.zoteroLibraryInfo {
+          Text(zoteroStatus(info.status)).font(.caption).foregroundStyle(.secondary)
+        } else { Text("Not Checked").font(.caption).foregroundStyle(.secondary) }
+        Spacer()
+        Button("Check Connection") { capabilities.checkZotero() }.disabled(!capabilities.canCheckZotero)
+      }
+      if capabilities.zoteroLibraryInfo?.status == .apiDisabled {
+        Text("In Zotero Advanced settings, enable ‘Allow other applications on this computer to communicate with Zotero’, then test again.")
+          .font(.caption).foregroundStyle(.secondary)
+      }
+    }
+  }
+
+  private func zoteroStatus(_ status: ZoteroAvailability) -> String {
+    switch status {
+    case .available, .itemMissing: String(localized: "Connected")
+    case .apiDisabled: String(localized: "Access Disabled in Zotero")
+    case .appUnavailable: String(localized: "Zotero Not Available")
+    }
+  }
+
   private func toolRow(_ name: String) -> some View {
     let server = capabilities.tools.first { $0.name == name }
     let configuration = capabilities.toolConnections.first { $0.name == name }
@@ -158,7 +206,7 @@ struct AgentChatCapabilitiesSettingsView: View {
     } label: {
       HStack {
         VStack(alignment: .leading, spacing: 3) {
-          Text(server?.title ?? name).lineLimit(1)
+          Text(name == AgentChatCapabilitiesController.zoteroServerName ? String(localized: "Zotero") : (server?.title ?? name)).lineLimit(1)
           if let server {
             Text(AgentChatToolLabels.state(server)).font(.caption).foregroundStyle(.secondary)
           } else {

@@ -2052,6 +2052,8 @@ struct WindowControllerArchitectureTests {
         let actual = Dictionary(grouping: calls, by: { $0 }).mapValues(\.count)
 
         let compositionAndSubscription = [
+            "registerNoteDisplayWindow": 1,
+            "unregisterNoteDisplayWindow": 1,
             "savedSearches": 1,
             "saveSavedSearches": 1,
             "preserveUnreadableSavedSearchesAndReset": 1,
@@ -2076,7 +2078,7 @@ struct WindowControllerArchitectureTests {
             }
         }
 
-        #expect(compositionAndSubscription.values.reduce(0, +) == 8)
+        #expect(compositionAndSubscription.values.reduce(0, +) == 10)
         #expect(windowIntentAndDelivery.values.reduce(0, +) == 7)
         #expect(actual == approved)
         #expect(!windowModelSource.contains("workspaceStore.windowSession"))

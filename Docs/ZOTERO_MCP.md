@@ -8,6 +8,15 @@ Scholium's built-in Zotero reader and external-agent MCP transport are separate.
 The app reader remains bounded and read-only. The MCP service is
 `scholium zotero mcp serve`; opening Zotero does not start it.
 
+In Chat Settings → Methods and Tools, **Set Up Zotero…** opens the existing
+configuration editor with the bundled CLI and `zotero mcp serve --read-only`.
+Save **Enabled** there; the selected Codex configuration owns that choice across
+reconnects. This mode publishes read tools and refuses imports even if a caller
+names an unadvertised import tool. Shared settings retain their ordinary shared
+change confirmation. **Check Connection** reports local API availability
+separately from the configured MCP server's connection state. It reads no paper
+into Chat. A custom same-name connection is never silently replaced.
+
 ## Install and verify the CLI
 
 Open **Settings → Research Guidance → External Tools & Citations → Scholium CLI**
@@ -87,16 +96,38 @@ readiness.
   libraries;
 - `zotero_item`: exact item inspection and optional bounded attachment
   pointers;
+- `zotero_list_annotations`: paginated annotation pointers for an exact
+  library/PDF attachment, with a listing fingerprint required on continuation;
+- `zotero_read_annotation`: one selected annotation, optionally pinned to its
+  pointer fingerprint, with text, comment and physical/printed page kept separate;
+- `zotero_read_original`: an exact local attachment's bounded text slice or
+  selected PDF page/image, retaining the original-file fingerprint;
 - `zotero_selected_target`: the currently selected editable library or
   collection, without enumerating the complete tree; and
 - `zotero_import_bibtex` and `zotero_import_ris`: guarded Connector imports.
 
 Retrieval uses Zotero Desktop's localhost interfaces, never its live database.
+Item, PDF-page and annotation locators share validated `zotero://` URLs. They
+can be opened from Chat replies/Sources without implying that material was read.
+Annotation lists are bounded to 1,000 records/4 MiB and 50 pointers per page;
+changed or oversized snapshots fail. Annotation reads verify the attachment and
+parent relationship, but do not read PDF bytes or corroborate the selected text.
+Original reads accept no arbitrary path or URL. The API resolves the selected
+attachment; file type/name, metadata, path and exact bytes are revalidated under
+a 20 MiB limit. Symlinked components, redirects, unavailable/locked originals,
+changed versions and unsupported formats fail without index substitution.
+Text is capped at 64 KiB; nonzero offsets require the original fingerprint.
+PDFs require one physical page. Image mode returns a bounded native PNG;
+it does not perform OCR. No original is automatically staged or persisted.
+The supported locator forms follow Zotero's
+[protocol handler](https://github.com/zotero/zotero/blob/main/chrome/content/zotero/ZoteroProtocolHandler.mjs).
+Its [local API implementation](https://github.com/zotero/zotero/blob/main/chrome/content/zotero/xpcom/server/server_localAPI.js)
+distinguishes item/annotation JSON, indexed full text and local file URLs.
 Imports follow §15's exact-request, dry-run, confirmation, unchanged-destination,
 and readback boundary. Metadata establishes bibliographic identity only. When
 an Analysis Run carries the matching Zotero binding, the external Agent may
 use this transport and its returned attachment pointer to retrieve the paper
-data it needs; Scholium does not proxy, cache, or automatically copy that
+data it needs; Scholium does not automatically fetch or persist original-file
 content. Source analysis and citation formatting remain separate scholarly
 work. The Agent states material access or extraction limits when they constrain
 what the academic result can support; Scholium retains no reading history.

@@ -11,10 +11,10 @@ extension ScholiumCLI {
         }
         let subcommand = arguments.dropFirst().first ?? "status"
         if subcommand == "serve" {
-            guard arguments.count == 2 else {
+            guard arguments.count == 2 || (arguments.count == 3 && arguments.last == "--read-only") else {
                 throw commandUsageError("zotero mcp serve")
             }
-            try await serveZoteroMCP(using: context.runtime.zotero)
+            try await serveZoteroMCP(using: context.runtime.zotero, access: arguments.contains("--read-only") ? .readOnly : .guardedImports)
             return
         }
         let format = option("--format", in: arguments) ?? "text"
@@ -87,18 +87,18 @@ extension ScholiumCLI {
         }
     }
 
-    private static func serveZoteroMCP(using operations: any ZoteroUseCases) async throws {
+    private static func serveZoteroMCP(using operations: any ZoteroUseCases, access: ZoteroMCPAccess) async throws {
         var parser = ZoteroMCPFrameParser()
         for try await byte in FileHandle.standardInput.bytes {
             for frame in try parser.append(byte) {
-                guard let response = await operations.handle(requestData: frame.body) else {
+                guard let response = await operations.handle(requestData: frame.body, access: access) else {
                     continue
                 }
                 writeMCPFrame(response, mode: frame.mode)
             }
         }
         for frame in try parser.finish() {
-            guard let response = await operations.handle(requestData: frame.body) else {
+            guard let response = await operations.handle(requestData: frame.body, access: access) else {
                 continue
             }
             writeMCPFrame(response, mode: frame.mode)

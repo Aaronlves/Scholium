@@ -5,6 +5,54 @@ import Testing
 
 @Suite("Reply source evidence")
 struct AgentChatSourceEvidenceTests {
+  @Test("Zotero reports remain separate by source version and exact cited page")
+  func zoteroScopeAndVersions() throws {
+    let page = try ZoteroReference(library: .group(42), kind: .pdf, itemKey: "ATTACH01", page: 2)
+    let first = ZoteroReadReport(server: "scholium-zotero", tool: "zotero_read_original", reference: page,
+      representation: .pdfText, fingerprint: String(repeating: "a", count: 64), range: .init(start: 0, end: 4, total: 40), excerpt: "Read")
+    let second = ZoteroReadReport(server: "custom-zotero", tool: "zotero_read_original", reference: page,
+      representation: .pdfImage, fingerprint: String(repeating: "b", count: 64))
+    func event(_ report: ZoteroReadReport) -> AgentChatMessage {
+      var activity = AgentChatActivity(kind: .tool, status: .completed, source: .runtime)
+      activity.sourceObservation = .zoteroReadReport(report)
+      var message = AgentChatMessage(role: .operation, text: "", activity: activity); message.turnID = "turn"; return message
+    }
+    let answer = reply()
+    let context = AgentChatReplySourceContext(reply: answer, history: [event(first), event(second), answer])
+    guard case .zotero(let reports) = context.evidence(for: page.url) else { Issue.record("Missing reports"); return }
+    #expect(reports == [first, second])
+    let plain = ZoteroReadReport(server: "custom-zotero", tool: "zotero_read_original",
+      reference: try ZoteroReference(library: .group(42), itemKey: "ATTACH01"), representation: .text,
+      fingerprint: String(repeating: "a", count: 64), range: .init(start: 0, end: 4, total: 4), excerpt: "Read")
+    #expect(!plain.matches(try ZoteroReference(library: .group(42), kind: .pdf, itemKey: "ATTACH01")))
+    let wrongPage = try ZoteroReference(library: .group(42), kind: .pdf, itemKey: "ATTACH01", page: 3)
+    let wrongLibrary = try ZoteroReference(library: .user, kind: .pdf, itemKey: "ATTACH01", page: 2)
+    for wrong in [wrongPage, wrongLibrary] {
+      if case .unrecorded = context.evidence(for: wrong.url) {} else { Issue.record("Crossed material scope") }
+    }
+    var previous = event(first); previous.turnID = "previous"
+    var failed = event(first); failed.activity?.status = .failed
+    var spoof = event(first)
+    var falseOrigin = AgentChatActivity(kind: .tool, status: .completed, source: .scholium)
+    falseOrigin.sourceObservation = .zoteroReadReport(first); spoof.activity = falseOrigin
+    let unrelated = AgentChatReplySourceContext(reply: answer, history: [previous, failed, spoof, answer, event(second)])
+    if case .unrecorded = unrelated.evidence(for: page.url) {} else { Issue.record("Unrelated or false-origin report was admitted") }
+  }
+
+  @Test("An annotation report cannot stand in for PDF text or another annotation")
+  func annotationIsSeparateMaterial() throws {
+    let reference = try ZoteroReference(library: .user, kind: .pdf, itemKey: "ATTACH01", page: 2, annotationKey: "ANNO0001")
+    let report = ZoteroReadReport(server: "custom-zotero", tool: "zotero_read_annotation", reference: reference,
+      representation: .annotation, fingerprint: String(repeating: "a", count: 64), excerpt: "Selected text", comment: "A comment", pageLabel: "xii")
+    #expect(report.matches(reference))
+    #expect(report.matches(try ZoteroReference(library: .user, kind: .pdf, itemKey: "ATTACH01", annotationKey: "ANNO0001")))
+    #expect(!report.matches(try ZoteroReference(library: .user, kind: .pdf, itemKey: "ATTACH01", page: 2)))
+    #expect(!report.matches(try ZoteroReference(library: .user, kind: .pdf, itemKey: "ATTACH01", annotationKey: "ANNO0002")))
+    let corrupted = ZoteroReadReport(server: "custom-zotero", tool: "zotero_read_annotation", reference: reference,
+      representation: .annotation, fingerprint: "invalid", excerpt: String(repeating: "a", count: 2_000))
+    #expect(!corrupted.isValid && !corrupted.matches(reference))
+  }
+
   let noteID = UUID()
   let revision = DocumentFingerprint(content: "Current source")
   func read(_ start: Int, _ count: Int, end: Bool = false, revision other: DocumentFingerprint? = nil) -> AgentChatMessage {

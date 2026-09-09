@@ -12,6 +12,19 @@ inherited auxiliary-window palettes against Design. The document renderer's
 source fidelity and researcher-owned content formatting remain separate owners.
 This documentation cleanup changes no app code and closes no UI acceptance.
 
+## Agent knowledge-base and Zotero acceptance
+
+Exact range updates, paginated Library browsing and Agent Change query/compare/
+Undo, move-impact preview and identity-preserving move/exact inverse have
+implementation slices, together with bounded related attachment text/page/image
+reads, session/window-bound Note display and persistent native Chat Zotero
+read-only enablement/status, unified Zotero locators and exact annotation/original
+reads, with scoped runtime material reports in Sources. Deterministic integration
+coverage is recorded in Verification; native acceptance remains. Specification
+§§8 and 15 own the approved boundaries; this list is not a completed capability.
+Real provider, Zotero page/annotation opening and researcher accessibility remain
+unaccepted until separately evidenced. No expanded Zotero write scope is implied.
+
 ## In-app Chat acceptance
 
 The expanded target is owned by Specification §8.7 in `12-agent-chat.md`.
@@ -142,9 +155,6 @@ compositing artifacts; inspect the actual native window before judging them.
   Conversations originate in Scholium and retain their own public history.
 - Complete human VoiceOver, installed-IME and visual-adaptation acceptance for
   the Chat composer, approvals, file navigation and Related Material.
-- Diagnose the whole-App gate failures in document scroll restoration, editor
-  projection/bridge and stale WebKit localization expectations. The focused
-  Chat checks pass; the full integration gate remains unaccepted.
 
 ## External-host and release acceptance
 

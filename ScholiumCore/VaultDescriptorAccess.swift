@@ -190,7 +190,7 @@ final class VaultDescriptorAccess {
         return try body(currentDescriptor, name)
     }
 
-    static func readAll(from descriptor: Int32) throws -> Data {
+    static func readAll(from descriptor: Int32, maximumByteCount: Int? = nil) throws -> Data {
         var data = Data()
         var buffer = [UInt8](repeating: 0, count: 64 * 1_024)
         while true {
@@ -201,6 +201,9 @@ final class VaultDescriptorAccess {
             if count < 0, errno == EINTR { continue }
             guard count > 0 else {
                 throw POSIXError(posixCode(errno))
+            }
+            if let maximumByteCount, count > maximumByteCount - data.count {
+                throw CocoaError(.fileReadTooLarge)
             }
             data.append(buffer, count: count)
         }

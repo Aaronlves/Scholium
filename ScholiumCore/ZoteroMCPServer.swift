@@ -29,16 +29,32 @@ public struct ZoteroMCPURLSessionClient: ZoteroMCPHTTPClient, Sendable {
         configuration.timeoutIntervalForRequest = 5
         configuration.timeoutIntervalForResource = 20
         configuration.waitsForConnectivity = false
-        session = URLSession(configuration: configuration)
+        session = URLSession(configuration: configuration, delegate: ZoteroNoRedirectDelegate(), delegateQueue: nil)
     }
 
+    init(session: URLSession) { self.session = session }
+
     public func send(_ request: URLRequest) async throws -> ZoteroMCPHTTPResponse {
-        let (body, response) = try await session.data(for: request)
+        let (bytes, response) = try await session.bytes(for: request)
+        defer { bytes.task.cancel() }
         guard let response = response as? HTTPURLResponse else {
             throw ZoteroMCPServiceError.invalidResponse
         }
-        guard body.count <= 4 * 1_024 * 1_024 else {
+        let maximum = 4 * 1_024 * 1_024
+        guard response.expectedContentLength <= maximum else {
             throw ZoteroMCPServiceError.responseTooLarge
+        }
+        let body = try await withTaskCancellationHandler {
+            var body = Data()
+            for try await byte in bytes {
+                guard body.count < maximum else { throw ZoteroMCPServiceError.responseTooLarge }
+                if body.count.isMultiple(of: 8_192) { try Task.checkCancellation() }
+                body.append(byte)
+            }
+            try Task.checkCancellation()
+            return body
+        } onCancel: {
+            bytes.task.cancel()
         }
         let headers = response.allHeaderFields.reduce(into: [String: String]()) { result, entry in
             result[String(describing: entry.key)] = String(describing: entry.value)
@@ -52,8 +68,8 @@ public struct ZoteroMCPURLSessionClient: ZoteroMCPHTTPClient, Sendable {
 }
 
 /// A first-party stdio MCP implementation for bounded Zotero operations.
-/// The server never opens Zotero's data directory or SQLite database. Reads
-/// use the documented localhost API; guarded imports use the localhost
+/// Original reads open only an exact API-resolved attachment; never SQLite.
+/// Metadata reads use the localhost API; guarded imports use the localhost
 /// Connector only after a one-shot, target-bound dry run.
 public actor ZoteroMCPServer {
     public static let protocolVersion = "2025-11-25"
@@ -74,7 +90,7 @@ public actor ZoteroMCPServer {
 
     /// Handles one JSON-RPC message body. Notifications intentionally return
     /// nil. Diagnostics and errors never echo search text or import content.
-    public func handle(requestData: Data) async -> Data? {
+    public func handle(requestData: Data, access: ZoteroMCPAccess) async -> Data? {
         let request: RPCRequest
         do {
             request = try JSONDecoder().decode(RPCRequest.self, from: requestData)
@@ -109,11 +125,11 @@ public actor ZoteroMCPServer {
 
         case "tools/list":
             return encode(responseResult(id: id, result: .object([
-                "tools": .array(Self.toolDefinitions),
+                "tools": .array(Self.toolDefinitions(for: access)),
             ])))
 
         case "tools/call":
-            let result = await callTool(params: request.params)
+            let result = await callTool(params: request.params, access: access)
             return encode(responseResult(id: id, result: result))
 
         default:
@@ -121,11 +137,14 @@ public actor ZoteroMCPServer {
         }
     }
 
-    private func callTool(params: ZoteroMCPJSONValue?) async -> ZoteroMCPJSONValue {
+    private func callTool(params: ZoteroMCPJSONValue?, access: ZoteroMCPAccess) async -> ZoteroMCPJSONValue {
         do {
             guard let params = params?.objectValue,
                   let name = params["name"]?.stringValue else {
                 throw ZoteroMCPServiceError.invalidArguments
+            }
+            guard Self.toolDefinitions(for: access).contains(where: { $0.objectValue?["name"]?.stringValue == name }) else {
+                throw ZoteroMCPServiceError.unknownTool
             }
             let arguments: [String: ZoteroMCPJSONValue]
             if let value = params["arguments"] {
@@ -140,11 +159,17 @@ public actor ZoteroMCPServer {
             let execution: ToolExecution
             switch name {
             case "zotero_status":
-                execution = .success(await status())
+                execution = .success(await status(access: access))
             case "zotero_search":
                 execution = .success(try await search(arguments))
             case "zotero_item":
                 execution = .success(try await inspectItem(arguments))
+            case "zotero_list_annotations":
+                execution = .success(try await listAnnotations(arguments))
+            case "zotero_read_annotation":
+                execution = .success(try await readAnnotation(arguments))
+            case "zotero_read_original":
+                execution = .success(try await readOriginal(arguments))
             case "zotero_selected_target":
                 execution = .success(try await selectedTarget().value)
             case "zotero_import_bibtex":
@@ -154,7 +179,7 @@ public actor ZoteroMCPServer {
             default:
                 throw ZoteroMCPServiceError.unknownTool
             }
-            return toolResult(execution.value, isError: execution.isError)
+            return toolResult(execution.value, isError: execution.isError, includesImage: name == "zotero_read_original")
         } catch let error as ZoteroMCPServiceError {
             return toolResult(.object([
                 "status": .string("failed"),
@@ -168,7 +193,7 @@ public actor ZoteroMCPServer {
         }
     }
 
-    private func status() async -> ZoteroMCPJSONValue {
+    private func status(access: ZoteroMCPAccess) async -> ZoteroMCPJSONValue {
         let apiRequest = ZoteroMCPRequestFactory.api(
             route: .user,
             resource: .items(query: [
@@ -184,7 +209,8 @@ public actor ZoteroMCPServer {
             "local_api": .string(apiState),
             "connector": .string(connectorState),
             "retrieval_mode": .string("localhost-read-only"),
-            "guarded_imports": .bool(apiState == "available" && connectorState == "available"),
+            "guarded_imports": .bool(access == .guardedImports && apiState == "available" && connectorState == "available"),
+            "access_mode": .string(access.rawValue),
             "direct_database_access": .bool(false),
         ])
     }
@@ -250,7 +276,7 @@ public actor ZoteroMCPServer {
         return .object([
             "query_scope": .string("local-user-and-group-libraries"),
             "count": .integer(hits.count),
-            "results": .array(hits.map { metadataValue($0.item, route: $0.route) }),
+            "results": .array(try hits.map { try metadataValue($0.item, route: $0.route) }),
         ])
     }
 
@@ -278,7 +304,7 @@ public actor ZoteroMCPServer {
             throw ZoteroMCPServiceError.ambiguousItem
         }
 
-        var result = metadataValue(match.item, route: match.route).objectValue ?? [:]
+        var result = try metadataValue(match.item, route: match.route).objectValue ?? [:]
         if includeAttachments {
             guard let request = ZoteroMCPRequestFactory.api(
                 route: match.route,
@@ -288,7 +314,7 @@ public actor ZoteroMCPServer {
             let attachments = try JSONDecoder().decode([AttachmentEnvelope].self, from: response.body)
                 .filter { $0.data.itemType.lowercased() == "attachment" }
                 .prefix(50)
-                .map(attachmentValue)
+                .map { try attachmentValue($0, parentItem: itemKey, route: match.route) }
             result["attachments"] = .array(Array(attachments))
         }
         return .object(result)
@@ -452,7 +478,7 @@ public actor ZoteroMCPServer {
                     destinationVerified = false
                     warnings.append(.string("An imported item was not found in the selected collection."))
                 }
-                readBackItems.append(metadataValue(match.item, route: currentResolvedTarget.route))
+                readBackItems.append(try metadataValue(match.item, route: currentResolvedTarget.route))
             } catch {
                 destinationVerified = false
                 warnings.append(.string("An imported item could not be verified through the local API."))
@@ -549,10 +575,12 @@ public actor ZoteroMCPServer {
         guard let item = try decodedParentItems(response.body).first else {
             throw ZoteroMCPServiceError.itemMissing
         }
+        guard item.key == itemKey else { throw ZoteroMCPServiceError.invalidResponse }
         return (response, item)
     }
 
-    private func sendAPI(_ request: URLRequest) async throws -> ZoteroMCPHTTPResponse {
+    func sendAPI(_ request: URLRequest) async throws -> ZoteroMCPHTTPResponse {
+        try Task.checkCancellation()
         let response: ZoteroMCPHTTPResponse
         do {
             response = try await client.send(request)
@@ -564,6 +592,7 @@ public actor ZoteroMCPServer {
         guard response.body.count <= 4 * 1_024 * 1_024 else {
             throw ZoteroMCPServiceError.responseTooLarge
         }
+        try Task.checkCancellation()
         try validateAPI(response)
         return response
     }
@@ -639,9 +668,10 @@ public actor ZoteroMCPServer {
     private func metadataValue(
         _ item: ZoteroItemMetadata,
         route: LibraryRoute
-    ) -> ZoteroMCPJSONValue {
+    ) throws -> ZoteroMCPJSONValue {
         var object: [String: ZoteroMCPJSONValue] = [
             "library": route.value,
+            "reference": try referenceValue(route: route, itemKey: item.key),
             "item_key": .string(item.key),
             "title": .string(item.title),
             "authors": .array(item.authors.map(ZoteroMCPJSONValue.string)),
@@ -665,10 +695,15 @@ public actor ZoteroMCPServer {
         return .object(object)
     }
 
-    private func attachmentValue(_ attachment: AttachmentEnvelope) -> ZoteroMCPJSONValue {
+    private func attachmentValue(_ attachment: AttachmentEnvelope, parentItem: String, route: LibraryRoute) throws -> ZoteroMCPJSONValue {
+        guard attachment.data.key == attachment.key, attachment.data.parentItem == parentItem else {
+            throw ZoteroMCPServiceError.invalidResponse
+        }
         var object: [String: ZoteroMCPJSONValue] = [
             "item_key": .string(attachment.key),
             "title": .string(attachment.data.title ?? ""),
+            "reference": try referenceValue(route: route, itemKey: attachment.key,
+                kind: attachment.data.contentType == "application/pdf" ? .pdf : .item),
         ]
         set(attachment.data.contentType, key: "content_type", in: &object)
         set(attachment.data.linkMode, key: "link_mode", in: &object)
@@ -707,13 +742,7 @@ public actor ZoteroMCPServer {
     }
 
     private func normalizedKey(_ value: String?) -> String? {
-        guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines).uppercased(),
-              !value.isEmpty,
-              value.count <= 64,
-              value.unicodeScalars.allSatisfy({
-                  CharacterSet.alphanumerics.contains($0) || $0 == "-" || $0 == "_"
-              }) else { return nil }
-        return value
+        value.flatMap(ZoteroReference.normalizedKey)
     }
 
     private func responseResult(
@@ -737,16 +766,27 @@ public actor ZoteroMCPServer {
 
     private func toolResult(
         _ value: ZoteroMCPJSONValue,
-        isError: Bool
+        isError: Bool,
+        includesImage: Bool = false
     ) -> ZoteroMCPJSONValue {
+        var textValue = value
+        var imageBlock: ZoteroMCPJSONValue?
+        if includesImage, !isError, let image = value.objectValue?["image"]?.objectValue,
+           image["mime_type"]?.stringValue == "image/png", let data = image["data"]?.stringValue {
+            imageBlock = .object(["type": .string("image"), "mimeType": .string("image/png"), "data": .string(data)])
+            var object = value.objectValue ?? [:]; var metadata = image; metadata["data"] = nil
+            object["image"] = .object(metadata); textValue = .object(object)
+        }
         let text: String
-        if let data = try? JSONEncoder.pretty.encode(value) {
+        if let data = try? JSONEncoder.pretty.encode(textValue) {
             text = String(decoding: data, as: UTF8.self)
         } else {
             text = "{\"status\":\"failed\"}"
         }
+        var content: [ZoteroMCPJSONValue] = [.object(["type": .string("text"), "text": .string(text)])]
+        if let imageBlock { content.append(imageBlock) }
         return .object([
-            "content": .array([.object(["type": .string("text"), "text": .string(text)])]),
+            "content": .array(content),
             "structuredContent": value,
             "isError": .bool(isError),
         ])
@@ -754,6 +794,10 @@ public actor ZoteroMCPServer {
 
     private func encode(_ value: ZoteroMCPJSONValue) -> Data? {
         try? JSONEncoder.sorted.encode(value)
+    }
+
+    private static func toolDefinitions(for access: ZoteroMCPAccess) -> [ZoteroMCPJSONValue] {
+        access == .guardedImports ? toolDefinitions : toolDefinitions.filter { $0.objectValue?["annotations"]?.objectValue?["readOnlyHint"]?.boolValue == true }
     }
 
     private static let toolDefinitions: [ZoteroMCPJSONValue] = [
@@ -794,15 +838,19 @@ public actor ZoteroMCPServer {
             description: "Report only the currently selected import library or collection and its editability.",
             properties: [:]
         ),
+        annotationListTool,
+        annotationReadTool,
+        originalReadTool,
         importTool(kind: .bibtex),
         importTool(kind: .ris),
     ]
 
-    private static func tool(
+    static func tool(
         name: String,
         description: String,
         properties: [String: ZoteroMCPJSONValue],
-        required: [String] = []
+        required: [String] = [],
+        readOnly: Bool = true
     ) -> ZoteroMCPJSONValue {
         var schema: [String: ZoteroMCPJSONValue] = [
             "type": .string("object"),
@@ -816,6 +864,7 @@ public actor ZoteroMCPServer {
             "name": .string(name),
             "description": .string(description),
             "inputSchema": .object(schema),
+            "annotations": .object(["readOnlyHint": .bool(readOnly), "destructiveHint": .bool(!readOnly), "idempotentHint": .bool(readOnly), "openWorldHint": .bool(false)]),
         ])
     }
 
@@ -836,12 +885,12 @@ public actor ZoteroMCPServer {
                     "description": .string("One-shot token from the matching dry run."),
                 ]),
             ],
-            required: [kind.argumentName]
+            required: [kind.argumentName], readOnly: false
         )
     }
 }
 
-private enum ZoteroMCPServiceError: LocalizedError, Sendable {
+enum ZoteroMCPServiceError: LocalizedError, Sendable {
     case invalidArguments
     case invalidRequest
     case invalidResponse
@@ -861,6 +910,9 @@ private enum ZoteroMCPServiceError: LocalizedError, Sendable {
     case importAuthorizationExpired
     case importAuthorizationMismatch
     case importTargetChanged
+    case materialChanged
+    case originalUnavailable
+    case originalReadFailed(String)
 
     var errorDescription: String? {
         switch self {
@@ -883,6 +935,9 @@ private enum ZoteroMCPServiceError: LocalizedError, Sendable {
         case .importAuthorizationExpired: "The dry-run authorization expired; run a new preview."
         case .importAuthorizationMismatch: "The import content or operation no longer matches its dry run."
         case .importTargetChanged: "The selected Zotero destination changed after the dry run."
+        case .materialChanged: "The selected Zotero material changed. Refresh the selection before reading it."
+        case .originalUnavailable: "The selected local original is missing, unsafe, unsupported or exceeds 20 MiB. Restore the attachment in Zotero and select it again."
+        case .originalReadFailed(let message): message
         }
     }
 }
@@ -894,7 +949,7 @@ private struct RPCRequest: Decodable, Sendable {
     let params: ZoteroMCPJSONValue?
 }
 
-private enum ZoteroMCPJSONValue: Codable, Hashable, Sendable {
+enum ZoteroMCPJSONValue: Codable, Hashable, Sendable {
     case string(String)
     case integer(Int)
     case number(Double)
@@ -937,7 +992,7 @@ private enum ZoteroMCPJSONValue: Codable, Hashable, Sendable {
     var intValue: Int? {
         switch self {
         case .integer(let value): value
-        case .number(let value) where value.rounded() == value: Int(value)
+        case .number(let value): Int(exactly: value)
         default: nil
         }
     }
@@ -1063,7 +1118,7 @@ private struct ResolvedTarget: Hashable, Sendable {
     }
 }
 
-private enum LibraryRoute: Hashable, Sendable {
+enum LibraryRoute: Hashable, Sendable {
     case user
     case group(id: Int, name: String)
 
@@ -1162,6 +1217,8 @@ private struct AttachmentEnvelope: Decodable, Sendable {
     let data: AttachmentData
 
     struct AttachmentData: Decodable, Sendable {
+        let key: String
+        let parentItem: String?
         let itemType: String
         let title: String?
         let contentType: String?
@@ -1171,13 +1228,15 @@ private struct AttachmentEnvelope: Decodable, Sendable {
     }
 }
 
-private enum ZoteroMCPRequestFactory {
+enum ZoteroMCPRequestFactory {
     enum APIResource {
         case groups
         case collections(query: [URLQueryItem])
         case items(query: [URLQueryItem])
         case item(itemKey: String)
         case children(itemKey: String)
+        case annotationChildren(itemKey: String)
+        case fileURL(itemKey: String)
     }
 
     enum ConnectorEndpoint {
@@ -1211,6 +1270,16 @@ private enum ZoteroMCPRequestFactory {
                 URLQueryItem(name: "format", value: "json"),
                 URLQueryItem(name: "limit", value: "50"),
             ]
+        case .annotationChildren(let key):
+            guard validKey(key) else { return nil }
+            suffix = "/items/\(key)/children"
+            query = [URLQueryItem(name: "format", value: "json"),
+                     URLQueryItem(name: "itemType", value: "annotation"),
+                     URLQueryItem(name: "limit", value: "1001")]
+        case .fileURL(let key):
+            guard validKey(key) else { return nil }
+            suffix = "/items/\(key)/file/view/url"
+            query = []
         }
         guard query.allSatisfy({ allowedQueryNames.contains($0.name) }) else { return nil }
         var components = URLComponents()
@@ -1224,6 +1293,7 @@ private enum ZoteroMCPRequestFactory {
         request.httpMethod = "GET"
         request.httpBody = nil
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        if case .fileURL = resource { request.setValue("text/plain", forHTTPHeaderField: "Accept") }
         request.setValue("3", forHTTPHeaderField: "Zotero-API-Version")
         return request
     }
@@ -1267,9 +1337,7 @@ private enum ZoteroMCPRequestFactory {
     ]
 
     private static func validKey(_ key: String) -> Bool {
-        !key.isEmpty && key.count <= 64 && key.unicodeScalars.allSatisfy {
-            CharacterSet.alphanumerics.contains($0) || $0 == "-" || $0 == "_"
-        }
+        ZoteroReference.normalizedKey(key) == key
     }
 }
 

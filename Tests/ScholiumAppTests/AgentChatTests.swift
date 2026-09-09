@@ -536,6 +536,61 @@ struct AgentChatTests {
     try await controller.flushPersistence()
   }
 
+  @Test("Attachment reads show their selected scope without Note-reading or mutation evidence")
+  func attachmentReadPresentation() async throws {
+    let root = try root(); defer { try? FileManager.default.removeItem(at: root) }
+    let triptych = UUID()
+    let controller = AgentChatController(triptychID: triptych, root: root) { request in
+      #expect(request.arguments["triptych_id"]?.stringValue == triptych.uuidString.lowercased())
+      return try! .init(requestID: request.requestID, result: .object(["filename": .string("Original.pdf"),
+        "kind": .string("pdf_text"), "page": .integer(2), "text": .string(""), "text_available": .bool(false), "image": .null, "has_more": .bool(false)]))
+    }
+    try await connect(controller)
+    controller.editDraft("hold"); controller.send()
+    try await eventually { controller.state == .working && controller.selected?.pendingMessageID == nil }
+    let token = try #require(controller.token)
+    let response = await controller.handle(.init(tool: .readAttachment, conversationToken: token, runtimeContext: controller.runtimeContext(for: token)))
+    #expect(response.error == nil && controller.approvals.isEmpty)
+    let activity = try #require(controller.selected?.messages.last?.activity)
+    #expect(activity.kind == .readAttachment && !activity.kind.isMutation && activity.status == .completed)
+    #expect(activity.files.first?.path == "Original.pdf" && activity.files.first?.noteID == nil && activity.sourceObservation == nil)
+    #expect(activity.detail.contains(String(localized: "This selection contains no readable text.")))
+    #expect(activity.detail.contains("2") && controller.selected?.messages.last?.changeID == nil)
+    await controller.disconnect()
+  }
+
+  @Test("Display stays with its admitted window instance and selected conversation")
+  func displayAdmission() async throws {
+    let root = try root(); defer { try? FileManager.default.removeItem(at: root) }
+    let original = AgentChatDisplayScope(windowID: UUID(), registrationID: UUID())
+    var visible: AgentChatDisplayScope? = original
+    var calls: [ScholiumMCPBridgeRequest] = []
+    let controller = AgentChatController(triptychID: UUID(), root: root, displayWindow: { _ in visible }) { request in
+      calls.append(request)
+      return try! .init(requestID: request.requestID, result: .object(["relative_path": .string("Source.md"), "activated": .bool(true), "location_requested": .bool(true)]))
+    }
+    try await connect(controller)
+    controller.editDraft("hold"); controller.send()
+    try await eventually { controller.state == .working && controller.selected?.pendingMessageID == nil }
+    let owner = try #require(controller.selectedID), token = try #require(controller.token)
+    let request = ScholiumMCPBridgeRequest(tool: .showNote, conversationToken: token, runtimeContext: controller.runtimeContext(for: token))
+    visible = .init(windowID: original.windowID, registrationID: UUID())
+    #expect(await controller.handle(request).error != nil && calls.isEmpty)
+    visible = original
+    controller.newConversation()
+    #expect(await controller.handle(request).error != nil && calls.isEmpty)
+    controller.select(owner)
+    let wrong = ScholiumMCPBridgeRequest(tool: .showNote, arguments: ["window_id": .string(UUID().uuidString)], conversationToken: token, runtimeContext: request.runtimeContext)
+    #expect(await controller.handle(wrong).error != nil && calls.isEmpty)
+    #expect(await controller.handle(request).error == nil && calls.count == 1)
+    #expect(calls.first?.arguments["window_id"]?.stringValue == original.windowID.uuidString.lowercased())
+    #expect(calls.first?.conversationToken == token && calls.first?.runtimeContext == request.runtimeContext)
+    #expect(controller.approvals.isEmpty && controller.selected?.messages.last?.changeID == nil)
+    visible = nil
+    #expect(await controller.handle(request).error != nil && calls.count == 1)
+    await controller.disconnect()
+  }
+
   @Test("A stopped comparison cannot later request approval or write")
   func stopDuringComparison() async throws {
     let root = try root()

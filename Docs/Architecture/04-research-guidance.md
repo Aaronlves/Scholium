@@ -29,7 +29,24 @@ Zotero remains an optional integration with one Application-owned capability.
 Its settings, exact library/item identity, attachment containment, and
 revision-checked Metadata plans remain separate from MCP Agent collaboration.
 The optional first-party Zotero MCP transport has its own operator guide and
-does not expand Scholium's seven-tool MCP surface.
+does not expand Scholium's knowledge-base MCP surface. `ZoteroMCPAccess` binds
+one CLI session to read-only or guarded-import delivery. Core uses one predicate
+for discovery and dispatch, so hidden import tools cannot execute in read-only
+mode. Application metadata and MCP share Core's bounded URLSession client and
+redirect policy. Foundation request injection stays inside Application composition;
+delivery and boundary tests never construct Core services. The client cancels oversized or
+cancelled responses. `ZoteroMCPAnnotations` uses that server's request factory
+and API validation for exact PDF/annotation reads, paginated snapshot pointers,
+record fingerprints and attachment revalidation; it owns no material store.
+`ZoteroMCPOriginals` resolves only an exact attachment's API file URL, checks its
+metadata and supported type, then reuses `VaultAttachmentStore` bounded,
+descriptor-relative coordinated reads. It rechecks metadata, URL and bytes
+before passing the snapshot to the same Core `AgentAttachmentContentReader`
+used by Note attachments. Only selected text/page/image coverage enters the
+tool response; originals have no second archive or writable projection.
+`ZoteroReference` owns library/item/PDF-page/annotation URL validation and
+serialization. Binding presentation, MCP results, Chat links/Sources and native
+external navigation use it; a locator does not create source-read evidence.
 
 ## Settings authority
 

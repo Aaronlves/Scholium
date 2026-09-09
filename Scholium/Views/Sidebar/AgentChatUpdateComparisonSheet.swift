@@ -15,12 +15,25 @@ struct AgentChatUpdateComparisonSheet: View {
       Button { dismiss() } label: { Text("Done", bundle: .module) }.keyboardShortcut(.cancelAction)
     } content: {
       ScrollView {
+        VStack(alignment: .leading) {
+        if let move = preview.movePreview {
+          Text(move.source.relativePath + " → " + move.destination.relativePath).textSelection(.enabled)
+        }
+        ForEach(preview.linkedComparisons, id: \.effect.noteID) { linked in
+          DisclosureGroup(linked.effect.source.relativePath) {
+            ExactSourceComparisonView(comparison: linked.comparison,
+              startingLabel: .init("Saved Source", locale: locale, bundle: .module), endingLabel: .init("Proposed Source", locale: locale, bundle: .module),
+              startingOnlyLabel: .init("Removed", locale: locale, bundle: .module), endingOnlyLabel: .init("Proposed insertion", locale: locale, bundle: .module),
+              identifierPrefix: "scholium.chat.moveComparison.linked")
+          }
+        }
         ExactSourceComparisonView(comparison: preview.comparison,
           startingLabel: .init("Saved Source", locale: locale, bundle: .module),
           endingLabel: .init("Proposed Source", locale: locale, bundle: .module),
           startingOnlyLabel: .init("Removed", locale: locale, bundle: .module),
           endingOnlyLabel: .init("Proposed insertion", locale: locale, bundle: .module),
           identifierPrefix: "scholium.chat.updateComparison")
+        }
       }
     } footer: {
       HStack {

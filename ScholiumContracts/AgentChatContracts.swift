@@ -99,7 +99,7 @@ public struct AgentChatMessage: Codable, Equatable, Identifiable, Sendable {
 /// Public operation observations. Only a bridge receipt supplies Agent Change evidence.
 public struct AgentChatActivity: Codable, Equatable, Sendable {
   public enum Kind: String, Codable, Sendable {
-      case read, search, create, update, trash, command, webSearch, tool, files, compaction, delegation
+      case read, readAttachment, search, create, update, trash, command, webSearch, tool, files, compaction, delegation
   }
   public enum Status: String, Codable, Sendable {
     case running, waitingForApproval, waitingForInput, completed, failed, declined, interrupted, uncertain
@@ -107,7 +107,7 @@ public struct AgentChatActivity: Codable, Equatable, Sendable {
   }
   public enum Source: String, Codable, Sendable { case scholium, runtime }
   public struct File: Codable, Equatable, Sendable {
-    public enum Effect: String, Codable, Sendable { case read, created, edited, unchanged, trashed }
+    public enum Effect: String, Codable, Sendable { case read, created, edited, unchanged, trashed, moved }
     public var path: String
     public var noteID: UUID?
     public var effect: Effect?
@@ -235,10 +235,13 @@ public enum AgentChatReference {
 extension AgentChatActivity.Kind {
   public static func forTool(_ tool: ScholiumMCPToolName) -> AgentChatActivity.Kind {
     switch tool {
+    case .moveNote: .files
+    case .previewMove, .showNote: .tool
     case .readNote: .read
-    case .search, .listLinks, .workspaceStatus: .search
+    case .readAttachment: .readAttachment
+    case .browse, .search, .listLinks, .listAttachments, .workspaceStatus, .listChanges, .readChange: .search
     case .createNote: .create
-    case .updateNote: .update
+    case .updateNote, .undoChange: .update
     case .trashNote: .trash
     }
   }

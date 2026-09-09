@@ -75,10 +75,69 @@ BibTeX/RIS. Any write requires an explicit current-task request for the exact
 record and destination, dry run, confirmation, and readback. Prior search,
 reading, analysis, or import grants no standing permission.
 
+In-app Chat offers a Zotero read-only preset through its existing versioned
+runtime configuration editor. The selected Codex settings file owns enabled
+state across restarts; no second Scholium preference overrides it. Shared
+settings retain the ordinary shared-change confirmation. A same-name custom
+connection is inspected rather than silently replaced, and active turns block
+configuration changes. Disabled and disconnected states remain distinct from
+Zotero's local API being disabled or unavailable. Checking that API is explicit
+and does not import material into a conversation.
+
+The preset launches the bundled first-party service with `--read-only`.
+Local transports refuse redirects rather than follow another resource.
+That mode publishes only read tools and rejects import calls before any local
+request, including forged calls to unadvertised tools. The external guarded
+import service retains its separately requested dry-run/confirmation contract;
+Chat read enablement grants no import authority. An unavailable optional server
+does not disable ordinary Note collaboration. Runtime tool connection status
+and local API availability are separate observations, never proof of reading.
+
 Never access Zotero's live SQLite directly, guess ambiguous items or
 destinations, or treat metadata and attachment identity as evidence. If the MCP
 route is unavailable, report that boundary without database bypass or broad
 configuration scans.
+
+### 15.4 Exact references and selected material
+
+One library-qualified reference identifies an item, a PDF attachment at an
+optional one-based physical page, or an annotation within that attachment.
+Native binding navigation and tool results use the same `zotero://select` or
+`zotero://open-pdf` representation. A printed page label remains separate from
+the physical page; a reference proves neither successful arrival nor reading.
+Unsupported routes, malformed keys, duplicate parameters, and nonpositive
+pages or group IDs are rejected rather than guessed or downgraded.
+
+`zotero_list_annotations` requires an exact library and PDF attachment key.
+It returns at most 50 annotation pointers per page from a bounded snapshot
+(at most 1,000 records and 4 MiB); continuation requires that snapshot's
+fingerprint. Oversized or changed snapshots fail explicitly. Listing includes
+locators and record fingerprints, not selected text or comments.
+`zotero_read_annotation` requires the library, attachment and annotation keys;
+an optional expected record fingerprint pins a prior selection. It checks the
+attachment type and exact parent relationship, returns the selected text and
+comment separately with the record fingerprint and locator, and never presents
+either as independently verified PDF text. Missing or invalid positions remain
+unlocated rather than deriving a physical page from the printed label.
+
+Original-file reads must resolve the exact attachment through the local API,
+verify bounded local bytes and return only the requested representation and
+range/page with its fingerprint. Metadata, annotation text and indexed full
+text are distinct from those bytes. No selection silently stages a whole paper,
+loads related records into Chat, follows network redirects, or grants writes.
+
+`zotero_read_original` takes an explicit library, attachment key and text/image
+mode, with one physical page required for PDFs. It accepts no caller-supplied
+file path or URL. The attachment record and local file-URL response must agree
+on identity, file type and filename; linked-URL attachments are not local files.
+Every path component is opened without following symlinks. Reads are capped at
+20 MiB and recheck the attachment record, resolved URL and exact bytes before
+returning. A missing, changed, unsafe, locked or unsupported original fails
+without database access, file-access prompts, or full-text-index substitution.
+Text returns at most 64 KiB of UTF-8 (16 KiB by default); nonzero offsets require
+the original fingerprint. Text extraction and a selected-page PNG derivative
+reuse the Note-attachment bounds in §8.3. The result retains original fingerprint,
+filename, exact representation/page/range and library-qualified reference.
 
 ## 16. Onboarding
 
@@ -133,7 +192,7 @@ Scholium does not become:
   arbitrary Obsidian-theme host; or
 - a source of generic instructions purporting to teach philosophy.
 
-The target keeps one protected Core Protocol, one fixed local MCP tool surface,
+The target keeps one protected Core Protocol, one bounded local MCP tool surface,
 optional researcher-owned method Skills, and bounded Zotero/local Agent
 transports. Finder remains authoritative for Markdown and attachment bytes;
 the selected runtime owns its Skills and tools, with in-app management under §8.7;

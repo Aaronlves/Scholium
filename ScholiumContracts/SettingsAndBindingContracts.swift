@@ -107,12 +107,7 @@ public struct AnalysisZoteroBinding: Codable, Hashable, Identifiable, Sendable {
         if case .group(let groupID) = library, groupID <= 0 {
             throw AnalysisZoteroBindingError.invalidLibrary
         }
-        let itemKey = itemKey.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-        guard !itemKey.isEmpty,
-              itemKey.utf8.count <= 128,
-              itemKey.unicodeScalars.allSatisfy({ scalar in
-                  CharacterSet.alphanumerics.contains(scalar) || scalar == "-" || scalar == "_"
-              }) else {
+        guard let itemKey = ZoteroReference.normalizedKey(itemKey) else {
             throw AnalysisZoteroBindingError.invalidItemKey
         }
         self.noteID = noteID

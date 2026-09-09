@@ -3741,11 +3741,13 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         }
     }
 
-    private func coordinatedMoveDocument(
+    func coordinatedMoveDocument(
         _ source: VaultQualifiedNoteID,
         to destinationRelativePath: String,
         expectedRevision: DocumentFingerprint,
-        expectedStableNoteID: UUID? = nil
+        expectedStableNoteID: UUID? = nil,
+        agentMove: AgentMoveAuthorization? = nil,
+        undoAgentMoveID: UUID? = nil
     ) async throws -> WorkspaceMutationOutcome<TriptychMoveCommit> {
         try requireActive()
         let mutationLease = try await beginSourceMutation()
@@ -3768,17 +3770,34 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         )
 
         let repositories = services.repositories
-        let plan = try await workspaceMovePlan(moving: source, to: destination)
+        let plan: IncomingLinkRewritePlan
+        if let undoAgentMoveID {
+            let evidence = try await services.agentChangeStore.evidence(id: undoAgentMoveID)
+            guard evidence.change.noteID == identity.id, evidence.change.state == .confirmed,
+                  evidence.change.afterFingerprint == expectedRevision else { throw AgentChangeError.undoUnavailable(undoAgentMoveID) }
+            plan = try await agentMoveInverse(evidence: evidence)
+            guard plan.movedNote == source && plan.destination == destination else { throw AgentChangeError.mismatchedBinding(undoAgentMoveID) }
+        } else {
+            plan = try await workspaceMovePlan(moving: source, to: destination)
+        }
 
         let coordinator = TriptychMoveCoordinator(
             triptychID: services.manifest.id,
             repositories: repositories,
             recoveryStore: services.transactionRecoveryStore
         )
-        let commit = try await coordinator.move(
-            plan,
-            expectedRevision: expectedRevision
-        )
+        if let agentMove {
+            try await coordinator.validate(plan, expectedRevision: expectedRevision)
+            try await prepareAgentMoveEvidence(plan: plan, noteID: identity.id,
+                expectedFingerprint: expectedRevision, authorization: agentMove)
+        }
+        let commit: TriptychMoveCommit
+        do {
+            commit = try await coordinator.move(plan, expectedRevision: expectedRevision)
+        } catch {
+            if let agentMove { try await finishFailedAgentMutation(changeID: agentMove.changeID, error: error) }
+            throw error
+        }
 
         var identityFailure: Error?
         var movedIdentityRecord: NoteIdentityRecord?
@@ -3828,6 +3847,17 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         scheduleCommittedMutationRefresh(refreshPayload)
         endSourceMutation(mutationLease)
         ownsMutation = false
+        if let agentMove {
+            guard identityFailure == nil else {
+                _ = try? await services.agentChangeStore.markOutcomeUncertain(id: agentMove.changeID)
+                throw AgentCollaborationError.changeConfirmationUncertain(agentMove.changeID)
+            }
+            try await confirmAgentMoveEvidence(id: agentMove.changeID, commit: commit)
+        }
+        if let undoAgentMoveID {
+            guard identityFailure == nil else { throw AgentCollaborationError.changeConfirmationUncertain(undoAgentMoveID) }
+            try await confirmAgentMoveUndo(id: undoAgentMoveID, commit: commit)
+        }
         return WorkspaceMutationOutcome(
             committedValue: commit,
             identityRecoveryWarning: identityFailure?.localizedDescription
@@ -4072,7 +4102,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         return plan
     }
 
-    private func workspaceMovePlan(
+    func workspaceMovePlan(
         moving source: VaultQualifiedNoteID,
         to destination: VaultQualifiedNoteID
     ) async throws -> IncomingLinkRewritePlan {
@@ -4127,6 +4157,22 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         // mixed-generation snapshot cannot authorize link edits. Fall back to
         // the complete filesystem read and graph re-derivation rather than
         // weakening exact-source validation.
+        let context = try await freshMovePlanningContext()
+        guard let plan = IncomingLinkRewriter.planUsingValidatedSnapshot(
+            documents: context.documents,
+            catalog: context.catalog,
+            graph: context.graph,
+            moving: source,
+            to: destination
+        ) else {
+            throw VaultRepositoryError.writeFailed(
+                "The exact Metadata-aware Link catalog could not be proven for this Note move."
+            )
+        }
+        return plan
+    }
+
+    func freshMovePlanningContext() async throws -> (documents: [VaultQualifiedNoteID: NoteDocument], catalog: [LinkCatalogNote], graph: GraphSnapshot) {
         var documents: [VaultQualifiedNoteID: NoteDocument] = [:]
         for registeredVault in orderedVaults() {
             let repository = try repository(vaultID: registeredVault.id)
@@ -4162,18 +4208,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             resolutionScope: .workspace,
             sourceManifestHash: sourceManifestHash
         )
-        guard let plan = IncomingLinkRewriter.planUsingValidatedSnapshot(
-            documents: documents,
-            catalog: catalog,
-            graph: graph,
-            moving: source,
-            to: destination
-        ) else {
-            throw VaultRepositoryError.writeFailed(
-                "The exact Metadata-aware Link catalog could not be proven for this Note move."
-            )
-        }
-        return plan
+        return (documents, catalog, graph)
     }
 
     private func exactLinkCatalog(
