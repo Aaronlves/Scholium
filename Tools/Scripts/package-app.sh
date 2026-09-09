@@ -94,7 +94,7 @@ rm -rf \
   "${OUTPUT}/Scholium-CLI-macos.zip" \
   "${OUTPUT}/Scholium-CLI-macos.zip.sha256" \
   "${SCRATCH}"
-mkdir -p "${STAGING_APP}/Contents/MacOS" "${STAGING_APP}/Contents/Resources" \
+mkdir -p "${STAGING_APP}/Contents/MacOS" "${STAGING_APP}/Contents/Resources" "${STAGING_APP}/Contents/Helpers" \
   "${CLI_STAGE}" "${OUTPUT}"
 
 swift build \
@@ -103,6 +103,7 @@ swift build \
   --scratch-path "${SCRATCH}" \
   --only-use-versions-from-resolved-file
 cp "${SCRATCH}/release/ScholiumApp" "${STAGING_APP}/Contents/MacOS/Scholium"
+cp "${SCRATCH}/release/ScholiumAgentHelper" "${STAGING_APP}/Contents/Helpers/ScholiumAgentHelper"
 if [[ -d "${SCRATCH}/release/Scholium_ScholiumApp.bundle" ]]; then
   cp -R "${SCRATCH}/release/Scholium_ScholiumApp.bundle" "${STAGING_APP}/Contents/Resources/Scholium_ScholiumApp.bundle"
   find "${SCRATCH}/release/Scholium_ScholiumApp.bundle" -type d -name '*.lproj' | while IFS= read -r localization; do
@@ -196,18 +197,22 @@ mv "${STAGING_APP}/Contents/MacOS/Scholium.sdk-fixed" "${STAGING_APP}/Contents/M
 # not disclose the builder's home-directory path.
 xcrun strip -S -x "${STAGING_APP}/Contents/MacOS/Scholium"
 xcrun strip -S -x "${CLI_STAGE}/scholium"
+xcrun strip -S -x "${STAGING_APP}/Contents/Helpers/ScholiumAgentHelper"
 xcrun vtool -show-build "${STAGING_APP}/Contents/MacOS/Scholium" | rg -q "sdk ${SDK_VERSION}"
 if LC_ALL=C grep -aEq '/Users/[^/]+/' \
   "${STAGING_APP}/Contents/MacOS/Scholium" \
-  "${CLI_STAGE}/scholium"; then
+  "${CLI_STAGE}/scholium" \
+  "${STAGING_APP}/Contents/Helpers/ScholiumAgentHelper"; then
   print -u2 "Refusing to package binaries containing a user home-directory path."
   exit 65
 fi
 xattr -cr "${STAGING_APP}"
 xattr -cr "${CLI_STAGE}"
 
-# The CLI is an independent executable, not nested App code. Sign it without
-# App Sandbox entitlements, then sign the App with its bounded sandbox profile.
+# Sign nested helper code before the app. The standalone CLI stays independent.
+codesign --force --options runtime --sign "${IDENTITY}" \
+  "${STAGING_APP}/Contents/Helpers/ScholiumAgentHelper"
+codesign --verify --strict "${STAGING_APP}/Contents/Helpers/ScholiumAgentHelper"
 codesign --force --options runtime \
   --sign "${IDENTITY}" "${CLI_STAGE}/scholium"
 codesign --verify --strict --verbose=2 \
@@ -227,8 +232,8 @@ codesign -d --entitlements :- "${STAGING_APP}" \
   > "${APP_ENTITLEMENTS}" 2>/dev/null || true
 python3 "${ROOT}/Tools/Scripts/validate-entitlements.py" app \
   "${APP_ENTITLEMENTS}"
-if [[ -e "${STAGING_APP}/Contents/Helpers/scholium" ]]; then
-  print -u2 "Refusing to embed the independently distributed CLI in Scholium.app."
+if [[ ! -x "${STAGING_APP}/Contents/Helpers/ScholiumAgentHelper" ]]; then
+  print -u2 "The App connection helper is missing."
   exit 65
 fi
 

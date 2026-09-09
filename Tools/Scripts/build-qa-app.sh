@@ -84,7 +84,11 @@ DEVELOPER_DIR="${XCODE}" swift build \
   --configuration debug \
   --only-use-versions-from-resolved-file \
   --product scholium
-mkdir -p "${APP}/Contents/MacOS" "${APP}/Contents/Resources"
+DEVELOPER_DIR="${XCODE}" swift build \
+  --package-path "${ROOT}" --scratch-path "${DERIVED}" --configuration debug \
+  --only-use-versions-from-resolved-file --product ScholiumAgentHelper
+mkdir -p "${APP}/Contents/MacOS" "${APP}/Contents/Resources" "${APP}/Contents/Helpers"
+cp "${DERIVED}/debug/ScholiumAgentHelper" "${APP}/Contents/Helpers/ScholiumAgentHelper"
 cp "${DERIVED}/debug/ScholiumApp" "${APP}/Contents/MacOS/Scholium"
 chmod +x "${APP}/Contents/MacOS/Scholium"
 cp -R "${DERIVED}/debug/Scholium_ScholiumApp.bundle" "${APP}/Contents/Resources/"

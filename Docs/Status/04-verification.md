@@ -14,10 +14,11 @@ remain open; no release acceptance is implied.
 
 ## Current verification snapshot
 
-**2026-09-09 — Chat:** 21 content/reader checks, Debug build/docs/localization pass.
-QA verifies viewed changes, history/comparison resizing, table scrolling,
-content-fitted previews and Escape: `.build/chat-content-acceptance.md`.
-Earlier integration remains nonzero; `.build/chat-research-acceptance.md` records prior Release proof. Release, VoiceOver, adaptation and Zotero acceptance remain open.
+**2026-09-10 — Chat foundation:** 29 checks and Release/CLI pass.
+XCUITest verifies scrolling, stable extent and thumb dragging; QA verifies
+cross-table quotes and transient previews. `.build/agent-foundation-acceptance.md` preserves integration
+failures and owning rechecks. Researcher confirms scrolling. Packaging, large-history and accessibility/adaptation
+acceptance remain open.
 
 **2026-09-09 — selection shortcuts:** 31 native and 234 editor checks pass.
 Signed-in QA verifies exact capture, Polish, Adopt and one-step Undo; menu/settings/recovery inspected. Full App integration remained red. Human adaptation

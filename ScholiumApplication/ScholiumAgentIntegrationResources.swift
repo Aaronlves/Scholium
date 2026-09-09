@@ -23,6 +23,10 @@ public enum ScholiumAgentIntegrationResources {
         try BundledResearchSkillResources.coreProtocolSkillDirectoryURL()
     }
 
+    public static func chatHelperURL(bundleURL: URL = Bundle.main.bundleURL) -> URL? {
+        executableURL(at: bundleURL.appendingPathComponent("Contents/Helpers/ScholiumAgentHelper").path)
+    }
+
     public static func scholiumCLIURL(
         fileManager: FileManager = .default
     ) -> URL? {

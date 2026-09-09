@@ -2,28 +2,73 @@ import AppKit
 import ScholiumContracts
 import Testing
 import SwiftUI
+import WebKit
 @testable import ScholiumApp
 
 @Suite("Chat content and viewed changes")
 @MainActor
 struct AgentChatContentTests {
-  @Test func expandedObjectHasNativeWindowGeometryAndCancel() throws {
+  @Test func richReplyForwardsCompleteVerticalGesture() throws {
     _ = NSApplication.shared
-    AgentChatRichWindowController.present(content: Text("Nonprivate layout fixture"), naturalSize: CGSize(width: 700, height: 400))
-    let window = try #require(NSApp.windows.first { $0.identifier?.rawValue == "scholium.chat.richContentWindow" })
-    defer { window.close() }
-    #expect(window.frame.width > 600)
-    #expect(window.frame.height > 400)
-    window.cancelOperation(nil)
-    #expect(!window.isVisible)
+    let route = AgentChatWheelRoute()
+    let horizontal = ScrollProbe()
+    let scroll = ScrollProbe()
+    func event(_ y: Int32, _ x: Int32, phase: Int64, momentum: Int64 = 0) throws -> NSEvent {
+      let cg = try #require(CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 2,
+                                   wheel1: y, wheel2: x, wheel3: 0))
+      cg.setIntegerValueField(.scrollWheelEventScrollPhase, value: phase)
+      cg.setIntegerValueField(.scrollWheelEventMomentumPhase, value: momentum)
+      return try #require(NSEvent(cgEvent: cg))
+    }
+    let begin = try event(12, 0, phase: 1)
+    let end = try event(0, 0, phase: 4)
+    #expect(begin.phase.contains(.began) && end.phase.contains(.ended))
+    for value in [begin, try event(3, 5, phase: 2), end,
+                  try event(6, 0, phase: 0, momentum: 1), try event(0, 0, phase: 0, momentum: 3)] {
+      #expect(route.dispatch(value, inlineTarget: horizontal, conversation: scroll))
+    }
+    #expect(scroll.events.count == 5)
+    #expect(scroll.events[2].phase.contains(.ended))
+    #expect(scroll.events.last?.momentumPhase.contains(.ended) == true)
+    // A new horizontal gesture belongs wholly to WebKit, including its zero-delta end.
+    #expect(route.dispatch(try event(0, 0, phase: 1), inlineTarget: horizontal, conversation: scroll))
+    #expect(route.dispatch(try event(0, 10, phase: 2), inlineTarget: horizontal, conversation: scroll))
+    #expect(route.dispatch(try event(7, 2, phase: 2), inlineTarget: horizontal, conversation: scroll))
+    #expect(route.dispatch(end, inlineTarget: horizontal, conversation: scroll))
+    #expect(horizontal.events.count == 4 && scroll.events.count == 5)
+    route.reset()
+    #expect(!route.dispatch(begin, inlineTarget: nil, conversation: scroll))
   }
 
-  @Test func expandedWindowFitsContentAndBoundsLargeObjects() {
+  private final class ScrollProbe: NSScrollView {
+    var events: [NSEvent] = []
+    override func scrollWheel(with event: NSEvent) { events.append(event) }
+  }
+
+  @Test func expandedObjectIsTransientCard() async throws {
+    _ = NSApplication.shared
+    let window = NSWindow(contentRect: NSRect(x: 100, y: 100, width: 800, height: 600),
+                          styleMask: [.titled, .closable], backing: .buffered, defer: false)
+    window.isReleasedWhenClosed = false
+    let source = NSView(frame: NSRect(x: 0, y: 0, width: 800, height: 600))
+    window.contentView = source; window.makeKeyAndOrderFront(nil)
+    let controller = AgentChatRichPreviewController()
+    defer { controller.close(); window.close() }
+    controller.present(content: Text("Fixture"), naturalSize: CGSize(width: 400, height: 80),
+                       anchor: NSRect(x: 100, y: 100, width: 24, height: 24), of: source)
+    let popover = try #require(controller.popover)
+    #expect(popover.behavior == .transient && popover.isShown)
+    controller.close()
+    for _ in 0..<100 where popover.isShown { try await Task.sleep(for: .milliseconds(10)) }
+    #expect(!popover.isShown)
+  }
+
+  @Test func expandedCardFitsContentAndBoundsLargeObjects() {
     let available = CGSize(width: 1400, height: 900)
-    let small = AgentChatRichWindowController.fittedSize(CGSize(width: 380, height: 70), available: available)
-    #expect(small == CGSize(width: 444, height: 182))
-    let large = AgentChatRichWindowController.fittedSize(CGSize(width: 5000, height: 4000), available: available)
-    #expect(large == CGSize(width: 1260, height: 810))
+    let small = AgentChatRichPreviewController.fittedSize(CGSize(width: 380, height: 70), available: available)
+    #expect(small == CGSize(width: 412, height: 150))
+    let large = AgentChatRichPreviewController.fittedSize(CGSize(width: 5000, height: 4000), available: available)
+    #expect(large == CGSize(width: 1190, height: 765))
   }
 
   @Test func inlineCodeUsesNativeBackground() {

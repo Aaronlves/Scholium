@@ -41,7 +41,7 @@ struct ArchitectureBoundaryTests {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let roots = ["Scholium", "ScholiumCLI"]
+        let roots = ["Scholium", "ScholiumCLI", "ScholiumAgentHelper"]
         var coreImports: [String] = []
         var applicationImports: [String] = []
         let allowedApplicationImports: Set<String> = [
@@ -59,6 +59,8 @@ struct ArchitectureBoundaryTests {
             "Scholium/Views/AgentIntegrationSettingsView.swift",
             "ScholiumCLI/CLIContext.swift",
             "ScholiumCLI/MCPCommandHandler.swift",
+            "ScholiumCLI/ZoteroCommandHandler.swift",
+            "ScholiumAgentHelper/ScholiumAgentHelper.swift",
         ]
         for relativeRoot in roots {
             for file in try swiftFiles(beneath: repositoryRoot.appendingPathComponent(relativeRoot)) {

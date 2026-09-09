@@ -6,6 +6,36 @@ import WebKit
 @testable import ScholiumApp
 
 extension MarkdownEditorWebViewIntegrationTests {
+    @Test("Chat reader quotes one selection across prose, table and code")
+    func chatReplyCrossObjectSelection() async throws {
+        let source = "Reason 😀.\n\n| Claim | Evidence |\n|---|---|\n| A | B |\n\n```text\nlast line\n```"
+        let document = NoteDocument(relativePath: "Reply.md", rawContent: source)
+        let harness = ReadHarness(source: source, htmlBody: SafeMarkdownRenderer.render(document).htmlBody,
+            fingerprint: document.fingerprint.sha256, initialAnchor: nil, initialScrollFraction: 0, laysOutForNativePreview: true, chatReply: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        let selected = try #require(try await harness.callBridgeJavaScript("""
+          const root = document.getElementById('scholium-document');
+          const first = root.querySelector('p').firstChild;
+          const last = root.querySelector('pre code').firstChild;
+          const range = document.createRange(); range.setStart(first, 0); range.setEnd(last, last.length);
+          const selection = window.getSelection(); selection.removeAllRanges(); selection.addRange(range);
+          window.scholiumQuoteReplySelection(); return selection.toString();
+          """) as? String)
+        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while !harness.replyEvents.contains(where: { if case .quote = $0 { return true }; return false }) {
+            try #require(ContinuousClock.now < deadline)
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        let excerpts = harness.replyEvents.compactMap { event -> String? in if case .quote(let text) = event { return text }; return nil }
+        #expect(excerpts == [selected])
+        #expect(selected.contains("Reason 😀.") && selected.contains("Evidence") && selected.contains("last line"))
+        #expect(AgentChatReplyQuotation.passage(.reader(source: source, excerpt: selected), in: source) == selected)
+        #expect(AgentChatReplyQuotation.passage(.reader(source: source, excerpt: selected), in: "Changed") == nil)
+        let controls = try await harness.callBridgeJavaScript("return document.querySelectorAll('.scholium-reply-controls button').length;") as? Int
+        #expect(controls == 4)
+    }
+
     @Test("Review restores an exact repeated-text range and rejects unrendered Markdown syntax")
     func reviewChatSourceRange() async throws {
         let source = "重复 😀 same same.\r\n\r\nFormatted **word**.\r\n"
@@ -1551,6 +1581,8 @@ extension MarkdownEditorWebViewIntegrationTests {
 
         @Published var isReady = false
         var diagramSize: CGSize?
+        var chatReplyEnabled = false
+        var replyEvents: [ReadReplyEvent] = []
         @Published var restoration: Restoration?
         @Published var capturedAnchor: EditorScrollAnchor?
         var failure: String?
@@ -1671,7 +1703,8 @@ extension MarkdownEditorWebViewIntegrationTests {
             userCSS: String = "",
             testingForcesFinalizationFailure: Bool = false,
             testingScrollRestoreDelayMilliseconds: Int = 0,
-            laysOutForNativePreview: Bool = false
+            laysOutForNativePreview: Bool = false,
+            chatReply: Bool = false
         ) {
             _ = NSApplication.shared
             self.source = source
@@ -1685,6 +1718,7 @@ extension MarkdownEditorWebViewIntegrationTests {
                 testingForcesFinalizationFailure: testingForcesFinalizationFailure,
                 testingScrollRestoreDelayMilliseconds: testingScrollRestoreDelayMilliseconds
             )
+            sourceBox.chatReplyEnabled = chatReply
             window = NSWindow(
                 contentRect: NSRect(x: 0, y: 0, width: 720, height: 420),
                 styleMask: [.titled, .closable, .resizable],
@@ -1918,6 +1952,7 @@ extension MarkdownEditorWebViewIntegrationTests {
             sourceBox.restoration != nil
         }
 
+        var replyEvents: [ReadReplyEvent] { sourceBox.replyEvents }
         var diagramSize: CGSize? { sourceBox.diagramSize }
 
         var isReady: Bool {
@@ -2539,6 +2574,7 @@ extension MarkdownEditorWebViewIntegrationTests {
                 onRenderingFailure: { sourceBox.failure = $0 },
                 onRenderingLoading: { sourceBox.isReady = false },
                 onRenderingReady: { sourceBox.isReady = true },
+                onReplyEvent: sourceBox.chatReplyEnabled ? { sourceBox.replyEvents.append($0) } : nil,
                 onRenderedDiagramSize: { sourceBox.diagramSize = $0 },
                 observedScrollPosition: sourceBox.observedScrollPosition,
                 scrollRestoreRequest: sourceBox.restoration.map { restoration in

@@ -240,7 +240,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
     guard let turn = executions[id]?.turnID else { return }
     notify(.inputRequired, in: id, turnID: turn)
   }
-  var suggestedCLIPath: String? { ScholiumAgentIntegrationResources.scholiumCLIURL()?.path }
+  var suggestedCLIPath: String? { ScholiumAgentIntegrationResources.chatHelperURL()?.path }
   var selected: AgentChatConversation? { conversations.first { $0.id == selectedID } }
   var isBusy: Bool { selectedID.map(isBusy(in:)) ?? (connectionState == .connecting) }
   var hasActiveExecutions: Bool { executions.values.contains(where: \.isBusy) }
@@ -670,13 +670,14 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
       defaults.string(forKey: "agent.codex.executable").flatMap { $0.isEmpty ? nil : $0 }
       ?? suggestedRuntimePath
     let cli =
-      defaults.string(forKey: "agent.scholium.cli").flatMap { $0.isEmpty ? nil : $0 }
+      defaults.string(forKey: "agent.scholium.helper").flatMap { $0.isEmpty ? nil : $0 }
       ?? suggestedCLIPath
-    guard let executable, let executableURL = ScholiumAgentIntegrationResources.executableURL(at: executable),
-      let cli, let cliURL = ScholiumAgentIntegrationResources.executableURL(at: cli)
-    else {
-      connectionError = String(
-        localized: "Codex is not ready on this Mac. Check Agent settings to finish connecting.")
+    guard let executable, let executableURL = ScholiumAgentIntegrationResources.executableURL(at: executable) else {
+      connectionError = String(localized: "Codex was not found. Open Agent settings to locate your installation.")
+      return
+    }
+    guard let cli, let cliURL = ScholiumAgentIntegrationResources.executableURL(at: cli) else {
+      connectionError = String(localized: "Scholium’s connection helper is unavailable. Reinstall Scholium or check the custom helper in Advanced settings.")
       return
     }
     let home = defaults.string(forKey: "agent.codex.home") ?? ""
@@ -1632,8 +1633,10 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
     message.turnID = turnID ?? conversations[index].messages.first(where: { $0.id == id })?.turnID
       ?? executions[conversationID]?.turnID
     if let position = conversations[index].messages.firstIndex(where: { $0.id == id }) {
+      message.activity = AgentChatCommandOutput.reconciling(activity, with: conversations[index].messages[position].activity)
       conversations[index].messages[position] = message
     } else {
+      message.activity = AgentChatCommandOutput.reconciling(activity, with: nil)
       conversations[index].messages.append(message)
     }
     conversations[index].updatedAt = Date()
@@ -2051,7 +2054,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
       update(in: conversationID) { conversation in
         if let index = conversation.messages.firstIndex(where: { $0.id == "runtime:\(id)" }),
           var activity = conversation.messages[index].activity {
-          activity.detail = String((activity.detail + text).suffix(16_000))
+          AgentChatCommandOutput.appending(text, to: &activity)
           conversation.messages[index].activity = activity
         }
       }

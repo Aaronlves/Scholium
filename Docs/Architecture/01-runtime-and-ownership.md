@@ -681,8 +681,9 @@ never the workspace split, toolbar, or `WindowModel`. After first registration,
 the model keeps workspace routing closed while optional Agent preparation
 copies immutable instructions. Prompt-copy and confirmation remain
 presentation-local and create no durable readiness, machine-status, or
-research-access owner. No Application service embeds, locates, fingerprints,
-executes, installs, updates, or removes a CLI.
+research-access owner. The App neither installs nor maintains the standalone CLI.
+In-app Chat uses a bundled `ScholiumAgentHelper`; Application owns its closed MCP
+service routes, while the executable owns process entry and error reporting.
 
 Packaging emits a sandboxed App archive and an independent CLI archive with `scholium`,
 its Core resource bundle, and a user-local installer. Both carry matching provenance.
@@ -692,7 +693,8 @@ transaction before replacement; the packaged installer is first-install-only. Th
 retains sandboxing, user-selected read-write access, app-scoped bookmarks, Zotero client
 access, and App Sandbox's required network-server entitlement for that listener. One
 home-relative exception exposes only `Library/Application Support/Scholium`; the App has
-no `.local` access or embedded CLI. The copied Agent instruction limits installation to
+no `.local` access or embedded general-purpose CLI. Its separately signed helper
+provides only token-scoped MCP and read-only Zotero service entry points. The copied Agent instruction limits installation to
 `~/.local/bin/scholium` and its adjacent resource bundle and never authorizes `sudo`,
 `PATH`, shell-profile, Agent-configuration, or quarantine mutation. Agent preparation
 starts Application registration before presenting Agent; its local gate prevents Ready

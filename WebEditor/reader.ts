@@ -1,3 +1,4 @@
+import {installChatReply} from "./chat-reply";
 import {createSelectionActions} from "./selection-actions";
 import {createReaderArrival} from "./arrival-highlight";
 import {createNativeFloatingBridge, previewSurface} from "./native-floating";
@@ -317,6 +318,10 @@ async function initializeReader(value: unknown): Promise<void> {
   }
   readerWindow.scholiumMermaidReady = renderMermaidNodes();
   await readerWindow.scholiumMermaidReady;
+  if (config.chatReply === true) {
+    const disposeReply = installChatReply(documentRoot, post, localized);
+    window.addEventListener('pagehide', disposeReply, {once: true});
+  }
   for (const mediaQuery of [
     matchMedia('(prefers-color-scheme: dark)'),
     matchMedia('(prefers-contrast: more)')

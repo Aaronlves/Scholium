@@ -8,7 +8,7 @@ Chat belongs to one Triptych and may reference Notes across its vaults. The firs
 message starts a conversation without a task or Record. Library navigation and
 Note changes neither switch conversations nor silently share documents. History,
 drafts, attachments and uncertain delivery survive reopening in machine-local
-storage. Titles derive from the first message; saving and reopening are automatic. Archiving hides an idle
+storage. Titles derive from the first message; persistence is automatic. Archiving hides an idle
 conversation from the active list while preserving its messages, draft and modification
 links. Restoring makes it writable again; archived conversations cannot send or become
 active tool runs. Runtime history remains runtime-owned; a retained public projection is
@@ -89,15 +89,16 @@ The source revision is checked again when the location is applied. A revision
 change while loading leaves the Note open without selecting obsolete coordinates;
 editor coordinate conversion preserves exact original newline and Unicode offsets.
 
-One-click connection discovers the runtime and first-party MCP helper, prepares
-tools, and requests sign-in if needed. Advanced paths and
-connection management live in Settings. These machine paths, credentials and runtime
+One-click connection locates Codex and the App-bundled, version-matched MCP helper,
+prepares tools and requests sign-in. It requires no standalone CLI installation.
+Missing runtime and missing helper expose distinct repairs; advanced paths live
+in Settings. These machine paths, credentials and runtime
 data stay outside portable `.scholium`; existing Triptych control settings keep their
 current portable owner. A separate configuration directory is the default; choosing an
 existing runtime directory explicitly inherits its configuration and tools. Scholium
 does not copy credentials or change global host settings. Research Chat excludes
 automatic repository instructions; Core Protocol and selected methods supply
-research context. Normal Note work remains available without a runtime.
+research context. Notes remain usable offline.
 
 After an explicit successful connection, Scholium remembers that connection intent
 locally and restores the connection when reopening the Triptych. Login remains
@@ -111,8 +112,7 @@ connection failure or required authentication presents an actionable repair.
 Recovered transport and public history never resend user input, resume Agent
 work, repeat a mutation, answer an approval or silently settle uncertain delivery.
 
-Chat adds no automatic Settle, durable philosophical verdict, argument graph or
-second proposal lifecycle. Research-context handoff is provider-neutral; adding
+Chat adds no automatic Settle, philosophical verdict, argument graph or proposal lifecycle. Research-context handoff is provider-neutral; adding
 runtime adapters does not change its Note-snapshot contract.
 
 ### 8.7.1 Conversation continuity
@@ -123,9 +123,8 @@ Independent conversations may run concurrently; replies, approvals, input,
 Stop and Agent Changes always belong to their exact conversation and execution.
 Changing the visible conversation never transfers an operation or its permission.
 Concurrency does not bypass per-Note revision and source-operation coordination.
-Connection setup, sign-in and account observations are shared by the Triptych;
-each conversation owns its execution, pending input, approvals, errors and
-cancellation. Disconnect closes the shared connection and revokes admission for
+Connection and account state belong to the Triptych; execution, input, approvals,
+errors and cancellation belong to each conversation. Disconnect closes the shared connection and revokes admission for
 all of its conversations. Stop targets only the explicitly addressed conversation.
 Additional input targets the execution active when the researcher sends it.
 Material preparation or target verification must not silently retarget that input
@@ -177,7 +176,7 @@ the new draft; unavailable methods or retained materials use ordinary repair
 and send checks. Failure, cancellation and uncertain fork results preserve the
 source and never fall back to copying the rejected answer into a new thread.
 
-Runtime identity and public history remain distinct. Missing, unreadable or
+Runtime identity is distinct from history. Missing, unreadable or
 unavailable runtime history preserves the conversation and draft. A missing runtime
 thread is a retained, readable conversation, not a connection failure; dependent
 actions stay unavailable, with explicit retry and new-conversation routes.
@@ -211,7 +210,7 @@ Failed root application retains its scoped error and explicit recovery route.
 
 Context usage and account quota are separate runtime observations. Context
 shows the latest reported usage and capacity; account limits show their actual
-window and reset when available. Missing values are unavailable, never zero.
+window and reset when available. Missing values mean unavailable.
 These values do not estimate research completeness or philosophical quality.
 
 Automatic compaction remains runtime-owned. Chat shows its actual start,
@@ -484,6 +483,9 @@ cannot partially replace retained messages or confirm delivery; keep it unchange
 and report the unavailable history. Private reasoning never enters public history.
 Turn acknowledgements may confirm lifecycle identity without containing message
 history. Such metadata never claims that missing items were read or restored.
+
+Command output reconciles streams and final aggregates without loss or duplication.
+Retention is bounded; truncation is explicit in disclosure, Copy and reopened history.
 
 A reply or turn ending does not end a background tool operation. Each operation
 retains its own runtime item identity and reported outcome, including updates

@@ -202,9 +202,10 @@ CLI archive and its checksum. Packaging and provenance checks apply to every
 artifact actually emitted; a Core App-only release does not manufacture or
 validate a CLI merely to satisfy another profile.
 
-The App bundle contains no CLI or installation authority. The CLI archive
-contains only its executable, adjacent release resources, and user-local
-installer. Neither artifact contains real vaults, private paths, credentials,
+The App ships a version-matched, signed helper limited to the in-app MCP bridge
+and read-only Zotero service. It has no CLI maintenance or installation commands.
+The independently distributed CLI retains its executable, release resources and
+user-local installer; in-app Chat does not require that installation. Neither artifact contains real vaults, private paths, credentials,
 bookmarks, indexes, or generated user state.
 
 CLI self-update uses only fixed official assets, verifies checksum,

@@ -130,6 +130,7 @@ public struct AgentChatActivity: Codable, Equatable, Sendable {
   public let source: Source
   public var subject: String
   public var detail: String
+  public var outputTruncated: Bool?
   public var files: [File]
   public var delegation: AgentChatDelegation?
   public var sourceObservation: AgentChatSourceObservation?

@@ -31144,6 +31144,8 @@ ${fence}
 
   // localization.ts
   var webInterfaceLocalizationKeys = [
+    "Copy",
+    "Expand",
     "YAML frontmatter",
     "File and image paste is not supported in Editor 1.0.",
     "Markdown editor, Edit mode",

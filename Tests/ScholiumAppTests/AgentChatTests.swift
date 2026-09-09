@@ -941,7 +941,7 @@ struct AgentChatTests {
     let defaults = try #require(UserDefaults(suiteName: suite))
     defer { defaults.removePersistentDomain(forName: suite) }
     defaults.set(executable.path, forKey: "agent.codex.executable")
-    defaults.set(executable.path, forKey: "agent.scholium.cli")
+    defaults.set(executable.path, forKey: "agent.scholium.helper")
     let controller = AgentChatController(triptychID: UUID(), root: root, toolHandler: success)
     try await eventually { controller.isLoaded }
     controller.connectConfigured(using: defaults)
@@ -961,7 +961,7 @@ struct AgentChatTests {
     let defaults = try #require(UserDefaults(suiteName: suite))
     defer { defaults.removePersistentDomain(forName: suite) }
     defaults.set(executable.path, forKey: "agent.codex.executable")
-    defaults.set(executable.path, forKey: "agent.scholium.cli")
+    defaults.set(executable.path, forKey: "agent.scholium.helper")
     let triptych = UUID()
     let controller = AgentChatController(triptychID: triptych, root: root, methodDefaults: defaults, toolHandler: success)
     try await eventually { controller.isLoaded }
@@ -997,7 +997,7 @@ struct AgentChatTests {
     let defaults = try #require(UserDefaults(suiteName: suite))
     defer { defaults.removePersistentDomain(forName: suite) }
     defaults.set(executable.path, forKey: "agent.codex.executable")
-    defaults.set(executable.path, forKey: "agent.scholium.cli")
+    defaults.set(executable.path, forKey: "agent.scholium.helper")
     let controller = AgentChatController(triptychID: UUID(), root: root, methodDefaults: defaults, toolHandler: success)
     try await eventually { controller.isLoaded }
     controller.connectConfigured()

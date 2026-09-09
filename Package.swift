@@ -7,6 +7,7 @@ let package = Package(
     platforms: [.macOS(.v26)],
     products: [
         .executable(name: "ScholiumApp", targets: ["ScholiumApp"]),
+        .executable(name: "ScholiumAgentHelper", targets: ["ScholiumAgentHelper"]),
         .executable(name: "scholium", targets: ["ScholiumCLI"]),
         .library(name: "ScholiumContracts", targets: ["ScholiumContracts"]),
         .library(name: "ScholiumApplication", targets: ["ScholiumApplication"]),
@@ -54,6 +55,7 @@ let package = Package(
             path: "Scholium",
             resources: [.process("Resources")]
         ),
+        .executableTarget(name: "ScholiumAgentHelper", dependencies: ["ScholiumApplication"], path: "ScholiumAgentHelper"),
         .executableTarget(
             name: "ScholiumCLI",
             dependencies: ["ScholiumContracts", "ScholiumApplication", "ScholiumCLIUpdate"],

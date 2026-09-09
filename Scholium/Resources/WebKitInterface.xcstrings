@@ -1,6 +1,8 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Copy" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Copy"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"复制"}}}},
+    "Expand" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Expand"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"放大"}}}},
 
     "YAML frontmatter" : {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "YAML frontmatter"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "YAML 文档头"}}}},
     "Add accTitle and accDescr to provide a concise nonvisual account of this diagram." : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Add accTitle and accDescr to provide a concise nonvisual account of this diagram."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"请添加 accTitle 和 accDescr，为此图提供简明的非视觉说明。"}}}},

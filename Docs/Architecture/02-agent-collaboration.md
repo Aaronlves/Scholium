@@ -227,10 +227,10 @@ Public assistant phase metadata is retained on the message by streaming and hist
 reconciliation. Timeline grouping uses explicit turn and phase metadata; a process
 disclosure owns only expansion, keeping each tool item distinct from the final answer.
 Reply actions copy original text and project explicit links into Sources.
-`AgentChatReplyTextView` owns native selection within prose or a rich object,
-including table cells, and measures on detached storage. Whole-reply Copy remains
-available across independently scrolling objects.
-`AgentChatReplyQuotation` validates the same rendered text and range. The controller
+`AgentChatReplyTextView` owns plain reply selection. Rich replies use one safe
+reader so DOM selection crosses prose, tables and code. `AgentChatReplyQuotation`
+validates native ranges or bounded reader excerpts against the current reply identity
+and exact source. Whole-reply Copy retains original Markdown. The controller
 stages compact `AgentChatReplyQuote` values in the existing conversation draft,
 then retains them on the sent message. They are Agent prose, not Note snapshots;
 source navigation retains its conversation/reply identity and no independent archive.
@@ -285,13 +285,20 @@ A dispatch group tracks the listener, peers and admitted operations; a one-shot 
 reports drain completion or its deadline without waiting indefinitely for a source
 transaction that must finish despite cancellation. Peer workers close their own sockets.
 
-`AgentChatMarkdown` uses Foundation presentation intents and native text. Rich
-segments slice the same attributed reply, preserving quotation offsets while
-isolating table/code overflow. Mermaid reuses SafeMarkdownReadWebView with native
-semantic colors serialized for its validated theme. One native preview-window
-owner retains the expanded object independently of recycled transcript cells.
-Initial sizing uses native text measurement or the finalized SVG viewBox, bounded
-by the screen; the reader reports geometry without changing source or navigation.
+`AgentChatMarkdown` routes rich replies to `AgentChatReadReply` and plain text to
+the native text view. The safe reader owns rendering and continuous selection;
+the Chat list owns vertical scrolling. `AgentChatScrollBoundary` routes transcript
+gestures before dispatch and retains one native recipient through momentum;
+it owns neither offsets nor layout. Obscured native scroller hits return to AppKit
+tracking without custom drag math. Its monitor detaches with the transcript. Wide
+objects have one horizontal viewport. The loaded transcript uses measured stack
+layout rather than lazy height estimates; scrolling cannot change its extent. User
+interaction suspends automatic following. Mermaid uses the local runtime and semantic
+colors. A reply-owned `AgentChatRichPreviewController` presents a transient native
+card anchored to its source, bounded by measured content and screen size. Closing
+or recycling the source removes the card; geometry messages grant no source authority.
+`AgentChatCommandOutput` bounds retained public output to 256 KiB and reconciles
+stream deltas with aggregate or tail-only completion without replacing prior output.
 Agent Changes projects its collection/comparison size through a sheet-only native
 attachment, leaving workspace geometry and receipt selection with their owners. `AgentChatTimelineItem` groups
 contiguous operation messages for disclosure without shortening public replies.
@@ -567,8 +574,11 @@ the runtime can load its own configuration-folder environment. Changing a server
 destination checks whether existing access settings would be reused and requires
 an explicit choice. Settings saving remains distinct from connection readiness.
 
-The Zotero preset reuses this configuration editor with the current bundled CLI
-and descriptor-owned `--read-only` arguments. Its enabled state remains in the
+The Zotero preset reuses this configuration editor with the bundled connection helper
+and descriptor-owned `--read-only` arguments. `ScholiumAgentHelper` has only
+token-scoped Scholium MCP and read-only Zotero entry points. `AgentMCPService`
+owns framing for the helper and independent CLI; the App discovers its helper in
+`Contents/Helpers`, never through user-local CLI installation. Its enabled state remains in the
 selected runtime settings file, including after reconnect. No per-turn override
 or secondary preference rewrites it. Existing same-name connections remain
 inspectable/editable through their actual effective configuration. Explicit local

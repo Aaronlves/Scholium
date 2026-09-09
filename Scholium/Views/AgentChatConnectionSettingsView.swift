@@ -16,7 +16,7 @@ struct AgentChatConnectionSettingsView: View {
   @Environment(\.scholiumFileSelectionPresenter) private var fileSelectionPresenter
   @AppStorage("agent.codex.executable") private var executable = ""
   @AppStorage("agent.codex.home") private var home = ""
-  @AppStorage("agent.scholium.cli") private var cli = ""
+  @AppStorage("agent.scholium.helper") private var cli = ""
   @State private var fileSelectionTask: Task<Void, Never>?
   @State private var fileSelectionError: String?
 

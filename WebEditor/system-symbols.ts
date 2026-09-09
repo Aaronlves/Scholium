@@ -1,4 +1,6 @@
 export const webSystemSymbolKeys = [
+  "doc-on-doc",
+  "arrow-up-left-and-arrow-down-right",
   "bold",
   "strikethrough",
   "link",

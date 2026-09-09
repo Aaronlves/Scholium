@@ -161,7 +161,8 @@ workspace shell, project model, feature tour, or duplicate navigation.
 
 Agent setup is optional and deferred until after first launch. §8.2 owns
 external-host commands and Core Protocol discovery; §8.7 owns in-app runtime
-connection. A missing CLI links to its official installation instructions.
+connection through the App-bundled helper. Only external-host setup links a missing
+standalone CLI to its official installation instructions.
 §21.5 owns standalone CLI update and distribution requirements.
 
 Success attaches one native workspace window before Bootstrap closes. Expired

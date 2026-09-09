@@ -145,11 +145,16 @@ Reply prose wraps normally. Inline code has a semantic system-gray background.
 Tables and code retain bounded horizontal scrolling; Mermaid reuses the local
 safe renderer with visible failure fallback. Diagrams omit developer hints,
 format labels and a separate source disclosure; Copy returns exact diagram code.
-Rich objects offer Copy and Open in Window without executing content or changing Notes.
-Expanded objects use a nonmodal native window initially fitted to measured content and bounded by the available screen.
-Small diagrams do not open screen-sized empty canvases. Larger objects retain scrolling and manual resizing,
-without nested chat cards, backdrop dimming or blocked workspace input. Copy, source,
-resizing and dismissal remain available; closing preserves the conversation. Chat adds no permanent comparison pane.
+Rich objects offer Copy and Expand without executing content or changing Notes.
+Expand presents a native transient card near its source, fitted to measured content
+and bounded by the screen. It has no title bar, traffic-light controls, backdrop
+dimming or blocked workspace. Click outside or Escape dismisses it; large content
+scrolls within the card. Returning preserves the conversation and reading position.
+Vertical scrolling over any inline reply object scrolls the conversation; horizontal
+scrolling stays local to wide tables and code. Loaded message heights remain stable
+while scrolling; reaching the latest reply never disables reverse scrolling. User
+scrolling suspends automatic following. Copy and Expand retain the same SF
+Symbols, size and semantic color across native and embedded content.
 Inspector modes remain document-dependent. Toolbar
 validation and View menus derive availability from the same current window state. Native
 spacers express logical grouping; the system owns glass shapes, proximity effects, and

@@ -27770,6 +27770,54 @@
           }
         }
       }
+    },
+    "Earlier output exceeded the retention limit. The latest output is shown.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Earlier output exceeded the retention limit. The latest output is shown."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "较早的输出已超出保留上限。此处显示最新输出。"
+          }
+        }
+      }
+    },
+    "Codex was not found. Open Agent settings to locate your installation.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Codex was not found. Open Agent settings to locate your installation."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未找到 Codex。请在 Agent 设置中指定安装位置。"
+          }
+        }
+      }
+    },
+    "Scholium’s connection helper is unavailable. Reinstall Scholium or check the custom helper in Advanced settings.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scholium’s connection helper is unavailable. Reinstall Scholium or check the custom helper in Advanced settings."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scholium 连接组件不可用。请重新安装 Scholium，或检查高级设置中的自定义组件。"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

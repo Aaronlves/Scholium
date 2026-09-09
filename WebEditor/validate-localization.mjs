@@ -60,6 +60,7 @@ const directUISinkPatterns = [
 ];
 const editorUISources = [
   "accessibility.ts",
+  "chat-reply.ts",
   "editor.ts",
   "input-suggestions.ts",
   "markdown-fragment.ts",

@@ -5,11 +5,20 @@ import ScholiumContracts
 struct AgentChatReplySelection: Equatable {
   let range: NSRange
   let renderedText: String
+  var readerSource: String? = nil
+  static func reader(source: String, excerpt: String) -> Self {
+    .init(range: NSRange(location: 0, length: excerpt.utf16.count), renderedText: excerpt, readerSource: source)
+  }
 }
 
 enum AgentChatReplyQuotation {
   @MainActor static func passage(_ selection: AgentChatReplySelection, in reply: String) -> String?
   {
+    if let source = selection.readerSource {
+      guard source == reply, selection.range == NSRange(location: 0, length: selection.renderedText.utf16.count),
+            !selection.renderedText.isEmpty, selection.renderedText.utf8.count <= 65_536 else { return nil }
+      return selection.renderedText
+    }
     let text = AgentChatSelectableText.renderReply(reply).string
     guard text == selection.renderedText, selection.range.length > 0,
       let range = Range(selection.range, in: text)

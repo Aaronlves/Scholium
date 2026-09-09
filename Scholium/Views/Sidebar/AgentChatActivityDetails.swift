@@ -52,6 +52,10 @@ struct AgentChatActivityDetails: View {
       if !activity.subject.isEmpty {
         Text(verbatim: activity.subject).monospaced()
       }
+      if activity.outputTruncated == true {
+        Text("Earlier output exceeded the retention limit. The latest output is shown.")
+          .foregroundStyle(.secondary)
+      }
       if !activity.detail.isEmpty {
         Text(activity.status == .failed ? "Error" : "Output").foregroundStyle(.secondary)
         Text(verbatim: activity.detail).monospaced()
@@ -71,7 +75,8 @@ struct AgentChatActivityDetails: View {
   }
 
   private var copyText: String {
-    ([activity.status.label(locale: locale), activity.subject, activity.detail] + activity.files.map(\.path))
+    ([activity.status.label(locale: locale), activity.subject,
+      activity.outputTruncated == true ? String(localized: "Earlier output exceeded the retention limit. The latest output is shown.") : "", activity.detail] + activity.files.map(\.path))
       .filter { !$0.isEmpty }.joined(separator: "\n\n")
   }
 

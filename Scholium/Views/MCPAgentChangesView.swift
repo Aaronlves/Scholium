@@ -171,7 +171,7 @@ struct AgentChangesView: View {
             HStack(alignment: .firstTextBaseline) {
                 Text({ if case .conversation = scope { return String(localized: "Conversation Changes") }
                        return String(localized: "Agent Changes") }())
-                    .font(.title2).accessibilityHeading(.h1)
+                    .font(ScholiumTypography.interface(.sectionTitle)).accessibilityHeading(.h1)
                 Spacer()
                 Button("Close", action: dismiss.callAsFunction).keyboardShortcut(.cancelAction)
             }
@@ -214,20 +214,20 @@ struct AgentChangesView: View {
                         } label: {
                             HStack(alignment: .center, spacing: 12) {
                                 Image(systemName: AgentChangePresentation.operationSymbol(for: change.operation))
-                                    .foregroundStyle(.secondary).frame(width: 24)
+                                    .scholiumForeground(.secondaryText).frame(width: 24)
                                 VStack(alignment: .leading, spacing: 6) {
                                     Text(AgentChangePresentation.displayName(for: change))
-                                        .font(.headline).foregroundStyle(.primary).lineLimit(2)
+                                        .font(ScholiumTypography.interface(.sectionTitle)).scholiumForeground(.primaryText).lineLimit(2)
                                     HStack(spacing: 8) {
                                         Text(AgentChangePresentation.shortOperationTitle(for: change.operation))
                                         if change.state == .undone { Text("Undone") }
                                         if AgentChangeViewedLedger(data: viewedChangeData).ids.contains(change.id) { Text("Viewed") }
-                                    }.font(.caption).foregroundStyle(.secondary)
+                                    }.font(ScholiumTypography.interface(.small)).scholiumForeground(.secondaryText)
                                 }
                                 Spacer(minLength: 12)
                                 Text(change.confirmedAt ?? change.createdAt, format: .dateTime.month().day().hour().minute())
-                                    .font(.caption).foregroundStyle(.secondary)
-                                Image(systemName: "chevron.right").imageScale(.small).foregroundStyle(.tertiary)
+                                    .font(ScholiumTypography.interface(.small)).scholiumForeground(.secondaryText)
+                                Image(systemName: "chevron.right").imageScale(.small).scholiumForeground(.secondaryText)
                             }
                             .padding(.vertical, 16).padding(.horizontal, 8)
                             .contentShape(Rectangle())
@@ -432,16 +432,16 @@ private struct AgentChangeReviewContent: View {
 
     private var summary: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(displayName).font(.title2).textSelection(.enabled)
+            Text(displayName).font(ScholiumTypography.interface(.sectionTitle)).textSelection(.enabled)
             HStack(alignment: .firstTextBaseline) {
                 Label(AgentChangePresentation.shortOperationTitle(for: review.change.operation), systemImage: operationSymbol)
                 Spacer(minLength: 12)
                 Text(review.change.createdAt, format: .dateTime)
-            }.font(.subheadline).foregroundStyle(.secondary)
+            }.font(ScholiumTypography.interface(.body)).scholiumForeground(.secondaryText)
             if let revisionStateTitle {
                 Text(revisionStateTitle)
-                    .font(.caption)
-                    .foregroundStyle(review.endingRevisionState == .current ? Color.secondary : Color.primary)
+                    .font(ScholiumTypography.interface(.small))
+                    .scholiumForeground(review.endingRevisionState == .current ? .secondaryText : .primaryText)
                     .accessibilityIdentifier("scholium.agentChanges.revisionState")
             }
             if review.change.state == .outcomeUncertain {

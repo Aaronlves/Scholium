@@ -94,7 +94,7 @@ struct AgentChatMarkdown: View {
       if AgentChatMarkdownBlock.parse(text).contains(where: { block in
         if case .tableRow = block.kind { return true }; return block.kind == .code
       }) {
-        AgentChatRichContent(source: text, quote: quoteSelection, openLink: { openURL($0) })
+        AgentChatReadReply(source: text, quote: quoteSelection, openLink: { openURL($0) })
       } else if let quoteSelection {
         AgentChatSelectableText(source: text,
           quote: { range, rendered in

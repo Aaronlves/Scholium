@@ -1,5 +1,6 @@
 import ScholiumContracts
 import Foundation
+import ScholiumApplication
 
 extension ScholiumCLI {
     static func runZotero(
@@ -88,31 +89,6 @@ extension ScholiumCLI {
     }
 
     private static func serveZoteroMCP(using operations: any ZoteroUseCases, access: ZoteroMCPAccess) async throws {
-        var parser = ZoteroMCPFrameParser()
-        for try await byte in FileHandle.standardInput.bytes {
-            for frame in try parser.append(byte) {
-                guard let response = await operations.handle(requestData: frame.body, access: access) else {
-                    continue
-                }
-                writeMCPFrame(response, mode: frame.mode)
-            }
-        }
-        for frame in try parser.finish() {
-            guard let response = await operations.handle(requestData: frame.body, access: access) else {
-                continue
-            }
-            writeMCPFrame(response, mode: frame.mode)
-        }
-    }
-
-    private static func writeMCPFrame(_ body: Data, mode: ZoteroMCPFrame.Mode) {
-        switch mode {
-        case .line:
-            FileHandle.standardOutput.write(body + Data([0x0A]))
-        case .contentLength:
-            FileHandle.standardOutput.write(
-                Data("Content-Length: \(body.count)\r\n\r\n".utf8) + body
-            )
-        }
+        try await AgentMCPService.serve { await operations.handle(requestData: $0, access: access) }
     }
 }

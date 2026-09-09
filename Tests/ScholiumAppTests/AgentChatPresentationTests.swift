@@ -26,6 +26,7 @@ enum NativeChatSourceScope {
     "Scholium/Views/Sidebar/AgentChatComposerInput.swift",
     "Scholium/Views/Sidebar/AgentChatComposerCompletion.swift",
     "Scholium/Views/Sidebar/AgentChatRichContent.swift",
+    "Scholium/Views/Sidebar/AgentChatReadReply.swift",
     "Scholium/Views/Sidebar/AgentChatProcessView.swift",
     "Scholium/Views/Sidebar/AgentChatTurnStatus.swift",
     "Scholium/Views/Sidebar/AgentChatReplyActions.swift",

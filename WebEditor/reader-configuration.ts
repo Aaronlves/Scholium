@@ -18,6 +18,7 @@ export interface ReaderConfiguration {
   fingerprint: string;
   loadGeneration: number;
   selectionEnabled: boolean;
+  chatReply?: boolean;
   testingEnabled: boolean;
   presentationCSS: string;
   userCSS: string;
@@ -35,6 +36,7 @@ export function validatedReaderConfiguration(value: unknown): ReaderConfiguratio
       || config.fingerprint.length > 256
       || !Number.isSafeInteger(config.loadGeneration) || Number(config.loadGeneration) < 0
       || typeof config.selectionEnabled !== "boolean"
+      || (config.chatReply !== undefined && typeof config.chatReply !== "boolean")
       || typeof config.testingEnabled !== "boolean"
       || typeof config.presentationCSS !== "string"
       || typeof config.userCSS !== "string"

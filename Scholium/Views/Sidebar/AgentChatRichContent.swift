@@ -32,85 +32,35 @@ struct AgentChatRichSegment: Identifiable {
   }
 }
 
+/// Content of one expanded card; the inline reply is owned by its single reader.
 struct AgentChatRichContent: View {
   let source: String
-  let quote: ((AgentChatReplySelection) -> Void)?
   let openLink: (URL) -> Void
-  var onlySegment: Int? = nil
-  var expandedDiagramSize: CGSize? = nil
-  @State private var diagramSizes: [Int: CGSize] = [:]
+  let onlySegment: Int
+  var expandedDiagramSize: CGSize?
 
   var body: some View {
     let layout = AgentChatSelectableText.layoutReply(source)
-    VStack(alignment: .leading, spacing: 12) {
-      ForEach(AgentChatRichSegment.collect(layout).filter { onlySegment == nil || $0.id == onlySegment }) { segment in
-        if segment.isObject {
-          if onlySegment == nil && segment.language?.lowercased() != "mermaid" { GroupBox { objectContent(segment, layout: layout) } }
-          else { objectContent(segment, layout: layout) }
-        } else { nativeText(segment, layout: layout) }
+    if let segment = AgentChatRichSegment.collect(layout).first(where: { $0.id == onlySegment }) {
+      VStack(alignment: .leading, spacing: 8) {
+        HStack {
+          Spacer()
+          Button {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(segment.code ?? layout.text.attributedSubstring(from: segment.range).string, forType: .string)
+          } label: { Image(systemName: "doc.on.doc").chatAccessory() }
+            .buttonStyle(.borderless).help("Copy").accessibilityLabel("Copy")
+        }
+        if segment.language?.lowercased() == "mermaid", let code = segment.code {
+          AgentChatDiagram(source: "```mermaid\n" + code + "\n```")
+            .frame(height: max(80, (expandedDiagramSize?.height ?? 160) + 24))
+        } else {
+          ScrollView(.horizontal) {
+            AgentChatAttributedText(text: layout.text.attributedSubstring(from: segment.range), quote: nil, openLink: openLink)
+              .frame(width: max(280, expandedDiagramSize?.width ?? 400))
+          }
+        }
       }
-    }
-  }
-
-  private func objectContent(_ segment: AgentChatRichSegment, layout: AgentChatSelectableText.Layout) -> some View {
-            VStack(alignment: .leading, spacing: 8) {
-              HStack {
-                if onlySegment == nil && segment.language?.lowercased() != "mermaid" {
-                  Text(segment.columns > 0 ? String(localized: "Table") : segment.language ?? String(localized: "Code"))
-                    .font(.caption).foregroundStyle(.secondary)
-                }
-                Spacer()
-                Button {
-                  NSPasteboard.general.clearContents()
-                  NSPasteboard.general.setString(segment.code ?? layout.text.attributedSubstring(from: segment.range).string, forType: .string)
-                } label: { Image(systemName: "doc.on.doc").chatAccessory() }
-                  .help("Copy").accessibilityLabel("Copy")
-                if onlySegment == nil {
-                  Button {
-                    let natural = naturalSize(segment, layout: layout)
-                    let content = AgentChatRichContent(source: source, quote: nil, openLink: openLink,
-                      onlySegment: segment.id, expandedDiagramSize: diagramSizes[segment.id])
-                    AgentChatRichWindowController.present(content: content, naturalSize: natural)
-                  } label: { Image(systemName: "arrow.up.left.and.arrow.down.right").chatAccessory() }
-                    .help("Open in Window").accessibilityLabel("Open in Window")
-                }
-              }.buttonStyle(.borderless)
-              if segment.language?.lowercased() == "mermaid", let code = segment.code {
-                AgentChatDiagram(source: "```mermaid\n" + code + "\n```", onSize: { diagramSizes[segment.id] = $0 })
-                  .frame(height: onlySegment == nil ? 120 : max(80, (expandedDiagramSize?.height ?? 160) + 24))
-              } else { textSegment(segment, layout: layout) }
-            }
-  }
-
-  private func nativeText(_ segment: AgentChatRichSegment, layout: AgentChatSelectableText.Layout) -> some View {
-    AgentChatAttributedText(text: layout.text.attributedSubstring(from: segment.range),
-      quote: quote.map { action in { range, _ in
-        action(.init(range: NSRange(location: segment.range.location + range.location, length: range.length),
-                     renderedText: layout.text.string))
-      } }, openLink: openLink)
-  }
-
-  private func naturalSize(_ segment: AgentChatRichSegment, layout: AgentChatSelectableText.Layout) -> CGSize {
-    if segment.language?.lowercased() == "mermaid" {
-      return diagramSizes[segment.id] ?? CGSize(width: 440, height: 160)
-    }
-    let width = textWidth(segment)
-    let view = AgentChatReplyTextView()
-    view.textStorage?.setAttributedString(layout.text.attributedSubstring(from: segment.range))
-    return CGSize(width: width, height: view.measuredHeight(width: width))
-  }
-
-  private func textWidth(_ segment: AgentChatRichSegment) -> CGFloat {
-    let font = NSFont.monospacedSystemFont(ofSize: NSFont.preferredFont(forTextStyle: .body).pointSize, weight: .regular)
-    let codeWidth = (segment.code ?? "").components(separatedBy: .newlines)
-      .map { ($0 as NSString).size(withAttributes: [.font: font]).width }.max() ?? 0
-    return max(280, CGFloat(segment.columns) * 150, codeWidth + 12)
-  }
-
-  private func textSegment(_ segment: AgentChatRichSegment, layout: AgentChatSelectableText.Layout) -> some View {
-    let width = textWidth(segment)
-    return ScrollView(.horizontal) {
-      nativeText(segment, layout: layout).frame(width: max(280, width))
     }
   }
 }
@@ -177,11 +127,11 @@ struct AgentChatDiagram: View {
       : (dark ? .darkAqua : .aqua)
     var declarations = ""
     NSAppearance(named: name)?.performAsCurrentDrawingAppearance {
-      let background = NSColor.windowBackgroundColor.usingColorSpace(.sRGB)!
+      let background = ScholiumNativeColorRole.windowBackground.nsColor.usingColorSpace(.sRGB)!
       let colors: [(String, NSColor)] = [
-        ("document-background", .windowBackgroundColor), ("surface-background", .controlBackgroundColor),
-        ("primary-text", .labelColor), ("secondary-text", .secondaryLabelColor),
-        ("separator", .secondaryLabelColor), ("accent", .controlAccentColor)
+        ("document-background", ScholiumNativeColorRole.windowBackground.nsColor), ("surface-background", ScholiumNativeColorRole.controlBackground.nsColor),
+        ("primary-text", ScholiumNativeColorRole.label.nsColor), ("secondary-text", ScholiumNativeColorRole.secondaryLabel.nsColor),
+        ("separator", ScholiumNativeColorRole.secondaryLabel.nsColor), ("accent", ScholiumNativeColorRole.controlAccent.nsColor)
       ]
       declarations = colors.map { key, value in
         let color = value.usingColorSpace(.sRGB) ?? background
@@ -205,55 +155,33 @@ struct AgentChatDiagram: View {
 }
 
 @MainActor
-final class AgentChatRichWindowController: NSWindowController, NSWindowDelegate {
-  private static var retained: AgentChatRichWindowController?
-  private weak var sourceWindow: NSWindow?
-  private let preferredContentSize: NSSize
-  static func present<Content: View>(content: Content, naturalSize: CGSize) {
-    retained?.close()
-    let controller = AgentChatRichWindowController(content: content, naturalSize: naturalSize)
-    retained = controller
-    controller.showWindow(nil)
-    controller.window?.setContentSize(controller.preferredContentSize)
-    controller.window?.center()
-    controller.window?.makeKeyAndOrderFront(nil)
-  }
-  private init<Content: View>(content: Content, naturalSize: CGSize) {
-    sourceWindow = NSApp.keyWindow
-    let screen = sourceWindow?.screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1200, height: 800)
-    preferredContentSize = Self.fittedSize(naturalSize, available: screen.size)
-    let window = AgentChatRichWindow(contentRect: NSRect(origin: .zero, size: preferredContentSize),
-      styleMask: [.titled, .closable, .resizable, .miniaturizable, .fullSizeContentView], backing: .buffered, defer: false)
-    window.titleVisibility = .hidden
-    window.titlebarAppearsTransparent = true
-    window.title = ScholiumL10n.string("Reply Content")
-    window.identifier = NSUserInterfaceItemIdentifier("scholium.chat.richContentWindow")
-    window.isReleasedWhenClosed = false
-    window.tabbingMode = .disallowed
-    window.contentMinSize = NSSize(width: 360, height: 180)
-    let host = NSHostingView(rootView: GeometryReader { geometry in
-      ScrollView {
-        content.frame(maxWidth: .infinity).frame(minHeight: max(0, geometry.size.height - 64))
-          .padding(32)
-      }
-    })
+final class AgentChatRichPreviewController: NSObject, NSPopoverDelegate {
+  private(set) var popover: NSPopover?
+  func present<Content: View>(content: Content, naturalSize: CGSize, anchor: NSRect, of source: NSView) {
+    close()
+    guard let screen = source.window?.screen else { return }
+    let visibleAnchor = anchor.intersection(source.visibleRect)
+    guard !visibleAnchor.isEmpty else { return }
+    let size = Self.fittedSize(naturalSize, available: screen.visibleFrame.size)
+    let popover = NSPopover()
+    popover.behavior = .transient
+    popover.animates = !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+    let host = NSHostingController(rootView: ScrollView {
+      content.frame(maxWidth: .infinity).padding(16)
+    }.frame(width: size.width, height: size.height))
     host.sizingOptions = []
-    window.contentView = host
-    super.init(window: window)
-    window.delegate = self
-    window.center()
+    popover.contentViewController = host
+    popover.contentSize = size
+    popover.delegate = self
+    self.popover = popover
+    popover.show(relativeTo: visibleAnchor, of: source, preferredEdge: .maxY)
+  }
+  func close() { popover?.close(); popover = nil }
+  func popoverDidClose(_ notification: Notification) {
+    if let closed = notification.object as? NSPopover, closed === popover { popover = nil }
   }
   static func fittedSize(_ natural: CGSize, available: CGSize) -> CGSize {
-    CGSize(width: min(max(360, natural.width + 64), available.width * 0.9),
-           height: min(max(180, natural.height + 112), available.height * 0.9))
+    CGSize(width: min(max(280, natural.width + 32), available.width * 0.85),
+           height: min(max(144, natural.height + 80), available.height * 0.85))
   }
-  @available(*, unavailable) required init?(coder: NSCoder) { fatalError("Code-only") }
-  func windowWillClose(_ notification: Notification) {
-    if sourceWindow?.isVisible == true { sourceWindow?.makeKeyAndOrderFront(nil) }
-    if Self.retained === self { Self.retained = nil }
-  }
-}
-
-private final class AgentChatRichWindow: NSWindow {
-  override func cancelOperation(_ sender: Any?) { performClose(sender) }
 }

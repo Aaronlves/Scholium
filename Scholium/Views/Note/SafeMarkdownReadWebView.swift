@@ -38,6 +38,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
     let onRenderingFailure: ((String) -> Void)?
     var onRenderingLoading: (() -> Void)? = nil
     var onRenderingReady: (() -> Void)? = nil
+    var onReplyEvent: ((ReadReplyEvent) -> Void)? = nil
+    var replyQuoteRequest: UUID? = nil
     var onRenderedDiagramSize: ((CGSize) -> Void)? = nil
     var findRequest: DocumentFindPresentationRequest? = nil
     var onFindResult: ((UInt64, Result<DocumentFindResult, any Error>) -> Void)? = nil
@@ -81,6 +83,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         coordinator.testingForcesFinalizationFailure = testingForcesFinalizationFailure
         coordinator.testingScrollRestoreDelayMilliseconds = testingScrollRestoreDelayMilliseconds
         #endif
+        coordinator.onReplyEvent = onReplyEvent
         coordinator.onRenderedDiagramSize = onRenderedDiagramSize
         coordinator.onAskAgent = onAskAgent
         coordinator.onSourceRangeUnavailable = onSourceRangeUnavailable
@@ -91,7 +94,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
     func makeNSView(context: Context) -> DocumentWebViewContainer {
         let webView: WKWebView
         let contentController: WKUserContentController
-        if let prepared = ScholiumWebKitProcessPrewarmer.shared.takeReadWebView() {
+        if onReplyEvent == nil, let prepared = ScholiumWebKitProcessPrewarmer.shared.takeReadWebView() {
             webView = prepared
             contentController = prepared.configuration.userContentController
         } else {
@@ -102,7 +105,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
             configuration.defaultWebpagePreferences.allowsContentJavaScript = true
             ScholiumWebFontResources.install(in: configuration)
-            webView = WKWebView(frame: .zero, configuration: configuration)
+            webView = onReplyEvent == nil ? WKWebView(frame: .zero, configuration: configuration)
+                : AgentChatReadWebView(frame: .zero, configuration: configuration)
         }
         contentController.add(
             context.coordinator,
@@ -134,6 +138,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         context.coordinator.testingForcesFinalizationFailure = testingForcesFinalizationFailure
         context.coordinator.testingScrollRestoreDelayMilliseconds = testingScrollRestoreDelayMilliseconds
         #endif
+        context.coordinator.onReplyEvent = onReplyEvent
+        context.coordinator.quoteReply(ifRequested: replyQuoteRequest, in: webView)
         context.coordinator.onRenderedDiagramSize = onRenderedDiagramSize
         context.coordinator.onAskAgent = onAskAgent
         context.coordinator.onSourceRangeUnavailable = onSourceRangeUnavailable
@@ -210,6 +216,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         private var renderingReadinessIsAcknowledged: Bool
         private var onRenderingFailure: ((String) -> Void)?
         private var onRenderingLoading: (() -> Void)?
+        var onReplyEvent: ((ReadReplyEvent) -> Void)?
+        private var consumedReplyQuote: UUID?
         var onRenderedDiagramSize: ((CGSize) -> Void)?
         private var onRenderingReady: (() -> Void)?
         private var scrollRestoration: SafeMarkdownReadScrollRestoration
@@ -507,6 +515,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                     fingerprint: fingerprint,
                     loadGeneration: loadGeneration,
                     selectionEnabled: onSelectionChange != nil,
+                    chatReply: onReplyEvent != nil,
                     linkPreviews: linkPreviews,
                     presentationCSS: presentationCSS,
                     userCSS: userCSS,
@@ -588,6 +597,24 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                   let type = payload["type"] as? String else { return }
 
             switch type {
+            case "replyHeight":
+                if let height = payload["height"] as? Double, height.isFinite, height > 0, height < 1_000_000 {
+                    onReplyEvent?(.height(height))
+                }
+            case "replyQuote":
+                if let text = payload["text"] as? String, !text.isEmpty, text.utf8.count <= 65_536 {
+                    onReplyEvent?(.quote(text))
+                }
+            case "replyObject":
+                if let index = payload["index"] as? Int, index >= 0, index < 10_000,
+                   let action = payload["action"] as? String, ["copy", "open"].contains(action),
+                   let width = payload["width"] as? Double, let height = payload["height"] as? Double,
+                   width.isFinite, height.isFinite, width > 0, height > 0, width < 1_000_000, height < 1_000_000,
+                   let left = payload["left"] as? Double, let top = payload["top"] as? Double,
+                   left.isFinite, top.isFinite, let view = message.webView {
+                    onReplyEvent?(.object(index, copy: action == "copy", size: CGSize(width: width, height: height),
+                        anchor: NSRect(x: left, y: top, width: 24, height: 24), view: view))
+                }
             case "floatingSurface":
                 guard let surface = DocumentFloatingSurface.decode(payload["surface"]),
                       surface.kind != .suggestions, let webView = message.webView,
@@ -828,6 +855,13 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 WebKitInterfaceLocalization.current()
                     .string("The Review renderer stopped unexpectedly.")
             )
+        }
+
+        func quoteReply(ifRequested request: UUID?, in webView: WKWebView) {
+            guard let request, request != consumedReplyQuote, onReplyEvent != nil else { return }
+            consumedReplyQuote = request
+            webView.evaluateJavaScript("window.scholiumQuoteReplySelection?.()", in: nil,
+                                       in: SafeMarkdownReadWebView.bridgeContentWorld, completionHandler: nil)
         }
 
         /// Read-only SVG layout projection, never a source or viewport measurement.
@@ -1328,6 +1362,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             let fingerprint: String
             let loadGeneration: UInt64
             let selectionEnabled: Bool
+            let chatReply: Bool
             let testingEnabled: Bool
             let presentationCSS: String
             let userCSS: String
@@ -1344,6 +1379,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             fingerprint: String,
             loadGeneration: UInt64,
             selectionEnabled: Bool,
+            chatReply: Bool = false,
             linkPreviews: [DocumentLinkPreview],
             presentationCSS: String,
             userCSS: String,
@@ -1374,6 +1410,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 fingerprint: fingerprint,
                 loadGeneration: loadGeneration,
                 selectionEnabled: selectionEnabled,
+                chatReply: chatReply,
                 testingEnabled: testingEnabled,
                 presentationCSS: presentationCSS,
                 userCSS: userCSS,
@@ -1442,3 +1479,12 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         """
     }
 }
+
+enum ReadReplyEvent {
+    case height(CGFloat)
+    case quote(String)
+    case object(Int, copy: Bool, size: CGSize, anchor: NSRect, view: NSView)
+}
+
+/// Identifies inline rich content to the transcript-owned wheel boundary.
+final class AgentChatReadWebView: WKWebView {}

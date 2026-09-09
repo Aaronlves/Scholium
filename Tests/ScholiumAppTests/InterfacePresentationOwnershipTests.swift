@@ -113,7 +113,9 @@ struct InterfacePresentationOwnershipTests {
     )
     #expect(
       eventMonitors == [
-        "Scholium/UI/Foundation/ScholiumDesignSystem.swift": 1
+        "Scholium/UI/Foundation/ScholiumDesignSystem.swift": 1,
+        // One transcript-owned wheel boundary; no per-row pointer monitors.
+        "Scholium/Views/Sidebar/AgentChatScrollBoundary.swift": 1
       ],
       Comment(rawValue: diagnostic(for: eventMonitors))
     )

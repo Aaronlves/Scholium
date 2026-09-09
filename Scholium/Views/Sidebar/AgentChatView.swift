@@ -106,6 +106,7 @@ struct AgentChatView: View {
       showsDiagnostics = false
       expandedActivityIDs = []
       isAwayFromLatest = false
+      transcriptIsScrolling = false
       showsFind = false
       find = .init()
       renameID = nil
@@ -508,7 +509,9 @@ struct AgentChatView: View {
             move: { backwards in find.move(backwards: backwards) }, dismiss: dismissFind)
         }
         ScrollView {
-          LazyVStack(alignment: .leading, spacing: 20) {
+          // Transcript geometry must describe the loaded messages, rather than
+          // LazyVStack's changing estimates as long replies enter the viewport.
+          VStack(alignment: .leading, spacing: 20) {
             if controller.selected?.messages.isEmpty != false {
               Text("Discuss your research here. Add a passage or name a note to begin.")
                 .foregroundStyle(.secondary).padding(.vertical, 12)
@@ -532,7 +535,11 @@ struct AgentChatView: View {
           }.padding(.horizontal, ScholiumSidebarLayout.textInset)
             .padding(.vertical, ScholiumSidebarLayout.edgeInset)
             .frame(maxWidth: .infinity, alignment: .leading)
+            .background(AgentChatScrollBoundary())
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("scholium.chat.transcript.content")
         }
+        .accessibilityIdentifier("scholium.chat.transcript")
         .defaultScrollAnchor(.bottom, for: .initialOffset)
         .defaultScrollAnchor(.top, for: .alignment)
         .environment(
@@ -556,7 +563,12 @@ struct AgentChatView: View {
         )
         .simultaneousGesture(TapGesture().onEnded { completion.dismiss() })
         .scrollEdgeEffectHidden(true, for: .bottom)
-        .onScrollPhaseChange { _, phase in transcriptIsScrolling = phase.isScrolling }
+        .onScrollPhaseChange { _, phase in
+          transcriptIsScrolling = phase.isScrolling
+          // Yield follow-to-latest as soon as the user takes the scrollbar or
+          // starts a gesture, before asynchronous rich-content layout can change.
+          if phase == .tracking || phase == .interacting { isAwayFromLatest = true }
+        }
         .onScrollGeometryChange(for: AgentChatScrollMetrics.self) { geometry in
           .init(height: geometry.contentSize.height, bottomInset: geometry.contentInsets.bottom,
             bottomDistance: geometry.contentSize.height

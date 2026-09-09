@@ -963,3 +963,99 @@ extension ScholiumUITests {
     }
 
 }
+
+/// Opt-in regression driver for a retained, nonprivate Chat fixture. It never
+/// sends a message, reads a research vault or resets the QA login/history.
+final class ScholiumChatScrollUITests: XCTestCase {
+    private var fixtureApp: XCUIApplication?
+    @MainActor override func tearDown() async throws {
+        fixtureApp?.terminate()
+        fixtureApp = nil
+    }
+
+    @MainActor
+    func testRichReplyScrollRegionsAndStableExtent() throws { try exerciseScroll(checkRegions: true) }
+
+    @MainActor
+    func testScrollThumbMovesWithoutChangingExtent() throws { try exerciseScroll(checkRegions: false) }
+
+    @MainActor
+    private func exerciseScroll(checkRegions: Bool) throws {
+        continueAfterFailure = false
+        let environment = ProcessInfo.processInfo.environment
+        guard let path = environment["SCHOLIUM_CHAT_SCROLL_APP"],
+              let conversation = environment["SCHOLIUM_CHAT_SCROLL_CONVERSATION"] else {
+            throw XCTSkip("Configure the disposable Chat scroll fixture.")
+        }
+        let app = XCUIApplication(url: URL(fileURLWithPath: path))
+        fixtureApp = app
+        app.launch()
+        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 20))
+        let chat = app.radioButtons.matching(NSPredicate(format: "label == %@", "Chat")).firstMatch
+        XCTAssertTrue(chat.waitForExistence(timeout: 10)); chat.click()
+        let back = app.buttons["scholium.chat.back"]
+        if back.waitForExistence(timeout: 2) { back.click() }
+        let row = app.buttons["scholium.chat.conversation.\(conversation)"]
+        XCTAssertTrue(row.waitForExistence(timeout: 10)); row.click()
+        let transcript = app.scrollViews["scholium.chat.transcript"]
+        XCTAssertTrue(transcript.waitForExistence(timeout: 15))
+        let content = app.descendants(matching: .any)["scholium.chat.transcript.content"].firstMatch
+        XCTAssertTrue(content.waitForExistence(timeout: 15))
+        // Wait for the rich reader's asynchronous initial layout to settle.
+        var previous = content.frame.height
+        var stable = 0
+        let deadline = Date().addingTimeInterval(20)
+        while stable < 5 && Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+            let current = content.frame.height
+            stable = abs(current - previous) < 1 ? stable + 1 : 0
+            previous = current
+        }
+        XCTAssertEqual(stable, 5)
+        let height = content.frame.height
+        XCTAssertGreaterThan(height, transcript.frame.height * 2)
+        // Begin at the latest reply, repeatedly cross the reported prose/code
+        // boundary upwards, then reverse through the same screen regions.
+        if checkRegions {
+        for direction: CGFloat in [1, -1] {
+            for fraction: CGFloat in [0.25, 0.5, 0.7, 0.35, 0.6, 0.3, 0.65] {
+                let before = content.frame.minY
+                transcript.coordinate(withNormalizedOffset: CGVector(dx: 0.45, dy: fraction))
+                    .scroll(byDeltaX: 0, deltaY: direction * 250)
+                let moved = NSPredicate { _, _ in abs(content.frame.minY - before) > 3 }
+                XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: moved, object: nil)], timeout: 3), .completed,
+                               "Scroll ignored at viewport fraction \(fraction), direction \(direction)")
+                XCTAssertEqual(content.frame.height, height, accuracy: 1,
+                               "Loaded transcript extent changed while scrolling")
+            }
+        }
+        } else {
+        let scrollbar = try XCTUnwrap(transcript.scrollBars.allElementsBoundByIndex.first {
+            $0.frame.height > $0.frame.width
+        })
+        let window = app.windows.firstMatch
+        let origin = window.coordinate(withNormalizedOffset: .zero)
+        let rectangle = scrollbar.frame
+        let thumb = try XCTUnwrap(scrollbar.children(matching: .any).allElementsBoundByIndex.first {
+            $0.frame.width > 0 && $0.frame.height > 10 && $0.frame.height < rectangle.height
+        }).frame
+        let start = origin.withOffset(CGVector(dx: thumb.midX - window.frame.minX,
+            dy: thumb.midY - window.frame.minY))
+        let end = origin.withOffset(CGVector(dx: thumb.midX - window.frame.minX,
+            dy: rectangle.midY - window.frame.minY))
+        start.hover()
+        let prior = XCTAttachment(screenshot: app.screenshot())
+        prior.name = "Scroll thumb before drag"; prior.lifetime = .keepAlways; add(prior)
+        let beforeDrag = content.frame.minY
+        start.click(forDuration: 0.2, thenDragTo: end)
+        let after = XCTAttachment(screenshot: app.screenshot())
+        after.name = "Scroll thumb after drag"; after.lifetime = .keepAlways; add(after)
+        XCTAssertNotEqual(content.frame.minY, beforeDrag, "Dragging the scroll thumb did not move the conversation")
+        XCTAssertEqual(content.frame.height, height, accuracy: 1)
+        }
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        attachment.name = "Rich reply scroll regions and stable extent"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+}

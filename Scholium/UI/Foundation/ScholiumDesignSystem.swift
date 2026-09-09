@@ -123,7 +123,7 @@ enum ScholiumColorRole: String, CaseIterable, Sendable {
 /// these exceptions named prevents feature views from reaching into AppKit's
 /// color catalog directly or treating them as additional product Variables.
 enum ScholiumNativeColorRole: Sendable {
-    case label, secondaryLabel, windowBackground, textBackground, controlAccent
+    case label, secondaryLabel, windowBackground, controlBackground, textBackground, controlAccent
     case searchMatchHighlight
     case structuralShadow
 
@@ -132,6 +132,7 @@ enum ScholiumNativeColorRole: Sendable {
         case .label: .labelColor
         case .secondaryLabel: .secondaryLabelColor
         case .windowBackground: .windowBackgroundColor
+        case .controlBackground: .controlBackgroundColor
         case .textBackground: .textBackgroundColor
         case .controlAccent: .controlAccentColor
         case .searchMatchHighlight: .findHighlightColor

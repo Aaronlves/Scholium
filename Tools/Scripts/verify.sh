@@ -45,6 +45,7 @@ PY
 LEGACY_AGENT_ROOTS=(
   "${ROOT}/Scholium"
   "${ROOT}/ScholiumCLI"
+  "${ROOT}/ScholiumAgentHelper"
   "${ROOT}/ScholiumApplication"
   "${ROOT}/ScholiumContracts"
   "${ROOT}/ScholiumCore"
@@ -115,7 +116,7 @@ fi
 
 # Delivery targets compile only against Contracts plus Application composition.
 # Core is internal and cannot be imported by App, CLI, or their boundary tests.
-DELIVERY_ROOTS=("${ROOT}/Scholium" "${ROOT}/ScholiumCLI")
+DELIVERY_ROOTS=("${ROOT}/Scholium" "${ROOT}/ScholiumCLI" "${ROOT}/ScholiumAgentHelper")
 if rg -n --glob '*.swift' \
   '\b(FileManager|URLSession|SQLite|FSEvent|AppKit|SwiftUI|Combine|UserDefaults|NSWorkspace|NSOpenPanel)\b' \
   "${ROOT}/ScholiumContracts"; then
@@ -166,7 +167,9 @@ while IFS= read -r file; do
     "${ROOT}/Scholium/Services/AgentChatChildController.swift"|\
     "${ROOT}/Scholium/Views/AgentIntegrationSettingsView.swift"|\
     "${ROOT}/ScholiumCLI/CLIContext.swift"|\
-    "${ROOT}/ScholiumCLI/MCPCommandHandler.swift") ;;
+    "${ROOT}/ScholiumCLI/MCPCommandHandler.swift"|\
+    "${ROOT}/ScholiumCLI/ZoteroCommandHandler.swift"|\
+    "${ROOT}/ScholiumAgentHelper/ScholiumAgentHelper.swift") ;;
     *)
       echo "Compiler boundary guard failed: ScholiumApplication import outside a composition root: ${file}" >&2
       exit 1
