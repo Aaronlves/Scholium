@@ -28,7 +28,9 @@ Each configured window contains one native split view:
 Native split behavior governs resizing and collapse. Scholium requests the
 initial Inspector reveal but never continuously reasserts divider positions.
 The main/auxiliary color and material boundary follows §19.1; native safe areas
-protect content. A popover opened here is still an auxiliary surface.
+protect content through window zoom and resize. Only the selected Sidebar page
+participates in pointer, tooltip, keyboard and accessibility interaction; retained
+pages cannot intercept another page. A popover remains an auxiliary surface.
 
 New windows show Library, hide Inspector, and begin in Analyses/About. The toolbar's
 leading native icon selector, labelled Library / Chat in Help and accessibility, shows
@@ -74,18 +76,55 @@ to the input method. Unavailable sending preserves the draft and selection, with
 visible connection explanation when disconnected. Native selection and Undo remain
 within the current conversation. Back returns to conversations while work
 continues. User messages align trailing in content-sized shared-Accent bubbles with
-legible full-opacity text; the speaker label remains above and outside the bubble; Agent
-replies support natural long-form prose. Public progress commentary and individual
+legible full-opacity text. Repeated visible speaker labels are omitted; alignment
+and accessible speaker names retain authorship. Agent replies support natural long-form prose.
+One quiet status above each attributed Agent turn replaces its speaker label and
+serves as the process disclosure when process items exist. It describes observed
+research activity, followed by elapsed time only when runtime timing is known.
+Completion shows total turn duration, including waits, never private thinking time;
+missing timing stays unnumbered. Waiting, interruption, uncertainty and failure
+have distinct text. The top status has no decorative symbol or pulse; only its
+disclosure affordance appears after its label on hover or keyboard focus. It
+retains a named, keyboard-accessible toggle. The current activity names its
+observed action and target, with intermittent text shimmer. Completed activities
+use quiet past-tense descriptions without repeated success badges. Other running
+items remain identifiable; no parallel work is silently marked complete. Short
+operations avoid flashing, and stopped, waiting or inactive presentations stop
+shimmer immediately. Reduce Motion and Increase Contrast retain static readable
+text. Glyph positions, input, scrolling and window geometry never animate with
+shimmer. Runtime command-action metadata may describe reads/searches; unknown
+commands use neutral wording rather than inferred research claims.
+Body text uses native primary text; history and supporting labels use secondary
+text. The collapsed process shows only its single status/timing row, without an
+operation inventory. Disclosure follows distance from research: answers, source
+navigation and necessary decisions are direct; operation history is secondary;
+raw technical records are deeper. Consecutive tools between public commentary
+form one collapsed, single-line activity row whose current action updates in
+place. Expanding reveals individual operations; each discloses
+its retained command, parameters, output and errors in a native grouped card,
+with text selection. Copy appears beside the section title on pointer hover or
+keyboard focus, with an additional context-menu route. The card omits redundant
+success labels. Long details scroll within that bounded card. Missing output is
+explicit, never reconstructed. Diagnostics provides an additional overview,
+never the sole detail route. Failure remains identifiable on the collapsed row.
+Public progress commentary and individual
 tool calls form a leading-aligned Agent process group, separate from the final answer.
 Each call retains its own target and outcome rather than being replaced by counts
-by tool type. During execution this group is expanded. After completion it collapses
-to a quiet disclosure while the final answer remains visible. Unresolved approval,
+by tool type. During execution public commentary remains readable while tool
+groups stay collapsed unless opened. Accessory symbols share size and semantic
+secondary color; disclosure controls trail their labels and reveal on demand.
+After completion it collapses while the final answer remains visible, unless the
+user is reading earlier content or has explicitly expanded the process or an
+operation's details. Manual disclosure choices survive new items and outcomes.
+Streaming and collapse do not animate the entire transcript or steal its position. Unresolved approval,
 failed-turn and uncertain outcomes remain visible; Find reveals a matching process
-entry without dropping the draft or the stored trace. Files referenced or produced in an Agent reply use compact native content
-cards with quiet unfilled surfaces in a bounded horizontal group, retaining filename, operation meaning and
-exact source or change identity. Overflow opens the conversation-files popover;
-it does not grow into a vertical file inventory beneath the answer. The floating
-file/change count has a clear native glass surface without Accent fill and opens that same popover.
+entry without dropping the draft or stored trace. Reply Note links open Notes;
+Chat adds no duplicate file cards above or below those links. Reading and no-op
+records belong to activity details, where exact returned Note identities provide
+Open Note. The floating Changes entry counts confirmed, not-yet-viewed mutations
+in this conversation, never reads or runtime-only claims. Its native popover
+separates Open Note from View Changes and retains All Changes history when the
+pending list is empty. Input attachments remain separate draft materials.
 Return to latest is a neutral downward-arrow button with an accessible name, shown
 only away from the latest content. Exact comparisons remain available
 only by explicit action. Input attachments remain separate draft materials.
@@ -102,10 +141,16 @@ disclosure reuses the existing Note/file/image previews and identifies the suppl
 representation; it never presents all materials as citations or adds another reader.
 Sources and conversation file-operation history have distinct scopes. Ratings and
 export actions are not part of this initial reply-action surface.
-File cards and rows distinguish recorded edits, reads, verified no-op
-updates and runtime reports. They describe observed operations, not current filesystem
-or acceptance state. Chat adds no permanent change-review pane or technical
-history-management task. Inspector modes remain document-dependent. Toolbar
+Reply prose wraps normally. Inline code has a semantic system-gray background.
+Tables and code retain bounded horizontal scrolling; Mermaid reuses the local
+safe renderer with visible failure fallback. Diagrams omit developer hints,
+format labels and a separate source disclosure; Copy returns exact diagram code.
+Rich objects offer Copy and Open in Window without executing content or changing Notes.
+Expanded objects use a nonmodal native window initially fitted to measured content and bounded by the available screen.
+Small diagrams do not open screen-sized empty canvases. Larger objects retain scrolling and manual resizing,
+without nested chat cards, backdrop dimming or blocked workspace input. Copy, source,
+resizing and dismissal remain available; closing preserves the conversation. Chat adds no permanent comparison pane.
+Inspector modes remain document-dependent. Toolbar
 validation and View menus derive availability from the same current window state. Native
 spacers express logical grouping; the system owns glass shapes, proximity effects, and
 transitions. This native state contract applies to every toolbar component, including
@@ -275,8 +320,12 @@ short labels and direct
 actions lead, with explanations only for unavailable or consequential states.
 An explicit web-search mode is distinguishable from Note Search.
 
-Conversation options expose Rename, Find, Branch and Context. Context shows
-runtime-reported usage and a state-valid Compact Context action. Account quota
+Conversation options expose Rename, Find, Branch, Context and Diagnostics.
+A compact composer percentage opens the same native Context popover by click or
+keyboard when runtime usage and capacity are known; unknown usage remains unnamed
+numerically. Context separates last-reported occupancy from cumulative consumption,
+with bounded native progress, token details and a state-valid Compact Context action.
+It never estimates subscription charges or invents unreported token breakdowns. Account quota
 has a separate labelled presentation. Search in the conversation list retains
 its scope and query; in-conversation Find provides match navigation and Close.
 Both preserve drafts and running work. A branch names its origin and does not

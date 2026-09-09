@@ -560,9 +560,12 @@ decoder.
 
 Each configured scene constructs one `ScholiumWorkspaceSplitView`: one
 `NSSplitViewController` with three direct `NSSplitViewItem` siblings for
-Library, Document, and Apparatus. Library is installed directly through
-`NSSplitViewItem(sidebarWithViewController:)`; its SwiftUI and source-list
-content remains transparent so AppKit's regular Sidebar Glass, inset edge,
+Library, Document, and Apparatus. The Sidebar installs `ScholiumSidebarViewController` through
+`NSSplitViewItem(sidebarWithViewController:)`. Its retained Library/Chat hosts
+disable content-driven sizing and fill the live native safe area. Native
+`isHidden` excludes the inactive host from tooltip/event tracking, clearing its
+first responder when switching. Window shell state alone selects the page.
+SwiftUI and source-list content remain transparent so AppKit's regular Sidebar Glass, inset edge,
 shadow, and adaptation stay visible. The Document item enables
 `automaticallyAdjustsSafeAreaInsets`, extending its opaque Paper background
 beneath the floating Sidebar while constraining readable content to the native

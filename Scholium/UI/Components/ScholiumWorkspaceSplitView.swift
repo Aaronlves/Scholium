@@ -124,7 +124,7 @@ private final class ScholiumFirstApparatusWidthOffer {
 /// One native three-region workspace. Library, Document, and Apparatus are
 /// siblings in a single NSSplitViewController; AppKit owns resizing, divider
 /// geometry, compression, collapse transitions, and live collapsed state.
-struct ScholiumWorkspaceSplitView<Library: View, Document: View, Apparatus: View>:
+struct ScholiumWorkspaceSplitView<Library: View, Chat: View, Document: View, Apparatus: View>:
     NSViewControllerRepresentable
 {
     let initialLibraryVisible: Bool
@@ -142,10 +142,13 @@ struct ScholiumWorkspaceSplitView<Library: View, Document: View, Apparatus: View
         any ScholiumWorkspaceSplitControlling
     ) -> Void
     let library: Library
+    let chat: Chat
+    let sidebarContent: SidebarContent
     let document: Document
     let apparatus: Apparatus
 
     init(
+        sidebarContent: SidebarContent,
         initialLibraryVisible: Bool,
         initialApparatusVisible: Bool,
         documentTabs: [DocumentTabItem],
@@ -161,6 +164,7 @@ struct ScholiumWorkspaceSplitView<Library: View, Document: View, Apparatus: View
             any ScholiumWorkspaceSplitControlling
         ) -> Void,
         @ViewBuilder library: () -> Library,
+        @ViewBuilder chat: () -> Chat,
         @ViewBuilder document: () -> Document,
         @ViewBuilder apparatus: () -> Apparatus
     ) {
@@ -175,6 +179,8 @@ struct ScholiumWorkspaceSplitView<Library: View, Document: View, Apparatus: View
         self.splitControllerDidAttach = splitControllerDidAttach
         self.splitControllerDidDetach = splitControllerDidDetach
         self.library = library()
+        self.chat = chat()
+        self.sidebarContent = sidebarContent
         self.document = document()
         self.apparatus = apparatus()
     }
@@ -192,6 +198,8 @@ struct ScholiumWorkspaceSplitView<Library: View, Document: View, Apparatus: View
             splitControllerDidAttach: splitControllerDidAttach,
             splitControllerDidDetach: splitControllerDidDetach,
             library: library,
+            chat: chat,
+            sidebarContent: sidebarContent,
             document: document,
             apparatus: apparatus
         )
@@ -202,6 +210,8 @@ struct ScholiumWorkspaceSplitView<Library: View, Document: View, Apparatus: View
     func updateNSViewController(_ controller: Controller, context: Context) {
         controller.update(
             library: library,
+            chat: chat,
+            sidebarContent: sidebarContent,
             document: document,
             apparatus: apparatus,
             documentTabs: documentTabs,
@@ -217,7 +227,7 @@ struct ScholiumWorkspaceSplitView<Library: View, Document: View, Apparatus: View
 
     @MainActor
     final class Controller: NSSplitViewController, ScholiumWorkspaceSplitControlling {
-        private let libraryHost: NSHostingController<Library>
+        private let sidebarController: ScholiumSidebarViewController<Library, Chat>
         private let documentTabsController: ScholiumDocumentTabsViewController<Document>
         private let apparatusHost: NSHostingController<Apparatus>
         private let documentBackgroundController: ScholiumSurfaceContainerViewController
@@ -255,6 +265,8 @@ struct ScholiumWorkspaceSplitView<Library: View, Document: View, Apparatus: View
                 any ScholiumWorkspaceSplitControlling
             ) -> Void,
             library: Library,
+            chat: Chat,
+            sidebarContent: SidebarContent,
             document: Document,
             apparatus: Apparatus
         ) {
@@ -264,7 +276,9 @@ struct ScholiumWorkspaceSplitView<Library: View, Document: View, Apparatus: View
             self.researchInspectorVisibilityDidChange = researchInspectorVisibilityDidChange
             self.splitControllerDidAttach = splitControllerDidAttach
             self.splitControllerDidDetach = splitControllerDidDetach
-            let libraryHost = NSHostingController(rootView: library)
+            let sidebarController = ScholiumSidebarViewController(
+                library: library, chat: chat, selection: sidebarContent
+            )
             let documentTabsController = ScholiumDocumentTabsViewController(
                 document: document,
                 tabs: documentTabs,
@@ -277,7 +291,7 @@ struct ScholiumWorkspaceSplitView<Library: View, Document: View, Apparatus: View
             // fills the container but must not publish intrinsic, minimum, or
             // maximum sizes back into AppKit as modes and content change.
             apparatusHost.sizingOptions = []
-            self.libraryHost = libraryHost
+            self.sidebarController = sidebarController
             self.documentTabsController = documentTabsController
             self.apparatusHost = apparatusHost
             documentBackgroundController = ScholiumSurfaceContainerViewController(
@@ -313,7 +327,7 @@ struct ScholiumWorkspaceSplitView<Library: View, Document: View, Apparatus: View
             splitView.dividerStyle = .thin
 
             libraryItem = NSSplitViewItem(
-                sidebarWithViewController: libraryHost
+                sidebarWithViewController: sidebarController
             )
             libraryItem.minimumThickness = ScholiumMetrics.Library.minimumReadableWidth
             libraryItem.canCollapse = true
@@ -395,6 +409,8 @@ struct ScholiumWorkspaceSplitView<Library: View, Document: View, Apparatus: View
 
         func update(
             library: Library,
+            chat: Chat,
+            sidebarContent: SidebarContent,
             document: Document,
             apparatus: Apparatus,
             documentTabs: [DocumentTabItem],
@@ -410,7 +426,7 @@ struct ScholiumWorkspaceSplitView<Library: View, Document: View, Apparatus: View
                 any ScholiumWorkspaceSplitControlling
             ) -> Void
         ) {
-            libraryHost.rootView = library
+            sidebarController.update(library: library, chat: chat, selection: sidebarContent)
             documentTabsController.update(
                 document: document,
                 tabs: documentTabs,

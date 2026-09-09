@@ -15,6 +15,7 @@ struct AgentChatMarkdownBlock: Identifiable {
   var text: AttributedString
   var cells: [AttributedString] = []
   var isQuoted = false
+  var language: String? = nil
 
   static func parse(_ source: String) -> [Self] {
     guard let parsed = try? AttributedString(markdown: source) else {
@@ -68,9 +69,12 @@ struct AgentChatMarkdownBlock: Identifiable {
       } else {
         kind = .prose
       }
+      let language = components.compactMap { component -> String? in
+        if case .codeBlock(let hint) = component.kind { return hint }; return nil
+      }.first
       blocks.append(
-        .init(
-          id: id, kind: kind, text: text, isQuoted: components.contains { $0.kind == .blockQuote }))
+        .init(id: id, kind: kind, text: text,
+              isQuoted: components.contains { $0.kind == .blockQuote }, language: language))
     }
     if blocks.isEmpty, !source.isEmpty {
       return [.init(id: 0, kind: .prose, text: AttributedString(source))]
@@ -87,7 +91,11 @@ struct AgentChatMarkdown: View {
 
   var body: some View {
     Group {
-      if let quoteSelection {
+      if AgentChatMarkdownBlock.parse(text).contains(where: { block in
+        if case .tableRow = block.kind { return true }; return block.kind == .code
+      }) {
+        AgentChatRichContent(source: text, quote: quoteSelection, openLink: { openURL($0) })
+      } else if let quoteSelection {
         AgentChatSelectableText(source: text,
           quote: { range, rendered in
             quoteSelection(.init(range: range, renderedText: rendered))
@@ -106,6 +114,14 @@ struct AgentChatMarkdown: View {
     .frame(maxWidth: expandsToFillWidth ? .infinity : nil, alignment: .leading)
   }
 
+  private func inlineStyled(_ value: AttributedString) -> AttributedString {
+    var result = value
+    for run in value.runs where run.inlinePresentationIntent?.contains(.code) == true {
+      result[run.range].backgroundColor = Color(nsColor: .quaternaryLabelColor)
+    }
+    return result
+  }
+
   private func spacing(after index: Int, in blocks: [AgentChatMarkdownBlock]) -> CGFloat {
     guard index + 1 < blocks.count else { return 0 }
     switch (blocks[index].kind, blocks[index + 1].kind) {
@@ -118,7 +134,7 @@ struct AgentChatMarkdown: View {
   private func blockView(_ block: AgentChatMarkdownBlock) -> some View {
     switch block.kind {
     case .prose:
-      Text(block.text)
+      Text(inlineStyled(block.text))
     case .heading:
       Text(block.text).font(.headline).accessibilityAddTraits(.isHeader)
     case .code:
@@ -130,7 +146,7 @@ struct AgentChatMarkdown: View {
     case .list(let marker):
       HStack(alignment: .firstTextBaseline) {
         Text(marker)
-        Text(block.text)
+        Text(inlineStyled(block.text))
       }.padding(.leading, block.isQuoted ? nil : 0)
     case .tableRow(let header):
       HStack(alignment: .top) {
@@ -144,9 +160,19 @@ struct AgentChatMarkdown: View {
 
 struct AgentChatTimelineItem: Identifiable {
   let messages: [AgentChatMessage]
-  let showsSpeaker: Bool
   var id: String { messages[0].id }
   var isProcess: Bool { Self.isProcess(messages[0]) }
+  static func activeActivityID(in history: [AgentChatMessage], turnID: String?) -> String? {
+    guard let turnID else { return nil }
+    return history.last { $0.turnID == turnID && $0.activity?.status == .running }?.id
+  }
+  func carriesTurnStatus(in history: [AgentChatMessage]) -> Bool {
+    guard let turn = messages.first?.turnID else { return false }
+    // A turn can stop before producing any Agent item; retain its status below the request.
+    let anchor = history.first { $0.turnID == turn && $0.role != .user }
+      ?? history.last { $0.turnID == turn && $0.role == .user }
+    return anchor?.id == id
+  }
   static func isProcess(_ message: AgentChatMessage) -> Bool {
     message.role == .operation || message.phase == .commentary || message.plan != nil
   }
@@ -156,13 +182,10 @@ struct AgentChatTimelineItem: Identifiable {
     for message in messages {
       if Self.isProcess(message), items.last?.isProcess == true, items.last?.messages.last?.turnID == message.turnID {
         let previous = items.removeLast()
-        items.append(.init(messages: previous.messages + [message], showsSpeaker: false))
+        items.append(.init(messages: previous.messages + [message]))
       } else {
         items.append(
-          .init(
-            messages: [message],
-            showsSpeaker: message.role != .assistant
-              || items.last?.messages.last?.role != .assistant))
+          .init(messages: [message]))
       }
     }
     return items

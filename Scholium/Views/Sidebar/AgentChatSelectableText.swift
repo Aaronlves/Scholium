@@ -26,11 +26,23 @@ struct AgentChatSelectableText: NSViewRepresentable {
   }
   /// One text storage preserves native selection and Copy across every displayed block.
   static func renderReply(_ source: String) -> NSAttributedString {
+    layoutReply(source).text
+  }
+
+  struct Layout {
+    let text: NSAttributedString
+    let blocks: [(block: AgentChatMarkdownBlock, range: NSRange)]
+  }
+
+  static func layoutReply(_ source: String) -> Layout {
     let blocks = AgentChatMarkdownBlock.parse(source)
+    var ranges: [(block: AgentChatMarkdownBlock, range: NSRange)] = []
     let result = NSMutableAttributedString(string: "")
     var table: NSTextTable?
     var row = 0
     for (index, block) in blocks.enumerated() {
+      let start = result.length
+      defer { ranges.append((block, NSRange(location: start, length: result.length - start))) }
       if case .tableRow(let header) = block.kind {
         if table == nil {
           table = NSTextTable()
@@ -82,7 +94,7 @@ struct AgentChatSelectableText: NSViewRepresentable {
         text, font: font, paragraph: paragraph,
         suffix: index + 1 < blocks.count ? "\n" : "", to: result)
     }
-    return result
+    return Layout(text: result, blocks: ranges)
   }
 
   private static func append(
@@ -115,6 +127,7 @@ struct AgentChatSelectableText: NSViewRepresentable {
       }
       if run.inlinePresentationIntent?.contains(.code) == true {
         attributes[.font] = NSFont.monospacedSystemFont(ofSize: font.pointSize, weight: .regular)
+        attributes[.backgroundColor] = NSColor.quaternaryLabelColor
       }
       if run.inlinePresentationIntent?.contains(.strikethrough) == true {
         attributes[.strikethroughStyle] = NSUnderlineStyle.single.rawValue

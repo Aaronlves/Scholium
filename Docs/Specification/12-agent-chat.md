@@ -4,12 +4,11 @@
 
 ## 8.7 In-app Chat
 
-Chat belongs to one Triptych and may reference several Notes across its vaults. Sending
-the first message starts a conversation without an academic task or Record. Library
-navigation and current Note changes do not change the active conversation or silently
-share another document. Conversation history, drafts, attachments and uncertain delivery
-survive reopening in machine-local storage. Titles derive from the first message; saving
-and reopening need no technical session-management decision. Archiving hides an idle
+Chat belongs to one Triptych and may reference Notes across its vaults. The first
+message starts a conversation without a task or Record. Library navigation and
+Note changes neither switch conversations nor silently share documents. History,
+drafts, attachments and uncertain delivery survive reopening in machine-local
+storage. Titles derive from the first message; saving and reopening are automatic. Archiving hides an idle
 conversation from the active list while preserving its messages, draft and modification
 links. Restoring makes it writable again; archived conversations cannot send or become
 active tool runs. Runtime history remains runtime-owned; a retained public projection is
@@ -36,8 +35,7 @@ existing owner. Successful interruption is distinct from rollback. Uncertain
 requests are retained and never automatically resent. Continuing after an
 uncertain delivery is an explicit action that does not resend its old message.
 
-The client supports sending, streaming public answers, additional input,
-interruption, sign-in, disconnection and conversation reopening. Source excerpts
+Source excerpts
 come from one checked editor source/selection snapshot, retaining Note identity,
 source fingerprint and locator. Adding an excerpt prepares input without sending.
 Review selections may be handed off only when they map uniquely to exact source
@@ -51,16 +49,14 @@ activation sends the checked passage in a separate ordinary conversation without
 consuming or replacing the current Chat draft. A native anchored result presents
 actual progress, Stop, errors and the public answer; Continue in Chat opens that
 same conversation for further questions or required approvals. Closing the result
-hides presentation without discarding history or implying cancellation. No fake
-waiting interval or duplicate runtime is introduced. Unavailable connection or
-source preserves the prepared request and exposes repair without automatic resending.
+hides presentation without discarding history or cancelling. Unavailable connection
+or source preserves the request and exposes repair without resending.
 Explain separates the passage's wording from interpretation. Polish preserves
 thesis, terminology, qualifications and citations, and returns proposed source
 without changing Notes. Custom actions request discussion or a
 proposal; they do not independently authorize source mutation. Ordinary runtime
-permissions remain in force. A completed Polish proposal can replace only the
-captured exact range after explicit Adopt, while the same editable document and
-full source revision still match and composition is inactive. Adoption is one
+permissions remain in force. A completed Polish proposal replaces its captured range only after Adopt, with
+the same editable document, exact source revision and inactive composition. Adoption is one
 editor Undo operation; changed source retains the proposal for Copy or Chat and
 requires a fresh request rather than fuzzy relocation or overwriting later edits.
 Review offers Copy and Continue in Chat, with adoption available in Edit/Source.
@@ -93,16 +89,15 @@ The source revision is checked again when the location is applied. A revision
 change while loading leaves the Note open without selecting obsolete coordinates;
 editor coordinate conversion preserves exact original newline and Unicode offsets.
 
-One-click connection discovers an installed executable and the Scholium CLI, prepares
-its MCP configuration, and requests provider sign-in if needed. Advanced paths and
+One-click connection discovers the runtime and first-party MCP helper, prepares
+tools, and requests sign-in if needed. Advanced paths and
 connection management live in Settings. These machine paths, credentials and runtime
 data stay outside portable `.scholium`; existing Triptych control settings keep their
 current portable owner. A separate configuration directory is the default; choosing an
 existing runtime directory explicitly inherits its configuration and tools. Scholium
-does not copy credentials, change global host settings, or promise arbitrary
-desktop-thread adoption. Cloud inference and account usage remain subject to the
-provider; local execution does not imply offline inference. Normal Note work remains
-available without a runtime or sign-in.
+does not copy credentials or change global host settings. Research Chat excludes
+automatic repository instructions; Core Protocol and selected methods supply
+research context. Normal Note work remains available without a runtime.
 
 After an explicit successful connection, Scholium remembers that connection intent
 locally and restores the connection when reopening the Triptych. Login remains
@@ -183,7 +178,9 @@ and send checks. Failure, cancellation and uncertain fork results preserve the
 source and never fall back to copying the rejected answer into a new thread.
 
 Runtime identity and public history remain distinct. Missing, unreadable or
-unavailable runtime history preserves the visible conversation and draft.
+unavailable runtime history preserves the conversation and draft. A missing runtime
+thread is a retained, readable conversation, not a connection failure; dependent
+actions stay unavailable, with explicit retry and new-conversation routes.
 Paginated history is loaded through the runtime's supported continuation; a
 partial result is never presented as complete. Delivery uncertainty requires
 reconciliation and explicit continuation, never automatic resend.
@@ -469,7 +466,9 @@ software step means only the named operation ended successfully. Runtime-labelle
 public progress commentary is distinct from the final answer and is retained with
 its exact turn and item identity. The process view groups the commentary, plans
 and individually inspectable tool calls for that turn; completion collapses the
-process, not the final answer. Missing phase metadata never justifies hiding an
+process subject to the reading-position rules in §18.2, not the final answer.
+Runtime turn identity owns status and timing; restoration never fabricates elapsed time.
+Missing phase metadata never justifies hiding an
 Agent message as presumed reasoning. The client does not expose raw reasoning
 items or reinterpret ordinary answer text as a private reasoning trace.
 Default progress names the action and outcome in ordinary research language.

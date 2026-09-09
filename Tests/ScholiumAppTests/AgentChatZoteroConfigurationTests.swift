@@ -34,6 +34,19 @@ struct AgentChatZoteroConfigurationTests {
         }
         let first = try await make()
         let caps = first.capabilities
+        first.editDraft("hello")
+        first.send()
+        let configurationFile = first.runtimeHome.appendingPathComponent("configuration.json")
+        try await wait { FileManager.default.fileExists(atPath: configurationFile.path) && first.state == .ready }
+        let defaults = try JSONDecoder().decode(MCPJSONValue.self, from: Data(contentsOf: configurationFile))
+        let config = try #require(defaults.objectValue?["config"]?.objectValue)
+        let builtIn = try #require(config["mcp_servers"]?.objectValue?["scholium-zotero"]?.objectValue)
+        #expect(builtIn["args"] == .array(["zotero", "mcp", "serve", "--read-only"].map(MCPJSONValue.string)))
+        #expect(builtIn["required"] == .bool(false))
+        #expect(config["project_doc_max_bytes"] == .integer(0))
+        #expect(config["project_root_markers"] == .array([]))
+        #expect(defaults.objectValue?["developerInstructions"]?.stringValue?.contains(triptych.uuidString) == true)
+        #expect(caps.zoteroConnection == nil) // The app default never writes the user's config.
         let preset = try #require(caps.zoteroToolEdit(executable: first.zoteroToolExecutable))
         #expect(preset.connection.name == "scholium-zotero" && preset.connection.kind == .local)
         #expect(preset.connection.arguments == ["zotero", "mcp", "serve", "--read-only"])
@@ -60,6 +73,8 @@ struct AgentChatZoteroConfigurationTests {
         let retained = try #require(second.capabilities.zoteroToolEdit(executable: second.zoteroToolExecutable))
         second.editDraft("hold"); second.send()
         try await wait { second.state == .working && second.selected?.pendingMessageID == nil }
+        let disabledParameters = try JSONDecoder().decode(MCPJSONValue.self, from: Data(contentsOf: configurationFile))
+        #expect(disabledParameters.objectValue?["config"]?.objectValue?["mcp_servers"]?.objectValue?["scholium-zotero"] == nil)
         #expect(second.capabilities.zoteroToolEdit(executable: second.zoteroToolExecutable) == nil)
         #expect(!(await second.capabilities.saveTool(retained)))
         #expect(second.capabilities.zoteroConnection?.enabled == false)

@@ -9,6 +9,11 @@ import Testing
 enum NativeChatSourceScope {
   static let paths: Set<String> = [
     "Scholium/Views/Sidebar/AgentChatView.swift",
+    "Scholium/Views/Sidebar/AgentChatActivityText.swift",
+    "Scholium/Views/Sidebar/AgentChatDiagnosticsView.swift",
+    "Scholium/Views/Sidebar/AgentChatActivityDetails.swift",
+    "Scholium/Views/Sidebar/AgentChatDisclosureStyle.swift",
+    "Scholium/Views/Sidebar/AgentChatActivityGroup.swift",
     "Scholium/Views/Sidebar/AgentChatSourceEvidenceView.swift",
     "Scholium/Views/Note/AgentSelectionResultView.swift",
     "Scholium/Views/Sidebar/AgentChatMarkdown.swift",
@@ -20,8 +25,9 @@ enum NativeChatSourceScope {
     "Scholium/Views/Sidebar/AgentChatNotePicker.swift",
     "Scholium/Views/Sidebar/AgentChatComposerInput.swift",
     "Scholium/Views/Sidebar/AgentChatComposerCompletion.swift",
-    "Scholium/Views/Sidebar/AgentChatResultFiles.swift",
+    "Scholium/Views/Sidebar/AgentChatRichContent.swift",
     "Scholium/Views/Sidebar/AgentChatProcessView.swift",
+    "Scholium/Views/Sidebar/AgentChatTurnStatus.swift",
     "Scholium/Views/Sidebar/AgentChatReplyActions.swift",
     "Scholium/Views/Sidebar/AgentChatRuntimeControls.swift",
     "Scholium/Views/Sidebar/AgentChatFindBar.swift",
@@ -47,7 +53,7 @@ struct AgentChatPresentationTests {
   func quietProgress() {
     let command = AgentChatActivity(kind: .command, status: .failed, source: .runtime,
       subject: "cat /private/path/file", detail: "EACCES raw error")
-    #expect(AgentChatActivityProjection.title(command, locale: Locale(identifier: "zh-Hans")) == "正在处理")
+    #expect(AgentChatActivityProjection.title(command, locale: Locale(identifier: "zh-Hans")) == "运行命令")
     #expect(AgentChatActivityProjection.subject(command) == nil)
     let note = AgentChatActivity(kind: .read, status: .completed, source: .scholium,
       subject: "internal-id", detail: "raw", files: [.init(path: "Analyses/原文.md")])
@@ -83,14 +89,13 @@ struct AgentChatPresentationTests {
     #expect(items.flatMap(\.messages) == [progress, operation, operation, final, other, unknown])
   }
 
-  @Test("Reply cards preserve exact Note references without treating external URLs or paths as files")
+  @Test("Reply sources preserve exact Note references without treating external URLs or paths as files")
   func replyFileReferences() throws {
     let note = UUID()
     let url = AgentChatReference.url(noteID: note)
     let text = "[论证](\(url)) and [again](\(url)) [website](https://example.org/paper.pdf) ordinary.md"
-    let files = AgentChatResultFile.collect(text)
+    let files = AgentChatReplySource.collect(text).filter(\.isNote)
     #expect(files.count == 1 && files.first?.url == url && files.first?.title == "论证")
-    #expect(AgentChatFileSummary.collect([AgentChatMessage(role: .assistant, text: text)]).isEmpty)
   }
 
   @Test("Long replies preserve paragraphs, quotation, argument numbering and exact code")
@@ -137,7 +142,6 @@ struct AgentChatPresentationTests {
     #expect(items.count == 5)
     #expect(items[1].isProcess && items[1].messages.count == 2)
     #expect(items[1].messages[1].changeID == change)
-    #expect(items[2].showsSpeaker && !items[3].showsSpeaker && items[4].showsSpeaker)
     #expect(items.flatMap(\.messages) == messages)
   }
 
@@ -151,8 +155,8 @@ struct AgentChatPresentationTests {
         "kind": .object(["type": .string("update")])])])]
     let activity = try #require(AgentChatActivityProjection.withLocalizedFailure(CodexChatActivity.parse(item, completed: true)))
     let message = AgentChatMessage(role: .operation, text: "", activity: activity)
-    let file = try #require(AgentChatFileSummary.collect([message]).first)
-    #expect(file.source == .runtime && file.changeIDs.isEmpty && file.file.effect == .edited)
+    #expect(message.activity?.source == .runtime && message.changeID == nil)
+    #expect(message.activity?.files.first?.effect == .edited)
     var pending = activity
     pending.status = .running
     #expect(AgentChatActivityProjection.afterConnectionLoss(pending).status == .uncertain)
@@ -162,22 +166,6 @@ struct AgentChatPresentationTests {
     failed["status"] = .string("failed")
     let failure = try #require(AgentChatActivityProjection.withLocalizedFailure(CodexChatActivity.parse(failed, completed: true)))
     #expect(failure.status == .failed && failure.files.first?.effect == nil)
-  }
-
-  @Test("A later read cannot erase a confirmed edit and duplicate receipts stay unique")
-  func fileEvidenceGrouping() throws {
-    let note = UUID(), change = UUID()
-    let edited = AgentChatMessage(role: .operation, text: "", changeID: change,
-      activity: .init(kind: .update, status: .completed, source: .scholium,
-        files: [.init(path: "note.md", noteID: note, effect: .edited)]))
-    let read = AgentChatMessage(role: .operation, text: "",
-      activity: .init(kind: .read, status: .completed, source: .scholium,
-        files: [.init(path: "note.md", noteID: note, effect: .read)]))
-    let summaries = AgentChatFileSummary.collect([edited, read, edited])
-    #expect(summaries.count == 1 && summaries[0].file.effect == .edited)
-    #expect(summaries[0].changeIDs == [change])
-    let data = try JSONEncoder().encode(edited)
-    #expect(try JSONDecoder().decode(AgentChatMessage.self, from: data) == edited)
   }
 
   @Test("Conversation change history retains earlier receipts without importing unrelated changes")
@@ -212,7 +200,8 @@ struct AgentChatPresentationTests {
     let source = try String(
       contentsOf: root.appendingPathComponent("Scholium/Services/AgentChatController.swift"),
       encoding: .utf8)
-    #expect(source.contains("Do not impose short-answer limits"))
+    #expect(source.contains("AgentChatResearchInstructions.developer"))
+    #expect(AgentChatResearchInstructions.developer(triptychID: UUID()).contains("depth the question needs"))
     #expect(!source.contains("max_output_tokens"))
   }
 }

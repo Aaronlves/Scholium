@@ -7,7 +7,7 @@ struct ExactSourceComparisonSheetLayout<
     Footer: View
 >: View {
     let title: LocalizedStringResource
-    let detail: LocalizedStringResource
+    let detail: LocalizedStringResource?
     let identifier: String
     @ViewBuilder let headerActions: () -> HeaderActions
     @ViewBuilder let content: () -> Content
@@ -62,10 +62,12 @@ struct ExactSourceComparisonSheetLayout<
             Text(title)
                 .font(ScholiumTypography.interface(.primaryTitle))
                 .accessibilityHeading(.h1)
-            Text(detail)
-                .font(ScholiumTypography.interface(.compact))
-                .scholiumForeground(.secondaryText)
-                .fixedSize(horizontal: false, vertical: true)
+            if let detail {
+                Text(detail)
+                    .font(ScholiumTypography.interface(.compact))
+                    .scholiumForeground(.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 }

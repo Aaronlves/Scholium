@@ -44,7 +44,8 @@ public actor CodexAppServer {
     let stdin = Pipe()
     let stderr = Pipe()
     child.executableURL = executable
-    child.arguments = ["app-server", "--stdio", "-c", "analytics.enabled=false"]
+    child.arguments = ["app-server", "--stdio", "-c", "analytics.enabled=false",
+      "-c", "project_doc_max_bytes=0", "-c", "project_root_markers=[]"]
     let inherited = ProcessInfo.processInfo.environment
     var environment = inherited.filter {
       ["HOME", "USER", "LOGNAME", "PATH", "TMPDIR", "LANG", "LC_ALL", "SHELL"].contains($0.key)

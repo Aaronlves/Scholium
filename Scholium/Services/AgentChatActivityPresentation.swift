@@ -4,18 +4,55 @@ import ScholiumContracts
 /// A projection of public runtime events and App receipts, never a source writer.
 enum AgentChatActivityProjection {
   static func title(_ activity: AgentChatActivity, locale: Locale = .current) -> String {
-    switch activity.kind {
-    case .command, .tool: ScholiumL10n.string("Working", locale: locale)
-    case .compaction: ScholiumL10n.string("Organizing Conversation", locale: locale)
-    default: activity.kind.label(locale: locale)
+    let running = activity.status == .running
+    let completed = activity.status == .completed
+    let key: String.LocalizationValue
+    if let action = activity.commandAction {
+      switch action.kind {
+      case .read: key = running ? "Reading file" : completed ? "Read file" : "File reading"
+      case .search: key = running ? "Searching files" : completed ? "Searched files" : "File search"
+      case .listFiles: key = running ? "Browsing files" : completed ? "Browsed files" : "File browsing"
+      }
+    } else {
+      switch activity.kind {
+      case .read: key = running ? "Reading note" : completed ? "Read note" : "Note reading"
+      case .readAttachment: key = running ? "Reading attachment" : completed ? "Read attachment" : "Attachment reading"
+      case .search: key = running ? "Searching the library" : completed ? "Searched the library" : "Library search"
+      case .create: key = running ? "Creating note" : completed ? "Created note" : "Note creation"
+      case .update: key = running ? "Revising note" : completed ? "Revised note" : "Note revision"
+      case .trash: key = running ? "Moving note to Trash" : completed ? "Moved note to Trash" : "Note removal"
+      case .webSearch: key = running ? "Searching the web" : completed ? "Searched the web" : "Web search"
+      case .files: key = running ? "Updating files" : completed ? "Updated files" : "File update"
+      case .compaction: key = running ? "Organizing conversation" : completed ? "Organized conversation" : "Conversation organization"
+      case .delegation: key = "Agent Collaboration"
+      case .command: key = running ? "Running command" : completed ? "Ran command" : "Run Command"
+      case .tool: key = running ? "Using tool" : completed ? "Used tool" : "Use Tool"
+      }
     }
+    return ScholiumL10n.string(key, locale: locale)
   }
 
   static func subject(_ activity: AgentChatActivity) -> String? {
-    guard activity.source == .scholium, [.read, .readAttachment, .create, .update, .trash].contains(activity.kind),
-      let file = activity.files.first else { return nil }
-    return (file.path as NSString).lastPathComponent
+    let value: String
+    if let action = activity.commandAction {
+      value = action.kind == .search ? action.target : (action.target as NSString).lastPathComponent
+    } else if let file = activity.files.first, !file.path.isEmpty {
+      value = (file.path as NSString).lastPathComponent
+    } else if activity.kind == .tool {
+      value = activity.subject
+    } else if activity.kind == .search || activity.kind == .webSearch {
+      if let url = URL(string: activity.subject), let host = url.host { value = host }
+      else { value = activity.subject }
+    } else { return nil }
+    let text = value.split(whereSeparator: { $0.isNewline }).joined(separator: " ").trimmingCharacters(in: .whitespaces)
+    return text.isEmpty ? nil : String(text.prefix(160))
   }
+
+  static func summary(_ activity: AgentChatActivity, locale: Locale = .current) -> String {
+    let title = title(activity, locale: locale)
+    return subject(activity).map { title + " · " + $0 } ?? title
+  }
+
   static func withLocalizedFailure(_ value: AgentChatActivity?) -> AgentChatActivity? {
     guard var activity = value else { return nil }
     if activity.kind == .delegation && activity.delegation == nil {
@@ -110,34 +147,4 @@ extension AgentChatActivity.File.Effect {
     }
   }
   var isMutation: Bool { self == .created || self == .edited || self == .trashed || self == .moved }
-}
-
-struct AgentChatFileSummary: Identifiable {
-  let id: String
-  var file: AgentChatActivity.File
-  var source: AgentChatActivity.Source
-  var changeIDs: [UUID]
-
-  static func collect(_ messages: [AgentChatMessage]) -> [Self] {
-    var result: [Self] = []
-    for message in messages {
-      guard let activity = message.activity, activity.status == .completed else { continue }
-      for file in activity.files where file.effect != nil {
-        let id = activity.source.rawValue + ":" + (file.noteID?.uuidString ?? file.path)
-        if let index = result.firstIndex(where: { $0.id == id }) {
-          // A later read or no-op cannot erase a recorded edit from this conversation.
-          if file.effect?.isMutation == true || result[index].file.effect?.isMutation != true {
-            result[index].file = file
-          }
-          if let change = message.changeID, !result[index].changeIDs.contains(change) {
-            result[index].changeIDs.append(change)
-          }
-        } else {
-          result.append(.init(id: id, file: file, source: activity.source,
-                              changeIDs: message.changeID.map { [$0] } ?? []))
-        }
-      }
-    }
-    return result
-  }
 }

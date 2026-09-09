@@ -220,14 +220,16 @@ transitions report focus to its presentation binding. Its scroll host alone appl
 editor geometry; proposed-size measurement uses a read-only attributed-text copy
 and cannot resize the live editor or its accessibility frame. Its completion owner tracks
 only the current query range and candidate selection. Candidate actions capture the
-conversation and never rewrite the whole draft. Reply-file cards project references
-and completed operation output without manufacturing read or change receipts.
+conversation and never rewrite the whole draft. Reply links open Notes; activity
+details retain read targets. Changes uses ResearchController receipts and a shared
+machine-local AgentChangeViewedLedger, independent of evidence and Settlement.
 Public assistant phase metadata is retained on the message by streaming and history
 reconciliation. Timeline grouping uses explicit turn and phase metadata; a process
 disclosure owns only expansion, keeping each tool item distinct from the final answer.
 Reply actions copy original text and project explicit links into Sources.
-`AgentChatReplyTextView` owns one native read-only selection across each completed
-reply, including native table cells, and measures on detached storage.
+`AgentChatReplyTextView` owns native selection within prose or a rich object,
+including table cells, and measures on detached storage. Whole-reply Copy remains
+available across independently scrolling objects.
 `AgentChatReplyQuotation` validates the same rendered text and range. The controller
 stages compact `AgentChatReplyQuote` values in the existing conversation draft,
 then retains them on the sent message. They are Agent prose, not Note snapshots;
@@ -283,8 +285,15 @@ A dispatch group tracks the listener, peers and admitted operations; a one-shot 
 reports drain completion or its deadline without waiting indefinitely for a source
 transaction that must finish despite cancellation. Peer workers close their own sockets.
 
-`AgentChatMarkdown` uses Foundation Markdown presentation intents with native
-SwiftUI text, lists, code and comparison rows. `AgentChatTimelineItem` groups
+`AgentChatMarkdown` uses Foundation presentation intents and native text. Rich
+segments slice the same attributed reply, preserving quotation offsets while
+isolating table/code overflow. Mermaid reuses SafeMarkdownReadWebView with native
+semantic colors serialized for its validated theme. One native preview-window
+owner retains the expanded object independently of recycled transcript cells.
+Initial sizing uses native text measurement or the finalized SVG viewBox, bounded
+by the screen; the reader reports geometry without changing source or navigation.
+Agent Changes projects its collection/comparison size through a sheet-only native
+attachment, leaving workspace geometry and receipt selection with their owners. `AgentChatTimelineItem` groups
 contiguous operation messages for disclosure without shortening public replies.
 `CodexChatTranscript` owns public item, turn and transcript-event decoding for
 live delivery, history restoration and child inspection. Contracts carry typed
@@ -301,8 +310,8 @@ and connection-loss presentation. The controller publishes App bridge activity b
 waiting or executing, updates the same message at completion, and suppresses
 the duplicate runtime envelope for its registered Scholium tools. Reopened
 unfinished activity is interrupted or uncertain until authoritative runtime
-history supplies a terminal result. `AgentChatFileSummary` projects observed
-file effects and receipt identities; it owns neither filesystem state nor Undo.
+history supplies a terminal result. File effects remain on their exact activities;
+viewed preferences never alter receipt recovery state or authorize Undo.
 
 `CodexChatDelegation` projects public coordination and child-lifecycle items into
 an immutable `AgentChatDelegation` on the existing activity message. Sender,
@@ -396,7 +405,9 @@ completion; runtime events and Stop own its terminal state. Account quotas are
 connection observations, fetched through the transport and cleared on disconnect.
 `AgentChatRuntimeControls` renders these values with native controls and has no
 transport, persistence or source authority. The current machine-local archive
-version is 10; unsupported archives remain byte-unchanged and block overwrite.
+version is 11; unsupported archives remain byte-unchanged and block overwrite.
+Runtime turn status/timing is retained by exact turn ID through the shared transcript
+decoder and controller. The view projects elapsed wall time without owning execution.
 
 The same connection owner coordinates pending thread-static setting renewal.
 Conversation preferences retain desired values; connection-scoped observations
@@ -413,6 +424,25 @@ Turn completion expires pending interactions independently of runtime tool
 observations. Item events and restored item statuses own tool outcomes; an ended
 turn cannot manufacture an interruption. Connection invalidation marks running
 runtime observations uncertain while revoking all execution admission.
+
+`AgentChatActivityProjection` supplies action/target wording from existing receipts
+and optional public command-action metadata; it never parses shell text for intent.
+`AgentChatActivityText` owns only a visibility/adaptation-bound text shimmer.
+Context occupancy uses the last reported turn against reported capacity, separately
+from cumulative tokens and account quota. In-place details and Diagnostics share
+one retained-evidence view. Conversation-local disclosure choices survive item
+updates; inspecting an operation preserves its process on completion.
+Consecutive calls are projected into compact activity groups without replacing
+the underlying records. Native disclosure styling owns trailing accessory
+visibility; it owns no execution state.
+
+The capability owner decides whether a Zotero connection is explicitly configured.
+Only a successfully read configuration without that connection permits the default
+read-only server in thread overrides; disabled/custom connections remain untouched.
+Chat's research instruction adapter provides Triptych routing and source-link
+context. The bundled Core Protocol owns research boundaries. Runtime launch and
+thread overrides disable automatic project-document discovery; selected methods
+and runtime account/configuration remain with their existing owners.
 
 `AgentChatSearch` derives literal matches and passages directly from retained
 public conversation values. It owns no index, provider access or source reads.

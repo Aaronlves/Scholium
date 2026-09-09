@@ -117,6 +117,14 @@ public struct AgentChatActivity: Codable, Equatable, Sendable {
       self.effect = effect
     }
   }
+  /// Optional public command classification supplied by the runtime, never shell inference.
+  public struct CommandAction: Codable, Equatable, Sendable {
+    public enum Kind: String, Codable, Sendable { case read, search, listFiles }
+    public let kind: Kind
+    public let target: String
+    public init(kind: Kind, target: String) { self.kind = kind; self.target = target }
+  }
+  public var commandAction: CommandAction?
   public var kind: Kind
   public var status: Status
   public let source: Source
@@ -146,6 +154,7 @@ public struct AgentChatConversation: Codable, Equatable, Identifiable, Sendable 
   public var preferences: AgentChatPreferences
   public var contextUsage: AgentChatContextUsage?
   public var lastRunStatus: AgentChatActivity.Status?
+  public var turns: [String: AgentChatTurnRecord] = [:]
   public var branchOrigin: AgentChatBranchOrigin?
   public var selectedMethods: [AgentChatMethodSelection]?
   public var messages: [AgentChatMessage]

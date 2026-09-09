@@ -9,6 +9,7 @@ struct AgentChatExecutionState {
   var sendingMessageID: String?
   var isSending: Bool { sendingMessageID != nil }
   var isRefreshingHistory = false
+  var historyUnavailable = false
   var error: String?
   var turnID: String?
   var routeToken: UUID?

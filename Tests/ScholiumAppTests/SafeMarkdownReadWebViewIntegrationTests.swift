@@ -185,6 +185,8 @@ extension MarkdownEditorWebViewIntegrationTests {
         )
         defer { harness.close() }
         try await harness.waitUntilReady()
+        let diagramSize = try #require(harness.diagramSize)
+        #expect(diagramSize.width > 0 && diagramSize.height > 0)
         let result = try #require(try await harness.callBridgeJavaScript(
             """
             const familySources = [
@@ -1548,6 +1550,7 @@ extension MarkdownEditorWebViewIntegrationTests {
         }
 
         @Published var isReady = false
+        var diagramSize: CGSize?
         @Published var restoration: Restoration?
         @Published var capturedAnchor: EditorScrollAnchor?
         var failure: String?
@@ -1914,6 +1917,8 @@ extension MarkdownEditorWebViewIntegrationTests {
         var hasPendingRestoreRequest: Bool {
             sourceBox.restoration != nil
         }
+
+        var diagramSize: CGSize? { sourceBox.diagramSize }
 
         var isReady: Bool {
             sourceBox.isReady
@@ -2534,6 +2539,7 @@ extension MarkdownEditorWebViewIntegrationTests {
                 onRenderingFailure: { sourceBox.failure = $0 },
                 onRenderingLoading: { sourceBox.isReady = false },
                 onRenderingReady: { sourceBox.isReady = true },
+                onRenderedDiagramSize: { sourceBox.diagramSize = $0 },
                 observedScrollPosition: sourceBox.observedScrollPosition,
                 scrollRestoreRequest: sourceBox.restoration.map { restoration in
                     ScrollRestoreRequest(

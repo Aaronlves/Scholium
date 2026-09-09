@@ -106,9 +106,20 @@ public enum CodexChatTranscript {
     guard ["full", "summary", "notLoaded"].contains(coverage),
       !requiresFullItems || coverage == "full" else { throw CodexConnectionError.invalidMessage }
     let error = object["error"]?.objectValue?["message"]?.stringValue
+    // Optional display metadata must not prevent delivery of otherwise valid prose.
+    func timestamp(_ key: String) -> Date? {
+      guard let seconds = object[key]?.intValue, seconds >= 0, seconds <= 253_402_300_799 else { return nil }
+      return Date(timeIntervalSince1970: Double(seconds))
+    }
+    let started = timestamp("startedAt"), completed = timestamp("completedAt")
+    let duration = object["durationMs"]?.intValue
+    let ordered = started == nil || completed == nil || completed! >= started!
+    let timing = AgentChatTurnTiming(startedAt: ordered ? started : nil,
+      completedAt: ordered ? completed : nil,
+      durationMilliseconds: duration.flatMap { $0 >= 0 ? $0 : nil })
     if coverage == "notLoaded" {
       guard values.isEmpty else { throw CodexConnectionError.invalidMessage }
-      return .init(id: id, status: status, items: .notLoaded, error: error)
+      return .init(id: id, status: status, items: .notLoaded, error: error, timing: timing)
     }
     if coverage == "summary" {
       var identities: Set<String> = [], seen: Set<String> = []
@@ -119,7 +130,7 @@ public enum CodexChatTranscript {
         identities.formUnion([itemID, "runtime:\(itemID)"])
         if let client = try optionalIdentifier(item["clientId"]) { identities.insert(client) }
       }
-      return .init(id: id, status: status, items: .references(identities), error: error)
+      return .init(id: id, status: status, items: .references(identities), error: error, timing: timing)
     }
     var seen: Set<String> = []
     let items = try values.compactMap { value -> AgentChatTranscript.Item? in
@@ -130,7 +141,7 @@ public enum CodexChatTranscript {
       return try item(object, completed: object["status"]?.stringValue != "inProgress",
         threadID: origin, turnStatus: status)
     }
-    return .init(id: id, status: status, items: .full(items), error: error)
+    return .init(id: id, status: status, items: .full(items), error: error, timing: timing)
   }
 
   private static func item(_ object: [String: MCPJSONValue], completed: Bool, threadID: String,

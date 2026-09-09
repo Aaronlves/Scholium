@@ -24,6 +24,15 @@ enum AgentChangePresentation {
         }
     }
 
+    static func shortOperationTitle(for operation: AgentChangeOperation) -> LocalizedStringResource {
+        switch operation {
+        case .create: "Created"
+        case .update: "Edited"
+        case .trash: "Moved to Trash"
+        case .move: "Moved"
+        }
+    }
+
     static func operationSymbol(for operation: AgentChangeOperation) -> String {
         switch operation {
         case .create: "doc.badge.plus"
@@ -85,6 +94,7 @@ struct AgentChangesView: View {
     typealias Undo = @MainActor (AgentChange) async throws -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @AppStorage(AgentChangeViewedLedger.key) private var viewedChangeData = Data()
     let scope: AgentChangesScope
     private var initialChangeID: UUID? { scope.exactID }
     let load: Loader
@@ -102,20 +112,39 @@ struct AgentChangesView: View {
     @State private var errorMessage: String?
     @State private var reviewErrorMessage: String?
 
+    private var presentsCollection: Bool {
+        showsCollection || isLoading || errorMessage != nil || changes.isEmpty
+    }
+
+    private var sheetSize: NSSize {
+        presentsCollection
+            ? NSSize(width: 620, height: isLoading || errorMessage != nil || changes.isEmpty
+                     ? 240 : min(480, 100 + CGFloat(changes.count) * 76))
+            : NSSize(width: 760, height: 720)
+    }
+
     var body: some View {
-        ExactSourceComparisonSheetLayout(
-            title: { if case .conversation = scope { return "Conversation Changes" }; return "Agent Changes" }(),
-            detail: "Recent changes to your notes.",
-            identifier: "scholium.agentChanges"
-        ) {
-            Button("Close", action: dismiss.callAsFunction)
-                .scholiumActivationPointer()
-                .keyboardShortcut(.cancelAction)
-        } content: {
-            content
-        } footer: {
-            footer
+        VStack(spacing: 0) {
+            if presentsCollection {
+                collectionLayout
+            } else {
+                ExactSourceComparisonSheetLayout(
+                    title: { if case .conversation = scope { return "Conversation Changes" }; return "Agent Changes" }(),
+                    detail: nil,
+                    identifier: "scholium.agentChanges"
+                ) {
+                    Button("Close", action: dismiss.callAsFunction)
+                        .scholiumActivationPointer()
+                        .keyboardShortcut(.cancelAction)
+                } content: {
+                    content
+                } footer: {
+                    footer
+                }
+            }
         }
+        .frame(width: sheetSize.width, height: sheetSize.height)
+        .background(AgentChangesSheetSize(size: sheetSize))
         .task { showsCollection = initialChangeID == nil; await reload(preserving: initialChangeID) }
         .confirmationDialog(
             "Undo Agent Change?",
@@ -135,6 +164,24 @@ struct AgentChangesView: View {
         } message: { _ in
             Text("Undo restores the exact Before version only if the Note still matches this change's After version.")
         }
+    }
+
+    private var collectionLayout: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            HStack(alignment: .firstTextBaseline) {
+                Text({ if case .conversation = scope { return String(localized: "Conversation Changes") }
+                       return String(localized: "Agent Changes") }())
+                    .font(.title2).accessibilityHeading(.h1)
+                Spacer()
+                Button("Close", action: dismiss.callAsFunction).keyboardShortcut(.cancelAction)
+            }
+            content
+        }
+        .padding(24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(ScholiumNativeColorRole.windowBackground.color)
+        .tint(ScholiumNativeColorRole.controlAccent.color)
+        .accessibilityIdentifier("scholium.agentChanges")
     }
 
     @ViewBuilder
@@ -157,29 +204,40 @@ struct AgentChangesView: View {
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if showsCollection {
-            List {
-                ForEach(changes.sorted(by: AgentChangePresentation.newestFirst)) { change in
-                    Button {
-                        showsCollection = false
-                        if let index = changes.firstIndex(where: { $0.id == change.id }) { select(index) }
-                    } label: {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(AgentChangePresentation.displayName(for: change))
-                            HStack {
-                                Text(AgentChangePresentation.operationTitle(for: change.operation))
-                                Text(change.confirmedAt ?? change.createdAt, style: .date)
-                                if change.state == .undone { Text("Undone") }
+            let ordered = changes.sorted(by: AgentChangePresentation.newestFirst)
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    ForEach(ordered) { change in
+                        Button {
+                            showsCollection = false
+                            if let index = changes.firstIndex(where: { $0.id == change.id }) { select(index) }
+                        } label: {
+                            HStack(alignment: .center, spacing: 12) {
+                                Image(systemName: AgentChangePresentation.operationSymbol(for: change.operation))
+                                    .foregroundStyle(.secondary).frame(width: 24)
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text(AgentChangePresentation.displayName(for: change))
+                                        .font(.headline).foregroundStyle(.primary).lineLimit(2)
+                                    HStack(spacing: 8) {
+                                        Text(AgentChangePresentation.shortOperationTitle(for: change.operation))
+                                        if change.state == .undone { Text("Undone") }
+                                        if AgentChangeViewedLedger(data: viewedChangeData).ids.contains(change.id) { Text("Viewed") }
+                                    }.font(.caption).foregroundStyle(.secondary)
+                                }
+                                Spacer(minLength: 12)
+                                Text(change.confirmedAt ?? change.createdAt, format: .dateTime.month().day().hour().minute())
+                                    .font(.caption).foregroundStyle(.secondary)
+                                Image(systemName: "chevron.right").imageScale(.small).foregroundStyle(.tertiary)
                             }
-                            .font(ScholiumTypography.interface(.compact))
-                            .foregroundStyle(ScholiumNativeColorRole.secondaryLabel.color)
+                            .padding(.vertical, 16).padding(.horizontal, 8)
+                            .contentShape(Rectangle())
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.vertical, 4)
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("scholium.agentChanges.open.\(change.id.uuidString)")
+                        if change.id != ordered.last?.id { Divider() }
                     }
-                    .buttonStyle(.plain)
                 }
             }
-            .listStyle(.plain)
         } else if isLoadingReview {
             ProgressView("Loading Exact Change…")
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -225,6 +283,17 @@ struct AgentChangesView: View {
                 }
 
                 Spacer(minLength: 0)
+
+                if let review, review.change.state == .confirmed {
+                    let viewed = AgentChangeViewedLedger(data: viewedChangeData).ids.contains(review.change.id)
+                    Button(viewed ? "Mark as Unviewed" : "Mark as Viewed") {
+                        var ledger = AgentChangeViewedLedger(data: viewedChangeData)
+                        ledger.setViewed(!viewed, id: review.change.id)
+                        viewedChangeData = ledger.data
+                    }
+                    .disabled(undoingID != nil)
+                    .accessibilityIdentifier("scholium.agentChanges.markViewed")
+                }
 
                 if let review, review.change.operation == .update,
                    review.change.state == .confirmed {
@@ -356,28 +425,23 @@ private struct AgentChangeReviewContent: View {
                 content
                 technicalDetails
             }
-            .padding(ScholiumMetrics.ResearchSheet.contentInset)
+            .padding(24)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
     private var summary: some View {
-        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(displayName).font(.title2).textSelection(.enabled)
             HStack(alignment: .firstTextBaseline) {
-                Label(operationTitle, systemImage: operationSymbol)
-                    .font(ScholiumTypography.interface(.sectionTitle))
-                Spacer(minLength: 0)
+                Label(AgentChangePresentation.shortOperationTitle(for: review.change.operation), systemImage: operationSymbol)
+                Spacer(minLength: 12)
                 Text(review.change.createdAt, format: .dateTime)
-                    .font(ScholiumTypography.interface(.small))
-                    .scholiumForeground(.secondaryText)
-            }
-            Text(displayName)
-                .font(ScholiumTypography.scholarly(.title))
-                .textSelection(.enabled)
+            }.font(.subheadline).foregroundStyle(.secondary)
             if let revisionStateTitle {
                 Text(revisionStateTitle)
-                    .font(ScholiumTypography.interface(.body, emphasis: .strong))
-                    .scholiumForeground(revisionStateColor)
+                    .font(.caption)
+                    .foregroundStyle(review.endingRevisionState == .current ? Color.secondary : Color.primary)
                     .accessibilityIdentifier("scholium.agentChanges.revisionState")
             }
             if review.change.state == .outcomeUncertain {
@@ -552,5 +616,25 @@ private struct AgentChangeReviewContent: View {
 
     private func revisionDescription(_ fingerprint: DocumentFingerprint) -> String {
         "SHA-256 \(fingerprint.sha256) (\(fingerprint.byteCount) bytes)"
+    }
+}
+
+/// The sheet's native window owns geometry; content supplies one requested size.
+/// Do not resize the workspace or retain a second selection/presentation state.
+private struct AgentChangesSheetSize: NSViewRepresentable {
+    let size: NSSize
+    func makeNSView(context: Context) -> WindowAttachmentView {
+        let view = WindowAttachmentView()
+        view.onWindowAttachment = resize
+        return view
+    }
+    func updateNSView(_ view: WindowAttachmentView, context: Context) {
+        view.onWindowAttachment = resize
+        if let window = view.window { resize(window) }
+    }
+    private func resize(_ window: NSWindow) {
+        guard window.sheetParent != nil,
+              window.contentRect(forFrameRect: window.frame).size != size else { return }
+        window.setContentSize(size)
     }
 }

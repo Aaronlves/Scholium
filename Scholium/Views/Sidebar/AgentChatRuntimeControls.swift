@@ -120,12 +120,23 @@ struct AgentChatPlanView: View {
     } label: {
       HStack {
         Label("Plan", systemImage: "list.bullet")
+        Spacer(minLength: 6)
+        Text("\(plan.steps.filter { $0.status == .completed }.count)/\(plan.steps.count)")
+          .monospacedDigit().foregroundStyle(.secondary)
+          .accessibilityLabel("Completed steps")
         if plan.runStatus == .interrupted || plan.runStatus == .failed {
           Text(plan.runStatus.label).foregroundStyle(.secondary)
         }
       }
     }
     .font(.callout)
+  }
+}
+
+enum AgentChatContextPresentation {
+  static func fraction(_ usage: AgentChatContextUsage?) -> Double? {
+    guard let usage, let capacity = usage.capacity, capacity > 0, usage.lastTurnTokens >= 0 else { return nil }
+    return min(1, Double(usage.lastTurnTokens) / Double(capacity))
   }
 }
 
@@ -148,26 +159,40 @@ struct AgentChatContextView: View {
         ScrollView {
           VStack(alignment: .leading, spacing: 12) {
             if let usage {
-              LabeledContent {
-                Text(usage.lastTurnTokens.formatted()).monospacedDigit()
-              } label: {
-                Text("Latest Turn", bundle: .module)
+              if let fraction = AgentChatContextPresentation.fraction(usage) {
+                HStack {
+                  Text("Last reported context use")
+                  Spacer()
+                  Text(fraction.formatted(.percent.precision(.fractionLength(0)))).monospacedDigit()
+                }
+                ProgressView(value: fraction)
+                  .tint(.secondary).accessibilityLabel("Context Usage")
+                  .accessibilityValue(fraction.formatted(.percent.precision(.fractionLength(0))))
+              } else {
+                Text("Context size unavailable").foregroundStyle(.secondary)
               }
-              .accessibilityElement(children: .combine)
-              if let capacity = usage.capacity {
+              DisclosureGroup("Token details") {
                 LabeledContent {
-                  Text(capacity.formatted()).monospacedDigit()
+                  Text(usage.lastTurnTokens.formatted()).monospacedDigit()
                 } label: {
-                  Text("Context Window", bundle: .module)
+                  Text("Latest Turn", bundle: .module)
+                }
+                .accessibilityElement(children: .combine)
+                if let capacity = usage.capacity {
+                  LabeledContent {
+                    Text(capacity.formatted()).monospacedDigit()
+                  } label: {
+                    Text("Context Window", bundle: .module)
+                  }
+                  .accessibilityElement(children: .combine)
+                }
+                LabeledContent {
+                  Text(usage.totalTokens.formatted()).monospacedDigit()
+                } label: {
+                  Text("Total Tokens", bundle: .module)
                 }
                 .accessibilityElement(children: .combine)
               }
-              LabeledContent {
-                Text(usage.totalTokens.formatted()).monospacedDigit()
-              } label: {
-                Text("Total Tokens", bundle: .module)
-              }
-              .accessibilityElement(children: .combine)
             } else {
               Text("Not Available", bundle: .module).foregroundStyle(.secondary)
             }
@@ -214,7 +239,7 @@ struct AgentChatContextView: View {
         $0.disablesAnimations = true
       }
     }
-    .font(.callout).padding(16).frame(width: 320, height: 300).tint(nil as Color?)
+    .font(.callout).padding(16).frame(width: 320, height: selectedTab == 0 ? 240 : 300).tint(nil as Color?)
   }
 
   private func quotaWindow(_ window: AgentChatQuota.Window) -> some View {

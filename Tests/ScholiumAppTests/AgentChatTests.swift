@@ -8,6 +8,56 @@ import Testing
 @Suite("In-app Agent collaboration", .serialized)
 @MainActor
 struct AgentChatTests {
+  @Test("A missing runtime thread preserves local reading and draft without blaming the connection")
+  func missingRuntimeHistory() async throws {
+    let root = try root()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let controller = AgentChatController(triptychID: UUID(), root: root, toolHandler: success)
+    try await connect(controller)
+    controller.editDraft("phased activity"); controller.send()
+    try await eventually { !controller.isBusy && controller.selected?.lastRunStatus == .completed }
+    let id = try #require(controller.selectedID)
+    let messages = controller.selected?.messages
+    let thread = controller.selected?.threadID
+    controller.editDraft("keep my question")
+    let marker = controller.runtimeHome.appendingPathComponent("missing-thread-history")
+    try Data().write(to: marker)
+    controller.select(id)
+    try await eventually { !controller.isRefreshingHistory }
+    #expect(controller.historyUnavailable && controller.error == nil)
+    #expect(controller.connectionState == .ready && !controller.canSend && !controller.canBranch && !controller.canCompact)
+    #expect(controller.selected?.messages == messages && controller.selected?.draft == "keep my question")
+    #expect(controller.selected?.threadID == thread)
+    try FileManager.default.removeItem(at: marker)
+    controller.retryHistory()
+    try await eventually { !controller.isRefreshingHistory }
+    #expect(!controller.historyUnavailable && controller.canSend && controller.error == nil)
+    #expect(controller.selected?.draft == "keep my question")
+    await controller.disconnect()
+  }
+
+  @Test("Turn elapsed time follows runtime identity through completion and archive restoration")
+  func timedTurnRestoration() async throws {
+    let root = try root()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let triptych = UUID()
+    let controller = AgentChatController(triptychID: triptych, root: root, toolHandler: success)
+    try await connect(controller)
+    controller.editDraft("timed activity"); controller.send()
+    try await eventually { !controller.isBusy && controller.selected?.lastRunStatus == .completed }
+    let id = try #require(controller.selectedID)
+    let record = try #require(controller.selected?.turns.values.first)
+    #expect(record.status == .completed && record.timing.completedSeconds == 38)
+    controller.select(id)
+    try await eventually { !controller.isRefreshingHistory }
+    #expect(controller.selected?.turns.values.first == record)
+    await controller.disconnect()
+    let restored = AgentChatController(triptychID: triptych, root: root, toolHandler: success)
+    try await eventually { restored.isLoaded }
+    #expect(restored.selected?.turns.values.first == record)
+    await restored.disconnect()
+  }
+
   @Test("Reply quotes are delivered as Agent content, retained on history refresh and cleared only from the sent draft")
   func quoteDelivery() async throws {
     let root = try root()
@@ -739,9 +789,9 @@ struct AgentChatTests {
     _ = await controller.handle(.init(tool: .updateNote, arguments: updateArguments, conversationToken: token, runtimeContext: controller.runtimeContext(for: token)))
     #expect(controller.selected?.messages.last?.activity?.status == .failed)
     #expect(controller.selected?.messages.last?.activity?.files.first?.effect == nil)
-    let summaries = AgentChatFileSummary.collect(controller.selected?.messages ?? [])
-    #expect(summaries.count == 1 && summaries.first?.file.effect == .edited)
-    #expect(summaries.first?.file.path == "Ideas/理由.md")
+    let changed = controller.selected?.messages.first { $0.changeID == change }
+    #expect(changed?.activity?.files.first?.effect == .edited)
+    #expect(changed?.activity?.files.first?.path == "Ideas/理由.md")
     controller.stop()
     try await eventually { controller.state == .ready }
     #expect(controller.selected?.messages.contains { $0.activity?.kind == .command && $0.activity?.status == .failed } == true)
@@ -749,7 +799,7 @@ struct AgentChatTests {
     let restored = AgentChatController(triptychID: controller.triptychID, root: root, toolHandler: success)
     try await eventually { restored.isLoaded }
     #expect(restored.selected?.messages.compactMap(\.activity).contains { $0.status.isActive } == false)
-    #expect(AgentChatFileSummary.collect(restored.selected?.messages ?? []).first?.file.effect == .edited)
+    #expect(restored.selected?.messages.first { $0.changeID == change }?.activity?.files.first?.effect == .edited)
     #expect(restored.selected?.messages.contains { $0.activity?.sourceObservation == reading } == true)
     try await connect(restored)
     #expect(restored.selected?.messages.compactMap(\.activity).first { $0.kind == .command }?.status == .failed)

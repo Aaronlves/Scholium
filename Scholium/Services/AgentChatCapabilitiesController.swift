@@ -155,6 +155,7 @@ final class AgentChatCapabilitiesController: ObservableObject {
   }
 
   var zoteroConnection: AgentChatToolConnection? { toolConnections.first { $0.name == Self.zoteroServerName } }
+  var usesDefaultZoteroConnection: Bool { toolConfiguration != nil && zoteroConnection == nil }
   var canCheckZotero: Bool { isConnected && zotero != nil && !isCheckingZotero }
 
   func zoteroToolEdit(executable: URL?) -> AgentChatToolEdit? {

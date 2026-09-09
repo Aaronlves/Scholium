@@ -70,6 +70,12 @@ public enum CodexChatActivity {
     var activity = AgentChatActivity(
       kind: kind, status: status, source: .runtime, subject: subject,
       detail: String(detail.suffix(16_000)), files: files)
+    if kind == .command, let actions = item["commandActions"]?.arrayValue, actions.count == 1,
+      let action = actions.first?.objectValue,
+      let raw = action["type"]?.stringValue, let kind = AgentChatActivity.CommandAction.Kind(rawValue: raw) {
+      let target = (kind == .search ? action["query"]?.stringValue : action["path"]?.stringValue) ?? ""
+      if target.utf8.count <= 8_192 { activity.commandAction = .init(kind: kind, target: target) }
+    }
     if completed, let failure = CodexZoteroReadReport.failureMessage(item) {
       activity.status = .failed
       activity.detail = failure

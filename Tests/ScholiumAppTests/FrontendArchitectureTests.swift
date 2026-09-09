@@ -988,7 +988,7 @@ struct FrontendArchitectureTests {
         #expect(splitSource.contains("NSSplitViewController"))
         #expect(
             splitSource.contains(
-                "sidebarWithViewController: libraryHost"
+                "sidebarWithViewController: sidebarController"
             ))
         #expect(
             splitSource.contains(
@@ -1001,7 +1001,6 @@ struct FrontendArchitectureTests {
             ))
         #expect(!workspaceSplitSource.contains("preferredThicknessFraction"))
         #expect(!splitSource.contains("libraryOpeningSize"))
-        #expect(!splitSource.contains("libraryHost.sizingOptions = []"))
         #expect(!splitSource.contains("preferredContentSize"))
         #expect(!splitSource.contains("ScholiumWorkspaceSplitHoldingPriority"))
         #expect(
@@ -1027,7 +1026,6 @@ struct FrontendArchitectureTests {
         #expect(!splitSource.contains("ScholiumInteractiveSplitView"))
         #expect(!splitSource.contains("func sizeThatFits("))
         #expect(!splitSource.contains("availableSize"))
-        #expect(!splitSource.contains("libraryHost.sizingOptions = []"))
         #expect(splitSource.contains("apparatusHost.sizingOptions = []"))
         #expect(splitSource.contains("placeholderHost.sizingOptions = []"))
         #expect(splitSource.contains("host.sizingOptions = []"))
@@ -1186,7 +1184,7 @@ struct FrontendArchitectureTests {
         "The semantic Library sidebar receives the readable minimum without replacing AppKit behavior"
     )
     func librarySidebarReadableMinimum() throws {
-        let controller = ScholiumWorkspaceSplitView<EmptyView, EmptyView, EmptyView>.Controller(
+        let controller = ScholiumWorkspaceSplitView<EmptyView, EmptyView, EmptyView, EmptyView>.Controller(
             initialLibraryVisible: true,
             initialApparatusVisible: false,
             documentTabs: [],
@@ -1198,6 +1196,7 @@ struct FrontendArchitectureTests {
             splitControllerDidAttach: { _ in },
             splitControllerDidDetach: { _ in },
             library: EmptyView(),
+            chat: EmptyView(), sidebarContent: .triptych,
             document: EmptyView(),
             apparatus: EmptyView()
         )
@@ -1406,7 +1405,7 @@ struct FrontendArchitectureTests {
 
     @Test("Native Sidebar owns glass above the extended Document Paper plane")
     func nativeSidebarMaterialOwnership() throws {
-        let splitController = ScholiumWorkspaceSplitView<EmptyView, EmptyView, EmptyView>
+        let splitController = ScholiumWorkspaceSplitView<EmptyView, EmptyView, EmptyView, EmptyView>
             .Controller(
                 initialLibraryVisible: true,
                 initialApparatusVisible: false,
@@ -1419,6 +1418,7 @@ struct FrontendArchitectureTests {
                 splitControllerDidAttach: { _ in },
                 splitControllerDidDetach: { _ in },
                 library: EmptyView(),
+            chat: EmptyView(), sidebarContent: .triptych,
                 document: EmptyView(),
                 apparatus: EmptyView()
             )
@@ -1436,7 +1436,7 @@ struct FrontendArchitectureTests {
 
     @Test("Research Inspector separates divider resizing from explicit visibility")
     func researchInspectorSeparatesResizeAndVisibility() throws {
-        let controller = ScholiumWorkspaceSplitView<EmptyView, EmptyView, EmptyView>.Controller(
+        let controller = ScholiumWorkspaceSplitView<EmptyView, EmptyView, EmptyView, EmptyView>.Controller(
             initialLibraryVisible: true,
             initialApparatusVisible: false,
             documentTabs: [],
@@ -1448,6 +1448,7 @@ struct FrontendArchitectureTests {
             splitControllerDidAttach: { _ in },
             splitControllerDidDetach: { _ in },
             library: EmptyView(),
+            chat: EmptyView(), sidebarContent: .triptych,
             document: EmptyView(),
             apparatus: EmptyView()
         )
@@ -2819,7 +2820,7 @@ struct FrontendArchitectureTests {
 
         #expect(
             splitSource.contains(
-                "sidebarWithViewController: libraryHost"
+                "sidebarWithViewController: sidebarController"
             ))
         #expect(
             splitSource.contains(

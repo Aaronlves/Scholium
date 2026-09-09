@@ -40,6 +40,7 @@ struct AgentChatReplyActions: View {
   let openAttachment: (AgentChatAttachment) -> Void
   let previewMaterial: (AgentChatLocalMaterial) async throws -> URL
   @Environment(\.openURL) private var openURL
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @State private var showsSources = false
   @State private var copied = false
 
@@ -51,6 +52,8 @@ struct AgentChatReplyActions: View {
         copied = NSPasteboard.general.setString(text, forType: .string)
       } label: {
         Image(systemName: copied ? "checkmark" : "doc.on.doc")
+          .chatAccessory()
+          .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
       }
       .help(copied ? String(localized: "Copied") : String(localized: "Copy Reply"))
       .accessibilityLabel(copied ? "Copied" : "Copy Reply")
@@ -62,7 +65,10 @@ struct AgentChatReplyActions: View {
       }
       if !sources.isEmpty || context.hasMaterials {
         Button { showsSources = true } label: {
-          Label("Sources", systemImage: "books.vertical")
+          HStack(spacing: 4) {
+            Image(systemName: "books.vertical").chatAccessory()
+            Text("Sources")
+          }
         }
         .accessibilityIdentifier("scholium.chat.sources")
         .popover(isPresented: $showsSources, arrowEdge: .leading) {

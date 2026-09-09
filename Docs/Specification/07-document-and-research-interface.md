@@ -296,7 +296,14 @@ per Note, independent of Notifications dismissal. Older receipts remain retained
 and individually addressable. Chat's Conversation Changes opens the same interface
 scoped to all retained receipt IDs from that conversation, including earlier
 changes to the same Note. Runtime-only reports never fabricate exact receipts. Its collection
-and exact comparison remain native software-operation views throughout. It is
+and exact comparison remain native software-operation views throughout. The
+collection fits short lists and uses bounded scrolling for longer histories;
+it does not reserve the comparison canvas. Shared logical insets align title,
+rows and actions. Each row leads with Note identity, then concise operation,
+time and viewed state, with one explicit comparison action. The comparison
+uses a larger reading area, a Note-first summary and a separate stable footer
+for navigation, viewed marking and eligible Undo. Empty and unavailable states
+retain the same compact collection frame; no decorative empty canvas is added. It is
 not a fourth Document mode, durable review state, or
 research history. An Agent Change notification opens one exact
 `(change_id, Note ID)` result. An updated Note shows only the exact preimage and

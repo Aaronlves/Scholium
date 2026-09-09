@@ -20,13 +20,13 @@ struct AgentChatVisualEvidenceTests {
     let process = [AgentChatMessage(role: .assistant, text: "已读取三篇材料，正在核对引用。", phase: .commentary)]
     for scheme in [ColorScheme.light, .dark] {
       let content = VStack(alignment: .leading, spacing: 20) {
-        AgentChatProcessView(messages: process, isActive: false, hasFinalAnswer: true, forceExpanded: false) {
+        AgentChatProcessView(messages: process, isActive: false, hasFinalAnswer: true, forceExpanded: false,
+          status: .init(state: .completed, timing: .init(durationMilliseconds: 38_500)), animates: false) {
           AgentChatMarkdown(text: $0.text)
         }
         AgentChatMarkdown(text: "这是一条用于检查排版的最终回复。保留 **原文依据** 与解释的区别，支持中文和 English 的自然换行。\n\n- 原文依据\n- 解释与评价\n\n| 材料 | 作用 |\n|---|---|\n| 原文 | 核对引文 |\n| 笔记 | 保留讨论 |\n\n可以跨段连续选取。", quoteSelection: { _ in })
         AgentChatReplyQuoteCard(quote: .init(conversationID: UUID(), messageID: "fixture",
           text: "原文依据与解释的区别"), openOriginal: {}, remove: {})
-        AgentChatResultFiles(files: AgentChatResultFile.collect(text), open: { _ in }, showInLibrary: { _ in }, showAll: {})
         AgentChatReplyActions(text: text, openNote: { _ in },
           context: .init(reply: .init(role: .assistant, text: text), history: []),
           openAttachment: { _ in }, previewMaterial: { _ in throw AgentChatNoteMaterialError.unavailable })
@@ -46,6 +46,40 @@ struct AgentChatVisualEvidenceTests {
       host.cacheDisplay(in: host.bounds, to: bitmap)
       try #require(bitmap.representation(using: .png, properties: [:]))
         .write(to: output.appendingPathComponent("reply-surfaces-\(scheme == .light ? "light" : "dark").png"))
+    }
+  }
+
+  @Test(.enabled(if: ProcessInfo.processInfo.environment["SCHOLIUM_RENDER_CHAT"] == "1"))
+  func renderTurnStates() throws {
+    let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+    let output = repository.appendingPathComponent(".build/chat-motion-renders")
+    try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+    for (index, fixture) in [(ColorScheme.light, "zh-Hans", 300.0), (.dark, "zh-Hans", 420.0),
+      (.light, "en", 420.0), (.dark, "en", 300.0)].enumerated() {
+      let (scheme, language, width) = fixture
+      let content = VStack(alignment: .leading, spacing: 20) {
+        ForEach(Array([AgentChatTurnPresentation.State.reading, .working, .responding,
+          .waitingForInput, .waitingForApproval, .completed, .interrupted, .failed, .uncertain].enumerated()), id: \.offset) { _, state in
+          AgentChatTurnStatus(presentation: .init(state: state,
+            timing: .init(startedAt: Date(timeIntervalSinceNow: -12), durationMilliseconds: 38_500)), animates: false)
+        }
+        Divider()
+        AgentChatMarkdown(text: "这一区分还需要结合上下文核对。The distinction needs further support.\n\n**原文与解释**\n\n- 保留原文措辞。\n- 将重构与原文明说的理由区分开。")
+          .foregroundStyle(.primary)
+      }.padding().frame(width: width)
+        .background(Color(nsColor: .windowBackgroundColor))
+        .environment(\.colorScheme, scheme).environment(\.locale, Locale(identifier: language))
+      let host = NSHostingView(rootView: content)
+      host.appearance = NSAppearance(named: scheme == .light ? .aqua : .darkAqua)
+      host.frame = NSRect(origin: .zero, size: host.fittingSize)
+      let window = NSWindow(contentRect: host.frame, styleMask: [.titled], backing: .buffered, defer: false)
+      window.isReleasedWhenClosed = false; window.appearance = host.appearance
+      defer { window.contentView = nil; window.close() }
+      window.contentView = host; window.layoutIfNeeded(); host.layoutSubtreeIfNeeded()
+      let bitmap = try #require(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+      host.cacheDisplay(in: host.bounds, to: bitmap)
+      try #require(bitmap.representation(using: .png, properties: [:]))
+        .write(to: output.appendingPathComponent("turn-states-\(index).png"))
     }
   }
 
@@ -601,6 +635,12 @@ struct AgentChatVisualEvidenceTests {
         AgentChatModelMenu(models: [model], preferences: .init(model: "fixture", effort: "high"),
           selectedModel: model, isEnabled: true, selectModel: { _ in }, selectEffort: { _ in })
         AgentChatPlanView(plan: plan)
+        AgentChatActivityText(text: "已读取笔记 · 行动理由.md", isCurrent: false)
+        AgentChatActivityText(text: "正在检索知识库 · 实践理性与行动理由之间的关系", isCurrent: true)
+        AgentChatActivityDetails(activity: .init(kind: .command, status: .failed, source: .runtime,
+          subject: "read fixture.md", detail: (1...40).map { "行 \($0)：合成输出，保留原始文本与错误。" }.joined(separator: "\n")))
+        AgentChatActivityDetails(activity: .init(kind: .read, status: .completed, source: .scholium,
+          subject: "示例材料", detail: "已读取选段。"))
         Divider()
         AgentChatContextView(usage: .init(lastTurnTokens: 12480, totalTokens: 45900, capacity: 128000),
           quotas: [.init(id: "fixture", name: "Research", primary: .init(usedPercent: 25,

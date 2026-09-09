@@ -1,9 +1,26 @@
 import ScholiumApplication
 import ScholiumContracts
 import Testing
+import Foundation
 
 @Suite("Unified public transcript decoding")
 struct CodexChatTranscriptTests {
+  @Test("Activity descriptions use public command actions without interpreting shell text")
+  func commandActions() throws {
+    let raw: [String: MCPJSONValue] = ["type": .string("commandExecution"), "status": .string("inProgress"),
+      "command": .string("arbitrary shell text"), "commandActions": .array([.object([
+        "type": .string("read"), "path": .string("/fixture/SKILL.md"), "name": .string("SKILL.md")])])]
+    let activity = try #require(CodexChatActivity.parse(raw, completed: false))
+    #expect(activity.commandAction == .init(kind: .read, target: "/fixture/SKILL.md"))
+    #expect(activity.kind == .command && activity.subject == "arbitrary shell text")
+    let stored = try JSONDecoder().decode(AgentChatActivity.self, from: JSONEncoder().encode(activity))
+    #expect(stored == activity)
+    var unknown = raw; unknown["commandActions"] = .array([.object(["type": .string("future")])])
+    #expect(CodexChatActivity.parse(unknown, completed: false)?.commandAction == nil)
+    unknown["commandActions"] = nil
+    #expect(CodexChatActivity.parse(unknown, completed: false)?.commandAction == nil)
+  }
+
   @Test("Live, restored and child history preserve identical public text and phase", arguments: ["commentary", "final_answer", "future-phase", "missing"])
   func messageParity(phase: String) async throws {
     let text = "原文 😀\r\n**保留原样**"
@@ -80,6 +97,21 @@ struct CodexChatTranscriptTests {
       try CodexChatTranscript.turns([.object(["id": .string("turn"), "status": .string("completed"),
         "itemsView": .string("summary"), "items": .array([value])])], threadID: "branch")
     }
+  }
+
+  @Test("Public turn timing uses seconds and milliseconds consistently, while malformed optional timing never blocks prose")
+  func turnTiming() throws {
+    let item: MCPJSONValue = .object(["id": .string("reply"), "type": .string("agentMessage"), "text": .string("Answer")])
+    var value = try #require(turn(items: [item]).objectValue)
+    value["startedAt"] = .integer(1_000); value["completedAt"] = .integer(1_038); value["durationMs"] = .integer(38_500)
+    let parsed = try CodexChatTranscript.turn(.object(value), threadID: "thread")
+    #expect(parsed.timing.startedAt == Date(timeIntervalSince1970: 1_000))
+    #expect(parsed.timing.completedSeconds == 38)
+    let history: MCPJSONValue = .object(["thread": .object(["id": .string("thread"), "turns": .array([.object(value)])])])
+    #expect(try CodexChatTranscript.history(history, threadID: "thread").first?.timing == parsed.timing)
+    value["durationMs"] = .integer(-1); value["completedAt"] = .integer(900)
+    let invalid = try CodexChatTranscript.turn(.object(value), threadID: "thread")
+    #expect(invalid.items.count == 1 && invalid.timing.completedSeconds == nil)
   }
 
   private func turn(items: [MCPJSONValue]) -> MCPJSONValue {

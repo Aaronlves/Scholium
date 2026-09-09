@@ -75,16 +75,15 @@ BibTeX/RIS. Any write requires an explicit current-task request for the exact
 record and destination, dry run, confirmation, and readback. Prior search,
 reading, analysis, or import grants no standing permission.
 
-In-app Chat offers a Zotero read-only preset through its existing versioned
-runtime configuration editor. The selected Codex settings file owns enabled
-state across restarts; no second Scholium preference overrides it. Shared
-settings retain the ordinary shared-change confirmation. A same-name custom
-connection is inspected rather than silently replaced, and active turns block
-configuration changes. Disabled and disconnected states remain distinct from
-Zotero's local API being disabled or unavailable. Checking that API is explicit
-and does not import material into a conversation.
+In-app Chat supplies the first-party read-only Zotero MCP through its existing
+helper when the runtime has no explicit Zotero connection. No additional CLI
+installation or command entry is needed. An existing disabled or custom connection wins;
+Chat never silently replaces it. Configuration edits retain version checks,
+shared-setting confirmation and active-turn guards. No global settings are
+written to provide the default. Disabled tools, failed transport and unavailable
+Zotero local API remain distinct. Checking the API imports no research material.
 
-The preset launches the bundled first-party service with `--read-only`.
+The default launches the configured first-party service with `--read-only`.
 Local transports refuse redirects rather than follow another resource.
 That mode publishes only read tools and rejects import calls before any local
 request, including forged calls to unadvertised tools. The external guarded

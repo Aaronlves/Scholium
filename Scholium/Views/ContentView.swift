@@ -66,6 +66,7 @@ struct ContentView: View {
 
     var body: some View {
         ScholiumWorkspaceSplitView(
+            sidebarContent: shellState.sidebarContent,
             initialLibraryVisible: shellLibraryVisible,
             initialApparatusVisible: shellApparatusVisible,
             documentTabs: appState.documentTabController.tabs(
@@ -90,40 +91,41 @@ struct ContentView: View {
             }
         ) {
             LibrarySurface {
-                ZStack {
-                    ResearchSearchSurface(controller: discoveryController, searchController: searchController,
-                                          shellState: shellState, workspaceProjectionController: workspaceProjectionController,
-                                          presentation: .sidebar,
-                                          revealDocument: { windowCoordinator.makeKeyAndOrderFront() }) {
-                        SidebarView(controller: appState.discoveryController, context: sidebarContext)
-                    }
-                        .opacity(shellState.sidebarContent == .triptych ? 1 : 0)
-                        .allowsHitTesting(shellState.sidebarContent == .triptych)
-                        .accessibilityHidden(shellState.sidebarContent != .triptych)
-                    if let chat = appState.chatController {
-                        AgentChatView(controller: chat,
-                            isVisible: shellState.libraryVisible && shellState.sidebarContent == .chat,
-                            addSelection: { Task { await appState.addCurrentSelectionToChat() } },
-                            noteChoices: appState.workspaceCatalog?.notes ?? [],
-                            addNote: { note, conversationID in try await appState.addNoteToChat(note, conversationID: conversationID) },
-                            openReference: { appState.openChatReference($0) },
-                            openAttachment: { attachment in Task { await appState.openChatAttachment(attachment) } },
-                            showInLibrary: { url in
-                                if appState.openChatReference(url) {
-                                    if !shellState.libraryVisible || shellState.sidebarContent != .triptych {
-                                        windowCoordinator.actions.activateSidebar(.triptych)
-                                    }
+                ResearchSearchSurface(controller: discoveryController, searchController: searchController,
+                    shellState: shellState, workspaceProjectionController: workspaceProjectionController,
+                    presentation: .sidebar,
+                    revealDocument: { windowCoordinator.makeKeyAndOrderFront() }) {
+                    SidebarView(controller: appState.discoveryController, context: sidebarContext)
+                }
+            }
+            .scholiumButtonStyle(.automatic)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        } chat: {
+            LibrarySurface {
+                if let chat = appState.chatController {
+                    AgentChatView(controller: chat,
+                        isVisible: shellState.libraryVisible && shellState.sidebarContent == .chat,
+                        addSelection: { Task { await appState.addCurrentSelectionToChat() } },
+                        noteChoices: appState.workspaceCatalog?.notes ?? [],
+                        addNote: { note, conversationID in try await appState.addNoteToChat(note, conversationID: conversationID) },
+                        openReference: { appState.openChatReference($0) },
+                        openAttachment: { attachment in Task { await appState.openChatAttachment(attachment) } },
+                        showInLibrary: { url in
+                            if appState.openChatReference(url) {
+                                if !shellState.libraryVisible || shellState.sidebarContent != .triptych {
+                                    windowCoordinator.actions.activateSidebar(.triptych)
                                 }
-                            },
-                            showChanges: { appState.presentationRouter.present(.agentChanges(scope: .exact($0))) },
-                            showConversationChanges: {
-                                appState.presentationRouter.present(.agentChanges(scope: .conversation($0)))
-                            })
-                        .opacity(shellState.sidebarContent == .chat ? 1 : 0)
-                        .allowsHitTesting(shellState.sidebarContent == .chat)
-                        .accessibilityHidden(shellState.sidebarContent != .chat)
-                    }
-
+                            }
+                        },
+                        showChanges: { appState.presentationRouter.present(.agentChanges(scope: .exact($0))) },
+                        showConversationChanges: {
+                            appState.presentationRouter.present(.agentChanges(scope: .conversation($0)))
+                        }, changes: researchController.agentChanges,
+                        changesError: researchController.agentChangesError)
+                        .task { researchController.scheduleAgentChangesRefresh() }
+                        .onChange(of: chat.selected?.messages.compactMap(\.changeID)) { _, _ in
+                            researchController.scheduleAgentChangesRefresh()
+                        }
                 }
             }
             .scholiumButtonStyle(.automatic)
@@ -728,7 +730,7 @@ struct ContentView: View {
             AgentChangesView(
                 scope: scope,
                 load: {
-                    try await researchController.loadAgentChanges()
+                    try await researchController.agentChangeHistory()
                 },
                 loadReview: { changeID in
                     guard let operations = appState.windowWorkspaceController

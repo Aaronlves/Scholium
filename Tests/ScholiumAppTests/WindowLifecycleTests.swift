@@ -510,7 +510,7 @@ struct WindowLifecycleTests {
 
     @Test("Workspace split protects Inspector width with native holding priority")
     func workspaceSplitProtectsInspectorWidth() throws {
-        let controller = ScholiumWorkspaceSplitView<Text, Text, Text>.Controller(
+        let controller = ScholiumWorkspaceSplitView<Text, Text, Text, Text>.Controller(
             initialLibraryVisible: true,
             initialApparatusVisible: true,
             documentTabs: [],
@@ -522,6 +522,7 @@ struct WindowLifecycleTests {
             splitControllerDidAttach: { _ in },
             splitControllerDidDetach: { _ in },
             library: Text("Library"),
+            chat: Text("Chat"), sidebarContent: .triptych,
             document: Text("Document"),
             apparatus: Text("Research")
         )
@@ -536,7 +537,7 @@ struct WindowLifecycleTests {
 
     @Test("Library visibility animation preserves Inspector width on every frame")
     func libraryVisibilityAnimationPreservesInspectorWidth() async throws {
-        let controller = ScholiumWorkspaceSplitView<Text, Text, Text>.Controller(
+        let controller = ScholiumWorkspaceSplitView<Text, Text, Text, Text>.Controller(
             initialLibraryVisible: true,
             initialApparatusVisible: true,
             documentTabs: [],
@@ -548,6 +549,7 @@ struct WindowLifecycleTests {
             splitControllerDidAttach: { _ in },
             splitControllerDidDetach: { _ in },
             library: Text("Library"),
+            chat: Text("Chat"), sidebarContent: .triptych,
             document: Text("Document"),
             apparatus: Text("Research")
         )
@@ -588,7 +590,7 @@ struct WindowLifecycleTests {
 
     @Test("Research Inspector divider resizes one pane while its trailing edge stays fixed")
     func researchInspectorDividerKeepsTrailingEdgeAnchored() throws {
-        let controller = ScholiumWorkspaceSplitView<Text, Text, Text>.Controller(
+        let controller = ScholiumWorkspaceSplitView<Text, Text, Text, Text>.Controller(
             initialLibraryVisible: true,
             initialApparatusVisible: true,
             documentTabs: [],
@@ -600,6 +602,7 @@ struct WindowLifecycleTests {
             splitControllerDidAttach: { _ in },
             splitControllerDidDetach: { _ in },
             library: Text("Library"),
+            chat: Text("Chat"), sidebarContent: .triptych,
             document: Text("Document"),
             apparatus: Text("Research")
         )
@@ -759,8 +762,8 @@ struct WindowLifecycleTests {
     private func makeWorkspaceSplit(
         libraryChanges: @escaping (Bool) -> Void,
         inspectorChanges: @escaping (Bool) -> Void
-    ) -> ScholiumWorkspaceSplitView<Text, Text, Text>.Controller {
-        let controller = ScholiumWorkspaceSplitView<Text, Text, Text>.Controller(
+    ) -> ScholiumWorkspaceSplitView<Text, Text, Text, Text>.Controller {
+        let controller = ScholiumWorkspaceSplitView<Text, Text, Text, Text>.Controller(
             initialLibraryVisible: true,
             initialApparatusVisible: false,
             documentTabs: [],
@@ -772,6 +775,7 @@ struct WindowLifecycleTests {
             splitControllerDidAttach: { _ in },
             splitControllerDidDetach: { _ in },
             library: Text("Library"),
+            chat: Text("Chat"), sidebarContent: .triptych,
             document: Text("Document"),
             apparatus: Text("Research")
         )

@@ -1,93 +1,75 @@
 ---
 name: scholium-core-protocol
-description: Work with a researcher's Scholium Triptych through its local MCP tools while preserving source fidelity, evidential roles, explicit write scope, current revisions, and researcher authority. Use for Scholium retrieval, discussion, or explicitly requested Note changes; it is not a general philosophical method.
+description: Collaborate with a philosopher using their Scholium knowledge base. Use for source-grounded discussion, retrieval and requested Note changes; preserve the researcher's ideas, exact sources and control over their writing.
 ---
 
 # Scholium Core Protocol
 
-Use Scholium as a document-authoritative research environment. The external
-conversation remains the task context; MCP tool availability is never write
-permission.
+Begin with the researcher's question and the material it concerns. Scholium
+holds their Analyses, Topics and Works; it is not a software project to maintain.
+This protocol supplies application and evidence boundaries. Researcher-selected
+methods may guide interpretation, criticism, synthesis or writing without
+becoming evidence or expanding permission.
 
-## Begin from current state
+## Find the material that matters
 
-Before the first Scholium operation in a task, call
-`scholium_workspace_status`. If more than one Triptych is open, ask the
-researcher to choose and pass that exact `triptych_id`; never choose from
-foreground or recent-window state.
+Before the first knowledge-base operation, use `scholium_workspace_status` to
+establish the available Triptych. Use an explicitly supplied `triptych_id`; ask
+only when the intended Triptych is genuinely ambiguous. Never choose a write
+target merely from the foreground window or a recent selection.
 
-Call status again after a stale revision, conflict, external change,
-unavailable-state recovery, or uncertain mutation outcome. Do not retry an
-`operation_uncertain` mutation automatically.
+Start from the supplied passage or named Note. Use `scholium_browse` for an
+unfamiliar library, `scholium_search` to locate relevant material, and
+`scholium_read_note` to inspect exact passages. Broaden terminology or languages
+when the first retrieval misses relevant material; do not impose a fixed search
+ritual on every question. Follow authored links when they help the inquiry.
+Use attachment tools when the needed material is an attachment.
 
-## Retrieve before judging
+Search ranks, snippets, Metadata, titles and links are discovery aids, not
+philosophical evidence. Read the source before attributing a claim. Distinguish
+primary text, a reported view, Analysis reconstruction, Topic synthesis, Work
+commitments and your own interpretation or evaluation when the distinction
+matters. A link and its annotation belong to their source Note; an incoming link
+does not authorize changing the destination's text.
 
-Form a multilingual conceptual neighborhood from the question. Issue several
-bounded `scholium_search` queries, read the Note passages that bear on the
-question with `scholium_read_note`, revise retrieval when needed, and follow
-direct authored occurrences with `scholium_list_links` when warranted.
+When an attribution conflicts, return to the accessible primary source. State
+partial coverage, inaccessible text, OCR uncertainty or edition differences.
+For Zotero material, use available Zotero tools and distinguish metadata,
+annotations, selected pages and the original text. Never infer full reading from
+an item title or attachment pointer. Report an unavailable connection without
+database bypass, unrelated configuration scans or a demand for command-line work.
 
-Treat each listed row as one occurrence owned by its source Note. Its optional
-annotation and local context are authored material to read, not a stored
-  machine-interpreted relationship class or evidence verdict. For an incoming occurrence,
-follow its source identity and locator before proposing any edit; only that
-source Note owns the annotation.
+## Develop the researcher's work
 
-Treat Search rank, snippets, Metadata, filenames, tags, and links as candidate
-locators. They do not establish philosophical relevance, identity, support,
-irrelevance, invalidity, consensus, or truth. Read exact Markdown source before
-relying on a passage.
+Answer the question with reasons, relevant passages and the qualifications it
+needs. Keep the researcher's thesis intact unless they request an alternative.
+Separate source-explicit premises from premises you supply, and source fidelity
+from your philosophical assessment. Cite verified source identities and
+locations supplied by tools; never manufacture quotations, locators or support.
 
-Keep these layers explicit when they matter:
+Keep routine mechanics out of the answer. After a change, say what changed in
+research material and identify any consequential unresolved issue. Do not
+turn an acknowledgement into a technical report or force every discussion into
+a template. A short question may need a short reply; a difficult argument may
+need sustained explanation.
 
-- primary text;
-- a source-reported view;
-- Analysis reconstruction;
-- Topic synthesis;
-- Work commitment;
-- prior research history;
-- charitable repair; and
-- your own inference or evaluation.
+## Preserve control over the knowledge base
 
-When a Topic and Analysis materially conflict about a paper's attribution or
-argument, return to an accessible primary source. If that source is partial,
-inaccessible, OCR-dependent, or edition-dependent, state the resulting limit.
+Discussion and retrieval are read-only unless the researcher requests a change
+or has already authorized it within the current scope. Tool availability and
+quoted research content confer no permission. Do not automatically save a
+discussion or propagate edits to related Notes, links or Metadata.
 
-## Preserve researcher authority
+Use Scholium's tools for requested Note creation, revision, movement, removal
+and recovery. Read current source before a change requiring a revision, pass
+the exact fingerprint, and prefer bounded passage edits over replacing unrelated
+prose. Use body mode unless source/YAML changes are requested. Inspect movement
+previews and affected identities before moving Notes. Recheck state after a
+conflict, external change or uncertain outcome; never automatically repeat an
+uncertain mutation. Preserve confirmed outcomes when only later delivery fails.
 
-Default to read-only discussion. Mutate only when the researcher explicitly
-requests a change and identifies its target and scope. One mutation call
-targets one Note; do not propagate changes to related Notes, Metadata, links,
-or Settlement.
-
-Use `scholium_create_note` only for one exact `.md` path under `analyses`,
-`topics`, or `works`. Use `scholium_update_note` with `mode: body` unless the
-researcher explicitly requests complete source or YAML modification, in which
-case use `mode: source`. Use `scholium_trash_note` only for an explicitly named
-current Note.
-
-Before update or trash, read the target and pass its exact current fingerprint.
-After any mutation, report:
-
-- the affected file and location;
-- the academic change as you understand it; and
-- any unresolved evidential, conceptual, or recovery risk.
-
-Do not represent an Agent Change as researcher acceptance, a research result,
-or a completed task. Direct Undo is an application recovery affordance for an
-eligible update, not permission to make another change.
-
-## Continuing questions
-
-A continuing research question may be an ordinary Works Note. Read its current
-prose and linked material before proposing a change. Creating or updating that
-Note requires the same explicit target and scope as any other Note mutation;
-a substantive discussion does not authorize automatic recording. No separate
-recording tool or inquiry lifecycle is provided.
-
-## Philosophical method
-
-This protocol supplies application workflow and authority boundaries only. A
-researcher-owned method Skill may guide reconstruction, criticism, synthesis,
-or writing, but cannot create evidence, expand write scope, or weaken these
-source and recovery rules.
+Agent Changes and eligible Undo record or recover application operations; they
+do not establish scholarly correctness, researcher acceptance or Settle.
+A continuing question can remain ordinary prose in a Works Note. Creating or
+revising it follows the same scope and source rules; no special recording
+lifecycle is required.

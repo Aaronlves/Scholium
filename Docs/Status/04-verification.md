@@ -14,13 +14,14 @@ remain open; no release acceptance is implied.
 
 ## Current verification snapshot
 
-**2026-09-09 — selection shortcuts:** Native buttons/menu replace the duplicate
-composer. Settings supports five bounded, ordered custom prompts. Checks pass (31 native, 234 editor); the real WebKit bridge verifies replacement
-and rejects stale source. Signed-in QA confirms exact capture, real Polish,
-Adopt and one-step Undo; native menu/settings and error recovery were inspected.
-This scoped evidence does not establish release acceptance.
-Human accessibility/adaptation and representative scholarly evaluation remain open.
-Evidence: `.build/agent-chat-evolution/selection-*`; prior `inquiry-*`.
+**2026-09-09 — Chat:** 21 content/reader checks, Debug build/docs/localization pass.
+QA verifies viewed changes, history/comparison resizing, table scrolling,
+content-fitted previews and Escape: `.build/chat-content-acceptance.md`.
+Earlier integration remains nonzero; `.build/chat-research-acceptance.md` records prior Release proof. Release, VoiceOver, adaptation and Zotero acceptance remain open.
+
+**2026-09-09 — selection shortcuts:** 31 native and 234 editor checks pass.
+Signed-in QA verifies exact capture, Polish, Adopt and one-step Undo; menu/settings/recovery inspected. Full App integration remained red. Human adaptation
+and scholarly acceptance remain open. Evidence: `.build/agent-chat-evolution/selection-*`.
 
 **2026-09-08 — unified public transcript:** Shared typed decoding validates full
 history atomically and accepts lifecycle-only metadata without inventing messages.
@@ -251,7 +252,7 @@ to the reachable chapters and outstanding acceptance to Open Work.
   and 44 App checks passed in `image-drop-final-tests.log`, including delayed
   pasteboard data, copy-only admission, disabled/marked-text refusal, exact draft
   selection and working text Undo, image delivery, source round trips, branching
-  and archive refusal. The current archive is version 10 with a typed file or
+  and archive refusal. Archive 11 retains runtime timing and typed file or
   image-capture source; version 9 remains unchanged and nonauthorizing. Light/dark
   dropped-image detail renders were visually inspected under `renders/`; these
   are offscreen component evidence, not physical cross-app dragging or human
@@ -519,7 +520,7 @@ to the reachable chapters and outstanding acceptance to Open Work.
   color/typography and render checks passed in `note-material-render-tests.log`;
   populated and empty Note-picker images were visually inspected in both
   appearances. Native List rendering used test-owned, never-ordered windows;
-  no UI automation was used. Localization passed in `note-material-localization.log`.
+  No UI automation. Localization passed in `note-material-localization.log`.
   This does not establish actual live editor capture, physical picker interaction,
   VoiceOver, signed-in inference or complete file/image material support.
 
@@ -618,7 +619,7 @@ to the reachable chapters and outstanding acceptance to Open Work.
   and WebKit localization expectations. Chat/bridge checks passed; the gate
   stopped before release build/CLI checks. Log:
   `.build/agent-chat-evolution/integration-gate.log`. This is not a passing gate
-  or signed-in runtime/human acceptance; no UI automation was used.
+  or signed-in runtime/human acceptance; No UI automation.
 
 - **Runtime capability slice, 2026-09-08:** owning Chat, capability decoding,
   presentation and native input checks passed, including per-conversation

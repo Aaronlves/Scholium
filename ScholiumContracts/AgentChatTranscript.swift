@@ -19,7 +19,7 @@ public enum AgentChatTranscript {
   }
 
   public struct Turn: Equatable, Sendable {
-    public enum Status: String, Sendable {
+    public enum Status: String, Codable, Sendable {
       case inProgress, completed, interrupted, failed
       public var runStatus: AgentChatActivity.Status {
         switch self {
@@ -39,12 +39,14 @@ public enum AgentChatTranscript {
     }
     public let itemContent: Items
     public let error: String?
+    public let timing: AgentChatTurnTiming
     public var items: [Item] {
       if case .full(let items) = itemContent { return items }
       return []
     }
-    public init(id: String, status: Status, items: Items, error: String? = nil) {
-      self.id = id; self.status = status; self.itemContent = items; self.error = error
+    public init(id: String, status: Status, items: Items, error: String? = nil,
+      timing: AgentChatTurnTiming = .init()) {
+      self.id = id; self.status = status; self.itemContent = items; self.error = error; self.timing = timing
     }
     public var messageIDs: Set<String> {
       let ids: Set<String>

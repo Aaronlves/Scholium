@@ -42,7 +42,11 @@ def turn_metadata(turn):
 
 def event(method, params):
     if method in ('turn/started', 'turn/completed'):
-        params = {**params, 'turn': turn_metadata(params['turn'])}
+        turn = params['turn']
+        if turn.get('startedAt') is not None and method == 'turn/completed':
+            turn['completedAt'] = turn['startedAt'] + 38
+            turn['durationMs'] = 38500
+        params = {**params, 'turn': turn_metadata(turn)}
     write({'method': method, 'params': params})
 
 def save():
@@ -205,8 +209,8 @@ for line in sys.stdin:
         save()
     elif method in ('thread/read', 'thread/resume'):
         thread = threads.get(params['threadId'])
-        if thread is None:
-            write({'id': request['id'], 'error': {'code': -32602, 'message': 'Fixture thread unavailable'}})
+        if thread is None or (home / 'missing-thread-history').exists():
+            write({'id': request['id'], 'error': {'code': -32600, 'message': 'thread not loaded: ' + params['threadId']}})
             continue
         if thread.get('parentThreadId'):
             marker = home / 'complete-parent-before-input'
@@ -290,6 +294,8 @@ for line in sys.stdin:
             turn['items'].append(user)
         else:
             turn = {'id': turn_id, 'status': 'inProgress', 'items': [user]}
+            if 'timed activity' in text:
+                turn['startedAt'] = 1788912000
             threads[tid]['turns'].append(turn)
         if (home / 'hold-parent-input').exists():
             save()

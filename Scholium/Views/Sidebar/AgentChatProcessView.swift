@@ -7,8 +7,14 @@ struct AgentChatProcessView<Row: View>: View {
   let isActive: Bool
   let hasFinalAnswer: Bool
   let forceExpanded: Bool
+  var status: AgentChatTurnPresentation? = nil
+  var preservesReading = false
+  var hasInspectedActivity = false
+  var animates = true
+  var inspect: () -> Void = {}
   @ViewBuilder let row: (AgentChatMessage) -> Row
   @State private var isExpanded = false
+  @State private var userExpansion: Bool?
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
   private var needsAttention: Bool {
@@ -20,17 +26,33 @@ struct AgentChatProcessView<Row: View>: View {
   }
 
   var body: some View {
-    DisclosureGroup(isExpanded: $isExpanded) {
+    DisclosureGroup(isExpanded: Binding(get: { isExpanded }, set: {
+      inspect()
+      userExpansion = $0; isExpanded = $0
+    })) {
       VStack(alignment: .leading, spacing: 12) {
-        ForEach(messages) { message in row(message) }
+        ForEach(AgentChatProcessSlice.collect(messages)) { slice in
+          if slice.isTools {
+            AgentChatActivityGroup(messages: slice.messages,
+              isActive: isActive && animates && slice.messages.contains { $0.id == messages.last(where: { $0.activity?.status == .running })?.id },
+              forceExpanded: forceExpanded, inspect: { inspect(); userExpansion = true }, row: row)
+          } else if let message = slice.messages.first { row(message) }
+        }
       }.padding(.top, 6)
     } label: {
-      Label("Process", systemImage: "ellipsis")
-        .font(.callout).foregroundStyle(.secondary)
+      if let status {
+        AgentChatTurnStatus(presentation: status, animates: animates)
+      } else {
+        Label("Process", systemImage: "ellipsis")
+          .font(.callout).foregroundStyle(.secondary)
+      }
     }
-    .animation(reduceMotion ? nil : .default, value: isExpanded)
+    .disclosureGroupStyle(AgentChatDisclosureStyle())
+    .animation(reduceMotion || preservesReading ? nil : .default, value: isExpanded)
     .onChange(of: isActive, initial: true) { _, active in
-      isExpanded = active || needsAttention || forceExpanded
+      if needsAttention || forceExpanded { isExpanded = true }
+      else if active { isExpanded = userExpansion ?? true }
+      else if !preservesReading && !hasInspectedActivity && userExpansion != true { isExpanded = false }
     }
     .onChange(of: forceExpanded) { _, force in if force { isExpanded = true } }
     .onChange(of: needsAttention) { _, needed in if needed { isExpanded = true } }

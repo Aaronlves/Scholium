@@ -38,6 +38,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
     let onRenderingFailure: ((String) -> Void)?
     var onRenderingLoading: (() -> Void)? = nil
     var onRenderingReady: (() -> Void)? = nil
+    var onRenderedDiagramSize: ((CGSize) -> Void)? = nil
     var findRequest: DocumentFindPresentationRequest? = nil
     var onFindResult: ((UInt64, Result<DocumentFindResult, any Error>) -> Void)? = nil
     var observedScrollPosition = ObservedScrollPosition()
@@ -80,6 +81,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         coordinator.testingForcesFinalizationFailure = testingForcesFinalizationFailure
         coordinator.testingScrollRestoreDelayMilliseconds = testingScrollRestoreDelayMilliseconds
         #endif
+        coordinator.onRenderedDiagramSize = onRenderedDiagramSize
         coordinator.onAskAgent = onAskAgent
         coordinator.onSourceRangeUnavailable = onSourceRangeUnavailable
         coordinator.onSourceRevisionChanged = onSourceRevisionChanged
@@ -132,6 +134,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         context.coordinator.testingForcesFinalizationFailure = testingForcesFinalizationFailure
         context.coordinator.testingScrollRestoreDelayMilliseconds = testingScrollRestoreDelayMilliseconds
         #endif
+        context.coordinator.onRenderedDiagramSize = onRenderedDiagramSize
         context.coordinator.onAskAgent = onAskAgent
         context.coordinator.onSourceRangeUnavailable = onSourceRangeUnavailable
         context.coordinator.onSourceRevisionChanged = onSourceRevisionChanged
@@ -207,6 +210,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         private var renderingReadinessIsAcknowledged: Bool
         private var onRenderingFailure: ((String) -> Void)?
         private var onRenderingLoading: (() -> Void)?
+        var onRenderedDiagramSize: ((CGSize) -> Void)?
         private var onRenderingReady: (() -> Void)?
         private var scrollRestoration: SafeMarkdownReadScrollRestoration
         private var hasLoadedPage = false
@@ -754,6 +758,9 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                     webView.setAccessibilityIdentifier(
                         "scholium.renderedDocument.\(expectedDocumentID)"
                     )
+                    await self.reportDiagramSize(in: webView, signature: expectedSignature)
+                    guard self.isCurrentLoad(navigation: navigation, generation: expectedLoadGeneration,
+                                             signature: expectedSignature, in: webView) else { return }
                     self.finalizedSignature = expectedSignature
                     self.renderingReadinessIsAcknowledged = true
                     self.onRenderingReady?()
@@ -821,6 +828,20 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 WebKitInterfaceLocalization.current()
                     .string("The Review renderer stopped unexpectedly.")
             )
+        }
+
+        /// Read-only SVG layout projection, never a source or viewport measurement.
+        private func reportDiagramSize(in webView: WKWebView, signature: String) async {
+            guard onRenderedDiagramSize != nil else { return }
+            let result = try? await webView.evaluateJavaScript("""
+                (() => { const svg = document.querySelector('.scholium-mermaid-output')?.shadowRoot?.querySelector('svg');
+                  const box = svg?.viewBox?.baseVal;
+                  return box ? [box.width, box.height] : null; })()
+                """, in: nil, contentWorld: SafeMarkdownReadWebView.bridgeContentWorld)
+            guard activeWebView === webView, loadedSignature == signature,
+                  let values = result as? [Double], values.count == 2,
+                  values.allSatisfy({ $0.isFinite && $0 > 0 && $0 < 1_000_000 }) else { return }
+            onRenderedDiagramSize?(CGSize(width: values[0], height: values[1]))
         }
 
         /// Reconnects a finalized retained page to reconstructed SwiftUI

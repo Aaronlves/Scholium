@@ -146,16 +146,17 @@ struct AgentChatCapabilitiesSettingsView: View {
 
   private var zoteroConnection: some View {
     VStack(alignment: .leading, spacing: 6) {
-      if capabilities.zoteroConnection != nil || capabilities.tools.contains(where: { $0.name == AgentChatCapabilitiesController.zoteroServerName }) {
+      if capabilities.zoteroConnection != nil {
         toolRow(AgentChatCapabilitiesController.zoteroServerName)
       } else {
         HStack {
           VStack(alignment: .leading, spacing: 3) {
             Text("Zotero")
-            Text("Not Configured").font(.caption).foregroundStyle(.secondary)
+            Text(capabilities.usesDefaultZoteroConnection ? "Included in Chat · Read Only" : "Unavailable")
+              .font(.caption).foregroundStyle(.secondary)
           }
           Spacer()
-          Button("Set Up Zotero…") { toolEdit = capabilities.zoteroToolEdit(executable: controller.zoteroToolExecutable) }
+          Button("Configure…") { toolEdit = capabilities.zoteroToolEdit(executable: controller.zoteroToolExecutable) }
             .disabled(!capabilities.canConfigureTools || controller.zoteroToolExecutable == nil)
         }
       }

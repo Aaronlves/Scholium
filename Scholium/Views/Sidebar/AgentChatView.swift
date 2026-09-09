@@ -8,6 +8,7 @@ struct AgentChatView: View {
   @Environment(\.openSettings) private var openSettings
   @Environment(\.scholiumFileSelectionPresenter) private var fileSelectionPresenter
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  @Environment(\.controlActiveState) private var controlActiveState
   @ObservedObject var controller: AgentChatController
   let isVisible: Bool
   let addSelection: () -> Void
@@ -18,6 +19,9 @@ struct AgentChatView: View {
   let showInLibrary: (URL) -> Void
   let showChanges: (UUID) -> Void
   let showConversationChanges: ([UUID]) -> Void
+  var changes: [AgentChange]? = nil
+  var changesError: String? = nil
+  @AppStorage(AgentChangeViewedLedger.key) private var viewedChangeData = Data()
   @State private var showsArchived = false
   @State private var isSelectingChats = false
   @State private var selectedChatIDs: Set<UUID> = []
@@ -26,6 +30,10 @@ struct AgentChatView: View {
   @State private var showsConversationList = true
   @State private var showsFiles = false
   @State private var showsContext = false
+  @State private var showsComposerContext = false
+  @State private var showsDiagnostics = false
+  @State private var diagnosticMessageID: String?
+  @State private var expandedActivityIDs: Set<String> = []
   @State private var completion = AgentChatComposerCompletion()
   @State private var notePickerTarget: AgentChatNotePicker.Target?
   @State private var pdfPagesTarget: AgentChatPDFPagesView.Target?
@@ -62,6 +70,10 @@ struct AgentChatView: View {
         conversationDetail
       }
     }
+    .popover(isPresented: $showsDiagnostics) {
+      AgentChatDiagnosticsView(messages: controller.selected?.messages ?? [], selectedID: diagnosticMessageID,
+        error: controller.error, close: { showsDiagnostics = false })
+    }
     .sheet(item: $inspectedAgent) { child in
       AgentChatChildInspector(child: child, openReference: openReference)
     }
@@ -90,6 +102,9 @@ struct AgentChatView: View {
       completion.dismiss()
       showsFiles = false
       showsContext = false
+      showsComposerContext = false
+      showsDiagnostics = false
+      expandedActivityIDs = []
       isAwayFromLatest = false
       showsFind = false
       find = .init()
@@ -117,6 +132,9 @@ struct AgentChatView: View {
       if !visible {
         messageIsFocused = false
         showsFiles = false
+        showsContext = false
+        showsComposerContext = false
+        showsDiagnostics = false
       }
     }
     .onChange(of: find.query) { _, _ in refreshFind(reset: true) }
@@ -210,6 +228,7 @@ struct AgentChatView: View {
             }
             Divider()
             Button("Context and Usage") { showsContext = true }
+            Button("Diagnostics…") { diagnosticMessageID = nil; showsDiagnostics = true }
             Button("Conversation Changes") {
               showConversationChanges(controller.selected?.messages.compactMap(\.changeID) ?? [])
             }.accessibilityIdentifier("scholium.chat.changeHistory")
@@ -220,12 +239,7 @@ struct AgentChatView: View {
           .accessibilityLabel("Chat Options")
           .accessibilityIdentifier("scholium.chat.options")
           .popover(isPresented: $showsContext) {
-            AgentChatContextView(usage: controller.selected?.contextUsage,
-              quotas: controller.quotas, quotaError: controller.quotaError,
-              isRefreshing: controller.isRefreshingQuota, canRefresh: controller.account != nil,
-              canCompact: controller.canCompact,
-              compact: { showsContext = false; controller.compactContext() },
-              refresh: controller.refreshQuota)
+            contextPanel
           }
         }
       }
@@ -271,6 +285,16 @@ struct AgentChatView: View {
       ProgressView("Connecting…").controlSize(.small).padding(8)
     } else if controller.account == nil {
       Button("Sign in with ChatGPT") { controller.login() }.disabled(controller.isBusy).padding(8)
+    }
+    if controller.historyUnavailable {
+      VStack(alignment: .leading, spacing: 6) {
+        Text("This conversation is saved here, but unavailable in the connected runtime.")
+          .font(.caption).foregroundStyle(.secondary)
+        HStack {
+          Button("Retry") { controller.retryHistory() }.disabled(controller.isBusy)
+          Button("New Conversation") { controller.newConversation() }
+        }.font(.caption)
+      }.padding(.horizontal, ScholiumSidebarLayout.textInset)
     }
     if let error = controller.error {
       VStack(alignment: .leading, spacing: 6) {
@@ -500,10 +524,10 @@ struct AgentChatView: View {
                 timelineItem(item)
               }.id(item.id)
             }
+            currentActivity
             if let approval = controller.approvals.first(where: { !$0.isSubmitting }) ?? controller.approvals.first {
               approvalView(approval)
             }
-            currentActivity
             Color.clear.frame(height: 1).id("latest")
           }.padding(.horizontal, ScholiumSidebarLayout.textInset)
             .padding(.vertical, ScholiumSidebarLayout.edgeInset)
@@ -538,7 +562,11 @@ struct AgentChatView: View {
             bottomDistance: geometry.contentSize.height
               - geometry.contentOffset.y - geometry.containerSize.height)
         } action: { previous, current in
-          if transcriptIsScrolling { isAwayFromLatest = current.bottomDistance > 80 }
+          // Accessibility scrolling can move the viewport without a scroll phase.
+          let viewportMoved = previous.height == current.height
+            && previous.bottomInset == current.bottomInset
+            && previous.bottomDistance != current.bottomDistance
+          if transcriptIsScrolling || viewportMoved { isAwayFromLatest = current.bottomDistance > 80 }
           else if !isAwayFromLatest && (previous.height != current.height || previous.bottomInset != current.bottomInset) {
             proxy.scrollTo("latest", anchor: .bottom)
           }
@@ -550,7 +578,7 @@ struct AgentChatView: View {
               if isAwayFromLatest {
                 Button {
                   isAwayFromLatest = false
-                  proxy.scrollTo("latest", anchor: .bottom)
+                  withAnimation(reduceMotion ? nil : .default) { proxy.scrollTo("latest", anchor: .bottom) }
                 } label: {
                   Image(systemName: "arrow.down").padding(7)
                 }
@@ -575,6 +603,7 @@ struct AgentChatView: View {
           proxy.scrollTo(target.messageID, anchor: .top)
         }
         .onChange(of: find.selectedID) { _, id in
+          if let id { expandedActivityIDs.insert(id) }
           if let id, let item = AgentChatTimelineItem.group(timelineMessages)
             .first(where: { $0.messages.contains(where: { $0.id == id }) }) {
             isAwayFromLatest = true
@@ -593,25 +622,30 @@ struct AgentChatView: View {
       AgentChatProcessView(messages: item.messages,
         isActive: controller.isBusy && controller.currentTurnID != nil && item.messages.first?.turnID == controller.currentTurnID,
         hasFinalAnswer: timelineMessages.contains { $0.phase == .finalAnswer && $0.turnID == item.messages.first?.turnID },
-        forceExpanded: showsFind && item.messages.contains { $0.id == find.selectedID }) { message in
+        forceExpanded: showsFind && item.messages.contains { $0.id == find.selectedID },
+        status: item.carriesTurnStatus(in: timelineMessages) ? turnPresentation(item.messages.first?.turnID) : nil,
+        preservesReading: isAwayFromLatest || transcriptIsScrolling,
+        hasInspectedActivity: item.messages.contains { expandedActivityIDs.contains($0.id) },
+        animates: isVisible && controller.approvals.isEmpty,
+        inspect: { isAwayFromLatest = true }) { message in
           if message.activity != nil { activityRow(message) }
           else if let plan = message.plan { AgentChatPlanView(plan: plan) }
           else { AgentChatMarkdown(text: message.text).foregroundStyle(.secondary) }
       }
-      AgentChatOperationFiles(files: AgentChatFileSummary.collect(item.messages).filter { $0.file.effect?.isMutation == true },
-        open: { _ = openReference($0) }, showChanges: showChanges, showAll: { showsFiles = true })
     } else if let message = item.messages.first {
-      messageView(message, showsSpeaker: item.showsSpeaker)
+      if message.role == .assistant && item.carriesTurnStatus(in: timelineMessages) {
+        AgentChatTurnStatus(presentation: turnPresentation(message.turnID), animates: isVisible)
+      }
+      messageView(message)
+      if message.role == .user && item.carriesTurnStatus(in: timelineMessages) {
+        AgentChatTurnStatus(presentation: turnPresentation(message.turnID), animates: isVisible)
+      }
     }
   }
 
-  private func messageView(_ message: AgentChatMessage, showsSpeaker: Bool) -> some View {
+  private func messageView(_ message: AgentChatMessage) -> some View {
     let conversationID = controller.selectedID
     return VStack(alignment: message.role == .user ? .trailing : .leading, spacing: 6) {
-      if showsSpeaker {
-        Text(message.role == .user ? ScholiumL10n.string("You", locale: locale) : "Codex")
-          .font(.caption).foregroundStyle(.secondary)
-      }
       VStack(alignment: .leading, spacing: 6) {
         quoteCards(message.replyQuotes ?? [], editable: false)
         if let target = message.coordinationTarget {
@@ -622,9 +656,6 @@ struct AgentChatView: View {
           AgentChatMarkdown(text: message.text, expandsToFillWidth: message.role != .user,
             quoteSelection: canQuote(message) ? { selection in quote(message, selection: selection, in: conversationID) } : nil)
         }
-        AgentChatResultFiles(files: AgentChatResultFile.collect(message.text),
-          open: { _ = openReference($0) }, showInLibrary: showInLibrary,
-          showAll: { showsFiles = true })
         if message.role == .assistant, message.phase != .commentary, !message.text.isEmpty,
           (!controller.isBusy || message.turnID != controller.currentTurnID) {
           AgentChatReplyActions(text: message.text, openNote: { _ = openReference($0) },
@@ -648,6 +679,7 @@ struct AgentChatView: View {
             .accessibilityLabel("Requested Method: \(method.title)")
         }
       }
+      .foregroundStyle(.primary)
       .padding(message.role == .user ? 12 : 0)
       .background {
         if message.role == .user {
@@ -716,102 +748,147 @@ struct AgentChatView: View {
       remove: editable ? { controller.removeDraftCoordinationTarget() } : nil)
   }
 
+  private func activitySummary(_ activity: AgentChatActivity) -> String {
+    if let id = activity.files.first?.noteID,
+      let note = noteChoices.first(where: { $0.reference.stableNoteID.flatMap(UUID.init(uuidString:)) == id }) {
+      return AgentChatActivityProjection.title(activity, locale: locale) + " · " + note.title
+    }
+    return AgentChatActivityProjection.summary(activity, locale: locale)
+  }
+
+  private var currentActivityID: String? {
+    guard controller.state == .working, controller.approvals.isEmpty else { return nil }
+    return AgentChatTimelineItem.activeActivityID(in: timelineMessages, turnID: controller.currentTurnID)
+  }
+
+  private func activitySymbol(_ activity: AgentChatActivity) -> some View {
+    Image(systemName: activity.status.isActive ? activity.kind.symbol : activity.status.symbol)
+      .chatAccessory()
+      .accessibilityHidden(true)
+  }
+
   @ViewBuilder
   private func activityRow(_ message: AgentChatMessage) -> some View {
-    if let activity = message.activity, let report = activity.delegation {
-      AgentChatDelegationView(report: report, operationStatus: activity.status, openAgent: { target in
-        guard let conversation = controller.selectedID else { return }
-        inspectedAgent = controller.childController(targetID: target, messageID: message.id, in: conversation)
-      })
-        .accessibilityIdentifier("scholium.chat.activity.\(message.id)")
-    } else if let activity = message.activity {
+    if let activity = message.activity {
       VStack(alignment: .leading, spacing: 4) {
-        HStack(alignment: .firstTextBaseline, spacing: 6) {
-          Image(
-            systemName: activity.status.isActive ? activity.kind.symbol : activity.status.symbol
-          )
-          .accessibilityHidden(true)
-          Text(AgentChatActivityProjection.title(activity, locale: locale))
-          Spacer(minLength: 0)
-          Text(activity.status.label).foregroundStyle(.secondary)
-        }
-        if let subject = AgentChatActivityProjection.subject(activity) {
-          Text(verbatim: subject).foregroundStyle(.secondary).textSelection(.enabled)
-        }
-        if !activity.subject.isEmpty || !activity.detail.isEmpty {
-          DisclosureGroup("Operation Details") {
-            if !activity.subject.isEmpty { Text(verbatim: activity.subject).monospaced().textSelection(.enabled) }
-            if !activity.detail.isEmpty { Text(verbatim: activity.detail).monospaced().textSelection(.enabled) }
+        if let report = activity.delegation {
+          HStack(alignment: .top, spacing: 6) {
+            activitySymbol(activity)
+            AgentChatDelegationView(report: report, operationStatus: activity.status, openAgent: { target in
+              guard let conversation = controller.selectedID else { return }
+              inspectedAgent = controller.childController(targetID: target, messageID: message.id, in: conversation)
+            })
           }
+        } else {
+          DisclosureGroup(isExpanded: Binding(get: { expandedActivityIDs.contains(message.id) }, set: { expanded in
+            isAwayFromLatest = true
+            if expanded { expandedActivityIDs.insert(message.id) }
+            else { expandedActivityIDs.remove(message.id) }
+          })) {
+            AgentChatActivityDetails(activity: activity, openNote: { _ = openReference($0) })
+          } label: {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+              Image(systemName: activity.status.isActive || activity.status == .completed ? activity.kind.symbol : activity.status.symbol)
+                .chatAccessory()
+                .accessibilityHidden(true)
+              AgentChatActivityText(text: activitySummary(activity),
+                isCurrent: isVisible && currentActivityID == message.id)
+                .lineLimit(1)
+              if activity.status != .running && activity.status != .completed {
+                Text(activity.status.label(locale: locale)).foregroundStyle(.secondary)
+              }
+            }
+          }
+          .disclosureGroupStyle(AgentChatDisclosureStyle())
         }
+      }
+      .font(.callout)
+      .contextMenu {
+        Button("Diagnostics…") { diagnosticMessageID = message.id; showsDiagnostics = true }
       }
       .accessibilityElement(children: .contain)
       .accessibilityIdentifier("scholium.chat.activity.\(message.id)")
+    } else { Text(message.text).textSelection(.enabled) }
+  }
+
+  private func turnPresentation(_ turnID: String?) -> AgentChatTurnPresentation {
+    let record = turnID.flatMap { controller.selected?.turns[$0] }
+    let live = controller.isBusy && turnID == controller.currentTurnID
+    let messages = timelineMessages.filter { $0.turnID == turnID && $0.role != .user }
+    var state: AgentChatTurnPresentation.State = .uncertain
+    if live {
+      if controller.state == .stopping { state = .stopping }
+      else if controller.approvals.contains(where: { !$0.questions.isEmpty }) { state = .waitingForInput }
+      else if !controller.approvals.isEmpty { state = .waitingForApproval }
+      else if controller.state == .compacting { state = .organizing }
+      else if controller.state == .working {
+        if messages.contains(where: { $0.phase == .finalAnswer && !$0.text.isEmpty }) { state = .responding }
+        else if let activity = messages.reversed().compactMap(\.activity).first(where: { $0.status.isActive }) {
+          switch activity.status {
+          case .waitingForInput: state = .waitingForInput
+          case .waitingForApproval: state = .waitingForApproval
+          default:
+            switch activity.kind {
+            case .read, .readAttachment: state = .reading
+            case .search, .webSearch: state = .searching
+            case .create, .update: state = .writing
+            case .compaction: state = .organizing
+            default: state = .working
+            }
+          }
+        } else { state = .working }
+      }
     } else {
-      Text(message.text).textSelection(.enabled)
+      switch record?.status {
+      case .completed: state = .completed
+      case .interrupted: state = .interrupted
+      case .failed: state = .failed
+      default: break
+      }
     }
+    return .init(state: state, timing: record?.timing ?? .init())
   }
 
   @ViewBuilder
   private var currentActivity: some View {
-    if controller.isBusy && controller.approvals.isEmpty {
-      let activity = controller.selected?.messages.reversed().compactMap(\.activity)
-        .first { $0.status.isActive }
-      HStack(alignment: .top, spacing: 8) {
-        if reduceMotion || !controller.approvals.isEmpty {
-          Image(systemName: controller.approvals.isEmpty ? "ellipsis" : "hand.raised")
-            .accessibilityHidden(true)
+    if controller.isBusy {
+      if controller.state == .working && controller.approvals.isEmpty && currentActivityID == nil {
+        AgentChatActivityText(text: ScholiumL10n.string("Organizing a response…", locale: locale), isCurrent: isVisible)
+          .font(.callout).accessibilityIdentifier("scholium.chat.currentWork")
+      }
+      let hasHeader = controller.currentTurnID.map { turn in
+        timelineMessages.contains { $0.turnID == turn }
+      } ?? false
+      if !hasHeader {
+        if controller.state == .working || controller.state == .stopping || controller.state == .compacting {
+          AgentChatTurnStatus(presentation: turnPresentation(controller.currentTurnID), animates: isVisible)
+            .accessibilityIdentifier("scholium.chat.currentActivity")
         } else {
-          ProgressView().controlSize(.small).accessibilityHidden(true)
-        }
-        VStack(alignment: .leading, spacing: 2) {
-          Text(
-            controller.state == .stopping
-              ? String(localized: "Stopping…")
-              : !controller.approvals.isEmpty
-                ? String(localized: "Waiting for Approval")
-              : controller.state == .connecting
-                  ? String(localized: "Connecting…")
-                  : controller.isRefreshingHistory
-                    ? String(localized: "Loading Conversation…", bundle: .module)
-                  : controller.state == .compacting
-                    ? String(localized: "Compacting Context…", bundle: .module)
-                  : controller.state == .branching
-                    ? String(localized: "Creating Branch…", bundle: .module)
-                  : activity.map { AgentChatActivityProjection.title($0, locale: locale) } ?? String(localized: "Codex is responding…"))
-          if let subject = activity.flatMap(AgentChatActivityProjection.subject) {
-            Text(subject).lineLimit(2).help(subject)
-          }
-        }
-        Spacer(minLength: 0)
-        if controller.state == .branching {
-          Button("Cancel") { controller.stop() }
-            .accessibilityIdentifier("scholium.chat.cancelBranch")
+          HStack {
+            Text(controller.state == .branching ? ScholiumL10n.string("Creating Branch…", locale: locale)
+              : controller.isRefreshingHistory ? ScholiumL10n.string("Loading Conversation…", locale: locale)
+              : ScholiumL10n.string("Connecting…", locale: locale))
+            if controller.state == .branching {
+              Button("Cancel") { controller.stop() }.accessibilityIdentifier("scholium.chat.cancelBranch")
+            }
+          }.font(.callout).foregroundStyle(.secondary)
         }
       }
-      .font(.caption).foregroundStyle(.secondary)
-      .padding(.top, 8)
-      .accessibilityElement(children: controller.state == .branching ? .contain : .combine)
-      .accessibilityIdentifier("scholium.chat.currentActivity")
-    } else if controller.selected?.lastRunStatus == .interrupted {
-      Label(AgentChatActivity.Status.interrupted.label, systemImage: "stop.circle")
-        .font(.caption).foregroundStyle(.secondary)
-        .accessibilityIdentifier("scholium.chat.interrupted")
     }
   }
 
-  @ViewBuilder
-  private var filesButton: some View {
-    let files = AgentChatFileSummary.collect(controller.selected?.messages ?? [])
-    let changed = files.filter { $0.file.effect?.isMutation == true }
-    if !files.isEmpty || !unrecordedResultFiles.isEmpty {
-      Button {
-        showsFiles = true
-      } label: {
-        Label(
-          changed.isEmpty
-            ? String(localized: "Files: \(files.count + unrecordedResultFiles.count)")
-            : String(localized: "Changes: \(changed.count)"), systemImage: "doc.on.doc")
+  private var conversationChangeIDs: Set<UUID> {
+    Set(controller.selected?.messages.compactMap(\.changeID) ?? [])
+  }
+
+  private var pendingChanges: [AgentChange] {
+    AgentChangeViewedLedger(data: viewedChangeData).pending(changes ?? [], receiptIDs: conversationChangeIDs)
+  }
+
+  @ViewBuilder private var filesButton: some View {
+    if !conversationChangeIDs.isEmpty {
+      Button { showsFiles = true } label: {
+        Label(changes == nil ? String(localized: "Changes") : String(localized: "Changes: \(pendingChanges.count)"), systemImage: "pencil.line")
           .padding(.horizontal, 10).padding(.vertical, 7)
       }
       .buttonStyle(.borderless).font(.caption).foregroundStyle(.primary)
@@ -820,12 +897,39 @@ struct AgentChatView: View {
       .popover(isPresented: $showsFiles, arrowEdge: .leading) {
         VStack(alignment: .leading, spacing: 12) {
           HStack {
-            Text("Files in This Conversation").font(.headline)
+            Text("Changes to Review").font(.headline)
             Spacer()
             Button("Close") { showsFiles = false }.keyboardShortcut(.cancelAction)
           }
-          ScrollView { fileSummary }
-        }.padding().frame(width: 360, height: 360)
+          if let changesError { Text(verbatim: changesError).textSelection(.enabled) }
+          else if changes == nil { ProgressView("Loading Agent Changes…") }
+          else if pendingChanges.isEmpty { Text("No changes awaiting review.").foregroundStyle(.secondary) }
+          else {
+            ScrollView {
+              VStack(alignment: .leading, spacing: 12) {
+                ForEach(pendingChanges) { change in
+                  HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                      if change.operation != .trash {
+                        Button(AgentChangePresentation.displayName(for: change)) {
+                          _ = openReference(AgentChatReference.url(noteID: change.noteID))
+                        }.buttonStyle(.link).help("Open Note")
+                      } else { Text(AgentChangePresentation.displayName(for: change)) }
+                      Text(AgentChangePresentation.operationTitle(for: change.operation))
+                        .font(.caption).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button("View Changes") { showsFiles = false; showChanges(change.id) }
+                  }
+                }
+              }
+            }.frame(maxHeight: 280)
+          }
+          Button("All Changes") {
+            showsFiles = false
+            showConversationChanges(Array(conversationChangeIDs))
+          }
+        }.padding().frame(width: 360)
       }
     }
   }
@@ -850,72 +954,6 @@ struct AgentChatView: View {
       defer { materialTask = nil }
       await controller.addLocalFiles(urls, to: conversationID)
     }
-  }
-
-  private var unrecordedResultFiles: [AgentChatResultFile] {
-    let recorded = Set(AgentChatFileSummary.collect(controller.selected?.messages ?? []).compactMap { $0.file.noteID })
-    var seen: Set<URL> = []
-    return (controller.selected?.messages ?? []).filter { $0.role == .assistant }.flatMap {
-      AgentChatResultFile.collect($0.text)
-    }.filter { file in
-      guard let target = AgentChatReference.parse(file.url) else { return false }
-      return !recorded.contains(target.noteID) && seen.insert(file.url).inserted
-    }
-  }
-
-  @ViewBuilder private var fileSummary: some View {
-    let files = AgentChatFileSummary.collect(controller.selected?.messages ?? [])
-    if !files.isEmpty || !unrecordedResultFiles.isEmpty {
-      VStack(alignment: .leading, spacing: 10) {
-        let changed = files.filter { $0.file.effect?.isMutation == true }
-        let unchanged = files.filter { $0.file.effect?.isMutation != true }
-        ForEach(changed) { file in fileRow(file) }
-        if !unrecordedResultFiles.isEmpty {
-          Text("Referenced Files").font(.caption).foregroundStyle(.secondary)
-          ForEach(unrecordedResultFiles) { file in
-            AgentChatResultFiles(files: [file], open: { _ = openReference($0) },
-              showInLibrary: showInLibrary, showAll: {})
-          }
-        }
-        if !unchanged.isEmpty {
-          if !changed.isEmpty {
-            Text(String(localized: "Without Recorded Edits: \(unchanged.count)"))
-              .font(.caption).foregroundStyle(.secondary)
-          }
-          ForEach(unchanged) { file in fileRow(file) }
-        }
-      }.font(.callout)
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("scholium.chat.files")
-    }
-  }
-
-  private func fileRow(_ summary: AgentChatFileSummary) -> some View {
-    VStack(alignment: .leading, spacing: 4) {
-      HStack(alignment: .firstTextBaseline, spacing: 6) {
-        Image(systemName: "doc.text").foregroundStyle(.secondary).accessibilityHidden(true)
-        if let noteID = summary.file.noteID, summary.file.effect != .trashed {
-          Button(summary.file.path) { _ = openReference(AgentChatReference.url(noteID: noteID)) }
-            .buttonStyle(.link)
-        } else {
-          Text(summary.file.path).textSelection(.enabled)
-        }
-      }
-      HStack(alignment: .firstTextBaseline) {
-        Text(summary.file.effect?.label ?? "").foregroundStyle(.secondary)
-        if summary.source == .runtime {
-          Text("Runtime Report").foregroundStyle(.secondary)
-        }
-        Spacer(minLength: 0)
-        if let id = summary.changeIDs.last {
-          Button("View Changes") {
-            showsFiles = false
-            showChanges(id)
-          }
-        }
-      }.font(.caption)
-    }.accessibilityElement(children: .contain)
-      .accessibilityIdentifier("scholium.chat.file.\(summary.id)")
   }
 
   private var completionCandidates: [AgentChatComposerCandidate] {
@@ -987,6 +1025,15 @@ struct AgentChatView: View {
         catch { controller.reportMaterialError(error.localizedDescription, in: conversationID) }
       }
     }
+  }
+
+  private var contextPanel: some View {
+    AgentChatContextView(usage: controller.selected?.contextUsage,
+      quotas: controller.quotas, quotaError: controller.quotaError,
+      isRefreshing: controller.isRefreshingQuota, canRefresh: controller.account != nil,
+      canCompact: controller.canCompact,
+      compact: { showsContext = false; showsComposerContext = false; controller.compactContext() },
+      refresh: controller.refreshQuota)
   }
 
   private var composer: some View {
@@ -1156,6 +1203,18 @@ struct AgentChatView: View {
           controller.selected?.permission == .fullAccess
             ? String(localized: "Full Access") : String(localized: "Ask for Approval"))
         Spacer(minLength: 0)
+        if let fraction = AgentChatContextPresentation.fraction(controller.selected?.contextUsage) {
+          Button { showsComposerContext = true } label: {
+            Text(fraction.formatted(.percent.precision(.fractionLength(0))))
+              .font(.caption).monospacedDigit().foregroundStyle(.secondary)
+          }
+          .buttonStyle(.plain)
+          .accessibilityLabel("Context Usage")
+          .accessibilityValue(fraction.formatted(.percent.precision(.fractionLength(0))))
+          .help("Last reported context use")
+          .accessibilityIdentifier("scholium.chat.contextUsage")
+          .popover(isPresented: $showsComposerContext) { contextPanel }
+        }
         if controller.state == .working || controller.state == .compacting || controller.state == .stopping {
           Button {
             controller.stop()

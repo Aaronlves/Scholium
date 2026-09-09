@@ -164,6 +164,11 @@ final class ResearchController: ObservableObject {
         }
     }
 
+    /// An explicit history read does not compete with background projection generations.
+    func agentChangeHistory() async throws -> [AgentChange] {
+        try await requireAgentCollaboration().agentChanges()
+    }
+
     @discardableResult
     func settle(
         _ note: VaultQualifiedNoteID,

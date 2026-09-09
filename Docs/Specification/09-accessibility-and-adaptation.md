@@ -176,11 +176,13 @@ integrations. Verify:
   claim host configuration. MCP failures retain distinct unavailable, scope,
   stale/conflict and uncertain-outcome explanations.
 - Chat exposes list/detail, Back, New Conversation, archive/restore, permission,
-  approval, Send, Stop and file/comparison routes. Labels and alignment distinguish
-  speakers without relying on bubbles. Streaming steals neither focus nor scroll;
+  approval, Send, Stop and file/comparison routes. Accessible speaker names and alignment
+  distinguish authors without repeated visible labels or reliance on bubbles.
+  Turn status remains readable without pulse; ticking seconds are not live announcements.
+  Streaming steals neither focus nor scroll;
   drafts and uncertain delivery remain inspectable. Activity names action,
-  target and status; file summaries distinguish reads, no-ops, recorded edits
-  and runtime reports. Closing a comparison returns to its origin. Native
+  target and status; Changes separates pending mutations from history, while
+  reads and no-ops stay in activity details. Closing a comparison returns to its origin. Native
   transparency/contrast and Reduce Motion preserve readable status.
 - Chat capability menus announce current model, reasoning effort, web-search
   mode and selected Skills. Context and account quota have separate names and

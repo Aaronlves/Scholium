@@ -280,7 +280,12 @@ before/after evidence where applicable, and recovery state. It exists only to
 support accurate comparison, Earlier Revision presentation, and eligible
 direct Undo; it is not a research task, review state, completion
 marker, philosophical summary, or researcher acceptance. Created Notes have
-no fabricated empty preimage.
+no fabricated empty preimage. A separate machine-local viewed marker records only
+an explicit Mark as Viewed action for that receipt. Opening or closing a comparison
+never marks it. Mark as Unviewed restores the pending entry; new receipts are
+unviewed. This marker grants no permission, confirms no philosophical judgment,
+and changes neither evidence, recovery state nor Settlement. Prepared and uncertain
+outcomes cannot be hidden by it; undone receipts remain in history.
 
 Change listing defaults to 20 receipts (at most 100), optionally filtered by
 stable Note identity, including linked Notes affected by a move; continuation
