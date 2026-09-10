@@ -44,7 +44,7 @@ wait with Send disabled until actual command exit, then renew without losing
 thread/draft/login. Earlier disabled-to-live renewal records webpage Sources and
 honest JavaScript-body unavailability. All 500 Notes remain unchanged; QA is
 quit/removed with authentication retained. Build/localization/docs pass. Evidence:
-`.build/agent-chat-evolution/lifecycle-*`, `search-renewal-*`. Live method-root
+`.build/agent-chat-evolution/lifecycle-*`, `search-renewal-*`. Live Skill-root
 restoration, delegated waiting, provider search semantics and full adaptation
 remain open. Unsubscribe alone leaves threads loaded.
 
@@ -330,9 +330,9 @@ to the reachable chapters and outstanding acceptance to Open Work.
   generated bundle, fixture copy and isolated home were removed after inspection.
 
 - **Parent-mediated child adjustments, 2026-09-08:** eighteen owning interaction,
-  branch/search/material/method and render checks passed in
+  branch/search/material/Skill and render checks passed in
   `child-coordination-tests.log`. They cover exact target ancestry before
-  admission, ordinary parent-draft/material/method isolation, independent visible
+  admission, ordinary parent-draft/material/Skill isolation, independent visible
   selection, exact current-turn steering and new parent turns, parent receipts,
   retained unknown delivery without replay, closing after admission, archive
   exclusion, persistence and explicit target removal in an edited branch.
@@ -465,10 +465,10 @@ to the reachable chapters and outstanding acceptance to Open Work.
   `questions-final-regression.log`.
 
 - **Edit in New Branch, 2026-09-08:** two projection/confirmation checks and
-  twenty App branch/material/method/presentation checks passed in
+  twenty App branch/material/Skill/presentation checks passed in
   `.build/agent-chat-evolution/edit-branch-final-tests.log`. Fixture execution
   verified first-turn empty history, later-turn exclusion, exact draft material
-  and method retention, no automatic send, source preservation, additional-input
+  and Skill retention, no automatic send, source preservation, additional-input
   exclusion and wrong-prefix rejection. The installed runtime schema declares
   `beforeTurnId`; live official-runtime execution and native menu/focus acceptance
   remain open. Localization passed in `edit-branch-localization.log`. The adjacent
@@ -544,7 +544,7 @@ to the reachable chapters and outstanding acceptance to Open Work.
   references. Light/dark native remote/local form images were inspected before
   and after adding Advanced access controls. No UI automation, private credentials,
   signed-in inference or live sheet/keyboard/VoiceOver acceptance was used.
-  Nine adjacent method, authentication and native-style checks passed in
+  Nine adjacent Skill, authentication and native-style checks passed in
   `tool-config-adjacent-tests.log`; localization validation passed in
   `tool-environment-localization.log`. This does not close the whole-app gate.
 
@@ -560,10 +560,10 @@ to the reachable chapters and outstanding acceptance to Open Work.
   shared confirmation and VoiceOver remain live acceptance gaps. No UI automation
   was used, and a prepared sign-in URL is not reported as a successful login.
 
-- **Local method association, 2026-09-08:** eight owning/presentation checks
+- **Local Skill association, 2026-09-08:** eight owning/presentation checks
   passed in `.build/agent-chat-evolution/association-final-tests.log`, covering
   association/removal, scope and reconnect, failed application without background
-  retry, shared-preference merging, method lifecycle and native style ownership.
+  retry, shared-preference merging, Skill lifecycle and native style ownership.
   The updated directory validation and recovery checks plus installed-runtime
   association/withdrawal passed in `association-recovery-tests.log`. The official
   runtime changed discovery without modifying the synthetic Skill file; no model
@@ -574,13 +574,13 @@ to the reachable chapters and outstanding acceptance to Open Work.
   No UI automation was used. Real folder-picker, focus and VoiceOver acceptance
   remain open; this is not external tool authentication or complete Chat acceptance.
 
-- **Methods and tool inventory, 2026-09-08:** four owning checks passed in
+- **Skills and tool inventory, 2026-09-08:** four owning checks passed in
   `.build/agent-chat-evolution/methods-owning-tests.log`, including the installed
-  official runtime discovering and toggling a synthetic method in an isolated
+  official runtime discovering and toggling a synthetic Skill in an isolated
   configuration without model inference. The installed-runtime check also passed
   MCP inventory discovery in `methods-official-runtime.log`, without an
   authenticated external tool call. Fixture checks cover retained choices,
-  explicit Skill input, disabled/missing-method Send exclusion and disconnect.
+  explicit Skill input, disabled/missing-Skill Send exclusion and disconnect.
   Three native style-ownership checks plus an offscreen-render check passed in
   `methods-presentation-tests.log`. After moving appearance refresh to the
   connection Settings owner, the lifecycle and render checks passed in

@@ -4,8 +4,8 @@ import ScholiumContracts
 ///
 /// Researcher-authored prose, quotations, citations, note titles, paths, and
 /// imported source text must bypass this namespace and remain verbatim. Purely
-/// internal identifiers never enter a catalog, and researcher-owned Method or
-/// Researcher-authored method and reference text remains verbatim at its presentation sites.
+/// internal identifiers never enter a catalog, and researcher-owned Skills or
+/// researcher-authored philosophical method and reference text remains verbatim at its presentation sites.
 enum ScholiumL10n {
     /// Resolves application-authored interface copy from the app resource
     /// bundle. Do not pass researcher-authored or imported text here.

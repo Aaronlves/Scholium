@@ -19,7 +19,7 @@ native presentation, interface composition, and localization.
   `LinkResolutionCatalog` reuses fail-closed Note, heading, and block lookup
   without building a Graph edge.
 - `ScholiumCore` contains internal I/O and persistence implementations plus the
-  app-default method resource bundle; it is not a public SwiftPM product.
+  app-default Skill resource bundle; it is not a public SwiftPM product.
 - `ScholiumApplication` contains runtime configuration and pooling, capability
   actors, the typed event stream, CSS/App Support I/O, Obsidian appearance
   projection, and Zotero transport.

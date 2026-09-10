@@ -8,7 +8,7 @@ Scholium's built-in Zotero reader and external-agent MCP transport are separate.
 The app reader remains bounded and read-only. The MCP service is
 `scholium zotero mcp serve`; opening Zotero does not start it.
 
-In Chat Settings → Methods and Tools, **Set Up Zotero…** opens the existing
+In Chat Settings → Skills and Tools, **Set Up Zotero…** opens the existing
 configuration editor with the bundled CLI and `zotero mcp serve --read-only`.
 Save **Enabled** there; the selected Codex configuration owns that choice across
 reconnects. This mode publishes read tools and refuses imports even if a caller

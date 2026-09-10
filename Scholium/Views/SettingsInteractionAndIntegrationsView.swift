@@ -168,7 +168,7 @@ struct SettingsIntegrationsView: View {
         if ["zotero", "citation", "library", "local api", "引用"]
             .contains(where: query.contains) {
             category = .zotero
-        } else if ["agent", "chat", "codex", "claude", "mcp", "method", "tool", "bridge", "智能体"]
+        } else if ["agent", "chat", "codex", "claude", "mcp", "skill", "tool", "bridge", "智能体"]
             .contains(where: query.contains) {
             category = .agents
         }

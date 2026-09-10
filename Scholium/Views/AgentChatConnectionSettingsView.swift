@@ -15,7 +15,7 @@ struct AgentChatConnectionSettingsView: View {
   @ObservedObject var controller: AgentChatController
   var onShowExternalAgentHosts: (() -> Void)? = nil
   @State private var showsAdvancedConnectionSettings = false
-  @State private var showsMethodsAndTools = false
+  @State private var showsSkillsAndTools = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
@@ -49,8 +49,8 @@ struct AgentChatConnectionSettingsView: View {
           Button("Advanced Connection Settings…") {
             showsAdvancedConnectionSettings = true
           }
-          Button("Methods and Tools…") {
-            showsMethodsAndTools = true
+          Button("Skills and Tools…") {
+            showsSkillsAndTools = true
           }
           if let onShowExternalAgentHosts {
             Button("External Agent Hosts…", action: onShowExternalAgentHosts)
@@ -61,7 +61,7 @@ struct AgentChatConnectionSettingsView: View {
     .sheet(isPresented: $showsAdvancedConnectionSettings) {
       AgentChatConnectionAdvancedSettingsView(controller: controller)
     }
-    .sheet(isPresented: $showsMethodsAndTools) {
+    .sheet(isPresented: $showsSkillsAndTools) {
       AgentChatCapabilitiesSettingsSheet(
         controller: controller,
         capabilities: controller.capabilities

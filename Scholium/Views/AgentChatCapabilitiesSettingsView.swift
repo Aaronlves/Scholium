@@ -1,3 +1,4 @@
+import AppKit
 import ScholiumContracts
 import SwiftUI
 
@@ -16,29 +17,30 @@ struct AgentChatCapabilitiesSettingsView: View {
   @State private var confirmsSharedChange = false
   @State private var toolEdit: AgentChatToolEdit?
 
+  private var userSkills: [AgentChatMethod] {
+    capabilities.methods.filter { !$0.isProtected }
+  }
+
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
       HStack {
-        Text("Methods and Tools").font(.headline)
+        Text("Skills and Tools").font(.headline)
         Spacer()
         if capabilities.isRefreshing || capabilities.isChanging {
-          ProgressView().controlSize(.small).accessibilityLabel("Methods and Tools")
+          ProgressView().controlSize(.small).accessibilityLabel("Skills and Tools")
         }
         Button("Refresh") { capabilities.refresh(threadID: controller.selected?.threadID, applyAssociations: true) }
           .disabled(!capabilities.isConnected || capabilities.isRefreshing || capabilities.isChanging)
       }
       if let confirmationError { Text(confirmationError).foregroundStyle(.secondary) }
-      if let home = capabilities.configurationHome {
+      if capabilities.configurationHome != nil {
         Text(capabilities.isShared ? "Shared Codex Settings" : "Scholium Codex Settings")
           .font(.caption).foregroundStyle(.secondary)
-        if capabilities.isShared {
-          Text(home.path).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
-            .lineLimit(2).truncationMode(.middle).help(home.path)
-        }
       }
-      settingsEditorSection("Methods") {
+      coreProtocolSection
+      settingsEditorSection("Skills") {
         VStack(alignment: .leading, spacing: 10) {
-          Button("Add Methods Folder…", action: chooseFolder)
+          Button("Add Skills Folder…", action: chooseFolder)
             .disabled(!capabilities.canChangeAssociations || folderSelectionTask != nil)
           if let error = folderSelectionError ?? capabilities.associationError {
             Text(error).foregroundStyle(.secondary).textSelection(.enabled)
@@ -50,13 +52,14 @@ struct AgentChatCapabilitiesSettingsView: View {
             VStack(alignment: .leading, spacing: 8) {
               ForEach(capabilities.associatedFolders, id: \.self) { path in
                 HStack {
-                  Text(path).font(.caption).lineLimit(2).truncationMode(.middle)
-                    .help(path).textSelection(.enabled)
+                  Label(skillFolderName(path), systemImage: "folder")
+                    .lineLimit(1)
                   Spacer(minLength: 4)
                   Button {
                     capabilities.removeAssociation(path, threadID: controller.selected?.threadID)
                   } label: { Image(systemName: "minus.circle") }
-                    .help("Remove Association").accessibilityLabel("Remove Association: \(path)")
+                    .help("Remove Association")
+                    .accessibilityLabel("Remove Association: \(skillFolderName(path))")
                     .disabled(!capabilities.canChangeAssociations)
                 }
               }
@@ -64,8 +67,8 @@ struct AgentChatCapabilitiesSettingsView: View {
           }
           if let error = capabilities.methodError { Text(error).foregroundStyle(.secondary).textSelection(.enabled) }
           ForEach(capabilities.methodErrors, id: \.self) { Text($0).foregroundStyle(.secondary).textSelection(.enabled) }
-          if capabilities.hasMethods && capabilities.methods.isEmpty { Text("No Methods Found").foregroundStyle(.secondary) }
-          ForEach(capabilities.methods) { method in
+          if capabilities.hasMethods && userSkills.isEmpty { Text("No Skills Found").foregroundStyle(.secondary) }
+          ForEach(userSkills) { method in
             methodRow(method)
           }
         }
@@ -123,6 +126,39 @@ struct AgentChatCapabilitiesSettingsView: View {
     }
   }
 
+  private var coreProtocolSection: some View {
+    settingsEditorSection("Core Protocol") {
+      VStack(alignment: .leading, spacing: 8) {
+        HStack {
+          Label("Always included in Scholium Chat", systemImage: "checkmark.shield")
+          Spacer(minLength: 8)
+          Text("Protected Skill")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+        Text("Applied automatically to every Scholium Chat turn.")
+          .font(.callout)
+          .foregroundStyle(.secondary)
+        if let coreProtocolURL = capabilities.coreProtocolURL {
+          Button("Show Core Protocol in Finder…") {
+            NSWorkspace.shared.activateFileViewerSelecting([coreProtocolURL])
+          }
+        } else {
+          Text("Unavailable")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+      }
+      .accessibilityElement(children: .contain)
+      .accessibilityIdentifier("scholium.agent.core-protocol")
+    }
+  }
+
+  private func skillFolderName(_ path: String) -> String {
+    let name = URL(fileURLWithPath: path).lastPathComponent
+    return name.isEmpty ? String(localized: "Skills") : name
+  }
+
   private func methodRow(_ method: AgentChatMethod) -> some View {
     VStack(alignment: .leading, spacing: 6) {
       Toggle(isOn: methodEnabledBinding(method)) {
@@ -131,10 +167,6 @@ struct AgentChatCapabilitiesSettingsView: View {
       .disabled(method.isProtected || controller.hasActiveExecutions || capabilities.isRefreshing || capabilities.isChanging)
 
       Text(method.description).textSelection(.enabled)
-      Text(method.selection.path)
-        .font(.caption)
-        .foregroundStyle(.secondary)
-        .textSelection(.enabled)
       if !method.dependencies.isEmpty {
         Text("Declared Tools: \(method.dependencies.joined(separator: ", "))")
           .font(.caption)
@@ -232,9 +264,7 @@ struct AgentChatCapabilitiesSettingsView: View {
           Button("Sign In") { requestSignIn(server) }.disabled(!capabilities.canSignIn(server))
         }
       }
-      Text(name).font(.caption).foregroundStyle(.secondary)
       if let configuration {
-        Text(configuration.address).font(.caption).textSelection(.enabled)
         if !configuration.isEditable {
           Text("Managed Configuration")
             .font(.caption)
@@ -269,7 +299,7 @@ struct AgentChatCapabilitiesSettingsView: View {
           .selectURL(.init(kind: .directory(canCreateDirectories: false))) else { return }
         try Task.checkCancellation()
         guard capabilities.configurationHome == home else {
-          folderSelectionError = String(localized: "The connection changed. Choose the methods folder again.")
+          folderSelectionError = String(localized: "The connection changed. Choose the Skills folder again.")
           return
         }
         capabilities.associate(url, threadID: controller.selected?.threadID)

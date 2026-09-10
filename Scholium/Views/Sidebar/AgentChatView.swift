@@ -704,7 +704,7 @@ struct AgentChatView: View {
         }
         ForEach(message.methods ?? []) { method in
           Label(method.title, systemImage: "square.stack").font(.caption).foregroundStyle(.secondary)
-            .accessibilityLabel("Requested Method: \(method.title)")
+            .accessibilityLabel("Requested Skill: \(method.title)")
         }
       }
       .font(ScholiumChatAppearance.messageFont)
@@ -1030,7 +1030,7 @@ struct AgentChatView: View {
       var actions: [Candidate] = [
         .init(id: "file", title: ScholiumL10n.string("Choose File…"), detail: "@", symbol: "folder", action: .file),
         .init(id: "note", title: ScholiumL10n.string("Choose Note…"), detail: "@", symbol: "doc.text", action: .notePicker),
-        .init(id: "methods skills", title: ScholiumL10n.string("Methods"), detail: "$", symbol: "square.stack", action: .methods),
+        .init(id: "skills", title: ScholiumL10n.string("Skills"), detail: "$", symbol: "square.stack", action: .methods),
         .init(id: "context", title: ScholiumL10n.string("Context"), detail: "", symbol: "text.alignleft", action: .context),
         .init(id: "selection", title: ScholiumL10n.string("Add Selection to Chat"), detail: "", symbol: "text.badge.plus", action: .selection)
       ]
@@ -1041,8 +1041,8 @@ struct AgentChatView: View {
         }
       }
       actions += [
-        .init(id: "refresh methods", title: ScholiumL10n.string("Refresh Methods"), detail: "", symbol: "arrow.clockwise", action: .refreshMethods),
-        .init(id: "manage methods skills", title: ScholiumL10n.string("Manage Methods…"), detail: "", symbol: "gearshape", action: .manageMethods)
+        .init(id: "refresh skills", title: ScholiumL10n.string("Refresh Skills"), detail: "", symbol: "arrow.clockwise", action: .refreshMethods),
+        .init(id: "manage skills", title: ScholiumL10n.string("Manage Skills…"), detail: "", symbol: "gearshape", action: .manageMethods)
       ]
       return Array(actions.filter(matches).prefix(6))
     }
@@ -1103,14 +1103,14 @@ struct AgentChatView: View {
               Button { controller.toggleMethod(method) } label: {
                 Label(method.title, systemImage: "xmark.circle")
               }
-              .help("Remove Method").accessibilityLabel("Remove Method: \(method.title)")
+              .help("Remove Skill").accessibilityLabel("Remove Skill: \(method.title)")
             }
           }.font(.caption)
         }
         if controller.capabilities.isRefreshing {
-          ProgressView("Loading Methods…").controlSize(.small)
+          ProgressView("Loading Skills…").controlSize(.small)
         } else if !methods.allSatisfy(controller.capabilities.contains) {
-          Text("A selected method is unavailable. Refresh Methods or remove it to continue.")
+          Text("A selected Skill is unavailable. Refresh Skills or remove it to continue.")
             .font(.caption).foregroundStyle(.secondary)
         }
       }
@@ -1195,7 +1195,7 @@ struct AgentChatView: View {
           }
           Button("Add Selection to Chat", action: addSelection)
           Divider()
-          Menu("Methods") {
+          Menu("Skills") {
           ForEach(controller.capabilities.methods.filter { !$0.isProtected }) { method in
             Toggle(method.selection.title, isOn: Binding(
               get: { controller.selected?.selectedMethods?.contains(where: { $0.id == method.id }) == true },
@@ -1203,9 +1203,9 @@ struct AgentChatView: View {
               .disabled(!method.enabled)
           }
           Divider()
-          Button("Refresh Methods") { controller.capabilities.refresh(threadID: controller.selected?.threadID, applyAssociations: true) }
+          Button("Refresh Skills") { controller.capabilities.refresh(threadID: controller.selected?.threadID, applyAssociations: true) }
             .disabled(!controller.capabilities.isConnected || controller.capabilities.isRefreshing)
-          Button("Manage Methods…") {
+          Button("Manage Skills…") {
             UserDefaults.standard.set("integrations", forKey: "scholium.settings.selectedPane")
             UserDefaults.standard.set(SettingsIntegrationCategory.agents.rawValue, forKey: "scholium.settings.integrationCategory")
             openSettings()

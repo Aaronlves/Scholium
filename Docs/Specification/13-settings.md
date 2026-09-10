@@ -157,7 +157,7 @@ CSS remains an explicit action to the configuration surface and file. [Metadata 
 owns definitions and profiles; [Agent Chat §8.7](12-agent-chat.md) owns Selection
 Actions and runtime configuration. Agents & Chat keeps connection state and
 primary connect or sign-in actions in the main pane; custom connection paths,
-runtime Methods and Tools, and External Agent Hosts open in explicit native
+runtime Skills and Tools, and External Agent Hosts open in explicit native
 child sheets because they are distinct or low-frequency workflows. [Agent Collaboration §8](03-agent-collaboration-and-workflows.md)
 and [Zotero §15](05-integrations-onboarding-and-boundaries.md) own integration
 behavior. [Chat capability presentation](06-interface-shell-and-library.md#chat-capability-presentation)

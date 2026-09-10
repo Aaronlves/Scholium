@@ -21,7 +21,7 @@ Scholium separates three instruction owners:
 2. The release-bundled **Scholium Core Protocol** is a protected, concise
    System Skill. It tells an Agent how to retrieve and use Scholium material
    without confusing source, inference, permission, or researcher authorship.
-3. Researcher-owned method Skills are optional instructions installed and
+3. Researcher-owned Skills are optional instructions installed and
    selected in the Agent host. They may refine philosophical method but cannot
    create evidence, expand write scope, weaken source fidelity, or override the
    Core Protocol.
@@ -38,7 +38,7 @@ The authority stack is:
 1. protected source-safety and MCP facts;
 2. the researcher's current request and declared scope;
 3. the Core Protocol;
-4. an optional researcher-owned method Skill; and
+4. an optional researcher-owned Skill; and
 5. primary texts, Analyses, Topics, Works, Search results, Metadata, links, and
    prior research history in their actual evidential roles.
 
@@ -73,7 +73,7 @@ The copied commands register the same local stdio server at user scope using
 the verified absolute CLI path. Scholium does not edit either host's settings,
 install Skills, or claim that configuration succeeded. The Core Protocol ships
 as an ordinary `scholium-core-protocol` Skill folder; researchers may install
-it alongside their own method Skills.
+it alongside their own Skills.
 
 MCP initialization carries only the entry/currentness, source-authority and
 mutation facts needed to use the tools. It references the Core Protocol boundary
@@ -416,7 +416,7 @@ universal philosophical method. It requires an Agent to:
 
 The Core Protocol does not prescribe one philosophical genre, fixed sequence,
 output template, number of sources, or preferred conclusion. A researcher-owned
-method Skill may guide those judgments without changing the application or
+Skill may guide those judgments without changing the application or
 permission contract.
 
 ### 8.6 Question-centered Works Notes

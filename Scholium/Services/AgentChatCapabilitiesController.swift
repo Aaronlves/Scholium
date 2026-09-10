@@ -53,6 +53,12 @@ final class AgentChatCapabilitiesController: ObservableObject {
   var mayChange: () -> Bool = { false }
   var isConnected: Bool { runtime != nil }
 
+  /// The bundled protocol is a protected application resource, not part of
+  /// the runtime-owned optional Skill inventory.
+  var coreProtocolURL: URL? {
+    try? ScholiumAgentIntegrationResources.coreProtocolSkillDirectoryURL()
+  }
+
   func attach(_ runtime: CodexAppServer, cwd: URL, home: URL, isShared: Bool, threadID: String?) async {
     detach()
     self.runtime = runtime; self.cwd = cwd
@@ -102,7 +108,7 @@ final class AgentChatCapabilitiesController: ObservableObject {
     let applyRoots = permitsRootApplication && (needsRootApplication || !associatedFolders.isEmpty)
     if applyRoots { needsRootApplication = true }
     if needsRootApplication && !applyRoots && associationError == nil {
-      associationError = String(localized: "Refresh Methods when the current operation finishes to apply folder changes.")
+      associationError = String(localized: "Refresh Skills when the current operation finishes to apply folder changes.")
     }
     isChanging = applyRoots
     task = Task { [weak self] in
@@ -230,7 +236,7 @@ final class AgentChatCapabilitiesController: ObservableObject {
 
   func associate(_ directory: URL, threadID: String?) {
     guard canChangeAssociations else {
-      associationError = String(localized: "Finish the current operation before changing method folders.")
+      associationError = String(localized: "Finish the current operation before changing Skill folders.")
       return
     }
     do {
@@ -315,7 +321,7 @@ final class AgentChatCapabilitiesController: ObservableObject {
         guard generation == current, !Task.isCancelled else { return }
         isChanging = false
         refresh(threadID: requestedThreadID)
-        if effective != enabled { methodError = String(localized: "The runtime kept a different method setting.") }
+        if effective != enabled { methodError = String(localized: "The runtime kept a different Skill setting.") }
       } catch {
         guard generation == current, !Task.isCancelled else { return }
         isChanging = false

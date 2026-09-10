@@ -447,7 +447,7 @@ including loaded descendants and background commands. Connection identity and
 cancellation guard replacement, preserving the existing archive and sign-in;
 presentation owns no parallel reconnect or replay loop.
 Connection construction awaits capability initialization before publishing
-readiness. The capability owner applies saved method roots through its private
+readiness. The capability owner applies saved Skill roots through its private
 connection-initialization route; ordinary configuration edits retain the existing
 idle admission check. Renewal cannot block its own initialization.
 
@@ -472,7 +472,7 @@ Only a successfully read configuration without that connection permits the defau
 read-only server in thread overrides; disabled/custom connections remain untouched.
 Chat's research instruction adapter provides Triptych routing and source-link
 context. The bundled Core Protocol owns research boundaries. Runtime launch and
-thread overrides disable automatic project-document discovery; selected methods
+thread overrides disable automatic project-document discovery; selected Skills
 and runtime account/configuration remain with their existing owners.
 
 `AgentChatSearch` derives literal matches and passages directly from retained
@@ -493,7 +493,7 @@ the idle source conversation's operation task and cancellable `branching` state.
 `thread/fork` receives `lastTurnId` for inclusive branches or `beforeTurnId` for
 editing an opening request, plus `deferGoalContinuation` and a fresh
 connection route without active turn admission. The latter prepares the selected request's exact text, materials
-and method choices in the ordinary draft, including an empty retained prefix
+and Skill choices in the ordinary draft, including an empty retained prefix
 before the first turn. Origin records whether its boundary is included. Only a
 confirmed exact runtime prefix creates a local branch;
 the next explicit send admits its confirmed turn on that retained route. Branches retain original
@@ -545,20 +545,20 @@ request, checks execution admission after awaiting it, and refuses unconfirmed
 comparisons. The native comparison sheet reuses `ExactSourceComparisonView` and
 answers the same pending request identity; presentation holds no write authority.
 
-`AgentChatCapabilitiesController` owns connection-scoped method/tool observations,
+`AgentChatCapabilitiesController` owns connection-scoped Skill/tool observations,
 refresh and configuration-write tasks, with generation checks and disconnect
 invalidation. It does not persist an installed inventory or edit configuration
 files. `CodexChatMethods` translates Skills discovery/configuration and paginated
 MCP status; the official runtime owns the effective configuration. The Chat
 controller forwards capability observation for Send availability and refuses
-configuration changes during its active executions. Selected methods are draft
+configuration changes during its active executions. Selected Skills are draft
 values; sent messages retain immutable request labels and explicit runtime
 Skill inputs, independently of observed invocation events. Unknown or disabled
 choices remain visible and non-sending. The connection Settings owner refreshes
 inventory for its selected thread; its native capability subview owns visible
 grouping and shared-setting confirmation presentation.
 
-Associated method folders are launch preferences in UserDefaults, keyed by the
+Associated Skill folders are launch preferences in UserDefaults, keyed by the
 normalized selected Codex configuration path. The capability owner reads the
 latest preference before editing or refreshing, so separate connections merge
 folder choices instead of overwriting a stale projection. Each process tracks

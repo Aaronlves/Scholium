@@ -11,7 +11,7 @@
 - The **Scholium Core Protocol** is the release-bundled System Skill governing
   source authority, retrieval, permission, mutation scope, and reporting. It
   is not a complete philosophical method.
-- A researcher-owned **method Skill** is optional instruction installed in the
+- A researcher-owned **Skill** is optional instruction installed in the
   Agent host. Scholium does not register, inspect, execute, or grant authority
   through it.
 - An **Agent Change** is one machine-local, exact MCP mutation record used for

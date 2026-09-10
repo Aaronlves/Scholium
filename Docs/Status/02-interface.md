@@ -118,7 +118,7 @@ already-visible Chat does not toggle the Sidebar closed.
   a compact native table, explicit Edit… sheets, and the real selection-toolbar
   preview. Ordinary groups use headings and whitespace instead of repeated
   rules. The Agents & Chat pane keeps connection state and primary connection
-  actions visible while custom connection paths, Methods and Tools, and
+  actions visible while custom connection paths, Skills and Tools, and
   External Agent Hosts use explicit native child sheets. App chrome does not add an accent or
   appearance picker and follows system-resolved colors; pane changes
   interpolate from the current top-left corner while native content remains
@@ -237,12 +237,17 @@ already-visible Chat does not toggle the Sidebar closed.
   MCP registration commands, live App/bridge/CLI availability, and a Finder
   route to the bundled Core Protocol Skill.
 - Optional in-app Codex Chat appears beside Library in the left sidebar.
-  Agents & Chat now exposes runtime method discovery, inspection and
+  Agents & Chat now exposes runtime Skill discovery, inspection and
   effective enable/disable, plus MCP tool names and reported connection state.
+  Its Skills and Tools sheet presents the bundled Core Protocol in a separate
+  always-included, protected card with a read-only Finder reveal route; optional
+  Skills remain independently selectable. The default sheet presents names,
+  purposes and live status; concrete paths, endpoints and source locations stay
+  behind explicit Finder or configuration actions.
   Shared-setting writes have confirmation; active executions block changes.
-  Composer method selection persists in drafts and sent messages, sends explicit
+  Composer Skill selection persists in drafts and sent messages, sends explicit
   Skill inputs and blocks unavailable choices. The installed official runtime
-  passed isolated local method discovery/disable/enable without inference.
+  passed isolated local Skill discovery/disable/enable without inference.
   Local folder association/removal is reachable through the native folder picker;
   configuration-scoped launch preferences survive reconnect. Missing folders and
   unconfirmed application have Refresh/removal repair routes. Official-runtime
@@ -294,7 +299,7 @@ already-visible Chat does not toggle the Sidebar closed.
   Conversation-owned model/reasoning and web-search menus are wired to official
   runtime configuration. Context and Usage opens reported token/quota values,
   manual compaction and a ledger of staged materials, quoted replies and
-  methods; public plans have native disclosure and retained terminal state.
+  Skills; public plans have native disclosure and retained terminal state.
   These additions have offscreen presentation evidence, not live UI or
   signed-in inference acceptance.
   Browsing and execution are independent: other conversations can run while one
@@ -317,7 +322,7 @@ already-visible Chat does not toggle the Sidebar closed.
   were inspected; live menu/focus and signed-in official fork acceptance remain open.
   Edit Earlier Request and the message menu now prepare an opening request in a
   branch before its turn. The first request yields empty history; later requests
-  keep earlier exchanges. Original text, materials and methods enter the ordinary
+  keep earlier exchanges. Original text, materials and Skills enter the ordinary
   draft without sending, and the origin records the excluded boundary. Same-turn
   additional input has no independent edit action. Fixture checks cover exact
   boundaries, preserved source drafts, explicit sending and failed confirmation;
@@ -369,7 +374,7 @@ already-visible Chat does not toggle the Sidebar closed.
   remain open.
   Child detail now provides Ask Parent and Open Parent, with a separate retained
   adjustment draft. Parent receipt, unavailable and unknown delivery have distinct
-  native labels. Ordinary parent drafts/materials/method selections and visible
+  native labels. Ordinary parent drafts/materials/Skill selections and visible
   conversations remain independent. Public adjustment targets remain inspectable
   in history and editable branches; a branch cannot send to an original target
   unless it is explicitly removed or the researcher returns to the parent.

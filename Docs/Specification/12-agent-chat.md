@@ -98,7 +98,7 @@ data stay outside portable `.scholium`; existing Triptych control settings keep 
 current portable owner. A separate configuration directory is the default; choosing an
 existing runtime directory explicitly inherits its configuration and tools. Scholium
 does not copy credentials or change global host settings. Research Chat excludes
-automatic repository instructions; Core Protocol and selected methods supply
+automatic repository instructions; Core Protocol and selected Skills supply
 research context. Notes remain usable offline.
 
 After an explicit successful connection, Scholium remembers that connection intent
@@ -168,12 +168,12 @@ uses a branch; it never silently rewrites the observed execution history.
 Edit in New Branch applies to the opening researcher request of an ended turn.
 The runtime forks immediately before that turn, including an empty history when
 editing the first request. The selected request's exact text, material snapshots
-and requested methods populate the new draft; its answer and later turns are
+and requested Skills populate the new draft; its answer and later turns are
 excluded. The source's current unsent draft remains untouched. Earlier turns
 remain history, and the origin records that its boundary excludes the edited
 turn. Additional input within a running turn has no independent runtime branch
 boundary and cannot use this action. Nothing is sent until the researcher sends
-the new draft; unavailable methods or retained materials use ordinary repair
+the new draft; unavailable Skills or retained materials use ordinary repair
 and send checks. Failure, cancellation and uncertain fork results preserve the
 source and never fall back to copying the rejected answer into a new thread.
 
@@ -204,13 +204,13 @@ conversation. Show application progress without treating planned renewal as a
 connection failure. Cancellation or failure preserves input and never resends
 it; explicit disconnect cancels pending renewal. A setting is not presented as
 effective merely because a resume request accepted its configuration fields.
-Connection renewal reapplies associated method folders before reopening new-turn
+Connection renewal reapplies associated Skill folders before reopening new-turn
 admission. Initialization is distinct from changing configuration during work;
 the renewal guard cannot prevent restoration of the new connection's own roots.
 Failed root application retains its scoped error and explicit recovery route.
 
 Context usage and account quota are separate runtime observations. Context
-shows reported use, staged materials, quoted replies and methods; account limits
+shows reported use, staged materials, quoted replies and Skills; account limits
 show window and reset when available. Missing values are unavailable.
 These values do not estimate research completeness or philosophical quality.
 
@@ -224,20 +224,22 @@ summary never gains source authority or becomes a second research memory.
 
 ### 8.7.3 Skills and connected tools
 
-Settings provides runtime-backed discovery, inspection, local association or
-installation, enable/disable and removal of researcher-owned method Skills.
-Chat provides explicit Skill selection for a message. A selected Skill is shown
-separately from a runtime-confirmed invocation. Discovery errors, unavailable
-dependencies and disabled Skills are visible. The protected Core Protocol
-retains §8.1 precedence and is not a removable method choice.
+Settings provides runtime-backed discovery, association, installation,
+enable/disable and removal of Skills.
+Core Protocol appears separately as always included and read-only, with a Finder
+reveal; it is never optional.
+Chat provides explicit Skill selection for a message. Selected Skills remain
+distinct from runtime-confirmed invocations. Discovery errors, unavailable
+dependencies and disabled Skills remain visible. Core Protocol retains §8.1
+precedence and cannot be removed.
 
-Method choices belong to the unsent message and remain visible in the retained
-message after sending. Sending resolves each exact selected method against the
+Skill choices belong to the unsent message and remain visible in the retained
+message after sending. Sending resolves each exact selected Skill against the
 current runtime inventory; missing or disabled choices preserve the draft and
-block sending rather than silently dropping a requested method. Enable/disable
+block sending rather than silently dropping a requested Skill. Enable/disable
 changes apply to the connected runtime configuration, require all of that
 connection's conversations to be idle, and show the effective runtime result.
-An inventory or connection failure is distinct from an empty method/tool list.
+An inventory or connection failure is distinct from an empty Skill/tool list.
 
 The runtime is the single owner of installed Skills and tool configuration;
 Scholium neither mirrors an editable inventory nor implements a second package
@@ -248,7 +250,7 @@ states that scope before confirmation. No action silently changes another host.
 Local folder association is a Scholium launch preference scoped to the selected
 runtime configuration folder. It supplies additional discovery roots to that
 app-server process and is reapplied when connecting. The preference records
-only the researcher's chosen folders, not a second installed-method inventory.
+only the researcher's chosen folders, not a second installed-Skill inventory.
 Adding or removing a folder requires the connection's conversations to be idle;
 removal never deletes Skill files. Missing folders and unconfirmed application
 remain visible with Refresh and removal routes. A failed application is retried
@@ -604,7 +606,7 @@ runtime ownership.
 
 Each child's adjustment draft is retained with the originating local conversation.
 It does not replace the parent's ordinary draft or include its unsubmitted
-materials or method choices. Sending revalidates the child's parent chain and
+materials or Skill choices. Sending revalidates the child's parent chain and
 uses the parent's ordinary current-turn input or new-turn admission, permission,
 delivery confirmation and uncertainty handling. Archived or unavailable parents
 cannot receive it; closed inspections do not erase the draft or cancel an already

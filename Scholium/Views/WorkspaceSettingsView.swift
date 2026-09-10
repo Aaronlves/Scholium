@@ -63,7 +63,7 @@ private enum ScholiumSettingsDestination: String, CaseIterable, Identifiable {
                     [String(localized: $0.title), String(localized: $0.menuPath)]
                 }
         case .integrations:
-            ["Integrations", "Agents & Chat", "Chat", "MCP", "Codex", "Claude", "Core Protocol", "CLI", "bridge", "methods", "tools", "Zotero", "citation", "local API"]
+            ["Integrations", "Agents & Chat", "Chat", "MCP", "Codex", "Claude", "Core Protocol", "CLI", "bridge", "skills", "tools", "Zotero", "citation", "local API"]
         }
     }
 

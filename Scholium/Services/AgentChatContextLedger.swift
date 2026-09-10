@@ -113,7 +113,7 @@ struct AgentChatContextLedgerView: View {
           }
         }
         if !ledger.methods.isEmpty {
-          ledgerSection("Methods") {
+          ledgerSection("Skills") {
             ForEach(ledger.methods) { method in
               Label(method.title, systemImage: "square.stack")
                 .lineLimit(2).foregroundStyle(.primary)

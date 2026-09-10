@@ -21,7 +21,7 @@ Scholium does not execute the command, edit host configuration, install a Skill,
 or record a configuration-success claim.
 
 The Core Protocol reveal route is a Finder action over a release resource.
-Researcher-owned method Skills remain in the external host and have no Scholium
+Researcher-owned Skills remain in the external host and have no Scholium
 registration, parser, store, editor, or recovery state.
 
 ## Zotero

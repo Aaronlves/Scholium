@@ -162,6 +162,8 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(integration.contains("Show Core Protocol in Finder…"))
         #expect(integration.contains("External Agent Hosts"))
         #expect(integration.contains("ExternalAgentHostsSettingsView"))
+        #expect(!integration.contains("detail: cliURL?.path"))
+        #expect(!integration.contains("Not found at $HOME/.local/bin/scholium"))
         #expect(!integration.contains("ScrollView"))
         #expect(!integration.contains("DisclosureGroup(\"Connect an External Agent\""))
 
@@ -172,7 +174,7 @@ struct WorkspaceSettingsArchitectureTests {
             encoding: .utf8
         )
         #expect(connection.contains("Advanced Connection Settings…"))
-        #expect(connection.contains("Methods and Tools…"))
+        #expect(connection.contains("Skills and Tools…"))
         #expect(connection.contains("External Agent Hosts…"))
         #expect(connection.contains("AgentChatCapabilitiesSettingsSheet"))
     }
@@ -724,7 +726,15 @@ struct WorkspaceSettingsArchitectureTests {
         }
 
         let capabilities = try read("Scholium/Views/AgentChatCapabilitiesSettingsView.swift")
-        #expect(capabilities.contains("settingsEditorSection(\"Methods\")"))
+        #expect(capabilities.contains("settingsEditorSection(\"Skills\")"))
+        #expect(capabilities.contains("settingsEditorSection(\"Core Protocol\")"))
+        #expect(capabilities.contains("Always included in Scholium Chat"))
+        #expect(capabilities.contains("skillFolderName"))
+        #expect(!capabilities.contains("Text(home.path)"))
+        #expect(!capabilities.contains("Text(method.selection.path)"))
+        #expect(!capabilities.contains("Text(configuration.address)"))
+        #expect(!capabilities.contains(".help(path)"))
+        #expect(!capabilities.contains(".help(coreProtocolURL.path)"))
         #expect(capabilities.contains("settingsEditorSection(\"Connected Tools\")"))
         #expect(capabilities.contains("methodRow(method)"))
     }

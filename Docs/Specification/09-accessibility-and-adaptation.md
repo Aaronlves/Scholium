@@ -195,7 +195,7 @@ integrations. Verify:
 - Chat's floating composer and files entry never make the final reply or actions
   unreachable. Transcript scrolling passes beneath native material; Reduce
   Transparency retains the same scroll and reading boundaries. Command, material
-  and method candidates expose selection and count, keyboard navigation and a
+  and Skill candidates expose selection and count, keyboard navigation and a
   named non-syntax entry. Composition owns its Return; Escape dismisses candidates
   without discarding draft text. Reply-file overflow remains keyboard reachable
   and distinguishes Agent results from unsent input attachments. The neutral latest

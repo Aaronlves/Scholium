@@ -66,7 +66,7 @@ otherwise a compact latest-reply action preserves the reading position.
 A disconnected-state Connect Codex action starts initial setup or retries a real
 unresolved failure; restored connections require no repeated setup. Sign-in appears
 only when needed. Connection editing belongs in
-Settings, with manual paths visible in its connection group. Composer secondary controls
+Settings, with manual paths editable only in its explicitly advanced connection group. Composer secondary controls
 are borderless; permission uses an icon with a checked menu and accessible current
 value. The circular Send button uses shared Accent; availability, keyboard sending and
 native state feedback remain authoritative. The whole message input rectangle, including
@@ -224,20 +224,22 @@ Menus follow task ownership:
 
 #### Chat capability presentation
 
-Agents & Chat settings contains native Methods and Connected Tools
-groups with Refresh, per-method enablement, descriptions and discovery
+Agents & Chat settings contains native Skills and Connected Tools
+groups with Refresh, per-Skill enablement, descriptions and discovery
 errors. The connected configuration scope is visible before applying a setting;
 a shared configuration change requires explicit confirmation. The protected
-Core Protocol is identified separately from researcher methods. Tool inventory
+Core Protocol is identified separately from optional Skills and shown as always
+included and protected; its source has a read-only Finder reveal route. Tool inventory
 shows the actual observed connection/authentication state and discoverable tool
 names; a count alone does not imply tools were invoked or source material read.
-Typing `$` offers available methods in a compact native candidate popover;
-chosen methods retain removable labels in the draft. Sent messages retain those labels as requested methods, without an
+Typing `$` offers available Skills in a compact native candidate popover;
+chosen Skills retain removable labels in the draft. Sent messages retain those labels as requested Skills, without an
 invocation badge unless the runtime supplies an invocation event.
 
-Methods settings offers Add Methods Folder and an Associated Folders
-list. A named folder chooser adds an association; each folder has an
-accessible Remove Association action and an inspectable full path. These
+Skills settings offers Add Skills Folder and an Associated Folders
+list. A named folder chooser adds an association; each folder shows its name
+and an accessible Remove Association action. Concrete paths stay out of the
+default presentation. These
 associations affect Scholium's connected process, including when it reads a
 shared configuration; they do not change the other host's discovery settings.
 
@@ -307,20 +309,20 @@ pulling them out of another discussion.
 Edit in New Branch is available on an eligible researcher message and through
 Edit Earlier Request in conversation options. The choice identifies the request
 by its text. The new discussion opens with that request in the ordinary composer
-and its original materials and methods visible, ready for editing and explicit
+and its original materials and Skills visible, ready for editing and explicit
 Send. It reuses branch progress, cancellation and failure presentation; it adds
 no second message editor or confirmation sheet. Requests without an independent
 ended-turn boundary do not offer this action.
 
 The composer uses `/` for supported conversation controls, `@` for Note/material
-selection and `$` for method Skills. A small native candidate popover filters
+selection and `$` for Skills. A small native candidate popover filters
 the current query, supports arrows, Return and Escape, and never consumes marked
 text or sends the message on selection. Literal punctuation outside an active
 candidate query remains ordinary prose. Selection replaces only that query and
 preserves surrounding text, native Undo and the captured conversation. A single
 discoverable actions entry offers the same routes without requiring memorized
 syntax. Send/Stop, current model and permission remain immediately inspectable;
-separate permanent method and web-search buttons are removed. Model choice never
+separate permanent Skill and web-search buttons are removed. Model choice never
 lives inside Add Material. Native menus and named pickers expose selected values;
 short labels and direct
 actions lead, with explanations only for unavailable or consequential states.

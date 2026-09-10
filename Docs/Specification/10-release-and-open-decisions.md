@@ -68,7 +68,7 @@ conceptually-neighboring, conflicting-note, read-only, requested-update,
 stale-revision, uncertain-outcome, explicit writing scope,
 clear append/new, and ambiguous-boundary cases. Later releases repeat only
 affected cases after a material Core Protocol/tool change and retain a small
-regression set. Optional researcher-owned method Skills are not release
+regression set. Optional researcher-owned Skills are not release
 artifacts or general philosophical certification. This cadence never relaxes a
 known fabrication, source-fidelity, researcher-authority, privacy, or permission
 defect.

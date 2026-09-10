@@ -68,14 +68,14 @@ then completes a real web access. Runtime-active/background-command waiting,
 malformed observations and launch failure pass fixtures. Complete live delegated
 work waiting and provider-specific cached/disabled behavior. Live background-command
 waiting now passes: the tool remains running after the reply; settings renewal
-waits for command exit, then preserves the draft and login. Associated method roots
+waits for command exit, then preserves the draft and login. Associated Skill roots
 are initialized before connection readiness; renewal, rejection/recovery and
-cancellation pass focused fixtures. Complete combined real-provider method-root
+cancellation pass focused fixtures. Complete combined real-provider Skill-root
 restoration acceptance.
 Improve discovery guidance for the observed recoverable resources/list probe;
 it is not evidence that source reads or the connection failed.
 Complete live tool setup/configuration and real-provider authentication acceptance,
-declared-dependency availability and search-result provenance. Method discovery,
+declared-dependency availability and search-result provenance. Skill discovery,
 inspection, effective enable/disable, local association/removal, explicit message
 selection and tool inventory have native implementation slices; verify the folder
 picker and shared-setting confirmation in a live window.

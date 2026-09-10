@@ -195,7 +195,7 @@ Scholium does not become:
 - a source of generic instructions purporting to teach philosophy.
 
 The target keeps one protected Core Protocol, one bounded local MCP tool surface,
-optional researcher-owned method Skills, and bounded Zotero/local Agent
+optional researcher-owned Skills, and bounded Zotero/local Agent
 transports. Finder remains authoritative for Markdown and attachment bytes;
 the selected runtime owns its Skills and tools, with in-app management under §8.7;
 Zotero remains authoritative for its library
@@ -211,7 +211,7 @@ reader remains excluded.
 chrome/navigation, and complete RTL input acceptance remain deferred; exact
 Unicode preservation is mandatory.
 
-§8 owns method-Skill authority and runtime scope. The in-app client may manage
+§8 owns Skill authority and runtime scope. The in-app client may manage
 runtime-owned Skills, tools, concurrent and scheduled work under §8.7 without
 creating a Skill marketplace, second execution loop or credential store.
 

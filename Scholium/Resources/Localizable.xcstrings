@@ -908,12 +908,12 @@
         }
       }
     },
-    "A selected method is unavailable. Refresh Methods or remove it to continue." : {
+    "A selected Skill is unavailable. Refresh Skills or remove it to continue." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "所选方法不可用，请刷新方法列表或移除它后继续。"
+            "value" : "所选技能不可用，请刷新技能列表或移除它后继续。"
           }
         }
       }
@@ -940,6 +940,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已有工具连接使用此名称。"
+          }
+        }
+      }
+    },
+    "Available" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Available"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "可用"
           }
         }
       }
@@ -1299,12 +1315,12 @@
         }
       }
     },
-    "Add Methods Folder…" : {
+    "Add Skills Folder…" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "添加方法文件夹…"
+            "value" : "添加技能文件夹…"
           }
         }
       }
@@ -10341,12 +10357,12 @@
         }
       }
     },
-    "Finish the current operation before changing method folders." : {
+    "Finish the current operation before changing Skill folders." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "请等待当前操作完成，再更改方法文件夹。"
+            "value" : "请等待当前操作完成，再更改技能文件夹。"
           }
         }
       }
@@ -13077,12 +13093,12 @@
         }
       }
     },
-    "Loading Methods…" : {
+    "Loading Skills…" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "正在载入方法…"
+            "value" : "正在载入技能…"
           }
         }
       }
@@ -13265,12 +13281,12 @@
         }
       }
     },
-    "Manage Methods…" : {
+    "Manage Skills…" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "管理方法…"
+            "value" : "管理技能…"
           }
         }
       }
@@ -13797,38 +13813,38 @@
         }
       }
     },
-    "Methods" : {
+    "Skills" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "研究方法"
+            "value" : "技能"
           }
         }
       }
     },
-    "Methods and Tools" : {
+    "Skills and Tools" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "方法与工具"
+            "value" : "技能与工具"
           }
         }
       }
     },
-    "Methods and Tools…" : {
+    "Skills and Tools…" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Methods and Tools…"
+            "value" : "Skills and Tools…"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "方法与工具…"
+            "value" : "技能与工具…"
           }
         }
       }
@@ -15007,12 +15023,12 @@
         }
       }
     },
-    "No Methods Found" : {
+    "No Skills Found" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "未发现研究方法"
+            "value" : "未发现技能"
           }
         }
       }
@@ -18849,22 +18865,22 @@
         }
       }
     },
-    "Refresh Methods" : {
+    "Refresh Skills" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "刷新方法列表"
+            "value" : "刷新技能列表"
           }
         }
       }
     },
-    "Refresh Methods when the current operation finishes to apply folder changes." : {
+    "Refresh Skills when the current operation finishes to apply folder changes." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "当前操作完成后，请刷新方法列表以应用文件夹更改。"
+            "value" : "当前操作完成后，请刷新技能列表以应用文件夹更改。"
           }
         }
       }
@@ -19407,22 +19423,22 @@
         }
       }
     },
-    "Remove Method" : {
+    "Remove Skill" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "移除方法"
+            "value" : "移除技能"
           }
         }
       }
     },
-    "Remove Method: %@" : {
+    "Remove Skill: %@" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "移除方法：%@"
+            "value" : "移除技能：%@"
           }
         }
       }
@@ -20149,12 +20165,12 @@
         }
       }
     },
-    "Requested Method: %@" : {
+    "Requested Skill: %@" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "请求的方法：%@"
+            "value" : "请求的技能：%@"
           }
         }
       }
@@ -24858,12 +24874,12 @@
         }
       }
     },
-    "The connection changed. Choose the methods folder again." : {
+    "The connection changed. Choose the Skills folder again." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "连接已改变，请重新选择方法文件夹。"
+            "value" : "连接已改变，请重新选择技能文件夹。"
           }
         }
       }
@@ -25412,12 +25428,12 @@
         }
       }
     },
-    "The release-bundled scholium-core-protocol folder is an ordinary Skill. You may inspect it and install it in your Agent host alongside your own method Skills." : {
+    "The release-bundled scholium-core-protocol folder is an ordinary Skill. You may inspect it and install it in your Agent host alongside your own Skills." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "发行版内置的 scholium-core-protocol 文件夹是一项普通技能。你可以检查它，并与自己的方法技能一起安装到智能体宿主中。"
+            "value" : "发行版内置的 scholium-core-protocol 文件夹是一项普通技能。你可以检查它，并与自己的技能一起安装到智能体宿主中。"
           }
         }
       }
@@ -25488,12 +25504,12 @@
         }
       }
     },
-    "The runtime kept a different method setting." : {
+    "The runtime kept a different Skill setting." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "运行时保留了不同的方法设置。"
+            "value" : "运行时保留了不同的技能设置。"
           }
         }
       }
@@ -29422,6 +29438,70 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "—"
+          }
+        }
+      }
+    },
+    "%@, %@: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@, %2$@: %3$@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@，%2$@：%3$@"
+          }
+        }
+      }
+    },
+    "Always included in Scholium Chat" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Always included in Scholium Chat"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "始终包含在 Scholium Chat 中"
+          }
+        }
+      }
+    },
+    "Applied automatically to every Scholium Chat turn." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Applied automatically to every Scholium Chat turn."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "会自动应用于每个 Scholium Chat 回合。"
+          }
+        }
+      }
+    },
+    "Protected Skill" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Protected Skill"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "受保护的技能"
           }
         }
       }

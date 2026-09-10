@@ -445,7 +445,7 @@ Changed Since Settle does not imply failure.
 Activating Settle or Settle Again opens one compact popover with optional
 rationale rather than changing the judgment directly. Successful exact-revision
 Settlement updates the control and Inspector facts without a parallel overlay,
-Agent launcher or research-method button. Agent setup and conversation behavior
+Agent launcher or Skill button. Agent setup and conversation behavior
 belong to §§8.2 and 8.7.
 
 External-host MCP retrieval creates no persistent activity UI. Confirmed

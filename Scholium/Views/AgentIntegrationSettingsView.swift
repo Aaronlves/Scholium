@@ -55,16 +55,16 @@ private struct ExternalAgentHostsSettingsView: View {
 
             settingsFormSection("Status") {
                 VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
-                    statusRow("Scholium App", detail: "Available", available: true)
+                    statusRow("Scholium App", detail: String(localized: "Available"), available: true)
                     switch settingsModel.agentBridgeAvailability {
                     case .available:
-                        statusRow("App Bridge", detail: "Available", available: true)
+                        statusRow("App Bridge", detail: String(localized: "Available"), available: true)
                     case .unavailable(let reason):
                         statusRow("App Bridge", detail: reason, available: false)
                     }
                     statusRow(
                         "Scholium CLI",
-                        detail: cliURL?.path ?? "Not found at $HOME/.local/bin/scholium",
+                        detail: cliURL == nil ? String(localized: "Unavailable") : String(localized: "Available"),
                         available: cliURL != nil
                     )
                 }
