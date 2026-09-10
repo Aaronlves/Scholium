@@ -52,7 +52,7 @@ private enum ScholiumSettingsDestination: String, CaseIterable, Identifiable, Eq
         case .workspace:
             ["Workspace", "Triptych", "Triptychs", "folders", "locations", "registration", "portable data"]
         case .document:
-            ["Appearance", "Document", "Document Appearance", "Typography", "Body Typography", "Text Styles", "Heading Typography", "Heading Hierarchy", "body", "heading", "headings", "bold", "italic", "font", "line width", "line spacing", "paragraph spacing", "first-line indent", "letter spacing", "word spacing", "hyphenation", "kerning", "ligatures", "heading font", "heading style", "heading weight", "heading hierarchy", "heading levels", "heading level", "scale", "space before", "space after", "Advanced CSS", "H1", "H2", "H3", "H4", "H5", "H6", "段间距", "首行缩进", "字距", "词距", "对齐", "断词", "字偶距", "连字", "标题字体", "标题层级", "标题级别", "比例", "前间距", "后间距", "正文字体", "粗体", "斜体", "高级排版"]
+            ["Appearance", "Document", "Document Appearance", "Typography", "Body Typography", "Text Styles", "Heading Typography", "Heading Hierarchy", "body", "heading", "headings", "bold", "italic", "font", "line width", "line spacing", "paragraph spacing", "first-line indent", "letter spacing", "word spacing", "hyphenation", "kerning", "ligatures", "heading font", "heading style", "heading weight", "heading hierarchy", "heading levels", "heading level", "scale", "space before", "space after", "Advanced CSS", "CSS snippets", "Open CSS Folder", "H1", "H2", "H3", "H4", "H5", "H6", "段间距", "首行缩进", "字距", "词距", "对齐", "断词", "字偶距", "连字", "标题字体", "标题层级", "标题级别", "比例", "前间距", "后间距", "正文字体", "粗体", "斜体", "高级排版"]
         case .metadata:
             ["Metadata", "fields", "About", "optional fields", "Analysis", "Topic", "Work"]
         case .notifications:
@@ -1853,7 +1853,37 @@ private struct AppearanceSettingsView: View {
     }
 
     private var cssSnippetsContent: some View {
-        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Add .css files to the managed folder, or import one. Changes are detected automatically and apply to Review and Edit after validation; Source remains exact.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Text("Callouts: .callout, .callout-title, .callout-body, and .callout-<role>.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                Button {
+                    store.revealManagedFolder()
+                } label: {
+                    Label("Open CSS Folder", systemImage: "folder")
+                }
+
+                Button {
+                    store.reloadSnippets()
+                } label: {
+                    Label("Reload", systemImage: "arrow.clockwise")
+                }
+
+                Spacer(minLength: 0)
+
+                Button("Import CSS Snippet…") { importSnippet() }
+                    .disabled(!store.canModify)
+            }
+
+            Divider()
+
             ForEach(store.snippets) { snippet in
                 CSSSnippetRow(
                     snippet: snippet,
@@ -1863,29 +1893,13 @@ private struct AppearanceSettingsView: View {
             }
 
             if store.snippets.isEmpty {
-                Text("No snippets imported.")
+                Text("No CSS snippets yet. Open the folder or import a file to add one.")
                     .font(.body)
                     .foregroundStyle(.secondary)
             }
 
-            HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
-                Button("Import CSS Snippet…") { importSnippet() }
-                    .disabled(!store.canModify)
-
-                Menu {
-                    Button {
-                        store.revealManagedFolder()
-                    } label: {
-                        Label("Reveal Styles in Finder", systemImage: "folder")
-                    }
-                    Button("Disable All Snippets") { store.disableAll() }
-                        .disabled(store.enabledCount == 0 || !store.canModify)
-                } label: {
-                    Label("More", systemImage: "ellipsis.circle")
-                }
-                .menuStyle(.borderlessButton)
-                .fixedSize()
-            }
+            Button("Disable All Snippets") { store.disableAll() }
+                .disabled(store.enabledCount == 0 || !store.canModify)
         }
     }
 
@@ -2130,11 +2144,11 @@ private struct TypographySettingsView: View {
     private var advancedCSSPrompt: some View {
         settingsEditorSection("Advanced CSS") {
             VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
-                Text("Fine typography is configured with Advanced CSS.")
+                Text("Fine typography and document styling can be extended with CSS snippets.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
-                Button("Advanced CSS…", action: onShowAdvancedCSS)
+                Button("CSS Snippets…", action: onShowAdvancedCSS)
             }
         }
     }

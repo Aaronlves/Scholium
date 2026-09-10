@@ -1,6 +1,7 @@
 import ScholiumContracts
 import AppKit
 import Combine
+import Darwin
 import Foundation
 
 /// Observable macOS adapter over Application-owned style persistence.
@@ -19,10 +20,26 @@ final class CSSSnippetStore: ObservableObject {
     @Published private(set) var canModify = true
 
     private let operations: any StyleUseCases
+    private var directoryWatcher: DispatchSourceFileSystemObject?
+    private var snippetWatchers: [String: DispatchSourceFileSystemObject] = [:]
+    private var refreshTask: Task<Void, Never>?
 
     init(operations: any StyleUseCases) {
         self.operations = operations
-        Task { await refresh() }
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            // Observe the folder before the first reconciliation. A directory
+            // event then closes the scan window if a file is added or removed
+            // while the initial snapshot is being built.
+            await prepareObservation()
+            await refresh()
+        }
+    }
+
+    deinit {
+        refreshTask?.cancel()
+        directoryWatcher?.cancel()
+        for watcher in snippetWatchers.values { watcher.cancel() }
     }
 
     var enabledCount: Int { snippets.lazy.filter(\.isEnabled).count }
@@ -32,9 +49,16 @@ final class CSSSnippetStore: ObservableObject {
 
     func refresh() async {
         do {
-            apply(try await operations.styleSnapshot())
+            apply(try await operations.refreshStyleSnippets())
+            await restartSnippetWatchers()
         } catch {
             storeError = error.localizedDescription
+        }
+    }
+
+    func reloadSnippets() {
+        Task { @MainActor [weak self] in
+            await self?.refresh()
         }
     }
 
@@ -136,6 +160,70 @@ final class CSSSnippetStore: ObservableObject {
             } catch {
                 storeError = error.localizedDescription
             }
+        }
+    }
+
+    private func prepareObservation() async {
+        guard directoryWatcher == nil else { return }
+        do {
+            let initial = try await operations.styleSnapshot()
+            let folder = try await operations.managedStylesLocation()
+            guard let watcher = makeWatcher(for: folder) else { return }
+            directoryWatcher = watcher
+            await installSnippetWatchers(for: initial.snippets)
+        } catch {
+            // The normal refresh reports the authoritative failure. A watcher
+            // is an enhancement and must never make an otherwise readable
+            // appearance unavailable.
+        }
+    }
+
+    private func restartSnippetWatchers() async {
+        for watcher in snippetWatchers.values { watcher.cancel() }
+        snippetWatchers.removeAll()
+        await installSnippetWatchers(for: snippets)
+    }
+
+    private func installSnippetWatchers(for records: [CSSSnippetRecord]) async {
+        for record in records {
+            guard snippetWatchers[record.managedFileName] == nil,
+                  let url = try? await operations.managedStyleSnippetURL(record.id),
+                  FileManager.default.fileExists(atPath: url.path),
+                  let watcher = makeWatcher(for: url) else { continue }
+            snippetWatchers[record.managedFileName] = watcher
+        }
+    }
+
+    private func makeWatcher(for url: URL) -> DispatchSourceFileSystemObject? {
+        let descriptor = open(url.path, O_EVTONLY)
+        guard descriptor >= 0 else { return nil }
+        let watcher = DispatchSource.makeFileSystemObjectSource(
+            fileDescriptor: descriptor,
+            eventMask: [.write, .extend, .attrib, .rename, .delete],
+            queue: .main
+        )
+        watcher.setEventHandler { [weak self] in
+            Task { @MainActor [weak self] in
+                self?.scheduleRefresh()
+            }
+        }
+        watcher.setCancelHandler {
+            close(descriptor)
+        }
+        watcher.resume()
+        return watcher
+    }
+
+    private func scheduleRefresh() {
+        refreshTask?.cancel()
+        refreshTask = Task { @MainActor [weak self] in
+            do {
+                try await Task.sleep(for: .milliseconds(250))
+            } catch {
+                return
+            }
+            guard let self else { return }
+            await self.refresh()
         }
     }
 

@@ -213,7 +213,50 @@ struct StyleOperationsTests {
         #expect(disabled.snippets.first?.isEnabled == false)
         #expect(disabled.readCSS.isEmpty)
         #expect(try await operations.managedStyleSnippetURL(record.id) != nil)
-        #expect(try await operations.managedStylesLocation().path.contains("Application Support"))
+        let snippetsFolder = try await operations.managedStylesLocation()
+        #expect(snippetsFolder.path.contains("Application Support"))
+        #expect(snippetsFolder.lastPathComponent == "Snippets")
+    }
+
+    @Test("CSS folder files are discovered, reloaded, and kept visible when invalid or missing")
+    func cssFolderDiscoveryAndReload() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(
+            "ScholiumStyleFolder-(UUID().uuidString)",
+            isDirectory: true
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+        let support = root.appendingPathComponent("Application Support", isDirectory: true)
+        let snippetsFolder = support
+            .appendingPathComponent("Workspace", isDirectory: true)
+            .appendingPathComponent("Styles", isDirectory: true)
+            .appendingPathComponent("Snippets", isDirectory: true)
+        try FileManager.default.createDirectory(at: snippetsFolder, withIntermediateDirectories: true)
+        let validURL = snippetsFolder.appendingPathComponent("paper.css")
+        let invalidURL = snippetsFolder.appendingPathComponent("broken.css")
+        try Data(".callout { background-color: #f4f0e8; }\n".utf8)
+            .write(to: validURL, options: .atomic)
+        try Data(".not-supported { display: none; }\n".utf8)
+            .write(to: invalidURL, options: .atomic)
+
+        let operations: any StyleUseCases = StyleOperations(applicationSupportURL: support)
+        let refreshed = try await operations.refreshStyleSnippets()
+        #expect(refreshed.snippets.map(\.name) == ["broken", "paper"])
+        #expect(refreshed.snippets.allSatisfy { $0.isEnabled })
+        #expect(refreshed.readCSS.contains(".scholium-callout"))
+        let broken = try #require(refreshed.snippets.first(where: { $0.name == "broken" }))
+        #expect(refreshed.validationErrors[broken.id] != nil)
+
+        try Data(".callout-title { font-style: italic; }\n".utf8)
+            .write(to: validURL, options: .atomic)
+        let reloaded = try await operations.refreshStyleSnippets()
+        let paper = try #require(reloaded.snippets.first(where: { $0.name == "paper" }))
+        #expect(reloaded.validationErrors[paper.id] == nil)
+        #expect(reloaded.readCSS.contains(".scholium-callout-title"))
+
+        try FileManager.default.removeItem(at: validURL)
+        let missing = try await operations.refreshStyleSnippets()
+        #expect(missing.snippets.contains(where: { $0.id == paper.id }))
+        #expect(missing.validationErrors[paper.id] != nil)
     }
 
     @Test("CSS snippet names are normalized and never enter generated CSS")

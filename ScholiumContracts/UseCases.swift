@@ -208,6 +208,9 @@ public protocol StyleUseCases: Sendable {
     func appearanceConfigurationURL() async throws -> URL
     func reloadAppearanceConfiguration() async throws -> StyleSnapshot
     func importStyleSnippet(from sourceURL: URL) async throws -> StyleSnapshot
+    /// Reconciles the machine-local CSS folder with the persisted snippet
+    /// manifest and rebuilds both document projections from fresh disk bytes.
+    func refreshStyleSnippets() async throws -> StyleSnapshot
     func setStyleSnippetEnabled(_ enabled: Bool, id: UUID) async throws -> StyleSnapshot
     func moveStyleSnippet(_ id: UUID, by offset: Int) async throws -> StyleSnapshot
     func renameStyleSnippet(_ id: UUID, to name: String) async throws -> StyleSnapshot

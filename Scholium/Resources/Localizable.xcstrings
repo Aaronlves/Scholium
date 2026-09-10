@@ -816,6 +816,22 @@
         }
       }
     },
+    "Add .css files to the managed folder, or import one. Changes are detected automatically and apply to Review and Edit after validation; Source remains exact." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Add .css files to the managed folder, or import one. Changes are detected automatically and apply to Review and Edit after validation; Source remains exact."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "将 .css 文件放入受管文件夹，或导入文件。验证后会自动检测变化并应用于 Review 和 Edit；Source 保持精确。"
+          }
+        }
+      }
+    },
     "A Search clause cannot be empty." : {
       "localizations" : {
         "en" : {
@@ -3874,6 +3890,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Callout 继承正文排版；每种角色只控制间距与构成。"
+          }
+        }
+      }
+    },
+    "Callouts: .callout, .callout-title, .callout-body, and .callout-<role>." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Callouts: .callout, .callout-title, .callout-body, and .callout-<role>."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Callout：.callout、.callout-title、.callout-body 以及 .callout-<role>。"
           }
         }
       }
@@ -10323,6 +10355,22 @@
         }
       }
     },
+    "Fine typography and document styling can be extended with CSS snippets." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Fine typography and document styling can be extended with CSS snippets."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "可通过 CSS 片段扩展细致排版和文稿样式。"
+          }
+        }
+      }
+    },
     "Fine typography is configured with Advanced CSS." : {
       "localizations" : {
         "en" : {
@@ -15603,6 +15651,22 @@
         }
       }
     },
+    "No CSS snippets yet. Open the folder or import a file to add one." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "No CSS snippets yet. Open the folder or import a file to add one."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "还没有 CSS 片段。打开文件夹或导入文件即可添加。"
+          }
+        }
+      }
+    },
     "No source text returned" : {
       "localizations" : {
         "zh-Hans" : {
@@ -16271,6 +16335,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "打开 Agent"
+          }
+        }
+      }
+    },
+    "Open CSS Folder" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Open CSS Folder"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开 CSS 文件夹"
           }
         }
       }

@@ -58,7 +58,48 @@ public enum CSSSnippetSanitizer {
     ]
 
     private static let allowedClasses: Set<String> = [
-        "scholium-document", "scholium-highlight"
+        "scholium-document", "scholium-highlight",
+        // These are the public, stable Callout selectors. They are mapped to
+        // the protected Review and Edit projections below; their internal
+        // implementation classes never cross the user-CSS boundary.
+        "callout", "callout-title", "callout-body", "callout-content",
+        "callout-quotation", "callout-orient", "callout-cite", "callout-connect",
+        "callout-state", "callout-illustrate", "callout-quote", "callout-flag",
+        "callout-neutral"
+    ]
+
+    private static let publicCalloutReadSelectorMap: [String: String] = [
+        ".callout": ".scholium-callout",
+        ".callout-title": ".scholium-callout-title",
+        ".callout-body": ".scholium-callout-body",
+        ".callout-content": ".scholium-callout-content",
+        ".callout-quotation": ".scholium-callout-quotation",
+        ".callout-orient": ".scholium-callout-orient",
+        ".callout-cite": ".scholium-callout-cite",
+        ".callout-connect": ".scholium-callout-connect",
+        ".callout-state": ".scholium-callout-state",
+        ".callout-illustrate": ".scholium-callout-illustrate",
+        ".callout-quote": ".scholium-callout-quote",
+        ".callout-flag": ".scholium-callout-flag",
+        ".callout-neutral": ".scholium-callout-neutral"
+    ]
+
+    private static let publicCalloutLiveSelectorMap: [String: String] = [
+        ".callout": ".cm-live-callout",
+        ".callout-title": ".scholium-callout-title",
+        // Edit represents the body as source lines rather than a nested DOM
+        // subtree, so body/content intentionally share the line projection.
+        ".callout-body": ".cm-live-callout-body-line",
+        ".callout-content": ".cm-live-callout-body-line",
+        ".callout-quotation": ".cm-live-callout-body-line",
+        ".callout-orient": ".cm-live-callout-role-orient",
+        ".callout-cite": ".cm-live-callout-role-cite",
+        ".callout-connect": ".cm-live-callout-role-connect",
+        ".callout-state": ".cm-live-callout-role-state",
+        ".callout-illustrate": ".cm-live-callout-role-illustrate",
+        ".callout-quote": ".cm-live-callout-role-quote",
+        ".callout-flag": ".cm-live-callout-role-flag",
+        ".callout-neutral": ".cm-live-callout-role-neutral"
     ]
 
     private static let allowedProperties: Set<String> = [
@@ -238,11 +279,12 @@ public enum CSSSnippetSanitizer {
 
     private static func scopeReadSelector(_ selector: String) throws -> String {
         try validateSelector(selector)
-        if selector == ".scholium-document" || selector.hasPrefix(".scholium-document ") {
-            return selector
+        let expanded = expandSelector(selector, using: publicCalloutReadSelectorMap)
+        if expanded == ".scholium-document" || expanded.hasPrefix(".scholium-document ") {
+            return expanded
         }
         if selector == "body" || selector == "main" { return ".scholium-document" }
-        return ".scholium-document \(selector)"
+        return ".scholium-document \(expanded)"
     }
 
     private static func scopeLiveSelector(_ selector: String) -> [String] {
@@ -250,9 +292,46 @@ public enum CSSSnippetSanitizer {
         if let mapped = liveSelectorMap[normalized] { return mapped }
         if normalized.hasPrefix(".scholium-document ") {
             let suffix = String(normalized.dropFirst(".scholium-document ".count))
-            return liveSelectorMap[suffix] ?? []
+            if let mapped = liveSelectorMap[suffix] { return mapped }
+            let expanded = expandSelector(suffix, using: publicCalloutLiveSelectorMap)
+            if expanded != suffix {
+                return [".scholium-live-mode \(expanded)"]
+            }
+            return []
+        }
+        let expanded = expandSelector(normalized, using: publicCalloutLiveSelectorMap)
+        if expanded != normalized {
+            return [".scholium-live-mode \(expanded)"]
         }
         return []
+    }
+
+    /// Replaces complete selector compounds only. This keeps public Callout
+    /// names composable (`.callout-state .callout-title`) without allowing a
+    /// user string to become an internal selector or a CSS escape hatch.
+    private static func expandSelector(
+        _ selector: String,
+        using map: [String: String]
+    ) -> String {
+        var result = ""
+        var compound = ""
+
+        func appendCompound() {
+            guard !compound.isEmpty else { return }
+            result.append(map[compound] ?? compound)
+            compound.removeAll(keepingCapacity: true)
+        }
+
+        for character in selector {
+            if character.isWhitespace || character == ">" {
+                appendCompound()
+                result.append(character)
+            } else {
+                compound.append(character)
+            }
+        }
+        appendCompound()
+        return result
     }
 
     private static func sanitizeDeclarations(_ source: String) throws -> String {

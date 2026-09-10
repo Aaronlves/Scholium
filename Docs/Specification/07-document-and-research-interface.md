@@ -295,17 +295,29 @@ composition and source updates never wait for a transition.
 
 ### 18.4.1 Advanced CSS boundary
 
-Imported CSS is copied into managed Application Support storage and applies
-only to document content in Review/Edit. It is scoped to ordinary prose,
-headings, lists, quotations, tables, code, links, emphasis, marks, and rules,
-using bounded visual declarations.
+Advanced CSS is an explicit, machine-local folder surface at the app-owned
+Styles/Snippets location. Settings provides **Open CSS Folder**, **Reload**, and
+import as equivalent entry points. Direct `.css` files are discovered into the
+snippet list; the folder owns their bytes, while the adjacent manifest retains
+only snippet identity, display name, order, and enablement. A newly discovered
+file is enabled by default. An external edit is re-read and projected without
+rewriting the file; a missing or invalid file remains visible with an actionable
+error until it is repaired or explicitly removed.
+
+CSS applies only to document content in Review/Edit, after generated appearance
+CSS, and never to Source, app chrome, or research source. It is scoped to
+ordinary prose, headings, lists, quotations, tables, code, links, emphasis,
+marks, rules, and the public Callout selectors `.callout`, `.callout-title`,
+`.callout-body`, `.callout-content`, and `.callout-<role>`. These Callout names
+are a stable user-facing API projected to the protected Review and Edit
+representations; internal WebKit or CodeMirror selectors are not accepted.
 
 Sanitization rejects imports, executable content, external URLs, escaping
 selectors, `!important`, and declarations that hide, reposition, or cover
-protected information. Callouts, footnotes, provenance, diagnostics,
-conflicts, recovery, and chrome remain app-owned. Invalid snippets stay disabled
-with errors. Rendering failure enters persistent CSS Safe Mode until the
-researcher disables or selectively re-enables managed copies.
+protected information. Callout semantics, folding, footnotes, provenance,
+diagnostics, conflicts, recovery, and chrome remain app-owned. Invalid snippets
+stay disabled with errors. Rendering failure enters persistent CSS Safe Mode
+until the researcher disables or selectively re-enables managed copies.
 
 ## 18.5 Contextual research and Agent Changes
 

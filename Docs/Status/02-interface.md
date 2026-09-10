@@ -105,9 +105,11 @@ already-visible Chat does not toggle the Sidebar closed.
   hierarchy. Letter/word spacing, hyphenation and kerning/ligatures are no
   longer structured profile fields or native controls; Advanced CSS is their
   explicit content-layer surface. CSS snippets remain separately managed with
-  a Finder route, guide and explicit reload. Invalid or stale external edits
-  cannot replace the loaded appearance or be overwritten by a stale GUI save;
-  document CSS and text colors remain content-layer values.
+  an app-owned folder route, automatic discovery/watch, guide and explicit
+  reload. Public `.callout` selectors project to both Review and Edit while
+  internal projection classes remain protected. Invalid or stale external
+  edits cannot replace the loaded appearance or be overwritten by a stale GUI
+  save; document CSS and text colors remain content-layer values.
 - About and Metadata expose managed values only; authored YAML has no field
   editor. YAML remains at the authored beginning above the title: Review shows
   source text and Edit keeps the exact, source-located YAML directly editable
@@ -129,8 +131,9 @@ already-visible Chat does not toggle the Sidebar closed.
   interpolate from the current top-left corner while native content remains
   flexible during resizing. Appearance now owns the complete reading and
   typography surface in one pane; low-frequency letter spacing, word spacing,
-  hyphenation and kerning/ligatures use the separately managed Advanced CSS
-  surface rather than structured profile fields.
+  hyphenation and kerning/ligatures, plus bounded Callout overrides, use the
+  separately managed Advanced CSS surface rather than structured profile
+  fields.
 - Review and inactive Edit show a link annotation from one trailing superscript
   marker in the shared bounded preview surface, never as a block inserted into
   prose. Hover or focus reveals it, click keeps it open, and Escape or outside

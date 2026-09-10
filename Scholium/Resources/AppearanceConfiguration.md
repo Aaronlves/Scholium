@@ -102,11 +102,21 @@ are safely quoted in generated CSS. They never become Markdown/YAML content.
 的字体，并会在生成 CSS 时安全转义，不会写入 Markdown/YAML。
 
 Optional CSS snippets remain a separate, constrained override for ordinary
-document content. Use **Advanced CSS…** to manage them. They are the only
-configuration surface for fine typography and are applied after the generated
-appearance CSS, so they can refine the selected profile without creating a
-second appearance owner. They do not replace the structured Callout settings
-or style native controls.
+document content. Use **CSS Snippets…** in the Appearance pane to open the
+manager. **Open CSS Folder** reveals the app-owned `Styles/Snippets` folder;
+direct `.css` files are discovered automatically, watched for edits, and
+reloaded after validation. The manifest stores only order, enablement, names,
+and stable identities; CSS file bytes remain the file's responsibility. A
+missing or invalid file stays listed with an error so it can be repaired.
+
+Snippets are the only configuration surface for fine typography and are
+applied after the generated appearance CSS, so they can refine the selected
+profile without creating a second appearance owner. They do not replace
+structured appearance defaults or style native controls. The public Callout
+surface uses `.callout`, `.callout-title`, `.callout-body`, `.callout-content`,
+and `.callout-<role>` (for example `.callout-state .callout-title`); Scholium
+maps these names separately for Review and Edit and does not expose its
+internal projection classes.
 
 For example, an imported snippet can contain:
 
@@ -125,12 +135,12 @@ h1, h2, h3, h4, h5, h6 {
 ```
 
 The supported selectors are ordinary document elements such as `body`, `p`,
-`h1`–`h6`, `li`, `blockquote`, `table`, `code`, `strong`, `em`, and `mark`.
-Snippets are sanitized, scoped to document content, and projected into both
-Review and Edit.
+`h1`–`h6`, `li`, `blockquote`, `table`, `code`, `strong`, `em`, and `mark`,
+along with the public Callout selectors described above. Snippets are
+sanitized, scoped to document content, and projected into both Review and Edit.
 
 例如，导入的 CSS 片段可以包含上述规则。支持的选择器是 `body`、`p`、`h1`–`h6`、
-`li`、`blockquote`、`table`、`code`、`strong`、`em` 和 `mark` 等普通文稿元素；片段
-会经过安全检查，只作用于文稿内容，并同时投影到 Review 和 Edit。
+`li`、`blockquote`、`table`、`code`、`strong`、`em`、`mark` 以及公开的 Callout
+选择器；片段会经过安全检查，只作用于文稿内容，并同时投影到 Review 和 Edit。
 
 Default sizing follows a 16 CSS px body (12 pt), with Courier at 12.8 CSS px (9.6 pt) for Source and Frontmatter. Heading scales remain relative to body text; the body font family is unchanged.

@@ -122,6 +122,27 @@ struct CSSSnippetSanitizerTests {
         #expect(result.livePreviewCSS.contains(".scholium-live-mode .cm-live-h1"))
     }
 
+    @Test("Public Callout selectors project to Review and Edit without exposing internals")
+    func projectsPublicCalloutSelectors() throws {
+        let result = try CSSSnippetSanitizer.sanitize("""
+        .callout { background-color: #f4f0e8; border: 1px solid #c9c0b2; }
+        .callout-state .callout-title { font-weight: 700; }
+        .callout-body { line-height: 1.55; }
+        .callout-quote .callout-content { font-style: italic; }
+        """)
+
+        #expect(result.readCSS.contains(".scholium-document .scholium-callout"))
+        #expect(result.readCSS.contains(
+            ".scholium-document .scholium-callout-state .scholium-callout-title"
+        ))
+        #expect(result.readCSS.contains(".scholium-callout-quote .scholium-callout-content"))
+        #expect(result.livePreviewCSS.contains(".scholium-live-mode .cm-live-callout"))
+        #expect(result.livePreviewCSS.contains(
+            ".scholium-live-mode .cm-live-callout-role-state .scholium-callout-title"
+        ))
+        #expect(result.livePreviewCSS.contains(".scholium-live-mode .cm-live-callout-body-line"))
+    }
+
     @Test("Snippet names normalize to inert display labels")
     func normalizesSnippetNames() {
         #expect(

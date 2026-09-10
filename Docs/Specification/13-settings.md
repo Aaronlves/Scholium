@@ -159,10 +159,16 @@ an aligned H1–H6 summary matrix. Detailed per-level spacing stays in one
 explicit native child sheet, revealed on demand; it is not a second appearance
 owner. Letter spacing, word spacing, hyphenation, kerning and ligatures are
 intentionally omitted from the structured profile and native form; Advanced CSS
-is their explicit configuration surface for ordinary document content. These
-matrices collapse before the available width or text size makes the form cramped.
-CSS remains an explicit action to the configuration surface and file, and
-profile saving does not reset CSS snippets. [Metadata Appendix A](11-metadata.md)
+is their explicit configuration surface for ordinary document content. Its
+child sheet exposes **Open CSS Folder**, **Reload**, import, enablement, order,
+and per-snippet recovery actions. Direct `.css` files in the managed folder are
+discovered and watched; invalid or missing files remain visible with errors.
+The public Callout selectors `.callout`, `.callout-title`, `.callout-body`,
+`.callout-content`, and `.callout-<role>` are supported there and projected to
+Review/Edit without exposing internal selectors. These matrices collapse before
+the available width or text size makes the form cramped. CSS remains an
+explicit action to the configuration surface and file, and profile saving does
+not reset CSS snippets. [Metadata Appendix A](11-metadata.md)
 owns definitions and profiles; [Agent Chat §8.7](12-agent-chat.md) owns Selection
 Actions and runtime configuration. Agents & Chat keeps connection state and
 primary connect or sign-in actions in the main pane; custom connection paths,

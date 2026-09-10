@@ -175,6 +175,18 @@ public actor StyleOperations: StyleUseCases {
         return snapshot()
     }
 
+    public func refreshStyleSnippets() throws -> StyleSnapshot {
+        ensureLoaded()
+        try requireWritableManifest()
+        try ensureDirectory()
+        // The folder is the source of truth for snippet bytes. The manifest
+        // only retains stable identity, ordering, enablement, and the display
+        // name, so a researcher can add a plain .css file without importing it
+        // through the app first.
+        try commit(reconciledSnippetRecords(), clearingSafeMode: false)
+        return snapshot()
+    }
+
     public func setStyleSnippetEnabled(_ enabled: Bool, id: UUID) throws -> StyleSnapshot {
         ensureLoaded()
         try mutate { candidate in
@@ -295,7 +307,7 @@ public actor StyleOperations: StyleUseCases {
     public func managedStylesLocation() throws -> URL {
         ensureLoaded()
         try ensureDirectory()
-        return fileManager.fileExists(atPath: manifestURL.path) ? manifestURL : directoryURL
+        return directoryURL
     }
 
     public func obsidianAppearance(at vaultRootURL: URL) -> ObsidianAppearanceSnapshot? {
@@ -632,6 +644,50 @@ public actor StyleOperations: StyleUseCases {
         livePreviewCSS = build.livePreviewCSS
     }
 
+    private func reconciledSnippetRecords() throws -> [CSSSnippetRecord] {
+        let discovered = try discoveredSnippetURLs()
+        var records = snippets
+        let knownFileNames = Set(records.map(\.managedFileName))
+        for url in discovered where !knownFileNames.contains(url.lastPathComponent) {
+            let baseName = url.deletingPathExtension().lastPathComponent
+            records.append(CSSSnippetRecord(
+                id: UUID(),
+                name: CSSSnippetSanitizer.normalizedSnippetName(
+                    baseName,
+                    fallback: "CSS Snippet"
+                ),
+                managedFileName: url.lastPathComponent,
+                isEnabled: safeModeReason == nil
+            ))
+        }
+        return records
+    }
+
+    private func discoveredSnippetURLs() throws -> [URL] {
+        let keys: Set<URLResourceKey> = [
+            .isRegularFileKey,
+            .isSymbolicLinkKey,
+            .nameKey
+        ]
+        let enumerator = fileManager.enumerator(
+            at: directoryURL,
+            includingPropertiesForKeys: Array(keys),
+            options: []
+        )
+        var urls: [URL] = []
+        while let url = enumerator?.nextObject() as? URL {
+            guard url.pathExtension.caseInsensitiveCompare("css") == .orderedSame,
+                  url.deletingLastPathComponent().standardizedFileURL
+                    == directoryURL.standardizedFileURL else { continue }
+            let values = try url.resourceValues(forKeys: keys)
+            guard values.isRegularFile == true, values.isSymbolicLink != true else { continue }
+            urls.append(url)
+        }
+        return urls.sorted {
+            $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending
+        }
+    }
+
     private struct CSSBuildResult {
         let snippets: [CSSSnippetRecord]
         let errors: [UUID: String]
@@ -644,7 +700,7 @@ public actor StyleOperations: StyleUseCases {
         var read: [String] = []
         var live: [String] = []
         var errors: [UUID: String] = [:]
-        for index in records.indices where records[index].isEnabled {
+        for index in records.indices {
             let snippet = records[index]
             do {
                 let data = try Data(contentsOf: managedURL(for: snippet), options: [.mappedIfSafe])
@@ -657,8 +713,10 @@ public actor StyleOperations: StyleUseCases {
                 let projection = try CSSSnippetSanitizer.sanitize(source)
                 records[index].sourceFingerprint = DocumentFingerprint(content: source).sha256
                 records[index].lastFailure = nil
-                read.append("/* Scholium user CSS snippet */\n\(projection.readCSS)")
-                live.append("/* Scholium user CSS snippet */\n\(projection.livePreviewCSS)")
+                if records[index].isEnabled {
+                    read.append("/* Scholium user CSS snippet */\n\(projection.readCSS)")
+                    live.append("/* Scholium user CSS snippet */\n\(projection.livePreviewCSS)")
+                }
             } catch {
                 errors[snippet.id] = error.localizedDescription
                 records[index].lastFailure = error.localizedDescription
@@ -687,6 +745,10 @@ public actor StyleOperations: StyleUseCases {
         let url = directoryURL.appendingPathComponent(record.managedFileName).standardizedFileURL
         guard url.deletingLastPathComponent() == directoryURL.standardizedFileURL else {
             throw CSSSnippetSanitizationError.forbiddenConstruct("managed path escape")
+        }
+        if let values = try? url.resourceValues(forKeys: [.isSymbolicLinkKey]),
+           values.isSymbolicLink == true {
+            throw CSSSnippetSanitizationError.forbiddenConstruct("symbolic-link snippet")
         }
         return url
     }
