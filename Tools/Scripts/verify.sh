@@ -291,8 +291,7 @@ for shell_script in \
   "${ROOT}/Tools/Scripts/run-performance-benchmarks.sh" \
   "${ROOT}/Tools/Scripts/run-ui-tests.sh" \
   "${ROOT}/Tools/Scripts/sync-interface-localization.sh" \
-  "${ROOT}/Tools/Scripts/validate-interface-localization.sh" \
-  "${ROOT}/Tools/Scripts/verify-qa-upgrade-safety.sh"; do
+  "${ROOT}/Tools/Scripts/validate-interface-localization.sh"; do
   zsh -n "${shell_script}"
 done
 zsh -n "${ROOT}/Manage Scholium Development Storage.command"
@@ -301,10 +300,8 @@ PYTHONPYCACHEPREFIX="${SCRATCH}-pycache" python3 -m py_compile \
   "${ROOT}/Tools/Scripts/capture-performance-environment.py" \
   "${ROOT}/Tools/Scripts/summarize-performance-results.py" \
   "${ROOT}/Tools/Scripts/sample-app-process-memory.py" \
-  "${ROOT}/Tools/Scripts/validate-entitlements.py" \
-  "${ROOT}/Tools/Scripts/qa-upgrade-manifest.py"
+  "${ROOT}/Tools/Scripts/validate-entitlements.py"
 python3 "${ROOT}/Tools/Scripts/validate-entitlements.py" --self-test
-python3 "${ROOT}/Tools/Scripts/qa-upgrade-manifest.py" self-test
 python3 "${ROOT}/Tools/Scripts/sample-app-process-memory.py" --self-test
 python3 "${ROOT}/Tools/Scripts/summarize-performance-results.py" --self-test
 "${ROOT}/Tools/Scripts/verify-editor-bundle.sh"

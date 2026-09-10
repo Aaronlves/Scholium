@@ -25,7 +25,7 @@ struct SettlementStoreTests {
             rationale: "Reconsidered"
         )
         #expect(replacement.fingerprint == secondRevision)
-        #expect(store.storageURL == fixture.controlURL.appendingPathComponent("settlements/v2", isDirectory: true))
+        #expect(store.storageURL == fixture.controlURL.appendingPathComponent("settlements/v3", isDirectory: true))
         #expect(FileManager.default.fileExists(atPath: fixture.settlementURL(noteID).path))
         let reopened = try fixture.store()
         let listing = try await reopened.listing()
@@ -52,6 +52,34 @@ struct SettlementStoreTests {
             JSONSerialization.jsonObject(with: original) as? [String: Any]
         )
         object["unsupported"] = true
+        let damaged = try JSONSerialization.data(withJSONObject: object)
+        try damaged.write(to: url, options: .atomic)
+
+        let listing = try await store.listing()
+        #expect(listing.settlements.isEmpty)
+        #expect(listing.issues.count == 1)
+        #expect(try Data(contentsOf: url) == damaged)
+    }
+
+    @Test("Retired activity coverage is rejected without rewriting the old record")
+    func retiredCoverageFailsClosed() async throws {
+        let fixture = try Fixture()
+        defer { fixture.dispose() }
+        let store = try fixture.store()
+        let noteID = UUID()
+        _ = try await store.settle(
+            noteID: noteID,
+            fingerprint: DocumentFingerprint(content: "source"),
+            rationale: nil
+        )
+        let url = fixture.settlementURL(noteID)
+        let original = try Data(contentsOf: url)
+        var object = try #require(
+            JSONSerialization.jsonObject(with: original) as? [String: Any]
+        )
+        var settlement = try #require(object["settlement"] as? [String: Any])
+        settlement["coveredActivities"] = []
+        object["settlement"] = settlement
         let damaged = try JSONSerialization.data(withJSONObject: object)
         try damaged.write(to: url, options: .atomic)
 
@@ -97,7 +125,7 @@ struct SettlementStoreTests {
 
         func settlementURL(_ noteID: UUID) -> URL {
             controlURL
-                .appendingPathComponent("settlements/v2")
+                .appendingPathComponent("settlements/v3")
                 .appendingPathComponent("\(noteID.uuidString.lowercased()).json")
         }
 

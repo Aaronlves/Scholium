@@ -29,8 +29,6 @@ public struct SettlementRecord: Codable, Hashable, Identifiable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case id, noteID, fingerprint, settledAt, researcher, rationale
-        // Retained only for exact compatibility with the portable v2 format.
-        case legacyCoveredActivities = "coveredActivities"
     }
 
     public init(from decoder: Decoder) throws {
@@ -41,10 +39,6 @@ public struct SettlementRecord: Codable, Hashable, Identifiable, Sendable {
         settledAt = try container.decode(Date.self, forKey: .settledAt)
         researcher = try container.decode(String.self, forKey: .researcher)
         rationale = try container.decodeIfPresent(String.self, forKey: .rationale)
-        _ = try container.decodeIfPresent(
-            [LegacySettlementActivityReference].self,
-            forKey: .legacyCoveredActivities
-        )
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -55,14 +49,5 @@ public struct SettlementRecord: Codable, Hashable, Identifiable, Sendable {
         try container.encode(settledAt, forKey: .settledAt)
         try container.encode(researcher, forKey: .researcher)
         try container.encodeIfPresent(rationale, forKey: .rationale)
-        try container.encode(
-            [LegacySettlementActivityReference](),
-            forKey: .legacyCoveredActivities
-        )
     }
-}
-
-private struct LegacySettlementActivityReference: Codable, Hashable {
-    let recordID: UUID
-    let noteID: UUID
 }

@@ -44,7 +44,7 @@ public enum SettlementStoreError: LocalizedError, Sendable {
 /// and research prose authored in Notes.
 public actor SettlementStore {
     private struct State: Codable, Hashable {
-        static let currentSchemaVersion = 2
+        static let currentSchemaVersion = 3
 
         let schemaVersion: Int
         let triptychID: UUID
@@ -64,7 +64,6 @@ public actor SettlementStore {
 
         private enum SettlementCodingKeys: String, CodingKey, CaseIterable {
             case id, noteID, fingerprint, settledAt, researcher, rationale
-            case coveredActivities
         }
 
         init(from decoder: Decoder) throws {
@@ -101,10 +100,6 @@ public actor SettlementStore {
                     forKey: .rationale
                 )
             )
-            _ = try settlementContainer.decodeIfPresent(
-                [LegacySettlementActivityReference].self,
-                forKey: .coveredActivities
-            )
             self.schemaVersion = schemaVersion
             triptychID = try container.decode(UUID.self, forKey: .triptychID)
             settlement = value
@@ -125,10 +120,10 @@ public actor SettlementStore {
         self.triptychID = triptychID
         storageURL = controlURL
             .appendingPathComponent("settlements", isDirectory: true)
-            .appendingPathComponent("v2", isDirectory: true)
+            .appendingPathComponent("v3", isDirectory: true)
         storage = SecureRecordDirectory(
             trustedRootURL: controlURL,
-            components: ["settlements", "v2"],
+            components: ["settlements", "v3"],
             directoryMode: 0o755,
             fileMode: 0o600,
             maximumByteCount: Self.maximumByteCount
@@ -144,7 +139,7 @@ public actor SettlementStore {
             try coordination.ensureDirectories([])
             lock = try AdvisoryFileLock(
                 directory: coordination,
-                fileName: "settlements-v2.lock"
+                fileName: "settlements-v3.lock"
             )
             try lock.withExclusiveLock {
                 try Self.coordinateWrite(at: storageURL) {
@@ -356,11 +351,6 @@ public actor SettlementStore {
         }
         return try result.get()
     }
-}
-
-private struct LegacySettlementActivityReference: Decodable {
-    let recordID: UUID
-    let noteID: UUID
 }
 
 private struct StrictSettlementFingerprint: Decodable {

@@ -110,7 +110,7 @@ resumes an interrupted binding; absence of both original entry and a valid
 binding becomes `outcomeUnknown`. Returned URLs remain machine-local recovery
 evidence only.
 
-`SettlementStore` owns portable judgments at `.scholium/settlements/v2/`,
+`SettlementStore` owns portable judgments at `.scholium/settlements/v3/`,
 independently of research prose. It uses strict schema decoding, coordinated
 writes, and the shared Triptych lock; unsupported directories are not imported.
 

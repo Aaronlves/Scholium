@@ -1,6 +1,6 @@
 import {DOMParser} from "linkedom";
 import {beforeAll, describe, expect, it} from "vitest";
-import {convertClipboardHTML, pasteAsMarkdown, sanitizeClipboardHTML} from "../clipboard";
+import {convertClipboardHTML, decodeClipboardPayload, pasteAsMarkdown, sanitizeClipboardHTML} from "../clipboard";
 
 beforeAll(() => {
   Object.defineProperty(globalThis, "DOMParser", {value: DOMParser, configurable: true});
@@ -22,5 +22,13 @@ describe("inert clipboard conversion", () => {
       "| A | B |\n| --- | --- |\n| 1 | 2 |",
     );
     expect(pasteAsMarkdown({plainText: "Readable", html: "<script>bad()</script>"})).toBe("Readable");
+  });
+  it("accepts only the structured clipboard payload", () => {
+    expect(decodeClipboardPayload('{"plainText":"Exact","html":"<strong>Exact</strong>"}')).toEqual({
+      plainText: "Exact",
+      html: "<strong>Exact</strong>",
+    });
+    expect(decodeClipboardPayload("legacy plain argument")).toBeUndefined();
+    expect(decodeClipboardPayload(undefined)).toBeUndefined();
   });
 });

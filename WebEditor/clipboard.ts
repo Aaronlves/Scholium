@@ -107,15 +107,15 @@ export function pasteAsMarkdown(payload: ClipboardPayload) {
   return payload.plainText;
 }
 
-export function decodeClipboardPayload(argument: string | undefined): ClipboardPayload {
-  if (!argument) return {plainText: ""};
+export function decodeClipboardPayload(argument: string | undefined): ClipboardPayload | undefined {
+  if (!argument) return undefined;
   try {
     const value = JSON.parse(argument) as Partial<ClipboardPayload>;
     if (typeof value.plainText === "string" && (value.html === undefined || typeof value.html === "string")) {
       return {plainText: value.plainText.slice(0, 2_000_000), html: value.html?.slice(0, 2_000_000)};
     }
-  } catch { /* legacy plain argument */ }
-  return {plainText: argument.slice(0, 2_000_000)};
+  } catch { /* malformed clipboard payload */ }
+  return undefined;
 }
 
 export function isSingleSafeURL(value: string) {

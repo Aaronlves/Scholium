@@ -22459,7 +22459,7 @@ ${fence}
     return payload.plainText;
   }
   function decodeClipboardPayload(argument) {
-    if (!argument) return { plainText: "" };
+    if (!argument) return void 0;
     try {
       const value = JSON.parse(argument);
       if (typeof value.plainText === "string" && (value.html === void 0 || typeof value.html === "string")) {
@@ -22467,7 +22467,7 @@ ${fence}
       }
     } catch {
     }
-    return { plainText: argument.slice(0, 2e6) };
+    return void 0;
   }
   function isSingleSafeURL(value) {
     const trimmed = value.trim();
@@ -38007,7 +38007,12 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         return successfulResult(request.requestID, true, "Adopt Suggestion");
       }
       case "command": {
-        const argument = operation.command === "pasteMarkdown" ? editingFrontmatterSelection() ? decodeClipboardPayload(operation.argument).plainText : pasteAsMarkdown(decodeClipboardPayload(operation.argument)) : operation.argument;
+        let argument = operation.argument;
+        if (operation.command === "pasteMarkdown") {
+          const payload = decodeClipboardPayload(operation.argument);
+          if (!payload) return rejected(request.requestID, documentVersion, "pasteMarkdown requires a clipboard payload");
+          argument = editingFrontmatterSelection() ? payload.plainText : pasteAsMarkdown(payload);
+        }
         const transformed = transformMarkdown(editor.state.doc.toString(), editorSelections(), operation.command, {
           argument,
           protectedRanges: commandProtection(operation.command),

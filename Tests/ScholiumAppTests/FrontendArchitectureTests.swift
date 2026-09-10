@@ -2208,7 +2208,6 @@ struct FrontendArchitectureTests {
             "ScholiumUITests+EditorCoordination.swift",
             "ScholiumUITests+Support.swift",
             "ScholiumPerformanceUITests.swift",
-            "ScholiumUpgradeSafetyUITests.swift",
         ].map { fileName in
             try String(
                 contentsOf: repository.appendingPathComponent("UITests/\(fileName)"),

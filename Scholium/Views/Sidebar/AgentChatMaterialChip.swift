@@ -13,8 +13,18 @@ struct AgentChatMaterialChip: View {
     URL(fileURLWithPath: attachment.relativePath).deletingPathExtension().lastPathComponent
   }
   private var excerpt: String { ResearchExcerptPresentation.readableText(attachment.text) }
-  private var extent: LocalizedStringKey { attachment.extent == .wholeNote ? "Whole Note" : "Attached Passage" }
-  private var source: LocalizedStringKey { attachment.source == .editorSnapshot ? "Editor Snapshot" : "Saved Source" }
+  private var extent: String {
+    String(
+      localized: attachment.extent == .wholeNote ? "Whole Note" : "Attached Passage",
+      bundle: .module
+    )
+  }
+  private var source: String {
+    String(
+      localized: attachment.source == .editorSnapshot ? "Editor Snapshot" : "Saved Source",
+      bundle: .module
+    )
+  }
 
   var body: some View {
     GroupBox {
@@ -37,8 +47,7 @@ struct AgentChatMaterialChip: View {
         .buttonStyle(.plain)
         .help(attachment.relativePath)
         .accessibilityLabel(Text("Preview material: \(title)"))
-        .accessibilityValue(
-          Text(extent) + Text(verbatim: ", ") + Text(source) + Text(verbatim: ": \(excerpt.prefix(120))"))
+        .accessibilityValue(Text("\(extent), \(source): \(excerpt.prefix(120))"))
         if let remove {
           Button(action: remove) { Image(systemName: "xmark") }
             .buttonStyle(.plain).foregroundStyle(.secondary)

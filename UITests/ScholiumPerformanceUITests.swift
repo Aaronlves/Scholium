@@ -1221,7 +1221,3 @@ final class ScholiumPerformanceUITests: XCTestCase {
         return condition()
     }
 }
-
-/// External, read-only launch driver for the release-to-release Triptych
-/// integrity gate. `verify-qa-upgrade-safety.sh` owns fixture copying, exact
-/// manifests, process serialization, and evidence retention.

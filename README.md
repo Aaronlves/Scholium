@@ -174,16 +174,6 @@ validate the closed authority sets and local links:
 python3 Tools/Scripts/validate-documentation-authority.py
 ```
 
-The upgrade-safety runner compares distinct disposable QA builds without using
-a research vault:
-
-```bash
-./Tools/Scripts/verify-qa-upgrade-safety.sh \
-  --baseline .build/upgrade/baseline/Scholium-QA.app \
-  --candidate .build/qa-runtime/Scholium-QA.app \
-  --output .build/upgrade/evidence
-```
-
 All SwiftPM scratch, Xcode DerivedData, QA apps, fixture copies, indexes, logs,
 and result bundles stay under repository-local ignored `.build/` paths. The
 checkout itself must remain outside Desktop, Documents, CloudStorage, and other

@@ -2162,11 +2162,12 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
     return successfulResult(request.requestID, true, "Adopt Suggestion");
   }
   case "command": {
-    const argument = operation.command === "pasteMarkdown"
-      ? editingFrontmatterSelection()
-        ? decodeClipboardPayload(operation.argument).plainText
-        : pasteAsMarkdown(decodeClipboardPayload(operation.argument))
-      : operation.argument;
+    let argument = operation.argument;
+    if (operation.command === "pasteMarkdown") {
+      const payload = decodeClipboardPayload(operation.argument);
+      if (!payload) return rejected(request.requestID, documentVersion, "pasteMarkdown requires a clipboard payload");
+      argument = editingFrontmatterSelection() ? payload.plainText : pasteAsMarkdown(payload);
+    }
     const transformed = transformMarkdown(editor.state.doc.toString(), editorSelections(), operation.command, {
       argument,
       protectedRanges: commandProtection(operation.command),

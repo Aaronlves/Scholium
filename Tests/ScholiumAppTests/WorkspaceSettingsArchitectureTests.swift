@@ -615,7 +615,6 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(!declarations.isEmpty)
         #expect(declarations.allSatisfy {
             $0.contains("WorkspaceSettingsModel")
-                || $0.contains("ResearchResultNotificationCoordinator")
         })
     }
 
@@ -948,7 +947,7 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(model.workspaceAssignment?.id == second.id)
 
         await releaseRefresh.signal()
-        await staleRefresh.value
+        _ = await staleRefresh.value
 
         #expect(model.workspaceAssignment?.id == second.id)
         #expect(!model.isRefreshing)

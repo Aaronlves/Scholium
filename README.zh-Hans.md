@@ -140,15 +140,6 @@ UI runner 使用一次性 TestVault 副本和仓库内被忽略的 `.build/` 状
 python3 Tools/Scripts/validate-documentation-authority.py
 ```
 
-升级安全 runner 使用不同的一次性 QA 构建，不接触研究库：
-
-```bash
-./Tools/Scripts/verify-qa-upgrade-safety.sh \
-  --baseline .build/upgrade/baseline/Scholium-QA.app \
-  --candidate .build/qa-runtime/Scholium-QA.app \
-  --output .build/upgrade/evidence
-```
-
 所有 SwiftPM scratch、Xcode DerivedData、QA 应用、fixture 副本、索引、日志与结果
 bundle 都放在仓库内被忽略的 `.build/` 路径下。仓库本身必须位于 Desktop、
 Documents、CloudStorage 和其他 File Provider 管理路径之外。
