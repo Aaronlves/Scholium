@@ -18,6 +18,19 @@ product authority or permission beyond that request and repository rules.
   `SKILL.md`, quote the controlling instruction, and distinguish its explicit
   requirement from your interpretation. Do not invent an approval requirement.
 
+## Continuity across turns
+
+- For work that spans turns, carry one compact coordination ledger: objective
+  and authorized side effects; settled decisions and constraints; current
+  revision and worktree state; proof and its evidence class; unresolved
+  questions; and the next action and cleanup state.
+- Refresh the ledger against the live checkout, canonical authority, and
+  running-process or fixture state before resuming. Treat it as task context,
+  not product, specification, or release state; never copy volatile details
+  into a skill or canonical product document.
+- Existing authorization carries forward. Ask again only for a new material
+  decision or an action outside the established scope.
+
 ## Repository and evidence
 
 Bind the live checkout through `AGENTS.md`, the package manifest, and

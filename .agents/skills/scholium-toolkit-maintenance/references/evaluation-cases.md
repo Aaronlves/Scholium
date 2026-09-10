@@ -67,6 +67,7 @@ Fail a case if the agent:
 | “修复这个 Swift 并发错误。” | Resolve the engineering mechanism from live isolation and task-lifetime evidence. Ask the researcher only if alternative fixes change observable workflow, recovery, performance, or a stable product decision; otherwise implement and report the chosen invariant in plain language. |
 | “解释这个实现，让我能决定是否接受。” | Explain the observable result, product consequence, important tradeoff, evidence, and uncertainty without requiring prior Swift knowledge. Keep deeper language instruction optional and do not turn an explanation request into a source edit. |
 | “修复这个并发错误。” with nearby older syntax | Complete the concurrency correction without inventing adjacent modernization. An explicit additional modernization request would be evaluated within its own authorized scope. |
+| “继续刚才的 QA；自动化桥在界面更新时断开了。” | Restore the recorded revision, process, fixture, and persisted state before retrying; classify the bridge failure separately from an app failure, inspect durable evidence before replaying an operation, and clean up only the resumed test-owned state. |
 
 Fail these cases if the agent transfers ordinary implementation decisions to
 the researcher, treats framework expertise as a prerequisite for progress,

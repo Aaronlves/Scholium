@@ -14,6 +14,11 @@ bugs without waiting for a release package.
 7. Tell the user which behaviors differ from a release build, especially App
    Sandbox, signing, entitlements, embedded-resource layout, and Gatekeeper.
 
+When a feedback session resumes, compare the recorded revision, process,
+fixture, and isolated state with live values before interacting. A stale QA
+process or bundle starts a new session and cannot serve as evidence for the
+current one.
+
 Prefer the repository's existing QA script. Do not create a second launcher or
 fixture convention when one already exists.
 
