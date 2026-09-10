@@ -564,6 +564,62 @@ struct AgentChatTests {
     await controller.disconnect()
   }
 
+  @Test("Next-turn queue keeps an explicit order and can be sent after the active turn stops")
+  func queuedInput() async throws {
+    let root = try root()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let controller = AgentChatController(triptychID: UUID(), root: root) { request in success(request) }
+    try await connect(controller)
+    controller.editDraft("hold active turn")
+    controller.send()
+    try await eventually { controller.state == .working && controller.selected?.pendingMessageID == nil }
+    controller.editDraft("queued research question")
+    #expect(controller.canQueue)
+    #expect(controller.queue())
+    controller.editDraft("second queued research question")
+    #expect(controller.queue())
+    let queued = try #require(controller.selected?.queuedMessages.first)
+    let secondQueued = try #require(controller.selected?.queuedMessages.dropFirst().first)
+    #expect(queued.text == "queued research question" && queued.turnID == nil)
+    #expect(secondQueued.text == "second queued research question" && !controller.canSendQueuedMessage(secondQueued.id))
+    #expect(controller.selected?.draft.isEmpty == true)
+    controller.stop()
+    try await eventually { !controller.isBusy }
+    #expect(controller.canSendQueuedMessage(queued.id))
+    #expect(controller.sendQueuedMessage(queued.id))
+    try await eventually { controller.selected?.queuedMessages.count == 1 && controller.selected?.lastRunStatus == .completed }
+    let request = try JSONDecoder().decode(MCPJSONValue.self,
+      from: Data(contentsOf: controller.runtimeHome.appendingPathComponent("last-turn.json")))
+    #expect(request.objectValue?["input"]?.arrayValue?.first?.objectValue?["text"]?.stringValue == "queued research question")
+    #expect(controller.canSendQueuedMessage(secondQueued.id))
+    #expect(controller.sendQueuedMessage(secondQueued.id))
+    try await eventually { controller.selected?.queuedMessages.isEmpty == true && controller.selected?.lastRunStatus == .completed }
+    await controller.disconnect()
+  }
+
+  @Test("A completed active turn admits only the first queued message once")
+  func queuedInputAutoDispatch() async throws {
+    let root = try root()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let controller = AgentChatController(triptychID: UUID(), root: root) { request in success(request) }
+    try await connect(controller)
+    controller.editDraft("hold-queue active turn")
+    controller.send()
+    try await eventually { controller.state == .working && controller.selected?.pendingMessageID == nil }
+    controller.editDraft("queued after completion")
+    #expect(controller.queue())
+    try Data().write(to: controller.runtimeHome.appendingPathComponent("release-queued-turn"))
+    controller.refreshQuota()
+    try await eventually {
+      controller.selected?.queuedMessages.isEmpty == true
+        && controller.selected?.messages.contains { $0.text == "Queued fixture reply" } == true
+    }
+    let request = try JSONDecoder().decode(MCPJSONValue.self,
+      from: Data(contentsOf: controller.runtimeHome.appendingPathComponent("last-turn.json")))
+    #expect(request.objectValue?["input"]?.arrayValue?.first?.objectValue?["text"]?.stringValue == "queued after completion")
+    await controller.disconnect()
+  }
+
   @Test("Provider-neutral context staging preserves a draft, deduplicates snapshots and never sends")
   func stageContext() async throws {
     let root = try root()
@@ -1068,6 +1124,7 @@ struct AgentChatTests {
     var conversation = AgentChatConversation(triptychID: UUID())
     conversation.draft = "\u{FEFF}中文 😀\r\n"
     conversation.permission = .fullAccess
+    conversation.queuedMessages = [.init(role: .user, text: "待发送的研究问题")]
     try await storage.save([conversation])
     #expect(try await storage.load() == [conversation])
     let file = root.appendingPathComponent("conversations.json")

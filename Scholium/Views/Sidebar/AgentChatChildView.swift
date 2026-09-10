@@ -83,7 +83,7 @@ struct AgentChatChildView: View {
                       if !activity.subject.isEmpty { Text(verbatim: activity.subject).monospaced().textSelection(.enabled) }
                       Text(verbatim: activity.detail).monospaced().textSelection(.enabled)
                     } label: {
-                      Text("Operation Details", bundle: .module)
+                      Text("Details", bundle: .module)
                     }
                   }
                 } else {

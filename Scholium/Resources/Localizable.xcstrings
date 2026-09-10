@@ -4399,6 +4399,38 @@
         }
       }
     },
+    "Checked a web source" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Checked a web source"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已核对网页来源"
+          }
+        }
+      }
+    },
+    "Checking a web source" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Checking a web source"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在核对网页来源"
+          }
+        }
+      }
+    },
     "Checking Notifications" : {
       "localizations" : {
         "zh-Hans" : {
@@ -13545,6 +13577,22 @@
         }
       }
     },
+    "Materials" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Materials"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "材料"
+          }
+        }
+      }
+    },
     "Materials for This Turn" : {
       "localizations" : {
         "zh-Hans" : {
@@ -16542,22 +16590,6 @@
         }
       }
     },
-    "Operation Details" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Operation Details"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "操作详情"
-          }
-        }
-      }
-    },
     "Operation History" : {
       "localizations" : {
         "en" : {
@@ -17567,6 +17599,22 @@
         }
       }
     },
+    "Prepared context" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Prepared context"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已准备的上下文"
+          }
+        }
+      }
+    },
     "Preparing Material" : {
       "localizations" : {
         "zh-Hans" : {
@@ -18040,6 +18088,22 @@
         }
       }
     },
+    "Quoted replies" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Quoted replies"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已引用的回复"
+          }
+        }
+      }
+    },
     "Quit" : {
       "localizations" : {
         "en" : {
@@ -18224,6 +18288,22 @@
         }
       }
     },
+    "Read a Zotero source" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Read a Zotero source"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已读取 Zotero 来源"
+          }
+        }
+      }
+    },
     "Read attachment" : {
       "localizations" : {
         "en" : {
@@ -18334,6 +18414,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在读取附件"
+          }
+        }
+      }
+    },
+    "Reading a Zotero source" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Reading a Zotero source"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在阅读 Zotero 来源"
           }
         }
       }
@@ -20622,6 +20718,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "重试身份恢复"
+          }
+        }
+      }
+    },
+    "Retry in New Branch" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Retry in New Branch"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在新分支中重试"
           }
         }
       }
@@ -24271,6 +24383,22 @@
         }
       }
     },
+    "Supplied for this turn" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Supplied for this turn"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "本轮提供的材料"
+          }
+        }
+      }
+    },
     "Switch Review and Edit" : {
       "localizations" : {
         "zh-Hans" : {
@@ -26997,22 +27125,6 @@
         }
       }
     },
-    "Turn took %lld s" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Turn took %lld s"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "本轮用时 %lld 秒"
-          }
-        }
-      }
-    },
     "Typeface" : {
       "localizations" : {
         "en" : {
@@ -28048,6 +28160,22 @@
         }
       }
     },
+    "Web source check" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Web source check"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "网页来源核对"
+          }
+        }
+      }
+    },
     "Web search" : {
       "localizations" : {
         "en" : {
@@ -28715,6 +28843,22 @@
         }
       }
     },
+    "Zotero source reading" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Zotero source reading"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zotero 来源阅读"
+          }
+        }
+      }
+    },
     "Zotero abstract, tags, citation key, collections, summary, keywords, and the Markdown body are not imported." : {
       "localizations" : {
         "zh-Hans" : {
@@ -29122,18 +29266,130 @@
         }
       }
     },
-    "· %lld s" : {
+    "Next turn" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "· %lld s"
+            "value" : "Next turn"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "· %lld 秒"
+            "value" : "下一回合"
+          }
+        }
+      }
+    },
+    "The next queued message needs attention before it can be sent." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The next queued message needs attention before it can be sent."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下一条排队消息需要处理后才能发送。"
+          }
+        }
+      }
+    },
+    "Queue for Next Turn" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Queue for Next Turn"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "排队到下一回合"
+          }
+        }
+      }
+    },
+    "Queued message actions" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Queued message actions"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "排队消息操作"
+          }
+        }
+      }
+    },
+    "Remove from Queue" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remove from Queue"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "从队列移除"
+          }
+        }
+      }
+    },
+    "Send Next" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Send Next"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "发送下一条"
+          }
+        }
+      }
+    },
+    "Worked for %lld s" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Worked for %lld s"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已工作 %lld 秒"
+          }
+        }
+      }
+    },
+    "Working for %lld s" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Working for %lld s"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已工作 %lld 秒"
           }
         }
       }

@@ -168,6 +168,10 @@ public struct AgentChatConversation: Codable, Equatable, Identifiable, Sendable 
   public var localMaterials: [AgentChatLocalMaterial]
   /// Retained until the server has acknowledged this exact message.
   public var pendingMessageID: String?
+  /// Researcher-requested input held for the next turn. Queue admission is
+  /// local; it is removed only when explicitly sent or when its delivery is
+  /// represented as an uncertain public message.
+  public var queuedMessages: [AgentChatMessage]
   public var updatedAt: Date
 
   public init(triptychID: UUID) {
@@ -180,6 +184,7 @@ public struct AgentChatConversation: Codable, Equatable, Identifiable, Sendable 
     draft = ""
     attachments = []
     localMaterials = []
+    queuedMessages = []
     updatedAt = Date()
   }
 }

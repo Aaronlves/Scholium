@@ -142,6 +142,7 @@ enum AgentChatContextPresentation {
 
 struct AgentChatContextView: View {
   let usage: AgentChatContextUsage?
+  var ledger: AgentChatContextLedger? = nil
   let quotas: [AgentChatQuota]
   let quotaError: String?
   let isRefreshing: Bool
@@ -195,6 +196,9 @@ struct AgentChatContextView: View {
               }
             } else {
               Text("Not Available", bundle: .module).foregroundStyle(.secondary)
+            }
+            if let ledger, !ledger.isEmpty {
+              AgentChatContextLedgerView(ledger: ledger)
             }
           }.frame(maxWidth: .infinity, alignment: .leading)
         }

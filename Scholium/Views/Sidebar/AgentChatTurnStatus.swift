@@ -41,6 +41,12 @@ struct AgentChatTurnPresentation: Equatable {
     if state == .completed || state == .interrupted || state == .failed { return timing.completedSeconds }
     return nil
   }
+
+  func elapsedLabel(at now: Date, locale: Locale = .current) -> String? {
+    guard let seconds = seconds(at: now) else { return nil }
+    let key: String.LocalizationValue = isWorking ? "Working for %lld s" : "Worked for %lld s"
+    return String(format: ScholiumL10n.string(key, locale: locale), seconds)
+  }
 }
 
 struct AgentChatTurnStatus: View {
@@ -53,12 +59,12 @@ struct AgentChatTurnStatus: View {
   var body: some View {
     TimelineView(.animation(minimumInterval: 1, paused: !presentation.isWorking || !animates || activeState == .inactive)) { context in
       HStack(spacing: 6) {
-        if presentation.state == .completed, let seconds = presentation.seconds(at: context.date) {
-          Text(String(format: ScholiumL10n.string("Turn took %lld s", locale: locale), seconds))
+        if presentation.state == .completed, let elapsed = presentation.elapsedLabel(at: context.date, locale: locale) {
+          Text(elapsed)
         } else {
           Text(ScholiumL10n.string(presentation.titleKey, locale: locale))
-          if let seconds = presentation.seconds(at: context.date) {
-            Text(String(format: ScholiumL10n.string("· %lld s", locale: locale), seconds))
+          if let elapsed = presentation.elapsedLabel(at: context.date, locale: locale) {
+            Text("· " + elapsed)
               .accessibilityHidden(true)
           }
         }
@@ -66,8 +72,7 @@ struct AgentChatTurnStatus: View {
       .font(.callout).monospacedDigit().foregroundStyle(.secondary)
       .accessibilityElement(children: .ignore)
       .accessibilityLabel(ScholiumL10n.string(presentation.titleKey, locale: locale))
-      .accessibilityValue(!presentation.isWorking && presentation.seconds(at: context.date) != nil
-        ? String(format: ScholiumL10n.string("Turn took %lld s", locale: locale), presentation.seconds(at: context.date)!) : "")
+      .accessibilityValue(presentation.elapsedLabel(at: context.date, locale: locale) ?? "")
       .help("Elapsed time for this turn, including tools and waits.")
     }
   }

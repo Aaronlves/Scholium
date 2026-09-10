@@ -127,13 +127,13 @@ Concurrency does not bypass per-Note revision and source-operation coordination.
 Connection and account state belong to the Triptych; execution, input, approvals,
 errors and cancellation belong to each conversation. Disconnect closes the shared connection and revokes admission for
 all of its conversations. Stop targets only the explicitly addressed conversation.
-Additional input targets the execution active when the researcher sends it.
-Material preparation or target verification must not silently retarget that input
-to a later execution or start a new one after the original finishes. If the target
-ends before local admission, the draft and materials remain available for an
-explicit new request. After dispatch, only a matching runtime acknowledgement or
-correlated public history confirms delivery; an unconfirmed result is retained
-without automatic retry.
+Additional input targets its active execution; Send now steers it, while Queue
+for Next Turn retains ordered input and staged material. After confirmed
+completion, the first item may dispatch once. Interruption, failure,
+disconnection or reopening leaves it for explicit Send Next or removal.
+Material preparation never retargets input after its execution ends. If admission
+fails, draft and materials remain. Only matching acknowledgement or history
+confirms dispatch; uncertainty is retained without retry.
 Late responses from an earlier connection or execution cannot reactivate admission.
 Runtime interaction identities must be unambiguous across the shared connection.
 A reused pending request identity closes that connection without forwarding a
@@ -210,8 +210,8 @@ the renewal guard cannot prevent restoration of the new connection's own roots.
 Failed root application retains its scoped error and explicit recovery route.
 
 Context usage and account quota are separate runtime observations. Context
-shows the latest reported usage and capacity; account limits show their actual
-window and reset when available. Missing values mean unavailable.
+shows reported use, staged materials, quoted replies and methods; account limits
+show window and reset when available. Missing values are unavailable.
 These values do not estimate research completeness or philosophical quality.
 
 Automatic compaction remains runtime-owned. Chat shows its actual start,

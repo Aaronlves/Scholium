@@ -23,7 +23,7 @@ struct AgentChatQuestionForm: View {
               ScrollView { Text(verbatim: technicalDetail).font(.caption.monospaced()).textSelection(.enabled) }.frame(
                 maxHeight: 100)
             } label: {
-              Text("Operation Details", bundle: .module).font(.caption).foregroundStyle(.secondary)
+              Text("Details", bundle: .module).font(.caption).foregroundStyle(.secondary)
             }
           }
         }

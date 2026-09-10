@@ -58,7 +58,7 @@ struct AgentChatDelegationView: View {
           Text(verbatim: target.id).monospaced().textSelection(.enabled)
         }
       } label: {
-        Text("Operation Details", bundle: .module)
+        Text("Details", bundle: .module)
       }
     }
     .accessibilityElement(children: .contain)

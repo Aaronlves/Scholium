@@ -102,7 +102,7 @@ struct AgentChatBranchTests {
     controller.attach(attachment)
     let original = try #require(controller.selected)
     let delivered = try Data(contentsOf: controller.runtimeHome.appendingPathComponent("last-turn.json"))
-    controller.editInNewBranch(request.id)
+    controller.retryInNewBranch(turnID: try #require(request.turnID))
     try await wait { controller.selectedID != sourceID && !controller.hasActiveExecutions }
     let edited = try #require(controller.selected)
     #expect(edited.messages == earlier && edited.draft == request.text)
@@ -128,6 +128,25 @@ struct AgentChatBranchTests {
     try await controller.flushPersistence()
     let stored = try await AgentChatStorage(root: root.appendingPathComponent(controller.triptychID.uuidString)).load()
     #expect(stored.first { $0.id == edited.id }?.branchOrigin?.position == .before)
+    await controller.disconnect()
+  }
+
+  @Test("A failed turn exposes an explicit branch retry without replaying the original")
+  func retryFailedTurn() async throws {
+    let root = repository.appendingPathComponent(".build/agent-chat-tests/retry-failed-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let controller = try await controller(root: root)
+    let sourceID = try #require(controller.selectedID)
+    try await send("fail-turn", through: controller)
+    let turnID = try #require(controller.editableRequests.first?.turnID)
+    #expect(controller.selected?.turns[turnID]?.status == .failed)
+    #expect(controller.canRetryInNewBranch(turnID: turnID))
+
+    controller.retryInNewBranch(turnID: turnID)
+    try await wait { controller.selectedID != sourceID && !controller.hasActiveExecutions }
+    #expect(controller.selected?.draft == "fail-turn")
+    #expect(controller.selected?.messages.isEmpty == true)
+    #expect(controller.conversations.first { $0.id == sourceID }?.messages.contains { $0.text == "fail-turn" } == true)
     await controller.disconnect()
   }
 

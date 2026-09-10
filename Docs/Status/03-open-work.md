@@ -39,8 +39,12 @@ cross-paragraph handoff and Library menu/native accessibility Add to Chat pass
 live. Complete physical Library-to-Chat dragging and human assistive-technology
 and adaptation acceptance. Per-hunk MCP change adoption
 needs a separate revision-checked implementation; ordinary update approval stays
-one decision per proposal. Message queues and scheduled execution remain separate
-runtime-integration work, not implied by these interaction slices.
+one decision per proposal. Scheduled execution remains separate
+runtime-integration work, not implied by these interaction slices. A bounded
+next-turn queue is now implemented in the conversation owner: it retains ordered
+researcher messages, offers explicit Send Next/Remove actions, and admits the
+first item once after a matching completed turn. Provider/live acceptance and
+scheduled execution remain open.
 The bounded signed-in research loop now passes with the disposable 500-Note
 Triptych: multi-turn reading, native approvals, one exact update, comparison,
 Undo, restart restoration and Stop. CHAT-LIVE-01/02 are closed for that path;

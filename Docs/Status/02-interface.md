@@ -292,9 +292,10 @@ already-visible Chat does not toggle the Sidebar closed.
   inspected offscreen. Actual provider interpretation and live sheet/IME/Quick
   Look acceptance remain open.
   Conversation-owned model/reasoning and web-search menus are wired to official
-  runtime configuration. Context and Usage opens reported token/quota values and
-  manual compaction; public plans have native disclosure and retained terminal
-  state. These additions have offscreen presentation evidence, not live UI or
+  runtime configuration. Context and Usage opens reported token/quota values,
+  manual compaction and a ledger of staged materials, quoted replies and
+  methods; public plans have native disclosure and retained terminal state.
+  These additions have offscreen presentation evidence, not live UI or
   signed-in inference acceptance.
   Browsing and execution are independent: other conversations can run while one
   waits for input. Each owns its approvals, Stop, error and tool token. Rows show
@@ -320,7 +321,9 @@ already-visible Chat does not toggle the Sidebar closed.
   draft without sending, and the origin records the excluded boundary. Same-turn
   additional input has no independent edit action. Fixture checks cover exact
   boundaries, preserved source drafts, explicit sending and failed confirmation;
-  live menu/composer focus and official-runtime execution remain unaccepted.
+  failed and interrupted turns also expose an explicit Retry in New Branch
+  route; live menu/composer focus and official-runtime execution remain
+  unaccepted.
   Research questions now use a separate native form with unselected choices,
   option descriptions, permitted custom answers, secure fields and Reply/Skip.
   Answers remain with their owning conversation until runtime confirmation;
@@ -392,7 +395,10 @@ already-visible Chat does not toggle the Sidebar closed.
   delivered banners, clicks and cold-launch acceptance remain open.
   Outline and statistics entries are withdrawn; Inspector modes share layout. Chat provides
   history, draft retention, connection/sign-in, permission, native approval
-  requests, sending, steering, interruption and stable Note references. Idle chats
+  requests, sending, steering, interruption and stable Note references. While a
+  turn is active, the composer distinguishes immediate steering from an ordered
+  Next turn queue; queued input stays in a compact card with explicit Send Next
+  and removal actions. Idle chats
   can be archived/restored through temporary multi-selection from the list-header
   archive menu. Whole rows open detail or toggle selection; Cancel exits without
   mutation. Detail has no archive action; Library and Chat share one quiet trailing
@@ -425,8 +431,9 @@ already-visible Chat does not toggle the Sidebar closed.
   other locators independently of file-operation records; opening uses existing
   Note or external-URL owners. Same-turn scoped Note reads now expose revision,
   actual line coverage and bounded exact excerpts; completed runtime web open/find
-  reports expose access only. Supplied materials have a separate disclosure using
-  existing previews. Missing observations remain unknown. Foundation Markdown retains paragraphs, quotes,
+  reports expose access only. Sources now contain only explicit reply locators;
+  supplied materials have their own Materials action and popover using existing
+  previews. Missing observations remain unknown. Foundation Markdown retains paragraphs, quotes,
   lists, code and comparison rows. The bounded live research loop now passes;
   Verification records the remaining accessibility and integration limits.
 

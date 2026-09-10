@@ -34,7 +34,7 @@ struct AgentChatRuntimeApprovalView: View {
             DisclosureGroup {
               Text(verbatim: technicalDetail).font(.caption.monospaced()).textSelection(.enabled)
             } label: {
-              Text("Operation Details", bundle: .module).foregroundStyle(.secondary)
+              Text("Details", bundle: .module).foregroundStyle(.secondary)
             }
           }.frame(maxWidth: .infinity, alignment: .leading)
         }.frame(maxHeight: 320)

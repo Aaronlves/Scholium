@@ -45,6 +45,7 @@ struct AgentChatTurnPresentationTests {
     let timing = AgentChatTurnTiming(startedAt: start, completedAt: start.addingTimeInterval(38), durationMilliseconds: 38_500)
     let running = AgentChatTurnPresentation(state: .reading, timing: timing)
     #expect(running.seconds(at: start.addingTimeInterval(12)) == 12)
+    #expect(running.elapsedLabel(at: start.addingTimeInterval(12), locale: Locale(identifier: "en")) == "Working for 12 s")
     #expect(running.seconds(at: start.addingTimeInterval(-1)) == nil)
     #expect(AgentChatTurnPresentation(state: .working).seconds(at: start) == nil)
     for state in [AgentChatTurnPresentation.State.waitingForInput, .waitingForApproval, .uncertain, .stopping] {
@@ -55,6 +56,7 @@ struct AgentChatTurnPresentationTests {
     for state in [AgentChatTurnPresentation.State.completed, .failed, .interrupted] {
       let presentation = AgentChatTurnPresentation(state: state, timing: timing)
       #expect(!presentation.isWorking && presentation.seconds(at: start.addingTimeInterval(500)) == 38)
+      #expect(presentation.elapsedLabel(at: start.addingTimeInterval(500), locale: Locale(identifier: "en")) == "Worked for 38 s")
     }
   }
 

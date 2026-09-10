@@ -33,6 +33,7 @@ struct AgentChatView: View {
   @State private var showsComposerContext = false
   @State private var showsDiagnostics = false
   @State private var diagnosticMessageID: String?
+  @State private var diagnosticError: String?
   @State private var expandedActivityIDs: Set<String> = []
   @State private var completion = AgentChatComposerCompletion()
   @State private var notePickerTarget: AgentChatNotePicker.Target?
@@ -72,7 +73,7 @@ struct AgentChatView: View {
     }
     .popover(isPresented: $showsDiagnostics) {
       AgentChatDiagnosticsView(messages: controller.selected?.messages ?? [], selectedID: diagnosticMessageID,
-        error: controller.error, close: { showsDiagnostics = false })
+        error: diagnosticError ?? controller.error, close: { showsDiagnostics = false })
     }
     .sheet(item: $inspectedAgent) { child in
       AgentChatChildInspector(child: child, openReference: openReference)
@@ -104,6 +105,7 @@ struct AgentChatView: View {
       showsContext = false
       showsComposerContext = false
       showsDiagnostics = false
+      diagnosticError = nil
       expandedActivityIDs = []
       isAwayFromLatest = false
       transcriptIsScrolling = false
@@ -136,6 +138,7 @@ struct AgentChatView: View {
         showsContext = false
         showsComposerContext = false
         showsDiagnostics = false
+        diagnosticError = nil
       }
     }
     .onChange(of: find.query) { _, _ in refreshFind(reset: true) }
@@ -182,6 +185,7 @@ struct AgentChatView: View {
             || controller.selected?.localMaterials.isEmpty != true
             || controller.selected?.draftReplyQuotes?.isEmpty == false
             || controller.selected?.selectedMethods?.isEmpty == false
+            || controller.selected?.queuedMessages.isEmpty == false
             || controller.selected?.archivedAt != nil
           {
             controller.newConversation()
@@ -273,8 +277,14 @@ struct AgentChatView: View {
       if let error = controller.settingsRenewalError {
         VStack(alignment: .leading, spacing: 6) {
           Text("Settings Could Not Be Applied").font(.caption)
-          DisclosureGroup("Operation Details") { Text(verbatim: error).textSelection(.enabled) }.font(.caption)
-          Button("Retry") { controller.renewSettingsWhenIdle() }
+          HStack(spacing: 10) {
+            Button("Diagnostics…") {
+              diagnosticMessageID = nil
+              diagnosticError = error
+              showsDiagnostics = true
+            }
+            Button("Retry") { controller.renewSettingsWhenIdle() }
+          }
         }.padding(8)
       } else {
         ProgressView("Applying Settings…").controlSize(.small).padding(8)
@@ -300,8 +310,12 @@ struct AgentChatView: View {
     if let error = controller.error {
       VStack(alignment: .leading, spacing: 6) {
         Label("Conversation Needs Attention", systemImage: "exclamationmark.triangle").font(.caption)
-        DisclosureGroup("Operation Details") { Text(verbatim: error).textSelection(.enabled) }
-          .font(.caption).foregroundStyle(.secondary)
+        Button("Diagnostics…") {
+          diagnosticMessageID = nil
+          diagnosticError = error
+          showsDiagnostics = true
+        }
+        .font(.caption)
         if controller.state == .disconnected {
           Button("Agent Settings…") {
       UserDefaults.standard.set("integrations", forKey: "scholium.settings.selectedPane")
@@ -470,7 +484,9 @@ struct AgentChatView: View {
     }
     return !conversation.draft.isEmpty ? conversation.draft
       : conversation.messages.last(where: { $0.role != .operation && !$0.text.isEmpty })
-        .map { String($0.text.prefix(120)) } ?? ""
+        .map { String($0.text.prefix(120)) }
+      ?? conversation.queuedMessages.first.map { String($0.text.prefix(120)) }
+      ?? ""
   }
 
   private func refreshFind(reset: Bool = false) {
@@ -713,6 +729,17 @@ struct AgentChatView: View {
       if let turnID = message.turnID {
         Button("Branch from This Turn") { controller.branch(through: turnID) }
           .disabled(!controller.canBranch || !controller.branchPoints.contains(where: { $0.turnID == turnID }))
+        if message.role == .user,
+          controller.selected?.turns[turnID]?.status != .completed,
+          controller.canRetryInNewBranch(turnID: turnID) {
+          Button("Retry in New Branch") { controller.retryInNewBranch(turnID: turnID) }
+            .disabled(!controller.canRetryInNewBranch(turnID: turnID))
+        }
+        if message.role == .assistant, message.phase == .finalAnswer,
+          controller.editableRequests.contains(where: { $0.turnID == turnID }) {
+          Button("Retry in New Branch") { controller.retryInNewBranch(turnID: turnID) }
+            .disabled(!controller.canRetryInNewBranch(turnID: turnID))
+        }
       }
       if canQuote(message) {
         Button("Quote in Reply") { quote(message, selection: nil, in: conversationID) }
@@ -817,7 +844,11 @@ struct AgentChatView: View {
       }
       .font(.callout)
       .contextMenu {
-        Button("Diagnostics…") { diagnosticMessageID = message.id; showsDiagnostics = true }
+        Button("Diagnostics…") {
+          diagnosticError = nil
+          diagnosticMessageID = message.id
+          showsDiagnostics = true
+        }
       }
       .accessibilityElement(children: .contain)
       .accessibilityIdentifier("scholium.chat.activity.\(message.id)")
@@ -866,8 +897,12 @@ struct AgentChatView: View {
   private var currentActivity: some View {
     if controller.isBusy {
       if controller.state == .working && controller.approvals.isEmpty && currentActivityID == nil {
-        AgentChatActivityText(text: ScholiumL10n.string("Organizing a response…", locale: locale), isCurrent: isVisible)
-          .font(.callout).accessibilityIdentifier("scholium.chat.currentWork")
+        // No pulse is shown until the runtime supplies a concrete public
+        // activity. This keeps the turn header calm while preserving the
+        // active-row signal for observed work below.
+        Text(ScholiumL10n.string("Considering your question…", locale: locale))
+          .font(.callout).foregroundStyle(.secondary)
+          .accessibilityIdentifier("scholium.chat.currentWork")
       }
       let hasHeader = controller.currentTurnID.map { turn in
         timelineMessages.contains { $0.turnID == turn }
@@ -899,7 +934,7 @@ struct AgentChatView: View {
   }
 
   @ViewBuilder private var filesButton: some View {
-    if !conversationChangeIDs.isEmpty {
+    if changes == nil ? !conversationChangeIDs.isEmpty : !pendingChanges.isEmpty {
       Button { showsFiles = true } label: {
         Label(changes == nil ? String(localized: "Changes") : String(localized: "Changes: \(pendingChanges.count)"), systemImage: "pencil.line")
           .padding(.horizontal, 10).padding(.vertical, 7)
@@ -1042,6 +1077,9 @@ struct AgentChatView: View {
 
   private var contextPanel: some View {
     AgentChatContextView(usage: controller.selected?.contextUsage,
+      ledger: AgentChatContextLedger(conversation: controller.selected,
+        modelName: controller.selectedModel?.name ?? controller.selected?.preferences.model,
+        effort: controller.selectedEffort),
       quotas: controller.quotas, quotaError: controller.quotaError,
       isRefreshing: controller.isRefreshingQuota, canRefresh: controller.account != nil,
       canCompact: controller.canCompact,
@@ -1052,6 +1090,12 @@ struct AgentChatView: View {
   private var composer: some View {
     let conversationID = controller.selectedID
     return VStack(alignment: .leading) {
+      if !controller.queuedMessages.isEmpty {
+        AgentChatQueueView(messages: controller.queuedMessages,
+          canSend: { controller.canSendQueuedMessage($0.id) },
+          send: { _ = controller.sendQueuedMessage($0) },
+          remove: { controller.removeQueuedMessage($0) })
+      }
       if let methods = controller.selected?.selectedMethods, !methods.isEmpty {
         ScrollView(.horizontal) {
           HStack(spacing: 8) {
@@ -1237,6 +1281,16 @@ struct AgentChatView: View {
           .disabled(controller.state == .stopping)
           .help("Stop").accessibilityLabel("Stop")
         }
+        if controller.canQueue {
+          Button {
+            _ = controller.queue()
+          } label: {
+            Image(systemName: "text.badge.plus")
+          }
+          .help("Queue for Next Turn")
+          .accessibilityLabel("Queue for Next Turn")
+          .accessibilityIdentifier("scholium.chat.queueForNextTurn")
+        }
         Button {
           controller.send()
         } label: {
@@ -1304,7 +1358,7 @@ struct AgentChatView: View {
       }
       .frame(maxHeight: 150)
       if let technicalDetail = approval.technicalDetail {
-        DisclosureGroup("Operation Details") {
+        DisclosureGroup("Details") {
           ScrollView { Text(technicalDetail).font(.caption).textSelection(.enabled) }.frame(
             maxHeight: 100)
         }

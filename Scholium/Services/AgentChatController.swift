@@ -343,6 +343,26 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
     createBranch(at: turnID, editing: messageID)
   }
 
+  /// A request can be retried in a new branch after a failed or interrupted
+  /// turn, or after a completed turn that produced a final answer. The source
+  /// conversation is preserved and the new branch opens with the exact
+  /// request as a draft; sending it remains an explicit researcher action.
+  func canRetryInNewBranch(turnID: String) -> Bool {
+    guard canBranch, editableRequests.contains(where: { $0.turnID == turnID }),
+      let status = selected?.turns[turnID]?.status else { return false }
+    switch status {
+    case .failed, .interrupted: return true
+    case .completed: return true
+    case .inProgress: return false
+    }
+  }
+
+  func retryInNewBranch(turnID: String) {
+    guard canBranch,
+      let message = editableRequests.first(where: { $0.turnID == turnID }) else { return }
+    createBranch(at: turnID, editing: message.id)
+  }
+
   private func createBranch(at turnID: String, editing messageID: String?) {
     guard canBranch, let source = selected, let sourceThread = source.threadID, let runtime,
       branchPoints.contains(where: { $0.turnID == turnID }) else { return }
@@ -410,6 +430,18 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
     return canSend(message: draftMessage(selected), in: selected)
       && !preparingMaterials.contains(selected.id)
   }
+
+  /// A queued message is admitted only while a confirmed turn is active. It
+  /// uses the same source, method, model and material validation as immediate
+  /// input, but never shares the active turn's runtime identity.
+  var canQueue: Bool {
+    guard let selected, let execution = executions[selected.id], execution.state == .working,
+      execution.turnID != nil else { return false }
+    return canSend(message: draftMessage(selected), in: selected)
+      && !preparingMaterials.contains(selected.id)
+  }
+
+  var queuedMessages: [AgentChatMessage] { selected?.queuedMessages ?? [] }
 
   private func draftMessage(_ conversation: AgentChatConversation) -> AgentChatMessage {
     var message = AgentChatMessage(role: .user, text: conversation.draft,
@@ -537,6 +569,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
   private func releaseMaterialIfUnreferenced(_ material: AgentChatLocalMaterial) async throws {
     guard !conversations.contains(where: { conversation in
       conversation.localMaterials.contains { $0.id == material.id }
+        || conversation.queuedMessages.contains { $0.localMaterials.contains { $0.id == material.id } }
         || conversation.messages.contains { $0.localMaterials.contains { $0.id == material.id } }
     }) else { return }
     try await materialStore.discard(material)
@@ -1008,6 +1041,93 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
     send(draftMessage(selected), in: selected, consumesDraft: true)
   }
 
+  /// Retain the current draft for the next turn while the active turn keeps
+  /// running. The input is not sent, steered, or otherwise admitted yet.
+  @discardableResult
+  func queue() -> Bool {
+    guard canQueue, let selectedID, let selected else { return false }
+    let message = draftMessage(selected)
+    update(in: selectedID) { conversation in
+      conversation.queuedMessages.append(message)
+      consumeDraft(message, from: &conversation)
+    }
+    persist()
+    return true
+  }
+
+  /// Explicitly send one retained queue item once its conversation is idle.
+  /// Automatic dispatch uses the same path after a matching completed turn.
+  func canSendQueuedMessage(_ messageID: String) -> Bool {
+    guard connectionState == .ready, let selectedID, let conversation = conversation(selectedID),
+      executions[selectedID]?.state == .ready,
+      let message = conversation.queuedMessages.first, message.id == messageID else { return false }
+    return canSend(message: message, in: conversation)
+  }
+
+  @discardableResult
+  func sendQueuedMessage(_ messageID: String) -> Bool {
+    guard let selectedID else { return false }
+    return dispatchQueuedMessage(messageID, in: selectedID)
+  }
+
+  func removeQueuedMessage(_ messageID: String, in conversationID: UUID? = nil) {
+    guard let owner = conversationID ?? selectedID,
+      let message = conversation(owner)?.queuedMessages.first(where: { $0.id == messageID }) else { return }
+    update(in: owner) { $0.queuedMessages.removeAll { $0.id == messageID } }
+    persist()
+    let materials = message.localMaterials
+    guard !materials.isEmpty else { return }
+    Task { @MainActor [weak self] in
+      guard let self else { return }
+      do {
+        try await self.saveNow()
+        for material in materials { try await self.releaseMaterialIfUnreferenced(material) }
+      } catch { self.materialErrors[owner] = error.localizedDescription }
+    }
+  }
+
+  private func consumeDraft(_ message: AgentChatMessage, from conversation: inout AgentChatConversation) {
+    if conversation.draft == message.text && conversation.draftCoordinationTarget == message.coordinationTarget {
+      conversation.draft = ""
+      conversation.draftCoordinationTarget = nil
+    }
+    conversation.draftReplyQuotes?.removeAll { quote in message.replyQuotes?.contains(where: { $0.id == quote.id }) == true }
+    if conversation.draftReplyQuotes?.isEmpty == true { conversation.draftReplyQuotes = nil }
+    conversation.attachments.removeAll { item in message.attachments.contains(where: { $0.id == item.id }) }
+    conversation.localMaterials.removeAll { item in message.localMaterials.contains(where: { $0.id == item.id }) }
+    let remainingMethods = (conversation.selectedMethods ?? []).filter { method in !(message.methods ?? []).contains(method) }
+    conversation.selectedMethods = remainingMethods.isEmpty ? nil : remainingMethods
+  }
+
+  @discardableResult
+  private func dispatchQueuedMessage(_ messageID: String, in conversationID: UUID) -> Bool {
+    guard connectionState == .ready, let conversation = conversation(conversationID),
+      executions[conversationID]?.state == .ready,
+      let message = conversation.queuedMessages.first, message.id == messageID,
+      canSend(message: message, in: conversation) else { return false }
+    update(in: conversationID) { $0.queuedMessages.removeAll { $0.id == messageID } }
+    send(message, in: conversation, consumesDraft: false) { [weak self] receipt in
+      guard let self, receipt == .unavailable else { return }
+      self.update(in: conversationID) { conversation in
+        guard !conversation.queuedMessages.contains(where: { $0.id == message.id }) else { return }
+        conversation.queuedMessages.insert(message, at: 0)
+      }
+      self.persist()
+    }
+    persist()
+    return true
+  }
+
+  private func drainQueuedMessage(in conversationID: UUID) {
+    guard connectionState == .ready, !isRenewingSettings,
+      executions[conversationID]?.state == .ready,
+      let message = conversation(conversationID)?.queuedMessages.first else { return }
+    if !dispatchQueuedMessage(message.id, in: conversationID) {
+      executions[conversationID]?.error = ScholiumL10n.string(
+        "The next queued message needs attention before it can be sent.")
+    }
+  }
+
   private func send(_ proposed: AgentChatMessage, in selected: AgentChatConversation, consumesDraft: Bool,
                     completion: @escaping @MainActor (AgentChatParentReceipt) -> Void = { _ in }) {
     guard canSend(message: proposed, in: selected), let runtime else { completion(.unavailable); return }
@@ -1075,15 +1195,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
           $0.messages.append(message)
           $0.pendingMessageID = message.id
           if consumesDraft {
-            if $0.draft == message.text && $0.draftCoordinationTarget == message.coordinationTarget {
-              $0.draft = ""; $0.draftCoordinationTarget = nil
-            }
-            $0.draftReplyQuotes?.removeAll { quote in message.replyQuotes?.contains(where: { $0.id == quote.id }) == true }
-            if $0.draftReplyQuotes?.isEmpty == true { $0.draftReplyQuotes = nil }
-            $0.attachments.removeAll { item in message.attachments.contains(where: { $0.id == item.id }) }
-            $0.localMaterials.removeAll { item in message.localMaterials.contains(where: { $0.id == item.id }) }
-            let remainingMethods = ($0.selectedMethods ?? []).filter { method in !(message.methods ?? []).contains(method) }
-            $0.selectedMethods = remainingMethods.isEmpty ? nil : remainingMethods
+            self.consumeDraft(message, from: &$0)
           } else if let target = message.coordinationTarget, $0.childDrafts[target.childThreadID] == message.text {
             $0.childDrafts.removeValue(forKey: target.childThreadID)
           }
@@ -1990,10 +2102,12 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
         else if executions[conversationID]?.state != .compacting { executions[conversationID]?.state = .working }
       }
     case .turnCompleted(let turn):
+      guard executions[conversationID]?.completedTurns.contains(turn.id) != true else { return }
       let shouldNotify = executions[conversationID]?.turnID == turn.id
         && executions[conversationID]?.state != .stopping
         && executions[conversationID]?.admissionID != nil
         && executions[conversationID]?.completedTurns.contains(turn.id) == false
+      let wasCurrentTurn = executions[conversationID]?.turnID == turn.id
       attributeTurn(turn, in: conversationID)
       executions[conversationID]?.completedTurns.insert(turn.id)
       if let active = executions[conversationID]?.turnID, active != turn.id { return }
@@ -2022,6 +2136,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
       }
       for approval in executions[conversationID]?.approvals ?? [] { answer(approval.id, allow: false) }
       persist()
+      if wasCurrentTurn, turn.status == .completed { drainQueuedMessage(in: conversationID) }
     case .item(let item, let completed, let context):
       if !completed, let turn = event.turnID, executions[conversationID]?.completedTurns.contains(turn) == true { return }
       switch item.content {

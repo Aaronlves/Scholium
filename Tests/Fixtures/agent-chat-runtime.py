@@ -167,6 +167,20 @@ for line in sys.stdin:
         result = {'authorizationUrl': 'file:///fixture' if (home / 'unsafe-auth-url').exists()
             else 'https://auth.example.test/authorize?state=fixture'}
     elif method == 'account/rateLimits/read':
+        release = home / 'release-queued-turn'
+        if release.exists():
+            release.unlink()
+            for tid, thread in threads.items():
+                for turn in thread['turns']:
+                    if turn.get('releaseQueuedFixture') and turn.get('status') == 'inProgress':
+                        mid = str(uuid.uuid4())
+                        reply = {'type': 'agentMessage', 'id': mid, 'text': 'Queued fixture reply'}
+                        turn['items'].append(reply)
+                        event('item/agentMessage/delta', {'threadId': tid, 'turnId': turn['id'], 'itemId': mid,
+                            'delta': reply['text']})
+                        event('item/completed', {'threadId': tid, 'turnId': turn['id'], 'item': reply})
+                        turn['status'] = 'completed'
+                        event('turn/completed', {'threadId': tid, 'turn': turn})
         completion = home / 'complete-background-activity'
         if completion.exists():
             exit_code = int(completion.read_text())
@@ -296,6 +310,8 @@ for line in sys.stdin:
             turn = {'id': turn_id, 'status': 'inProgress', 'items': [user]}
             if 'timed activity' in text:
                 turn['startedAt'] = 1788912000
+            if 'hold-queue' in text:
+                turn['releaseQueuedFixture'] = True
             threads[tid]['turns'].append(turn)
         if (home / 'hold-parent-input').exists():
             save()

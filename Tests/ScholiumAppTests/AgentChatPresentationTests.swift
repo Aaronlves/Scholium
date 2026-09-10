@@ -36,6 +36,8 @@ enum NativeChatSourceScope {
     "Scholium/Views/Sidebar/AgentChatRuntimeApprovalView.swift",
     "Scholium/Views/Sidebar/AgentChatDelegationView.swift",
     "Scholium/Views/Sidebar/AgentChatChildView.swift",
+    "Scholium/Views/Sidebar/AgentChatQueueView.swift",
+    "Scholium/Services/AgentChatContextLedger.swift",
   ]
 }
 
@@ -128,6 +130,18 @@ struct AgentChatPresentationTests {
     #expect(blocks[2].cells.map { String($0.characters) } == ["One", "Two"])
   }
 
+  @Test("Semantic replies use the safe reader only when native text cannot preserve them")
+  func semanticRichReplies() {
+    let prose = AgentChatMarkdownBlock.parse("A plain philosophical distinction.")
+    #expect(!AgentChatMarkdownBlock.requiresRichReader("A plain philosophical distinction.", blocks: prose))
+    let math = "The relation is $x + y$."
+    #expect(AgentChatMarkdownBlock.requiresRichReader(math, blocks: AgentChatMarkdownBlock.parse(math)))
+    let footnote = "A claim.[^source]\n\n[^source]: Primary text."
+    #expect(AgentChatMarkdownBlock.requiresRichReader(footnote, blocks: AgentChatMarkdownBlock.parse(footnote)))
+    let callout = "> [!state] Claim\n> The premise remains open."
+    #expect(AgentChatMarkdownBlock.requiresRichReader(callout, blocks: AgentChatMarkdownBlock.parse(callout)))
+  }
+
   @Test("Activity can collapse without hiding replies or losing exact change links")
   func timeline() {
     let change = UUID()
@@ -198,6 +212,10 @@ struct AgentChatPresentationTests {
       #expect(!source.contains(".scholiumForeground("))
       #expect(!source.contains(".font(.system(size:"))
     }
+    let chatViewSource = try String(
+      contentsOf: root.appendingPathComponent("Scholium/Views/Sidebar/AgentChatView.swift"),
+      encoding: .utf8)
+    #expect(!chatViewSource.contains("Operation Details"))
     let source = try String(
       contentsOf: root.appendingPathComponent("Scholium/Services/AgentChatController.swift"),
       encoding: .utf8)

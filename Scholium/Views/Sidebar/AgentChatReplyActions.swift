@@ -33,6 +33,19 @@ struct AgentChatReplySource: Identifiable, Equatable {
   }
 }
 
+/// Pure availability for the reply footer. Materials are supplied context;
+/// Sources are claims or links made visible by the reply. Keeping this split
+/// outside the view prevents one trigger from silently carrying two meanings.
+struct AgentChatReplyActionAvailability: Equatable {
+  let hasSources: Bool
+  let hasMaterials: Bool
+
+  init(sources: [AgentChatReplySource], hasMaterials: Bool) {
+    self.hasSources = !sources.isEmpty
+    self.hasMaterials = hasMaterials
+  }
+}
+
 struct AgentChatReplyActions: View {
   let text: String
   let openNote: (URL) -> Void
@@ -42,10 +55,12 @@ struct AgentChatReplyActions: View {
   @Environment(\.openURL) private var openURL
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @State private var showsSources = false
+  @State private var showsMaterials = false
   @State private var copied = false
 
   var body: some View {
     let sources = AgentChatReplySource.collect(text)
+    let availability = AgentChatReplyActionAvailability(sources: sources, hasMaterials: context.hasMaterials)
     HStack(spacing: 12) {
       Button {
         NSPasteboard.general.clearContents()
@@ -63,7 +78,7 @@ struct AgentChatReplyActions: View {
         do { try await Task.sleep(for: .seconds(2)) } catch { return }
         copied = false
       }
-      if !sources.isEmpty || context.hasMaterials {
+      if availability.hasSources {
         Button { showsSources = true } label: {
           HStack(spacing: 4) {
             Image(systemName: "books.vertical").chatAccessory()
@@ -72,11 +87,23 @@ struct AgentChatReplyActions: View {
         }
         .accessibilityIdentifier("scholium.chat.sources")
         .popover(isPresented: $showsSources, arrowEdge: .leading) {
-          AgentChatSourcesView(sources: sources, context: context, openAttachment: openAttachment,
-            previewMaterial: previewMaterial, close: { showsSources = false }) { source in
+          AgentChatSourcesView(sources: sources, context: context, close: { showsSources = false }) { source in
             showsSources = false
             if source.isNote { openNote(source.url) } else { openURL(source.url) }
           }
+        }
+      }
+      if availability.hasMaterials {
+        Button { showsMaterials = true } label: {
+          HStack(spacing: 4) {
+            Image(systemName: "paperclip").chatAccessory()
+            Text("Materials", bundle: .module)
+          }
+        }
+        .accessibilityIdentifier("scholium.chat.materials")
+        .popover(isPresented: $showsMaterials, arrowEdge: .leading) {
+          AgentChatMaterialsView(context: context, openAttachment: openAttachment,
+            previewMaterial: previewMaterial, close: { showsMaterials = false })
         }
       }
     }
@@ -89,12 +116,9 @@ struct AgentChatReplyActions: View {
 struct AgentChatSourcesView: View {
   let sources: [AgentChatReplySource]
   var context: AgentChatReplySourceContext? = nil
-  var openAttachment: ((AgentChatAttachment) -> Void)? = nil
-  var previewMaterial: ((AgentChatLocalMaterial) async throws -> URL)? = nil
   let close: () -> Void
   let open: (AgentChatReplySource) -> Void
   @State private var expandedSources: Set<String> = []
-  @State private var showsMaterials = false
 
   private var contentHeight: CGFloat {
     let expandedHeight = sources.filter { expandedSources.contains($0.id) }.reduce(CGFloat.zero) { height, source in
@@ -105,64 +129,89 @@ struct AgentChatSourcesView: View {
       default: return height
       }
     }
-    let materialHeight = showsMaterials ? CGFloat((context?.attachments.count ?? 0) + (context?.localMaterials.count ?? 0)) * 64 : 0
-    return min(380, max(180, 64 + CGFloat(sources.count) * 100
-      + (context?.hasMaterials == true ? 56 : 0) + expandedHeight + materialHeight))
+    return min(380, max(180, 64 + CGFloat(sources.count) * 100 + expandedHeight))
   }
 
   var body: some View {
-          VStack(alignment: .leading, spacing: 12) {
-            HStack {
-              Text("Sources").font(.headline)
-              Spacer()
-              Button("Close", action: close).keyboardShortcut(.cancelAction)
-            }
-            ScrollView {
-              VStack(alignment: .leading, spacing: 14) {
-                ForEach(sources) { source in
-                  VStack(alignment: .leading, spacing: 4) {
-                    Label(source.destination, systemImage: source.isNote ? "doc.text" : source.isWeb ? "globe" : "doc")
-                      .font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                    if source.isNote || source.isWeb || source.isZotero {
-                      Button(source.title) {
-                        open(source)
-                      }.buttonStyle(.link)
-                    } else { Text(source.title).textSelection(.enabled) }
-                    if let context {
-                      AgentChatSourceEvidenceView(evidence: context.evidence(for: source.url),
-                        isExpanded: Binding(get: { expandedSources.contains(source.id) }, set: { expanded in
-                          if expanded { expandedSources.insert(source.id) }
-                          else { expandedSources.remove(source.id) }
-                        }))
-                    }
-                    if !source.isNote {
-                      Text(source.url.absoluteString).font(.caption).foregroundStyle(.secondary)
-                        .lineLimit(2).textSelection(.enabled).help(source.url.absoluteString)
-                    }
-                  }.frame(maxWidth: .infinity, alignment: .leading)
-                }
-                if let context, context.hasMaterials {
-                  DisclosureGroup("Materials for This Turn", isExpanded: $showsMaterials) {
-                    VStack(alignment: .leading, spacing: 8) {
-                      ForEach(context.attachments) { attachment in
-                        AgentChatMaterialChip(attachment: attachment, remove: nil,
-                          open: { openAttachment?(attachment) })
-                      }
-                      ForEach(context.localMaterials) { material in
-                        AgentChatLocalMaterialChip(material: material,
-                          preview: {
-                            guard let previewMaterial else { throw AgentChatNoteMaterialError.unavailable }
-                            return try await previewMaterial(material)
-                          }, remove: nil, replace: nil)
-                      }
-                    }.padding(.top, 6)
-                  }
-                  .font(.callout)
-                }
+    VStack(alignment: .leading, spacing: 12) {
+      HStack {
+        Text("Sources").font(.headline)
+        Spacer()
+        Button("Close", action: close).keyboardShortcut(.cancelAction)
+      }
+      ScrollView {
+        VStack(alignment: .leading, spacing: 14) {
+          ForEach(sources) { source in
+            VStack(alignment: .leading, spacing: 4) {
+              Label(source.destination, systemImage: source.isNote ? "doc.text" : source.isWeb ? "globe" : "doc")
+                .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+              if source.isNote || source.isWeb || source.isZotero {
+                Button(source.title) {
+                  open(source)
+                }.buttonStyle(.link)
+              } else { Text(source.title).textSelection(.enabled) }
+              if let context {
+                AgentChatSourceEvidenceView(evidence: context.evidence(for: source.url),
+                  isExpanded: Binding(get: { expandedSources.contains(source.id) }, set: { expanded in
+                    if expanded { expandedSources.insert(source.id) }
+                    else { expandedSources.remove(source.id) }
+                  }))
               }
-            }
-          }.padding().frame(width: 340, height: contentHeight)
-            .font(.body).foregroundStyle(.primary)
-            .tint(nil as Color?)
+              if !source.isNote {
+                Text(source.url.absoluteString).font(.caption).foregroundStyle(.secondary)
+                  .lineLimit(2).textSelection(.enabled).help(source.url.absoluteString)
+              }
+            }.frame(maxWidth: .infinity, alignment: .leading)
+          }
+        }
+      }
+    }
+    .padding().frame(width: 340, height: contentHeight)
+    .font(.body).foregroundStyle(.primary)
+    .tint(nil as Color?)
+  }
+}
+
+/// A dedicated context surface for material supplied to the turn. It is kept
+/// separate from Sources so a researcher can distinguish what they supplied
+/// from what the reply cites or links.
+struct AgentChatMaterialsView: View {
+  let context: AgentChatReplySourceContext
+  let openAttachment: (AgentChatAttachment) -> Void
+  let previewMaterial: (AgentChatLocalMaterial) async throws -> URL
+  let close: () -> Void
+
+  private var count: Int { context.attachments.count + context.localMaterials.count }
+  private var contentHeight: CGFloat { min(360, max(180, 92 + CGFloat(count) * 76)) }
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 12) {
+      HStack(alignment: .firstTextBaseline) {
+        VStack(alignment: .leading, spacing: 2) {
+          Text("Materials", bundle: .module).font(.headline)
+          Text("Supplied for this turn", bundle: .module).font(.caption).foregroundStyle(.secondary)
+        }
+        Spacer()
+        Button("Close", action: close).keyboardShortcut(.cancelAction)
+      }
+      ScrollView {
+        VStack(alignment: .leading, spacing: 8) {
+          ForEach(context.attachments) { attachment in
+            AgentChatMaterialChip(attachment: attachment, remove: nil,
+              open: { openAttachment(attachment) })
+          }
+          ForEach(context.localMaterials) { material in
+            AgentChatLocalMaterialChip(material: material,
+              preview: { try await previewMaterial(material) }, remove: nil, replace: nil)
+          }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+      }
+    }
+    .padding()
+    .frame(width: 340, height: contentHeight)
+    .font(.body).foregroundStyle(.primary)
+    .tint(nil as Color?)
+    .accessibilityIdentifier("scholium.chat.materialsView")
   }
 }
