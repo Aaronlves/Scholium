@@ -1,6 +1,6 @@
 ---
 name: scholium-performance-audit
-description: "Diagnose or remediate measured Scholium runtime performance without weakening source fidelity or vault safety. Use for a concrete latency, CPU, memory, hang, rendering, indexing, or regression target; select diagnose or remediate mode and exclude speculative optimization without a symptom or measurement goal."
+description: "Diagnose or remediate a measured Scholium performance problem. Use for latency, CPU, memory, hangs, rendering, indexing, or regressions; preserve source fidelity and vault safety, and exclude speculative optimization."
 ---
 
 # Scholium Performance Audit

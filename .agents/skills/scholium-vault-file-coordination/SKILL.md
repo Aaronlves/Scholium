@@ -1,6 +1,6 @@
 ---
 name: scholium-vault-file-coordination
-description: "Implement, diagnose, or test coordination among Scholium, external vault editors, sync tools, and multiple windows. Use for FSEvents, scans, rename or deletion, autosave, stale buffers, conflicts, atomic replacement, shared ownership, caches, bookmarks, cloud placeholders, or watcher lifecycle."
+description: "Implement, diagnose, or test Scholium coordination with external editors, sync tools, and multiple windows. Use for watchers, scans, rename/delete, autosave, stale buffers, conflicts, atomic replacement, bookmarks, cloud placeholders, or lifecycle."
 ---
 
 # Scholium Vault File Coordination

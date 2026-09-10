@@ -1,6 +1,6 @@
 ---
 name: scholium-markdown-editor-integration
-description: "Implement, diagnose, or test Scholium's active Markdown editor and reader boundary. Use for CodeMirror or WKWebView bridging, text reconciliation, presentation modes, selection, undo, focus, IME, accessibility, content security, or generated assets."
+description: "Implement, diagnose, or test Scholium's Markdown editor and reader boundary. Use for CodeMirror/WKWebView bridging, exact text reconciliation, selection, undo, focus, IME, accessibility, security, or generated assets."
 ---
 
 # Scholium Markdown Editor Integration

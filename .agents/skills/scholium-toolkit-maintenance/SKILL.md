@@ -1,6 +1,6 @@
 ---
 name: scholium-toolkit-maintenance
-description: "Audit, maintain, or evaluate Scholium's local developer-skill toolkit. Use for `.agents/skills`, its capability catalog, overlap, staleness, metadata, references, routing, validation, or duplicate discovery; exclude application code and release-shipped product skills."
+description: "Audit, maintain, or evaluate Scholium's canonical developer-skill toolkit. Use for `.agents/skills`, the catalog, metadata, routing, references, validation, overlap, staleness, or duplicate discovery; exclude product code and shipped skills."
 ---
 
 # Scholium Toolkit Maintenance

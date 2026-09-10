@@ -1,6 +1,6 @@
 ---
 name: rust-language
-description: "Implement, review, debug, or test Rust and Swift-facing native code in Scholium. Use for Cargo, ownership, errors, concurrency, performance, unsafe or FFI boundaries, packaging, or Rust-adoption decisions; exclude Swift-only work and unmeasured rewrites."
+description: "Implement or review bounded Rust or Rust/Swift FFI components in Scholium. Use for Cargo, ownership, errors, concurrency, unsafe code, performance, packaging, or Rust-adoption decisions; exclude Swift-only work and unmeasured rewrites."
 ---
 
 # Rust Language

@@ -1,6 +1,6 @@
 ---
 name: scholium-trust-boundary-audit
-description: "Audit or harden Scholium researcher-control and loss-prevention boundaries. Use only when authorization, containment, privacy, current-revision enforcement, credential handling, or recovery safety could permit loss, disclosure, or a misapplied consequential action; select audit or harden mode. Ordinary source semantics, file observation, Agent lifecycle, and recovery presentation stay with their functional owners unless this trust contract changes."
+description: "Audit or harden Scholium researcher-control and loss-prevention boundaries. Use for authorization, containment, privacy, current-revision, credentials, or recovery safety; route ordinary source, file, Agent lifecycle, and presentation work to functional owners."
 ---
 
 # Scholium Trust Boundary Audit

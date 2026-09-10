@@ -1,6 +1,6 @@
 ---
 name: scholium-interface-design
-description: "Critique, design, record approved decisions for, or implement Scholium's native macOS interface. Use for SwiftUI/AppKit presentation, navigation, focus, layout, visual polish, accessibility, or motion terminology and review. Select critique, design, decision-recording, or implementation; interaction verification belongs to Xcode workflow."
+description: "Critique, design, record, or implement Scholium's native macOS interface. Use for SwiftUI/AppKit layout, navigation, focus, accessibility, visual polish, or motion; route interaction verification to Xcode workflow."
 ---
 
 # Scholium Interface Design

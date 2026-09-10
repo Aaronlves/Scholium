@@ -1,6 +1,6 @@
 ---
 name: xcode-workflow
-description: "Build, test, or diagnose Apple-platform projects using Xcode MCP or the selected toolchain; run isolated QA interaction checks and stage human acceptance. Use for builds, SDK documentation, keyboard/focus/accessibility journeys, feedback builds, or authorized release-artifact checks. Direct unit-test design belongs to Swift language work."
+description: "Build, test, or diagnose Apple-platform projects and isolated Scholium QA. Use for Xcode/toolchain builds, SDK docs, keyboard/focus/accessibility journeys, feedback builds, human acceptance, or release-artifact checks; route unit-test design to Swift."
 ---
 
 # Xcode Workflow

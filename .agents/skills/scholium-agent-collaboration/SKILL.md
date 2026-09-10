@@ -1,6 +1,6 @@
 ---
 name: scholium-agent-collaboration
-description: "Implement, diagnose, or test Scholium external-Agent collaboration through the local MCP/App bridge, guarded Note operations, and Agent Changes. Exclude philosophical method content, interface-only changes, source parsing, retrieval ranking, and release acceptance."
+description: "Implement, diagnose, or test Scholium's external-Agent MCP/App bridge, guarded Note operations, or Agent Changes. Exclude philosophical methods, interface-only work, source parsing, retrieval ranking, and release acceptance."
 ---
 
 # Scholium Agent Collaboration

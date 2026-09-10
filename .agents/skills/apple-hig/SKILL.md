@@ -1,12 +1,6 @@
 ---
 name: apple-hig
-description: >
-  Route Apple-platform interface design and review to the current official
-  Human Interface Guidelines and selected SDK documentation. Use for iOS,
-  iPadOS, macOS, tvOS, visionOS, or watchOS layout, navigation, controls,
-  materials, typography, color, symbols, motion, accessibility, privacy, and
-  interaction conventions. The local distilled corpus is a dated locator and
-  offline fallback, not an independent source of current Apple policy.
+description: "Verify Apple Human Interface Guidelines and SDK guidance for native interface decisions. Use for Apple-platform layout, controls, materials, typography, color, symbols, motion, accessibility, privacy, or interaction conventions; keep Scholium authority primary."
 ---
 
 # Apple HIG

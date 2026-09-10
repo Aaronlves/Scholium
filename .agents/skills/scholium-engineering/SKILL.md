@@ -1,6 +1,6 @@
 ---
 name: scholium-engineering
-description: "Implement cross-layer Scholium changes, execute architecture or state-ownership cutovers, and close explicit final integration. Use only when implementation crosses subsystem owners, changes architecture/state ownership, or an actual final integration is identified; broad documentation, design, audit, many-file, and single-owner work do not qualify. Select cross-layer-integration or architecture-cutover mode."
+description: "Implement Scholium changes that cross subsystem owners, change state ownership, or are an explicit final integration. Use architecture-cutover or cross-layer-integration mode; route documentation, design, audits, and single-owner work elsewhere."
 ---
 
 # Scholium Engineering

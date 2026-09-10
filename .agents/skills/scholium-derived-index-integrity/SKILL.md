@@ -1,6 +1,6 @@
 ---
 name: scholium-derived-index-integrity
-description: "Implement, diagnose, or test Scholium Search, links, and derived indexes; evaluate or replace tokenizers and index engines. Use for ranking, scopes, saved queries, CJK/Unicode, source locations, incremental rebuild, recovery, or GUI/CLI parity. Exclude authoritative source writes and unmeasured engine rewrites."
+description: "Implement, diagnose, or test Scholium Search, links, and derived indexes. Use for ranking, scopes, saved queries, CJK/Unicode, source locations, rebuild/recovery, or backend evaluation; exclude authoritative source writes and unmeasured rewrites."
 ---
 
 # Scholium Derived Index Integrity

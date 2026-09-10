@@ -1,6 +1,6 @@
 ---
 name: scholium-app-auditor
-description: "Perform read-only whole-app or cross-contract Scholium architecture/decomposition, defect, contract-conformance, and release-acceptance audits. Invoke for a general app audit, cross-cutting architecture question, conformance review, or release-readiness decision; exclude ordinary work and bounded audits owned by a specialist capability."
+description: "Audit Scholium architecture, defects, contract conformance, or release acceptance read-only. Use for whole-app or cross-contract questions; route bounded Agent, source, file, interface, performance, language, or test audits to their owners."
 ---
 
 # Scholium App Auditor

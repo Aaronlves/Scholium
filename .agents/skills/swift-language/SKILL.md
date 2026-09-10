@@ -1,6 +1,6 @@
 ---
 name: swift-language
-description: "Implement, review, or test Swift code, including API naming, type design, concurrency, and unit/integration tests. Use for compiler diagnostics, isolation, async lifetimes, serialization, refactoring, or Swift Testing. Route view layout and interaction to native interface work, and build/QA execution to Xcode workflow."
+description: "Implement, review, or test Swift code. Use for API/type design, compiler diagnostics, concurrency, isolation, async lifetimes, serialization, refactoring, or Swift Testing; route layout/interaction to native interface and builds/QA to Xcode."
 ---
 
 # Swift Language

@@ -1,6 +1,6 @@
 ---
 name: design-philosophical-prompts-and-skills
-description: "Design, audit, simplify, migrate, and evaluate prompts, prompt stacks, agent instructions, and reusable skills for philosophical research and scholarly knowledge-base work. Use when creating or revising philosophy-facing methods for source analysis, interpretation, conceptual analysis, argument reconstruction, dialectical development, research exploration, synthesis, writing, peer review, dialogue, or Scholium-like workflows; translating model prompting guidance into philosophical instructions; separating universal methods from application adapters and researcher-owned practices; or diagnosing skills that fabricate, lose source fidelity, overprescribe process, mishandle permissions, or fail to produce sound durable research artifacts. Do not use merely to perform the underlying philosophical task, or for general coding, UI, deployment, and software-development skills whose direct outcome is not philosophical research."
+description: "Design or audit prompts, agent instructions, and reusable skills for philosophical research and scholarly knowledge bases. Use for source analysis, argument reconstruction, evidence or permission boundaries, and method design; exclude performing research, coding, or generic app work."
 ---
 
 # Design Philosophical Prompts and Skills

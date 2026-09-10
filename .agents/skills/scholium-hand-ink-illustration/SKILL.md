@@ -1,6 +1,6 @@
 ---
 name: scholium-hand-ink-illustration
-description: Create or edit Scholium raster product illustrations using the canonical pointing-hand app icon's parchment, deep-ink contour, cuff, and manuscript-mark visual DNA together with original solid-color fields and simple intention-bearing shapes. Use for in-product welcome, empty-state, educational, or feature-introduction artwork that reinforces one action clearly without replacing adjacent copy or controls. Not for replacing the application icon, laying out or coding the interface, generic posters, marketing campaigns, or copying third-party brand art.
+description: "Create or edit bounded, textless Scholium product illustrations for welcome, empty, educational, or feature-introduction states. Preserve the canonical hand-ink visual language; exclude app-icon replacement, interface code, posters, and copied third-party art."
 ---
 
 # Scholium Hand-Ink Illustration

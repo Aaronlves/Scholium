@@ -1,6 +1,6 @@
 ---
 name: scholium-markdown-yaml-fidelity
-description: "Implement, diagnose, or test Scholium's lossless Markdown and YAML pipeline. Use for exact parsing and targeted edits, schema projection, YAML validation, source versions, BOM, Unicode, newlines, or any read or save behavior that could normalize, drop, reinterpret, or corrupt authored source."
+description: "Implement, diagnose, or test Scholium's lossless Markdown/YAML pipeline. Use for exact parsing, targeted edits, schema projection, validation, source versions, BOM, Unicode, newlines, or save behavior that could alter authored bytes."
 ---
 
 # Scholium Markdown and YAML Fidelity
