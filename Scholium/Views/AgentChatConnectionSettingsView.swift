@@ -13,12 +13,9 @@ extension EnvironmentValues {
 
 struct AgentChatConnectionSettingsView: View {
   @ObservedObject var controller: AgentChatController
-  @Environment(\.scholiumFileSelectionPresenter) private var fileSelectionPresenter
-  @AppStorage("agent.codex.executable") private var executable = ""
-  @AppStorage("agent.codex.home") private var home = ""
-  @AppStorage("agent.scholium.helper") private var cli = ""
-  @State private var fileSelectionTask: Task<Void, Never>?
-  @State private var fileSelectionError: String?
+  var onShowExternalAgentHosts: (() -> Void)? = nil
+  @State private var showsAdvancedConnectionSettings = false
+  @State private var showsMethodsAndTools = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
@@ -47,39 +44,89 @@ struct AgentChatConnectionSettingsView: View {
         "Scholium finds Codex and prepares the connection automatically. Connection settings and saved chat history are managed on this Mac."
       )
       .font(.callout).foregroundStyle(.secondary)
-      DisclosureGroup("Advanced Connection Settings") {
-        VStack(alignment: .leading, spacing: 10) {
-          Text(
-            "Only change these locations if you use a custom installation. Leave them empty for automatic setup."
-          )
-          .font(.caption).foregroundStyle(.secondary)
-          pathRow("Codex Application", value: $executable, directory: false)
-          pathRow("Scholium Connection Helper", value: $cli, directory: false)
-          pathRow("Existing Codex Settings Folder", value: $home, directory: true)
-          Text(
-            "An existing Codex folder also uses its login, tools and settings. By default, Scholium keeps a separate login."
-          )
-          .font(.caption).foregroundStyle(.secondary)
-          if let fileSelectionError {
-            Text(fileSelectionError).font(.caption).foregroundStyle(.secondary)
+      settingsEditorSection("Advanced") {
+        VStack(alignment: .leading, spacing: 8) {
+          Button("Advanced Connection Settings…") {
+            showsAdvancedConnectionSettings = true
           }
-          Button("Use Automatic Setup") {
-            executable = ""
-            cli = ""
-            home = ""
+          Button("Methods and Tools…") {
+            showsMethodsAndTools = true
           }
-          .disabled(controller.state != .disconnected)
-          if let version = controller.runtimeVersion {
-            Text(version).font(.caption).textSelection(.enabled)
+          if let onShowExternalAgentHosts {
+            Button("External Agent Hosts…", action: onShowExternalAgentHosts)
           }
-        }.padding(.top, 8)
+        }
       }
-      Divider()
-      AgentChatCapabilitiesSettingsView(controller: controller, capabilities: controller.capabilities)
     }
-    .task(id: controller.selected?.threadID) {
-      controller.capabilities.refresh(threadID: controller.selected?.threadID)
+    .sheet(isPresented: $showsAdvancedConnectionSettings) {
+      AgentChatConnectionAdvancedSettingsView(controller: controller)
     }
+    .sheet(isPresented: $showsMethodsAndTools) {
+      AgentChatCapabilitiesSettingsSheet(
+        controller: controller,
+        capabilities: controller.capabilities
+      )
+    }
+  }
+}
+
+private struct AgentChatConnectionAdvancedSettingsView: View {
+  @Environment(\.dismiss) private var dismiss
+  @Environment(\.scholiumFileSelectionPresenter) private var fileSelectionPresenter
+  @ObservedObject var controller: AgentChatController
+  @AppStorage("agent.codex.executable") private var executable = ""
+  @AppStorage("agent.codex.home") private var home = ""
+  @AppStorage("agent.scholium.helper") private var cli = ""
+  @State private var fileSelectionTask: Task<Void, Never>?
+  @State private var fileSelectionError: String?
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.sectionSeparation) {
+      settingsTitle(
+        "Advanced Connection Settings",
+        detail: "Override automatic locations only when using a custom Codex installation."
+      )
+
+      VStack(alignment: .leading, spacing: 12) {
+        pathRow("Codex Application", value: $executable, directory: false)
+        pathRow("Scholium Connection Helper", value: $cli, directory: false)
+        pathRow("Existing Codex Settings Folder", value: $home, directory: true)
+        Text(
+          "An existing Codex folder also uses its login, tools and settings. By default, Scholium keeps a separate login."
+        )
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+        if let fileSelectionError {
+          Text(fileSelectionError)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+        Button("Use Automatic Setup") {
+          executable = ""
+          cli = ""
+          home = ""
+        }
+        .disabled(controller.state != .disconnected)
+      }
+
+      if let version = controller.runtimeVersion {
+        settingsEditorSection("Runtime") {
+          Text(version)
+            .font(.caption)
+            .textSelection(.enabled)
+        }
+      }
+
+      HStack {
+        Spacer()
+        Button("Done") { dismiss() }
+          .keyboardShortcut(.defaultAction)
+      }
+    }
+    .padding(24)
+    .frame(width: 680, height: 380, alignment: .topLeading)
     .onDisappear { fileSelectionTask?.cancel() }
   }
 
@@ -89,7 +136,9 @@ struct AgentChatConnectionSettingsView: View {
     VStack(alignment: .leading, spacing: 4) {
       Text(title).font(.caption)
       HStack {
-        TextField(title, text: value).textFieldStyle(.roundedBorder)
+        TextField("", text: value)
+          .textFieldStyle(.roundedBorder)
+          .accessibilityLabel(Text(title))
         Button("Choose…") {
           fileSelectionError = nil
           let request = ScholiumFileSelectionRequest(
@@ -118,4 +167,33 @@ struct AgentChatConnectionSettingsView: View {
     }.disabled(controller.state != .disconnected || fileSelectionTask != nil)
   }
 
+}
+
+private struct AgentChatCapabilitiesSettingsSheet: View {
+  @Environment(\.dismiss) private var dismiss
+  @ObservedObject var controller: AgentChatController
+  @ObservedObject var capabilities: AgentChatCapabilitiesController
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 16) {
+      ScrollView {
+        AgentChatCapabilitiesSettingsView(
+          controller: controller,
+          capabilities: capabilities
+        )
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+      }
+
+      HStack {
+        Spacer()
+        Button("Done") { dismiss() }
+          .keyboardShortcut(.defaultAction)
+      }
+    }
+    .padding(24)
+    .frame(width: 760, height: 360)
+    .task(id: controller.selected?.threadID) {
+      capabilities.refresh(threadID: controller.selected?.threadID)
+    }
+  }
 }

@@ -95,67 +95,23 @@ struct AgentChatMarkdown: View {
         if case .tableRow = block.kind { return true }; return block.kind == .code
       }) {
         AgentChatReadReply(source: text, quote: quoteSelection, openLink: { openURL($0) })
-      } else if let quoteSelection {
-        AgentChatSelectableText(source: text,
-          quote: { range, rendered in
-            quoteSelection(.init(range: range, renderedText: rendered))
-          }, openLink: { openURL($0) })
       } else {
-        let blocks = AgentChatMarkdownBlock.parse(text)
-        VStack(alignment: .leading, spacing: 0) {
-          ForEach(Array(blocks.enumerated()), id: \.element.id) { index, block in
-            blockView(block).padding(.bottom, spacing(after: index, in: blocks))
-          }
-        }
-        .font(.body)
-        .textSelection(.enabled)
+        // Keep ordinary researcher and Agent messages on the same native
+        // renderer. This removes the SwiftUI/AppKit font and line-wrap drift
+        // that used to make otherwise identical messages look different.
+        AgentChatSelectableText(source: text,
+          quote: quoteSelection.map { selection in
+            { range, rendered in
+              selection(.init(range: range, renderedText: rendered))
+            }
+          }, openLink: { openURL($0) })
       }
     }
+    .font(ScholiumChatAppearance.messageFont)
+    .foregroundStyle(ScholiumChatAppearance.messageForeground)
     .frame(maxWidth: expandsToFillWidth ? .infinity : nil, alignment: .leading)
   }
 
-  private func inlineStyled(_ value: AttributedString) -> AttributedString {
-    var result = value
-    for run in value.runs where run.inlinePresentationIntent?.contains(.code) == true {
-      result[run.range].backgroundColor = Color(nsColor: .quaternaryLabelColor)
-    }
-    return result
-  }
-
-  private func spacing(after index: Int, in blocks: [AgentChatMarkdownBlock]) -> CGFloat {
-    guard index + 1 < blocks.count else { return 0 }
-    switch (blocks[index].kind, blocks[index + 1].kind) {
-    case (.list(_), .list(_)), (.tableRow(_), .tableRow(_)): return 4
-    default: return 12
-    }
-  }
-
-  @ViewBuilder
-  private func blockView(_ block: AgentChatMarkdownBlock) -> some View {
-    switch block.kind {
-    case .prose:
-      Text(inlineStyled(block.text))
-    case .heading:
-      Text(block.text).font(.headline).accessibilityAddTraits(.isHeader)
-    case .code:
-      ScrollView(.horizontal) {
-        Text(block.text).monospaced().fixedSize(horizontal: true, vertical: false)
-      }
-    case .quote:
-      Text(block.text).padding(.leading)
-    case .list(let marker):
-      HStack(alignment: .firstTextBaseline) {
-        Text(marker)
-        Text(inlineStyled(block.text))
-      }.padding(.leading, block.isQuoted ? nil : 0)
-    case .tableRow(let header):
-      HStack(alignment: .top) {
-        ForEach(block.cells.indices, id: \.self) { index in
-          Text(block.cells[index]).frame(maxWidth: .infinity, alignment: .leading)
-        }
-      }.font(header ? .headline : .body)
-    }
-  }
 }
 
 struct AgentChatTimelineItem: Identifiable {

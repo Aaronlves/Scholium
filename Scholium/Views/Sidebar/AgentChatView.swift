@@ -304,9 +304,9 @@ struct AgentChatView: View {
           .font(.caption).foregroundStyle(.secondary)
         if controller.state == .disconnected {
           Button("Agent Settings…") {
-            UserDefaults.standard.set("research-guidance", forKey: "scholium.settings.selectedPane")
-            UserDefaults.standard.set(
-              "Agent Integration", forKey: "scholium.settings.researchGuidanceCategory")
+      UserDefaults.standard.set("integrations", forKey: "scholium.settings.selectedPane")
+      UserDefaults.standard.set(
+              SettingsIntegrationCategory.agents.rawValue, forKey: "scholium.settings.integrationCategory")
             openSettings()
           }
         }
@@ -691,7 +691,8 @@ struct AgentChatView: View {
             .accessibilityLabel("Requested Method: \(method.title)")
         }
       }
-      .foregroundStyle(.primary)
+      .font(ScholiumChatAppearance.messageFont)
+      .foregroundStyle(ScholiumChatAppearance.messageForeground)
       .padding(message.role == .user ? 12 : 0)
       .background {
         if message.role == .user {
@@ -1023,8 +1024,8 @@ struct AgentChatView: View {
     case .refreshMethods:
       controller.capabilities.refresh(threadID: controller.selected?.threadID, applyAssociations: true)
     case .manageMethods:
-      UserDefaults.standard.set("research-guidance", forKey: "scholium.settings.selectedPane")
-      UserDefaults.standard.set("Agent Integration", forKey: "scholium.settings.researchGuidanceCategory")
+      UserDefaults.standard.set("integrations", forKey: "scholium.settings.selectedPane")
+      UserDefaults.standard.set(SettingsIntegrationCategory.agents.rawValue, forKey: "scholium.settings.integrationCategory")
       openSettings()
     case .context: showsContext = true
     case .webSearch(let mode): controller.setWebSearch(mode)
@@ -1161,8 +1162,8 @@ struct AgentChatView: View {
           Button("Refresh Methods") { controller.capabilities.refresh(threadID: controller.selected?.threadID, applyAssociations: true) }
             .disabled(!controller.capabilities.isConnected || controller.capabilities.isRefreshing)
           Button("Manage Methods…") {
-            UserDefaults.standard.set("research-guidance", forKey: "scholium.settings.selectedPane")
-            UserDefaults.standard.set("Agent Integration", forKey: "scholium.settings.researchGuidanceCategory")
+            UserDefaults.standard.set("integrations", forKey: "scholium.settings.selectedPane")
+            UserDefaults.standard.set(SettingsIntegrationCategory.agents.rawValue, forKey: "scholium.settings.integrationCategory")
             openSettings()
           }
           }

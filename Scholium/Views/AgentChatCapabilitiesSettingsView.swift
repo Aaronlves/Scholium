@@ -14,8 +14,6 @@ struct AgentChatCapabilitiesSettingsView: View {
   @State private var pendingConfiguration: URL?
   @State private var confirmationError: String?
   @State private var confirmsSharedChange = false
-  @State private var showsMethods = true
-  @State private var showsTools = true
   @State private var toolEdit: AgentChatToolEdit?
 
   var body: some View {
@@ -38,7 +36,7 @@ struct AgentChatCapabilitiesSettingsView: View {
             .lineLimit(2).truncationMode(.middle).help(home.path)
         }
       }
-      DisclosureGroup("Methods", isExpanded: $showsMethods) {
+      settingsEditorSection("Methods") {
         VStack(alignment: .leading, spacing: 10) {
           Button("Add Methods Folder…", action: chooseFolder)
             .disabled(!capabilities.canChangeAssociations || folderSelectionTask != nil)
@@ -46,52 +44,33 @@ struct AgentChatCapabilitiesSettingsView: View {
             Text(error).foregroundStyle(.secondary).textSelection(.enabled)
           }
           if !capabilities.associatedFolders.isEmpty {
-            DisclosureGroup("Associated Folders") {
-              VStack(alignment: .leading, spacing: 8) {
-                ForEach(capabilities.associatedFolders, id: \.self) { path in
-                  HStack {
-                    Text(path).font(.caption).lineLimit(2).truncationMode(.middle)
-                      .help(path).textSelection(.enabled)
-                    Spacer(minLength: 4)
-                    Button {
-                      capabilities.removeAssociation(path, threadID: controller.selected?.threadID)
-                    } label: { Image(systemName: "minus.circle") }
-                      .help("Remove Association").accessibilityLabel("Remove Association: \(path)")
-                      .disabled(!capabilities.canChangeAssociations)
-                  }
+            Text("Associated Folders")
+              .font(.subheadline.weight(.semibold))
+              .accessibilityAddTraits(.isHeader)
+            VStack(alignment: .leading, spacing: 8) {
+              ForEach(capabilities.associatedFolders, id: \.self) { path in
+                HStack {
+                  Text(path).font(.caption).lineLimit(2).truncationMode(.middle)
+                    .help(path).textSelection(.enabled)
+                  Spacer(minLength: 4)
+                  Button {
+                    capabilities.removeAssociation(path, threadID: controller.selected?.threadID)
+                  } label: { Image(systemName: "minus.circle") }
+                    .help("Remove Association").accessibilityLabel("Remove Association: \(path)")
+                    .disabled(!capabilities.canChangeAssociations)
                 }
-              }.padding(.top, 6)
+              }
             }
           }
           if let error = capabilities.methodError { Text(error).foregroundStyle(.secondary).textSelection(.enabled) }
           ForEach(capabilities.methodErrors, id: \.self) { Text($0).foregroundStyle(.secondary).textSelection(.enabled) }
           if capabilities.hasMethods && capabilities.methods.isEmpty { Text("No Methods Found").foregroundStyle(.secondary) }
           ForEach(capabilities.methods) { method in
-            DisclosureGroup {
-              VStack(alignment: .leading, spacing: 6) {
-                Text(method.description).textSelection(.enabled)
-                Text(method.selection.path).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
-                if !method.dependencies.isEmpty {
-                  Text("Declared Tools: \(method.dependencies.joined(separator: ", "))")
-                    .font(.caption).foregroundStyle(.secondary)
-                }
-              }.padding(.vertical, 4)
-            } label: {
-              Toggle(isOn: Binding(get: { method.enabled }, set: { enabled in
-                if capabilities.isShared {
-                  pendingMethod = method; pendingEnabled = enabled; pendingAuthentication = nil
-                  pendingConfiguration = capabilities.configurationHome
-                  confirmationError = nil; confirmsSharedChange = true
-                } else {
-                  capabilities.setEnabled(method, enabled: enabled, threadID: controller.selected?.threadID)
-                }
-              })) { Text(method.selection.title) }
-              .disabled(method.isProtected || controller.hasActiveExecutions || capabilities.isRefreshing || capabilities.isChanging)
-            }
+            methodRow(method)
           }
-        }.padding(.top, 6)
+        }
       }
-      DisclosureGroup("Connected Tools", isExpanded: $showsTools) {
+      settingsEditorSection("Connected Tools") {
         VStack(alignment: .leading, spacing: 10) {
           zoteroConnection
           Button("Add Tool…") { toolEdit = capabilities.editTool() }.disabled(!capabilities.canConfigureTools)
@@ -114,7 +93,7 @@ struct AgentChatCapabilitiesSettingsView: View {
           ForEach(Array(Set(capabilities.tools.map(\.name) + capabilities.toolConnections.map(\.name))).filter { $0 != AgentChatCapabilitiesController.zoteroServerName }.sorted(), id: \.self) { name in
             toolRow(name)
           }
-        }.padding(.top, 6)
+        }
       }
     }
     .onDisappear { folderSelectionTask?.cancel() }
@@ -142,6 +121,45 @@ struct AgentChatCapabilitiesSettingsView: View {
         Text("This setting also applies to other clients using this Codex settings folder.")
       }
     }
+  }
+
+  private func methodRow(_ method: AgentChatMethod) -> some View {
+    VStack(alignment: .leading, spacing: 6) {
+      Toggle(isOn: methodEnabledBinding(method)) {
+        Text(method.selection.title)
+      }
+      .disabled(method.isProtected || controller.hasActiveExecutions || capabilities.isRefreshing || capabilities.isChanging)
+
+      Text(method.description).textSelection(.enabled)
+      Text(method.selection.path)
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .textSelection(.enabled)
+      if !method.dependencies.isEmpty {
+        Text("Declared Tools: \(method.dependencies.joined(separator: ", "))")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+      }
+    }
+    .padding(.vertical, 4)
+  }
+
+  private func methodEnabledBinding(_ method: AgentChatMethod) -> Binding<Bool> {
+    Binding(
+      get: { method.enabled },
+      set: { enabled in
+        if capabilities.isShared {
+          pendingMethod = method
+          pendingEnabled = enabled
+          pendingAuthentication = nil
+          pendingConfiguration = capabilities.configurationHome
+          confirmationError = nil
+          confirmsSharedChange = true
+        } else {
+          capabilities.setEnabled(method, enabled: enabled, threadID: controller.selected?.threadID)
+        }
+      }
+    )
   }
 
   private var zoteroConnection: some View {
@@ -195,16 +213,7 @@ struct AgentChatCapabilitiesSettingsView: View {
   private func toolRow(_ name: String) -> some View {
     let server = capabilities.tools.first { $0.name == name }
     let configuration = capabilities.toolConnections.first { $0.name == name }
-    return DisclosureGroup {
-      VStack(alignment: .leading, spacing: 4) {
-        Text(name).font(.caption).foregroundStyle(.secondary)
-        if let configuration {
-          Text(configuration.address).font(.caption).textSelection(.enabled)
-          if !configuration.isEditable { Text("Managed Configuration").font(.caption).foregroundStyle(.secondary) }
-        }
-        ForEach(server?.tools ?? [], id: \.self) { Text($0).textSelection(.enabled) }
-      }.padding(.top, 4)
-    } label: {
+    return VStack(alignment: .leading, spacing: 6) {
       HStack {
         VStack(alignment: .leading, spacing: 3) {
           Text(name == AgentChatCapabilitiesController.zoteroServerName ? String(localized: "Zotero") : (server?.title ?? name)).lineLimit(1)
@@ -223,7 +232,18 @@ struct AgentChatCapabilitiesSettingsView: View {
           Button("Sign In") { requestSignIn(server) }.disabled(!capabilities.canSignIn(server))
         }
       }
+      Text(name).font(.caption).foregroundStyle(.secondary)
+      if let configuration {
+        Text(configuration.address).font(.caption).textSelection(.enabled)
+        if !configuration.isEditable {
+          Text("Managed Configuration")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+      }
+      ForEach(server?.tools ?? [], id: \.self) { Text($0).textSelection(.enabled) }
     }
+    .padding(.vertical, 4)
   }
 
   private func requestSignIn(_ server: AgentChatConnectedTool) {

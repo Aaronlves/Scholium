@@ -136,7 +136,7 @@ values and add no transport, storage, policy or animation coordinator. Native
 symbol replacement is scoped to the delivery indicator; reduced motion keeps
 its textual state without an animated replacement.
 The
-Settings **Agent Integration** destination shows exact Codex and Claude Code MCP
+Settings **Agents & Chat** destination shows exact Codex and Claude Code MCP
 registration commands and reveals the bundled Core Protocol Skill. It does not
 store credentials or choose an Agent application.
 

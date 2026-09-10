@@ -32,13 +32,12 @@ struct WorkspaceSettingsArchitectureTests {
     func topLevelPaneOwnership() throws {
         #expect(
             WorkspaceSettingsPane.allCases.map(\.rawValue) == [
-                "triptychs",
+                "workspace",
+                "document",
                 "metadata",
-                "appearance",
-                "hotkeys",
-                "selectionActions",
-                "attention",
-                "research-guidance",
+                "notifications",
+                "interaction",
+                "integrations",
             ]
         )
 
@@ -60,22 +59,20 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(topLevel.contains("SettingsToolbarAttachment(destination: $destination)"))
         #expect(topLevel.contains("window.toolbarStyle = .preference"))
         #expect(topLevel.contains("accessibilityDisplayShouldReduceMotion"))
-        #expect(topLevel.contains("ScholiumSettingsDestination.application"))
-        #expect(topLevel.contains("ScholiumSettingsDestination.triptych"))
-        #expect(topLevel.contains("ScholiumSettingsDestination.researchGuidance"))
+        #expect(topLevel.contains("ScholiumSettingsDestination.workspace"))
         #expect(!topLevel.contains("SettingsTriptychScopePicker"))
         #expect(topLevel.contains("ScholiumSettingsSearchField(text: $searchQuery)"))
+        #expect(topLevel.contains("destinationBeforeSearch"))
         #expect(!topLevel.contains("Text(\"Settings\")"))
         #expect(!topLevel.contains("ZoteroSettingsView()"))
 
         let orderedDestinations = [
-            "case triptychs",
-            "case appearance",
-            "case hotkeys",
+            "case workspace",
+            "case document",
             "case metadata",
-            "case attention",
-            "case agentIntegration",
-            "case externalToolsCitations",
+            "case notifications",
+            "case interaction",
+            "case integrations",
         ]
         let indices = try orderedDestinations.map { destination in
             try #require(topLevel.range(of: destination)).lowerBound
@@ -84,20 +81,26 @@ struct WorkspaceSettingsArchitectureTests {
             pair.0 < pair.1
         })
 
-        let sourcesAndIntegrations = try String(
+        let interactionsAndIntegrations = try String(
             contentsOf: repositoryRoot.appendingPathComponent(
-                "Scholium/Views/ResearchSourcesSettingsView.swift"
+                "Scholium/Views/SettingsInteractionAndIntegrationsView.swift"
             ),
             encoding: .utf8
         )
         #expect(
-            sourcesAndIntegrations.components(
+            interactionsAndIntegrations.contains("SettingsIntegrationsView")
+        )
+        #expect(interactionsAndIntegrations.contains("SettingsIntegrationCategory"))
+        #expect(interactionsAndIntegrations.contains("ZoteroSettingsPageView"))
+        #expect(!interactionsAndIntegrations.contains("ResearchGuidanceCategory"))
+        #expect(
+            interactionsAndIntegrations.components(
                 separatedBy: "ZoteroSettingsView()"
             ).count == 2
         )
     }
 
-    @Test("Settings makes Triptych and machine-local scope explicit")
+    @Test("Settings keeps scope legible without page-wide banners")
     func settingsScopeAndPageHierarchy() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -114,28 +117,35 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(!source.contains("SettingsTriptychScopePicker"))
         #expect(!source.contains("var usesTriptychScope: Bool"))
         #expect(source.contains("scholium.settings.triptychScope"))
-        let triptychsStart = try #require(
+        let workspaceStart = try #require(
             source.range(of: "struct WorkspaceSettingsView: View")
         )
-        let appearanceStart = try #require(
+        let documentStart = try #require(
             source.range(
                 of: "private struct AppearanceSettingsView: View",
-                range: triptychsStart.upperBound..<source.endIndex
+                range: workspaceStart.upperBound..<source.endIndex
             )
         )
-        let triptychsSource = source[
-            triptychsStart.lowerBound..<appearanceStart.lowerBound
+        let workspaceSource = source[
+            workspaceStart.lowerBound..<documentStart.lowerBound
         ]
-        #expect(triptychsSource.contains("scholium.settings.triptychScope"))
-        #expect(source.contains("ScholiumL10n.Settings.triptychs"))
+        #expect(workspaceSource.contains("scholium.settings.triptychScope"))
+        #expect(source.contains("ScholiumL10n.Settings.workspace"))
+        #expect(source.contains("ScholiumL10n.Settings.document"))
         #expect(source.contains("ScholiumL10n.Settings.metadata"))
-        #expect(source.contains("ScholiumL10n.Settings.appearance"))
-        #expect(source.contains("ScholiumL10n.Settings.attention"))
-        #expect(source.contains("Reminder Timing for This Triptych"))
+        #expect(source.contains("ScholiumL10n.Settings.notifications"))
+        #expect(source.contains("ScholiumL10n.Settings.interaction"))
+        #expect(source.contains("ScholiumL10n.Settings.integrations"))
+        #expect(!source.contains("SettingsScopeNotice"))
+        #expect(!source.contains("Registration and folder access are local to this Mac"))
+        #expect(!source.contains("Document content only"))
+        #expect(!source.contains("These profiles change how Markdown is presented"))
+        #expect(source.contains("This Triptych"))
+        #expect(source.contains("This Mac"))
+        #expect(source.contains("Reminder Timing"))
         #expect(source.contains("Dismissed Items on This Mac"))
         #expect(source.contains("Restore All Dismissed Items on This Mac"))
-        #expect(source.contains("researchSettingsSection(\"Zotero\")"))
-        #expect(source.contains("case agentIntegration"))
+        #expect(source.contains("case integrations"))
         #expect(source.contains("settingsTriptychLabel("))
         #expect(source.contains(
             ".onChange(of: settingsModel.snapshot.activeTriptychID)"
@@ -150,6 +160,21 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(integration.contains("Copy Codex Setup Command"))
         #expect(integration.contains("Copy Claude Setup Command"))
         #expect(integration.contains("Show Core Protocol in Finder…"))
+        #expect(integration.contains("External Agent Hosts"))
+        #expect(integration.contains("ExternalAgentHostsSettingsView"))
+        #expect(!integration.contains("ScrollView"))
+        #expect(!integration.contains("DisclosureGroup(\"Connect an External Agent\""))
+
+        let connection = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/Views/AgentChatConnectionSettingsView.swift"
+            ),
+            encoding: .utf8
+        )
+        #expect(connection.contains("Advanced Connection Settings…"))
+        #expect(connection.contains("Methods and Tools…"))
+        #expect(connection.contains("External Agent Hosts…"))
+        #expect(connection.contains("AgentChatCapabilitiesSettingsSheet"))
     }
 
     @Test("Explicit Settings save keeps the draft's frozen revision")
@@ -630,12 +655,21 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(!appearanceSource.contains("Line width preset"))
         #expect(!appearanceSource.contains("Line width mode"))
         #expect(appearanceSource.contains("settingsEditorSection(\"Source Font\")"))
-        #expect(!appearanceSource.contains("settingsEditorSection(\"Heading Font\")"))
+        #expect(appearanceSource.contains("settingsEditorSection(\"Heading Font\")"))
         #expect(!appearanceSource.contains("settingsEditorSection(\"Callout\")"))
         #expect(appearanceSource.contains("store.reloadAppearanceConfiguration()"))
         #expect(appearanceSource.contains("store.revealAppearanceConfiguration()"))
         #expect(!appearanceSource.contains("showsYAMLFrontmatter"))
-        #expect(!appearanceSource.contains("DisclosureGroup("))
+        #expect(appearanceSource.contains("settingsSectionTitle(\"Headings\")"))
+        #expect(appearanceSource.contains("settingsEditorSection(\"Heading Style\")"))
+        #expect(appearanceSource.contains("settingsEditorSection(\"Heading Weight\")"))
+        #expect(appearanceSource.contains("Text(\"Scale\")"))
+        #expect(appearanceSource.contains("Text(\"Alignment\")"))
+        #expect(appearanceSource.contains("\"Paragraph spacing\""))
+        #expect(appearanceSource.contains("AdvancedTypographySettingsView"))
+        #expect(appearanceSource.contains("Advanced Typography"))
+        #expect(appearanceSource.contains("showsAdvancedTypography"))
+        #expect(!appearanceSource.contains("DisclosureGroup"))
         #expect(appearanceSource.contains("Button(\"Revert to Saved\")"))
         #expect(appearanceSource.contains("Restore Default Appearance…"))
         #expect(appearanceSource.contains("appearanceManagementMenu"))
@@ -645,6 +679,80 @@ struct WorkspaceSettingsArchitectureTests {
         ))
         #expect(!appearanceSource.contains("AppearanceDoubleControl(\"Block spacing\""))
         #expect(!appearanceSource.contains("SafeMarkdownReadWebView"))
+    }
+
+    @Test("Settings use whitespace for groups and keep peer details visible")
+    func settingsAvoidDecorativeSeparatorsAndNestedPeerDisclosure() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+
+        func read(_ path: String) throws -> String {
+            try String(
+                contentsOf: repositoryRoot.appendingPathComponent(path),
+                encoding: .utf8
+            )
+        }
+
+        let settingsSource = try read("Scholium/Views/WorkspaceSettingsView.swift")
+        let settingsContentStart = try #require(
+            settingsSource.range(of: "private var settingsContent")
+        )
+        let toolbarAttachmentStart = try #require(
+            settingsSource.range(
+                of: "private struct SettingsToolbarAttachment",
+                range: settingsContentStart.upperBound..<settingsSource.endIndex
+            )
+        )
+        let settingsContent = String(
+            settingsSource[settingsContentStart.lowerBound..<toolbarAttachmentStart.lowerBound]
+        )
+        #expect(!settingsContent.contains("Divider()"))
+
+        let interactionSource = try read(
+            "Scholium/Views/SettingsInteractionAndIntegrationsView.swift"
+        )
+        #expect(!interactionSource.contains("Divider()"))
+
+        for path in [
+            "Scholium/Views/AgentChatConnectionSettingsView.swift",
+            "Scholium/Views/AgentChatCapabilitiesSettingsView.swift",
+            "Scholium/Views/AgentChatToolEditor.swift",
+        ] {
+            let source = try read(path)
+            #expect(!source.contains("DisclosureGroup"))
+        }
+
+        let capabilities = try read("Scholium/Views/AgentChatCapabilitiesSettingsView.swift")
+        #expect(capabilities.contains("settingsEditorSection(\"Methods\")"))
+        #expect(capabilities.contains("settingsEditorSection(\"Connected Tools\")"))
+        #expect(capabilities.contains("methodRow(method)"))
+    }
+
+    @Test("Selection Actions use an explicit native editing workflow and truthful preview")
+    func selectionActionsSettingsSurface() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let source = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/Views/SelectionActionsSettingsView.swift"
+            ),
+            encoding: .utf8
+        )
+
+        #expect(source.contains("Table(draft"))
+        #expect(source.contains("Edit…"))
+        #expect(source.contains("SelectionActionEditorSheet"))
+        #expect(source.contains(".sheet(item: $editingAction)"))
+        #expect(source.contains("SelectionActionBarPreview"))
+        #expect(source.contains("Shown when text is selected"))
+        #expect(!source.contains(".formStyle(.grouped)"))
+        #expect(source.contains("TextField("))
+        #expect(source.contains("TextEditor(text:"))
+        #expect(!source.contains("DisclosureGroup"))
     }
 
     @Test("Settings uses native preferences chrome and adaptive window geometry")
@@ -667,7 +775,7 @@ struct WorkspaceSettingsArchitectureTests {
         )
         let guidanceSource = try String(
             contentsOf: repositoryRoot.appendingPathComponent(
-                "Scholium/Views/ResearchGuidanceSettingsView.swift"
+                "Scholium/Views/SettingsInteractionAndIntegrationsView.swift"
             ),
             encoding: .utf8
         )

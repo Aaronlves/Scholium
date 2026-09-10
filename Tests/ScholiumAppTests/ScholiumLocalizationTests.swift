@@ -10,19 +10,23 @@ struct ScholiumLocalizationTests {
     func settingsDestinations() {
         #expect(
             ScholiumL10n.localized(
-                ScholiumL10n.Settings.researchGuidance,
+                ScholiumL10n.Settings.integrations,
                 locale: simplifiedChinese
-            ) == "研究指导"
+            ) == "集成"
         )
         #expect(
             ScholiumL10n.localized(
-                ScholiumL10n.Settings.appearance,
+                ScholiumL10n.Settings.document,
                 locale: simplifiedChinese
-            ) == "外观"
+            ) == "文稿"
         )
         #expect(
-            ScholiumL10n.string("Agent Integration", locale: simplifiedChinese)
-                == "智能体集成"
+            ScholiumL10n.string("Agents & Chat", locale: simplifiedChinese)
+                == "智能体与聊天"
+        )
+        #expect(
+            ScholiumL10n.string("Keyboard Shortcuts", locale: simplifiedChinese)
+                == "键盘快捷键"
         )
         #expect(
             ScholiumL10n.string("Zotero Not Available", locale: simplifiedChinese)
@@ -30,7 +34,7 @@ struct ScholiumLocalizationTests {
         )
     }
 
-    @Test("Agent Integration and Agent Changes localize without lifecycle vocabulary")
+    @Test("Agents and Agent Changes localize without lifecycle vocabulary")
     func agentCollaboration() {
         #expect(
             ScholiumL10n.string("No Agent Changes", locale: simplifiedChinese)

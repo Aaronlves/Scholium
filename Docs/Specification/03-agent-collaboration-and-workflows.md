@@ -62,7 +62,7 @@ missing open Triptych, and unavailable current state remain explicit tool
 failures.
 
 Codex and Claude receive the same server name, tool names, schemas, results,
-and errors. Settings → Research Guidance → **Agent Integration** shows App,
+and errors. Settings → Integrations → **Agents & Chat** shows App,
 bridge, and CLI availability and provides:
 
 - **Copy Codex Setup Command**;

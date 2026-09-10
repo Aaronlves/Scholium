@@ -557,7 +557,7 @@ struct AgentChatVisualEvidenceTests {
       try await wait { controller.capabilities.canConfigureTools }
       edit = try #require(controller.capabilities.editTool(named: edit.connection.name))
       for scheme in [ColorScheme.light, .dark] {
-        let content = AgentChatToolEditor(capabilities: controller.capabilities, edit: edit, showsAdvanced: true)
+        let content = AgentChatToolEditor(capabilities: controller.capabilities, edit: edit)
           .background(Color(nsColor: .windowBackgroundColor)).environment(\.colorScheme, scheme)
         let host = NSHostingView(rootView: content)
         host.appearance = NSAppearance(named: scheme == .light ? .aqua : .darkAqua)

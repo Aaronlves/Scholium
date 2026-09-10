@@ -528,8 +528,8 @@ filters, sort, Document tabs, live Document mode, and Inspector mode
 are partitioned by the three Triptych workspaces; Sidebar/Inspector visibility,
 split geometry, toolbar, and window frame remain outer-window state. Controllers
 do not mutate one another. Separate
-`WorkspaceSettingsModel` groups workspace, machine, Zotero, and Research
-Guidance capabilities without constructing a document window. Its delivery-
+`WorkspaceSettingsModel` groups workspace, machine, Zotero, and integration
+capabilities without constructing a document window. Its delivery-
 neutral snapshot carries both `TriptychSettings` and exact `SettingsRevision`;
 every save returns a replacement snapshot, so two Settings windows cannot
 silently last-writer-win.

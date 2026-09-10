@@ -88,6 +88,8 @@ struct AgentChatChildView: View {
                   }
                 } else {
                   AgentChatMarkdown(text: message.text)
+                    .font(ScholiumChatAppearance.messageFont)
+                    .foregroundStyle(ScholiumChatAppearance.messageForeground)
                 }
                 if presented.hasAdditionalMaterial {
                   Text("Additional material was supplied with this request.", bundle: .module)

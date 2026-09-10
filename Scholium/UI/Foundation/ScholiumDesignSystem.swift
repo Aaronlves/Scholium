@@ -1140,13 +1140,11 @@ enum ScholiumGrid {
         static let readableWidth = foundationUnit * 90
     }
 
-    /// Research Guidance owns one settings-specific collection-row rhythm.
-    /// Native Lists and controls retain their own geometry; these values apply
-    /// only to the explanatory content/action rows inside the guidance pages.
-    enum ResearchGuidance {
+    /// Settings owns one explanatory content-row rhythm. Native Lists and
+    /// controls retain their own geometry; these values apply only to the
+    /// supporting content and action rows inside preference pages.
+    enum SettingsPresentation {
         static let titleDetailGap = foundationUnit * 1.5
-        static let collectionRowColumnGap = foundationUnit * 3.5
-        static let collectionRowVerticalInset = foundationUnit * 2.5
     }
 
     /// Research-facing sheets share one continuous editorial frame while
@@ -1220,12 +1218,8 @@ enum ScholiumMetrics {
         static let loadingOverlayInset = ScholiumGrid.foundationUnit * 7
     }
 
-    enum ResearchGuidance {
-        static let titleDetailSpacing = ScholiumGrid.ResearchGuidance.titleDetailGap
-        static let collectionRowColumnSpacing =
-            ScholiumGrid.ResearchGuidance.collectionRowColumnGap
-        static let collectionRowVerticalInset =
-            ScholiumGrid.ResearchGuidance.collectionRowVerticalInset
+    enum SettingsPresentation {
+        static let titleDetailSpacing = ScholiumGrid.SettingsPresentation.titleDetailGap
         static let trailingControlMinimumSpacing = ScholiumGrid.Spacing.nestedContentInset
         static let editorContentInset = ScholiumGrid.foundationUnit * 4.5
     }
@@ -2805,5 +2799,16 @@ extension String {
 
 /// Chat's researcher-authored message fill derives from the shared adaptive Accent.
 enum ScholiumChatAppearance {
+    /// Both researcher-authored and Agent-authored messages use one native
+    /// reading treatment. The bubble and alignment still communicate
+    /// authorship, but never change the message's type or ink.
+    static var messageFont: Font { .body }
+    static var messageNSFont: NSFont { NSFont.preferredFont(forTextStyle: .body) }
+    static var messageHeadingNSFont: NSFont { NSFont.preferredFont(forTextStyle: .headline) }
+    static var messageForeground: Color { ScholiumColorRole.primaryText.color }
+    static var messageNSForeground: NSColor { ScholiumColorRole.primaryText.nsColor }
+    static var messageLinkNSForeground: NSColor { ScholiumColorRole.accent.nsColor }
+    static let messageLineHeight: CGFloat = 1.55
+
     static var userMessageBackground: Color { ScholiumColorRole.accent.color.opacity(0.3) }
 }

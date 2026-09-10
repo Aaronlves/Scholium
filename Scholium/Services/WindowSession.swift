@@ -907,7 +907,7 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
         let publicationStart = ContinuousClock().now
         eventGates[triptychID] = gate
         workspaceEvents[triptychID] = event
-        // Research Guidance changes invalidate Action resolution but do not
+        // Research configuration changes invalidate Action resolution but do not
         // rebuild or supersede the current workspace snapshot. Publishing the
         // typed event must therefore not clear an existing stale/failed
         // derived-state status or replay the same snapshot through every

@@ -99,17 +99,31 @@ already-visible Chat does not toggle the Sidebar closed.
   Markdown input retain formatting and insertion commands.
   Markdown is the sole written annotation authority; there is no separate
   Review Comment or passage Discussion UI.
-- Appearance exposes body and Source font/size, line width/spacing. Advanced typography remains in editable `appearances.json` with
-  a Finder route, guide and explicit reload. Invalid or stale external edits
-  cannot replace the loaded appearance or be overwritten by a stale GUI save.
+- Appearance exposes body and Source font/size, line width/spacing, plus a
+  scrollable typography form for paragraph/indent spacing, letter/word
+  spacing, alignment, hyphenation, kerning/ligatures, heading type, weight,
+  spacing and level hierarchy. Advanced CSS remains in editable
+  `appearances.json` with a Finder route, guide and explicit reload. Invalid or
+  stale external edits cannot replace the loaded appearance or be overwritten
+  by a stale GUI save; document CSS and text colors remain content-layer values.
 - About and Metadata expose managed values only; authored YAML has no field
   editor. YAML remains above the title: Review shows source text and Edit allows direct
   editing. Initial title positioning leaves it above the viewport; Source retains
   exact source. Disclosure controls and automatic collapse have been removed. Ordinary New Note creates no YAML scaffold.
 - Document readiness covers live WebKit until measured title positioning, with
   opening-position state separate from retained-editor reconstruction.
-- Settings pane changes interpolate from the current top-left corner, keeping
-  its native content flexible during resizing.
+- Settings now uses six native preference panes with scope expressed by named
+  groups and adjacent state text rather than page-wide notices, static search
+  routing, and Interaction/Integrations child selectors. Selection Actions use
+  a compact native table, explicit Edit… sheets, and the real selection-toolbar
+  preview. Ordinary groups use headings and whitespace instead of repeated
+  rules. The Agents & Chat pane keeps connection state and primary connection
+  actions visible while custom connection paths, Methods and Tools, and
+  External Agent Hosts use explicit native child sheets. App chrome does not add an accent or
+  appearance picker and follows system-resolved colors; pane changes
+  interpolate from the current top-left corner while native content remains
+  flexible during resizing. Document's common typography remains in the pane;
+  low-frequency typography is in an explicit Advanced Typography sheet.
 - Review and inactive Edit show a link annotation from one trailing superscript
   marker in the shared bounded preview surface, never as a block inserted into
   prose. Hover or focus reveals it, click keeps it open, and Escape or outside
@@ -217,13 +231,13 @@ already-visible Chat does not toggle the Sidebar closed.
   Formal persistent paragraph citations and additional Agent runtime adapters are
   not implemented; supported-minimum-width and human adaptation acceptance remain open.
 
-## Agent Integration and Agent Changes
+## Agents & Chat and Agent Changes
 
-- Settings includes **Agent Integration**, with copyable Codex and Claude Code
+- Settings includes **Agents & Chat**, with copyable Codex and Claude Code
   MCP registration commands, live App/bridge/CLI availability, and a Finder
   route to the bundled Core Protocol Skill.
 - Optional in-app Codex Chat appears beside Library in the left sidebar.
-  Agent Integration now exposes runtime method discovery, inspection and
+  Agents & Chat now exposes runtime method discovery, inspection and
   effective enable/disable, plus MCP tool names and reported connection state.
   Shared-setting writes have confirmation; active executions block changes.
   Composer method selection persists in drafts and sent messages, sends explicit
@@ -389,7 +403,8 @@ already-visible Chat does not toggle the Sidebar closed.
   The View menu adds the selected editor passage to Chat without sending it.
   Chat inherits the Sidebar background, with connected native cards grouped by day,
   list-to-detail navigation and a glass composer. Speaker labels and alignment
-  distinguish messages; user bubbles use the shared Accent at 30% opacity.
+  distinguish messages; user bubbles use the shared Accent at 30% opacity, while
+  both message bodies use the adaptive Chat system type and primary ink.
   Composer secondary icons are borderless and Send uses an Accent circle;
   typography and controls remain native. A native multiline editor now owns the full
   input rectangle and conversation-bound drafts. The 2026-09-08 input correction

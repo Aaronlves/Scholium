@@ -4,7 +4,7 @@ import SwiftUI
 /// Native read-only selection. AppKit owns selection/menu/layout; Chat owns the reply and draft.
 struct AgentChatSelectableText: NSViewRepresentable {
   let source: String
-  let quote: (NSRange, String) -> Void
+  let quote: ((NSRange, String) -> Void)?
   let openLink: (URL) -> Void
 
   func makeNSView(context: Context) -> AgentChatReplyTextView { AgentChatReplyTextView() }
@@ -61,7 +61,9 @@ struct AgentChatSelectableText: NSViewRepresentable {
           cellBlock.setWidth(4, type: .absoluteValueType, for: .padding)
           paragraph.textBlocks = [cellBlock]
           append(
-            cell, font: .preferredFont(forTextStyle: header ? .headline : .body),
+            cell, font: header
+              ? ScholiumChatAppearance.messageHeadingNSFont
+              : ScholiumChatAppearance.messageNSFont,
             paragraph: paragraph, suffix: "\n", to: result)
         }
         row += 1
@@ -72,7 +74,7 @@ struct AgentChatSelectableText: NSViewRepresentable {
       let paragraph = NSMutableParagraphStyle()
       paragraph.paragraphSpacingBefore = followsTable ? 12 : 0
       paragraph.paragraphSpacing = 12
-      var font = NSFont.preferredFont(forTextStyle: .body)
+      var font = ScholiumChatAppearance.messageNSFont
       var text = block.text
       if block.isQuoted {
         paragraph.headIndent = 16
@@ -80,7 +82,7 @@ struct AgentChatSelectableText: NSViewRepresentable {
       }
       switch block.kind {
       case .heading:
-        font = .preferredFont(forTextStyle: .headline)
+        font = ScholiumChatAppearance.messageHeadingNSFont
         paragraph.headerLevel = 1
       case .code:
         font = .monospacedSystemFont(ofSize: font.pointSize, weight: .regular)
@@ -113,7 +115,7 @@ struct AgentChatSelectableText: NSViewRepresentable {
     let result = NSMutableAttributedString(string: "")
     for run in text.runs {
       var attributes: [NSAttributedString.Key: Any] = [
-        .font: font, .foregroundColor: ScholiumNativeColorRole.label.nsColor,
+        .font: font, .foregroundColor: ScholiumChatAppearance.messageNSForeground,
       ]
       var traits: NSFontTraitMask = []
       if run.inlinePresentationIntent?.contains(.stronglyEmphasized) == true {
@@ -147,8 +149,8 @@ final class AgentChatReplyTextView: NSTextView, NSTextViewDelegate {
   private var displayedHeadingFont: NSFont?
 
   func displayReply(_ source: String) {
-    let body = NSFont.preferredFont(forTextStyle: .body)
-    let heading = NSFont.preferredFont(forTextStyle: .headline)
+    let body = ScholiumChatAppearance.messageNSFont
+    let heading = ScholiumChatAppearance.messageHeadingNSFont
     guard source != displayedSource || body != displayedBodyFont || heading != displayedHeadingFont
     else { return }
     let selection = selectedRange()
@@ -185,9 +187,12 @@ final class AgentChatReplyTextView: NSTextView, NSTextViewDelegate {
     isHorizontallyResizable = false
     isVerticallyResizable = true
     self.textContainer?.widthTracksTextView = true
+    linkTextAttributes = [
+      .foregroundColor: ScholiumChatAppearance.messageLinkNSForeground,
+      .underlineStyle: NSUnderlineStyle.single.rawValue,
+    ]
     delegate = self
     setAccessibilityIdentifier("scholium.chat.replyText")
-    setAccessibilityLabel(ScholiumL10n.string("Agent Reply"))
   }
   required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
@@ -205,6 +210,7 @@ final class AgentChatReplyTextView: NSTextView, NSTextViewDelegate {
 
   override func menu(for event: NSEvent) -> NSMenu? {
     let menu = super.menu(for: event) ?? NSMenu()
+    guard quote != nil else { return menu }
     let item = NSMenuItem(
       title: ScholiumL10n.string("Ask About Selection"), action: #selector(quoteSelection(_:)),
       keyEquivalent: "r")
@@ -217,7 +223,7 @@ final class AgentChatReplyTextView: NSTextView, NSTextViewDelegate {
   }
   override func keyDown(with event: NSEvent) {
     if event.modifierFlags.intersection(.deviceIndependentFlagsMask) == [.command, .shift],
-      event.charactersIgnoringModifiers?.lowercased() == "r", selectedRange().length > 0
+      event.charactersIgnoringModifiers?.lowercased() == "r", selectedRange().length > 0, quote != nil
     {
       quoteSelection(nil)
       return

@@ -78,10 +78,11 @@ struct AgentChatReadReply: View {
     private var css: String {
         AgentChatDiagram.presentationCSS(dark: colorScheme == .dark, increasedContrast: contrast == .increased) + """
         html, body { overflow: hidden; }
-        .scholium-document { padding: 0; margin: 0; font: \(NSFont.preferredFont(forTextStyle: .body).pointSize)px/1.55 system-ui; }
+        .scholium-document { padding: 0; margin: 0; font: \(ScholiumChatAppearance.messageNSFont.pointSize)px/\(ScholiumChatAppearance.messageLineHeight) -apple-system, BlinkMacSystemFont, system-ui, sans-serif; color: var(--scholium-color-primary-text); }
         .scholium-document > :first-child { margin-top: 0; }
         .scholium-document > :last-child { margin-bottom: 0; }
         .scholium-document p { margin: 0 0 12px; }
+        .scholium-document a { color: var(--scholium-color-accent); text-decoration-color: var(--scholium-color-accent); }
         .scholium-document :not(pre) > code { background: color-mix(in srgb, currentColor 8%, transparent); border-radius: 3px; padding: 1px 3px; }
         .scholium-reply-object { margin-block: 12px; }
         .scholium-reply-controls { display: flex; justify-content: end; gap: 8px; user-select: none; }

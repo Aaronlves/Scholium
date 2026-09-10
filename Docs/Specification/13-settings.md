@@ -29,27 +29,39 @@ current top-left corner to the pane's preferred size within screen bounds,
 using native animation and an immediate Reduce Motion result. Routine field
 edits and status updates do not repeatedly resize the window.
 
-Triptychs, Document Appearance, Hotkeys and Selection Actions belong to the
-Application category group; Metadata Profiles and Attention belong to Triptych;
-Agent Integration and Zotero belong to Research Guidance. Category grouping
-does not imply storage or sharing scope. Pages identify Application, This
-Triptych or This Mac scope as applicable; mixed-scope groups identify their own
-scope. Triptych-specific controls identify the exact Triptych, and external
-configuration identifies local or shared scope before a change. Scope changes
-cannot silently apply a draft to another target.
+The native toolbar presents six top-level panes: Workspace, Document, Metadata,
+Notifications, Interaction and Integrations. Workspace contains local Triptych
+registration and folder access. Document contains document-content appearance
+profiles. Metadata contains Triptych field definitions and About ordering;
+Notifications contains reminder timing and the local dismissal ledger.
+Interaction groups machine-local Keyboard Shortcuts and Selection Actions.
+Integrations groups Agents & Chat and Zotero because both are connection or
+external-tool configuration; each child retains its own owner and scope.
+Category grouping does not imply storage or sharing scope. Pages identify This
+Mac, This Triptych or mixed scope as applicable through their category, group
+and adjacent state labels; exact Triptych identity is shown before a portable
+draft. Scope changes cannot silently apply a draft to another target. Settings
+does not repeat this information in a page-wide notice.
+
+Settings does not duplicate macOS appearance, accent, contrast or motion
+controls. Scholium's window chrome and semantic feedback use system-resolved
+colors and adaptation. Document Appearance controls Markdown content
+presentation only; researcher-editable document CSS and text colors remain in
+that content layer and never style native app controls.
 
 Each setting has one editing location. Contextual links and Settings search
 lead to that location rather than maintaining duplicate controls. Search indexes
 static page/control metadata, including English and Simplified Chinese labels
 and common user-facing synonyms, never research or Skill content.
 Results name the setting and category; choosing a
-result reveals its control and necessary disclosures without changing its value.
+result reveals its control, page or sheet without changing its value.
 No matches preserves the query; clearing search restores the browsing context.
 
 ### Page composition
 
-The selected pane presents its scope and any necessary target identity before
-editable groups. Group headings name related tasks or preferences, with common
+The selected pane makes its scope and any necessary target identity legible
+through its category, group and adjacent state labels before or beside the
+editable control. Group headings name related tasks or preferences, with common
 choices before optional detail. Reuse the window's category title instead of
 adding a duplicate large heading. Short panes remain compact; longer forms and
 collections scroll without losing access to their actions.
@@ -61,6 +73,14 @@ collections hold field/shortcut rows and adjacent actions. Shared relationships
 use consistent alignment and spacing without forcing every pane into identical
 height or containers. Status and validation fit beside the affected control
 without replacing the active form or needlessly shifting its controls.
+
+Ordinary groups use headings and measured whitespace rather than repeated
+horizontal rules. Separators remain for a native collection or menu, or for a
+genuine structural boundary such as a persistent action area. A peer preference
+is not hidden in a nested disclosure merely to shorten a pane. When detail has a
+different scope or workflow, use a child pane or native sheet; reserve a
+disclosure for one genuinely secondary detail group that is not needed to
+understand current state or repair.
 
 An ordinary setting row pairs a label with its current value or control;
 explanation and field feedback follow that control. A collection keeps selection
@@ -103,10 +123,11 @@ is explained at its field rather than silently replaced with a valid value.
 Dependent controls stay near their prerequisite. Keep them visible but disabled
 when knowing they exist helps explain availability, with a reason when needed;
 hide detail that has no meaning in the current choice. Disabling a parent
-preserves subordinate choices for reuse. Advanced disclosures hold low-frequency
-detail without hiding current failures or required repair. Default, Automatic
-and Follow System identify their actual source; show the effective value when
-needed to understand inherited behavior, without inventing configuration layers.
+preserves subordinate choices for reuse. Low-frequency detail may live behind
+one clearly labelled Advanced Options action that opens a native child sheet; it
+must not hide current failures or required repair. Default, Automatic and Follow
+System identify their actual source; show the effective value when needed to
+understand inherited behavior, without inventing configuration layers.
 
 ### Changes and feedback
 
@@ -128,9 +149,16 @@ under its owning workflow contract.
 
 [Document Appearance §18.4](07-document-and-research-interface.md#184-document-modes-context-and-metadata)
 owns appearance controls, configuration-file editing and restoration; Settings
-adds no nested advanced appearance editor. [Metadata Appendix A](11-metadata.md)
+does not create a second appearance owner or duplicate its controls. Body,
+Source, alignment and common spacing values are visible in the Document pane.
+Low-frequency paragraph, typesetting, heading and heading-level values are
+edited in one explicit Advanced Typography native sheet against the same draft.
+CSS remains an explicit action to the configuration surface and file. [Metadata Appendix A](11-metadata.md)
 owns definitions and profiles; [Agent Chat §8.7](12-agent-chat.md) owns Selection
-Actions and runtime configuration; [Agent Collaboration §8](03-agent-collaboration-and-workflows.md)
+Actions and runtime configuration. Agents & Chat keeps connection state and
+primary connect or sign-in actions in the main pane; custom connection paths,
+runtime Methods and Tools, and External Agent Hosts open in explicit native
+child sheets because they are distinct or low-frequency workflows. [Agent Collaboration §8](03-agent-collaboration-and-workflows.md)
 and [Zotero §15](05-integrations-onboarding-and-boundaries.md) own integration
 behavior. [Chat capability presentation](06-interface-shell-and-library.md#chat-capability-presentation)
 owns the Agent pane's feature-specific controls. [Triptych §§3–4](01-foundation-and-triptych.md)
@@ -138,6 +166,7 @@ and [Attention §13](04-connect-search-and-recovery.md) own their respective
 workflow meanings. Their save, confirmation and source-preservation rules remain
 binding; this chapter does not grant new configuration or mutation capabilities.
 
-Hotkeys is machine-local and limited to frequent Scholium-specific menu
-commands. It requires Command, rejects conflicts and reserved shortcuts, and
-supports clear and restore. Standard macOS commands remain outside remapping.
+Keyboard Shortcuts is machine-local and limited to frequent Scholium-specific
+menu commands. It requires Command, rejects conflicts and reserved shortcuts,
+and supports clear and restore. Standard macOS commands remain outside
+remapping.

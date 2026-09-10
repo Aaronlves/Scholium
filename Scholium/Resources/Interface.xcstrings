@@ -1,114 +1,114 @@
 {
-  "sourceLanguage" : "en",
-  "strings" : {
-    "settings.tab.appearance" : {
-      "comment" : "Settings tab for named document appearance profiles and advanced CSS.",
-      "extractionState" : "extracted_with_value",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Appearance"
+  "sourceLanguage": "en",
+  "strings": {
+    "settings.tab.metadata": {
+      "comment": "Settings tab for managed field definitions and About profiles.",
+      "extractionState": "extracted_with_value",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "Metadata"
           }
         },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "外观"
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "元数据"
           }
         }
       }
     },
-    "settings.tab.attention" : {
-      "comment" : "Settings tab for notifications and derived issue reminders.",
-      "extractionState" : "extracted_with_value",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Notifications"
+    "settings.tab.document": {
+      "comment": "Settings tab for document content presentation and appearance profiles.",
+      "extractionState": "extracted_with_value",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "Document"
           }
         },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "通知"
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "文稿"
           }
         }
       }
     },
-    "settings.tab.hotkeys" : {
-      "comment" : "Settings tab for customizable Scholium keyboard shortcuts.",
-      "extractionState" : "extracted_with_value",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Hotkeys"
+    "settings.tab.integrations": {
+      "comment": "Settings tab for Agents, Chat and Zotero integrations.",
+      "extractionState": "extracted_with_value",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "Integrations"
           }
         },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "快捷键"
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "集成"
           }
         }
       }
     },
-    "settings.tab.metadata" : {
-      "comment" : "Settings tab for managed field definitions and About profiles.",
-      "extractionState" : "extracted_with_value",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Metadata"
+    "settings.tab.interaction": {
+      "comment": "Settings tab for keyboard shortcuts and selection actions.",
+      "extractionState": "extracted_with_value",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "Interaction"
           }
         },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "元数据"
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "交互"
           }
         }
       }
     },
-    "settings.tab.researchGuidance" : {
-      "comment" : "Settings group for Agent Integration and read-only external research tools.",
-      "extractionState" : "extracted_with_value",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Research Guidance"
+    "settings.tab.notifications": {
+      "comment": "Settings tab for notification reminders and dismissed items.",
+      "extractionState": "extracted_with_value",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "Notifications"
           }
         },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "研究指导"
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "通知"
           }
         }
       }
     },
-    "settings.tab.triptychs" : {
-      "comment" : "Settings tab for managing registered Triptychs and their folders.",
-      "extractionState" : "extracted_with_value",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Triptychs"
+    "settings.tab.workspace": {
+      "comment": "Settings tab for local Triptych registration and folder access.",
+      "extractionState": "extracted_with_value",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "Workspace"
           }
         },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "脉络"
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "工作区"
           }
         }
       }
     }
   },
-  "version" : "1.3"
+  "version": "1.3"
 }

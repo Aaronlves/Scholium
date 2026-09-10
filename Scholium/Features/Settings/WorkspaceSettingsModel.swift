@@ -3,13 +3,12 @@ import Combine
 import Foundation
 
 enum WorkspaceSettingsPane: String, CaseIterable, Identifiable, Sendable {
-    case triptychs
+    case workspace
+    case document
     case metadata
-    case appearance
-    case hotkeys
-    case selectionActions
-    case attention
-    case researchGuidance = "research-guidance"
+    case notifications
+    case interaction
+    case integrations
 
     var id: String { rawValue }
 }
@@ -124,7 +123,7 @@ struct WorkspaceSettingsMachineCapabilities {
     let openExternal: (URL) -> Bool
 }
 
-/// Zotero operations used by Research Guidance's External Tools & Citations pane.
+/// Zotero operations used by the Integrations settings pane.
 @MainActor
 struct WorkspaceSettingsZoteroCapabilities {
     let zoteroConnectionInfo: () async -> ZoteroLibraryInfo
@@ -183,7 +182,7 @@ final class WorkspaceSettingsModel: ObservableObject {
         agentBridgeAvailability: @escaping @MainActor () -> AgentBridgeAvailability = {
             .unavailable("The App bridge is unavailable.")
         },
-        selectedPane: WorkspaceSettingsPane = .triptychs
+        selectedPane: WorkspaceSettingsPane = .workspace
     ) {
         self.selectedPane = selectedPane
         self.snapshot = WorkspaceSettingsSnapshot()
@@ -198,7 +197,7 @@ final class WorkspaceSettingsModel: ObservableObject {
 
     /// Pure construction seam for feature tests and previews.
     init(
-        selectedPane: WorkspaceSettingsPane = .triptychs,
+        selectedPane: WorkspaceSettingsPane = .workspace,
         snapshot: WorkspaceSettingsSnapshot = WorkspaceSettingsSnapshot(),
         loadSnapshot: SnapshotLoader? = nil,
         activateTriptych: TriptychActivator? = nil,
@@ -277,7 +276,7 @@ final class WorkspaceSettingsModel: ObservableObject {
     func restorePreferredWorkspaceIfNeeded(activeTriptychID: UUID? = nil) async {
         // The application activation is already authoritative enough to route
         // delivery-neutral Settings capabilities. Publish that ID before the
-        // broader registry/property snapshot finishes so Research Guidance
+        // broader registry/property snapshot finishes so settings integrations
         // does not misreport a valid live Triptych as incomplete.
         if let activeTriptychID {
             snapshot.activeTriptychID = activeTriptychID

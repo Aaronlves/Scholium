@@ -21,9 +21,9 @@ writes, About refresh, source preservation and Undo. Evidence:
 acceptance remain open.
 
 **2026-09-10 — Chat foundation:** 29 checks; Release/CLI pass.
-XCUITest verifies scrolling, stable extent and thumb dragging; QA verifies
-cross-table quotes and transient previews. `.build/agent-foundation-acceptance.md` preserves integration
-failures and owning rechecks. Scrolling confirmed. Packaging, large-history and accessibility/adaptation
+XCUITest verifies scrolling, extent and thumb dragging; QA verifies quotes,
+previews and shared message typography. `.build/agent-foundation-acceptance.md` preserves integration
+failures and owning rechecks. Packaging, large-history and accessibility/adaptation
 acceptance remain open.
 
 **2026-09-09 — selection shortcuts:** 31 native and 234 editor checks pass.

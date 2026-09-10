@@ -1,11 +1,11 @@
-# Appearance configuration / 外观配置
+# Document appearance configuration / 文稿外观配置
 
-In Settings → Appearance, choose **Show in Finder…** to locate `appearances.json`.
+In Settings → Document, choose **Show in Finder…** to locate `appearances.json`.
 The generated file is a complete, editable example. Copy it before experimenting,
 edit it with a text editor, then choose **Reload** in Scholium. You can replace it
 with another complete configuration of the same format.
 
-在“设置 → 外观”中选择“在 Finder 中显示…”，找到 `appearances.json`。
+在“设置 → 文稿”中选择“在 Finder 中显示…”，找到 `appearances.json`。
 当前文件本身就是完整示例。可以先复制一份，再用文本编辑器修改或替换，
 然后回到 Scholium 选择“重新载入”。
 
@@ -14,7 +14,7 @@ with another complete configuration of the same format.
 - `selectedProfileID` identifies the selected configuration in `profiles`.
 - Each profile has a unique `id`, a `name`, and `settings`.
 - Keep IDs and required fields intact. JSON does not permit comments or trailing commas.
-- Settings affects display on this Mac, never Markdown/YAML bytes or native app chrome.
+- Settings affects Markdown content display on this Mac, never Markdown/YAML bytes or native app chrome.
 - The interface edits the same configuration and preserves its advanced settings.
 - When an external change is detected, reload before saving from the interface.
 - A failed reload retains the currently loaded appearance and reports the field.
@@ -22,7 +22,7 @@ with another complete configuration of the same format.
 
 `selectedProfileID` 必须对应 `profiles` 中某一项的 `id`。保留完整结构、唯一 ID
 和所有必需字段；JSON 不支持注释和尾随逗号。配置仅影响本机呈现，不改写研究
-文档或系统界面。界面修改与文件修改使用同一套配置；文件被外部修改后，须先
+文档内容或系统界面。界面修改与文件修改使用同一套配置；文件被外部修改后，须先
 重新载入再从界面保存。重新载入失败会保留当前外观，并指出错误位置。
 
 ## Common fields
@@ -84,7 +84,7 @@ They cannot hide provenance, diagnostics, conflicts or recovery information.
 这些参数只调整受保护结构内的排版，不能隐藏来源、诊断、冲突或恢复信息。
 
 Optional CSS snippets remain a separate, constrained override for ordinary
-document content. Use **CSS Snippets…** to manage them. They do not replace
+document content. Use **Advanced CSS…** to manage them. They do not replace
 the structured Callout settings or style native controls.
 
 Default sizing follows a 16 CSS px body (12 pt), with Courier at 12.8 CSS px (9.6 pt) for Source and Frontmatter. Heading scales remain relative to body text; the body font family is unchanged.

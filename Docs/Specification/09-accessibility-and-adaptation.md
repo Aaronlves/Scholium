@@ -166,12 +166,12 @@ integrations. Verify:
   Definitions expose immutable key/kind, order, scope, lifecycle and use count;
   Archive/Restore describes its effect on stored values. Frontmatter's named
   route and direct source editing retain composition and source authority.
-- Hotkeys expose command, menu location, binding, recording state, validation,
+- Keyboard Shortcuts expose command, menu location, binding, recording state, validation,
   Save, Clear and Restore. An invalid draft never alters active commands.
 - Zotero linking/refresh names exact item/library, proposed fills/updates,
   retained conflicts, progress, partial commit, cancellation and retry. The
   read-only Zotero and non-YAML/Markdown boundaries are visible before commit.
-- Agent Integration exposes App/bridge/CLI state, distinct setup-copy actions
+- Agents & Chat exposes App/bridge/CLI state, distinct setup-copy actions
   and the Finder route. Commands/paths are selectable; copy success does not
   claim host configuration. MCP failures retain distinct unavailable, scope,
   stale/conflict and uncertain-outcome explanations.

@@ -122,26 +122,15 @@ struct AgentChatDiagram: View {
     .task(id: source) { failure = nil; ready = false; projection = Projection(source) }
   }
   static func presentationCSS(dark: Bool, increasedContrast: Bool) -> String {
-    let name: NSAppearance.Name = increasedContrast
-      ? (dark ? .accessibilityHighContrastDarkAqua : .accessibilityHighContrastAqua)
-      : (dark ? .darkAqua : .aqua)
-    var declarations = ""
-    NSAppearance(named: name)?.performAsCurrentDrawingAppearance {
-      let background = ScholiumNativeColorRole.windowBackground.nsColor.usingColorSpace(.sRGB)!
-      let colors: [(String, NSColor)] = [
-        ("document-background", ScholiumNativeColorRole.windowBackground.nsColor), ("surface-background", ScholiumNativeColorRole.controlBackground.nsColor),
-        ("primary-text", ScholiumNativeColorRole.label.nsColor), ("secondary-text", ScholiumNativeColorRole.secondaryLabel.nsColor),
-        ("separator", ScholiumNativeColorRole.secondaryLabel.nsColor), ("accent", ScholiumNativeColorRole.controlAccent.nsColor)
-      ]
-      declarations = colors.map { key, value in
-        let color = value.usingColorSpace(.sRGB) ?? background
-        let alpha = color.alphaComponent
-        let channels = zip([color.redComponent, color.greenComponent, color.blueComponent],
-                           [background.redComponent, background.greenComponent, background.blueComponent])
-          .map { Int((($0 * alpha + $1 * (1 - alpha)) * 255).rounded()) }
-        return String(format: "--scholium-color-%@: #%02x%02x%02x;", key, channels[0], channels[1], channels[2])
-      }.joined(separator: "\n")
-    }
+    let colors: [(String, ScholiumColorRole)] = [
+      ("document-background", .documentBackground), ("surface-background", .surfaceBackground),
+      ("primary-text", .primaryText), ("secondary-text", .secondaryText),
+      ("separator", .separator), ("accent", .accent)
+    ]
+    let declarations = colors.map { key, role in
+      String(format: "--scholium-color-%@: #%06x;", key,
+        role.resolvedRGBValue(isDark: dark, increasedContrast: increasedContrast))
+    }.joined(separator: "\n")
     return """
       :root { color-scheme: \(dark ? "dark" : "light"); \(declarations) }
       html, body { background: transparent; color: var(--scholium-color-primary-text); }

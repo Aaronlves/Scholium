@@ -76,7 +76,7 @@ acceptance resume only outside composition. §19 governs the material boundary.
 
 Insert presents Footnote and Inline Footnote as neighboring commands. Their
 default shortcuts are Option-Command-N and Option-Shift-Command-N respectively;
-the existing Hotkeys owner may replace or clear either binding.
+the existing Keyboard Shortcuts owner may replace or clear either binding.
 
 Internal-link preview preserves each mode's interaction meaning. Review reveals
 the cached destination on ordinary pointer hover or link focus. Edit follows the
@@ -124,18 +124,22 @@ logical lines. Native app chrome is not themeable. Advanced CSS is additive and
 optional.
 
 Appearance directly exposes body font/size, line width/spacing, Source
-font/size. Frontmatter remains above the document title as quiet, indented Source
-text, with generous separation from the title and no label, button, or container
-chrome. Opening or switching documents starts at the title; scrolling upward
-reveals YAML for direct editing in Edit. No disclosure or timed collapse exists.
+font/size and alignment. Low-frequency paragraph, typesetting, heading and
+heading-level values are available from one explicit Advanced Typography native
+sheet against the same draft. Frontmatter remains above the document title as
+quiet, indented Source text, with generous separation from the title and no
+label, button, or container chrome. Opening or switching documents starts at
+the title; scrolling upward reveals YAML for direct editing in Edit. No
+disclosure or timed collapse exists.
 Initial positioning precedes presentation; saving does not reset the viewport.
 Document switching presents only the requested mode after readiness, without
 showing a temporary layout from another mode.
 A View-menu action navigates to Frontmatter without creating an empty envelope.
 Source always displays the full original text. The same documented
-`appearances.json` file owns basic and advanced configuration. Advanced body
-typography, headings, and Callout geometry use file editing, not a second GUI
-style editor. Finder, configuration guidance, explicit Reload, and Restore
+`appearances.json` file owns basic and advanced configuration. The native
+Advanced Typography sheet edits structured body typography and headings without
+creating a second appearance owner; Callout geometry and Advanced CSS remain
+file-managed. Finder, configuration guidance, explicit Reload, and Restore
 Defaults remain available. An external edit prevents stale GUI overwrite;
 invalid reload preserves the loaded appearance and draft and identifies the
 invalid field. Basic GUI edits retain advanced values. CSS snippets remain
@@ -518,7 +522,7 @@ paths, source, researcher prose, and Skill names remain verbatim.
 | Vault | 研究库 |
 | Library | 研究文档 |
 | Analyses / Topics / Works | 分析 / 议题 / 写作 |
-| Agent Integration / Agent Changes | Agent 集成 / Agent 修改 |
+| Agents & Chat / Agent Changes | 智能体与聊天 / Agent 修改 |
 | Research / Review / Judgment | 研究 / 审查 / 判断 |
 | Settle / Settled | 暂定 / 已暂定 |
 | Attention / Connect | 关注 / 连接 |

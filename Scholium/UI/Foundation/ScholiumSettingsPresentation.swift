@@ -12,7 +12,7 @@ func settingsTitle(
 ) -> some View {
     VStack(
         alignment: .leading,
-        spacing: ScholiumMetrics.ResearchGuidance.titleDetailSpacing
+        spacing: ScholiumMetrics.SettingsPresentation.titleDetailSpacing
     ) {
         Text(title)
             .font(.title2)
@@ -62,36 +62,21 @@ func settingsEditorSection<Content: View>(
 }
 
 @MainActor
-func researchSettingsSection<Content: View>(
+func settingsFormSection<Content: View>(
     _ title: LocalizedStringResource,
     @ViewBuilder content: () -> Content
 ) -> some View {
     settingsEditorSection(title, content: content)
 }
 
-@MainActor
-func researchSettingsCollectionRow<Content: View, Actions: View>(
-    @ViewBuilder content: () -> Content,
-    @ViewBuilder actions: () -> Actions
-) -> some View {
-    HStack(
-        alignment: .top,
-        spacing: ScholiumMetrics.ResearchGuidance.collectionRowColumnSpacing
-    ) {
-        content()
-        Spacer(minLength: ScholiumGrid.Spacing.nestedContentInset)
-        actions()
-    }
-    .padding(
-        .vertical,
-        ScholiumMetrics.ResearchGuidance.collectionRowVerticalInset
-    )
-}
-
 private struct ScholiumSettingsPaneSurface: ViewModifier {
     func body(content: Content) -> some View {
         content
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(
+                maxWidth: .infinity,
+                maxHeight: .infinity,
+                alignment: .topLeading
+            )
             .background(Color(nsColor: .windowBackgroundColor))
     }
 }

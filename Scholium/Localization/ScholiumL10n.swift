@@ -43,33 +43,23 @@ enum ScholiumL10n {
     }
 
     enum Settings {
-        static var triptychs: LocalizedStringResource {
+        static var workspace: LocalizedStringResource {
             LocalizedStringResource(
-                "settings.tab.triptychs",
-                defaultValue: "Triptychs",
+                "settings.tab.workspace",
+                defaultValue: "Workspace",
                 table: "Interface",
                 bundle: .module,
-                comment: "Settings tab for managing registered Triptychs and their folders."
+                comment: "Settings tab for local Triptych registration and folder access."
             )
         }
 
-        static var appearance: LocalizedStringResource {
+        static var document: LocalizedStringResource {
             LocalizedStringResource(
-                "settings.tab.appearance",
-                defaultValue: "Appearance",
+                "settings.tab.document",
+                defaultValue: "Document",
                 table: "Interface",
                 bundle: .module,
-                comment: "Settings tab for named document appearance profiles and advanced CSS."
-            )
-        }
-
-        static var hotkeys: LocalizedStringResource {
-            LocalizedStringResource(
-                "settings.tab.hotkeys",
-                defaultValue: "Hotkeys",
-                table: "Interface",
-                bundle: .module,
-                comment: "Settings tab for customizable Scholium keyboard shortcuts."
+                comment: "Settings tab for document content presentation and appearance profiles."
             )
         }
 
@@ -83,23 +73,33 @@ enum ScholiumL10n {
             )
         }
 
-        static var researchGuidance: LocalizedStringResource {
+        static var notifications: LocalizedStringResource {
             LocalizedStringResource(
-                "settings.tab.researchGuidance",
-                defaultValue: "Research Guidance",
-                table: "Interface",
-                bundle: .module,
-                comment: "Settings group for Agent Integration and read-only external research tools."
-            )
-        }
-
-        static var attention: LocalizedStringResource {
-            LocalizedStringResource(
-                "settings.tab.attention",
+                "settings.tab.notifications",
                 defaultValue: "Notifications",
                 table: "Interface",
                 bundle: .module,
-                comment: "Settings tab for notifications and derived issue reminders."
+                comment: "Settings tab for notification reminders and dismissed items."
+            )
+        }
+
+        static var interaction: LocalizedStringResource {
+            LocalizedStringResource(
+                "settings.tab.interaction",
+                defaultValue: "Interaction",
+                table: "Interface",
+                bundle: .module,
+                comment: "Settings tab for keyboard shortcuts and selection actions."
+            )
+        }
+
+        static var integrations: LocalizedStringResource {
+            LocalizedStringResource(
+                "settings.tab.integrations",
+                defaultValue: "Integrations",
+                table: "Interface",
+                bundle: .module,
+                comment: "Settings tab for Agents, Chat and Zotero integrations."
             )
         }
     }

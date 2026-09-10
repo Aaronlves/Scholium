@@ -17,6 +17,7 @@ standard system control or copy a feature's layout recipe.
 | Native-to-document style transport | `ScholiumWebDesignTokens`; generated CSS consumes resolved values, not another palette or settings store. |
 | Shared custom geometry | `ScholiumGrid`, `ScholiumMetrics`, `ScholiumShape`, surface/boundary/elevation roles; exact defaults remain in code. |
 | App-owned typography | `ScholiumTypography` in `Scholium/Styling`; standard controls retain system type. |
+| Chat message typography and ink | `ScholiumChatAppearance` in `ScholiumDesignSystem`; user and Agent bodies share adaptive system type and primary text, while authorship layout remains with Chat. |
 | Document typography | `DocumentAppearanceSettings` and the rendering pipeline in [Documents and Editor](06-documents-and-editor.md#shared-document-rendering). |
 | Shared symbols | `ScholiumSystemSymbol`; `ScholiumWebSymbolAssets` transports those symbols into WebKit. |
 | Purpose-specific custom motion | `ScholiumMotion`; native controls retain their system lifecycle. |
@@ -52,7 +53,7 @@ Concrete feature ownership is recorded only in its chapter:
   native split, tabs, toolbar validation and window teardown.
 - [Source Layout and Presentation](03-source-layout-and-presentation.md#presentation):
   window routes, Search, Inspector, Sidebar headers and notifications.
-- [Research Guidance](04-research-guidance.md#settings-authority):
+- [Settings integrations](04-research-guidance.md#settings-authority):
   Settings composition and native preference-window geometry.
 - [Documents and Editor](06-documents-and-editor.md#editor-boundary-contract):
   retained editor, native previews, completion, Find and cross-runtime input.

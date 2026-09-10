@@ -24,7 +24,7 @@ struct HotkeySettingsView: View {
                                     Text(command.title)
                                         .help(Text(command.menuPath))
                                 }
-                                TableColumn("Hotkey") { command in
+                                TableColumn("Shortcut") { command in
                                     hotkeyMenu(command)
                                 }
                                 .width(100)
@@ -44,21 +44,19 @@ struct HotkeySettingsView: View {
 
                     if visibleCategories.isEmpty {
                         ScholiumContentStateView(
-                            "No Matching Hotkeys",
+                            "No Matching Shortcuts",
                             detail: Text("Try a command name or menu location."),
                             indicator: .symbol("keyboard")
                         )
                     }
 
-                    Divider()
-
                     HStack {
-                        Text("Hotkeys are stored on this Mac and update menu commands immediately.")
+                        Text("Keyboard shortcuts are stored on this Mac and update menu commands immediately.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                         Spacer()
-                        Button("Restore Default Hotkeys…") {
+                        Button("Restore Default Shortcuts…") {
                             pendingResetAll = true
                         }
                         .disabled(!hasCustomizations)
@@ -87,7 +85,7 @@ struct HotkeySettingsView: View {
             .buttonStyle(.automatic)
         }
         .confirmationDialog(
-            "Restore Default Hotkeys?",
+            "Restore Default Shortcuts?",
             isPresented: $pendingResetAll,
             titleVisibility: .visible
         ) {
@@ -138,14 +136,14 @@ struct HotkeySettingsView: View {
             }
             .menuStyle(.button)
             .controlSize(.small)
-            .accessibilityLabel(Text("Hotkey for \(String(localized: command.title))"))
+            .accessibilityLabel(Text("Shortcut for \(String(localized: command.title))"))
             .accessibilityValue(Text(binding(for: command)?.displayName ?? "None"))
             .accessibilityIdentifier("scholium.hotkeys.command.\(command.rawValue)")
     }
     @ViewBuilder
     private func hotkeyActions(_ command: ScholiumHotkeyCommand) -> some View {
-                Button("Record New Hotkey…") { editingCommand = command }
-                Button("Clear Hotkey") {
+                Button("Record New Shortcut…") { editingCommand = command }
+                Button("Clear Shortcut") {
                     preferencesData = ScholiumHotkeyPreferences.data(
                         setting: nil,
                         for: command,
@@ -203,7 +201,7 @@ private struct HotkeyRecordingSheet: View {
             spacing: ScholiumGrid.Spacing.sectionSeparation
         ) {
             settingsTitle(
-                "Record Hotkey",
+                "Record Shortcut",
                 detail: "Choose a shortcut for \(String(localized: command.title))."
             )
 
@@ -230,8 +228,6 @@ private struct HotkeyRecordingSheet: View {
                         .accessibilityIdentifier("scholium.hotkeys.validation")
                 }
             }
-
-            Divider()
 
             HStack {
                 Button("Clear") { draft = nil }

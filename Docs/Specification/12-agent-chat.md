@@ -4,15 +4,15 @@
 
 ## 8.7 In-app Chat
 
-Chat belongs to one Triptych and may reference Notes across its vaults. The first
-message starts a conversation without a task or Record. Library navigation and
-Note changes neither switch conversations nor silently share documents. History,
-drafts, attachments and uncertain delivery survive reopening in machine-local
-storage. Titles derive from the first message; persistence is automatic. Archiving hides an idle
-conversation from the active list while preserving its messages, draft and modification
-links. Restoring makes it writable again; archived conversations cannot send or become
-active tool runs. Runtime history remains runtime-owned; a retained public projection is
-not a second writable Note or researcher endorsement.
+Chat belongs to a Triptych and references Notes across its vaults. The first
+message starts a taskless conversation without a Record. Library or Note navigation
+never switches conversations or shares documents. History, drafts, attachments and
+uncertain delivery survive reopening in local storage. Titles derive from the first
+message and persistence is automatic. Archiving hides idle conversations but retains
+messages, drafts and modification links; restoring makes them writable. Archived
+conversations cannot send or start runs. Runtime history stays runtime-owned; public
+projections are not writable Notes or endorsements. User and Agent bodies share
+adaptive system type, ink and links; alignment and fill mark authorship.
 
 The researcher selects Ask for Approval or Full Access per conversation. Ask
 requires confirmation of each Scholium Note mutation and displays runtime
@@ -61,18 +61,19 @@ editor Undo operation; changed source retains the proposal for Copy or Chat and
 requires a fresh request rather than fuzzy relocation or overwriting later edits.
 Review offers Copy and Continue in Chat, with adoption available in Edit/Source.
 
-Settings owns a machine-local ordered selection-action list: at most five
-custom actions, with name, prompt and enabled state, Add, Remove, reorder and
-Restore Defaults. Names are single-line and fit the width of six ordinary CJK
-characters; oversized names and empty prompts retain an invalid draft and cannot
-be saved. The settings editor previews actual labels. The defaults are Clarify
-Concepts, Examine Argument and Check Evidence. Clarification distinguishes usage
-from interpretation; argument examination separates stated and supplied premises
-without forcing nonargumentative prose into a proof; evidence checking separates
-inspected primary material, analysis Notes and inference, leaving unavailable
-sources unverified. These editable prompts are shortcuts, not installed Skills,
-research scores, task types or durable philosophical records. Exact source and
-locator attachment remain application-owned and require no template syntax.
+Settings owns an ordered list of at most five custom selection
+actions with name, prompt, enabled state, Add, Remove, reorder and Restore
+Defaults. A compact table keeps enabled state and one-line summary
+visible, with Edit… and More actions on every row. Add and Edit… open a native
+sheet with directly editable name and multiline instruction. Names fit six
+CJK characters; oversized names and empty prompts remain invalid and
+cannot be saved. Preview shows selection toolbar and More Actions without
+activating Chat. Defaults are Clarify Concepts, Examine
+Argument and Check Evidence: their prompts distinguish usage from
+interpretation, stated from supplied premises, and inspected material from
+analysis Notes and inference. These prompts are shortcuts, not Skills, scores,
+task types or durable records; source and locator attachment remain
+application-owned.
 Opening a retained passage reveals its exact range only while the current source
 revision and range match; an older snapshot keeps its original attribution.
 For an exact Chat passage, Review restores the native text selection only when

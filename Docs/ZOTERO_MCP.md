@@ -19,8 +19,9 @@ into Chat. A custom same-name connection is never silently replaced.
 
 ## Install and verify the CLI
 
-Open **Settings → Research Guidance → External Tools & Citations → Scholium CLI**
-and choose **Copy CLI Installation Instructions** for the external Agent.
+Open **Settings → Integrations → Agents & Chat** and choose a setup command for
+the external Agent. The page reports the installed Scholium CLI and its exact
+path before copying the command.
 The official installer places the version-matched executable and resource
 bundle under `~/.local/bin` without editing a shell profile. After installation,
 the standalone CLI can check or install a newer verified release explicitly:

@@ -1,12 +1,13 @@
-# Architecture: Research Guidance
+# Architecture: Settings integrations
 
 [IMPLEMENTATION_ARCHITECTURE.md](../IMPLEMENTATION_ARCHITECTURE.md) · Agent
 Integration, Zotero configuration, and Settings ownership.
 
-Research Guidance is an App Settings group, not an Agent runtime. Its current
-destinations are **Agent Integration** and **External Tools**.
+The Settings **Integrations** pane is navigation, not an Agent runtime. It
+contains **Agents & Chat** and **Zotero**; those children preserve their
+separate feature owners, storage boundaries and connection semantics.
 
-## Agent Integration
+## Agents & Chat
 
 `AgentIntegrationSettingsView` receives delivery-neutral availability values
 from `WorkspaceSettingsModel`. Application resolves the installed CLI and
@@ -23,7 +24,7 @@ The Core Protocol reveal route is a Finder action over a release resource.
 Researcher-owned method Skills remain in the external host and have no Scholium
 registration, parser, store, editor, or recovery state.
 
-## External Tools
+## Zotero
 
 Zotero remains an optional integration with one Application-owned capability.
 Its settings, exact library/item identity, attachment containment, and
@@ -50,7 +51,8 @@ external navigation use it; a locator does not create source-read evidence.
 
 ## Settings authority
 
-Application and This Triptych settings retain their existing owners.
+Workspace, Document, Metadata and Notifications settings retain their existing
+owners; the Integrations and Interaction panes only compose those owners.
 `WorkspaceSettingsModel` presents immutable snapshots and delegates writes to
 Application capabilities. Portable Triptych settings contain Metadata
 definitions, About order, Attention timing, and other declared portable state.
@@ -61,13 +63,20 @@ policy.
 Settings search indexes static interface metadata only. It never searches
 research content, reads external Skill files, or supplies Agent permission.
 
-`SettingsToolbarAttachment` projects the selected destination to a native
+`SettingsToolbarAttachment` projects the six selected destinations to a native
 preference `NSToolbar`. Its coordinator owns only exact-window attachment and
 frame adjustment from the current top-left corner, constrained to the visible
-screen and immediate under Reduce Motion. SwiftUI retains destination state;
-Application retains configuration persistence. Native search filters static
-page/control metadata. Hotkey recording delegates to
+screen and immediate under Reduce Motion. SwiftUI retains destination and
+child-category state; feature owners retain configuration persistence. Native
+search filters static page/control metadata and restores the browsing context.
+Keyboard shortcut recording delegates to
 `ScholiumHotkeyPreferences`, shared with command construction.
+
+`SettingsInteractionView` composes Keyboard Shortcuts and Selection Actions
+with a native segmented child selector. `SettingsIntegrationsView` composes
+Agents & Chat and Zotero in the same way; it does not copy either feature's
+state. Their scope notice is explanatory only and does not grant a broader
+write authority.
 
 The Metadata pane edits field definitions and About visibility/order as separate
 parts of one revision-checked settings draft. It neither writes Note Metadata

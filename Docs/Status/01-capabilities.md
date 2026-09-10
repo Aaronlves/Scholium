@@ -88,7 +88,7 @@
   Undo validates the exact Note/Change binding and current ending revision;
   repeated or ineligible recovery is refused. Chat Ask uses the reverse comparison,
   and successful Undo updates the original receipt without a new edit record.
-- Settings exposes Agent Integration instructions for Codex and Claude Code and
+- Settings exposes Agents & Chat instructions for Codex and Claude Code and
   reveals the bundled `scholium-core-protocol` Skill. External-host setup stores no credentials. In-app Chat separately retains
   public conversation state and selected runtime configuration.
 - The Core Protocol uses ordinary Note operations for explicitly requested

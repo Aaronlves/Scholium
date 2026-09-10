@@ -194,7 +194,7 @@ compositing artifacts; inspect the actual native window before judging them.
   one physical Full Keyboard Access journey, one installed Simplified Chinese
   IME exact-source journey, and one visual-adaptation set at supported window
   sizes.
-- Include Agent Integration command copying, Agent Changes comparison/Undo,
+- Include Agents & Chat command copying, Agent Changes comparison/Undo,
   Library navigation, Inspector About/Links/Related Material navigation and
   Document mode transitions,
   system Trash, conflict, and recovery where they exercise distinct human

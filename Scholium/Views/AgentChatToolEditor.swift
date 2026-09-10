@@ -4,7 +4,6 @@ import SwiftUI
 struct AgentChatToolEditor: View {
   @ObservedObject var capabilities: AgentChatCapabilitiesController
   @State var edit: AgentChatToolEdit
-  @State var showsAdvanced = false
   @Environment(\.dismiss) private var dismiss
   @Environment(\.scholiumFileSelectionPresenter) private var fileSelectionPresenter
   @State private var operation: Task<Void, Never>?
@@ -38,7 +37,7 @@ struct AgentChatToolEditor: View {
           }
         }
         Toggle("Enabled", isOn: $edit.connection.enabled)
-        DisclosureGroup("Advanced", isExpanded: $showsAdvanced) {
+        Section("Authentication and Environment") {
           if edit.connection.kind == .remote {
             TextField("Bearer Token Variable", text: $edit.connection.bearerTokenVariable,
               prompt: Text("Optional"))
@@ -58,7 +57,7 @@ struct AgentChatToolEditor: View {
         if edit.requiresAccessConfirmation {
           Toggle("Reuse Existing Access Settings", isOn: $edit.reuseAccessSettings)
         }
-      }.formStyle(.grouped).disabled(operation != nil)
+      }.formStyle(.columns).disabled(operation != nil)
       if capabilities.isShared {
         Text("Shared Codex Settings").font(.caption).foregroundStyle(.secondary)
         Text(edit.home.path).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)

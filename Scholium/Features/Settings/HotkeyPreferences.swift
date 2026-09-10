@@ -161,7 +161,7 @@ enum ScholiumHotkeyValidationIssue: Equatable, Sendable {
     var message: String {
         switch self {
         case .commandRequired:
-            String(localized: "Include the Command key in a Scholium hotkey.", table: "Localizable", bundle: .module)
+            String(localized: "Include the Command key in a Scholium shortcut.", table: "Localizable", bundle: .module)
         case .systemReserved:
             String(localized: "This shortcut is reserved for a standard macOS command.", table: "Localizable", bundle: .module)
         case .conflict(let command):

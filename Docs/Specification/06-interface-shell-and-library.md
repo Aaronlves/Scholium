@@ -66,7 +66,7 @@ otherwise a compact latest-reply action preserves the reading position.
 A disconnected-state Connect Codex action starts initial setup or retries a real
 unresolved failure; restored connections require no repeated setup. Sign-in appears
 only when needed. Connection editing belongs in
-Settings, with manual paths behind its advanced disclosure. Composer secondary controls
+Settings, with manual paths visible in its connection group. Composer secondary controls
 are borderless; permission uses an icon with a checked menu and accessible current
 value. The circular Send button uses shared Accent; availability, keyboard sending and
 native state feedback remain authoritative. The whole message input rectangle, including
@@ -224,8 +224,8 @@ Menus follow task ownership:
 
 #### Chat capability presentation
 
-Agent Integration settings contains native Methods and Connected Tools
-disclosures with Refresh, per-method enablement, descriptions and discovery
+Agents & Chat settings contains native Methods and Connected Tools
+groups with Refresh, per-method enablement, descriptions and discovery
 errors. The connected configuration scope is visible before applying a setting;
 a shared configuration change requires explicit confirmation. The protected
 Core Protocol is identified separately from researcher methods. Tool inventory
@@ -235,8 +235,8 @@ Typing `$` offers available methods in a compact native candidate popover;
 chosen methods retain removable labels in the draft. Sent messages retain those labels as requested methods, without an
 invocation badge unless the runtime supplies an invocation event.
 
-Methods settings offers Add Methods Folder and a compact Associated Folders
-disclosure. A named folder chooser adds an association; each folder has an
+Methods settings offers Add Methods Folder and an Associated Folders
+list. A named folder chooser adds an association; each folder has an
 accessible Remove Association action and an inspectable full path. These
 associations affect Scholium's connected process, including when it reads a
 shared configuration; they do not change the other host's discovery settings.
@@ -249,8 +249,9 @@ cannot redirect a pending approval to another configuration.
 
 Connected Tools offers Add Tool and per-connection Edit, enable/disable and
 Remove controls. The native form distinguishes Remote and Local, with name,
-address or program, and arguments where applicable. Advanced authentication uses
-runtime-managed sign-in or named environment variables in an Advanced disclosure.
+address or program, and arguments where applicable. Authentication uses
+runtime-managed sign-in or visible named environment-variable fields in the
+native tool editor.
 Remote connections expose a bearer-token variable name; local programs expose
 inherited variable names. Brief supporting text distinguishes names from values.
 The form does not become a second credential store. Shared scope and removal require confirmation

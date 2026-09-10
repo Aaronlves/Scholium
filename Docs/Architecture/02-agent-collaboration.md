@@ -145,7 +145,7 @@ Models](05-source-storage-and-read-models.md#vault-write-and-prewrite-recovery-b
 
 [Source Layout and Presentation](03-source-layout-and-presentation.md#presentation)
 owns Agent Changes composition;
-[Research Guidance](04-research-guidance.md#agent-integration) owns external-host
+[Settings integrations](04-research-guidance.md#agents-chat) owns external-host
 setup. Both consume this chapter's bridge and mutation-evidence owners.
 
 ## Native Chat client
@@ -555,8 +555,8 @@ configuration changes during its active executions. Selected methods are draft
 values; sent messages retain immutable request labels and explicit runtime
 Skill inputs, independently of observed invocation events. Unknown or disabled
 choices remain visible and non-sending. The connection Settings owner refreshes
-inventory for its selected thread; its native capability subview owns only
-disclosure and shared-setting confirmation presentation.
+inventory for its selected thread; its native capability subview owns visible
+grouping and shared-setting confirmation presentation.
 
 Associated method folders are launch preferences in UserDefaults, keyed by the
 normalized selected Codex configuration path. The capability owner reads the
