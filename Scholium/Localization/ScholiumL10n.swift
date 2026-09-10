@@ -56,10 +56,10 @@ enum ScholiumL10n {
         static var document: LocalizedStringResource {
             LocalizedStringResource(
                 "settings.tab.document",
-                defaultValue: "Document",
+                defaultValue: "Appearance",
                 table: "Interface",
                 bundle: .module,
-                comment: "Settings tab for document content presentation and appearance profiles."
+                comment: "Settings tab for document content presentation and appearance profiles, including typography."
             )
         }
 

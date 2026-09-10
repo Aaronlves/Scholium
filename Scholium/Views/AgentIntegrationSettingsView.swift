@@ -11,17 +11,20 @@ struct AgentIntegrationSettingsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.sectionSeparation) {
             if let chatController {
-                AgentChatConnectionSettingsView(
-                    controller: chatController,
-                    onShowExternalAgentHosts: { showsExternalAgentHosts = true }
-                )
-                .id(chatController.triptychID)
-            } else {
-                Text("Open a Triptych to manage its Chat connection.")
-                    .foregroundStyle(.secondary)
-                settingsEditorSection("Advanced") {
-                    Button("External Agent Hosts…") {
-                        showsExternalAgentHosts = true
+        AgentChatConnectionSettingsView(
+            controller: chatController,
+            onShowExternalAgentHosts: { showsExternalAgentHosts = true }
+        )
+        .id(chatController.triptychID)
+      } else {
+        settingsEditorSection("Chat in Scholium") {
+            Text("Open a Triptych to manage its Chat connection.")
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        settingsEditorSection("Advanced") {
+            Button("External Agent Hosts…") {
+                showsExternalAgentHosts = true
                     }
                 }
             }

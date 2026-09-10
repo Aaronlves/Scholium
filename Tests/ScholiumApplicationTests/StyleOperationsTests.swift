@@ -83,7 +83,11 @@ struct StyleOperationsTests {
         var edited = original
         edited.settings.lineWidthCharacterUnits = 84
         edited.settings.body.fontSizePoints = 14.5
+        edited.settings.body.cjkStrongFontFamily = "Noto Sans CJK SC"
+        edited.settings.body.cjkEmphasisFontFamily = "Kaiti SC"
         edited.settings.source = .init(fontFamily: "Helvetica Neue", fontSizePoints: 16)
+        edited.settings.headings.cjkStrongFontFamily = "Songti SC"
+        edited.settings.headings.cjkEmphasisFontFamily = "STKaiti"
         edited.settings.headings.weight = 600
         let orientationIndex = try #require(
             edited.settings.callouts.firstIndex(where: { $0.role == .orientation })
@@ -107,8 +111,12 @@ struct StyleOperationsTests {
         #expect(persisted.selectedAppearanceProfileID == copyID)
         #expect(persistedCopy.settings.lineWidthCharacterUnits == 84)
         #expect(persistedCopy.settings.body.fontSizePoints == 14.5)
+        #expect(persistedCopy.settings.body.cjkStrongFontFamily == "Noto Sans CJK SC")
+        #expect(persistedCopy.settings.body.cjkEmphasisFontFamily == "Kaiti SC")
         #expect(persistedCopy.settings.source.fontFamily == "Helvetica Neue")
         #expect(persistedCopy.settings.source.fontSizePoints == 16)
+        #expect(persistedCopy.settings.headings.cjkStrongFontFamily == "Songti SC")
+        #expect(persistedCopy.settings.headings.cjkEmphasisFontFamily == "STKaiti")
         #expect(persistedCopy.settings.headings.weight == 600)
         #expect(persistedCopy.settings.callout(.orientation).startInsetEm == 4.25)
 

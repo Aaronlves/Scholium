@@ -943,10 +943,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 window.scholiumReadScroll?.recordRestoreAttempt?.();
                 const restored = Boolean(anchor && window.scholiumReadScroll?.restore(anchor));
                 if (!restored) {
-                  const title = document.querySelector('.scholium-note-title');
-                  const initialTop = document.querySelector('.scholium-frontmatter-source') && title
-                    ? Math.max(0, window.scrollY + title.getBoundingClientRect().top - 32) : 0;
-                  window.scrollTo({top: fallbackFraction === 0 ? initialTop : extent * fallbackFraction, behavior: 'auto'});
+                  window.scrollTo({top: fallbackFraction === 0 ? 0 : extent * fallbackFraction, behavior: 'auto'});
                 }
                 const fraction = extent > 0 ? Math.max(0, Math.min(1, window.scrollY / extent)) : 0;
                 return {

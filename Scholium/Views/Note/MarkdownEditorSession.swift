@@ -168,7 +168,6 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     var pendingScrollFraction: Double?
     var pendingScrollAnchor: EditorScrollAnchor?
     @Published private(set) var openingPresentationID = UUID()
-    @Published private(set) var opensAtDocumentTitle = true
     private var reconstructionScrollAnchor: EditorScrollAnchor?
     private var startupTask: Task<Void, Never>?
     private var documentLoadTask: Task<Void, Never>?
@@ -479,9 +478,10 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         viewReconstructionID = UUID()
     }
 
-    func prepareOpeningViewport() {
+    /// Advances the native host identity for a new presentation without
+    /// imposing a title- or frontmatter-specific viewport.
+    func prepareOpeningPresentation() {
         openingPresentationID = UUID()
-        opensAtDocumentTitle = true
     }
 
     func loadDocument(
@@ -1610,13 +1610,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                 // Recovery and the final converged styles can both change
                 // visual block heights. Restore the retained position only
                 // after both have settled into the retained EditorState.
-                if opensAtDocumentTitle && mode == .livePreview {
-                    _ = try await send(
-                        .setScrollFraction(0),
-                        in: webView,
-                        requiringRequestEpoch: intendedRequestEpoch
-                    )
-                } else if let anchor = restorationScrollAnchor,
+                if let anchor = restorationScrollAnchor,
                    let wireAnchor = wireAnchor(from: anchor, in: checkedSource) {
                     _ = try await send(
                         .setScrollAnchor(wireAnchor),
@@ -1657,14 +1651,6 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                         )
                     }
                 }
-                if opensAtDocumentTitle && appliedMode == .livePreview {
-                    _ = try await send(
-                        .positionDocumentTitle,
-                        in: webView,
-                        requiringRequestEpoch: intendedRequestEpoch
-                    )
-                }
-                opensAtDocumentTitle = false
                 updatePresentation { $0.complete(appliedMode) }
                 // CodeMirror has replaced its exact source, but WebKit can
                 // retain the previous accessibility value until a separate

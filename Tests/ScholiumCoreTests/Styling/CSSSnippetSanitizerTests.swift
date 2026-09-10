@@ -106,6 +106,22 @@ struct CSSSnippetSanitizerTests {
         #expect(result.readCSS.contains("color: #444"))
     }
 
+    @Test("Fine typography is available only through the CSS surface")
+    func preservesFineTypographyProperties() throws {
+        let result = try CSSSnippetSanitizer.sanitize("""
+        body { letter-spacing: .02em; word-spacing: .1em; hyphens: auto; font-kerning: normal; font-variant-ligatures: common-ligatures; }
+        h1, h2 { letter-spacing: -.01em; }
+        """)
+
+        #expect(result.readCSS.contains("letter-spacing: .02em"))
+        #expect(result.readCSS.contains("word-spacing: .1em"))
+        #expect(result.readCSS.contains("hyphens: auto"))
+        #expect(result.readCSS.contains("font-kerning: normal"))
+        #expect(result.readCSS.contains("font-variant-ligatures: common-ligatures"))
+        #expect(result.livePreviewCSS.contains(".cm-editor.scholium-live-mode .cm-content"))
+        #expect(result.livePreviewCSS.contains(".scholium-live-mode .cm-live-h1"))
+    }
+
     @Test("Snippet names normalize to inert display labels")
     func normalizesSnippetNames() {
         #expect(

@@ -1,11 +1,14 @@
 # Document appearance configuration / 文稿外观配置
 
-In Settings → Document, choose **Show in Finder…** to locate `appearances.json`.
+In Settings → Appearance, choose **Show in Finder…** to locate `appearances.json`.
+The same pane contains the structured reading, heading, Bold Font, and Italic
+Font controls for the selected appearance profile.
 The generated file is a complete, editable example. Copy it before experimenting,
 edit it with a text editor, then choose **Reload** in Scholium. You can replace it
 with another complete configuration of the same format.
 
-在“设置 → 文稿”中选择“在 Finder 中显示…”，找到 `appearances.json`。
+在“设置 → 外观”中选择“在 Finder 中显示…”，找到 `appearances.json`。
+同一页面提供正文、标题、粗体和斜体字体控件，编辑当前外观配置。
 当前文件本身就是完整示例。可以先复制一份，再用文本编辑器修改或替换，
 然后回到 Scholium 选择“重新载入”。
 
@@ -31,6 +34,8 @@ with another complete configuration of the same format.
 | --- | --- | --- |
 | `lineWidthCharacterUnits` | Reading measure / 行宽 | 48–96; relative character-width units, not a count of Chinese characters |
 | `body.fontFamily` | Body font / 正文字体 | `alegreya`, `iowan`, `palatino`, `georgia`, `times`, `systemSerif` |
+| `body.cjkStrongFontFamily` | Chinese strong face / 中文加粗字体 | omitted or `null` follows body font; `""` restores body font; otherwise an installed family name |
+| `body.cjkEmphasisFontFamily` | Chinese emphasis face / 中文强调字体 | omitted or `null` uses Kaiti SC; `""` follows the body font's native italic; otherwise an installed family name |
 | `body.fontSizePoints` | Body size / 正文字号 | 9–24 pt |
 | `body.lineHeight` | Line spacing / 行距 | 1.2–2.4 × |
 | `source.fontFamily` | Source font / 源文本字体 | Installed font family name / 已安装字体家族名 |
@@ -38,28 +43,30 @@ with another complete configuration of the same format.
 
 ## Body typography
 
-`paragraphSpacingEm`: 0–2; `firstLineIndentEm`: 0–4;
-`letterSpacingEm`: −0.05–0.1; `wordSpacingEm`: −0.1–0.5.
-An `em` is relative to the applicable font size.
+`paragraphSpacingEm`: 0–2; `firstLineIndentEm`: 0–4. An `em` is relative to
+the applicable font size.
 
 `alignment`: `start`, `center`, `justify`.
-`hyphenation`: `none`, `automatic`.
-`kerning` and `ligatures`: `true` / `false`.
 
-These fields control paragraph spacing, indentation, letter/word spacing,
-alignment, hyphenation, kerning and common ligatures.
-对应段间距、首行缩进、字距、词距、对齐、断词、字偶距与常用连字。
+These fields control paragraph spacing, indentation and alignment. Fine
+typesetting is intentionally not a profile field; use the Advanced CSS surface
+described below for letter spacing, word spacing, hyphenation, kerning and
+ligatures.
+这些字段只控制段间距、首行缩进和对齐。字距、词距、断词、字偶距与连字等细致
+排版不再属于外观配置字段，请使用下面的 Advanced CSS。
 
 ## Headings
 
 - `fontFamily`: `body`, `alegreya`, `systemSerif`, `systemSans`.
+- `cjkStrongFontFamily`: omitted or `null` follows the heading font; `""` also follows it; otherwise an installed family name is used only for Chinese glyphs in strong text.
+- `cjkEmphasisFontFamily`: omitted or `null` uses Kaiti SC for Chinese emphasis; `""` follows the heading font's native italic; otherwise an installed family name is used only for Chinese glyphs in emphasis and italic headings.
 - `style`: `upright`, `italic`, `smallCaps`.
-- `weight`: 400–700; `lineHeight`: 1–2.4; `letterSpacingEm`: −0.05–0.1.
-- `level1` controls H1; `level2` controls the quieter H2–H6 tier.
-- Each tier has `scale` (0.8–3), `alignment` (`start`, `center`, `justify`),
+- `weight`: 400–700; `lineHeight`: 1–2.4.
+- `level1` through `level6` control H1 through H6 independently.
+- Each level has `scale` (0.8–3), `alignment` (`start`, `center`, `justify`),
   `spaceBeforeEm` (0–4), and `spaceAfterEm` (0–4).
 
-`level1` 对应正文 H1，`level2` 对应 H2–H6；它们不改变原文标题层级。
+`level1` 至 `level6` 分别对应 H1 至 H6，可以独立调整；它们不改变原文标题层级。
 
 ## Callouts
 
@@ -83,8 +90,47 @@ These values change appearance within Scholium's protected document structure.
 They cannot hide provenance, diagnostics, conflicts or recovery information.
 这些参数只调整受保护结构内的排版，不能隐藏来源、诊断、冲突或恢复信息。
 
+Bold and italic font choices are presentation-only. Latin characters continue
+using the selected body or heading family, including its real bold and italic
+faces; the built-in mixed-script defaults use FangSong for body text and KaiTi
+for italic text. An explicit font choice remains authoritative until it is
+changed or reset. Font family names refer to fonts installed on this Mac and
+are safely quoted in generated CSS. They never become Markdown/YAML content.
+
+语义字体选择只影响呈现层。拉丁字符继续使用正文或标题所选字体及其真实的
+粗体、斜体字形；中文替代字体只作用于呈现语言片段。字体名必须是本机已安装
+的字体，并会在生成 CSS 时安全转义，不会写入 Markdown/YAML。
+
 Optional CSS snippets remain a separate, constrained override for ordinary
-document content. Use **Advanced CSS…** to manage them. They do not replace
-the structured Callout settings or style native controls.
+document content. Use **Advanced CSS…** to manage them. They are the only
+configuration surface for fine typography and are applied after the generated
+appearance CSS, so they can refine the selected profile without creating a
+second appearance owner. They do not replace the structured Callout settings
+or style native controls.
+
+For example, an imported snippet can contain:
+
+```css
+body {
+  letter-spacing: 0;
+  word-spacing: 0.04em;
+  hyphens: auto;
+  font-kerning: normal;
+  font-variant-ligatures: common-ligatures;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  letter-spacing: -0.01em;
+}
+```
+
+The supported selectors are ordinary document elements such as `body`, `p`,
+`h1`–`h6`, `li`, `blockquote`, `table`, `code`, `strong`, `em`, and `mark`.
+Snippets are sanitized, scoped to document content, and projected into both
+Review and Edit.
+
+例如，导入的 CSS 片段可以包含上述规则。支持的选择器是 `body`、`p`、`h1`–`h6`、
+`li`、`blockquote`、`table`、`code`、`strong`、`em` 和 `mark` 等普通文稿元素；片段
+会经过安全检查，只作用于文稿内容，并同时投影到 Review 和 Edit。
 
 Default sizing follows a 16 CSS px body (12 pt), with Courier at 12.8 CSS px (9.6 pt) for Source and Frontmatter. Heading scales remain relative to body text; the body font family is unchanged.

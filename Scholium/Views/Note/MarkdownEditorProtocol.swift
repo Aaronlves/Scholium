@@ -1,7 +1,7 @@
 import Foundation
 import ScholiumContracts
 
-let markdownEditorProtocolVersion = 29
+let markdownEditorProtocolVersion = 30
 let markdownEditorMaximumInboundBytes = 2_500_000
 let markdownEditorMaximumSelectionRangeCount = 128
 
@@ -213,7 +213,6 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
         dialect: MarkdownEditingDialect,
         initialSelection: MarkdownEditorSelectionRange?
     )
-    case positionDocumentTitle
     case setMode(MarkdownEditorMode)
     case setDocumentTitle(String)
     case setPresentationCSS(String)
@@ -255,7 +254,7 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
         case replacement, expectedText, committedText, committedFingerprint, command, argument
     }
     private enum Kind: String, Codable {
-        case initialize, positionDocumentTitle, setMode, setDocumentTitle, setPresentationCSS, setUserCSS, setLinkPreviews, showPreview, measureVisibleProjection, showPreviewAt, announceStatus
+        case initialize, setMode, setDocumentTitle, setPresentationCSS, setUserCSS, setLinkPreviews, showPreview, measureVisibleProjection, showPreviewAt, announceStatus
         case goToLine, revealSourceRange, setScrollFraction, setScrollAnchor, queryText, querySelection, queryContext, queryScrollAnchor, queryPerformance
         case captureRecovery, restoreRecovery, acknowledgeCommittedSnapshot, replacePassage, command, documentFind, clearDocumentFind, markClean, focus, focusTitle, blur
     }
@@ -273,7 +272,6 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
                     forKey: .initialSelection
                 )
             )
-        case .positionDocumentTitle: self = .positionDocumentTitle
         case .setMode: self = try .setMode(container.decode(MarkdownEditorMode.self, forKey: .mode))
         case .setDocumentTitle:
             self = try .setDocumentTitle(container.decode(String.self, forKey: .value))
@@ -343,8 +341,6 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
         case let .setMode(mode): try pair(.setMode, mode, .mode, into: &container)
         case let .setDocumentTitle(value):
             try pair(.setDocumentTitle, value, .value, into: &container)
-        case .positionDocumentTitle:
-            try container.encode(Kind.positionDocumentTitle, forKey: .type)
         case let .setPresentationCSS(value): try pair(.setPresentationCSS, value, .value, into: &container)
         case let .setUserCSS(value): try pair(.setUserCSS, value, .value, into: &container)
         case let .setLinkPreviews(value): try pair(.setLinkPreviews, value, .value, into: &container)

@@ -10,14 +10,32 @@ enum DocumentAppearanceStyles {
     static func css(for settings: DocumentAppearanceSettings) -> String {
         let body = settings.body
         let headings = settings.headings
-        let level1 = headings.level1
-        let level2 = headings.level2
         let fontStyle = headings.style == .italic ? "italic" : "normal"
         let fontVariantCaps = headings.style == .smallCaps ? "small-caps" : "normal"
         let bodyFont = cssFontFamily(body.fontFamily)
         let headingFont = headings.fontFamily == .body
             ? bodyFont
             : cssFontFamily(headings.fontFamily)
+        let headingLevelDeclarations = headings.levels.enumerated().map { index, level in
+            let levelNumber = index + 1
+            return """
+              --scholium-document-h\(levelNumber)-size: \(number(level.scale * 100))%;
+              --scholium-appearance-h\(levelNumber)-before: \(number(level.spaceBeforeEm))em;
+              --scholium-appearance-h\(levelNumber)-after: \(number(level.spaceAfterEm))em;
+              --scholium-appearance-h\(levelNumber)-align: \(level.alignment.rawValue);
+            """
+        }.joined(separator: "\n")
+        let headingLevelRules = headings.levels.enumerated().map { index, _ in
+            let levelNumber = index + 1
+            return """
+            .scholium-document h\(levelNumber),
+            .scholium-live-mode .cm-live-h\(levelNumber) {
+              font-size: var(--scholium-document-h\(levelNumber)-size);
+              padding-block: var(--scholium-appearance-h\(levelNumber)-before) var(--scholium-appearance-h\(levelNumber)-after);
+              text-align: var(--scholium-appearance-h\(levelNumber)-align);
+            }
+            """
+        }.joined(separator: "\n")
 
         var rules = """
         :root {
@@ -28,25 +46,14 @@ enum DocumentAppearanceStyles {
           --scholium-document-source-font-size: \(number(settings.source.fontSizePoints))pt;
           --scholium-rhythm-prose-line-height: \(number(body.lineHeight));
           --scholium-rhythm-paragraph-gap: \(number(body.paragraphSpacingEm))em;
-          --scholium-document-h1-size: \(number(level1.scale * 100))%;
-          --scholium-document-h2-size: \(number(level2.scale * 100))%;
-          --scholium-document-h3-size: \(number(level2.scale * 100))%;
+          \(headingLevelDeclarations)
           --scholium-rhythm-heading-line-height: \(number(headings.lineHeight));
-          --scholium-appearance-h1-before: \(number(level1.spaceBeforeEm))em;
-          --scholium-appearance-h1-after: \(number(level1.spaceAfterEm))em;
-          --scholium-appearance-lower-heading-before: \(number(level2.spaceBeforeEm))em;
-          --scholium-appearance-lower-heading-after: \(number(level2.spaceAfterEm))em;
         }
         .scholium-document,
         .cm-editor.scholium-live-mode .cm-content {
           font-family: \(bodyFont);
           line-height: var(--scholium-rhythm-prose-line-height);
-          letter-spacing: \(number(body.letterSpacingEm))em;
-          word-spacing: \(number(body.wordSpacingEm))em;
           text-align: \(body.alignment.rawValue);
-          hyphens: \(body.hyphenation == .automatic ? "auto" : "none");
-          font-kerning: \(body.kerning ? "normal" : "none");
-          font-variant-ligatures: \(body.ligatures ? "common-ligatures" : "none");
           font-size: calc(var(--scholium-document-prose-font-size) * var(--scholium-document-text-scale-factor));
         }
         .scholium-document p {
@@ -69,39 +76,14 @@ enum DocumentAppearanceStyles {
           font-variant-caps: \(fontVariantCaps);
           font-weight: \(headings.weight);
           line-height: var(--scholium-rhythm-heading-line-height);
-          letter-spacing: \(number(headings.letterSpacingEm))em;
         }
-        .scholium-document h1 {
-          margin: 0;
-          padding-block: var(--scholium-appearance-h1-before) var(--scholium-appearance-h1-after);
-          text-align: \(level1.alignment.rawValue);
-        }
-        .scholium-live-mode .cm-live-h1 {
-          padding-block: var(--scholium-appearance-h1-before) var(--scholium-appearance-h1-after);
-          text-align: \(level1.alignment.rawValue);
-        }
-        .scholium-document h2,
-        .scholium-document h3,
-        .scholium-document h4,
-        .scholium-document h5,
-        .scholium-document h6 {
-          margin: 0;
-          padding-block: var(--scholium-appearance-lower-heading-before) var(--scholium-appearance-lower-heading-after);
-          text-align: \(level2.alignment.rawValue);
-        }
-        .scholium-live-mode .cm-live-h2,
-        .scholium-live-mode .cm-live-h3,
-        .scholium-live-mode .cm-live-h4,
-        .scholium-live-mode .cm-live-h5,
-        .scholium-live-mode .cm-live-h6 {
-          padding-block: var(--scholium-appearance-lower-heading-before) var(--scholium-appearance-lower-heading-after);
-          text-align: \(level2.alignment.rawValue);
-        }
+        \(headingLevelRules)
         """
 
         for callout in settings.callouts {
             rules += "\n" + calloutCSS(callout)
         }
+        rules += "\n" + semanticTypographyCSS(for: settings)
         return rules
     }
 
@@ -124,8 +106,145 @@ enum DocumentAppearanceStyles {
         --scholium-document-heading-font-style: \(fontStyle);
         --scholium-document-heading-font-variant-caps: \(fontVariantCaps);
         --scholium-document-heading-weight: \(headings.weight);
-        --scholium-document-heading-letter-spacing: \(number(headings.letterSpacingEm))em;
         """
+    }
+
+    /// Keeps semantic font choices script-aware while exposing only general
+    /// role controls in Settings. Latin glyphs stay with the role's selected
+    /// family so its real bold/italic face remains available; the built-in
+    /// mixed-script defaults are used until a researcher chooses another
+    /// family. An empty configured value explicitly disables that fallback.
+    static func semanticTypographyCSS(for settings: DocumentAppearanceSettings) -> String {
+        let bodyFont = cssFontFamily(settings.body.fontFamily)
+        let headingFont = settings.headings.fontFamily == .body
+            ? bodyFont
+            : cssFontFamily(settings.headings.fontFamily)
+        let bodyEmphasis = cjkFontFamily(
+            configured: settings.body.cjkEmphasisFontFamily,
+            fallback: bodyFont,
+            useDefault: true
+        )
+        let bodyStrong = cjkFontFamily(
+            configured: settings.body.cjkStrongFontFamily,
+            fallback: bodyFont,
+            useDefault: false
+        )
+        let headingEmphasis = cjkFontFamily(
+            configured: settings.headings.cjkEmphasisFontFamily,
+            fallback: headingFont,
+            useDefault: true
+        )
+        let headingStrong = cjkFontFamily(
+            configured: settings.headings.cjkStrongFontFamily,
+            fallback: headingFont,
+            useDefault: false
+        )
+
+        let bodyContainers = [
+            ".scholium-document p",
+            ".scholium-document li",
+            ".scholium-document blockquote",
+            ".scholium-document td",
+            ".scholium-document th",
+        ]
+        let bodyLiveContainers = [
+            ".cm-editor.scholium-live-mode .cm-line.cm-live-paragraph",
+            ".cm-editor.scholium-live-mode .cm-line.cm-live-quote",
+            ".cm-editor.scholium-live-mode .cm-line.cm-live-list",
+            ".cm-editor.scholium-live-mode .cm-line.cm-live-callout",
+        ]
+        let headingContainers = (1...6).map { ".scholium-document h\($0)" }
+
+        func staticSelector(_ containers: [String], _ semantic: String) -> [String] {
+            containers.map { "\($0) \(semantic) :lang(zh-Hans)" }
+        }
+
+        func liveSelector(_ containers: [String], _ semantic: String) -> [String] {
+            containers.flatMap { container in
+                [
+                    "\(container) \(semantic) .cm-live-cjk",
+                    "\(container) .cm-live-cjk \(semantic)",
+                    "\(container) \(semantic).cm-live-cjk",
+                ]
+            }
+        }
+
+        func addRule(_ selectors: [String], _ declarations: String, to css: inout String) {
+            guard !selectors.isEmpty else { return }
+            css += "\n\(selectors.joined(separator: ",\n")) {\n\(declarations)\n}"
+        }
+
+        var css = ""
+        if let bodyEmphasis {
+            addRule(
+                staticSelector(bodyContainers, "em") + liveSelector(bodyLiveContainers, ".cm-live-emphasis"),
+                "  font-family: \(bodyEmphasis);\n  font-style: normal;",
+                to: &css
+            )
+        } else if settings.body.cjkEmphasisFontFamily?.isEmpty == true {
+            addRule(
+                staticSelector(bodyContainers, "em") + liveSelector(bodyLiveContainers, ".cm-live-emphasis"),
+                "  font-family: inherit;\n  font-style: italic;",
+                to: &css
+            )
+        }
+        if let bodyStrong {
+            addRule(
+                staticSelector(bodyContainers, "strong") + liveSelector(bodyLiveContainers, ".cm-live-strong"),
+                "  font-family: \(bodyStrong);",
+                to: &css
+            )
+        }
+        if let headingEmphasis {
+            addRule(
+                staticSelector(headingContainers, "em")
+                    + liveSelector([".cm-editor.scholium-live-mode .cm-line.cm-live-heading"], ".cm-live-emphasis"),
+                "  font-family: \(headingEmphasis);\n  font-style: normal;",
+                to: &css
+            )
+            if settings.headings.style == .italic {
+                addRule(
+                    headingContainers.flatMap { ["\($0) :lang(zh-Hans)"] }
+                        + [".cm-editor.scholium-live-mode .cm-line.cm-live-heading .cm-live-cjk"],
+                    "  font-family: \(headingEmphasis);\n  font-style: normal;",
+                    to: &css
+                )
+            }
+        } else if settings.headings.cjkEmphasisFontFamily?.isEmpty == true {
+            let inlineSelectors = staticSelector(headingContainers, "em")
+                + liveSelector([".cm-editor.scholium-live-mode .cm-line.cm-live-heading"], ".cm-live-emphasis")
+            addRule(
+                inlineSelectors,
+                "  font-family: inherit;\n  font-style: italic;",
+                to: &css
+            )
+        }
+        if let headingStrong {
+            addRule(
+                staticSelector(headingContainers, "strong")
+                    + liveSelector([".cm-editor.scholium-live-mode .cm-line.cm-live-heading"], ".cm-live-strong"),
+                "  font-family: \(headingStrong);",
+                to: &css
+            )
+        }
+        return css
+    }
+
+    private static let defaultCJKBodyCSSFamily = "\"\(DocumentAppearanceSettings.defaultCJKBodyFontFamily)\", \"FangSong\", \"STFangSong\", serif"
+    private static let defaultCJKEmphasisCSSFamily = "\"\(DocumentAppearanceSettings.defaultCJKEmphasisFontFamily)\", \"STKaiti\", serif"
+
+    private static func cjkFontFamily(
+        configured: String?,
+        fallback: String,
+        useDefault: Bool
+    ) -> String? {
+        if configured?.isEmpty == true { return nil }
+        if let configured {
+            let safe = quotedCSSString(configured)
+            let fallbackFamily = fallback == "inherit" ? defaultCJKEmphasisCSSFamily : fallback
+            return "\(safe), \(fallbackFamily)"
+        }
+        return useDefault ? defaultCJKEmphasisCSSFamily : nil
     }
 
     private static func calloutCSS(_ callout: DocumentCalloutAppearance) -> String {
@@ -233,12 +352,16 @@ enum DocumentAppearanceStyles {
 
     private static func cssFontFamily(_ family: DocumentAppearanceFontFamily) -> String {
         switch family {
-        case .alegreya: "Alegreya, \"Iowan Old Style\", Palatino, Georgia, serif"
-        case .iowan: "\"Iowan Old Style\", Palatino, Georgia, serif"
-        case .palatino: "Palatino, \"Palatino Linotype\", Georgia, serif"
-        case .georgia: "Georgia, \"Times New Roman\", serif"
-        case .times: "\"Times New Roman\", Times, serif"
-        case .systemSerif: "ui-serif, \"New York\", Georgia, serif"
+        // Keep the chosen Latin face first, then give mixed-script prose an
+        // explicit macOS CJK partner before the generic fallback. Font
+        // fallback is per glyph, so this does not force an entire mixed line
+        // into one face or alter the authored source.
+        case .alegreya: "Alegreya, \"Iowan Old Style\", Palatino, Georgia, \(defaultCJKBodyCSSFamily)"
+        case .iowan: "\"Iowan Old Style\", Palatino, Georgia, \(defaultCJKBodyCSSFamily)"
+        case .palatino: "Palatino, \"Palatino Linotype\", Georgia, \(defaultCJKBodyCSSFamily)"
+        case .georgia: "Georgia, \"Times New Roman\", \(defaultCJKBodyCSSFamily)"
+        case .times: "\"Times New Roman\", Times, \(defaultCJKBodyCSSFamily)"
+        case .systemSerif: "ui-serif, \"New York\", Georgia, \(defaultCJKBodyCSSFamily)"
         }
     }
 
@@ -247,7 +370,7 @@ enum DocumentAppearanceStyles {
         case .body: "inherit"
         case .alegreya: cssFontFamily(DocumentAppearanceFontFamily.alegreya)
         case .systemSerif: cssFontFamily(DocumentAppearanceFontFamily.systemSerif)
-        case .systemSans: "ui-sans-serif, system-ui, -apple-system, sans-serif"
+        case .systemSans: "ui-sans-serif, system-ui, -apple-system, \"PingFang SC\", sans-serif"
         }
     }
 
@@ -255,11 +378,17 @@ enum DocumentAppearanceStyles {
         String(format: "%.4g", locale: Locale(identifier: "en_US_POSIX"), value)
     }
 
-    /// Font names are CSS string data, including quotes, slashes, and controls.
-    /// Hex escapes also prevent a font name from terminating an inline style.
+    /// Font names are CSS string data, including quotes, markup-sensitive
+    /// characters, and controls. Keep ordinary family names readable while
+    /// hex-escaping everything that could terminate or escape the string.
     private static func quotedCSSString(_ value: String) -> String {
-        "\"" + value.unicodeScalars.map {
-            "\\" + String($0.value, radix: 16) + " "
+        "\"" + value.unicodeScalars.map { scalar -> String in
+            switch scalar.value {
+            case 0x30...0x39, 0x41...0x5a, 0x61...0x7a, 0x20, 0x2d, 0x2e, 0x5f:
+                String(scalar)
+            default:
+                "\\" + String(scalar.value, radix: 16) + " "
+            }
         }.joined() + "\""
     }
 }

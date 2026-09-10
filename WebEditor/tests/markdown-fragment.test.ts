@@ -3,6 +3,26 @@ import {describe, expect, it} from "vitest";
 import {appendMarkdownBlocks} from "../markdown-fragment";
 
 describe("appendMarkdownBlocks", () => {
+  it("adds presentation-only language context for Chinese, English, and mixed prose", () => {
+    const {document} = parseHTML("<html><body><div id='root'></div></body></html>");
+    const root = document.querySelector<HTMLElement>("#root")!;
+    appendMarkdownBlocks("中文 English\n\nA plain English paragraph.", root);
+
+    expect(root.querySelector("p")?.getAttribute("lang")).toBe("zh-Hans");
+    expect(root.querySelectorAll("p")[1]?.getAttribute("lang")).toBe("en");
+  });
+
+  it("keeps CJK emphasis font selection scoped to CJK runs", () => {
+    const {document} = parseHTML("<html><body><div id='root'></div></body></html>");
+    const root = document.querySelector<HTMLElement>("#root")!;
+    appendMarkdownBlocks("Body *中文 English* and **加粗 text**.", root);
+
+    expect(root.querySelector("em > span[lang='zh-Hans']")?.textContent).toBe("中文");
+    expect(root.querySelector("strong > span[lang='zh-Hans']")?.textContent).toBe("加粗");
+    expect(root.querySelector("em > span[lang='en']")).toBeNull();
+    expect(root.textContent).toBe("Body 中文 English and 加粗 text.");
+  });
+
   it("preserves nested footnote block structure without executable HTML", () => {
     const {document} = parseHTML("<html><body><div id='root'></div></body></html>");
     const root = document.querySelector<HTMLElement>("#root")!;

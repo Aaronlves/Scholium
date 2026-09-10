@@ -696,7 +696,6 @@ struct NoteContentView: View {
             presentsEditor: isEditing,
             retainsEditor: documentSession.retainsEditorSurface,
             editorIsReady: editorSession.isLoaded
-                && !editorSession.opensAtDocumentTitle
                 && editorSession.presentedMode == documentSession.activeEditorMode,
             allowsPendingReadRecovery: editorSession.errorMessage != nil
         ) {

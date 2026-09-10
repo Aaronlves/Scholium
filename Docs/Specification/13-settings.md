@@ -29,11 +29,13 @@ current top-left corner to the pane's preferred size within screen bounds,
 using native animation and an immediate Reduce Motion result. Routine field
 edits and status updates do not repeatedly resize the window.
 
-The native toolbar presents six top-level panes: Workspace, Document, Metadata,
-Notifications, Interaction and Integrations. Workspace contains local Triptych
-registration and folder access. Document contains document-content appearance
-profiles. Metadata contains Triptych field definitions and About ordering;
-Notifications contains reminder timing and the local dismissal ledger.
+The native toolbar presents six top-level panes: Workspace, Appearance,
+Metadata, Notifications, Interaction and Integrations. Workspace contains local
+Triptych registration and folder access. Appearance contains the complete
+document-content appearance profile, including reading and typography controls.
+Metadata contains
+Triptych field definitions and About ordering; Notifications contains reminder
+timing and the local dismissal ledger.
 Interaction groups machine-local Keyboard Shortcuts and Selection Actions.
 Integrations groups Agents & Chat and Zotero because both are connection or
 external-tool configuration; each child retains its own owner and scope.
@@ -149,11 +151,18 @@ under its owning workflow contract.
 
 [Document Appearance §18.4](07-document-and-research-interface.md#184-document-modes-context-and-metadata)
 owns appearance controls, configuration-file editing and restoration; Settings
-does not create a second appearance owner or duplicate its controls. Body,
-Source, alignment and common spacing values are visible in the Document pane.
-Low-frequency paragraph, typesetting, heading and heading-level values are
-edited in one explicit Advanced Typography native sheet against the same draft.
-CSS remains an explicit action to the configuration surface and file. [Metadata Appendix A](11-metadata.md)
+does not create a second appearance owner or duplicate its controls. One
+Appearance pane owns the Profile, Reading, Typography, Text Styles, Heading
+Hierarchy, Configuration File and Advanced CSS groups against the same draft.
+Text Styles uses an aligned Body/Headings matrix, while Heading Hierarchy shows
+an aligned H1–H6 summary matrix. Detailed per-level spacing stays in one
+explicit native child sheet, revealed on demand; it is not a second appearance
+owner. Letter spacing, word spacing, hyphenation, kerning and ligatures are
+intentionally omitted from the structured profile and native form; Advanced CSS
+is their explicit configuration surface for ordinary document content. These
+matrices collapse before the available width or text size makes the form cramped.
+CSS remains an explicit action to the configuration surface and file, and
+profile saving does not reset CSS snippets. [Metadata Appendix A](11-metadata.md)
 owns definitions and profiles; [Agent Chat §8.7](12-agent-chat.md) owns Selection
 Actions and runtime configuration. Agents & Chat keeps connection state and
 primary connect or sign-in actions in the main pane; custom connection paths,

@@ -771,8 +771,7 @@ extension ScholiumUITests {
 
         func setBodyRhythm(
             lineHeight: Double,
-            paragraphSpacing: Double,
-            letterSpacing: Double
+            paragraphSpacing: Double
         ) {
             let appMenu = app.menuBars.menuBarItems["Scholium QA"]
             XCTAssertTrue(appMenu.waitForExistence(timeout: 5))
@@ -823,7 +822,6 @@ extension ScholiumUITests {
                 var configuration = try XCTUnwrap(profiles[index]["settings"] as? [String: Any])
                 var body = try XCTUnwrap(configuration["body"] as? [String: Any])
                 body["paragraphSpacingEm"] = paragraphSpacing
-                body["letterSpacingEm"] = letterSpacing
                 configuration["body"] = body
                 profiles[index]["settings"] = configuration
                 file["profiles"] = profiles
@@ -852,8 +850,7 @@ extension ScholiumUITests {
 
         setBodyRhythm(
             lineHeight: 2.00,
-            paragraphSpacing: 1.00,
-            letterSpacing: 0.020
+            paragraphSpacing: 1.00
         )
         XCTAssertTrue(
             anchorParagraph.isHittable,

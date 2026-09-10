@@ -245,10 +245,12 @@ export function createLiveInlineWidgets(options: {
         && other.expression.delimiterLength === this.expression.delimiterLength;
     }
 
-    toDOM() {
+    toDOM(view: EditorView) {
       const element = document.createElement("span");
       element.className = `scholium-math scholium-math-${this.expression.kind} cm-live-math`;
       element.dataset.scholiumProtected = "math";
+      element.dataset.scholiumSourceFrom = String(this.expression.from);
+      element.dataset.scholiumSourceTo = String(this.expression.to);
 
       const runtime = window.scholiumMath;
       if (runtime?.version !== 1) options.requestMathRuntime();
@@ -275,6 +277,26 @@ export function createLiveInlineWidgets(options: {
         );
         element.append(source);
       }
+
+      // A rendered formula is a reversible presentation of the exact source
+      // range. A click should therefore enter that range in this CodeMirror
+      // instance rather than selecting a widget boundary or opening a second
+      // editor. The side of the formula chooses the corresponding source
+      // boundary, keeping pointer placement predictable for inline and block
+      // expressions alike.
+      element.addEventListener("mousedown", (event) => {
+        if (event.button !== 0 || view.composing) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const rect = element.getBoundingClientRect();
+        const midpoint = rect.left + Math.max(0, rect.width) / 2;
+        const position = event.clientX <= midpoint
+          ? this.expression.from
+          : this.expression.to;
+        if (position < 0 || position > view.state.doc.length) return;
+        view.dispatch({selection: {anchor: position}, scrollIntoView: true});
+        view.focus();
+      });
       if (this.expression.kind === "display") {
         const slot = document.createElement("div");
         slot.className = "cm-live-math-slot";
@@ -284,7 +306,7 @@ export function createLiveInlineWidgets(options: {
       return element;
     }
 
-    ignoreEvent() { return false; }
+    ignoreEvent(event: Event) { return event.type === "mousedown"; }
   }
 
   return {

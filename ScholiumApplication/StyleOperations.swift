@@ -574,13 +574,14 @@ public actor StyleOperations: StyleUseCases {
         profile.settings.body.lineHeight = profile.settings.body.lineHeight.clamped(to: 1.2...2.4)
         profile.settings.body.paragraphSpacingEm = profile.settings.body.paragraphSpacingEm.clamped(to: 0...2)
         profile.settings.body.firstLineIndentEm = profile.settings.body.firstLineIndentEm.clamped(to: 0...4)
-        profile.settings.body.letterSpacingEm = profile.settings.body.letterSpacingEm.clamped(to: -0.05...0.1)
-        profile.settings.body.wordSpacingEm = profile.settings.body.wordSpacingEm.clamped(to: -0.1...0.5)
         profile.settings.headings.weight = profile.settings.headings.weight.clamped(to: 400...700)
         profile.settings.headings.lineHeight = profile.settings.headings.lineHeight.clamped(to: 1...2.4)
-        profile.settings.headings.letterSpacingEm = profile.settings.headings.letterSpacingEm.clamped(to: -0.05...0.1)
         profile.settings.headings.level1 = normalized(profile.settings.headings.level1)
         profile.settings.headings.level2 = normalized(profile.settings.headings.level2)
+        profile.settings.headings.level3 = normalized(profile.settings.headings.level3)
+        profile.settings.headings.level4 = normalized(profile.settings.headings.level4)
+        profile.settings.headings.level5 = normalized(profile.settings.headings.level5)
+        profile.settings.headings.level6 = normalized(profile.settings.headings.level6)
         profile.settings.callouts = DocumentCalloutAppearanceRole.allCases.map { role in
             normalized(profile.settings.callout(role))
         }

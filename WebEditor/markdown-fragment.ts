@@ -8,6 +8,7 @@ import {
 import {systemSymbolElement} from "./system-symbols";
 import {localized} from "./localization";
 import {linkAnnotationAfter} from "./link-annotation";
+import {cjkPresentationRanges, languageForText} from "./text-language";
 
 export interface MarkdownFragmentCallout {
   identifier: string;
@@ -39,6 +40,36 @@ function documentFor(parent: Node): Document {
   const owner = parent.ownerDocument;
   if (!owner) throw new Error("Markdown fragments require an owning document.");
   return owner;
+}
+
+function applyTextLanguage(element: HTMLElement, text: string) {
+  const language = languageForText(text);
+  if (language) element.lang = language;
+}
+
+/** Adds only presentation language spans; the Markdown source remains intact. */
+function appendTextWithLanguage(
+  text: string,
+  parent: HTMLElement | DocumentFragment,
+) {
+  const ranges = cjkPresentationRanges(text);
+  if (ranges.length === 0) {
+    parent.append(documentFor(parent).createTextNode(text));
+    return;
+  }
+  let position = 0;
+  const document = documentFor(parent);
+  for (const range of ranges) {
+    if (range.from > position) {
+      parent.append(document.createTextNode(text.slice(position, range.from)));
+    }
+    const cjk = document.createElement("span");
+    cjk.lang = "zh-Hans";
+    cjk.textContent = text.slice(range.from, range.to);
+    parent.append(cjk);
+    position = range.to;
+  }
+  if (position < text.length) parent.append(document.createTextNode(text.slice(position)));
 }
 
 function locatedOffset(options: MarkdownFragmentOptions, offset: number) {
@@ -102,7 +133,7 @@ function appendInlineMarkdownNode(
     const span = document.createElement("span");
     span.className = "cm-live-link";
     span.dir = "auto";
-    span.textContent = link?.[1] ?? raw;
+    appendTextWithLanguage(link?.[1] ?? raw, span);
     if (link) {
       identifyProjectedLink(
         span,
@@ -130,7 +161,7 @@ function appendInlineMarkdownNode(
     span.dir = "auto";
     const target = link[2].trim();
     const alias = link[3]?.trim();
-    span.append(document.createTextNode(alias || target));
+    appendTextWithLanguage(alias || target, span);
     // A rendered Wikilink behaves as one projected object on first entry.
     // Its exact half-open source end is the stable insertion point after `]]`;
     // one subsequent backward move can then reveal and enter the syntax.
@@ -139,7 +170,7 @@ function appendInlineMarkdownNode(
     return;
   }
   if (cursor.name === "Escape") {
-    parent.append(document.createTextNode(raw.startsWith("\\") ? raw.slice(1) : raw));
+    appendTextWithLanguage(raw.startsWith("\\") ? raw.slice(1) : raw, parent);
     return;
   }
 
@@ -152,17 +183,17 @@ function appendInlineMarkdownNode(
   if (cursor.firstChild()) {
     do {
       if (cursor.from > position) {
-        destination.append(document.createTextNode(source.slice(position, cursor.from)));
+        appendTextWithLanguage(source.slice(position, cursor.from), destination);
       }
       appendInlineMarkdownNode(cursor, source, destination, options);
       position = cursor.to;
     } while (cursor.nextSibling());
     cursor.parent();
     if (position < cursor.to) {
-      destination.append(document.createTextNode(source.slice(position, cursor.to)));
+      appendTextWithLanguage(source.slice(position, cursor.to), destination);
     }
   } else if (!wrapperName) {
-    destination.append(document.createTextNode(raw));
+    appendTextWithLanguage(raw, destination);
   }
   if (wrapperName) parent.append(destination);
 }
@@ -340,6 +371,7 @@ function tableCellDOM(
 ) {
   const element = document.createElement(header ? "th" : "td");
   element.dir = "auto";
+  applyTextLanguage(element, cell.source);
   if (header) element.setAttribute("scope", "col");
   if (cell.alignment) element.classList.add(`scholium-table-align-${cell.alignment}`);
   element.dataset.sourceOffset = String(locatedOffset(options, cell.sourceOffset));
@@ -515,6 +547,7 @@ function appendMarkdownBlockNode(
   case "Paragraph": {
     const paragraph = document.createElement("p");
     paragraph.dir = "auto";
+    applyTextLanguage(paragraph, raw);
     appendInlineMarkdown(raw, paragraph, options);
     parent.append(paragraph);
     return;
@@ -536,6 +569,7 @@ function appendMarkdownBlockNode(
   case "ListItem": {
     const item = document.createElement("li");
     item.dir = "auto";
+    applyTextLanguage(item, raw);
     appendBlockChildren(cursor, source, item, options);
     parent.append(item);
     return;
@@ -550,6 +584,7 @@ function appendMarkdownBlockNode(
     }
     const quote = document.createElement("blockquote");
     quote.dir = "auto";
+    applyTextLanguage(quote, raw);
     appendBlockChildren(cursor, source, quote, options);
     parent.append(quote);
     return;
@@ -591,6 +626,7 @@ function appendMarkdownBlockNode(
     const level = Number(cursor.name.at(-1));
     const heading = document.createElement(`h${level}`);
     heading.dir = "auto";
+    applyTextLanguage(heading, raw);
     const opening = /^\s*#{1,6}\s+/.exec(raw)?.[0].length ?? 0;
     const trailing = /\s+#+\s*$/.exec(raw.slice(opening));
     const contentTo = trailing ? opening + trailing.index : raw.length;

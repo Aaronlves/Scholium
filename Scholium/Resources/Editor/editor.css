@@ -70,11 +70,27 @@ body,
   border-right: 1px solid var(--scholium-color-separator);
 }
 
-/* Live Preview is a body projection, not an exact-source surface. Keep YAML
-   and source locators available in Source mode without exposing either here. */
+/* Live Preview projects the body while keeping the authored YAML envelope in
+   its source order. It remains editable text, with quiet token color only. */
 .scholium-live-mode .cm-gutters,
 .scholium-live-mode .cm-lineNumbers {
   display: none;
+}
+
+#editor .cm-editor.scholium-live-mode .cm-line.scholium-frontmatter-line .cm-live-yaml-delimiter,
+#editor .cm-editor.scholium-live-mode .cm-line.scholium-frontmatter-line .cm-live-yaml-comment {
+  color: var(--scholium-color-secondary-text);
+}
+#editor .cm-editor.scholium-live-mode .cm-line.scholium-frontmatter-line .cm-live-yaml-key {
+  color: var(--scholium-color-primary-text);
+}
+#editor .cm-editor.scholium-live-mode .cm-line.scholium-frontmatter-line .cm-live-yaml-value,
+#editor .cm-editor.scholium-live-mode .cm-line.scholium-frontmatter-line .cm-live-yaml-scalar,
+#editor .cm-editor.scholium-live-mode .cm-line.scholium-frontmatter-line .cm-live-yaml-collection {
+  color: var(--scholium-color-secondary-text);
+}
+#editor .cm-editor.scholium-live-mode .cm-line.scholium-frontmatter-line .cm-live-yaml-string {
+  color: var(--scholium-color-accent);
 }
 
 .scholium-source-mode .cm-activeLine,

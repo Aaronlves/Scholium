@@ -2239,7 +2239,6 @@ struct FrontendArchitectureTests {
         #expect(uiTestSource.contains("workspace.screenshot()"))
         #expect(uiTestSource.contains("lineHeight: 2.00"))
         #expect(uiTestSource.contains("paragraphSpacing: 1.00"))
-        #expect(uiTestSource.contains("letterSpacing: 0.020"))
         #expect(!uiTestSource.contains("lineHeight: 1.80"))
         #expect(!uiTestSource.contains("lineHeight: 1.65"))
         #expect(uiTestSource.contains("XCTAssertEqual(appearanceNumericValue(lineWidth), 72)"))
@@ -2945,7 +2944,11 @@ struct FrontendArchitectureTests {
         #expect(appearance.body.fontSizePoints == 12)
         #expect(appearance.body.lineHeight == 1.7)
         #expect(appearance.headings.level1.scale == 1.4)
-        #expect(appearance.headings.level2.scale == 1.12)
+        #expect(appearance.headings.level2.scale == 1.22)
+        #expect(appearance.headings.level3.scale == 1.14)
+        #expect(appearance.headings.level4.scale == 1.08)
+        #expect(appearance.headings.level5.scale == 1.02)
+        #expect(appearance.headings.level6.scale == 0.98)
         #expect(appearance.headings.lineHeight == 1.35)
 
         let repository = URL(fileURLWithPath: #filePath)
@@ -3433,6 +3436,9 @@ struct FrontendArchitectureTests {
         #expect(displayMath.contains("StateField.define<LiveDisplayMathProjectionState>"))
         #expect(footnotes.contains("StateField.define<LiveFootnoteReferenceState>"))
         #expect(!editorSource.contains("liveFrontmatterGuardField"))
+        #expect(!editorSource.contains("positionDocumentTitle"))
+        #expect(!editorSource.contains("minHeight"))
+        #expect(editorSource.contains("buildFrontmatterPresentation"))
         #expect(editorSource.contains("liveDocumentTitle"))
 
         let buildStart = try #require(
@@ -4055,15 +4061,23 @@ struct FrontendArchitectureTests {
             ))
         #expect(
             ScholiumWebDesignTokens.rhythmCSSDeclarations.contains(
-                "--scholium-document-h2-size: 112%"
+                "--scholium-document-h2-size: 122%"
             ))
         #expect(
             ScholiumWebDesignTokens.rhythmCSSDeclarations.contains(
-                "--scholium-document-h3-size: 112%"
+                "--scholium-document-h3-size: 114%"
             ))
         #expect(
             ScholiumWebDesignTokens.rhythmCSSDeclarations.contains(
-                "--scholium-document-h4-size: 112%"
+                "--scholium-document-h4-size: 108%"
+            ))
+        #expect(
+            ScholiumWebDesignTokens.rhythmCSSDeclarations.contains(
+                "--scholium-document-h5-size: 102%"
+            ))
+        #expect(
+            ScholiumWebDesignTokens.rhythmCSSDeclarations.contains(
+                "--scholium-document-h6-size: 98%"
             ))
         #expect(
             ScholiumWebDesignTokens.rhythmCSSDeclarations.contains(
@@ -4077,7 +4091,7 @@ struct FrontendArchitectureTests {
             ScholiumWebDesignTokens.documentPresentationCSS.contains(
                 "font-weight: var(--scholium-document-heading-weight)"
             ))
-        #expect(defaults.headings.level2.scale == 1.12)
+        #expect(defaults.headings.level2.scale == 1.22)
 
         let sharedCSS = ScholiumWebDesignTokens.documentPresentationCSS
         let fixedDocumentSyntax = ScholiumWebDesignTokens.fixedDocumentSyntaxCSSDeclarations
@@ -4095,6 +4109,11 @@ struct FrontendArchitectureTests {
         #expect(sharedCSS.contains("color: var(--scholium-mark-highlight-text)"))
         #expect(sharedCSS.contains("--scholium-document-line-width: 66ch"))
         #expect(sharedCSS.contains("--scholium-document-half-line-width: 33ch"))
+        #expect(sharedCSS.contains("text-autospace: normal;"))
+        #expect(sharedCSS.contains("text-spacing-trim: trim-both;"))
+        #expect(sharedCSS.contains(".scholium-document {\n  text-wrap-style: pretty;"))
+        #expect(sharedCSS.contains(".cm-editor.scholium-live-mode .cm-content {\n  text-wrap-style: stable;"))
+        #expect(sharedCSS.contains("text-autospace: no-autospace;"))
         let sharedDocumentRoot = try #require(
             sharedCSS.components(
                 separatedBy: ".cm-editor.scholium-source-mode .cm-content"
@@ -4483,12 +4502,16 @@ struct FrontendArchitectureTests {
         #expect(css.contains("--scholium-rhythm-prose-line-height: 1.7"))
         #expect(css.contains("--scholium-appearance-h1-before: 0.9em"))
         #expect(css.contains("--scholium-appearance-h1-after: 0.35em"))
+        #expect(css.contains("--scholium-appearance-h2-before: 0.8em"))
+        #expect(css.contains("--scholium-appearance-h3-after: 0.28em"))
+        #expect(css.contains("--scholium-appearance-h6-align: start"))
         #expect(
             css.contains(
                 "font-size: calc(var(--scholium-document-prose-font-size) * var(--scholium-document-text-scale-factor))"
             ))
-        #expect(css.contains("letter-spacing: 0em"))
         #expect(css.contains("text-align: start"))
+        #expect(css.contains("\"STFangsong\""))
+        #expect(css.contains("\"FangSong\""))
         #expect(css.contains("margin-inline-start: 3em"))
         #expect(css.contains("margin-inline-end: 3em"))
         #expect(css.contains(".scholium-callout-connect"))
@@ -4497,8 +4520,35 @@ struct FrontendArchitectureTests {
         #expect(css.contains("details.scholium-callout > .scholium-callout-body"))
         #expect(css.contains("--scholium-document-line-width: 66ch"))
         #expect(css.contains("--scholium-document-half-line-width: 33ch"))
+        #expect(css.contains(".scholium-document p em :lang(zh-Hans)"))
+        #expect(css.contains("font-family: \"Kaiti SC\", \"STKaiti\", serif"))
+        #expect(
+            ScholiumWebDesignTokens.documentPresentationCSS.contains(
+                ".scholium-document p em :lang(zh-Hans)"
+            )
+        )
+        #expect(
+            ScholiumWebDesignTokens.documentPresentationCSS.contains(
+                "font-family: \"Kaiti SC\", \"STKaiti\", serif"
+            )
+        )
         #expect(!css.contains("readable-measure"))
         #expect(!css.contains("max-inline-size"))
+
+        var customized = profile
+        customized.settings.headings.level3.scale = 1.3
+        customized.settings.body.cjkStrongFontFamily = "Noto Sans CJK SC"
+        customized.settings.body.cjkEmphasisFontFamily = "LXGW WenKai"
+        customized.settings.headings.cjkStrongFontFamily = "Songti SC"
+        customized.settings.headings.cjkEmphasisFontFamily = "STKaiti"
+        customized.settings.headings.style = .italic
+        let customizedCSS = DocumentAppearanceStyles.css(for: customized)
+        #expect(customizedCSS.contains("--scholium-document-h3-size: 130%"))
+        #expect(customizedCSS.contains("font-family: \"Noto Sans CJK SC\""))
+        #expect(customizedCSS.contains("font-family: \"LXGW WenKai\""))
+        #expect(customizedCSS.contains("font-family: \"Songti SC\""))
+        #expect(customizedCSS.contains("font-family: \"STKaiti\""))
+        #expect(customizedCSS.contains(".cm-editor.scholium-live-mode .cm-line.cm-live-heading .cm-live-cjk"))
     }
 
     @Test("Read and Live Preview share semantic table presentation")

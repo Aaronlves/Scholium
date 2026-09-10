@@ -42,12 +42,16 @@ import {
   syntaxTree,
 } from "@codemirror/language";
 import {
+  cursorLineBoundaryBackward,
+  cursorLineBoundaryForward,
   defaultKeymap,
   history,
   isolateHistory,
   historyField,
   historyKeymap,
   redoDepth,
+  selectLineBoundaryBackward,
+  selectLineBoundaryForward,
   undoDepth,
 } from "@codemirror/commands";
 import {
@@ -100,6 +104,7 @@ import {
 import {
   ExactSourceMirror,
   frontmatterBodyOffset,
+  frontmatterBoundary,
   normalizedDocumentText,
   replacementChange,
   type NormalizedSourceChange,
@@ -152,6 +157,7 @@ import {createLiveFootnoteProjection} from "./live-footnote-projection";
 import {createLiveProjectionNavigation} from "./live-projection-navigation";
 import {createLiveInlineWidgets} from "./live-inline-widgets";
 import {sourceTextDirection} from "./source-direction";
+import {documentTextLanguage} from "./text-language";
 import {
   createLiveProjectionIndexController,
   type SemanticCodeBlockRange,
@@ -1360,20 +1366,65 @@ const livePreview = ViewPlugin.fromClass(LivePreviewPlugin, {
     view.plugin(plugin)?.atomicRanges ?? Decoration.none),
 });
 
-function buildFrontmatterLines(state: EditorState): DecorationSet {
+const frontmatterTokenClassByNodeName: Record<string, string> = {
+  Key: "cm-live-yaml-key",
+  QuotedLiteral: "cm-live-yaml-string",
+  BlockLiteralHeader: "cm-live-yaml-scalar",
+  BlockLiteralContent: "cm-live-yaml-scalar",
+  FlowSequence: "cm-live-yaml-collection",
+  FlowMapping: "cm-live-yaml-collection",
+  Comment: "cm-live-yaml-comment",
+};
+
+function buildFrontmatterPresentation(state: EditorState): DecorationSet {
   const index = liveProjectionIndex.index(state);
   const lines: Range<Decoration>[] = [];
   const end = index.frontmatterRange?.to ?? (index.hasUnclosedFrontmatter ? state.doc.length : 0);
+  if (end === 0) return Decoration.none;
   for (let n = 1; n <= state.doc.lines && state.doc.line(n).from < end; n++) {
-    lines.push(Decoration.line({class: "scholium-frontmatter-line"}).range(state.doc.line(n).from));
+    lines.push(Decoration.line({
+      class: "scholium-frontmatter-line",
+      attributes: {"data-scholium-yaml-rendered": "true"},
+    }).range(state.doc.line(n).from));
   }
+
+  const addMark = (from: number, to: number, className: string) => {
+    if (from < 0 || to <= from || from >= end) return;
+    lines.push(Decoration.mark({class: className}).range(from, Math.min(to, end)));
+  };
+
+  const boundary = frontmatterBoundary(state.doc);
+  if (boundary.endLine > 0) {
+    const opening = state.doc.line(1);
+    const openingFrom = opening.text.charCodeAt(0) === 0xfeff
+      ? opening.from + 1 : opening.from;
+    addMark(openingFrom, Math.min(openingFrom + 3, opening.to), "cm-live-yaml-delimiter");
+    const closing = state.doc.line(boundary.endLine);
+    addMark(closing.from, Math.min(closing.from + 3, closing.to), "cm-live-yaml-delimiter");
+  }
+
+  const ancestors: string[] = [];
+  syntaxTree(state).iterate({
+    from: 0,
+    to: end,
+    enter: node => {
+      const className = node.name === "Literal" && ancestors.at(-1) !== "Key"
+        ? "cm-live-yaml-value"
+        : frontmatterTokenClassByNodeName[node.name];
+      if (className && node.name !== "DashLine") addMark(node.from, node.to, className);
+      ancestors.push(node.name);
+    },
+    leave: () => { ancestors.pop(); },
+  });
+
   return Decoration.set(lines, true);
 }
 
 const liveFrontmatterLines = StateField.define<DecorationSet>({
-  create: buildFrontmatterLines,
+  create: buildFrontmatterPresentation,
   update(previous, transaction) {
-    return transaction.docChanged ? buildFrontmatterLines(transaction.state) : previous;
+    return transaction.docChanged || transactionChangedSyntaxTree(transaction)
+      ? buildFrontmatterPresentation(transaction.state) : previous;
   },
   provide: field => EditorView.decorations.from(field),
 });
@@ -1581,6 +1632,10 @@ const structuralInteractionKeymap = keymap.of([
   {
     key: "Enter",
     run: (view) => {
+      // IME owns Enter while marked text is active. Structural continuation
+      // must never consume a candidate-confirmation keystroke or create a
+      // second source transaction beside the composition.
+      if (view.composing) return false;
       const selections = editorSelections(view.state);
       return applyInteraction(
         (configuredEditorMode(view.state) === "livePreview"
@@ -1594,6 +1649,7 @@ const structuralInteractionKeymap = keymap.of([
   {
     key: "Tab",
     run: (view) => {
+      if (view.composing) return false;
       if (view.state.selection.ranges.length !== 1) {
         return applyInteraction(indentList(view.state.doc, editorSelections(), false), "input.scholium.indentList");
       }
@@ -1607,6 +1663,7 @@ const structuralInteractionKeymap = keymap.of([
   {
     key: "Shift-Tab",
     run: (view) => {
+      if (view.composing) return false;
       if (view.state.selection.ranges.length !== 1) {
         return applyInteraction(indentList(view.state.doc, editorSelections(), true), "input.scholium.outdentList");
       }
@@ -1616,6 +1673,53 @@ const structuralInteractionKeymap = keymap.of([
         "input.scholium.structuralBackTab",
       );
     },
+  },
+]);
+
+// WKWebView's platform keymap can expose the macOS line-boundary command as
+// either the platform-specific binding or the portable Mod binding. Own both
+// explicit Meta and Mod variants so Command-Left/Right reliably enters the
+// exact source boundary of a projected construct before the next edit.
+function moveToSourceLineBoundary(view: EditorView, forward: boolean, extend: boolean) {
+  const selection = view.state.selection;
+  const ranges = selection.ranges.map(range => {
+    const line = view.state.doc.lineAt(range.head);
+    const head = forward ? line.to : line.from;
+    return extend
+      ? EditorSelection.range(range.anchor, head)
+      : EditorSelection.cursor(head);
+  });
+  view.dispatch({
+    selection: EditorSelection.create(ranges, selection.mainIndex),
+    scrollIntoView: true,
+  });
+  return true;
+}
+
+const lineBoundaryKeymap = keymap.of([
+  {
+    key: "Meta-ArrowLeft",
+    run: view => moveToSourceLineBoundary(view, false, false),
+    shift: view => moveToSourceLineBoundary(view, false, true),
+    preventDefault: true,
+  },
+  {
+    key: "Meta-ArrowRight",
+    run: view => moveToSourceLineBoundary(view, true, false),
+    shift: view => moveToSourceLineBoundary(view, true, true),
+    preventDefault: true,
+  },
+  {
+    key: "Mod-ArrowLeft",
+    run: cursorLineBoundaryBackward,
+    shift: selectLineBoundaryBackward,
+    preventDefault: true,
+  },
+  {
+    key: "Mod-ArrowRight",
+    run: cursorLineBoundaryForward,
+    shift: selectLineBoundaryForward,
+    preventDefault: true,
   },
 ]);
 
@@ -1753,10 +1857,12 @@ const editorExtensions = [
       closeBrackets(),
       rectangularSelection(),
       EditorView.perLineTextDirection.of(true),
+      documentTextLanguage,
       // Share Markdown's high precedence while preceding its generic list
       // continuation. Scholium must compose the Callout quote and nested list
       // prefixes before the base Markdown command can consume Return.
       Prec.high(structuralInteractionKeymap),
+      Prec.high(lineBoundaryKeymap),
       scholiumNoteLanguage,
       keymap.of([
         ...closeBracketsKeymap,
@@ -2010,7 +2116,6 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
     return rejected(request.requestID, documentVersion, "stale editor generation");
   }
   switch (operation.type) {
-  case "positionDocumentTitle": await editorOperations.positionDocumentTitle(); break;
   case "setMode": await editorOperations.setMode(operation.mode); break;
   case "setDocumentTitle": editorOperations.setDocumentTitle(operation.value); break;
   case "setPresentationCSS": editorOperations.setPresentationCSS(operation.value); break;
@@ -2347,14 +2452,11 @@ function flushPresentationStyleAndGeometry() {
 
 /**
  * A native mode acknowledgement is also the presentation readiness boundary.
- * On a newly constructed Review -> Edit surface, the document transaction can
- * precede CodeMirror's first real viewport and background syntax publication.
- * Source -> Edit happened to mask that race because reconfiguration occurred
- * after layout. Advance a bounded leading/visible parse window and explicitly
- * refresh the projection before acknowledging the command. Native style and
- * scroll convergence then provide additional bridge turns before Swift reveals
- * a freshly constructed editor. The opening request separately awaits measured
- * layout while the covered WebView remains in the rendering lifecycle.
+ * A document transaction can precede CodeMirror's first real viewport and
+ * background syntax publication, so advance a bounded leading/visible parse
+ * window and explicitly refresh the projection before acknowledging the
+ * command. Native style and scroll convergence then provide additional bridge
+ * turns before Swift reveals the configured editor.
  */
 function convergeLivePreviewProjection() {
   if (configuredEditorMode(editor.state) !== "livePreview") return;
@@ -2380,7 +2482,6 @@ const editorOperations = {
     bridgeSessionID = sessionID;
     bridgeDocumentID = documentID;
     bridgeFingerprint = startingFingerprint;
-    editor.contentDOM.style.minHeight = "";
     documentTitle = "";
     documentTitleDraft = null;
     documentTitleError = null;
@@ -2509,38 +2610,6 @@ const editorOperations = {
 
   setScrollFraction(requestedFraction: number) {
     scrollCoordinator.setFraction(requestedFraction);
-  },
-
-  async positionDocumentTitle() {
-    if (configuredEditorMode(editor.state) !== "livePreview" || !frontmatterBodyOffset(editor.state.doc)) return;
-    flushPresentationStyleAndGeometry();
-    await document.fonts.ready;
-    // The native document plane covers this view while CodeMirror measures.
-    // Acknowledgement follows the measured write, never a provisional DOM read.
-    await new Promise<void>((resolve, reject) => editor.requestMeasure({
-      read: view => {
-        const title = view.dom.querySelector(".scholium-note-title-input");
-        return title ? Math.max(0, view.scrollDOM.scrollTop + title.getBoundingClientRect().top
-          - view.scrollDOM.getBoundingClientRect().top - 32) : null;
-      },
-      write: target => {
-        if (target === null) { reject(new Error("Document title is not laid out")); return; }
-        editor.contentDOM.style.minHeight = `calc(100% + ${Math.ceil(target)}px)`;
-        scrollCoordinator.setTop(target);
-        editor.requestMeasure({
-          read: view => {
-            const title = view.dom.querySelector(".scholium-note-title-input");
-            return title ? view.scrollDOM.scrollTop + title.getBoundingClientRect().top
-              - view.scrollDOM.getBoundingClientRect().top - 32 : null;
-          },
-          write: settledTop => {
-            if (settledTop === null) { reject(new Error("Document title lost during layout")); return; }
-            scrollCoordinator.setTop(settledTop);
-            resolve();
-          },
-        });
-      },
-    }));
   },
 
   setScrollAnchor(anchor: EditorScrollAnchor) {

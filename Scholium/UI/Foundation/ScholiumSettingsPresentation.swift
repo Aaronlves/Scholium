@@ -42,6 +42,49 @@ func settingsSectionTitle(
 }
 
 @MainActor
+func settingsMatrixHeader(
+    _ title: LocalizedStringResource
+) -> some View {
+    Text(title)
+        .font(.caption.weight(.semibold))
+        .foregroundStyle(.secondary)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityAddTraits(.isHeader)
+}
+
+@MainActor
+func settingsMatrixRowLabel(
+    _ title: LocalizedStringResource
+) -> some View {
+    Text(title)
+        .font(.body.weight(.semibold))
+        .frame(maxWidth: .infinity, alignment: .leading)
+}
+
+@MainActor
+func settingsDensePropertyGrid<Content: View>(
+    @ViewBuilder content: () -> Content
+) -> some View {
+    Grid(
+        alignment: .leading,
+        horizontalSpacing: ScholiumGrid.Spacing.inlineControlGap,
+        verticalSpacing: ScholiumGrid.Spacing.labelAccessoryGap
+    ) {
+        content()
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+}
+
+@MainActor
+func settingsDensePropertyLabel(
+    _ title: LocalizedStringResource
+) -> some View {
+    Text(title)
+        .font(.body.weight(.semibold))
+        .frame(width: 140, alignment: .trailing)
+}
+
+@MainActor
 func settingsEditorSection<Content: View>(
     _ title: LocalizedStringResource,
     @ViewBuilder content: () -> Content
@@ -59,6 +102,49 @@ func settingsEditorSection<Content: View>(
         .frame(maxWidth: .infinity, alignment: .leading)
     }
     .accessibilityElement(children: .contain)
+}
+
+@MainActor
+func settingsAdaptiveGrid<Content: View>(
+    @ViewBuilder content: () -> Content
+) -> some View {
+    LazyVGrid(
+        columns: [
+            GridItem(
+                .adaptive(minimum: ScholiumMetrics.Settings.adaptiveColumnMinimumWidth),
+                spacing: ScholiumMetrics.Settings.columnSpacing
+            )
+        ],
+        alignment: .leading,
+        spacing: ScholiumMetrics.Settings.sectionSpacing
+    ) {
+        content()
+    }
+}
+
+@MainActor
+func settingsPairedGrid<Content: View>(
+    columnMinimumWidth: CGFloat = ScholiumMetrics.Settings.adaptiveColumnMinimumWidth,
+    columnSpacing: CGFloat = ScholiumMetrics.Settings.columnSpacing,
+    @ViewBuilder content: () -> Content
+) -> some View {
+    LazyVGrid(
+        columns: [
+            GridItem(
+                .flexible(minimum: columnMinimumWidth),
+                spacing: columnSpacing
+            ),
+            GridItem(
+                .flexible(minimum: columnMinimumWidth),
+                spacing: 0
+            )
+        ],
+        alignment: .leading,
+        spacing: ScholiumMetrics.Settings.sectionSpacing
+    ) {
+        content()
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
 }
 
 @MainActor

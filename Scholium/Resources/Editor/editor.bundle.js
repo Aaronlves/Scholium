@@ -21536,12 +21536,11 @@
   }
 
   // protocol.ts
-  var EDITOR_PROTOCOL_VERSION = 29;
+  var EDITOR_PROTOCOL_VERSION = 30;
   var MAX_INBOUND_BYTES = 25e5;
   var MAX_SOURCE_UTF8_BYTES = 8e6;
   var operationTypes = /* @__PURE__ */ new Set([
     "initialize",
-    "positionDocumentTitle",
     "setMode",
     "setDocumentTitle",
     "setPresentationCSS",
@@ -21716,7 +21715,6 @@
       case "captureRecovery":
       case "showPreview":
       case "measureVisibleProjection":
-      case "positionDocumentTitle":
       case "clearDocumentFind":
       case "markClean":
       case "focus":
@@ -31939,6 +31937,95 @@ ${fence}
     return symbol;
   }
 
+  // text-language.ts
+  function isHan(codePoint) {
+    return codePoint >= 13312 && codePoint <= 19903 || codePoint >= 19968 && codePoint <= 40959 || codePoint >= 63744 && codePoint <= 64255 || codePoint >= 131072 && codePoint <= 196607;
+  }
+  function isKanaOrHangul(codePoint) {
+    return codePoint >= 12352 && codePoint <= 12543 || codePoint >= 44032 && codePoint <= 55215;
+  }
+  function isCJKPunctuation(codePoint) {
+    return codePoint >= 12288 && codePoint <= 12351 || codePoint >= 65281 && codePoint <= 65381;
+  }
+  function isCJKPresentationCharacter(codePoint) {
+    return isHan(codePoint) || isCJKPunctuation(codePoint);
+  }
+  function cjkPresentationRanges(text) {
+    const ranges = [];
+    let runStart;
+    for (let offset = 0; offset < text.length; ) {
+      const codePoint = text.codePointAt(offset) ?? 0;
+      const width = codePoint > 65535 ? 2 : 1;
+      if (isCJKPresentationCharacter(codePoint)) {
+        if (runStart === void 0) runStart = offset;
+      } else if (runStart !== void 0) {
+        ranges.push({ from: runStart, to: offset });
+        runStart = void 0;
+      }
+      offset += width;
+    }
+    if (runStart !== void 0) ranges.push({ from: runStart, to: text.length });
+    return ranges;
+  }
+  function languageForText(text) {
+    let han = false;
+    let kanaOrHangul = false;
+    let latin = false;
+    for (const character of text) {
+      const codePoint = character.codePointAt(0) ?? 0;
+      if (isHan(codePoint)) han = true;
+      else if (isKanaOrHangul(codePoint)) kanaOrHangul = true;
+      else if (codePoint >= 65 && codePoint <= 90 || codePoint >= 97 && codePoint <= 122) latin = true;
+    }
+    if (kanaOrHangul) return void 0;
+    if (han) return "zh-Hans";
+    if (latin) return "en";
+    return void 0;
+  }
+  function languageDecorations(view) {
+    const ranges = [];
+    const seen = /* @__PURE__ */ new Set();
+    const seenCJK = /* @__PURE__ */ new Set();
+    for (const visible of view.visibleRanges) {
+      let line = view.state.doc.lineAt(visible.from);
+      while (line.from <= visible.to) {
+        if (!seen.has(line.from)) {
+          seen.add(line.from);
+          const language2 = languageForText(line.text);
+          if (language2) ranges.push(Decoration.line({ attributes: { lang: language2 } }).range(line.from));
+        }
+        for (const cjk of cjkPresentationRanges(line.text)) {
+          const from = Math.max(line.from + cjk.from, visible.from);
+          const to = Math.min(line.from + cjk.to, visible.to);
+          const key = `${from}:${to}`;
+          if (to > from && !seenCJK.has(key)) {
+            seenCJK.add(key);
+            ranges.push(Decoration.mark({
+              class: "cm-live-cjk",
+              attributes: { lang: "zh-Hans" }
+            }).range(from, to));
+          }
+        }
+        if (line.number >= view.state.doc.lines || line.to >= visible.to) break;
+        line = view.state.doc.line(line.number + 1);
+      }
+    }
+    return Decoration.set(ranges, true);
+  }
+  var documentTextLanguage = ViewPlugin.fromClass(class {
+    decorations;
+    constructor(view) {
+      this.decorations = languageDecorations(view);
+    }
+    update(update) {
+      if (update.docChanged || update.viewportChanged) {
+        this.decorations = languageDecorations(update.view);
+      }
+    }
+  }, {
+    decorations: (value) => value.decorations
+  });
+
   // markdown-fragment.ts
   var inlineMarkerNodes = /* @__PURE__ */ new Set([
     "EmphasisMark",
@@ -31952,6 +32039,30 @@ ${fence}
     const owner = parent.ownerDocument;
     if (!owner) throw new Error("Markdown fragments require an owning document.");
     return owner;
+  }
+  function applyTextLanguage(element, text) {
+    const language2 = languageForText(text);
+    if (language2) element.lang = language2;
+  }
+  function appendTextWithLanguage(text, parent) {
+    const ranges = cjkPresentationRanges(text);
+    if (ranges.length === 0) {
+      parent.append(documentFor(parent).createTextNode(text));
+      return;
+    }
+    let position = 0;
+    const document2 = documentFor(parent);
+    for (const range of ranges) {
+      if (range.from > position) {
+        parent.append(document2.createTextNode(text.slice(position, range.from)));
+      }
+      const cjk = document2.createElement("span");
+      cjk.lang = "zh-Hans";
+      cjk.textContent = text.slice(range.from, range.to);
+      parent.append(cjk);
+      position = range.to;
+    }
+    if (position < text.length) parent.append(document2.createTextNode(text.slice(position)));
   }
   function locatedOffset(options, offset) {
     return options.sourceOffset?.(offset) ?? offset;
@@ -31995,7 +32106,7 @@ ${fence}
       const span = document2.createElement("span");
       span.className = "cm-live-link";
       span.dir = "auto";
-      span.textContent = link?.[1] ?? raw;
+      appendTextWithLanguage(link?.[1] ?? raw, span);
       if (link) {
         identifyProjectedLink(
           span,
@@ -32021,13 +32132,13 @@ ${fence}
       span.dir = "auto";
       const target = link[2].trim();
       const alias = link[3]?.trim();
-      span.append(document2.createTextNode(alias || target));
+      appendTextWithLanguage(alias || target, span);
       identifyProjectedLink(span, target, cursor.from, cursor.to, cursor.to, options);
       parent.append(span);
       return;
     }
     if (cursor.name === "Escape") {
-      parent.append(document2.createTextNode(raw.startsWith("\\") ? raw.slice(1) : raw));
+      appendTextWithLanguage(raw.startsWith("\\") ? raw.slice(1) : raw, parent);
       return;
     }
     const wrapperName = cursor.name === "StrongEmphasis" ? "strong" : cursor.name === "Emphasis" ? "em" : cursor.name === "Strikethrough" ? "del" : null;
@@ -32036,17 +32147,17 @@ ${fence}
     if (cursor.firstChild()) {
       do {
         if (cursor.from > position) {
-          destination.append(document2.createTextNode(source.slice(position, cursor.from)));
+          appendTextWithLanguage(source.slice(position, cursor.from), destination);
         }
         appendInlineMarkdownNode(cursor, source, destination, options);
         position = cursor.to;
       } while (cursor.nextSibling());
       cursor.parent();
       if (position < cursor.to) {
-        destination.append(document2.createTextNode(source.slice(position, cursor.to)));
+        appendTextWithLanguage(source.slice(position, cursor.to), destination);
       }
     } else if (!wrapperName) {
-      destination.append(document2.createTextNode(raw));
+      appendTextWithLanguage(raw, destination);
     }
     if (wrapperName) parent.append(destination);
   }
@@ -32186,6 +32297,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
   function tableCellDOM(cell, header, document2, options) {
     const element = document2.createElement(header ? "th" : "td");
     element.dir = "auto";
+    applyTextLanguage(element, cell.source);
     if (header) element.setAttribute("scope", "col");
     if (cell.alignment) element.classList.add(`scholium-table-align-${cell.alignment}`);
     element.dataset.sourceOffset = String(locatedOffset(options, cell.sourceOffset));
@@ -32336,6 +32448,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       case "Paragraph": {
         const paragraph = document2.createElement("p");
         paragraph.dir = "auto";
+        applyTextLanguage(paragraph, raw);
         appendInlineMarkdown(raw, paragraph, options);
         parent.append(paragraph);
         return;
@@ -32357,6 +32470,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       case "ListItem": {
         const item = document2.createElement("li");
         item.dir = "auto";
+        applyTextLanguage(item, raw);
         appendBlockChildren(cursor, source, item, options);
         parent.append(item);
         return;
@@ -32371,6 +32485,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         }
         const quote = document2.createElement("blockquote");
         quote.dir = "auto";
+        applyTextLanguage(quote, raw);
         appendBlockChildren(cursor, source, quote, options);
         parent.append(quote);
         return;
@@ -32412,6 +32527,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         const level = Number(cursor.name.at(-1));
         const heading2 = document2.createElement(`h${level}`);
         heading2.dir = "auto";
+        applyTextLanguage(heading2, raw);
         const opening = /^\s*#{1,6}\s+/.exec(raw)?.[0].length ?? 0;
         const trailing = /\s+#+\s*$/.exec(raw.slice(opening));
         const contentTo = trailing ? opening + trailing.index : raw.length;
@@ -34794,10 +34910,12 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       eq(other) {
         return other.expression.kind === this.expression.kind && other.expression.content === this.expression.content && other.expression.delimiterLength === this.expression.delimiterLength;
       }
-      toDOM() {
+      toDOM(view) {
         const element = document.createElement("span");
         element.className = `scholium-math scholium-math-${this.expression.kind} cm-live-math`;
         element.dataset.scholiumProtected = "math";
+        element.dataset.scholiumSourceFrom = String(this.expression.from);
+        element.dataset.scholiumSourceTo = String(this.expression.to);
         const runtime = window.scholiumMath;
         if (runtime?.version !== 1) options.requestMathRuntime();
         const rendered = runtime?.version === 1 ? runtime.render({ source: this.expression.content, kind: this.expression.kind }) : { ok: false, reason: "invalid-source" };
@@ -34821,6 +34939,17 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
           );
           element.append(source);
         }
+        element.addEventListener("mousedown", (event) => {
+          if (event.button !== 0 || view.composing) return;
+          event.preventDefault();
+          event.stopPropagation();
+          const rect = element.getBoundingClientRect();
+          const midpoint = rect.left + Math.max(0, rect.width) / 2;
+          const position = event.clientX <= midpoint ? this.expression.from : this.expression.to;
+          if (position < 0 || position > view.state.doc.length) return;
+          view.dispatch({ selection: { anchor: position }, scrollIntoView: true });
+          view.focus();
+        });
         if (this.expression.kind === "display") {
           const slot = document.createElement("div");
           slot.className = "cm-live-math-slot";
@@ -34829,8 +34958,8 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         }
         return element;
       }
-      ignoreEvent() {
-        return false;
+      ignoreEvent(event) {
+        return event.type === "mousedown";
       }
     }
     return {
@@ -35003,6 +35132,10 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         ...immutableStructuralRanges
       ]),
       blockRanges: immutableProjectionRanges([
+        // Headings are source-visible syntax projections rather than widgets,
+        // but vertical traversal still needs their exact block boundary so a
+        // caret can enter the heading from the blank line below it.
+        ...syntax.blocks.filter(({ kind }) => kind === "heading").map(({ from, to }) => ({ from, to, kind: "heading" })),
         ...immutableTables.map(({ from, to }) => ({ from, to, kind: "table" })),
         ...immutableCallouts.map(({ from, to }) => ({ from, to, kind: "callout" })),
         ...immutableMathExpressions.flatMap(({ from, to, kind }) => kind === "display" ? [{ from, to, kind: "math" }] : [])
@@ -37207,19 +37340,57 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     decorations: (value) => value.decorations,
     provide: (plugin) => EditorView.atomicRanges.of((view) => view.plugin(plugin)?.atomicRanges ?? Decoration.none)
   });
-  function buildFrontmatterLines(state) {
+  var frontmatterTokenClassByNodeName = {
+    Key: "cm-live-yaml-key",
+    QuotedLiteral: "cm-live-yaml-string",
+    BlockLiteralHeader: "cm-live-yaml-scalar",
+    BlockLiteralContent: "cm-live-yaml-scalar",
+    FlowSequence: "cm-live-yaml-collection",
+    FlowMapping: "cm-live-yaml-collection",
+    Comment: "cm-live-yaml-comment"
+  };
+  function buildFrontmatterPresentation(state) {
     const index = liveProjectionIndex.index(state);
     const lines = [];
     const end = index.frontmatterRange?.to ?? (index.hasUnclosedFrontmatter ? state.doc.length : 0);
+    if (end === 0) return Decoration.none;
     for (let n = 1; n <= state.doc.lines && state.doc.line(n).from < end; n++) {
-      lines.push(Decoration.line({ class: "scholium-frontmatter-line" }).range(state.doc.line(n).from));
+      lines.push(Decoration.line({
+        class: "scholium-frontmatter-line",
+        attributes: { "data-scholium-yaml-rendered": "true" }
+      }).range(state.doc.line(n).from));
     }
+    const addMark = (from, to, className) => {
+      if (from < 0 || to <= from || from >= end) return;
+      lines.push(Decoration.mark({ class: className }).range(from, Math.min(to, end)));
+    };
+    const boundary = frontmatterBoundary(state.doc);
+    if (boundary.endLine > 0) {
+      const opening = state.doc.line(1);
+      const openingFrom = opening.text.charCodeAt(0) === 65279 ? opening.from + 1 : opening.from;
+      addMark(openingFrom, Math.min(openingFrom + 3, opening.to), "cm-live-yaml-delimiter");
+      const closing2 = state.doc.line(boundary.endLine);
+      addMark(closing2.from, Math.min(closing2.from + 3, closing2.to), "cm-live-yaml-delimiter");
+    }
+    const ancestors = [];
+    syntaxTree(state).iterate({
+      from: 0,
+      to: end,
+      enter: (node) => {
+        const className = node.name === "Literal" && ancestors.at(-1) !== "Key" ? "cm-live-yaml-value" : frontmatterTokenClassByNodeName[node.name];
+        if (className && node.name !== "DashLine") addMark(node.from, node.to, className);
+        ancestors.push(node.name);
+      },
+      leave: () => {
+        ancestors.pop();
+      }
+    });
     return Decoration.set(lines, true);
   }
   var liveFrontmatterLines = StateField.define({
-    create: buildFrontmatterLines,
+    create: buildFrontmatterPresentation,
     update(previous, transaction) {
-      return transaction.docChanged ? buildFrontmatterLines(transaction.state) : previous;
+      return transaction.docChanged || transactionChangedSyntaxTree(transaction) ? buildFrontmatterPresentation(transaction.state) : previous;
     },
     provide: (field) => EditorView.decorations.from(field)
   });
@@ -37396,6 +37567,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     {
       key: "Enter",
       run: (view) => {
+        if (view.composing) return false;
         const selections = editorSelections(view.state);
         return applyInteraction(
           (configuredEditorMode(view.state) === "livePreview" ? continueCallout(view.state.doc, selections) : null) ?? continueList(view.state.doc, selections),
@@ -37406,6 +37578,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     {
       key: "Tab",
       run: (view) => {
+        if (view.composing) return false;
         if (view.state.selection.ranges.length !== 1) {
           return applyInteraction(indentList(view.state.doc, editorSelections(), false), "input.scholium.indentList");
         }
@@ -37418,6 +37591,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     {
       key: "Shift-Tab",
       run: (view) => {
+        if (view.composing) return false;
         if (view.state.selection.ranges.length !== 1) {
           return applyInteraction(indentList(view.state.doc, editorSelections(), true), "input.scholium.outdentList");
         }
@@ -37426,6 +37600,45 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
           "input.scholium.structuralBackTab"
         );
       }
+    }
+  ]);
+  function moveToSourceLineBoundary(view, forward, extend) {
+    const selection = view.state.selection;
+    const ranges = selection.ranges.map((range) => {
+      const line = view.state.doc.lineAt(range.head);
+      const head = forward ? line.to : line.from;
+      return extend ? EditorSelection.range(range.anchor, head) : EditorSelection.cursor(head);
+    });
+    view.dispatch({
+      selection: EditorSelection.create(ranges, selection.mainIndex),
+      scrollIntoView: true
+    });
+    return true;
+  }
+  var lineBoundaryKeymap = keymap.of([
+    {
+      key: "Meta-ArrowLeft",
+      run: (view) => moveToSourceLineBoundary(view, false, false),
+      shift: (view) => moveToSourceLineBoundary(view, false, true),
+      preventDefault: true
+    },
+    {
+      key: "Meta-ArrowRight",
+      run: (view) => moveToSourceLineBoundary(view, true, false),
+      shift: (view) => moveToSourceLineBoundary(view, true, true),
+      preventDefault: true
+    },
+    {
+      key: "Mod-ArrowLeft",
+      run: cursorLineBoundaryBackward,
+      shift: selectLineBoundaryBackward,
+      preventDefault: true
+    },
+    {
+      key: "Mod-ArrowRight",
+      run: cursorLineBoundaryForward,
+      shift: selectLineBoundaryForward,
+      preventDefault: true
     }
   ]);
   var liveProjectionNavigation = createLiveProjectionNavigation({
@@ -37545,10 +37758,12 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     closeBrackets(),
     rectangularSelection(),
     EditorView.perLineTextDirection.of(true),
+    documentTextLanguage,
     // Share Markdown's high precedence while preceding its generic list
     // continuation. Scholium must compose the Callout quote and nested list
     // prefixes before the base Markdown command can consume Return.
     Prec.high(structuralInteractionKeymap),
+    Prec.high(lineBoundaryKeymap),
     scholiumNoteLanguage,
     keymap.of([
       ...closeBracketsKeymap,
@@ -37823,9 +38038,6 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       return rejected(request.requestID, documentVersion, "stale editor generation");
     }
     switch (operation.type) {
-      case "positionDocumentTitle":
-        await editorOperations.positionDocumentTitle();
-        break;
       case "setMode":
         await editorOperations.setMode(operation.mode);
         break;
@@ -38205,7 +38417,6 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       bridgeSessionID = sessionID;
       bridgeDocumentID = documentID;
       bridgeFingerprint = startingFingerprint;
-      editor.contentDOM.style.minHeight = "";
       documentTitle = "";
       documentTitleDraft = null;
       documentTitleError = null;
@@ -38313,39 +38524,6 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     },
     setScrollFraction(requestedFraction) {
       scrollCoordinator.setFraction(requestedFraction);
-    },
-    async positionDocumentTitle() {
-      if (configuredEditorMode(editor.state) !== "livePreview" || !frontmatterBodyOffset(editor.state.doc)) return;
-      flushPresentationStyleAndGeometry();
-      await document.fonts.ready;
-      await new Promise((resolve, reject) => editor.requestMeasure({
-        read: (view) => {
-          const title = view.dom.querySelector(".scholium-note-title-input");
-          return title ? Math.max(0, view.scrollDOM.scrollTop + title.getBoundingClientRect().top - view.scrollDOM.getBoundingClientRect().top - 32) : null;
-        },
-        write: (target) => {
-          if (target === null) {
-            reject(new Error("Document title is not laid out"));
-            return;
-          }
-          editor.contentDOM.style.minHeight = `calc(100% + ${Math.ceil(target)}px)`;
-          scrollCoordinator.setTop(target);
-          editor.requestMeasure({
-            read: (view) => {
-              const title = view.dom.querySelector(".scholium-note-title-input");
-              return title ? view.scrollDOM.scrollTop + title.getBoundingClientRect().top - view.scrollDOM.getBoundingClientRect().top - 32 : null;
-            },
-            write: (settledTop) => {
-              if (settledTop === null) {
-                reject(new Error("Document title lost during layout"));
-                return;
-              }
-              scrollCoordinator.setTop(settledTop);
-              resolve();
-            }
-          });
-        }
-      }));
     },
     setScrollAnchor(anchor) {
       scrollCoordinator.setAnchor(anchor);

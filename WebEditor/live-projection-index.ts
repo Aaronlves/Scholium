@@ -49,7 +49,7 @@ export interface CalloutPresentation extends ProjectionSourceRange {
 }
 
 export interface LiveBlockProjectionRange extends ProjectionSourceRange {
-  readonly kind: "table" | "callout" | "footnote" | "math";
+  readonly kind: "table" | "callout" | "footnote" | "math" | "heading";
 }
 
 interface IndexedTablePositionRange extends ProjectionSourceRange {
@@ -269,6 +269,12 @@ function finalizedLiveProjectionIndex(
       ...immutableStructuralRanges,
     ]),
     blockRanges: immutableProjectionRanges([
+      // Headings are source-visible syntax projections rather than widgets,
+      // but vertical traversal still needs their exact block boundary so a
+      // caret can enter the heading from the blank line below it.
+      ...syntax.blocks
+        .filter(({kind}) => kind === "heading")
+        .map(({from, to}) => ({from, to, kind: "heading" as const})),
       ...immutableTables.map(({from, to}) => ({from, to, kind: "table" as const})),
       ...immutableCallouts.map(({from, to}) => ({from, to, kind: "callout" as const})),
       ...immutableMathExpressions.flatMap(({from, to, kind}) =>

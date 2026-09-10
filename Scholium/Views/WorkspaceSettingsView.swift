@@ -4,7 +4,7 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
-private enum ScholiumSettingsDestination: String, CaseIterable, Identifiable {
+private enum ScholiumSettingsDestination: String, CaseIterable, Identifiable, Equatable {
     case workspace
     case document
     case metadata
@@ -52,7 +52,7 @@ private enum ScholiumSettingsDestination: String, CaseIterable, Identifiable {
         case .workspace:
             ["Workspace", "Triptych", "Triptychs", "folders", "locations", "registration", "portable data"]
         case .document:
-            ["Document", "Document Appearance", "document appearance", "typeface", "font", "line width", "line spacing", "headings", "callouts", "CSS", "content colors", "text color", "advanced typography", "paragraph spacing", "first-line indent", "letter spacing", "word spacing", "alignment", "hyphenation", "kerning", "ligatures", "heading font", "heading style", "heading weight", "heading levels", "段间距", "首行缩进", "字距", "词距", "对齐", "断词", "高级排版"]
+            ["Appearance", "Document", "Document Appearance", "Typography", "Body Typography", "Text Styles", "Heading Typography", "Heading Hierarchy", "body", "heading", "headings", "bold", "italic", "font", "line width", "line spacing", "paragraph spacing", "first-line indent", "letter spacing", "word spacing", "hyphenation", "kerning", "ligatures", "heading font", "heading style", "heading weight", "heading hierarchy", "heading levels", "heading level", "scale", "space before", "space after", "Advanced CSS", "H1", "H2", "H3", "H4", "H5", "H6", "段间距", "首行缩进", "字距", "词距", "对齐", "断词", "字偶距", "连字", "标题字体", "标题层级", "标题级别", "比例", "前间距", "后间距", "正文字体", "粗体", "斜体", "高级排版"]
         case .metadata:
             ["Metadata", "fields", "About", "optional fields", "Analysis", "Topic", "Work"]
         case .notifications:
@@ -262,14 +262,14 @@ private struct SettingsToolbarAttachment: NSViewRepresentable {
             let size: NSSize
             switch destination {
             // These sizes fit the normal, non-advanced content of each pane.
-            // Long collections and explicit advanced sheets own their local
-            // scrolling; the preferences window does not grow for them.
-            case .workspace: size = NSSize(width: 760, height: 600)
-            case .document: size = NSSize(width: 780, height: 600)
+            // Long collections own their local scrolling while the preferences
+            // window gives the typography pane a little more working space.
+            case .workspace: size = NSSize(width: 780, height: 600)
+            case .document: size = NSSize(width: 860, height: 640)
             case .metadata: size = NSSize(width: 800, height: 560)
-            case .notifications: size = NSSize(width: 720, height: 320)
+            case .notifications: size = NSSize(width: 640, height: 340)
             case .interaction: size = NSSize(width: 800, height: 600)
-            case .integrations: size = NSSize(width: 820, height: 500)
+            case .integrations: size = NSSize(width: 720, height: 440)
             }
             var frame = window.frameRect(forContentRect: NSRect(origin: .zero, size: size))
             frame.origin = NSPoint(x: window.frame.minX,
@@ -1642,80 +1642,26 @@ private struct AppearanceSettingsView: View {
     @State private var nameDraft = ""
 
     @State private var showsCSSSnippets = false
-    @State private var showsAdvancedTypography = false
     @State private var confirmsConfigurationReload = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            VStack(
-                alignment: .leading,
-                spacing: ScholiumGrid.Spacing.sectionSeparation
-            ) {
-                configurationSection
+            configurationSection
+                .padding(.horizontal, 24)
+                .padding(.top, 16)
+                .padding(.bottom, 8)
+                .frame(maxWidth: 760, alignment: .topLeading)
+                .frame(maxWidth: .infinity, alignment: .top)
 
-                if let draftBinding {
-                    AppearanceProfileEditor(
-                        profile: draftBinding
-                    )
-
-                    settingsEditorSection("Advanced Typography") {
-                        Button("Advanced Typography…") {
-                            showsAdvancedTypography = true
-                        }
-                        .accessibilityIdentifier("scholium.appearance.advancedTypography")
-                    }
-
-                }
-
-                settingsEditorSection("Configuration File") {
-                    HStack {
-                        Button("Show in Finder…") { store.revealAppearanceConfiguration() }
-                        Button("Reload") {
-                            if hasUnsavedChanges { confirmsConfigurationReload = true }
-                            else { store.reloadAppearanceConfiguration() }
-                        }
-                    }
-                    HStack {
-                        Button("Configuration Guide…") {
-                            if let url = Bundle.module.url(forResource: "AppearanceConfiguration", withExtension: "md") {
-                                NSWorkspace.shared.open(url)
-                            }
-                        }
-                        Button("Advanced CSS…") { showsCSSSnippets = true }
-                    }
-                }
+            if let draftBinding {
+                appearanceSectionContent(profile: draftBinding)
             }
-            .padding(.horizontal, 24)
-            .padding(.vertical, 16)
-            .frame(maxWidth: 760, alignment: .topLeading)
-            .frame(maxWidth: .infinity, alignment: .top)
-            .accessibilityIdentifier("scholium.appearance.form")
 
-            if let reason = store.safeModeReason {
-                Label("CSS Safe Mode: \(reason)", systemImage: "exclamationmark.shield.fill")
-                    .font(.body)
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, ScholiumGrid.Spacing.sectionSeparation)
-                    .padding(.vertical, ScholiumGrid.Spacing.inlineControlGap)
-            }
-            if let storeError = store.storeError {
-                Label(storeError, systemImage: "exclamationmark.triangle.fill")
-                    .font(.body)
-                    .foregroundStyle(.red)
-                    .padding(.horizontal, ScholiumGrid.Spacing.sectionSeparation)
-                    .padding(.vertical, ScholiumGrid.Spacing.inlineControlGap)
-                    .accessibilityIdentifier("settings.css.store-error")
-            }
-            if let importError {
-                Label(importError, systemImage: "exclamationmark.triangle.fill")
-                    .font(.body)
-                    .foregroundStyle(.red)
-                    .padding(.horizontal, ScholiumGrid.Spacing.sectionSeparation)
-                    .padding(.vertical, ScholiumGrid.Spacing.inlineControlGap)
-            }
+            appearanceStatus
             appearanceSaveActions
         }
         .scholiumSettingsPaneSurface()
+        .accessibilityIdentifier("scholium.appearance.form")
         .onAppear { loadSelectedDraft() }
         .onChange(of: store.selectedAppearanceProfileID) { _, _ in loadSelectedDraft() }
         .onChange(of: store.appearanceProfiles) { _, _ in loadSelectedDraft() }
@@ -1734,11 +1680,6 @@ private struct AppearanceSettingsView: View {
             .padding(.horizontal, 24)
                 .padding(.vertical, 16)
             .frame(width: 600, height: 360)
-        }
-        .sheet(isPresented: $showsAdvancedTypography) {
-            if let draftBinding {
-                AdvancedTypographySettingsView(profile: draftBinding)
-            }
         }
         .confirmationDialog("Reload Appearance Configuration?", isPresented: $confirmsConfigurationReload, titleVisibility: .visible) {
             Button("Reload", role: .destructive) { store.reloadAppearanceConfiguration() }
@@ -1792,6 +1733,75 @@ private struct AppearanceSettingsView: View {
             }
         } message: {
             Text("The selected appearance has unsaved changes. Switching configurations will discard them.")
+        }
+    }
+
+    @ViewBuilder
+    private func appearanceSectionContent(
+        profile: Binding<DocumentAppearanceProfile>
+    ) -> some View {
+        ScrollView {
+            VStack(
+                alignment: .leading,
+                spacing: ScholiumGrid.Spacing.sectionSeparation
+            ) {
+                settingsSectionTitle("Reading")
+                AppearanceReadingEditor(profile: profile)
+                TypographySettingsView(profile: profile) {
+                    showsCSSSnippets = true
+                }
+                configurationFileSection
+            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 8)
+            .frame(maxWidth: 760, alignment: .topLeading)
+            .frame(maxWidth: .infinity, alignment: .top)
+        }
+        .scrollContentBackground(.hidden)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .accessibilityIdentifier("scholium.settings.appearance")
+    }
+
+    private var configurationFileSection: some View {
+        settingsEditorSection("Configuration File") {
+            HStack {
+                Button("Show in Finder…") { store.revealAppearanceConfiguration() }
+                Button("Reload") {
+                    if hasUnsavedChanges { confirmsConfigurationReload = true }
+                    else { store.reloadAppearanceConfiguration() }
+                }
+                Button("Configuration Guide…") {
+                    if let url = Bundle.module.url(forResource: "AppearanceConfiguration", withExtension: "md") {
+                        NSWorkspace.shared.open(url)
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var appearanceStatus: some View {
+        if let reason = store.safeModeReason {
+            Label("CSS Safe Mode: \(reason)", systemImage: "exclamationmark.shield.fill")
+                .font(.body)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, ScholiumGrid.Spacing.sectionSeparation)
+                .padding(.vertical, ScholiumGrid.Spacing.inlineControlGap)
+        }
+        if let storeError = store.storeError {
+            Label(storeError, systemImage: "exclamationmark.triangle.fill")
+                .font(.body)
+                .foregroundStyle(.red)
+                .padding(.horizontal, ScholiumGrid.Spacing.sectionSeparation)
+                .padding(.vertical, ScholiumGrid.Spacing.inlineControlGap)
+                .accessibilityIdentifier("settings.css.store-error")
+        }
+        if let importError {
+            Label(importError, systemImage: "exclamationmark.triangle.fill")
+                .font(.body)
+                .foregroundStyle(.red)
+                .padding(.horizontal, ScholiumGrid.Spacing.sectionSeparation)
+                .padding(.vertical, ScholiumGrid.Spacing.inlineControlGap)
         }
     }
 
@@ -1976,7 +1986,7 @@ private struct AppearanceSettingsView: View {
     }
 }
 
-private struct AppearanceProfileEditor: View {
+private struct AppearanceReadingEditor: View {
     @Binding var profile: DocumentAppearanceProfile
     private let sourceFontFamilies = NSFontManager.shared.availableFontFamilies.sorted {
         $0.localizedStandardCompare($1) == .orderedAscending
@@ -1993,8 +2003,10 @@ private struct AppearanceProfileEditor: View {
                     Text("pt")
                 }
             }
-            AppearanceDoubleControl("Line width", value: $profile.settings.lineWidthCharacterUnits, range: DocumentAppearanceSettings.lineWidthCharacterUnitsRange, step: 1, suffix: "ch", precision: 0, accessibilityUnit: "character-width units")
-            AppearanceDoubleControl("Line spacing", value: $profile.settings.body.lineHeight, range: 1.2...2.4, step: 0.05, suffix: "×")
+            settingsAdaptiveGrid {
+                AppearanceDoubleControl("Line width", value: $profile.settings.lineWidthCharacterUnits, range: DocumentAppearanceSettings.lineWidthCharacterUnitsRange, step: 1, suffix: "ch", precision: 0, accessibilityUnit: "character-width units")
+                AppearanceDoubleControl("Line spacing", value: $profile.settings.body.lineHeight, range: 1.2...2.4, step: 0.05, suffix: "×")
+            }
             settingsEditorSection("Alignment") {
                 Picker("Alignment", selection: $profile.settings.body.alignment) {
                     ForEach(DocumentTextAlignment.allCases, id: \.self) {
@@ -2021,186 +2033,817 @@ private struct AppearanceProfileEditor: View {
     }
 }
 
-private struct AdvancedTypographySettingsView: View {
-    @Environment(\.dismiss) private var dismiss
+private struct TypographySettingsView: View {
     @Binding var profile: DocumentAppearanceProfile
+    let onShowAdvancedCSS: () -> Void
+    @State private var showsHeadingLevelDetails = false
+    private let installedFontFamilies = NSFontManager.shared.availableFontFamilies.sorted {
+        $0.localizedStandardCompare($1) == .orderedAscending
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.sectionSeparation) {
-            settingsTitle(
-                "Advanced Typography",
-                detail: "Fine typography and heading controls for the selected document appearance."
+            pairedContent
+            advancedCSSPrompt
+        }
+            .frame(
+                minWidth: ScholiumMetrics.Settings.typographyPairedMinimumWidth,
+                maxWidth: .infinity,
+                alignment: .topLeading
             )
-
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    AppearanceDoubleControl(
-                        "Paragraph spacing",
-                        value: $profile.settings.body.paragraphSpacingEm,
-                        range: 0...2,
-                        step: 0.05,
-                        suffix: "em"
-                    )
-                    AppearanceDoubleControl(
-                        "First-line indent",
-                        value: $profile.settings.body.firstLineIndentEm,
-                        range: 0...4,
-                        step: 0.1,
-                        suffix: "em"
-                    )
-                    AppearanceDoubleControl(
-                        "Letter spacing",
-                        value: $profile.settings.body.letterSpacingEm,
-                        range: -0.05...0.1,
-                        step: 0.01,
-                        suffix: "em"
-                    )
-                    AppearanceDoubleControl(
-                        "Word spacing",
-                        value: $profile.settings.body.wordSpacingEm,
-                        range: -0.1...0.5,
-                        step: 0.01,
-                        suffix: "em"
-                    )
-
-                    settingsEditorSection("Hyphenation") {
-                        Picker("Hyphenation", selection: $profile.settings.body.hyphenation) {
-                            ForEach(DocumentHyphenation.allCases, id: \.self) {
-                                Text($0.label).tag($0)
-                            }
-                        }
-                        .labelsHidden()
-                        .pickerStyle(.menu)
-                    }
-                    settingsEditorSection("Typesetting") {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Toggle("Use Kerning", isOn: $profile.settings.body.kerning)
-                            Toggle("Use Ligatures", isOn: $profile.settings.body.ligatures)
-                        }
-                    }
-
-                    settingsSectionTitle("Headings")
-                    settingsEditorSection("Heading Font") {
-                        Picker("Heading Font", selection: $profile.settings.headings.fontFamily) {
-                            ForEach(DocumentHeadingFontFamily.allCases, id: \.self) {
-                                Text($0.label).tag($0)
-                            }
-                        }
-                        .labelsHidden()
-                        .frame(width: 170, alignment: .leading)
-                    }
-                    settingsEditorSection("Heading Style") {
-                        Picker("Heading Style", selection: $profile.settings.headings.style) {
-                            ForEach(DocumentHeadingStyle.allCases, id: \.self) {
-                                Text($0.label).tag($0)
-                            }
-                        }
-                        .labelsHidden()
-                        .frame(width: 130, alignment: .leading)
-                    }
-                    settingsEditorSection("Heading Weight") {
-                        AppearanceIntegerControl(
-                            title: "Heading Weight",
-                            value: $profile.settings.headings.weight,
-                            range: 400...700,
-                            step: 50
-                        )
-                    }
-                    AppearanceDoubleControl(
-                        "Heading Line Spacing",
-                        value: $profile.settings.headings.lineHeight,
-                        range: 1...2.4,
-                        step: 0.05,
-                        suffix: "×"
-                    )
-                    AppearanceDoubleControl(
-                        "Heading Letter Spacing",
-                        value: $profile.settings.headings.letterSpacingEm,
-                        range: -0.05...0.1,
-                        step: 0.01,
-                        suffix: "em"
-                    )
-                    settingsEditorSection("Heading Levels") {
-                        VStack(alignment: .leading, spacing: 16) {
-                            AppearanceHeadingLevelControl(
-                                title: "H1",
-                                level: $profile.settings.headings.level1
-                            )
-                            AppearanceHeadingLevelControl(
-                                title: "H2–H6",
-                                level: $profile.settings.headings.level2
-                            )
-                        }
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .topLeading)
+            .accessibilityIdentifier("scholium.settings.appearance.typography")
+            .sheet(isPresented: $showsHeadingLevelDetails) {
+                AppearanceHeadingLevelDetailsView(
+                    headings: $profile.settings.headings
+                )
             }
+    }
 
-            HStack {
-                Spacer()
-                Button("Done") { dismiss() }
-                    .keyboardShortcut(.defaultAction)
+    private var pairedContent: some View {
+        settingsPairedGrid(
+            columnMinimumWidth: ScholiumMetrics.Settings.typographyColumnMinimumWidth,
+            columnSpacing: ScholiumMetrics.Settings.typographyColumnSpacing
+        ) {
+            typographySection("Body Typography") {
+                bodyTypographyContent
+            }
+            typographySection("Heading Typography") {
+                headingTypographyContent
+            }
+            typographySection("Text Styles") {
+                textStylesContent
+            }
+            typographySection("Heading Hierarchy") {
+                headingHierarchyContent
             }
         }
-        .padding(24)
-        .frame(width: 680, height: 620)
+    }
+
+    private func typographySection<Content: View>(
+        _ title: LocalizedStringResource,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+            settingsSectionTitle(title)
+            content()
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+
+    @ViewBuilder
+    private var bodyTypographyContent: some View {
+        AppearanceBodyTypographyMatrix(settings: $profile.settings.body)
+    }
+
+    @ViewBuilder
+    private var textStylesContent: some View {
+        AppearanceTextStylesMatrix(
+            bodyBoldSelection: $profile.settings.body.cjkStrongFontFamily,
+            bodyItalicSelection: $profile.settings.body.cjkEmphasisFontFamily,
+            headingBoldSelection: $profile.settings.headings.cjkStrongFontFamily,
+            headingItalicSelection: $profile.settings.headings.cjkEmphasisFontFamily,
+            availableFamilies: installedFontFamilies
+        )
+    }
+
+    @ViewBuilder
+    private var headingTypographyContent: some View {
+        AppearanceHeadingTypographyMatrix(headings: $profile.settings.headings)
+    }
+
+    @ViewBuilder
+    private var headingHierarchyContent: some View {
+        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+            AppearanceHeadingLevelMatrix(
+                headings: $profile.settings.headings,
+                showsSpacing: false
+            )
+            HStack {
+                Spacer(minLength: 0)
+                Button("Edit Heading Levels…") {
+                    showsHeadingLevelDetails = true
+                }
+            }
+        }
+    }
+
+    private var advancedCSSPrompt: some View {
+        settingsEditorSection("Advanced CSS") {
+            VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+                Text("Fine typography is configured with Advanced CSS.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button("Advanced CSS…", action: onShowAdvancedCSS)
+            }
+        }
     }
 }
 
-private struct AppearanceHeadingLevelControl: View {
-    let title: LocalizedStringResource
-    @Binding var level: DocumentHeadingLevelAppearance
+private struct AppearanceBodyTypographyMatrix: View {
+    @Binding var settings: DocumentBodyAppearance
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        ViewThatFits(in: .horizontal) {
+            matrix
+                .frame(minWidth: 600, maxWidth: .infinity, alignment: .leading)
+            compactMatrix
+                .frame(
+                    minWidth: ScholiumMetrics.Settings.typographyColumnMinimumWidth,
+                    maxWidth: .infinity,
+                    alignment: .leading
+                )
+            stackedRows
+        }
+    }
+
+    private var matrix: some View {
+        settingsDensePropertyGrid {
+            GridRow {
+                settingsDensePropertyLabel("Paragraph spacing")
+                dimensionValue(
+                    title: "Paragraph spacing",
+                    value: $settings.paragraphSpacingEm,
+                    range: 0...2,
+                    step: 0.05,
+                    suffix: "em"
+                )
+                .frame(width: 150, alignment: .leading)
+                settingsDensePropertyLabel("First-line indent")
+                dimensionValue(
+                    title: "First-line indent",
+                    value: $settings.firstLineIndentEm,
+                    range: 0...4,
+                    step: 0.1,
+                    suffix: "em"
+                )
+                .frame(width: 150, alignment: .leading)
+            }
+        }
+    }
+
+    private var stackedRows: some View {
+        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+            settingsEditorSection("Paragraph spacing") {
+                dimensionValue(
+                    title: "Paragraph spacing",
+                    value: $settings.paragraphSpacingEm,
+                    range: 0...2,
+                    step: 0.05,
+                    suffix: "em"
+                )
+            }
+            settingsEditorSection("First-line indent") {
+                dimensionValue(
+                    title: "First-line indent",
+                    value: $settings.firstLineIndentEm,
+                    range: 0...4,
+                    step: 0.1,
+                    suffix: "em"
+                )
+            }
+        }
+    }
+
+    private var compactMatrix: some View {
+        LazyVGrid(
+            columns: [
+                GridItem(.flexible(), alignment: .leading),
+                GridItem(.flexible(), alignment: .leading)
+            ],
+            alignment: .leading,
+            spacing: ScholiumGrid.Spacing.inlineControlGap
+        ) {
+            compactProperty("Paragraph spacing") {
+                dimensionValue(
+                    title: "Paragraph spacing",
+                    value: $settings.paragraphSpacingEm,
+                    range: 0...2,
+                    step: 0.05,
+                    suffix: "em"
+                )
+            }
+            compactProperty("First-line indent") {
+                dimensionValue(
+                    title: "First-line indent",
+                    value: $settings.firstLineIndentEm,
+                    range: 0...4,
+                    step: 0.1,
+                    suffix: "em"
+                )
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func compactProperty<Content: View>(
+        _ title: LocalizedStringResource,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            content()
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func dimensionValue(
+        title: LocalizedStringResource,
+        value: Binding<Double>,
+        range: ClosedRange<Double>,
+        step: Double,
+        suffix: String
+    ) -> some View {
+        AppearanceDoubleValueControl(
+            value: value,
+            range: range,
+            step: step,
+            suffix: suffix,
+            precision: 2,
+            title: title,
+            accessibilityUnit: title
+        )
+    }
+}
+
+private struct AppearanceHeadingTypographyMatrix: View {
+    @Binding var headings: DocumentHeadingAppearance
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            matrix
+                .frame(minWidth: 700, maxWidth: .infinity, alignment: .leading)
+            compactMatrix
+                .frame(
+                    minWidth: ScholiumMetrics.Settings.typographyColumnMinimumWidth,
+                    maxWidth: .infinity,
+                    alignment: .leading
+                )
+            stackedRows
+        }
+    }
+
+    private var matrix: some View {
+        settingsDensePropertyGrid {
+            GridRow {
+                settingsDensePropertyLabel("Heading Font")
+                fontPicker()
+                settingsDensePropertyLabel("Heading Style")
+                stylePicker()
+            }
+            GridRow {
+                settingsDensePropertyLabel("Heading Weight")
+                AppearanceIntegerControl(
+                    title: "Heading Weight",
+                    value: $headings.weight,
+                    range: 400...700,
+                    step: 50
+                )
+                .frame(width: 150, alignment: .leading)
+                settingsDensePropertyLabel("Heading Line Spacing")
+                AppearanceDoubleValueControl(
+                    value: $headings.lineHeight,
+                    range: 1...2.4,
+                    step: 0.05,
+                    suffix: "×",
+                    precision: 2,
+                    title: "Heading Line Spacing",
+                    accessibilityUnit: nil
+                )
+                .frame(width: 150, alignment: .leading)
+            }
+        }
+    }
+
+    private var compactMatrix: some View {
+        LazyVGrid(
+            columns: [
+                GridItem(.flexible(), alignment: .leading),
+                GridItem(.flexible(), alignment: .leading)
+            ],
+            alignment: .leading,
+            spacing: ScholiumGrid.Spacing.inlineControlGap
+        ) {
+            compactProperty("Font") { fontPicker(width: 132) }
+            compactProperty("Style") { stylePicker(width: 132) }
+            compactProperty("Weight") {
+                AppearanceIntegerControl(
+                    title: "Heading Weight",
+                    value: $headings.weight,
+                    range: 400...700,
+                    step: 50
+                )
+            }
+            compactProperty("Line spacing") {
+                AppearanceDoubleValueControl(
+                    value: $headings.lineHeight,
+                    range: 1...2.4,
+                    step: 0.05,
+                    suffix: "×",
+                    precision: 2,
+                    title: "Heading Line Spacing",
+                    accessibilityUnit: nil
+                )
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func compactProperty<Content: View>(
+        _ title: LocalizedStringResource,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            content()
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func fontPicker(width: CGFloat = 150) -> some View {
+        Picker("Heading Font", selection: $headings.fontFamily) {
+            ForEach(DocumentHeadingFontFamily.allCases, id: \.self) {
+                Text($0.label).tag($0)
+            }
+        }
+        .labelsHidden()
+        .frame(width: width, alignment: .leading)
+    }
+
+    private func stylePicker(width: CGFloat = 150) -> some View {
+        Picker("Heading Style", selection: $headings.style) {
+            ForEach(DocumentHeadingStyle.allCases, id: \.self) {
+                Text($0.label).tag($0)
+            }
+        }
+        .labelsHidden()
+        .frame(width: width, alignment: .leading)
+    }
+
+    private var stackedRows: some View {
+        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+            settingsEditorSection("Heading Font") { fontPicker() }
+            settingsEditorSection("Heading Style") { stylePicker() }
+            settingsEditorSection("Heading Weight") {
+                AppearanceIntegerControl(
+                    title: "Heading Weight",
+                    value: $headings.weight,
+                    range: 400...700,
+                    step: 50
+                )
+            }
+            settingsEditorSection("Heading Line Spacing") {
+                AppearanceDoubleValueControl(
+                    value: $headings.lineHeight,
+                    range: 1...2.4,
+                    step: 0.05,
+                    suffix: "×",
+                    precision: 2,
+                    title: "Heading Line Spacing",
+                    accessibilityUnit: nil
+                )
+            }
+        }
+    }
+}
+
+private struct AppearanceTextStylesMatrix: View {
+    @Binding var bodyBoldSelection: String?
+    @Binding var bodyItalicSelection: String?
+    @Binding var headingBoldSelection: String?
+    @Binding var headingItalicSelection: String?
+    let availableFamilies: [String]
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            matrix
+                .frame(minWidth: 500, maxWidth: .infinity, alignment: .leading)
+            compactMatrix
+                .frame(
+                    minWidth: ScholiumMetrics.Settings.typographyColumnMinimumWidth,
+                    maxWidth: .infinity,
+                    alignment: .leading
+                )
+            stackedRows
+        }
+    }
+
+    private var matrix: some View {
+        Grid(alignment: .leading, horizontalSpacing: 20, verticalSpacing: 12) {
+            GridRow {
+                settingsMatrixHeader("Role")
+                settingsMatrixHeader("Bold Font")
+                settingsMatrixHeader("Italic Font")
+            }
+            GridRow {
+                settingsMatrixRowLabel("Body")
+                fontPicker(title: "Bold Font", selection: $bodyBoldSelection)
+                fontPicker(title: "Italic Font", selection: $bodyItalicSelection)
+            }
+            GridRow {
+                settingsMatrixRowLabel("Headings")
+                fontPicker(title: "Bold Font", selection: $headingBoldSelection)
+                fontPicker(title: "Italic Font", selection: $headingItalicSelection)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .contain)
+    }
+
+    private var compactMatrix: some View {
+        Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 8) {
+            GridRow {
+                settingsMatrixHeader("Role")
+                    .frame(width: 64, alignment: .leading)
+                settingsMatrixHeader("Bold")
+                    .frame(width: 92, alignment: .leading)
+                settingsMatrixHeader("Italic")
+                    .frame(width: 92, alignment: .leading)
+            }
+            GridRow {
+                settingsMatrixRowLabel("Body")
+                    .frame(width: 64, alignment: .leading)
+                fontPicker(title: "Bold Font", selection: $bodyBoldSelection, width: 92)
+                fontPicker(title: "Italic Font", selection: $bodyItalicSelection, width: 92)
+            }
+            GridRow {
+                settingsMatrixRowLabel("Headings")
+                    .frame(width: 64, alignment: .leading)
+                fontPicker(title: "Bold Font", selection: $headingBoldSelection, width: 92)
+                fontPicker(title: "Italic Font", selection: $headingItalicSelection, width: 92)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .contain)
+    }
+
+    private var stackedRows: some View {
+        VStack(alignment: .leading, spacing: ScholiumMetrics.Settings.sectionSpacing) {
+            roleRows(
+                "Body",
+                boldSelection: $bodyBoldSelection,
+                italicSelection: $bodyItalicSelection
+            )
+            roleRows(
+                "Headings",
+                boldSelection: $headingBoldSelection,
+                italicSelection: $headingItalicSelection
+            )
+        }
+    }
+
+    private func roleRows(
+        _ title: LocalizedStringResource,
+        boldSelection: Binding<String?>,
+        italicSelection: Binding<String?>
+    ) -> some View {
+        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
             Text(title)
                 .font(.subheadline.weight(.semibold))
-            HStack(spacing: 8) {
-                Text("Scale")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            settingsEditorSection("Bold Font") {
+                fontPicker(title: "Bold Font", selection: boldSelection)
+            }
+            settingsEditorSection("Italic Font") {
+                fontPicker(title: "Italic Font", selection: italicSelection)
+            }
+        }
+    }
+
+    private func fontPicker(
+        title: LocalizedStringResource,
+        selection: Binding<String?>,
+        width: CGFloat = ScholiumMetrics.Settings.appearancePickerWidth
+    ) -> some View {
+        AppearanceRoleFontPicker(
+            title: title,
+            selection: selection,
+            availableFamilies: availableFamilies
+        )
+        .frame(width: width, alignment: .leading)
+    }
+}
+
+private enum AppearanceHeadingLevel: String, CaseIterable, Identifiable {
+    case h1
+    case h2
+    case h3
+    case h4
+    case h5
+    case h6
+
+    var id: String { rawValue }
+
+    var title: LocalizedStringResource {
+        switch self {
+        case .h1: "H1"
+        case .h2: "H2"
+        case .h3: "H3"
+        case .h4: "H4"
+        case .h5: "H5"
+        case .h6: "H6"
+        }
+    }
+}
+
+private struct AppearanceHeadingLevelMatrix: View {
+    @Binding var headings: DocumentHeadingAppearance
+    let showsSpacing: Bool
+
+    var body: some View {
+        if showsSpacing {
+            ViewThatFits(in: .horizontal) {
+                detailedMatrix
+                    .frame(minWidth: 650, maxWidth: .infinity, alignment: .leading)
+                detailedRows
+            }
+        } else {
+            ViewThatFits(in: .horizontal) {
+                summaryMatrix
+                    .frame(minWidth: 420, maxWidth: .infinity, alignment: .leading)
+                summaryRows
+            }
+        }
+    }
+
+    private var summaryMatrix: some View {
+        Grid(alignment: .leading, horizontalSpacing: 20, verticalSpacing: 10) {
+            GridRow {
+                settingsMatrixHeader("Heading Level")
+                settingsMatrixHeader("Scale")
+                settingsMatrixHeader("Alignment")
+            }
+            ForEach(AppearanceHeadingLevel.allCases) { level in
+                AppearanceHeadingLevelMatrixRow(
+                    level: level,
+                    appearance: binding(for: level),
+                    showsSpacing: false
+                )
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .contain)
+    }
+
+    private var detailedMatrix: some View {
+        Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 10) {
+            GridRow {
+                settingsMatrixHeader("Heading Level")
+                settingsMatrixHeader("Scale")
+                settingsMatrixHeader("Alignment")
+                settingsMatrixHeader("Space Before")
+                settingsMatrixHeader("Space After")
+            }
+            ForEach(AppearanceHeadingLevel.allCases) { level in
+                AppearanceHeadingLevelMatrixRow(
+                    level: level,
+                    appearance: binding(for: level),
+                    showsSpacing: true
+                )
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .contain)
+    }
+
+    private var summaryRows: some View {
+        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+                HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                    compactMatrixHeader("Level")
+                        .frame(width: 32, alignment: .leading)
+                compactMatrixHeader("Scale")
+                    .frame(width: 100, alignment: .leading)
+                Spacer(minLength: 0)
+                compactMatrixHeader("Alignment")
+                    .frame(width: 112, alignment: .leading)
+            }
+            ForEach(AppearanceHeadingLevel.allCases) { level in
+                HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                    Text(level.title)
+                        .font(.body.weight(.semibold))
+                        .frame(width: 32, alignment: .leading)
+                    headingScaleControl(level: level, appearance: binding(for: level))
+                        .frame(width: 100, alignment: .leading)
+                    Spacer(minLength: 0)
+                    headingAlignmentPicker(
+                        level: level,
+                        appearance: binding(for: level),
+                        width: 112
+                    )
+                }
+            }
+        }
+    }
+
+    private func compactMatrixHeader(
+        _ title: LocalizedStringResource
+    ) -> some View {
+        Text(title)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
+    }
+
+    private var detailedRows: some View {
+        VStack(alignment: .leading, spacing: ScholiumMetrics.Settings.sectionSpacing) {
+            ForEach(AppearanceHeadingLevel.allCases) { level in
+                AppearanceHeadingLevelDetailRow(
+                    level: level,
+                    appearance: binding(for: level)
+                )
+            }
+        }
+    }
+
+    private func binding(
+        for level: AppearanceHeadingLevel
+    ) -> Binding<DocumentHeadingLevelAppearance> {
+        switch level {
+        case .h1: $headings.level1
+        case .h2: $headings.level2
+        case .h3: $headings.level3
+        case .h4: $headings.level4
+        case .h5: $headings.level5
+        case .h6: $headings.level6
+        }
+    }
+
+    @ViewBuilder
+    private func headingScaleControl(
+        level: AppearanceHeadingLevel,
+        appearance: Binding<DocumentHeadingLevelAppearance>
+    ) -> some View {
+        HStack(spacing: 6) {
+            AppearanceNumberControl(
+                value: appearance.scale,
+                range: 0.8...3,
+                step: 0.05,
+                title: "\(level.title) scale"
+            )
+            Text("×")
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private func headingAlignmentPicker(
+        level: AppearanceHeadingLevel,
+        appearance: Binding<DocumentHeadingLevelAppearance>,
+        width: CGFloat = 124
+    ) -> some View {
+        Picker("\(level.title) alignment", selection: appearance.alignment) {
+            ForEach(DocumentTextAlignment.allCases, id: \.self) {
+                Text($0.label).tag($0)
+            }
+        }
+        .labelsHidden()
+        .pickerStyle(.menu)
+        .frame(width: width, alignment: .leading)
+    }
+}
+
+private struct AppearanceHeadingLevelMatrixRow: View {
+    let level: AppearanceHeadingLevel
+    @Binding var appearance: DocumentHeadingLevelAppearance
+    let showsSpacing: Bool
+
+    var body: some View {
+        GridRow {
+            settingsMatrixRowLabel(level.title)
+            HStack(spacing: 6) {
                 AppearanceNumberControl(
-                    value: $level.scale,
+                    value: $appearance.scale,
                     range: 0.8...3,
                     step: 0.05,
-                    title: "\(title) scale"
+                    title: "\(level.title) scale"
                 )
                 Text("×")
                     .foregroundStyle(.secondary)
-                Text("Alignment")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Picker("\(title) alignment", selection: $level.alignment) {
+            }
+            Picker("\(level.title) alignment", selection: $appearance.alignment) {
+                ForEach(DocumentTextAlignment.allCases, id: \.self) {
+                    Text($0.label).tag($0)
+                }
+            }
+            .labelsHidden()
+            .pickerStyle(.menu)
+            .frame(width: 124, alignment: .leading)
+            if showsSpacing {
+                HStack(spacing: 6) {
+                    AppearanceNumberControl(
+                        value: $appearance.spaceBeforeEm,
+                        range: 0...4,
+                        step: 0.05,
+                        title: "\(level.title) space before"
+                    )
+                    Text("em")
+                        .foregroundStyle(.secondary)
+                }
+                HStack(spacing: 6) {
+                    AppearanceNumberControl(
+                        value: $appearance.spaceAfterEm,
+                        range: 0...4,
+                        step: 0.05,
+                        title: "\(level.title) space after"
+                    )
+                    Text("em")
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+}
+
+private struct AppearanceHeadingLevelDetailRow: View {
+    let level: AppearanceHeadingLevel
+    @Binding var appearance: DocumentHeadingLevelAppearance
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+            Text(level.title)
+                .font(.subheadline.weight(.semibold))
+            settingsEditorSection("Scale") {
+                HStack(spacing: 6) {
+                    AppearanceNumberControl(
+                        value: $appearance.scale,
+                        range: 0.8...3,
+                        step: 0.05,
+                        title: "\(level.title) scale"
+                    )
+                    Text("×")
+                        .foregroundStyle(.secondary)
+                }
+            }
+            settingsEditorSection("Alignment") {
+                Picker("\(level.title) alignment", selection: $appearance.alignment) {
                     ForEach(DocumentTextAlignment.allCases, id: \.self) {
                         Text($0.label).tag($0)
                     }
                 }
                 .labelsHidden()
                 .pickerStyle(.menu)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            HStack(spacing: 8) {
-                Text("Space Before")
-                    .foregroundStyle(.secondary)
-                AppearanceNumberControl(
-                    value: $level.spaceBeforeEm,
-                    range: 0...4,
-                    step: 0.05,
-                    title: "\(title) space before"
-                )
-                Text("em")
-                    .foregroundStyle(.secondary)
-                Text("Space After")
-                    .foregroundStyle(.secondary)
-                AppearanceNumberControl(
-                    value: $level.spaceAfterEm,
-                    range: 0...4,
-                    step: 0.05,
-                    title: "\(title) space after"
-                )
-                Text("em")
-                    .foregroundStyle(.secondary)
+            settingsEditorSection("Space Before") {
+                HStack(spacing: 6) {
+                    AppearanceNumberControl(
+                        value: $appearance.spaceBeforeEm,
+                        range: 0...4,
+                        step: 0.05,
+                        title: "\(level.title) space before"
+                    )
+                    Text("em")
+                        .foregroundStyle(.secondary)
+                }
+            }
+            settingsEditorSection("Space After") {
+                HStack(spacing: 6) {
+                    AppearanceNumberControl(
+                        value: $appearance.spaceAfterEm,
+                        range: 0...4,
+                        step: 0.05,
+                        title: "\(level.title) space after"
+                    )
+                    Text("em")
+                        .foregroundStyle(.secondary)
+                }
             }
         }
+    }
+}
+
+private struct AppearanceHeadingLevelDetailsView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Binding var headings: DocumentHeadingAppearance
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.sectionSeparation) {
+                    settingsTitle(
+                        "Heading Levels",
+                        detail: "Each heading level has its own scale, alignment, and spacing."
+                    )
+                    AppearanceHeadingLevelMatrix(
+                        headings: $headings,
+                        showsSpacing: true
+                    )
+                }
+                .padding(24)
+            }
+            HStack {
+                Spacer()
+                Button("Done") { dismiss() }
+                    .keyboardShortcut(.defaultAction)
+            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 16)
+        }
+        .frame(width: 820, height: 400, alignment: .topLeading)
     }
 }
 
@@ -2276,6 +2919,30 @@ private struct AppearanceDoubleControl: View {
         self.accessibilityUnit = accessibilityUnit
     }
 
+    var body: some View {
+        settingsEditorSection(title) {
+            AppearanceDoubleValueControl(
+                value: $value,
+                range: range,
+                step: step,
+                suffix: suffix,
+                precision: precision,
+                title: title,
+                accessibilityUnit: accessibilityUnit
+            )
+        }
+    }
+}
+
+private struct AppearanceDoubleValueControl: View {
+    @Binding var value: Double
+    let range: ClosedRange<Double>
+    let step: Double
+    let suffix: String
+    let precision: Int
+    let title: LocalizedStringResource
+    let accessibilityUnit: LocalizedStringResource?
+
     private var boundedValue: Binding<Double> {
         Binding(get: { value }, set: { candidate in
             guard candidate.isFinite else { return }
@@ -2284,22 +2951,76 @@ private struct AppearanceDoubleControl: View {
     }
 
     var body: some View {
-        settingsEditorSection(title) {
-            HStack(spacing: 6) {
-                TextField("", value: boundedValue,
-                          format: .number.precision(.fractionLength(0...precision)))
-                    .textFieldStyle(.roundedBorder)
-                    .frame(width: 64)
-                    .accessibilityLabel(Text(title))
-                Stepper("", value: boundedValue, in: range, step: step)
-                    .labelsHidden()
-                    .fixedSize()
-                    .accessibilityLabel(Text(title))
-                Text(suffix).foregroundStyle(.secondary)
-            }
-            .accessibilityElement(children: .contain)
-            .help(Text(accessibilityUnit ?? title))
+        HStack(spacing: 6) {
+            TextField(
+                "",
+                value: boundedValue,
+                format: .number.precision(.fractionLength(0...precision))
+            )
+            .textFieldStyle(.roundedBorder)
+            .frame(width: 64)
+            .accessibilityLabel(Text(title))
+            Stepper("", value: boundedValue, in: range, step: step)
+                .labelsHidden()
+                .fixedSize()
+                .accessibilityLabel(Text(title))
+            Text(suffix)
+                .foregroundStyle(.secondary)
         }
+        .accessibilityElement(children: .contain)
+        .help(Text(accessibilityUnit ?? title))
+    }
+}
+
+private struct AppearanceRoleFontPicker: View {
+    private static let defaultChoice = "__scholium_role_default__"
+    private static let automaticChoice = "__scholium_role_font__"
+
+    let title: LocalizedStringResource
+    @Binding var selection: String?
+    let availableFamilies: [String]
+
+    private var choices: [String] {
+        var values = availableFamilies
+        if let selection, !selection.isEmpty { values.append(selection) }
+        return Array(Set(values)).sorted {
+            $0.localizedStandardCompare($1) == .orderedAscending
+        }
+    }
+
+    private var choiceBinding: Binding<String> {
+        Binding(
+            get: {
+                if let selection, !selection.isEmpty { return selection }
+                if selection == nil { return Self.defaultChoice }
+                return Self.automaticChoice
+            },
+            set: { value in
+                if value == Self.defaultChoice {
+                    selection = nil
+                } else if value == Self.automaticChoice {
+                    selection = ""
+                } else {
+                    selection = value
+                }
+            }
+        )
+    }
+
+    var body: some View {
+        Picker(title, selection: choiceBinding) {
+            Text("Default")
+                .tag(Self.defaultChoice)
+            Text("Use role font")
+                .tag(Self.automaticChoice)
+            ForEach(choices, id: \.self) { family in
+                Text(verbatim: family).tag(family)
+            }
+        }
+        .labelsHidden()
+        .pickerStyle(.menu)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityLabel(Text(title))
     }
 }
 
@@ -2343,15 +3064,6 @@ private extension DocumentTextAlignment {
         case .start: "Start"
         case .center: "Center"
         case .justify: "Justify"
-        }
-    }
-}
-
-private extension DocumentHyphenation {
-    var label: LocalizedStringResource {
-        switch self {
-        case .none: "None"
-        case .automatic: "Automatic"
         }
     }
 }

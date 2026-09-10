@@ -5,7 +5,7 @@ import notify
 
 extension ScholiumUITests {
     @MainActor
-    func testLivePreviewHidesYAMLAndSourceShortcutIsUnavailable() throws {
+    func testLivePreviewUsesDocumentModeMenuForSourceTransition() throws {
         let mode = documentModeControl()
         XCTAssertTrue(mode.waitForExistence(timeout: 10))
         selectDocumentMode("Edit")

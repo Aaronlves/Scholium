@@ -517,6 +517,15 @@ enum ScholiumWebDesignTokens {
         let number: (Double) -> String = {
             String(format: "%.4g", locale: Locale(identifier: "en_US_POSIX"), $0)
         }
+        let headingLevelDeclarations = headings.levels.enumerated().map { index, level in
+            let levelNumber = index + 1
+            return """
+            --scholium-document-h\(levelNumber)-size: \(number(level.scale * 100))%;
+            --scholium-appearance-h\(levelNumber)-before: \(number(level.spaceBeforeEm))em;
+            --scholium-appearance-h\(levelNumber)-after: \(number(level.spaceAfterEm))em;
+            --scholium-appearance-h\(levelNumber)-align: \(level.alignment.rawValue);
+            """
+        }.joined(separator: "\n            ")
         return """
             --scholium-document-line-width: \(number(defaults.lineWidthCharacterUnits))ch;
             --scholium-document-half-line-width: \(number(defaults.lineWidthCharacterUnits / 2))ch;
@@ -526,10 +535,7 @@ enum ScholiumWebDesignTokens {
             --scholium-document-title-size: 180%;
             --scholium-document-title-line-height: 1.15;
             --scholium-document-title-after: 0.65em;
-            --scholium-document-h1-size: \(number(headings.level1.scale * 100))%;
-            --scholium-document-h2-size: \(number(headings.level2.scale * 100))%;
-            --scholium-document-h3-size: \(number(headings.level2.scale * 100))%;
-            --scholium-document-h4-size: \(number(headings.level2.scale * 100))%;
+            \(headingLevelDeclarations)
             --scholium-rhythm-prose-line-height: \(number(body.lineHeight));
             --scholium-rhythm-source-line-height: \(ScholiumDocumentRhythm.sourceLineHeight);
             --scholium-document-text-scale-factor: 1;
@@ -538,10 +544,6 @@ enum ScholiumWebDesignTokens {
             ))px;
             --scholium-rhythm-heading-line-height: \(number(headings.lineHeight));
             \(DocumentAppearanceStyles.headingTransportDeclarations(for: defaults))
-            --scholium-appearance-h1-before: \(number(headings.level1.spaceBeforeEm))em;
-            --scholium-appearance-h1-after: \(number(headings.level1.spaceAfterEm))em;
-            --scholium-appearance-lower-heading-before: \(number(headings.level2.spaceBeforeEm))em;
-            --scholium-appearance-lower-heading-after: \(number(headings.level2.spaceAfterEm))em;
             --scholium-rhythm-code-inset: \(ScholiumDocumentRhythm.codeBlockInset)px;
             --scholium-rhythm-quote-inset: \(ScholiumDocumentRhythm.quoteInlineInset)px;
             --scholium-rhythm-semantic-block-gap: 1em;
@@ -644,7 +646,7 @@ enum ScholiumWebDesignTokens {
             var(--scholium-rhythm-inline-regular),
             calc(50% - var(--scholium-document-half-line-width))
           );
-          font-family: Alegreya, Georgia, serif;
+          font-family: Alegreya, Georgia, "Songti SC", "STSong", serif;
           font-size: calc(
             var(--scholium-document-prose-font-size)
             * var(--scholium-document-text-scale-factor)
@@ -658,6 +660,46 @@ enum ScholiumWebDesignTokens {
           line-break: strict;
           word-break: normal;
           overflow-wrap: break-word;
+          text-autospace: normal;
+          text-spacing-trim: trim-both;
+        }
+        /* Read may use the engine's best available paragraph treatment;
+           editable Live Preview stays stable while the source is changing. */
+        .scholium-document {
+          text-wrap-style: pretty;
+        }
+        .cm-editor.scholium-live-mode .cm-content {
+          text-wrap-style: stable;
+        }
+        /* CSS text spacing is a rendering projection. Technical and exact
+           source regions retain their authored character grid and never
+           receive synthetic inter-script or punctuation spacing. */
+        :is(
+          .scholium-document code,
+          .scholium-document pre,
+          .scholium-document .scholium-frontmatter-source,
+          .scholium-document .scholium-math,
+          .scholium-document .raw-html,
+          .cm-editor.scholium-live-mode .cm-live-table,
+          .cm-editor.scholium-live-mode .cm-live-math,
+          .cm-editor.scholium-live-mode .cm-live-math-source,
+          .cm-editor.scholium-live-mode .cm-live-raw-html,
+          .cm-editor.scholium-live-mode .scholium-frontmatter-line,
+          .cm-editor.scholium-source-mode .cm-content
+        ) {
+          text-autospace: no-autospace;
+          text-spacing-trim: space-all;
+          text-wrap-style: stable;
+        }
+        .scholium-document :lang(en) {
+          line-break: auto;
+        }
+        .cm-editor .cm-line[lang="en"] {
+          line-break: auto;
+        }
+        .scholium-document :lang(zh-Hans),
+        .cm-editor .cm-line[lang="zh-Hans"] {
+          line-break: strict;
         }
         .cm-editor.scholium-source-mode .cm-content {
           padding-inline: max(
@@ -924,6 +966,7 @@ enum ScholiumWebDesignTokens {
         .scholium-live-mode .cm-live-emphasis {
           font-style: italic;
         }
+        \(DocumentAppearanceStyles.semanticTypographyCSS(for: DocumentAppearanceSettings.defaultSettings))
         .scholium-document del,
         .scholium-live-mode .cm-live-strike {
           color: var(--scholium-color-primary-text);
@@ -991,39 +1034,51 @@ enum ScholiumWebDesignTokens {
           font-variant-caps: var(--scholium-document-heading-font-variant-caps);
           font-weight: var(--scholium-document-heading-weight);
           line-height: var(--scholium-rhythm-heading-line-height);
-          letter-spacing: var(--scholium-document-heading-letter-spacing);
+          letter-spacing: normal;
           text-align: start;
           text-decoration-line: none;
           text-decoration: none;
           text-wrap: balance;
           box-sizing: border-box;
           margin: 0;
-          padding-block: var(--scholium-appearance-lower-heading-before) var(--scholium-appearance-lower-heading-after);
+          padding-block: 0;
         }
         .scholium-document h1,
         .scholium-live-mode .cm-live-h1 {
           font-size: var(--scholium-document-h1-size);
           font-weight: var(--scholium-document-heading-weight);
           padding-block: var(--scholium-appearance-h1-before) var(--scholium-appearance-h1-after);
+          text-align: var(--scholium-appearance-h1-align);
         }
         .scholium-document h2,
         .scholium-live-mode .cm-live-h2 {
           font-size: var(--scholium-document-h2-size);
-          padding-block: var(--scholium-appearance-lower-heading-before) var(--scholium-appearance-lower-heading-after);
+          padding-block: var(--scholium-appearance-h2-before) var(--scholium-appearance-h2-after);
+          text-align: var(--scholium-appearance-h2-align);
         }
         .scholium-document h3,
         .scholium-live-mode .cm-live-h3 {
           font-size: var(--scholium-document-h3-size);
-          padding-block: var(--scholium-appearance-lower-heading-before) var(--scholium-appearance-lower-heading-after);
+          padding-block: var(--scholium-appearance-h3-before) var(--scholium-appearance-h3-after);
+          text-align: var(--scholium-appearance-h3-align);
         }
         .scholium-document h4,
-        .scholium-document h5,
-        .scholium-document h6,
-        .scholium-live-mode .cm-live-h4,
-        .scholium-live-mode .cm-live-h5,
-        .scholium-live-mode .cm-live-h6 {
+        .scholium-live-mode .cm-live-h4 {
           font-size: var(--scholium-document-h4-size);
-          padding-block: var(--scholium-appearance-lower-heading-before) var(--scholium-appearance-lower-heading-after);
+          padding-block: var(--scholium-appearance-h4-before) var(--scholium-appearance-h4-after);
+          text-align: var(--scholium-appearance-h4-align);
+        }
+        .scholium-document h5,
+        .scholium-live-mode .cm-live-h5 {
+          font-size: var(--scholium-document-h5-size);
+          padding-block: var(--scholium-appearance-h5-before) var(--scholium-appearance-h5-after);
+          text-align: var(--scholium-appearance-h5-align);
+        }
+        .scholium-document h6,
+        .scholium-live-mode .cm-live-h6 {
+          font-size: var(--scholium-document-h6-size);
+          padding-block: var(--scholium-appearance-h6-before) var(--scholium-appearance-h6-after);
+          text-align: var(--scholium-appearance-h6-align);
         }
         .scholium-document h1 a:not(.wiki-link),
         .scholium-document h2 a:not(.wiki-link),
@@ -1261,6 +1316,14 @@ enum ScholiumMetrics {
     enum Settings {
         static let sectionSpacing = ScholiumGrid.foundationUnit * 3.5
         static let columnSpacing = ScholiumGrid.foundationUnit * 6
+        // Two-column settings remain readable at the smallest standard window
+        // size; the same adaptive grid collapses to one column before labels or
+        // controls are compressed by enlarged interface text.
+        static let adaptiveColumnMinimumWidth = ScholiumGrid.foundationUnit * 85
+        static let pairedColumnMinimumWidth = adaptiveColumnMinimumWidth * 2 + columnSpacing
+        static let typographyColumnMinimumWidth = ScholiumGrid.foundationUnit * 70
+        static let typographyColumnSpacing = ScholiumGrid.foundationUnit * 2
+        static let typographyPairedMinimumWidth = typographyColumnMinimumWidth * 2 + typographyColumnSpacing
         static let editorContentInset = ScholiumGrid.Spacing.regionContentInset
         static let headerMaximumWidth = ScholiumGrid.foundationUnit * 155
         static let formExplanationMaximumWidth = ScholiumGrid.foundationUnit * 105

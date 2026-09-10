@@ -7758,6 +7758,22 @@
         }
       }
     },
+    "Default" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Default"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "默认"
+          }
+        }
+      }
+    },
     "Define optional managed fields for each role, then choose Agent guidance and fields that remain visible when empty in About. Existing values always appear. New Note YAML remains fixed." : {
       "localizations" : {
         "zh-Hans" : {
@@ -8571,6 +8587,22 @@
         }
       }
     },
+    "Each heading level has its own scale, alignment, and spacing." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Each heading level has its own scale, alignment, and spacing."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每个标题级别都有独立的比例、对齐方式和间距。"
+          }
+        }
+      }
+    },
     "Earlier Changes" : {
       "localizations" : {
         "en" : {
@@ -8682,6 +8714,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "编辑文件"
+          }
+        }
+      }
+    },
+    "Edit Heading Levels…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Edit Heading Levels…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "编辑标题层级…"
           }
         }
       }
@@ -10271,6 +10319,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "所选文稿外观的细致排版和标题控制。"
+          }
+        }
+      }
+    },
+    "Fine typography is configured with Advanced CSS." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Fine typography is configured with Advanced CSS."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "细致排版通过 Advanced CSS 配置。"
           }
         }
       }
@@ -27593,6 +27657,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "使用页面图片…"
+          }
+        }
+      }
+    },
+    "Use role font" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Use role font"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用角色字体"
           }
         }
       }

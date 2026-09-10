@@ -451,13 +451,13 @@ fixtures require its source spans and meanings to agree with Contracts.
 Shared fixtures test both parsers against those rules. The TypeScript adapter
 fails closed when it receives a dialect it does not implement.
 
-Complete note source uses one CodeMirror language owner built from
-`yamlFrontmatter` around the locked Markdown language. Closed frontmatter is a
-real incremental YAML subtree even when the YAML contains diagnostics; the
-body remains the Markdown subtree. If an opening delimiter has no closing
-delimiter, Live Preview makes no semantic projection, keeps the exact source
-editable as quiet Source text above the title. Table, callout,
-footnote, mathematics, and preview adapters all honor this fail-closed guard.
+Complete note source uses one CodeMirror language owner from `yamlFrontmatter`
+around the locked Markdown language. Closed frontmatter is an incremental YAML
+subtree, including diagnostics; body remains Markdown. Live Preview keeps valid
+frontmatter in place and adds source-located YAML marks only; it never creates a
+second editable surface. An unclosed opening suppresses semantic projections
+but keeps exact text in place. Table, callout, footnote, mathematics, and
+preview adapters honor this fail-closed guard.
 
 That Markdown content language is extended through the locked Lezer API with
 typed Wikilink, named/inline footnote, callout, inline/display
@@ -748,5 +748,5 @@ toolbar, arbitrary media management, embedded AI chat or suggestions,
 real-time collaboration, a new SwiftPM target, or a generic editor plugin
 framework.
 
-Frontmatter remains above the title in the same CodeMirror source and history.
-Activation positions the title; reconstruction preserves position.
+Frontmatter stays above the app-owned title in the same CodeMirror source and
+history; opening and reconstruction never position the title.

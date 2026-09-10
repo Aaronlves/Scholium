@@ -518,6 +518,50 @@ extension MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
+    @Test("Review keeps authored YAML before the app title at the document start")
+    func reviewFrontmatterStaysInSourceOrder() async throws {
+        let source = "---\ntitle: Fixture\nsummary: Read in place\n---\n# First section\n\n" +
+            (1...40).map { "Research paragraph \($0) remains available." }
+                .joined(separator: "\n\n") + "\n"
+        let document = NoteDocument(relativePath: "Frontmatter.md", rawContent: source)
+        let harness = ReadHarness(
+            source: source,
+            htmlBody: SafeMarkdownRenderer.render(document).htmlBody,
+            fingerprint: document.fingerprint.sha256,
+            initialAnchor: nil,
+            initialScrollFraction: 0,
+            documentTitle: "Fixture"
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        try await Task.sleep(for: .milliseconds(150))
+
+        let result = try #require(try await harness.callPageJavaScript(
+            """
+            const scroller = document.scrollingElement;
+            const frontmatter = document.querySelector('.scholium-frontmatter-source');
+            const title = document.querySelector('.scholium-note-title');
+            if (!scroller || !frontmatter || !title) return null;
+            const frontmatterBounds = frontmatter.getBoundingClientRect();
+            const titleBounds = title.getBoundingClientRect();
+            return {
+              scrollY: window.scrollY,
+              frontmatterTop: frontmatterBounds.top,
+              frontmatterBottom: frontmatterBounds.bottom,
+              titleTop: titleBounds.top
+            };
+            """
+        ) as? [String: Any])
+        let scrollY = (result["scrollY"] as? NSNumber)?.doubleValue ?? 100
+        let frontmatterTop = (result["frontmatterTop"] as? NSNumber)?.doubleValue ?? -10_000
+        let frontmatterBottom = (result["frontmatterBottom"] as? NSNumber)?.doubleValue ?? 0
+        let titleTop = (result["titleTop"] as? NSNumber)?.doubleValue ?? 0
+        #expect(abs(scrollY) < 0.5)
+        #expect(frontmatterTop >= 0)
+        #expect(titleTop > frontmatterBottom)
+        await harness.closeAndDrain()
+    }
+
     @Test("Review keeps punctuation with an interactive footnote locator")
     func reviewFootnoteLocatorDoesNotOrphanPunctuation() async throws {
         let source = "A philosophical claim[^note].\n\n[^note]: Supporting qualification.\n"

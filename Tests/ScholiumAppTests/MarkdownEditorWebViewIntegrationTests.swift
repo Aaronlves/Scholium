@@ -199,8 +199,8 @@ struct MarkdownEditorWebViewIntegrationTests {
         }
     }
 
-    @Test("Frontmatter above the title edits the exact document and shares Undo")
-    func frontmatterAboveTitlePreservesSource() async throws {
+    @Test("Frontmatter stays in source order, renders quietly, and shares Undo")
+    func frontmatterStaysInSourceOrder() async throws {
         let source = "\u{FEFF}---\r\n# 注释 😀\r\nunknown: 'keep'\r\nsummary: |\r\n  原文\r\n---\r\n# Body\r\n\r\nUntouched body.\r\n"
         let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
         defer { harness.close() }
@@ -208,7 +208,14 @@ struct MarkdownEditorWebViewIntegrationTests {
         let webView = try #require(harness.session.webView)
         try await Task.sleep(for: .milliseconds(200))
         let titleOffset = try await harness.callPageJavaScript("return document.querySelector('.scholium-note-title-input').getBoundingClientRect().top - document.querySelector('.cm-scroller').getBoundingClientRect().top;") as? Double
-        #expect(abs((titleOffset ?? -100) - 32) < 2)
+        let yamlBottom = try await harness.callPageJavaScript("return Math.max(...Array.from(document.querySelectorAll('.scholium-frontmatter-line'), e => e.getBoundingClientRect().bottom - document.querySelector('.cm-scroller').getBoundingClientRect().top));") as? Double
+        let yamlTop = try await harness.callPageJavaScript("return Math.min(...Array.from(document.querySelectorAll('.scholium-frontmatter-line'), e => e.getBoundingClientRect().top - document.querySelector('.cm-scroller').getBoundingClientRect().top));") as? Double
+        let delimiterCount = try await harness.callPageJavaScript("return document.querySelectorAll('.cm-live-yaml-delimiter').length;") as? Int
+        let renderedLineCount = try await harness.callPageJavaScript("return document.querySelectorAll('[data-scholium-yaml-rendered=\\\"true\\\"]').length;") as? Int
+        #expect((yamlTop ?? -1) >= 0)
+        #expect((titleOffset ?? -1) > (yamlBottom ?? .greatestFiniteMagnitude))
+        #expect(delimiterCount == 2)
+        #expect((renderedLineCount ?? 0) > 0)
         _ = try await harness.session.send(.goToLine(2, focusesEditor: true), in: webView)
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
         let controls = try await harness.callPageJavaScript("return document.querySelectorAll('.scholium-frontmatter-entry').length;") as? Int
@@ -223,8 +230,8 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
     }
 
-    @Test("Mathematics opening keeps the document title anchored after rendering settles")
-    func mathematicsOpeningTitleRemainsStable() async throws {
+    @Test("Mathematics opening keeps YAML before the title after rendering settles")
+    func mathematicsOpeningPreservesFrontmatterOrder() async throws {
         let source = "---\nsummary: QA\nkeywords: [test]\n---\n# Mathematics\n\nInline $a^2+b^2=c^2$.\n\n$$\n\\int_0^1 x^2\\,dx = \\frac{1}{3}\n$$\n\nEnd.\n"
         let harness = EditorHarness(documentTitle: "Mathematics", source: source,
             initialPresentationCSS: ScholiumDocumentPresentationConfiguration(textScale: 1).css,
@@ -232,21 +239,135 @@ struct MarkdownEditorWebViewIntegrationTests {
         defer { harness.close() }
         try await harness.waitUntilReady()
         for _ in 0..<5 {
-            let offset = try await harness.callPageJavaScript("return document.querySelector('.scholium-note-title-input').getBoundingClientRect().top - document.querySelector('.cm-scroller').getBoundingClientRect().top;") as? Double
-            #expect(abs((offset ?? -100) - 32) < 2)
+            let geometry = try await harness.callPageJavaScript("""
+                const top = document.querySelector('.cm-scroller').getBoundingClientRect().top;
+                const yamlBottom = Math.max(...Array.from(document.querySelectorAll('.scholium-frontmatter-line'), e => e.getBoundingClientRect().bottom - top));
+                const title = document.querySelector('.scholium-note-title-input').getBoundingClientRect().top - top;
+                return JSON.stringify({title, yamlBottom});
+                """) as? String
+            let payload = try #require(geometry?.data(using: .utf8).flatMap {
+                try? JSONSerialization.jsonObject(with: $0) as? [String: Double]
+            })
+            #expect((payload["title"] ?? -1) > (payload["yamlBottom"] ?? .greatestFiniteMagnitude))
             try await Task.sleep(for: .milliseconds(100))
         }
         try await harness.session.testingApplyScrollFraction(0.8)
-        harness.session.prepareOpeningViewport()
+        harness.session.prepareOpeningPresentation()
         try await harness.reconstructEditorView()
         try await harness.waitUntilReady()
         try await Task.sleep(for: .milliseconds(200))
-        let reopenedOffset = try await harness.callPageJavaScript("return document.querySelector('.scholium-note-title-input').getBoundingClientRect().top - document.querySelector('.cm-scroller').getBoundingClientRect().top;") as? Double
-        #expect(abs((reopenedOffset ?? -100) - 32) < 2)
+        let reopenedGeometry = try await harness.callPageJavaScript("""
+            const top = document.querySelector('.cm-scroller').getBoundingClientRect().top;
+            const yamlBottom = Math.max(...Array.from(document.querySelectorAll('.scholium-frontmatter-line'), e => e.getBoundingClientRect().bottom - top));
+            const title = document.querySelector('.scholium-note-title-input').getBoundingClientRect().top - top;
+            return JSON.stringify({title, yamlBottom});
+            """) as? String
+        let reopenedPayload = try #require(reopenedGeometry?.data(using: .utf8).flatMap {
+            try? JSONSerialization.jsonObject(with: $0) as? [String: Double]
+        })
+        #expect((reopenedPayload["title"] ?? -1) > (reopenedPayload["yamlBottom"] ?? .greatestFiniteMagnitude))
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
     }
 
-    @Test("示例材料 never exposes frontmatter after opening readiness, including cached reopening")
+    @Test("Mixed Chinese and English lines carry presentation language hints without changing source")
+    func mixedScriptPresentationLanguageHints() async throws {
+        let source = "中文 English\n\nEnglish typography\n\n—— 🧭\n"
+        let harness = EditorHarness(
+            source: source,
+            initialPresentationCSS: ScholiumDocumentPresentationConfiguration(textScale: 1).css,
+            laysOutForPointerTesting: true
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        let languages = try await harness.callPageJavaScript("""
+            return JSON.stringify([...document.querySelectorAll('.cm-line')]
+                .map(line => line.getAttribute('lang')));
+            """) as? String
+        let values = try #require(languages?.data(using: .utf8).flatMap {
+            try? JSONSerialization.jsonObject(with: $0) as? [Any?]
+        })
+        #expect(values.contains { ($0 as? String) == "zh-Hans" })
+        #expect(values.contains { ($0 as? String) == "en" })
+        let spacing = try #require(try await harness.callPageJavaScript(
+            """
+            const content = document.querySelector('.cm-content');
+            const style = content ? getComputedStyle(content) : null;
+            return JSON.stringify({
+              supportsAutoSpace: CSS.supports('text-autospace', 'normal'),
+              autoSpace: style?.getPropertyValue('text-autospace').trim() || '',
+              supportsPunctuationTrim: CSS.supports('text-spacing-trim', 'trim-both'),
+              punctuationTrim: style?.getPropertyValue('text-spacing-trim').trim() || '',
+              wrapStyle: style?.getPropertyValue('text-wrap-style').trim() || ''
+            });
+            """
+        ) as? String)
+        let spacingValues = try #require(spacing.data(using: .utf8).flatMap {
+            try? JSONSerialization.jsonObject(with: $0) as? [String: Any]
+        })
+        if spacingValues["supportsAutoSpace"] as? Bool == true {
+            #expect(spacingValues["autoSpace"] as? String == "normal")
+        }
+        if spacingValues["supportsPunctuationTrim"] as? Bool == true {
+            #expect(spacingValues["punctuationTrim"] as? String == "trim-both")
+        }
+        #expect(spacingValues["wrapStyle"] as? String == "stable")
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+    }
+
+    @Test("Semantic typefaces keep CJK overrides separate for body and headings")
+    func semanticTypefacesRemainRoleAndScriptScoped() async throws {
+        let source = "正文 *中文 English* and **加粗 text**.\n\n# 标题 中文 English\n"
+        var profile = DocumentAppearanceProfile(name: "Semantic typefaces")
+        profile.settings.body.cjkStrongFontFamily = "Noto Sans CJK SC"
+        profile.settings.body.cjkEmphasisFontFamily = "LXGW WenKai"
+        profile.settings.headings.cjkStrongFontFamily = "Songti SC"
+        profile.settings.headings.cjkEmphasisFontFamily = "STKaiti"
+        profile.settings.headings.style = .italic
+        let harness = EditorHarness(
+            source: source,
+            initialPresentationCSS: DocumentAppearanceStyles.css(for: profile),
+            laysOutForPointerTesting: true
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        let typography = try #require(try await harness.callPageJavaScript(
+            """
+            const emphasis = document.querySelector(
+              '.cm-live-emphasis .cm-live-cjk, .cm-live-cjk .cm-live-emphasis, .cm-live-emphasis.cm-live-cjk'
+            );
+            const strong = document.querySelector(
+              '.cm-live-strong .cm-live-cjk, .cm-live-cjk .cm-live-strong, .cm-live-strong.cm-live-cjk'
+            );
+            const heading = document.querySelector(
+              '.cm-line.cm-live-heading .cm-live-cjk, .cm-live-cjk .cm-line.cm-live-heading'
+            );
+            const style = element => element ? getComputedStyle(element) : null;
+            const emphasisStyle = style(emphasis);
+            const strongStyle = style(strong);
+            const headingStyle = style(heading);
+            return JSON.stringify({
+              emphasisFont: emphasisStyle?.fontFamily || '',
+              emphasisStyle: emphasisStyle?.fontStyle || '',
+              strongFont: strongStyle?.fontFamily || '',
+              headingFont: headingStyle?.fontFamily || '',
+              headingStyle: headingStyle?.fontStyle || ''
+            });
+            """
+        ) as? String)
+        let values = try #require(typography.data(using: .utf8).flatMap {
+            try? JSONSerialization.jsonObject(with: $0) as? [String: String]
+        })
+        #expect(values["emphasisFont"]?.contains("LXGW WenKai") == true)
+        #expect(values["emphasisStyle"] == "normal")
+        #expect(values["strongFont"]?.contains("Noto Sans CJK SC") == true)
+        #expect(values["headingFont"]?.contains("STKaiti") == true)
+        #expect(values["headingStyle"] == "normal")
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+    }
+
+    @Test("示例材料 keeps rendered frontmatter in source order across reopening")
     func exampleMaterialOpeningFrames() async throws {
         let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
             .deletingLastPathComponent().deletingLastPathComponent()
@@ -258,8 +379,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         for opening in 0..<4 {
             let started = Date()
             if opening > 0 {
-                try await harness.session.testingApplyScrollFraction(0.7)
-                harness.session.prepareOpeningViewport()
+                harness.session.prepareOpeningPresentation()
                 try await harness.reconstructEditorView()
             }
             try await harness.waitUntilReady()
@@ -269,11 +389,15 @@ struct MarkdownEditorWebViewIntegrationTests {
                 for (let i = 0; i < 20; i++) {
                   const top = document.querySelector('.cm-scroller').getBoundingClientRect().top;
                   const title = document.querySelector('.scholium-note-title-input').getBoundingClientRect().top - top;
-                  const yamlBottom = Math.max(...Array.from(document.querySelectorAll('.scholium-frontmatter-line'), e => e.getBoundingClientRect().bottom - top));
-                  samples.push({title, yamlBottom});
+                  const yamlLines = Array.from(document.querySelectorAll('.scholium-frontmatter-line'));
+                  const yamlTop = Math.min(...yamlLines.map(e => e.getBoundingClientRect().top - top));
+                  const yamlBottom = Math.max(...yamlLines.map(e => e.getBoundingClientRect().bottom - top));
+                  const renderedYaml = document.querySelectorAll('[data-scholium-yaml-rendered="true"]').length;
+                  const renderedKeys = document.querySelectorAll('.cm-live-yaml-key').length;
+                  samples.push({title, yamlTop, yamlBottom, renderedYaml, renderedKeys});
                   await Promise.race([new Promise(resolve => requestAnimationFrame(resolve)), new Promise(resolve => setTimeout(resolve, 50))]);
                 }
-                return JSON.stringify(samples.filter(s => Math.abs(s.title - 32) > 2 || s.yamlBottom > 0));
+                return JSON.stringify(samples.filter(s => s.yamlTop < 0 || s.title <= s.yamlBottom || s.renderedYaml === 0 || s.renderedKeys === 0));
                 """) as? String
             #expect(samples == "[]", "Opening \(opening): \(samples ?? "missing geometry")")
             #expect(try await harness.session.currentText(for: harness.documentID) == source)
@@ -3484,6 +3608,36 @@ struct MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
+    @Test("Heading keyboard navigation enters the exact source boundary")
+    func headingKeyboardBoundaryDeletion() async throws {
+        let source = "\n\n# headingprobe\n"
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        try await harness.waitUntilFocused()
+        let end = source.utf16.count
+        harness.session.revealSourceRange(fromUTF16: end, toUTF16: end)
+        try await harness.waitUntilSelection(head: end, stage: "heading keyboard initial selection")
+        try await harness.session.testingPressArrow("ArrowUp")
+        try await harness.waitUntilSelection(head: 15, stage: "heading keyboard entry")
+        _ = try await harness.callPageJavaScript("""
+            const content = document.querySelector('.cm-content');
+            const event = new KeyboardEvent('keydown', {
+                key: 'ArrowLeft', code: 'ArrowLeft', keyCode: 37, which: 37,
+                metaKey: true, bubbles: true, cancelable: true
+            });
+            content?.dispatchEvent(event);
+            return {defaultPrevented: event.defaultPrevented, active: document.activeElement?.className || ''};
+            """)
+        try await harness.waitUntilSelection(head: 2, stage: "heading keyboard line start")
+        try await harness.session.testingPressArrow("ArrowRight")
+        try await harness.waitUntilSelection(head: 3, stage: "heading keyboard marker entry")
+        try await harness.session.testingPressBackspace()
+        try await harness.waitUntilSelection(head: 2, stage: "heading keyboard marker deletion")
+        #expect(try await harness.session.currentText(for: harness.documentID) == "\n\n headingprobe\n")
+        await harness.closeAndDrain()
+    }
+
     @Test("Inactive Edit headings remove marker width and reveal exact source on entry")
     func inactiveEditHeadingRemovesMarkerWidth() async throws {
         let heading = "Conceptual Distinctions"
@@ -4991,29 +5145,29 @@ struct MarkdownEditorWebViewIntegrationTests {
         let unclosedHarness = EditorHarness(source: unclosedSource)
         defer { unclosedHarness.close() }
         try await unclosedHarness.waitUntilReady()
-        let unavailableLive = try await unclosedHarness.waitUntilPresentation(stage: "unclosed frontmatter") {
+        let unclosedLive = try await unclosedHarness.waitUntilPresentation(stage: "unclosed frontmatter") {
             $0.frontmatterLineCount > 0
         }
-        #expect(unavailableLive.gutterCount == 0)
-        #expect(unavailableLive.lineNumberCount == 0)
-        #expect(unavailableLive.frontmatterLineCount > 0)
-        #expect(unavailableLive.semanticTableCount == 0)
-        #expect(unavailableLive.renderedMathCount == 0)
-        #expect(unavailableLive.previewAnchorCount == 0)
-        let unavailableLiveSource = try await unclosedHarness.session.currentText(
+        #expect(unclosedLive.gutterCount == 0)
+        #expect(unclosedLive.lineNumberCount == 0)
+        #expect(unclosedLive.frontmatterLineCount > 0)
+        #expect(unclosedLive.semanticTableCount == 0)
+        #expect(unclosedLive.renderedMathCount == 0)
+        #expect(unclosedLive.previewAnchorCount == 0)
+        let unclosedLiveSource = try await unclosedHarness.session.currentText(
             for: unclosedHarness.documentID
         )
-        #expect(Data(unavailableLiveSource.utf8) == Data(unclosedSource.utf8))
-        #expect(Array(unavailableLiveSource.utf16) == Array(unclosedSource.utf16))
+        #expect(Data(unclosedLiveSource.utf8) == Data(unclosedSource.utf8))
+        #expect(Array(unclosedLiveSource.utf16) == Array(unclosedSource.utf16))
         unclosedHarness.session.setMode(.source)
         _ = try await unclosedHarness.waitUntilPresentation(stage: "unclosed frontmatter Source") {
             $0.gutterCount > 0 && $0.lineNumberCount > 0
         }
-        let unavailableSourceModeSource = try await unclosedHarness.session.currentText(
+        let unclosedSourceModeSource = try await unclosedHarness.session.currentText(
             for: unclosedHarness.documentID
         )
-        #expect(Data(unavailableSourceModeSource.utf8) == Data(unclosedSource.utf8))
-        #expect(Array(unavailableSourceModeSource.utf16) == Array(unclosedSource.utf16))
+        #expect(Data(unclosedSourceModeSource.utf8) == Data(unclosedSource.utf8))
+        #expect(Array(unclosedSourceModeSource.utf16) == Array(unclosedSource.utf16))
         await unclosedHarness.closeAndDrain()
 
         } catch {
@@ -5821,7 +5975,7 @@ struct MarkdownEditorWebViewIntegrationTests {
                 documentID: session.openingPresentationID.uuidString,
                 presentsEditor: true,
                 retainsEditor: true,
-                editorIsReady: session.isLoaded && !session.opensAtDocumentTitle
+                editorIsReady: session.isLoaded
             ) { Color.clear } editor: { editorWebView }
         }
 

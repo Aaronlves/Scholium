@@ -30,6 +30,7 @@ enum ScholiumMathAssets {
       color: inherit;
       max-inline-size: 100%;
     }
+    .cm-editor.scholium-live-mode .scholium-math-rendered { cursor: text; }
     .scholium-math-inline { display: inline; }
     .scholium-document,
     .cm-editor.scholium-live-mode .cm-content {

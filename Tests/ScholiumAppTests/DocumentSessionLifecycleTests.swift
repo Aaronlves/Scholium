@@ -164,7 +164,6 @@ struct DocumentSessionLifecycleTests {
         let previousOpening = session.editorSession.openingPresentationID
         session.prepareForDocumentActivation()
         #expect(session.editorSession.openingPresentationID != previousOpening)
-        #expect(session.editorSession.opensAtDocumentTitle)
 
         #expect(session.editorSession.preferredDocumentFocusTarget == .editor)
         #expect(session.windowPresentationSnapshot.focusTarget == .editor)

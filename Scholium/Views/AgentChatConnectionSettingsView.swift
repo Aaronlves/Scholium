@@ -19,31 +19,22 @@ struct AgentChatConnectionSettingsView: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
-      Text("Chat in Scholium").font(.headline)
-      Text(
-        controller.state == .disconnected
-          ? String(localized: "Not Connected")
-          : controller.state == .connecting
-            ? String(localized: "Connecting…")
-            : controller.account == nil
-              ? String(localized: "Sign-in Required") : String(localized: "Connected")
-      )
-      .foregroundStyle(.secondary)
-      HStack {
-        if controller.state == .disconnected {
-          Button("Connect Codex") { controller.connectConfigured() }.disabled(!controller.isLoaded)
-        } else {
-          if controller.account == nil {
-            Button("Sign in with ChatGPT") { controller.login() }.disabled(controller.isBusy)
+      settingsEditorSection("Chat in Scholium") {
+        VStack(alignment: .leading, spacing: 12) {
+          HStack(alignment: .center, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+            Text(connectionStatus)
+              .foregroundStyle(.secondary)
+            connectionActions
           }
-          Button("Disconnect") { Task { await controller.disconnectByUser() } }
+          if let error = controller.error { Text(error).font(.callout).foregroundStyle(.secondary) }
+          Text(
+            "Scholium finds Codex and prepares the connection automatically. Connection settings and saved chat history are managed on this Mac."
+          )
+          .font(.callout)
+          .foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
         }
       }
-      if let error = controller.error { Text(error).font(.callout).foregroundStyle(.secondary) }
-      Text(
-        "Scholium finds Codex and prepares the connection automatically. Connection settings and saved chat history are managed on this Mac."
-      )
-      .font(.callout).foregroundStyle(.secondary)
       settingsEditorSection("Advanced") {
         VStack(alignment: .leading, spacing: 8) {
           Button("Advanced Connection Settings…") {
@@ -66,6 +57,33 @@ struct AgentChatConnectionSettingsView: View {
         controller: controller,
         capabilities: controller.capabilities
       )
+    }
+  }
+
+  private var connectionStatus: String {
+    switch controller.state {
+    case .disconnected:
+      String(localized: "Not Connected")
+    case .connecting:
+      String(localized: "Connecting…")
+    default:
+      controller.account == nil
+        ? String(localized: "Sign-in Required")
+        : String(localized: "Connected")
+    }
+  }
+
+  @ViewBuilder
+  private var connectionActions: some View {
+    if controller.state == .disconnected {
+      Button("Connect Codex") { controller.connectConfigured() }
+        .disabled(!controller.isLoaded)
+    } else {
+      if controller.account == nil {
+        Button("Sign in with ChatGPT") { controller.login() }
+          .disabled(controller.isBusy)
+      }
+      Button("Disconnect") { Task { await controller.disconnectByUser() } }
     }
   }
 }

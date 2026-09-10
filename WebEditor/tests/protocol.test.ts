@@ -31,13 +31,13 @@ const dialect = {
 
 describe("editor protocol", () => {
   it("uses the coalesced interaction bridge protocol", () => {
-    expect(EDITOR_PROTOCOL_VERSION).toBe(29);
+    expect(EDITOR_PROTOCOL_VERSION).toBe(30);
   });
-  it("accepts only a boolean YAML visibility choice", () => {
+  it("does not expose a YAML visibility toggle", () => {
   });
   it("accepts a complete versioned request", () => expect(isEditorRequest(request)).toBe(true));
-  it("accepts the bounded blur operation", () => {
-    expect(isEditorRequest({...request, operation: {type: "positionDocumentTitle"}})).toBe(true);
+  it("rejects retired title positioning while retaining blur", () => {
+    expect(isEditorRequest({...request, operation: {type: "positionDocumentTitle"}})).toBe(false);
     expect(isEditorRequest({...request, operation: {type: "blur"}})).toBe(true);
   });
   it("accepts the bounded title-focus operation", () => {

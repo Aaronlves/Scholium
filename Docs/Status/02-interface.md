@@ -100,18 +100,23 @@ already-visible Chat does not toggle the Sidebar closed.
   Markdown is the sole written annotation authority; there is no separate
   Review Comment or passage Discussion UI.
 - Appearance exposes body and Source font/size, line width/spacing, plus a
-  scrollable typography form for paragraph/indent spacing, letter/word
-  spacing, alignment, hyphenation, kerning/ligatures, heading type, weight,
-  spacing and level hierarchy. Advanced CSS remains in editable
-  `appearances.json` with a Finder route, guide and explicit reload. Invalid or
-  stale external edits cannot replace the loaded appearance or be overwritten
-  by a stale GUI save; document CSS and text colors remain content-layer values.
+  scrollable typography form for paragraph/indent spacing, alignment,
+  role-specific Bold/Italic faces, heading type, weight, spacing and level
+  hierarchy. Letter/word spacing, hyphenation and kerning/ligatures are no
+  longer structured profile fields or native controls; Advanced CSS is their
+  explicit content-layer surface. CSS snippets remain separately managed with
+  a Finder route, guide and explicit reload. Invalid or stale external edits
+  cannot replace the loaded appearance or be overwritten by a stale GUI save;
+  document CSS and text colors remain content-layer values.
 - About and Metadata expose managed values only; authored YAML has no field
-  editor. YAML remains above the title: Review shows source text and Edit allows direct
-  editing. Initial title positioning leaves it above the viewport; Source retains
-  exact source. Disclosure controls and automatic collapse have been removed. Ordinary New Note creates no YAML scaffold.
-- Document readiness covers live WebKit until measured title positioning, with
-  opening-position state separate from retained-editor reconstruction.
+  editor. YAML remains at the authored beginning above the title: Review shows
+  source text and Edit keeps the exact, source-located YAML directly editable
+  with quiet presentation marks. Source retains exact source. No title
+  positioning pass, disclosure control, or automatic collapse remains. Ordinary
+  New Note creates no YAML scaffold.
+- Document readiness covers live WebKit until the requested mode and its
+  source-located presentation are converged; retained-editor reconstruction
+  owns scroll and selection without an opening-position special case.
 - Settings now uses six native preference panes with scope expressed by named
   groups and adjacent state text rather than page-wide notices, static search
   routing, and Interaction/Integrations child selectors. Selection Actions use
@@ -122,8 +127,10 @@ already-visible Chat does not toggle the Sidebar closed.
   External Agent Hosts use explicit native child sheets. App chrome does not add an accent or
   appearance picker and follows system-resolved colors; pane changes
   interpolate from the current top-left corner while native content remains
-  flexible during resizing. Document's common typography remains in the pane;
-  low-frequency typography is in an explicit Advanced Typography sheet.
+  flexible during resizing. Appearance now owns the complete reading and
+  typography surface in one pane; low-frequency letter spacing, word spacing,
+  hyphenation and kerning/ligatures use the separately managed Advanced CSS
+  surface rather than structured profile fields.
 - Review and inactive Edit show a link annotation from one trailing superscript
   marker in the shared bounded preview surface, never as a block inserted into
   prose. Hover or focus reveals it, click keeps it open, and Escape or outside

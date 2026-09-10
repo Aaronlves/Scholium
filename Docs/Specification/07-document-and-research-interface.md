@@ -117,33 +117,52 @@ uses logical start/end edges.
 
 Document Appearance is machine-local. It manages named configurations for line
 width, Body, headings, semantic Callouts, and Exact-source face and size while
-preserving protected structure and accessibility. The researcher may choose any
+preserving protected structure and accessibility. Body and heading roles each
+have independent optional Bold and Italic font choices. The Settings surface
+uses only these general role labels; it does not ask the researcher to manage
+language-specific variants. By default, Latin glyphs use the selected role's
+native weight/style variants, the built-in mixed-script body face is FangSong,
+and the built-in italic face is KaiTi. An explicit researcher choice remains
+authoritative until it is changed or reset. The researcher may choose any
 installed Exact-source font; Scholium does not audit the choice. The shipped
 default is monospaced. Changing presentation never changes source bytes or
 logical lines. Native app chrome is not themeable. Advanced CSS is additive and
 optional.
 
-Appearance directly exposes body font/size, line width/spacing, Source
-font/size and alignment. Low-frequency paragraph, typesetting, heading and
-heading-level values are available from one explicit Advanced Typography native
-sheet against the same draft. Frontmatter remains above the document title as
-quiet, indented Source text, with generous separation from the title and no
-label, button, or container chrome. Opening or switching documents starts at
-the title; scrolling upward reveals YAML for direct editing in Edit. No
-disclosure or timed collapse exists.
-Initial positioning precedes presentation; saving does not reset the viewport.
-Document switching presents only the requested mode after readiness, without
-showing a temporary layout from another mode.
-A View-menu action navigates to Frontmatter without creating an empty envelope.
-Source always displays the full original text. The same documented
-`appearances.json` file owns basic and advanced configuration. The native
-Advanced Typography sheet edits structured body typography and headings without
-creating a second appearance owner; Callout geometry and Advanced CSS remain
+Appearance exposes one settings pane for body font/size, line width/spacing,
+Source font/size, alignment, paragraph spacing, first-line indentation,
+body/heading Bold and Italic fonts, heading type, and heading-level values
+against the same appearance draft. Body and heading controls remain grouped as
+named sections in one scrollable page, with aligned property matrices that
+collapse before the form becomes cramped. Bold and Italic choices are
+independent for Body and Headings and remain stable when the base role font
+changes. Heading hierarchy settings address H1 through H6 independently; the
+main page shows their compact scale and alignment summary, while a native child
+sheet reveals each level's spacing controls on demand.
+Low-frequency letter spacing, word spacing, hyphenation, kerning, and ligatures
+are not structured appearance fields or native controls. Advanced CSS is their
+single explicit configuration surface and is applied after generated appearance
+CSS in both Review and Edit. Frontmatter remains
+at its authored beginning,
+above the document title, in the same scrolling document plane. Review and Edit
+present it as quiet, source-located YAML; Source retains the exact text. It is
+never hidden, replaced by a field editor, or repositioned for opening, and no
+disclosure or timed collapse exists. Opening and switching use the ordinary
+document scroll position or an explicit retained/locator target; saving does
+not reset the viewport. Document switching presents only the requested mode
+after readiness, without showing a temporary layout from another mode.
+A View-menu action may navigate to Frontmatter without creating an empty
+envelope or changing its document order.
+Source always displays the full original text. The documented `appearances.json`
+file owns the structured appearance profile; the separately managed Advanced
+CSS snippets own fine typography and other ordinary-content overrides. The
+native Appearance settings pane edits structured body typography and headings
+without creating a second appearance owner; Callout geometry remains
 file-managed. Finder, configuration guidance, explicit Reload, and Restore
 Defaults remain available. An external edit prevents stale GUI overwrite;
 invalid reload preserves the loaded appearance and draft and identifies the
-invalid field. Basic GUI edits retain advanced values. CSS snippets remain
-separately managed under §18.4.1.
+invalid field. Saving the profile does not rewrite or reset CSS snippets. CSS
+snippets remain separately managed under §18.4.1.
 
 The app-owned filename title is the primary document title. Review and Edit
 place it at the top of the shared document plane, inside the document's
@@ -155,11 +174,11 @@ cancels. Its visible trailing space belongs to the control and focuses it when
 clicked; it is never an unresponsive surface. A rejected rename preserves the
 draft and explains the failure beside the title. Native window title continues
 to identify the window without becoming the visual title. Authored Markdown
-headings belong to the body: H1 is
-presented as a first-level section beneath the Note title, while H2–H6 use the
-quieter lower-heading tier. Review and Edit preserve those relative visual and
-accessible levels; Source exposes only the exact authored hierarchy and no
-projected title.
+headings belong to the body: H1 through H6 are presented as six relative
+semantic levels beneath the Note title, with H1 remaining the first-level
+section and lower levels becoming progressively quieter. Review and Edit
+preserve those relative visual and accessible levels; Source exposes only the
+exact authored hierarchy and no projected title.
 
 The Note's document attachments belong to Overview, below metadata and the
 separate Zotero relation. The filename precedes one large preview using the
