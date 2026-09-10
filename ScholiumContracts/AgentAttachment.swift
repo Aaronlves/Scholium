@@ -6,7 +6,7 @@ public struct AgentAttachment: Codable, Hashable, Sendable {
     public let relationship: Relationship
     public let location: AttachmentLocation
     public let available: Bool
-    public var filename: String { URL(fileURLWithPath: location.path).lastPathComponent }
+    public var filename: String { location.filename }
     public init(id: UUID, relationship: Relationship, location: AttachmentLocation, available: Bool) {
         self.id = id; self.relationship = relationship; self.location = location; self.available = available
     }

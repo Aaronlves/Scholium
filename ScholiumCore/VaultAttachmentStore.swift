@@ -52,7 +52,9 @@ public actor VaultAttachmentStore {
         let altText = resolvedSource.deletingPathExtension().lastPathComponent
 
         if management == .indexAbsolutePath {
-            let location = try AttachmentLocation(absolutePath: resolvedSource.path)
+            let location = AttachmentLocation.external(try ExternalAttachmentReference(
+                filename: resolvedSource.lastPathComponent
+            ))
             return PreparedVaultImageFile(
                 location: location,
                 markdownDestination: Self.absoluteMarkdownDestination(
@@ -99,7 +101,9 @@ public actor VaultAttachmentStore {
 
         if management == .referenceOriginal {
             return PreparedVaultDocumentFile(
-                location: try AttachmentLocation(absolutePath: resolvedSource.path),
+                location: .external(try ExternalAttachmentReference(
+                    filename: filename
+                )),
                 copiedFileFingerprint: nil,
                 copiedRelativePath: nil
             )

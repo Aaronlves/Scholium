@@ -165,7 +165,12 @@ public actor TriptychControlStore {
         do {
             manifest = try await store.manifest()
         } catch let error as TriptychControlError {
-            if case .invalidManifest = error { return true }
+            switch error {
+            case .invalidManifest, .invalidAttachmentCatalog:
+                return true
+            default:
+                break
+            }
             throw error
         }
         guard manifest.schemaVersion == TriptychManifest.currentSchemaVersion,
@@ -180,7 +185,8 @@ public actor TriptychControlStore {
             switch error {
             case .invalidManifest, .settingsMissing, .settingsOldSchema,
                  .settingsFutureSchema, .settingsCorrupted,
-                 .invalidZoteroBindings, .invalidIdentities:
+                 .invalidZoteroBindings, .invalidIdentities,
+                 .invalidAttachmentCatalog:
                 return true
             default:
                 throw error
@@ -272,6 +278,18 @@ public actor TriptychControlStore {
     private let controlCreateHook: (@Sendable (URL) throws -> Void)?
     private let portableControlLock: AdvisoryFileLock?
 
+    private var legacyAttachmentCatalogURL: URL {
+        controlURL
+            .appendingPathComponent("attachments", isDirectory: true)
+            .appendingPathComponent("v1", isDirectory: true)
+    }
+
+    private var legacyDocumentAttachmentCatalogURL: URL {
+        controlURL
+            .appendingPathComponent("document-attachments", isDirectory: true)
+            .appendingPathComponent("v1", isDirectory: true)
+    }
+
     public init(worksVaultURL: URL, fileManager: FileManager = .default) {
         controlURL = worksVaultURL.standardizedFileURL
             .deletingLastPathComponent()
@@ -282,10 +300,10 @@ public actor TriptychControlStore {
         analysisZoteroBindingsURL = controlURL.appendingPathComponent("analysis-zotero-bindings.json")
         attachmentCatalogURL = controlURL
             .appendingPathComponent("attachments", isDirectory: true)
-            .appendingPathComponent("v1", isDirectory: true)
+            .appendingPathComponent("v2", isDirectory: true)
         documentAttachmentCatalogURL = controlURL
             .appendingPathComponent("document-attachments", isDirectory: true)
-            .appendingPathComponent("v1", isDirectory: true)
+            .appendingPathComponent("v2", isDirectory: true)
         noteMetadataCatalogURL = controlURL
             .appendingPathComponent("note-metadata", isDirectory: true)
             .appendingPathComponent("v1", isDirectory: true)
@@ -310,10 +328,10 @@ public actor TriptychControlStore {
         analysisZoteroBindingsURL = controlURL.appendingPathComponent("analysis-zotero-bindings.json")
         attachmentCatalogURL = controlURL
             .appendingPathComponent("attachments", isDirectory: true)
-            .appendingPathComponent("v1", isDirectory: true)
+            .appendingPathComponent("v2", isDirectory: true)
         documentAttachmentCatalogURL = controlURL
             .appendingPathComponent("document-attachments", isDirectory: true)
-            .appendingPathComponent("v1", isDirectory: true)
+            .appendingPathComponent("v2", isDirectory: true)
         noteMetadataCatalogURL = controlURL
             .appendingPathComponent("note-metadata", isDirectory: true)
             .appendingPathComponent("v1", isDirectory: true)
@@ -356,10 +374,10 @@ public actor TriptychControlStore {
         analysisZoteroBindingsURL = controlURL.appendingPathComponent("analysis-zotero-bindings.json")
         attachmentCatalogURL = controlURL
             .appendingPathComponent("attachments", isDirectory: true)
-            .appendingPathComponent("v1", isDirectory: true)
+            .appendingPathComponent("v2", isDirectory: true)
         documentAttachmentCatalogURL = controlURL
             .appendingPathComponent("document-attachments", isDirectory: true)
-            .appendingPathComponent("v1", isDirectory: true)
+            .appendingPathComponent("v2", isDirectory: true)
         noteMetadataCatalogURL = controlURL
             .appendingPathComponent("note-metadata", isDirectory: true)
             .appendingPathComponent("v1", isDirectory: true)
@@ -385,10 +403,10 @@ public actor TriptychControlStore {
         analysisZoteroBindingsURL = controlURL.appendingPathComponent("analysis-zotero-bindings.json")
         attachmentCatalogURL = controlURL
             .appendingPathComponent("attachments", isDirectory: true)
-            .appendingPathComponent("v1", isDirectory: true)
+            .appendingPathComponent("v2", isDirectory: true)
         documentAttachmentCatalogURL = controlURL
             .appendingPathComponent("document-attachments", isDirectory: true)
-            .appendingPathComponent("v1", isDirectory: true)
+            .appendingPathComponent("v2", isDirectory: true)
         noteMetadataCatalogURL = controlURL
             .appendingPathComponent("note-metadata", isDirectory: true)
             .appendingPathComponent("v1", isDirectory: true)
@@ -422,6 +440,24 @@ public actor TriptychControlStore {
     ) throws -> TriptychManifest {
         guard Set(vaultIDs.keys) == Set(WorkspaceVaultSlot.allCases) else {
             throw TriptychControlError.invalidManifest
+        }
+        guard !fileManager.fileExists(atPath: legacyAttachmentCatalogURL.path),
+              !fileManager.fileExists(atPath: legacyDocumentAttachmentCatalogURL.path) else {
+            throw TriptychControlError.invalidAttachmentCatalog
+        }
+        if fileManager.fileExists(atPath: attachmentCatalogURL.path) {
+            do {
+                _ = try attachmentRecords()
+            } catch {
+                throw TriptychControlError.invalidAttachmentCatalog
+            }
+        }
+        if fileManager.fileExists(atPath: documentAttachmentCatalogURL.path) {
+            do {
+                _ = try documentAttachmentRecords()
+            } catch {
+                throw TriptychControlError.invalidAttachmentCatalog
+            }
         }
         try fileManager.createDirectory(at: controlURL, withIntermediateDirectories: true)
 
@@ -492,11 +528,21 @@ public actor TriptychControlStore {
         _ = try identitySnapshot()
         _ = try zoteroBindings()
         _ = try noteMetadataRecords(catalog: metadataCatalog())
+        do {
+            _ = try attachmentRecords()
+            _ = try documentAttachmentRecords()
+        } catch {
+            throw TriptychControlError.invalidAttachmentCatalog
+        }
         return manifest
     }
 
     public func manifest() throws -> TriptychManifest {
         do {
+            guard !fileManager.fileExists(atPath: legacyAttachmentCatalogURL.path),
+                  !fileManager.fileExists(atPath: legacyDocumentAttachmentCatalogURL.path) else {
+                throw TriptychControlError.invalidAttachmentCatalog
+            }
             guard let manifest: TriptychManifest = try decodeIfPresent(
                 TriptychManifest.self,
                 from: manifestURL
@@ -534,8 +580,23 @@ public actor TriptychControlStore {
         if fileManager.fileExists(atPath: noteMetadataCatalogURL.path) {
             _ = try noteMetadataRecords(catalog: metadataCatalog())
         }
+        guard !fileManager.fileExists(atPath: legacyAttachmentCatalogURL.path),
+              !fileManager.fileExists(atPath: legacyDocumentAttachmentCatalogURL.path) else {
+            throw TriptychControlError.invalidAttachmentCatalog
+        }
+        if fileManager.fileExists(atPath: attachmentCatalogURL.path) {
+            do {
+                _ = try attachmentRecords()
+            } catch {
+                throw TriptychControlError.invalidAttachmentCatalog
+            }
+        }
         if fileManager.fileExists(atPath: documentAttachmentCatalogURL.path) {
-            _ = try documentAttachmentRecords()
+            do {
+                _ = try documentAttachmentRecords()
+            } catch {
+                throw TriptychControlError.invalidAttachmentCatalog
+            }
         }
     }
 
@@ -674,9 +735,14 @@ public actor TriptychControlStore {
             }
             records.append(record)
         }
+        let relativeKeys = records.compactMap { record -> String? in
+            guard case .vaultRelative(let path) = record.location else {
+                return nil
+            }
+            return "\(record.vaultID.uuidString):\(path.rawValue)"
+        }
         guard Set(records.map(\.id)).count == records.count,
-              Set(records.map { "\($0.vaultID.uuidString):\($0.location)" })
-                .count == records.count else {
+              Set(relativeKeys).count == relativeKeys.count else {
             throw ImageAttachmentError.invalidCatalog
         }
         return records.sorted { $0.id.uuidString < $1.id.uuidString }
@@ -689,9 +755,10 @@ public actor TriptychControlStore {
     ) throws -> (record: PortableAttachmentRecord, created: Bool) {
         try withPortableControlLock {
             try ensureAttachmentCatalogDirectory()
-            if let existing = try attachmentRecords().first(where: {
-                $0.vaultID == vaultID && $0.location == location
-            }) {
+            if case .vaultRelative = location,
+               let existing = try attachmentRecords().first(where: {
+                   $0.vaultID == vaultID && $0.location == location
+               }) {
                 return (existing, false)
             }
             let record = PortableAttachmentRecord(
@@ -800,10 +867,14 @@ public actor TriptychControlStore {
             }
             records.append(record)
         }
+        let relativeKeys = records.compactMap { record -> String? in
+            guard case .vaultRelative(let path) = record.location else {
+                return nil
+            }
+            return "\(record.noteID.uuidString):\(record.vaultID.uuidString):\(path.rawValue)"
+        }
         guard Set(records.map(\.id)).count == records.count,
-              Set(records.map {
-                "\($0.noteID.uuidString):\($0.vaultID.uuidString):\($0.location)"
-              }).count == records.count else {
+              Set(relativeKeys).count == relativeKeys.count else {
             throw DocumentAttachmentError.invalidCatalog
         }
         return records
@@ -824,9 +895,10 @@ public actor TriptychControlStore {
     ) throws -> (record: DocumentAttachmentRecord, created: Bool) {
         try withPortableControlLock {
             try ensureDocumentAttachmentCatalogDirectory()
-            if let existing = try documentAttachmentRecords(noteID: noteID).first(where: {
-                $0.vaultID == vaultID && $0.location == location
-            }) {
+            if case .vaultRelative = location,
+               let existing = try documentAttachmentRecords(noteID: noteID).first(where: {
+                   $0.vaultID == vaultID && $0.location == location
+               }) {
                 return (existing, false)
             }
             let record = DocumentAttachmentRecord(
@@ -885,8 +957,16 @@ public actor TriptychControlStore {
                 throw DocumentAttachmentError.catalogConflict
             }
             let records = try documentAttachmentRecords()
+            let duplicateVaultRelativeLocation = records.contains { record in
+                guard record.id != expected.id,
+                      record.noteID == replacement.noteID,
+                      case .vaultRelative = replacement.location else {
+                    return false
+                }
+                return record.location == replacement.location
+            }
             guard records.first(where: { $0.id == expected.id }) == expected,
-                  !records.contains(where: { $0.id != expected.id && $0.noteID == replacement.noteID && $0.location == replacement.location }) else {
+                  !duplicateVaultRelativeLocation else {
                 throw DocumentAttachmentError.catalogConflict
             }
             let url = documentAttachmentRecordURL(id: expected.id)

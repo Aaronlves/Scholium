@@ -203,14 +203,6 @@ compositing artifacts; inspect the actual native window before judging them.
   human acceptance. Automated accessibility structure checks do not constitute
   VoiceOver, keyboard, IME, or visual acceptance.
 
-## Portable attachment location boundary
-
-The storage architecture records absolute referenced-attachment locations in
-portable catalogs, while §3.3 excludes machine paths from portable control state.
-Reconcile this implementation boundary before claiming conformance; retain
-existing source, referenced files and control bytes while resolving location
-ownership. This documentation pass does not authorize a data migration.
-
 ## Remaining product work
 
 - Continue performance, File Provider/sync, Finder restoration, and Zotero

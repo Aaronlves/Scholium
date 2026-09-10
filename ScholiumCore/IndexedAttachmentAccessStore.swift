@@ -15,12 +15,12 @@ public enum IndexedAttachmentAccessError: LocalizedError, Sendable {
     }
 }
 
-/// Machine-local read authorization for absolute-path Index records. The
-/// portable catalog and authored Markdown retain only the absolute path;
-/// bookmark bytes never enter a vault and never authorize path repair.
+/// Machine-local read authorization for Finder-owned attachment references.
+/// Absolute paths and bookmark bytes stay here; portable catalogs retain only
+/// stable identity and a neutral filename descriptor.
 public actor IndexedAttachmentAccessStore {
-    private static let currentSchemaVersion = 1
-    private static let fileName = "indexed-attachments-v1.json"
+    private static let currentSchemaVersion = 2
+    private static let fileName = "indexed-attachments-v2.json"
 
     private struct Binding: Codable, Hashable {
         let attachmentID: UUID
@@ -142,14 +142,34 @@ public actor IndexedAttachmentAccessStore {
         }
     }
 
+    /// Returns the local attachment identity already bound to this exact
+    /// canonical path, if one exists. The path never leaves this store.
+    public func attachmentID(forAbsolutePath path: String) throws -> UUID? {
+        try lock.withSharedLock {
+            let canonical = URL(fileURLWithPath: path)
+                .resolvingSymlinksInPath()
+                .standardizedFileURL
+                .path
+            guard path.hasPrefix("/"), canonical == path else { return nil }
+            return try load().bindings.first(where: {
+                $0.absolutePath == canonical
+            })?.attachmentID
+        }
+    }
+
     public func isAvailable(
         attachmentID: UUID,
-        expectedAbsolutePath: String
+        expectedFilename: String? = nil
     ) throws -> Bool {
         try lock.withSharedLock {
             guard let binding = try load().bindings.first(where: {
                 $0.attachmentID == attachmentID
-            }), binding.absolutePath == expectedAbsolutePath else { return false }
+            }) else { return false }
+            if let expectedFilename,
+               URL(fileURLWithPath: binding.absolutePath).lastPathComponent
+                != expectedFilename {
+                return false
+            }
             var stale = false
             guard let resolved = try? URL(
                 resolvingBookmarkData: binding.bookmarkData,
@@ -158,7 +178,7 @@ public actor IndexedAttachmentAccessStore {
                 bookmarkDataIsStale: &stale
             ), !stale,
                   resolved.resolvingSymlinksInPath().standardizedFileURL.path
-                    == expectedAbsolutePath else { return false }
+                    == binding.absolutePath else { return false }
             let started = resolved.startAccessingSecurityScopedResource()
             defer {
                 if started { resolved.stopAccessingSecurityScopedResource() }
@@ -176,14 +196,21 @@ public actor IndexedAttachmentAccessStore {
     /// token that must be released when presentation ends.
     public func beginAccess(
         attachmentID: UUID,
-        expectedAbsolutePath: String
+        expectedFilename: String? = nil
     ) throws -> (token: UUID, url: URL) {
         try lock.withSharedLock {
             guard let binding = try load().bindings.first(where: {
                 $0.attachmentID == attachmentID
-            }), binding.absolutePath == expectedAbsolutePath else {
+            }) else {
                 throw IndexedAttachmentAccessError.bookmarkUnavailable(
-                    expectedAbsolutePath
+                    attachmentID.uuidString
+                )
+            }
+            if let expectedFilename,
+               URL(fileURLWithPath: binding.absolutePath).lastPathComponent
+                != expectedFilename {
+                throw IndexedAttachmentAccessError.bookmarkUnavailable(
+                    binding.absolutePath
                 )
             }
             var stale = false
@@ -194,9 +221,9 @@ public actor IndexedAttachmentAccessStore {
                 bookmarkDataIsStale: &stale
             ), !stale,
                   resolved.resolvingSymlinksInPath().standardizedFileURL.path
-                    == expectedAbsolutePath else {
+                    == binding.absolutePath else {
                 throw IndexedAttachmentAccessError.bookmarkUnavailable(
-                    expectedAbsolutePath
+                    binding.absolutePath
                 )
             }
             let started = resolved.startAccessingSecurityScopedResource()
@@ -208,7 +235,7 @@ public actor IndexedAttachmentAccessStore {
                 guard values.isRegularFile == true,
                       values.isSymbolicLink != true else {
                     throw IndexedAttachmentAccessError.bookmarkUnavailable(
-                        expectedAbsolutePath
+                        binding.absolutePath
                     )
                 }
             } catch {

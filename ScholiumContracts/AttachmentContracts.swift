@@ -56,35 +56,73 @@ public struct AttachmentRelativePath: Codable, Hashable, Sendable,
     }
 }
 
+public enum ExternalAttachmentReferenceError: LocalizedError, Equatable, Sendable {
+    case invalidFilename(String)
+
+    public var errorDescription: String? {
+        switch self {
+        case .invalidFilename(let filename):
+            "Invalid external attachment filename: \(filename)"
+        }
+    }
+}
+
+/// Portable description of a Finder-owned attachment. The selected path is
+/// deliberately absent; it belongs to the machine-local access store.
+public struct ExternalAttachmentReference: Codable, Hashable, Sendable {
+    public let filename: String
+
+    private enum CodingKeys: String, CodingKey {
+        case filename
+    }
+
+    public init(filename: String) throws {
+        guard !filename.isEmpty,
+              !filename.contains("\0"),
+              URL(fileURLWithPath: filename).lastPathComponent == filename,
+              filename != ".",
+              filename != ".." else {
+            throw ExternalAttachmentReferenceError.invalidFilename(filename)
+        }
+        self.filename = filename
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        try self.init(filename: container.decode(String.self, forKey: .filename))
+    }
+}
+
+/// Portable attachment locations contain only a vault-relative address or a
+/// neutral descriptor for a machine-local Finder reference. Absolute paths
+/// and security-scoped bookmarks never cross this boundary.
 public enum AttachmentLocation: Codable, Hashable, Sendable {
     case vaultRelative(AttachmentRelativePath)
-    case absolutePath(String)
+    case external(ExternalAttachmentReference)
 
-    public var path: String {
+    public var filename: String {
         switch self {
-        case .vaultRelative(let path): path.rawValue
-        case .absolutePath(let path): path
+        case .vaultRelative(let path):
+            URL(fileURLWithPath: path.rawValue).lastPathComponent
+        case .external(let reference):
+            reference.filename
         }
     }
 
-    public init(absolutePath: String) throws {
-        guard absolutePath.hasPrefix("/"),
-              !absolutePath.contains("\0"),
-              URL(fileURLWithPath: absolutePath).standardizedFileURL.path
-                == absolutePath else {
-            throw ImageAttachmentError.invalidAbsolutePath(absolutePath)
-        }
-        self = .absolutePath(absolutePath)
+    public var isExternal: Bool {
+        if case .external = self { return true }
+        return false
     }
 
     private enum CodingKeys: String, CodingKey {
         case kind
         case path
+        case filename
     }
 
     private enum Kind: String, Codable {
         case vaultRelative
-        case absolutePath
+        case external
     }
 
     public init(from decoder: Decoder) throws {
@@ -94,8 +132,10 @@ public enum AttachmentLocation: Codable, Hashable, Sendable {
             self = .vaultRelative(try AttachmentRelativePath(
                 container.decode(String.self, forKey: .path)
             ))
-        case .absolutePath:
-            try self.init(absolutePath: container.decode(String.self, forKey: .path))
+        case .external:
+            self = .external(try ExternalAttachmentReference(
+                filename: container.decode(String.self, forKey: .filename)
+            ))
         }
     }
 
@@ -105,18 +145,18 @@ public enum AttachmentLocation: Codable, Hashable, Sendable {
         case .vaultRelative(let path):
             try container.encode(Kind.vaultRelative, forKey: .kind)
             try container.encode(path.rawValue, forKey: .path)
-        case .absolutePath(let path):
-            try container.encode(Kind.absolutePath, forKey: .kind)
-            try container.encode(path, forKey: .path)
+        case .external(let reference):
+            try container.encode(Kind.external, forKey: .kind)
+            try container.encode(reference.filename, forKey: .filename)
         }
     }
 }
 
-/// One portable identity-to-path association. The record intentionally owns
-/// no attachment metadata and can never reconstruct, repair, move, or delete
-/// the Finder-authoritative file.
+/// One portable identity-to-attachment association. External records retain
+/// only a neutral filename; the machine-local access store owns the selected
+/// path and security-scoped bookmark.
 public struct PortableAttachmentRecord: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 1
+    public static let currentSchemaVersion = 2
 
     public let schemaVersion: Int
     public let id: UUID
@@ -216,11 +256,11 @@ public enum DocumentAttachmentManagement: String, Codable, Hashable, Sendable {
 }
 
 /// One portable Note-to-document relationship. The attached document remains
-/// Finder-authoritative: this record stores only stable relationship identity
-/// and either a contained vault path or the selected original absolute path.
+/// Finder-authoritative: this record stores stable relationship identity and
+/// either a contained vault path or a neutral external filename descriptor.
 /// It never enters or reconstructs Markdown source.
 public struct DocumentAttachmentRecord: Codable, Hashable, Identifiable, Sendable {
-    public static let currentSchemaVersion = 1
+    public static let currentSchemaVersion = 2
 
     public let schemaVersion: Int
     public let id: UUID
@@ -242,7 +282,7 @@ public struct DocumentAttachmentRecord: Codable, Hashable, Identifiable, Sendabl
     }
 
     public var filename: String {
-        URL(fileURLWithPath: location.path).lastPathComponent
+        location.filename
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -353,7 +393,6 @@ public enum DocumentAttachmentError: LocalizedError, Equatable, Sendable {
 
 public enum ImageAttachmentError: LocalizedError, Equatable, Sendable {
     case unsupportedImage(String)
-    case invalidAbsolutePath(String)
     case sourceChanged(String)
     case invalidCatalog
     case catalogConflict
@@ -365,8 +404,6 @@ public enum ImageAttachmentError: LocalizedError, Equatable, Sendable {
         switch self {
         case .unsupportedImage(let path):
             "Choose a supported image file: \(path)"
-        case .invalidAbsolutePath(let path):
-            "Choose a file with a valid absolute path: \(path)"
         case .sourceChanged(let path):
             "The selected image changed while Scholium was reading it: \(path)"
         case .invalidCatalog:
@@ -384,10 +421,10 @@ public enum ImageAttachmentError: LocalizedError, Equatable, Sendable {
 }
 
 public enum IndexedImageReferences {
-    public static func locations(in markdownSource: String, noteRelativePath: String) -> Set<AttachmentLocation> {
-        var collector = NoteImageLocationCollector(directory: noteRelativePath.split(separator: "/").dropLast().map(String.init))
+    public static func relativePaths(in markdownSource: String, noteRelativePath: String) -> Set<AttachmentRelativePath> {
+        var collector = RelativeImagePathCollector(directory: noteRelativePath.split(separator: "/").dropLast().map(String.init))
         collector.visit(Document(parsing: markdownSource, options: [.parseBlockDirectives, .parseSymbolLinks]))
-        return collector.locations
+        return collector.paths
     }
 
     public static func absolutePaths(in markdownSource: String) -> Set<String> {
@@ -401,16 +438,13 @@ public enum IndexedImageReferences {
     }
 }
 
-private struct NoteImageLocationCollector: MarkupWalker {
+private struct RelativeImagePathCollector: MarkupWalker {
     let directory: [String]
-    var locations: Set<AttachmentLocation> = []
+    var paths: Set<AttachmentRelativePath> = []
     mutating func visitDocument(_ document: Document) { descendInto(document) }
     mutating func visitImage(_ image: Image) {
         guard let raw = image.source, let path = raw.removingPercentEncoding, !path.contains("\0") else { return }
-        if path.hasPrefix("/") {
-            if let location = try? AttachmentLocation(absolutePath: path) { locations.insert(location) }
-            return
-        }
+        guard !path.hasPrefix("/") else { return }
         guard URLComponents(string: raw)?.scheme == nil, !raw.hasPrefix("//") else { return }
         var components = directory
         for part in path.split(separator: "/", omittingEmptySubsequences: false) {
@@ -423,7 +457,7 @@ private struct NoteImageLocationCollector: MarkupWalker {
                 components.append(String(part))
             }
         }
-        if let relative = try? AttachmentRelativePath(components.joined(separator: "/")) { locations.insert(.vaultRelative(relative)) }
+        if let relative = try? AttachmentRelativePath(components.joined(separator: "/")) { paths.insert(relative) }
     }
 }
 
@@ -436,8 +470,7 @@ private struct AbsoluteImagePathCollector: MarkupWalker {
         guard let destination = image.source,
               let decoded = destination.removingPercentEncoding,
               decoded.hasPrefix("/"),
-              let location = try? AttachmentLocation(absolutePath: decoded),
-              case .absolutePath(let path) = location else { return }
-        paths.insert(path)
+              URL(fileURLWithPath: decoded).standardizedFileURL.path == decoded else { return }
+        paths.insert(decoded)
     }
 }

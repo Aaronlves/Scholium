@@ -76,10 +76,11 @@ services.
 `Attachments/<uuid>/<filename>`, records its stable vault-relative location,
 and inserts an ordinary relative Markdown image link. Pasting image data uses
 this route. **Index Image…** keeps the Finder-owned file in place, records its
-stable identity and absolute path, and inserts that percent-encoded path.
-Security-scoped bookmark data is machine-local only. Both operations are
-explicit and transactional: failure leaves source unchanged and rolls back only
-new state from that attempt. The catalog never regenerates authored links, and
+stable identity and neutral filename in portable control state, and inserts
+that percent-encoded absolute path into authored Markdown. The selected path
+and security-scoped bookmark remain machine-local. Both operations are explicit
+and transactional: failure leaves source unchanged and rolls back only new
+state from that attempt. The catalog never regenerates authored links, and
 Scholium does not move or delete attachments as a side effect of Note editing
 or deletion.
 
@@ -87,8 +88,9 @@ Document attachments are Note-level relationships, not Markdown embeds.
 **Attach a Copy…** copies one regular non-media file without replacement to
 `Attachments/<uuid>/<filename>`; **Reference Original…** leaves it in its
 Finder-owned location. Both bind the chosen file to the Note's stable identity
-in portable control state, while any security-scoped bookmark remains
-machine-local. The relationship and availability are source-neutral
+in portable control state. A copied relationship stores a vault-relative path;
+an original reference stores only a neutral filename, while its selected path
+and security-scoped bookmark remain machine-local. The relationship and availability are source-neutral
 projections: listing, adding, or previewing a document cannot rewrite Markdown,
 change its fingerprint, or alter editor selection, composition, Undo, scroll,
 or focus. Images and audiovisual files remain governed by their inline

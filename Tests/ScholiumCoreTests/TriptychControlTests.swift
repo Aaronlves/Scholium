@@ -12,9 +12,9 @@ struct TriptychControlTests {
         let vault = UUID()
         _ = try await seed.bootstrap(vaultIDs: [.paperAnalysis: UUID(), .topicKnowledge: UUID(), .output: vault])
         let identity = try #require(try await seed.identity(forVaultID: vault, relativePath: "Work.md", fingerprint: .init(content: "Work")))
-        let original = try await seed.registerDocumentAttachment(noteID: identity.id, vaultID: vault, location: .absolutePath("/fixture/Original.pdf")).record
-        let replacement = DocumentAttachmentRecord(id: original.id, noteID: identity.id, vaultID: vault, location: .absolutePath("/fixture/Replacement.pdf"))
-        let external = DocumentAttachmentRecord(id: original.id, noteID: identity.id, vaultID: vault, location: .absolutePath("/fixture/External.pdf"))
+        let original = try await seed.registerDocumentAttachment(noteID: identity.id, vaultID: vault, location: .external(try .init(filename: "Original.pdf"))).record
+        let replacement = DocumentAttachmentRecord(id: original.id, noteID: identity.id, vaultID: vault, location: .external(try .init(filename: "Replacement.pdf")))
+        let external = DocumentAttachmentRecord(id: original.id, noteID: identity.id, vaultID: vault, location: .external(try .init(filename: "External.pdf")))
         let externalBytes = try AgentRecordChange.attachment(external)
         let conflicting = TriptychControlStore(worksVaultURL: fixture.works, controlWriteHook: { url in try externalBytes.write(to: url, options: .atomic) })
         await #expect(throws: DocumentAttachmentError.self) {
@@ -244,7 +244,7 @@ struct TriptychControlTests {
         #expect(reused.record == first.record)
         #expect(try await store.attachmentRecords() == [first.record])
         let recordURL = fixture.root
-            .appendingPathComponent(".scholium/attachments/v1")
+            .appendingPathComponent(".scholium/attachments/v2")
             .appendingPathComponent("\(preferredID.uuidString.lowercased()).json")
         let object = try #require(
             JSONSerialization.jsonObject(with: Data(contentsOf: recordURL))
@@ -267,10 +267,15 @@ struct TriptychControlTests {
         )
         _ = try await store.bootstrap(vaultIDs: vaultIDs)
         let vaultID = try #require(vaultIDs[.output])
-        let firstNote = UUID()
+        let firstIdentity = try #require(try await store.identity(
+            forVaultID: vaultID,
+            relativePath: "First.md",
+            fingerprint: .init(content: "First")
+        ))
+        let firstNote = firstIdentity.id
         let secondNote = UUID()
-        let location = try AttachmentLocation(
-            absolutePath: "/Users/researcher/Documents/Argument.pdf"
+        let location = AttachmentLocation.external(
+            try ExternalAttachmentReference(filename: "Argument.pdf")
         )
 
         let first = try await store.registerDocumentAttachment(
@@ -290,19 +295,109 @@ struct TriptychControlTests {
         )
 
         #expect(first.created)
-        #expect(!reused.created)
-        #expect(reused.record == first.record)
+        #expect(reused.created)
+        #expect(reused.record != first.record)
         #expect(second.created)
         #expect(second.record.id != first.record.id)
+        #expect(Set(try await store.documentAttachmentRecords(noteID: firstNote))
+            == Set([first.record, reused.record]))
+        #expect(try await store.documentAttachmentRecords().count == 3)
+
+        // A filename is only a portable descriptor. Two local files with the
+        // same basename may therefore coexist, and replacing one relationship
+        // must not mistake the other descriptor for a portable collision.
+        let sameFilename = DocumentAttachmentRecord(
+            id: first.record.id,
+            noteID: firstNote,
+            vaultID: vaultID,
+            location: location
+        )
+        try await store.replaceDocumentAttachment(first.record, with: sameFilename)
         #expect(try await store.documentAttachmentRecords(noteID: firstNote)
-            == [first.record])
-        #expect(try await store.documentAttachmentRecords().count == 2)
+            .count == 2)
+
+        let firstURL = fixture.root
+            .appendingPathComponent(".scholium/document-attachments/v2")
+            .appendingPathComponent("\(first.record.id.uuidString.lowercased()).json")
+        let firstJSON = String(
+            decoding: try Data(contentsOf: firstURL),
+            as: UTF8.self
+        )
+        #expect(!firstJSON.contains("/Users/") && !firstJSON.contains("/fixture/"))
 
         try await store.removeDocumentAttachment(first.record)
         await #expect(throws: DocumentAttachmentError.self) { try await store.removeDocumentAttachment(first.record) }
-        #expect(try await store.documentAttachmentRecords(noteID: firstNote).isEmpty)
+        #expect(try await store.documentAttachmentRecords(noteID: firstNote)
+            == [reused.record])
         #expect(try await store.documentAttachmentRecords(noteID: secondNote)
             == [second.record])
+    }
+
+    @Test("Legacy attachment catalogs remain opaque and cannot be bootstrapped")
+    func legacyAttachmentCatalogIsNotReused() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let legacy = fixture.root
+            .appendingPathComponent(".scholium/attachments/v1", isDirectory: true)
+        try FileManager.default.createDirectory(at: legacy, withIntermediateDirectories: true)
+        let bytes = Data(#"{"schemaVersion":1,"legacy":true}"#.utf8)
+        let record = legacy.appendingPathComponent("legacy.json")
+        try bytes.write(to: record, options: .withoutOverwriting)
+        let store = TriptychControlStore(worksVaultURL: fixture.works)
+
+        await #expect(throws: TriptychControlError.self) {
+            _ = try await store.bootstrap(vaultIDs: Dictionary(
+                uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map { ($0, UUID()) }
+            ))
+        }
+        #expect(try Data(contentsOf: record) == bytes)
+        #expect(!FileManager.default.fileExists(
+            atPath: fixture.root.appendingPathComponent(".scholium/manifest.json").path
+        ))
+    }
+
+    @Test("Current attachment catalogs are validated before use")
+    func invalidCurrentAttachmentCatalogIsRejected() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let store = TriptychControlStore(worksVaultURL: fixture.works)
+        let vaultIDs = Dictionary(
+            uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map { ($0, UUID()) }
+        )
+        _ = try await store.bootstrap(vaultIDs: vaultIDs)
+        let catalog = fixture.root
+            .appendingPathComponent(".scholium/attachments/v2", isDirectory: true)
+        let id = UUID()
+        let recordURL = catalog.appendingPathComponent(
+            "\(id.uuidString.lowercased()).json"
+        )
+        let bytes = Data(#"{"schemaVersion":1,"legacy":true}"#.utf8)
+        try bytes.write(to: recordURL, options: .withoutOverwriting)
+        let manifestURL = fixture.root.appendingPathComponent(
+            ".scholium/manifest.json"
+        )
+        let manifestBefore = try Data(contentsOf: manifestURL)
+
+        do {
+            try await store.validateExistingSupportedControlState()
+            Issue.record("A malformed current attachment catalog must be rejected.")
+        } catch let error as TriptychControlError {
+            guard case .invalidAttachmentCatalog = error else {
+                Issue.record("Unexpected error: \(error)")
+                return
+            }
+        }
+        do {
+            _ = try await store.bootstrap(vaultIDs: vaultIDs)
+            Issue.record("Bootstrap must reject a malformed current catalog before writing.")
+        } catch let error as TriptychControlError {
+            guard case .invalidAttachmentCatalog = error else {
+                Issue.record("Unexpected bootstrap error: \(error)")
+                return
+            }
+        }
+        #expect(try Data(contentsOf: recordURL) == bytes)
+        #expect(try Data(contentsOf: manifestURL) == manifestBefore)
     }
 
     @Test("Portable Settings schema has one bounded set of owners")

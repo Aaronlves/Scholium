@@ -60,7 +60,7 @@ struct VaultAttachmentStoreTests {
         #expect(!FileManager.default.fileExists(atPath: copied.path))
     }
 
-    @Test("Indexed images use absolute paths without copying or deletion authority")
+    @Test("Indexed images keep paths in machine-local access and use a neutral portable descriptor")
     func indexedImage() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
@@ -79,7 +79,9 @@ struct VaultAttachmentStoreTests {
             management: .indexAbsolutePath
         )
 
-        #expect(prepared.location == .absolutePath(image.path))
+        #expect(prepared.location == .external(
+            try ExternalAttachmentReference(filename: image.lastPathComponent)
+        ))
         #expect(prepared.markdownDestination == image.path)
         #expect(prepared.copiedFileFingerprint == nil)
         #expect(prepared.copiedRelativePath == nil)
@@ -180,7 +182,9 @@ struct VaultAttachmentStoreTests {
             attachmentID: UUID(),
             management: .referenceOriginal
         )
-        #expect(referenced.location == .absolutePath(source.path))
+        #expect(referenced.location == .external(
+            try ExternalAttachmentReference(filename: source.lastPathComponent)
+        ))
         #expect(referenced.copiedFileFingerprint == nil)
         #expect(referenced.copiedRelativePath == nil)
 

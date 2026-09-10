@@ -33,17 +33,41 @@ extension WorkspaceHandle {
         var attachments = try await documentAttachments(for: target).map {
             AgentAttachment(id: $0.record.id, relationship: .document, location: $0.record.location, available: $0.availability == .available)
         }
-        let locations = IndexedImageReferences.locations(in: source.body, noteRelativePath: note.id.relativePath)
-        for record in try await services.controlStore.attachmentRecords() where record.vaultID == note.id.vaultID && locations.contains(record.location) {
+        let relativePaths = IndexedImageReferences.relativePaths(
+            in: source.body,
+            noteRelativePath: note.id.relativePath
+        )
+        let absolutePaths = IndexedImageReferences.absolutePaths(in: source.body)
+        for record in try await services.controlStore.attachmentRecords()
+            where record.vaultID == note.id.vaultID {
             let available: Bool
             switch record.location {
             case .vaultRelative(let path):
+                guard relativePaths.contains(path) else { continue }
                 let repository = try repository(vaultID: note.id.vaultID)
-                available = (try? await VaultAttachmentStore(vaultURL: repository.vaultURL).documentURLIfAvailable(relativePath: path)) != nil
-            case .absolutePath(let path):
-                available = try await services.indexedAttachmentAccessStore.isAvailable(attachmentID: record.id, expectedAbsolutePath: path)
+                available = (try? await VaultAttachmentStore(vaultURL: repository.vaultURL)
+                    .documentURLIfAvailable(relativePath: path)) != nil
+            case .external(let reference):
+                var matchesSource = false
+                for path in absolutePaths where URL(fileURLWithPath: path).lastPathComponent == reference.filename {
+                    if try await services.indexedAttachmentAccessStore
+                        .attachmentID(forAbsolutePath: path) == record.id {
+                        matchesSource = true
+                        break
+                    }
+                }
+                guard matchesSource else { continue }
+                available = try await services.indexedAttachmentAccessStore.isAvailable(
+                    attachmentID: record.id,
+                    expectedFilename: reference.filename
+                )
             }
-            attachments.append(.init(id: record.id, relationship: .authoredImage, location: record.location, available: available))
+            attachments.append(.init(
+                id: record.id,
+                relationship: .authoredImage,
+                location: record.location,
+                available: available
+            ))
         }
         guard Set(attachments.map(\.id)).count == attachments.count else { throw AgentCollaborationError.invalidRequest("Attachment identities are ambiguous in the current catalog.") }
         return .init(noteFingerprint: source.fingerprint, attachments: attachments.sorted { $0.id.uuidString < $1.id.uuidString })
@@ -62,8 +86,11 @@ extension WorkspaceHandle {
         case .vaultRelative(let path):
             let repository = try repository(vaultID: note.id.vaultID)
             bytes = try await VaultAttachmentStore(vaultURL: repository.vaultURL).readContent(relativePath: path, maximumByteCount: 20 * 1_024 * 1_024)
-        case .absolutePath(let path):
-            let access = try await services.indexedAttachmentAccessStore.beginAccess(attachmentID: attachmentID, expectedAbsolutePath: path)
+        case .external(let reference):
+            let access = try await services.indexedAttachmentAccessStore.beginAccess(
+                attachmentID: attachmentID,
+                expectedFilename: reference.filename
+            )
             do {
                 // The existing bookmark grants access; descriptor traversal proves the same exact path.
                 bytes = try await VaultAttachmentStore(vaultURL: URL(fileURLWithPath: "/")).readContent(

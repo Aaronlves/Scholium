@@ -223,22 +223,25 @@ binding-then-Metadata commit. Neither the read model nor the UI reconstructs a
 writable source or a second bibliographic snapshot.
 
 `TriptychControlStore` also owns one strict JSON record per attachment under
-`.scholium/attachments/v1/`. Each record contains a stable attachment UUID,
+`.scholium/attachments/v2/`. Each record contains a stable attachment UUID,
 vault UUID, and typed location: Import uses a vault-relative path; Index uses a
-standardized absolute path. The record contains neither bytes nor access
-credentials. `VaultAttachmentStore` alone performs no-follow image validation,
-descriptor-relative exact Import creation, and fingerprint-bound rollback.
-`IndexedAttachmentAccessStore` retains read-only security-scoped bookmarks in
-Triptych-keyed Application Support. It requires the bookmark to resolve to the
-authored absolute path and reports unavailable rather than following a moved
-file or rewriting source.
+neutral external filename descriptor. The record contains neither bytes,
+absolute paths, nor access credentials. `VaultAttachmentStore` alone performs
+no-follow image validation, descriptor-relative exact Import creation, and
+fingerprint-bound rollback. `IndexedAttachmentAccessStore` retains the
+read-only security-scoped bookmark and absolute path in Triptych-keyed
+Application Support. It matches the authored Markdown path locally and reports
+unavailable rather than following a moved file or rewriting source.
 
 Note-level document attachments use a distinct portable catalog under
-`.scholium/document-attachments/v1/<attachment-uuid>.json` because their owner
+`.scholium/document-attachments/v2/<attachment-uuid>.json` because their owner
 is a stable Note relationship, not an authored Markdown image occurrence.
-Each strict schema-1 record stores its attachment UUID, Note UUID, vault UUID,
-and either a vault-relative copied location or standardized absolute reference;
-it stores no file bytes, bookmark, title cache, or writable source projection.
+Each strict schema-2 record stores its attachment UUID, Note UUID, vault UUID,
+and either a vault-relative copied location or a neutral external filename;
+it stores no file bytes, absolute path, bookmark, title cache, or writable
+source projection. The machine-local access store binds an external record's
+UUID to its selected Finder path and verifies the filename before availability,
+preview, or Agent reads.
 The same `VaultAttachmentStore` validates regular no-follow document files,
 rejects inline media, performs exact copy and fingerprint-bound rollback, and
 never deletes an original reference. `IndexedAttachmentAccessStore` holds the

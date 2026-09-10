@@ -23,11 +23,11 @@ struct IndexedAttachmentAccessStoreTests {
         ))
         #expect(try await store.isAvailable(
             attachmentID: attachmentID,
-            expectedAbsolutePath: selected.path
+            expectedFilename: selected.lastPathComponent
         ))
         let access = try await store.beginAccess(
             attachmentID: attachmentID,
-            expectedAbsolutePath: selected.path
+            expectedFilename: selected.lastPathComponent
         )
         #expect(access.url.resolvingSymlinksInPath().standardizedFileURL.path
             == selected.path)
@@ -37,13 +37,15 @@ struct IndexedAttachmentAccessStoreTests {
         try FileManager.default.moveItem(at: selected, to: moved)
         #expect(try await store.isAvailable(
             attachmentID: attachmentID,
-            expectedAbsolutePath: selected.path
+            expectedFilename: selected.lastPathComponent
         ) == false)
+
+        #expect(try await store.attachmentID(forAbsolutePath: selected.path) == attachmentID)
 
         try await store.removeIfPresent(attachmentID: attachmentID)
         #expect(try await store.isAvailable(
             attachmentID: attachmentID,
-            expectedAbsolutePath: selected.path
+            expectedFilename: selected.lastPathComponent
         ) == false)
         #expect(FileManager.default.fileExists(atPath: moved.path))
     }

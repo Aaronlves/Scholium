@@ -580,7 +580,8 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 switch error {
                 case .invalidManifest, .settingsMissing, .settingsOldSchema,
                      .settingsFutureSchema, .settingsCorrupted,
-                     .invalidZoteroBindings, .invalidIdentities:
+                     .invalidZoteroBindings, .invalidIdentities,
+                     .invalidAttachmentCatalog:
                     throw ScholiumApplicationError.portableControlRecoveryRequired(
                         controlPath: controlURL.path,
                         reason: error.localizedDescription
@@ -1054,47 +1055,84 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         fileStore: VaultAttachmentStore,
         indexedSourceURL: URL?
     ) async throws -> PreparedImageAttachment {
-        let registration: (record: PortableAttachmentRecord, created: Bool)
-        do {
-            registration = try await services.controlStore.registerAttachment(
-                vaultID: vaultID,
-                location: preparedFile.location,
-                preferredID: attachmentID
-            )
-        } catch {
-            if let fingerprint = preparedFile.copiedFileFingerprint,
-               let copiedRelativePath = preparedFile.copiedRelativePath {
-                if let imageError = error as? ImageAttachmentError,
-                   case .catalogCommitUncertain = imageError {
-                    throw error
-                }
-                do {
-                    try await fileStore.removeCopiedImageIfExact(
-                        relativePath: copiedRelativePath,
-                        expectedFingerprint: fingerprint
-                    )
-                } catch let cleanupError {
-                    throw ImageAttachmentError.preparationCleanupFailed(
-                        operation: error.localizedDescription,
-                        cleanup: cleanupError.localizedDescription
-                    )
-                }
+        let existingIndexedRecord: PortableAttachmentRecord?
+        if let indexedSourceURL {
+            guard case .external(let reference) = preparedFile.location else {
+                throw ImageAttachmentError.unsupportedImage(indexedSourceURL.path)
             }
-            throw error
+            let canonicalPath = indexedSourceURL
+                .resolvingSymlinksInPath()
+                .standardizedFileURL
+                .path
+            if let existingID = try await services.indexedAttachmentAccessStore
+                .attachmentID(forAbsolutePath: canonicalPath),
+               let candidate = try await services.controlStore.attachmentRecords()
+                .first(where: {
+                    $0.id == existingID && $0.vaultID == vaultID
+                        && $0.location == preparedFile.location
+                }),
+               try await services.indexedAttachmentAccessStore.isAvailable(
+                   attachmentID: candidate.id,
+                   expectedFilename: reference.filename
+               ) {
+                existingIndexedRecord = candidate
+            } else {
+                existingIndexedRecord = nil
+            }
+        } else {
+            existingIndexedRecord = nil
+        }
+
+        let registration: (record: PortableAttachmentRecord, created: Bool)
+        if let existingIndexedRecord {
+            registration = (existingIndexedRecord, false)
+        } else {
+            do {
+                registration = try await services.controlStore.registerAttachment(
+                    vaultID: vaultID,
+                    location: preparedFile.location,
+                    preferredID: attachmentID
+                )
+            } catch {
+                if let fingerprint = preparedFile.copiedFileFingerprint,
+                   let copiedRelativePath = preparedFile.copiedRelativePath {
+                    if let imageError = error as? ImageAttachmentError,
+                       case .catalogCommitUncertain = imageError {
+                        throw error
+                    }
+                    do {
+                        try await fileStore.removeCopiedImageIfExact(
+                            relativePath: copiedRelativePath,
+                            expectedFingerprint: fingerprint
+                        )
+                    } catch let cleanupError {
+                        throw ImageAttachmentError.preparationCleanupFailed(
+                            operation: error.localizedDescription,
+                            cleanup: cleanupError.localizedDescription
+                        )
+                    }
+                }
+                throw error
+            }
         }
 
         var createdLocalAccessRecord = false
-        if case .absolutePath(let path) = registration.record.location {
-            guard let indexedSourceURL else {
-                throw IndexedAttachmentAccessError.bookmarkUnavailable(path)
+        if let indexedSourceURL {
+            guard case .external = registration.record.location else {
+                throw ImageAttachmentError.unsupportedImage(indexedSourceURL.path)
             }
             do {
-                createdLocalAccessRecord = try await services
-                    .indexedAttachmentAccessStore.register(
+                if existingIndexedRecord == nil {
+                    let canonicalPath = indexedSourceURL
+                        .resolvingSymlinksInPath()
+                        .standardizedFileURL
+                        .path
+                    createdLocalAccessRecord = try await services.indexedAttachmentAccessStore.register(
                         attachmentID: registration.record.id,
                         selectedURL: indexedSourceURL,
-                        expectedAbsolutePath: path
+                        expectedAbsolutePath: canonicalPath
                     )
+                }
             } catch {
                 if registration.created {
                     do {
@@ -1141,7 +1179,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         if let fingerprint = preparation.copiedFileFingerprint {
             guard case .vaultRelative(let relativePath) = preparation.record.location else {
                 throw ImageAttachmentError.cleanupRefused(
-                    preparation.record.location.path
+                    preparation.record.location.filename
                 )
             }
             let repository = try repository(vaultID: preparation.record.vaultID)
@@ -1162,12 +1200,24 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         guard !referencedPaths.isEmpty else { return [] }
         let records = try await services.controlStore.attachmentRecords()
         var unavailable: [String] = []
-        for record in records {
-            guard case .absolutePath(let path) = record.location,
-                  referencedPaths.contains(path) else { continue }
+        for path in referencedPaths {
+            let filename = URL(fileURLWithPath: path).lastPathComponent
+            guard let reference = try? ExternalAttachmentReference(filename: filename) else {
+                unavailable.append(path)
+                continue
+            }
+            guard let attachmentID = try await services.indexedAttachmentAccessStore
+                .attachmentID(forAbsolutePath: path),
+                  let record = records.first(where: {
+                      $0.id == attachmentID
+                        && $0.location == .external(reference)
+                  }) else {
+                unavailable.append(path)
+                continue
+            }
             if try await services.indexedAttachmentAccessStore.isAvailable(
                 attachmentID: record.id,
-                expectedAbsolutePath: path
+                expectedFilename: filename
             ) == false {
                 unavailable.append(path)
             }
@@ -1194,10 +1244,10 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 available = try await store.documentURLIfAvailable(
                     relativePath: path
                 ) != nil
-            case .absolutePath(let path):
+            case .external(let reference):
                 available = try await services.indexedAttachmentAccessStore.isAvailable(
                     attachmentID: record.id,
-                    expectedAbsolutePath: path
+                    expectedFilename: reference.filename
                 )
             }
             snapshots.append(DocumentAttachmentSnapshot(
@@ -1222,6 +1272,30 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         defer { endSourceMutation(mutationLease) }
 
         let repository = try await verifiedDocumentAttachmentTarget(target)
+        if management == .referenceOriginal {
+            let canonicalPath = sourceURL
+                .resolvingSymlinksInPath()
+                .standardizedFileURL
+                .path
+            if let existingID = try await services.indexedAttachmentAccessStore
+                .attachmentID(forAbsolutePath: canonicalPath),
+               let existing = try await services.controlStore.documentAttachmentRecords(
+                   noteID: target.noteID
+               ).first(where: {
+                   $0.id == existingID && $0.vaultID == target.vaultID
+                     && $0.location.filename == URL(fileURLWithPath: canonicalPath).lastPathComponent
+                     && $0.location.isExternal
+               }),
+               try await services.indexedAttachmentAccessStore.isAvailable(
+                   attachmentID: existing.id,
+                   expectedFilename: existing.filename
+               ) {
+                return DocumentAttachmentSnapshot(
+                    record: existing,
+                    availability: .available
+                )
+            }
+        }
         let fileStore = VaultAttachmentStore(vaultURL: await repository.vaultURL)
         let attachmentID = UUID()
         let prepared = try await fileStore.prepareDocument(
@@ -1259,12 +1333,15 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             throw error
         }
 
-        if case .absolutePath(let path) = registration.record.location {
+        if case .external = registration.record.location {
             do {
                 _ = try await services.indexedAttachmentAccessStore.register(
                     attachmentID: registration.record.id,
                     selectedURL: sourceURL,
-                    expectedAbsolutePath: path
+                    expectedAbsolutePath: sourceURL
+                        .resolvingSymlinksInPath()
+                        .standardizedFileURL
+                        .path
                 )
             } catch {
                 if registration.created {
@@ -1316,10 +1393,10 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 filename: record.filename,
                 fileURL: url
             )
-        case .absolutePath(let path):
+        case .external(let reference):
             let access = try await services.indexedAttachmentAccessStore.beginAccess(
                 attachmentID: record.id,
-                expectedAbsolutePath: path
+                expectedFilename: reference.filename
             )
             return DocumentAttachmentPreviewLease(
                 accessToken: access.token,

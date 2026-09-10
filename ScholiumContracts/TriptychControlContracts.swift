@@ -331,6 +331,7 @@ public enum TriptychControlError: LocalizedError, Sendable {
     case settingsRevisionConflict
     case controlFileCommitUncertain(String)
     case invalidZoteroBindings
+    case invalidAttachmentCatalog
     case zoteroBindingsRevisionConflict
     case invalidIdentities
     case identitiesRevisionConflict
@@ -359,6 +360,8 @@ public enum TriptychControlError: LocalizedError, Sendable {
             return "Scholium could not prove the final state of a portable control-file replacement. Reread the authoritative file before retrying: \(reason)"
         case .invalidZoteroBindings:
             return "The portable Zotero bindings are missing, damaged, or use an unsupported schema."
+        case .invalidAttachmentCatalog:
+            return "The portable attachment catalog is missing, damaged, or uses an unsupported schema. Its exact bytes were preserved for recovery."
         case .zoteroBindingsRevisionConflict:
             return "The Zotero bindings changed after they were loaded. Reload them before trying again."
         case .invalidIdentities:
