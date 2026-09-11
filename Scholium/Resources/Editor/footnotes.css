@@ -1,33 +1,48 @@
+/* Footnotes are document references, not badges. Keep the marker quiet in the
+   prose line and keep the end section as simple editorial text. */
 .footnote-reference-wrap {
+  display: inline;
+  font-size: inherit;
   line-height: 0;
   vertical-align: super;
+  white-space: nowrap;
 }
 
 .footnote-reference-cluster { white-space: nowrap; }
 
 .footnote-reference {
   appearance: none;
-  display: inline-grid;
-  place-items: center;
+  display: inline;
+  box-sizing: border-box;
+  min-inline-size: 0;
+  min-block-size: 0;
+  margin: 0;
+  padding: 0 .08em;
   border: 0;
-  min-inline-size: 1.05em;
-  min-block-size: 1.05em;
-  padding: 0 0.08em;
-  border-radius: var(--scholium-corner-document-control);
+  border-block-end: 1px solid color-mix(
+    in srgb,
+    var(--scholium-document-accent, var(--scholium-color-accent)) 48%,
+    transparent
+  );
+  border-radius: 0;
   color: var(--scholium-document-accent, var(--scholium-color-accent));
   background: transparent;
   font-family: inherit;
-  font-size: 0.68em;
-  font-weight: 600;
+  font-size: .72em;
+  font-weight: 650;
   font-variant-numeric: lining-nums tabular-nums;
   line-height: 1;
+  letter-spacing: .01em;
   text-decoration: none;
+  vertical-align: baseline;
   cursor: pointer;
+  transition: color 120ms ease-out, border-color 120ms ease-out,
+    text-decoration-color 120ms ease-out;
 }
 
 .scholium-link-annotation-disclosure,
 .scholium-link-annotation-marker {
-  margin-inline-start: 0.08em;
+  margin-inline-start: .08em;
   font-size: inherit;
   line-height: 0;
   vertical-align: super;
@@ -37,6 +52,7 @@
   appearance: none;
   display: inline-grid;
   place-items: center;
+  box-sizing: border-box;
   inline-size: 1.2em;
   block-size: 1.2em;
   padding: 0;
@@ -45,17 +61,18 @@
   color: var(--scholium-document-accent, var(--scholium-color-accent));
   background: transparent;
   cursor: pointer;
+  transition: background-color 120ms ease-out;
 }
 
 :is(.footnote-reference, .footnote-return, .scholium-link-annotation-button):hover,
 :is(.footnote-reference, .footnote-return, .scholium-link-annotation-button):focus-visible,
 :is(.footnote-reference, .footnote-return, .scholium-link-annotation-button):active,
 :is(.footnote-reference, .scholium-link-annotation-button)[aria-expanded="true"] {
-  background: var(--scholium-content-hover-surface);
-}
-
-:is(.footnote-reference, .footnote-return, .scholium-link-annotation-button):active {
-  background: var(--scholium-content-keyboard-focus-surface);
+  background: transparent;
+  color: var(--scholium-document-accent, var(--scholium-color-accent));
+  text-decoration: underline;
+  text-decoration-thickness: .08em;
+  text-underline-offset: .14em;
 }
 
 .scholium-link-annotation-button:focus-visible {
@@ -65,8 +82,8 @@
 
 .scholium-link-annotation-button > span,
 .scholium-link-annotation-icon {
-  inline-size: 0.72em;
-  block-size: 0.72em;
+  inline-size: .72em;
+  block-size: .72em;
 }
 
 .scholium-link-annotation-content > :first-child { margin-block-start: 0; }
@@ -75,8 +92,10 @@
 .footnote-reference:disabled,
 .footnote-reference[aria-disabled="true"] {
   color: var(--scholium-color-secondary-text);
+  border-block-end-color: var(--scholium-color-separator);
   cursor: default;
-  text-decoration: line-through;
+  text-decoration-line: line-through;
+  text-decoration-style: dashed;
 }
 
 .footnote-reference:focus-visible,
@@ -85,43 +104,49 @@
   outline-offset: 2px;
 }
 
-.footnotes {
+/* Review owns this end section. The slot supplies the deliberate distance from
+   the manuscript; the section itself stays compact and aligned to the measure. */
+.scholium-document .footnotes {
   display: flow-root;
   box-sizing: border-box;
   margin-block-start: 0;
   padding-block-start: 0;
   color: var(--scholium-color-secondary-text);
-  font-size: 0.88em;
+  font-family: inherit;
+  font-size: .9em;
+  line-height: 1.52;
 }
 
-.footnotes hr {
-  inline-size: min(8em, 28%);
-  margin: 0 0 var(--scholium-rhythm-paragraph-gap);
+.scholium-document .footnotes hr {
+  inline-size: 4.5em;
+  max-inline-size: 100%;
+  margin: 0 0 1.05em;
   border: 0;
   border-block-start: 1px solid var(--scholium-color-separator);
 }
 
-.footnotes ol {
+.scholium-document .footnotes ol {
   margin: 0;
-  padding-inline-start: 1.85em;
+  padding-inline-start: 2.05em;
+  list-style-position: outside;
 }
 
-.footnotes li {
+.scholium-document .footnotes li {
   min-inline-size: 0;
+  padding-inline-start: .18em;
   overflow-wrap: anywhere;
 }
 
-.footnotes li + li { margin-block-start: 0.65em; }
+.scholium-document .footnotes li + li { margin-block-start: .68em; }
 
-.footnotes li::marker {
+.scholium-document .footnotes li::marker {
   color: var(--scholium-document-accent, var(--scholium-color-accent));
-  font-weight: 600;
+  font-weight: 650;
   font-variant-numeric: lining-nums tabular-nums;
 }
 
 .footnote-content {
-  display: flex;
-  flex-direction: column;
+  display: block;
   min-inline-size: 0;
 }
 .footnote-content > :first-child { margin-block-start: 0; }
@@ -137,22 +162,48 @@
 }
 
 .footnote-return {
-  display: inline-grid;
-  place-items: center;
-  min-inline-size: 1.45em;
-  min-block-size: 1.45em;
-  margin-inline-start: 0.2em;
-  padding: 0;
+  appearance: none;
+  display: inline;
+  box-sizing: border-box;
+  min-inline-size: 0;
+  min-block-size: 0;
+  margin-inline-start: .32em;
+  padding: 0 .08em;
   border: 0;
-  border-radius: var(--scholium-corner-document-control);
+  border-block-end: 1px solid color-mix(
+    in srgb,
+    var(--scholium-document-accent, var(--scholium-color-accent)) 48%,
+    transparent
+  );
+  border-radius: 0;
   color: var(--scholium-document-accent, var(--scholium-color-accent));
   background: transparent;
-  font: 500 0.82em/1 system-ui, sans-serif;
+  font-family: inherit;
+  font-size: .8em;
+  font-weight: 600;
+  line-height: 1.15;
+  white-space: nowrap;
   cursor: pointer;
+  transition: color 120ms ease-out, border-color 120ms ease-out,
+    text-decoration-color 120ms ease-out;
 }
 
 .cm-live-footnote-reference-widget { white-space: nowrap; }
 .cm-live-footnote-reference-widget .footnote-reference { cursor: pointer; }
+
+/* Named-definition prefixes and active references are the same exact-source
+   projection. Keep their metrics borrowed from the surrounding document line;
+   the inactive ordinal widget is the only intentionally smaller projection. */
+.cm-live-footnote-source-marker {
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  font-style: inherit;
+  font-weight: inherit;
+  font-variant-caps: inherit;
+  letter-spacing: inherit;
+  vertical-align: baseline;
+}
 
 .scholium-footnotes-slot {
   box-sizing: border-box;
@@ -160,7 +211,21 @@
   padding-block-start: 3em;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  :is(.footnote-reference, .footnote-return, .scholium-link-annotation-button) {
+    transition: none;
+  }
+}
+
+@media (prefers-contrast: more) {
+  .footnote-reference,
+  .footnote-return {
+    border-block-end-color: currentColor;
+  }
+}
+
 @media (forced-colors: active) {
-  .footnotes hr { border-block-start-color: CanvasText; }
-  .footnote-return { border: 1px solid ButtonText; }
+  .scholium-document .footnotes hr { border-block-start-color: CanvasText; }
+  .footnote-reference,
+  .footnote-return { border-block-end-color: ButtonText; }
 }

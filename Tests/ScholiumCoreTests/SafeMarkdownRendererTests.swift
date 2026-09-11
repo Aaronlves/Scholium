@@ -118,6 +118,30 @@ struct SafeMarkdownRendererTests {
         #expect(!rendered.contains("<section dir=\"rtl\">"))
     }
 
+    @Test("Review restores authored quote hierarchy when Markdown emits sibling blocks")
+    func quoteDepth() {
+        let source = "> 一级引用\n>\n> > 二级引用\n"
+        let rendered = SafeMarkdownRenderer.render(
+            NoteDocument(relativePath: "quote-depth.md", rawContent: source)
+        ).htmlBody
+
+        #expect(rendered.contains("一级引用"))
+        #expect(rendered.contains("二级引用"))
+        let firstOpen = rendered.range(of: "<blockquote")
+        let secondOpen = firstOpen.flatMap {
+            rendered.range(of: "<blockquote", range: $0.upperBound..<rendered.endIndex)
+        }
+        let firstClose = rendered.range(of: "</blockquote>")
+        #expect(firstOpen != nil)
+        #expect(secondOpen != nil)
+        #expect(firstClose != nil)
+        #expect(
+            (secondOpen?.lowerBound ?? rendered.endIndex)
+                < (firstClose?.lowerBound ?? rendered.startIndex)
+        )
+        #expect(!rendered.contains("scholium-quote-depth-2"))
+    }
+
     @Test("Task list items retain their read-only checkbox state in Review")
     func taskListCheckboxes() {
         let source = "- [ ] Open task.\n- [x] Completed task.\n* [x] Alternate task."
@@ -292,6 +316,8 @@ struct SafeMarkdownRendererTests {
         #expect(rendered.contains("class=\"footnote-reference-cluster\""))
         #expect(rendered.contains("</sup>,</span> repeated"))
         #expect(rendered.contains("</sup>.</span>"))
+        #expect(rendered.contains("class=\"footnote-reference\" data-footnote=\"1\""))
+        #expect(rendered.contains("aria-expanded=\"false\""))
         #expect(rendered.contains("Inline note"))
         #expect(rendered.contains("class=\"footnote-return\""))
         #expect(rendered.contains("<strong>footnote</strong>"))

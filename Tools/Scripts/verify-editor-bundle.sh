@@ -45,7 +45,7 @@ fi
 
 if [[ ! -s "$footnote_styles" ]] || \
    ! rg -q '^\.footnote-reference' "$footnote_styles" || \
-   ! rg -q '^\.footnotes' "$footnote_styles" || \
+   ! rg -q '^\.scholium-document \.footnotes' "$footnote_styles" || \
    ! rg -q '^\.cm-live-footnote-reference-widget' "$footnote_styles" || \
    rg -q '^\.cm-live-footnotes-widget' "$footnote_styles"; then
   print -u2 "The shared semantic footnote stylesheet is missing or incomplete: $footnote_styles"
@@ -95,7 +95,8 @@ if ! rg -U -q '^\.scholium-callout-role \{\n  display: block;' "$callout_styles"
    ! rg -U -q '^\.scholium-callout-cite \{[^}]*background: var\(--scholium-callout-surface\);' "$callout_styles" || \
    ! rg -U -q '^\.scholium-callout-flag \{[^}]*border: 1px solid var\(--scholium-callout-frame\);[^}]*background: transparent;' "$callout_styles" || \
    ! rg -q '^#editor \.cm-editor\.scholium-live-mode \.cm-line\.cm-live-callout-role-flag \{' "$callout_styles" || \
-   ! rg -U -q '^\.scholium-callout-state \{[^}]*border-inline-start: 3px solid var\(--scholium-document-accent, var\(--scholium-color-accent\)\);' "$callout_styles"; then
+   ! rg -U -q '^\.scholium-callout-state \{[^}]*padding: \.55rem \.9rem \.62rem;[^}]*border-block: 1px solid var\(--scholium-callout-rule\);' "$callout_styles" || \
+   rg -U -q '^\.scholium-callout-state \{[^}]*border-inline-start:' "$callout_styles"; then
   print -u2 "The semantic Callout role treatments are missing or incomplete."
   exit 1
 fi

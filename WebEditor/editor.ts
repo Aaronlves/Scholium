@@ -161,6 +161,8 @@ import {createLiveInlineWidgets} from "./live-inline-widgets";
 import {sourceTextDirection} from "./source-direction";
 import {documentTextLanguage} from "./text-language";
 import {
+  codeBlockActivationRange,
+  codeBlockSourceIndentation,
   createLiveProjectionIndexController,
   type SemanticCodeBlockRange,
 } from "./live-projection-index";
@@ -801,13 +803,23 @@ function buildLiveDecorations(
   );
 
   /** @param {number} from @param {number} to */
-  const addHidden = (from: number, to: number) => {
+  const addHidden = (
+    from: number,
+    to: number,
+    forceSyntaxToken = false,
+    atomic = true,
+  ) => {
     if (to <= from) return;
     const source = doc.sliceString(from, to);
-    const range = (canDisplaceSyntax(source)
+    const range = (forceSyntaxToken || canDisplaceSyntax(source)
       ? syntaxToken(source, from, to, false) : hiddenSyntax).range(from, to);
     decorations.push(range);
-    atomicRanges.push(range);
+    if (atomic) atomicRanges.push(range);
+  };
+  const addSyntaxMark = (from: number, to: number, className: string) => {
+    if (to <= from) return;
+    const source = doc.sliceString(from, to);
+    decorations.push(syntaxToken(source, from, to, true, "inline", className).range(from, to));
   };
   const addAtomicReplacement = (decoration: Decoration, from: number, to: number) => {
     if (to <= from) return;
@@ -927,12 +939,37 @@ function buildLiveDecorations(
             ? isFencedDelimiterLine(doc, semanticCodeBlock, line.from)
             : false;
           const codeBlockActive = projectionSelections.some((range) =>
-            selectionActivatesSyntax(range, semanticCodeBlock));
+            selectionActivatesSyntax(
+              range,
+              codeBlockActivationRange(doc, semanticCodeBlock),
+            ));
           if (fenceLine && !codeBlockActive) {
-            addHidden(line.from, line.to);
+            // Keep the inactive and active fence rows keyed to the same exact
+            // source span so their opacity/color transition can reverse. The
+            // whole info line is syntax while inactive, not just the backticks.
+            addHidden(line.from, line.to, true);
           } else if (codeBlockActive) {
-            for (const marker of semanticCodeBlock.markerRanges) {
-              addMark(Math.max(scanFrom, marker.from), Math.min(scanTo, marker.to), "cm-live-syntax-marker");
+            if (fenceLine) {
+              addSyntaxMark(line.from, line.to, "cm-live-syntax-marker");
+            } else {
+              for (const marker of semanticCodeBlock.markerRanges) {
+                addMark(Math.max(scanFrom, marker.from), Math.min(scanTo, marker.to), "cm-live-syntax-marker");
+              }
+            }
+          } else if (!semanticCodeBlock.fenced) {
+            // Markdown's indented CodeBlock range starts after its structural
+            // indentation. The rendered <pre> does not include those spaces;
+            // hide only that prefix while preserving the exact source and
+            // allowing the caret to activate the block from any prefix point.
+            const indentation = codeBlockSourceIndentation(doc, semanticCodeBlock);
+            if (indentation > 0) {
+              let hiddenTo = line.from;
+              while (hiddenTo < line.to && hiddenTo < line.from + indentation) {
+                const character = doc.sliceString(hiddenTo, hiddenTo + 1);
+                if (character !== " " && character !== "\t") break;
+                hiddenTo += 1;
+              }
+              if (hiddenTo > line.from) addHidden(line.from, hiddenTo, false, false);
             }
           }
           if (line.to === doc.length) break;
@@ -1321,12 +1358,14 @@ class LivePreviewPlugin {
     } else if (liveSelection.changed(update.startState, update.state)) {
       const projectionIndex = liveProjectionIndex.index(update.state);
       const inlineRanges = projectionIndex.inlineRanges;
+      const codeBlockRanges = projectionIndex.literals.codeBlocks.map((block) =>
+        codeBlockActivationRange(update.state.doc, block));
       const codeBlockActivationUnchanged = activeProjectionSignature(
         liveSelection.selection(update.startState).ranges,
-        projectionIndex.literals.codeBlocks,
+        codeBlockRanges,
       ) === activeProjectionSignature(
         liveSelection.selection(update.state).ranges,
-        projectionIndex.literals.codeBlocks,
+        codeBlockRanges,
       );
       if (!update.view.composing
           && codeBlockActivationUnchanged

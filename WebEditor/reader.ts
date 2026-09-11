@@ -343,6 +343,7 @@ async function initializeReader(value: unknown): Promise<void> {
 
   let popoverHideTimer: ReturnType<typeof setTimeout> | undefined;
   let activeAnnotationButton: HTMLButtonElement | null = null;
+  let activeFootnoteButton: HTMLButtonElement | null = null;
   let pinnedAnnotationButton: HTMLButtonElement | null = null;
   function annotationTarget(button: HTMLButtonElement) {
     return button.dataset.linkAnnotationTarget?.trim() || localized('linked note');
@@ -354,13 +355,18 @@ async function initializeReader(value: unknown): Promise<void> {
       `${localized(expanded ? 'Hide Link Annotation' : 'Show Link Annotation')} ${annotationTarget(button)}`,
     );
   }
+  function setFootnoteExpanded(button: HTMLButtonElement, expanded: boolean) {
+    button.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+  }
   function hidePopover() {
     nativePreviewHovered = false;
     nativeFloating.hide(nativePreviewID);
     clearTimeout(popoverHideTimer);
     popoverHideTimer = undefined;
     if (activeAnnotationButton) setAnnotationExpanded(activeAnnotationButton, false);
+    if (activeFootnoteButton) setFootnoteExpanded(activeFootnoteButton, false);
     activeAnnotationButton = null;
+    activeFootnoteButton = null;
     pinnedAnnotationButton = null;
     popover.hidden = true;
     previewTitle.textContent = '';
@@ -551,7 +557,12 @@ async function initializeReader(value: unknown): Promise<void> {
     const content = definition && definition.querySelector('.footnote-content');
     if (!content) return;
     if (activeAnnotationButton) setAnnotationExpanded(activeAnnotationButton, false);
+    if (activeFootnoteButton && activeFootnoteButton !== button) {
+      setFootnoteExpanded(activeFootnoteButton, false);
+    }
     activeAnnotationButton = null;
+    activeFootnoteButton = button as HTMLButtonElement;
+    setFootnoteExpanded(activeFootnoteButton, true);
     previewTitle.textContent = localized('Footnote {ordinal}', {ordinal});
     previewMetadata.textContent = '';
     previewMetadata.hidden = true;
@@ -565,7 +576,9 @@ async function initializeReader(value: unknown): Promise<void> {
     const preview = previewByRange.get(key);
     if (!preview) return;
     if (activeAnnotationButton) setAnnotationExpanded(activeAnnotationButton, false);
+    if (activeFootnoteButton) setFootnoteExpanded(activeFootnoteButton, false);
     activeAnnotationButton = null;
+    activeFootnoteButton = null;
     previewTitle.textContent = preview.title;
     previewMetadata.textContent = preview.fragment || '';
     previewMetadata.hidden = !preview.fragment;
@@ -583,7 +596,9 @@ async function initializeReader(value: unknown): Promise<void> {
     if (activeAnnotationButton && activeAnnotationButton !== button) {
       setAnnotationExpanded(activeAnnotationButton, false);
     }
+    if (activeFootnoteButton) setFootnoteExpanded(activeFootnoteButton, false);
     activeAnnotationButton = button;
+    activeFootnoteButton = null;
     setAnnotationExpanded(button, true);
     previewTitle.textContent = annotationTarget(button);
     previewMetadata.textContent = localized('Link Annotation');
@@ -679,6 +694,7 @@ async function initializeReader(value: unknown): Promise<void> {
         target.scrollIntoView({block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'});
         target.focus({preventScroll: true});
       }
+      hidePopover();
       event.preventDefault();
       return;
     }

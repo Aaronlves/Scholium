@@ -115,13 +115,29 @@ export function createLiveFootnoteProjection(options: {
     const active = (from: number, to: number) =>
       options.selection.selection(state).ranges.some((range) =>
         selectionActivatesSyntax(range, {from, to}));
+    for (const definition of presentation.definitions) {
+      if (definition.isInline) continue;
+      const markerTo = Math.min(definition.to, definition.contentFrom);
+      if (markerTo > definition.from) {
+        decorationRanges.push(
+          Decoration.mark({class: "cm-live-footnote-source-marker"})
+            .range(definition.from, markerTo),
+        );
+      }
+    }
     for (const reference of presentation.references) {
       const containedByDefinition = presentation.definitions.some((definition) =>
         !definition.isInline && definition.from <= reference.from && definition.to >= reference.to);
       const trailing = trailingFootnotePunctuation(state, reference.to);
       const projectionTo = reference.to + trailing.length;
       projectionRanges.push({from: reference.from, to: projectionTo});
-      if (containedByDefinition || active(reference.from, projectionTo)) continue;
+      if (containedByDefinition || active(reference.from, projectionTo)) {
+        decorationRanges.push(
+          Decoration.mark({class: "cm-live-footnote-source-marker"})
+            .range(reference.from, reference.to),
+        );
+        continue;
+      }
       const replacement = Decoration.replace({
         widget: new FootnoteReferenceWidget(reference, trailing),
       }).range(reference.from, projectionTo);

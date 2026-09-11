@@ -854,13 +854,33 @@ extension MarkdownEditorWebViewIntegrationTests {
         _ = try await harness.callBridgeJavaScript(
             "document.querySelectorAll('.footnote-reference')[1].dispatchEvent(new PointerEvent('pointerover', {bubbles: true}));")
         try await harness.waitForNativePreview(title: "Footnote 1")
+        #expect(
+            try await harness.callPageJavaScript(
+                "return document.querySelectorAll('.footnote-reference')[1].getAttribute('aria-expanded');"
+            ) as? String == "true"
+        )
         #expect(try await harness.callNativePreview("return document.body.textContent.includes('Basis.');") as? Bool == true)
         _ = try await harness.callPageJavaScript("window.dispatchEvent(new Event('scroll'));")
         try await harness.waitForNativePreview(visible: false)
+        #expect(
+            try await harness.callPageJavaScript(
+                "return document.querySelectorAll('.footnote-reference')[1].getAttribute('aria-expanded');"
+            ) as? String == "false"
+        )
         _ = try await harness.callPageJavaScript("document.querySelectorAll('.footnote-reference')[1].focus({preventScroll: true});")
         try await harness.waitForNativePreview(title: "Footnote 1")
+        #expect(
+            try await harness.callPageJavaScript(
+                "return document.querySelectorAll('.footnote-reference')[1].getAttribute('aria-expanded');"
+            ) as? String == "true"
+        )
         _ = try await harness.callPageJavaScript("document.querySelectorAll('.footnote-reference')[1].blur();")
         try await harness.waitForNativePreview(visible: false)
+        #expect(
+            try await harness.callPageJavaScript(
+                "return document.querySelectorAll('.footnote-reference')[1].getAttribute('aria-expanded');"
+            ) as? String == "false"
+        )
         let navigation = try #require(
             try await harness.callBridgeJavaScript(
                 """
@@ -1109,6 +1129,102 @@ extension MarkdownEditorWebViewIntegrationTests {
             }
             #expect(actual == title)
         }
+        await harness.closeAndDrain()
+    }
+
+    @Test("Review Callouts keep nested Markdown and native disclosure interaction")
+    func reviewCalloutDisclosureKeepsNestedContent() async throws {
+        let source = """
+            > [!cite]+ Source note
+            > Intro with **strong** prose.
+            >
+            > > Inner quotation.
+            > >
+            > > - Nested item
+            """ + "\n\n" + String(repeating: "Synthetic surrounding paragraph.\n\n", count: 16)
+        let document = NoteDocument(relativePath: "CalloutDisclosure.md", rawContent: source)
+        let harness = ReadHarness(
+            source: source,
+            htmlBody: SafeMarkdownRenderer.render(document).htmlBody,
+            fingerprint: DocumentFingerprint(content: source).sha256,
+            initialAnchor: nil,
+            initialScrollFraction: 0
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        let collapsed = try #require(
+            try await harness.callPageJavaScript(
+                """
+                const details = document.querySelector('details.scholium-callout-cite');
+                const summary = details?.querySelector(':scope > summary');
+                if (!details || !summary) return null;
+                summary.focus();
+                const initiallyOpen = details.open;
+                summary.click();
+                const afterFirstClick = details.open;
+                summary.click();
+                const body = details.querySelector(':scope > .scholium-callout-body');
+                const nestedQuote = details.querySelector('.scholium-callout-content > blockquote');
+                return {
+                  initiallyOpen,
+                  afterFirstClick,
+                  reopened: details.open,
+                  summaryFocused: document.activeElement === summary,
+                  nestedListCount: details.querySelectorAll('.scholium-callout-content ul').length,
+                  nestedQuoteBorder: nestedQuote ? getComputedStyle(nestedQuote).borderInlineStartWidth : '',
+                  bodyVisible: Boolean(body && body.getClientRects().length > 0)
+                };
+                """
+            ) as? [String: Any])
+        #expect(collapsed["initiallyOpen"] as? Bool == true)
+        #expect(collapsed["afterFirstClick"] as? Bool == false)
+        #expect(collapsed["reopened"] as? Bool == true)
+        #expect(collapsed["summaryFocused"] as? Bool == true)
+        #expect(collapsed["nestedListCount"] as? Int == 1)
+        #expect(collapsed["nestedQuoteBorder"] as? String == "1px")
+        #expect(collapsed["bodyVisible"] as? Bool == true)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Review carries authored quote depth into cumulative visual indentation")
+    func reviewQuoteDepthUsesCumulativeInset() async throws {
+        let source = "> 一级引用\n>\n> > 二级引用\n"
+        let document = NoteDocument(relativePath: "QuoteDepth.md", rawContent: source)
+        let harness = ReadHarness(
+            source: source,
+            htmlBody: SafeMarkdownRenderer.render(document).htmlBody,
+            fingerprint: DocumentFingerprint(content: source).sha256,
+            initialAnchor: nil,
+            initialScrollFraction: 0
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        let geometry = try #require(
+            try await harness.callPageJavaScript(
+                """
+                const quotes = [...document.querySelectorAll('#scholium-document blockquote')];
+                const first = quotes.find(quote => !quote.parentElement?.closest('blockquote'));
+                const second = first?.querySelector(':scope > blockquote');
+                if (!first || !second) return null;
+                return {
+                  firstClass: first.className,
+                  secondClass: second.className,
+                  firstContainsSecond: first.contains(second),
+                  firstInset: getComputedStyle(first).paddingInlineStart,
+                  secondInset: getComputedStyle(second).paddingInlineStart,
+                  secondBorder: getComputedStyle(second).borderInlineStartWidth
+                };
+                """
+            ) as? [String: Any]
+        )
+        #expect(geometry["firstClass"] as? String == "")
+        #expect(geometry["secondClass"] as? String == "")
+        #expect(geometry["firstContainsSecond"] as? Bool == true)
+        #expect(geometry["firstInset"] as? String == "16px")
+        #expect(geometry["secondInset"] as? String == "16px")
+        #expect(geometry["secondBorder"] as? String == "1px")
         await harness.closeAndDrain()
     }
 

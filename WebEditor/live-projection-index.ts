@@ -39,6 +39,36 @@ export interface SemanticCodeBlockRange extends ProjectionSourceRange {
   readonly markerRanges: readonly ProjectionSourceRange[];
 }
 
+/**
+ * A parsed indented code block starts at its first content character, while
+ * the authored indentation still belongs to the editable line. Keep those
+ * two boundaries explicit: the content range remains parser-owned, but the
+ * activation range includes structural indentation so a caret never gets
+ * stranded in an apparently inert prefix.
+ */
+export function codeBlockActivationRange(
+  doc: Text,
+  block: SemanticCodeBlockRange,
+): ProjectionSourceRange {
+  if (block.fenced) return {from: block.from, to: block.to};
+  const line = doc.lineAt(block.from);
+  const prefix = doc.sliceString(line.from, block.from);
+  return /^[ \t]*$/.test(prefix)
+    ? {from: line.from, to: block.to}
+    : {from: block.from, to: block.to};
+}
+
+/** The number of top-level indentation characters stripped by Markdown. */
+export function codeBlockSourceIndentation(
+  doc: Text,
+  block: SemanticCodeBlockRange,
+): number {
+  if (block.fenced) return 0;
+  const line = doc.lineAt(block.from);
+  const prefix = doc.sliceString(line.from, block.from);
+  return /^[ \t]*$/.test(prefix) ? prefix.length : 0;
+}
+
 interface SemanticLiteralRanges {
   readonly excluded: readonly Readonly<ProjectionSourceRange>[];
   readonly codeBlocks: readonly Readonly<SemanticCodeBlockRange>[];

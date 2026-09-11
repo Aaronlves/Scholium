@@ -207,10 +207,25 @@ public enum SafeMarkdownRenderer {
 
         let transformed = apply(replacements, to: document.body)
         let parsed = Document(parsing: transformed, options: [.parseBlockDirectives])
+        let quoteDepths = Dictionary(
+            uniqueKeysWithValues: semantic.blocks
+                .filter { $0.kind == .blockQuote }
+                .map { block in
+                    (
+                        block.span,
+                        quoteDepth(
+                            in: document.body,
+                            span: block.span,
+                            bodyUTF16Offset: bodyStart
+                        )
+                    )
+                }
+        )
         var visitor = SafeHTMLVisitor(
             blockHTML: blockHTML,
             inlineHTML: inlineHTML,
-            blockSourceSpans: blockSourceSpans
+            blockSourceSpans: blockSourceSpans,
+            quoteDepths: quoteDepths
         )
         visitor.visit(parsed)
 
@@ -218,7 +233,10 @@ public enum SafeMarkdownRenderer {
             semantic.footnoteDefinitions,
             depth: depth + 1
         )
-        return visitor.result + footnoteSection
+        return visitor.renderedHTML(
+            source: document.body,
+            bodyUTF16Offset: bodyStart
+        ) + footnoteSection
     }
 
     private static func renderCallout(
@@ -229,13 +247,25 @@ public enum SafeMarkdownRenderer {
         let roleLabel = escapeHTML(callout.role.displayLabel)
         let purpose = escapeAttribute(callout.role.purpose)
         let accessibleRole = escapeAttribute("\(callout.role.displayLabel). \(callout.role.purpose)")
-        let roleHTML = "<span class=\"scholium-callout-role\" dir=\"auto\" title=\"\(purpose)\" aria-label=\"\(accessibleRole)\">\(roleLabel)</span>"
+        // Keep the role as accessible metadata, but render one visible title:
+        // the authored title when present, otherwise the role's default label.
+        // Review and Live Preview therefore resolve the same title contract.
+        let roleHTML = "<span class=\"scholium-callout-role scholium-callout-role-context\" dir=\"auto\" title=\"\(purpose)\" aria-label=\"\(accessibleRole)\">\(roleLabel)</span>"
+        let orientationTitleBecomesBody = callout.role == .orient
+            && callout.title != nil
+            && callout.bodySource.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         let titleHTML =
-            callout.title.map {
-                "<span class=\"scholium-callout-title\" dir=\"auto\">\(renderInlineMarkdown($0))</span>"
-            } ?? ""
+            if let title = callout.title, !orientationTitleBecomesBody {
+                "<span class=\"scholium-callout-title\" dir=\"auto\">\(renderInlineMarkdown(title))</span>"
+            } else {
+                "<span class=\"scholium-callout-title scholium-callout-default-title\" dir=\"auto\">\(roleLabel)</span>"
+            }
         let heading = "<span class=\"scholium-callout-heading\" role=\"heading\" aria-level=\"2\">\(roleHTML)\(titleHTML)</span>"
-        let fragment = NoteDocument(relativePath: "callout.md", rawContent: callout.bodySource)
+        // Orient's title-only form is an authored reading route, not an empty
+        // titled box. Live Preview moves that title into the body as prose;
+        // Review must use the same projection.
+        let bodySource = orientationTitleBecomesBody ? (callout.title ?? "") : callout.bodySource
+        let fragment = NoteDocument(relativePath: "callout.md", rawContent: bodySource)
         let fragmentSemantic = MarkdownSemanticDocument(parsing: fragment)
         let renderedBody = renderBody(
             document: fragment,
@@ -272,7 +302,7 @@ public enum SafeMarkdownRenderer {
         let target = "fn-\(reference.ordinal)"
         let disabled = definitionExists ? "" : " disabled aria-disabled=\"true\""
         let locator =
-            "<sup id=\"\(referenceID)\" class=\"footnote-reference-wrap\" \(sourceAttributes(reference.span)) data-scholium-protected=\"footnote\"><button type=\"button\" class=\"footnote-reference\" data-footnote=\"\(reference.ordinal)\" data-target=\"\(target)\" aria-label=\"Footnote \(reference.ordinal)\"\(disabled)>\(reference.ordinal)</button></sup>"
+            "<sup id=\"\(referenceID)\" class=\"footnote-reference-wrap\" \(sourceAttributes(reference.span)) data-scholium-protected=\"footnote\"><button type=\"button\" class=\"footnote-reference\" data-footnote=\"\(reference.ordinal)\" data-target=\"\(target)\" aria-label=\"Footnote \(reference.ordinal)\" aria-expanded=\"false\"\(disabled)>\(reference.ordinal)</button></sup>"
         guard !trailingPunctuation.isEmpty else { return locator }
         return "<span class=\"footnote-reference-cluster\">\(locator)\(escapeHTML(trailingPunctuation))</span>"
     }
@@ -307,9 +337,14 @@ public enum SafeMarkdownRenderer {
 
     private static func renderInlineMarkdown(_ source: String) -> String {
         let parsed = Document(parsing: source)
-        var visitor = SafeHTMLVisitor(blockHTML: [:], inlineHTML: [:], blockSourceSpans: [:])
+        var visitor = SafeHTMLVisitor(
+            blockHTML: [:],
+            inlineHTML: [:],
+            blockSourceSpans: [:],
+            quoteDepths: [:]
+        )
         visitor.visit(parsed)
-        let rendered = visitor.result
+        let rendered = visitor.renderedHTML(source: source, bodyUTF16Offset: 0)
         let paragraphPrefix = "<p dir=\"auto\">"
         guard rendered.hasPrefix(paragraphPrefix), rendered.hasSuffix("</p>\n") else {
             return escapeHTML(source)
@@ -398,6 +433,277 @@ public enum SafeMarkdownRenderer {
         return NSRange(location: location, length: upper - location)
     }
 
+    private static func quoteDepth(
+        in body: String,
+        span: SourceSpan,
+        bodyUTF16Offset: Int
+    ) -> Int {
+        let source = body as NSString
+        let location = span.utf16LowerBound - bodyUTF16Offset
+        guard location >= 0, location < source.length else { return 1 }
+
+        let line = source.substring(
+            with: source.lineRange(for: NSRange(location: location, length: 0))
+        ) as NSString
+        var cursor = 0
+        var depth = 0
+        while cursor < line.length {
+            var indentation = 0
+            while cursor < line.length, indentation < 3, line.character(at: cursor) == 0x20 {
+                cursor += 1
+                indentation += 1
+            }
+            guard cursor < line.length, line.character(at: cursor) == 0x3E else { break }
+            depth += 1
+            cursor += 1
+            if cursor < line.length, line.character(at: cursor) == 0x20 { cursor += 1 }
+        }
+        return max(1, min(depth, 3))
+    }
+
+    fileprivate static func normalizeQuoteParts(
+        _ parts: [SafeHTMLPart],
+        source: String,
+        bodyUTF16Offset: Int
+    ) -> [SafeHTMLPart] {
+        let recursivelyNormalized = parts.map { part -> SafeHTMLPart in
+            guard case .quote(var node) = part else { return part }
+            node.children = normalizeQuoteParts(
+                node.children,
+                source: source,
+                bodyUTF16Offset: bodyUTF16Offset
+            )
+            return .quote(node)
+        }
+
+        var output: [SafeHTMLPart] = []
+        var pendingWhitespace = ""
+        for part in recursivelyNormalized {
+            if case .html(let html) = part,
+                !html.isEmpty,
+                html.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            {
+                pendingWhitespace += html
+                continue
+            }
+
+            if case .quote(let current) = part,
+                let last = output.last,
+                case .quote(let previous) = last,
+                shouldJoinQuotes(
+                    previous,
+                    current,
+                    source: source,
+                    bodyUTF16Offset: bodyUTF16Offset
+                )
+            {
+                output.removeLast()
+                output.append(
+                    .quote(
+                    mergeQuotes(previous, current)))
+                pendingWhitespace = ""
+                continue
+            }
+
+            if !pendingWhitespace.isEmpty {
+                output.append(.html(pendingWhitespace))
+                pendingWhitespace = ""
+            }
+            output.append(part)
+        }
+        if !pendingWhitespace.isEmpty {
+            output.append(.html(pendingWhitespace))
+        }
+        return output
+    }
+
+    fileprivate static func renderQuoteParts(_ parts: [SafeHTMLPart]) -> String {
+        parts.map { part in
+            switch part {
+            case .html(let html):
+                return html
+            case .quote(let node):
+                let source = node.metadata.span.map {
+                    " \(sourceAttributes($0))"
+                } ?? ""
+                return
+                    "<blockquote dir=\"auto\"\(source)>\(renderQuoteParts(node.children))</blockquote>\n"
+            }
+        }.joined()
+    }
+
+    private static func shouldJoinQuotes(
+        _ left: SafeHTMLQuoteNode,
+        _ right: SafeHTMLQuoteNode,
+        source: String,
+        bodyUTF16Offset: Int
+    ) -> Bool {
+        guard let leftSpan = left.metadata.span,
+            let rightSpan = right.metadata.span,
+            right.metadata.depth >= left.metadata.depth,
+            rightSpan.utf16LowerBound >= leftSpan.utf16UpperBound
+        else { return false }
+        return quoteLinesBetween(
+            leftSpan,
+            rightSpan,
+            minimumDepth: left.metadata.depth,
+            source: source,
+            bodyUTF16Offset: bodyUTF16Offset
+        )
+    }
+
+    private static func quoteLinesBetween(
+        _ left: SourceSpan,
+        _ right: SourceSpan,
+        minimumDepth: Int,
+        source: String,
+        bodyUTF16Offset: Int
+    ) -> Bool {
+        let body = source as NSString
+        let leftOffset = max(0, min(body.length, left.utf16UpperBound - bodyUTF16Offset))
+        let rightOffset = max(0, min(body.length, right.utf16LowerBound - bodyUTF16Offset))
+        guard rightOffset >= leftOffset else { return false }
+
+        let leftLine = lineIndex(in: body, at: leftOffset)
+        let rightLine = lineIndex(in: body, at: rightOffset)
+        guard rightLine >= leftLine else { return false }
+        guard rightLine > leftLine + 1 else { return true }
+
+        let lines = lineTexts(in: body)
+        guard rightLine <= lines.count else { return false }
+        for index in (leftLine + 1)..<rightLine {
+            guard sourceQuoteDepth(of: lines[index]) >= minimumDepth else { return false }
+        }
+        return true
+    }
+
+    private static func lineIndex(in source: NSString, at offset: Int) -> Int {
+        var index = 0
+        var line = 0
+        while index < min(offset, source.length) {
+            if source.character(at: index) == 0x0A {
+                line += 1
+            }
+            index += 1
+        }
+        return line
+    }
+
+    private static func lineTexts(in source: NSString) -> [String] {
+        guard source.length > 0 else { return [""] }
+        var lines: [String] = []
+        var cursor = 0
+        while cursor < source.length {
+            let lineRange = source.lineRange(
+                for: NSRange(location: cursor, length: 0)
+            )
+            let contentRange = lineContentRange(lineRange, in: source)
+            lines.append(source.substring(with: contentRange))
+            cursor = NSMaxRange(lineRange)
+        }
+        return lines
+    }
+
+    private static func sourceQuoteDepth(of line: String) -> Int {
+        let source = line as NSString
+        var cursor = 0
+        var depth = 0
+        while cursor < source.length {
+            var indentation = 0
+            while cursor < source.length,
+                indentation < 3,
+                source.character(at: cursor) == 0x20
+            {
+                cursor += 1
+                indentation += 1
+            }
+            guard cursor < source.length, source.character(at: cursor) == 0x3E else {
+                break
+            }
+            depth += 1
+            cursor += 1
+            if cursor < source.length,
+                source.character(at: cursor) == 0x20
+            {
+                cursor += 1
+            }
+        }
+        return min(depth, 3)
+    }
+
+    private static func lineContentRange(
+        _ lineRange: NSRange,
+        in source: NSString
+    ) -> NSRange {
+        var length = lineRange.length
+        while length > 0 {
+            let character = source.character(at: lineRange.location + length - 1)
+            if character == 0x0A || character == 0x0D {
+                length -= 1
+            } else {
+                break
+            }
+        }
+        return NSRange(location: lineRange.location, length: length)
+    }
+
+    private static func mergeQuotes(
+        _ left: SafeHTMLQuoteNode,
+        _ right: SafeHTMLQuoteNode
+    ) -> SafeHTMLQuoteNode {
+        var merged = left
+        let rightNode = nestedQuoteNode(
+            right,
+            under: left.metadata.depth
+        )
+        if right.metadata.depth == left.metadata.depth {
+            merged.children.append(contentsOf: right.children)
+        } else {
+            merged.children.append(.quote(rightNode))
+        }
+        merged.metadata = SafeHTMLQuoteMetadata(
+            span: combinedSpan(left.metadata.span, right.metadata.span),
+            depth: left.metadata.depth
+        )
+        return merged
+    }
+
+    private static func nestedQuoteNode(
+        _ node: SafeHTMLQuoteNode,
+        under parentDepth: Int
+    ) -> SafeHTMLQuoteNode {
+        guard node.metadata.depth > parentDepth + 1 else { return node }
+        var result = node
+        for depth in stride(
+            from: node.metadata.depth - 1,
+            through: parentDepth + 1,
+            by: -1
+        ) {
+            result = SafeHTMLQuoteNode(
+                metadata: SafeHTMLQuoteMetadata(span: nil, depth: depth),
+                children: [.quote(result)]
+            )
+        }
+        return result
+    }
+
+    private static func combinedSpan(
+        _ left: SourceSpan?,
+        _ right: SourceSpan?
+    ) -> SourceSpan? {
+        guard let left, let right else { return left ?? right }
+        let lower = left.utf16LowerBound <= right.utf16LowerBound ? left : right
+        let upper = left.utf16UpperBound >= right.utf16UpperBound ? left : right
+        return SourceSpan(
+            utf8LowerBound: min(left.utf8LowerBound, right.utf8LowerBound),
+            utf8UpperBound: max(left.utf8UpperBound, right.utf8UpperBound),
+            utf16LowerBound: min(left.utf16LowerBound, right.utf16LowerBound),
+            utf16UpperBound: max(left.utf16UpperBound, right.utf16UpperBound),
+            start: lower.start,
+            end: upper.end
+        )
+    }
+
     private static func overlaps(_ range: NSRange, _ existing: [NSRange]) -> Bool {
         existing.contains { NSIntersectionRange($0, range).length > 0 }
     }
@@ -480,12 +786,38 @@ public enum SafeMarkdownRenderer {
     }
 }
 
+fileprivate struct SafeHTMLQuoteMetadata {
+    let span: SourceSpan?
+    let depth: Int
+}
+
+fileprivate struct SafeHTMLQuoteNode {
+    var metadata: SafeHTMLQuoteMetadata
+    var children: [SafeHTMLPart]
+}
+
+fileprivate indirect enum SafeHTMLPart {
+    case html(String)
+    case quote(SafeHTMLQuoteNode)
+}
+
+fileprivate struct SafeHTMLQuoteFrame {
+    let identifier: String
+    var node: SafeHTMLQuoteNode
+}
+
 private struct SafeHTMLVisitor: MarkupWalker {
+    private static let quoteTokenStart = "\u{E000}scholium-quote-"
+    private static let quoteTokenEnd = "\u{E001}"
+
     var result = ""
     let blockHTML: [String: String]
     let inlineHTML: [String: String]
     let blockSourceSpans: [MarkdownBlockKind: [SourceSpan]]
+    let quoteDepths: [SourceSpan: Int]
     var blockSourceIndices: [MarkdownBlockKind: Int] = [:]
+    var quoteMetadata: [String: SafeHTMLQuoteMetadata] = [:]
+    var nextQuoteIdentifier = 0
     var tableColumnAlignments: [Table.ColumnAlignment?] = []
     var currentTableColumn = 0
     var isInsideTableHead = false
@@ -504,9 +836,14 @@ private struct SafeHTMLVisitor: MarkupWalker {
         result += "</h\(heading.level)>\n"
     }
     mutating func visitBlockQuote(_ blockQuote: BlockQuote) {
-        result += "<blockquote dir=\"auto\"\(sourceAttributes(for: .blockQuote))>"
+        let span = nextSourceSpan(for: .blockQuote)
+        let depth = span.flatMap { quoteDepths[$0] }.map { min(max($0, 1), 3) } ?? 1
+        let identifier = String(nextQuoteIdentifier)
+        nextQuoteIdentifier += 1
+        quoteMetadata[identifier] = SafeHTMLQuoteMetadata(span: span, depth: depth)
+        result += "\(Self.quoteTokenStart)open:\(identifier)\(Self.quoteTokenEnd)"
         descendInto(blockQuote)
-        result += "</blockquote>\n"
+        result += "\(Self.quoteTokenStart)close:\(identifier)\(Self.quoteTokenEnd)"
     }
     mutating func visitCodeBlock(_ codeBlock: CodeBlock) {
         let language = codeBlock.language.map { " class=\"language-\(SafeMarkdownRenderer.escapeAttribute($0))\"" } ?? ""
@@ -697,5 +1034,76 @@ private struct SafeHTMLVisitor: MarkupWalker {
     private func isApprovedExternal(_ destination: String) -> Bool {
         guard let scheme = URL(string: destination)?.scheme?.lowercased() else { return false }
         return ["http", "https", "mailto", "zotero"].contains(scheme)
+    }
+
+    func renderedHTML(source: String, bodyUTF16Offset: Int) -> String {
+        guard !quoteMetadata.isEmpty else { return result }
+        let parts = parsedQuoteParts()
+        let normalized = SafeMarkdownRenderer.normalizeQuoteParts(
+            parts,
+            source: source,
+            bodyUTF16Offset: bodyUTF16Offset
+        )
+        return SafeMarkdownRenderer.renderQuoteParts(normalized)
+    }
+
+    private func parsedQuoteParts() -> [SafeHTMLPart] {
+        var roots: [SafeHTMLPart] = []
+        var frames: [SafeHTMLQuoteFrame] = []
+
+        func append(_ part: SafeHTMLPart) {
+            if frames.isEmpty {
+                roots.append(part)
+            } else {
+                frames[frames.count - 1].node.children.append(part)
+            }
+        }
+
+        var cursor = result.startIndex
+        while cursor < result.endIndex,
+            let tokenStart = result.range(
+                of: Self.quoteTokenStart,
+                range: cursor..<result.endIndex
+            )
+        {
+            if tokenStart.lowerBound > cursor {
+                append(.html(String(result[cursor..<tokenStart.lowerBound])))
+            }
+            guard let tokenEnd = result.range(
+                of: Self.quoteTokenEnd,
+                range: tokenStart.upperBound..<result.endIndex
+            ) else {
+                append(.html(String(result[tokenStart.lowerBound..<result.endIndex])))
+                cursor = result.endIndex
+                break
+            }
+            let payload = String(result[tokenStart.upperBound..<tokenEnd.lowerBound])
+            if payload.hasPrefix("open:") {
+                let identifier = String(payload.dropFirst("open:".count))
+                let metadata = quoteMetadata[identifier]
+                    ?? SafeHTMLQuoteMetadata(span: nil, depth: 1)
+                frames.append(
+                    SafeHTMLQuoteFrame(
+                        identifier: identifier,
+                        node: SafeHTMLQuoteNode(metadata: metadata, children: [])
+                    ))
+            } else if payload.hasPrefix("close:"),
+                let frame = frames.last,
+                frame.identifier == String(payload.dropFirst("close:".count))
+            {
+                _ = frames.removeLast()
+                append(.quote(frame.node))
+            } else {
+                append(.html(String(result[tokenStart.lowerBound..<tokenEnd.upperBound])))
+            }
+            cursor = tokenEnd.upperBound
+        }
+        if cursor < result.endIndex {
+            append(.html(String(result[cursor..<result.endIndex])))
+        }
+        while let frame = frames.popLast() {
+            append(.quote(frame.node))
+        }
+        return roots
     }
 }

@@ -21,11 +21,12 @@ import {
 } from "./projection-update";
 import type {SemanticBlockProjection} from "./semantic-projection";
 import type {LiveSelectionController} from "./live-selection";
-import type {
-  CalloutPresentation,
-  LiveProjectionIndex,
-  LiveProjectionIndexController,
-  SemanticCodeBlockRange,
+import {
+  codeBlockActivationRange,
+  type CalloutPresentation,
+  type LiveProjectionIndex,
+  type LiveProjectionIndexController,
+  type SemanticCodeBlockRange,
 } from "./live-projection-index";
 import {calloutDefinition, calloutHeader} from "./callout-presentation";
 import {bodyHeadingAccessibilityLevel} from "./heading-accessibility";
@@ -76,6 +77,18 @@ function isFencedDelimiterLine(
   return block.markerRanges.some((range) => doc.lineAt(range.from).from === lineFrom);
 }
 
+function authoredQuoteDepth(text: string, fallback: number): number {
+  let index = 0;
+  let depth = 0;
+  while (index < text.length && depth < 3) {
+    while (index < text.length && (text[index] === " " || text[index] === "\t")) index += 1;
+    if (text[index] !== ">") break;
+    depth += 1;
+    index += 1;
+  }
+  return Math.max(1, Math.min(depth || fallback, 3));
+}
+
 function affectedProjectionAndCodeBlockRanges(
   indexController: LiveProjectionIndexController,
   state: EditorState,
@@ -84,9 +97,9 @@ function affectedProjectionAndCodeBlockRanges(
 ) {
   const changedCodeBlocks = indexController.index(state).literals.codeBlocks.filter((block) => {
     const wasActive = previousSelections.some((selection) =>
-      selectionActivatesSyntax(selection, block));
+      selectionActivatesSyntax(selection, codeBlockActivationRange(state.doc, block)));
     const isActive = nextSelections.some((selection) =>
-      selectionActivatesSyntax(selection, block));
+      selectionActivatesSyntax(selection, codeBlockActivationRange(state.doc, block)));
     return wasActive !== isActive;
   });
   return immutableProjectionRanges([
@@ -171,7 +184,7 @@ export function createLiveSemanticLayout(options: {
       lineQueryTo,
     )[0] ?? null;
     const codeBlockActive = codeBlock !== null && selection.selection(state).ranges.some((range) =>
-      selectionActivatesSyntax(range, codeBlock));
+      selectionActivatesSyntax(range, codeBlockActivationRange(state.doc, codeBlock)));
     const heading = blocks.find((block) => block.kind === "heading") ?? null;
     const headingLevel = heading?.headingLevel ?? null;
     const headingMarkers = heading?.markerRanges.filter((range) =>
@@ -301,7 +314,11 @@ export function createLiveSemanticLayout(options: {
         if (line.from <= paragraph.from) classes.add("cm-live-paragraph-start");
         if (line.to >= paragraph.to) classes.add("cm-live-paragraph-end");
       }
-      if (quote) classes.add("cm-live-quote");
+      if (quote) {
+        classes.add("cm-live-quote");
+        const quoteDepth = authoredQuoteDepth(line.text, quoteMarkers.length);
+        classes.add(`cm-live-quote-depth-${quoteDepth}`);
+      }
       if (rule && outsideFrontmatter && !active) classes.add("cm-live-rule");
       if (list && listMarker) {
         classes.add("cm-live-list");

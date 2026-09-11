@@ -892,6 +892,7 @@
     });
     let popoverHideTimer;
     let activeAnnotationButton = null;
+    let activeFootnoteButton = null;
     let pinnedAnnotationButton = null;
     function annotationTarget(button) {
       return button.dataset.linkAnnotationTarget?.trim() || localized("linked note");
@@ -903,13 +904,18 @@
         `${localized(expanded ? "Hide Link Annotation" : "Show Link Annotation")} ${annotationTarget(button)}`
       );
     }
+    function setFootnoteExpanded(button, expanded) {
+      button.setAttribute("aria-expanded", expanded ? "true" : "false");
+    }
     function hidePopover() {
       nativePreviewHovered = false;
       nativeFloating.hide(nativePreviewID);
       clearTimeout(popoverHideTimer);
       popoverHideTimer = void 0;
       if (activeAnnotationButton) setAnnotationExpanded(activeAnnotationButton, false);
+      if (activeFootnoteButton) setFootnoteExpanded(activeFootnoteButton, false);
       activeAnnotationButton = null;
+      activeFootnoteButton = null;
       pinnedAnnotationButton = null;
       popover.hidden = true;
       previewTitle.textContent = "";
@@ -1093,7 +1099,12 @@
       const content = definition && definition.querySelector(".footnote-content");
       if (!content) return;
       if (activeAnnotationButton) setAnnotationExpanded(activeAnnotationButton, false);
+      if (activeFootnoteButton && activeFootnoteButton !== button) {
+        setFootnoteExpanded(activeFootnoteButton, false);
+      }
       activeAnnotationButton = null;
+      activeFootnoteButton = button;
+      setFootnoteExpanded(activeFootnoteButton, true);
       previewTitle.textContent = localized("Footnote {ordinal}", { ordinal });
       previewMetadata.textContent = "";
       previewMetadata.hidden = true;
@@ -1106,7 +1117,9 @@
       const preview = previewByRange.get(key);
       if (!preview) return;
       if (activeAnnotationButton) setAnnotationExpanded(activeAnnotationButton, false);
+      if (activeFootnoteButton) setFootnoteExpanded(activeFootnoteButton, false);
       activeAnnotationButton = null;
+      activeFootnoteButton = null;
       previewTitle.textContent = preview.title;
       previewMetadata.textContent = preview.fragment || "";
       previewMetadata.hidden = !preview.fragment;
@@ -1121,7 +1134,9 @@
       if (activeAnnotationButton && activeAnnotationButton !== button) {
         setAnnotationExpanded(activeAnnotationButton, false);
       }
+      if (activeFootnoteButton) setFootnoteExpanded(activeFootnoteButton, false);
       activeAnnotationButton = button;
+      activeFootnoteButton = null;
       setAnnotationExpanded(button, true);
       previewTitle.textContent = annotationTarget(button);
       previewMetadata.textContent = localized("Link Annotation");
@@ -1211,6 +1226,7 @@
           target.scrollIntoView({ block: "center", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
           target.focus({ preventScroll: true });
         }
+        hidePopover();
         event.preventDefault();
         return;
       }

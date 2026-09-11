@@ -26,22 +26,14 @@ export function syntaxToken(source: string, from: number, to: number, exposed: b
 }
 
 interface TokenFrame {
-  width: number;
-  height: number;
   opacity: number;
-  marginInlineStart: number;
   open: boolean;
-  multiline: boolean;
 }
 
 interface TokenTransition {
   animation: Animation;
-  fromWidth: number;
-  toWidth: number;
   fromOpacity: number;
   toOpacity: number;
-  fromMarginInlineStart: number;
-  toMarginInlineStart: number;
 }
 
 interface FrontmatterFrame {
@@ -114,12 +106,8 @@ export const syntaxPresentation = ViewPlugin.fromClass(class {
       const frame = this.frames.get(key);
       const progress = transition.animation.effect?.getComputedTiming().progress;
       if (frame && typeof progress === "number") {
-        frame.width = transition.fromWidth
-          + (transition.toWidth - transition.fromWidth) * progress;
         frame.opacity = transition.fromOpacity
           + (transition.toOpacity - transition.fromOpacity) * progress;
-        frame.marginInlineStart = transition.fromMarginInlineStart
-          + (transition.toMarginInlineStart - transition.fromMarginInlineStart) * progress;
       }
     }
     for (const [key, transition] of this.frontmatterTransitions) {
@@ -162,9 +150,7 @@ export const syntaxPresentation = ViewPlugin.fromClass(class {
           const key = node.dataset.syntaxKey!;
           const open = node.dataset.syntaxOpen === "true";
           const width = node.getBoundingClientRect().width;
-          const height = node.getBoundingClientRect().height;
           const line = node.closest<HTMLElement>(".cm-line");
-          const multiline = height > parseFloat(getComputedStyle(node).lineHeight) + 1;
           let borrow = open && this.borrowed.has(key);
           if (borrow && node.getBoundingClientRect().left
             < this.view.scrollDOM.getBoundingClientRect().left + 4) borrow = false;
@@ -186,12 +172,19 @@ export const syntaxPresentation = ViewPlugin.fromClass(class {
               && prefixNeedsMargin(textWidth, width, measure,
                 node.getBoundingClientRect().left - this.view.scrollDOM.getBoundingClientRect().left);
           }
-          const parentStyle = getComputedStyle(node.parentElement!);
           const style = getComputedStyle(node);
-          return {node, key, open, width, height, multiline, borrow,
+          return {
+            node,
+            key,
+            open,
+            width,
+            borrow,
             opacity: Number.parseFloat(style.opacity) || 0,
-            marginInlineStart: borrow ? -width : 0,
-            fontSize: parentStyle.fontSize, lineHeight: parentStyle.lineHeight};
+            primaryColor: style.getPropertyValue("--scholium-color-primary-text").trim()
+              || style.color,
+            secondaryColor: style.getPropertyValue("--scholium-color-secondary-text").trim()
+              || style.color,
+          };
         })}),
       write: ({tokens, objects, cursor, frontmatter}: {
         tokens: readonly {
@@ -199,13 +192,10 @@ export const syntaxPresentation = ViewPlugin.fromClass(class {
           key: string;
           open: boolean;
           width: number;
-          height: number;
-          multiline: boolean;
           borrow: boolean;
           opacity: number;
-          marginInlineStart: number;
-          fontSize: string;
-          lineHeight: string;
+          primaryColor: string;
+          secondaryColor: string;
         }[];
         objects: readonly HTMLElement[];
         cursor: LiveCursorGeometry | null;
@@ -245,7 +235,9 @@ export const syntaxPresentation = ViewPlugin.fromClass(class {
         }
         this.frontmatterFrames = nextFrontmatter;
         const next = new Map<string, TokenFrame>();
-        for (const {node, key, open, width, height, multiline, borrow, fontSize, lineHeight} of tokens) {
+        for (const {
+          node, key, open, width, borrow, primaryColor, secondaryColor,
+        } of tokens) {
           const previous = this.frames.get(key);
           if (borrow) this.borrowed.add(key); else this.borrowed.delete(key);
           const placement = this.placements.get(key);
@@ -260,46 +252,22 @@ export const syntaxPresentation = ViewPlugin.fromClass(class {
             }
           }
           const targetOpacity = open ? 1 : 0;
-          const targetMarginInlineStart = borrow ? -width : 0;
           next.set(key, {
             open,
-            width,
-            height,
             opacity: targetOpacity,
-            marginInlineStart: targetMarginInlineStart,
-            multiline,
           });
-          if (!animate || !previous || previous.open === open || previous.multiline || multiline || typeof node.animate !== "function") continue;
-          const motionHeight = open ? height : previous.height;
+          if (!animate || !previous || previous.open === open || typeof node.animate !== "function") continue;
+          const fromColor = previous.open ? secondaryColor : primaryColor;
+          const toColor = open ? secondaryColor : primaryColor;
           const animation = node.animate([
-            {
-              width: `${previous.width}px`,
-              height: `${motionHeight}px`,
-              fontSize,
-              lineHeight,
-              whiteSpace: "pre",
-              marginInlineStart: `${previous.marginInlineStart}px`,
-              opacity: previous.opacity,
-            },
-            {
-              width: `${width}px`,
-              height: `${motionHeight}px`,
-              fontSize,
-              lineHeight,
-              whiteSpace: "pre",
-              marginInlineStart: `${targetMarginInlineStart}px`,
-              opacity: targetOpacity,
-            },
+            {opacity: previous.opacity, color: fromColor},
+            {opacity: targetOpacity, color: toColor},
           ], {duration: 120, easing: "cubic-bezier(.2, 0, .2, 1)", fill: "both"});
           this.animations.push(animation);
           this.transitions.set(key, {
             animation,
-            fromWidth: previous.width,
-            toWidth: width,
             fromOpacity: previous.opacity,
             toOpacity: targetOpacity,
-            fromMarginInlineStart: previous.marginInlineStart,
-            toMarginInlineStart: targetMarginInlineStart,
           });
         }
         this.frames = next;

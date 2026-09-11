@@ -14073,9 +14073,7 @@
         const frame = this.frames.get(key);
         const progress = transition.animation.effect?.getComputedTiming().progress;
         if (frame && typeof progress === "number") {
-          frame.width = transition.fromWidth + (transition.toWidth - transition.fromWidth) * progress;
           frame.opacity = transition.fromOpacity + (transition.toOpacity - transition.fromOpacity) * progress;
-          frame.marginInlineStart = transition.fromMarginInlineStart + (transition.toMarginInlineStart - transition.fromMarginInlineStart) * progress;
         }
       }
       for (const [key, transition] of this.frontmatterTransitions) {
@@ -14116,9 +14114,7 @@
             const key = node.dataset.syntaxKey;
             const open = node.dataset.syntaxOpen === "true";
             const width = node.getBoundingClientRect().width;
-            const height = node.getBoundingClientRect().height;
             const line = node.closest(".cm-line");
-            const multiline = height > parseFloat(getComputedStyle(node).lineHeight) + 1;
             let borrow = open && this.borrowed.has(key);
             if (borrow && node.getBoundingClientRect().left < this.view.scrollDOM.getBoundingClientRect().left + 4) borrow = false;
             if (open && !this.frames.get(key)?.open && node.dataset.syntaxKind === "prefix" && line && getComputedStyle(line).direction === "ltr") {
@@ -14140,20 +14136,16 @@
                 node.getBoundingClientRect().left - this.view.scrollDOM.getBoundingClientRect().left
               );
             }
-            const parentStyle = getComputedStyle(node.parentElement);
             const style = getComputedStyle(node);
             return {
               node,
               key,
               open,
               width,
-              height,
-              multiline,
               borrow,
               opacity: Number.parseFloat(style.opacity) || 0,
-              marginInlineStart: borrow ? -width : 0,
-              fontSize: parentStyle.fontSize,
-              lineHeight: parentStyle.lineHeight
+              primaryColor: style.getPropertyValue("--scholium-color-primary-text").trim() || style.color,
+              secondaryColor: style.getPropertyValue("--scholium-color-secondary-text").trim() || style.color
             };
           })
         }),
@@ -14189,7 +14181,15 @@
           }
           this.frontmatterFrames = nextFrontmatter;
           const next = /* @__PURE__ */ new Map();
-          for (const { node, key, open, width, height, multiline, borrow, fontSize, lineHeight } of tokens) {
+          for (const {
+            node,
+            key,
+            open,
+            width,
+            borrow,
+            primaryColor,
+            secondaryColor
+          } of tokens) {
             const previous = this.frames.get(key);
             if (borrow) this.borrowed.add(key);
             else this.borrowed.delete(key);
@@ -14206,46 +14206,22 @@
               }
             }
             const targetOpacity = open ? 1 : 0;
-            const targetMarginInlineStart = borrow ? -width : 0;
             next.set(key, {
               open,
-              width,
-              height,
-              opacity: targetOpacity,
-              marginInlineStart: targetMarginInlineStart,
-              multiline
+              opacity: targetOpacity
             });
-            if (!animate || !previous || previous.open === open || previous.multiline || multiline || typeof node.animate !== "function") continue;
-            const motionHeight = open ? height : previous.height;
+            if (!animate || !previous || previous.open === open || typeof node.animate !== "function") continue;
+            const fromColor = previous.open ? secondaryColor : primaryColor;
+            const toColor = open ? secondaryColor : primaryColor;
             const animation = node.animate([
-              {
-                width: `${previous.width}px`,
-                height: `${motionHeight}px`,
-                fontSize,
-                lineHeight,
-                whiteSpace: "pre",
-                marginInlineStart: `${previous.marginInlineStart}px`,
-                opacity: previous.opacity
-              },
-              {
-                width: `${width}px`,
-                height: `${motionHeight}px`,
-                fontSize,
-                lineHeight,
-                whiteSpace: "pre",
-                marginInlineStart: `${targetMarginInlineStart}px`,
-                opacity: targetOpacity
-              }
+              { opacity: previous.opacity, color: fromColor },
+              { opacity: targetOpacity, color: toColor }
             ], { duration: 120, easing: "cubic-bezier(.2, 0, .2, 1)", fill: "both" });
             this.animations.push(animation);
             this.transitions.set(key, {
               animation,
-              fromWidth: previous.width,
-              toWidth: width,
               fromOpacity: previous.opacity,
-              toOpacity: targetOpacity,
-              fromMarginInlineStart: previous.marginInlineStart,
-              toMarginInlineStart: targetMarginInlineStart
+              toOpacity: targetOpacity
             });
           }
           this.frames = next;
@@ -32544,7 +32520,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     heading2.setAttribute("aria-level", "2");
     const orientationTitleBecomesBody = parts.definition.identifier === "orient" && parts.title.length > 0 && parts.body.trim().length === 0;
     const role = document2.createElement("span");
-    role.className = "scholium-callout-role";
+    role.className = "scholium-callout-role scholium-callout-role-context";
     role.dir = "auto";
     role.title = parts.definition.meaning;
     role.textContent = parts.definition.label;
@@ -32554,6 +32530,12 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       title.className = "scholium-callout-title";
       title.dir = "auto";
       appendInlineMarkdown(parts.title, title, optionsAt(options, parts.titleFrom));
+      heading2.append(title);
+    } else {
+      const title = document2.createElement("span");
+      title.className = "scholium-callout-title scholium-callout-default-title";
+      title.dir = "auto";
+      title.textContent = parts.definition.label;
       heading2.append(title);
     }
     headingContainer.append(heading2);
@@ -33647,6 +33629,391 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     };
   }
 
+  // live-projection-index.ts
+  function codeBlockActivationRange(doc2, block) {
+    if (block.fenced) return { from: block.from, to: block.to };
+    const line = doc2.lineAt(block.from);
+    const prefix = doc2.sliceString(line.from, block.from);
+    return /^[ \t]*$/.test(prefix) ? { from: line.from, to: block.to } : { from: block.from, to: block.to };
+  }
+  function codeBlockSourceIndentation(doc2, block) {
+    if (block.fenced) return 0;
+    const line = doc2.lineAt(block.from);
+    const prefix = doc2.sliceString(line.from, block.from);
+    return /^[ \t]*$/.test(prefix) ? prefix.length : 0;
+  }
+  function indexedListPrefixRanges(doc2, syntax) {
+    const contentStarts = /* @__PURE__ */ new Map();
+    for (const block of syntax.blocks) {
+      if (block.kind !== "paragraph" || block.parent?.kind !== "listItem") continue;
+      const key = rangeKey(block.parent.from, block.parent.to);
+      contentStarts.set(key, Math.min(contentStarts.get(key) ?? block.from, block.from));
+    }
+    return syntax.blocks.filter((block) => block.kind === "listItem" && block.markerRanges.length > 0).map((block) => {
+      const line = doc2.lineAt(block.from);
+      const markerFrom = block.markerRanges.reduce(
+        (minimum, marker) => Math.min(minimum, marker.from),
+        line.to
+      );
+      const markerTo = block.markerRanges.reduce(
+        (maximum, marker) => Math.max(maximum, marker.to),
+        block.from
+      );
+      let from = markerFrom;
+      while (from > line.from) {
+        const character = doc2.sliceString(from - 1, from);
+        if (character !== " " && character !== "	") break;
+        from -= 1;
+      }
+      const contentStart = contentStarts.get(rangeKey(block.from, block.to));
+      let to = contentStart !== void 0 && contentStart >= line.from && contentStart <= line.to ? contentStart : markerTo;
+      while (to < line.to) {
+        const character = doc2.sliceString(to, to + 1);
+        if (character !== " " && character !== "	") break;
+        to += 1;
+      }
+      return {
+        from,
+        to
+      };
+    }).filter((range) => range.to > range.from);
+  }
+  function indexedTaskItemRanges(syntax) {
+    return syntax.blocks.flatMap((block) => {
+      if (block.kind !== "listItem" || block.taskMarkerRange === null) return [];
+      return [{
+        from: block.from,
+        to: block.to,
+        markerFrom: block.taskMarkerRange.from,
+        markerTo: block.taskMarkerRange.to
+      }];
+    });
+  }
+  function indexedTablePositionRanges(doc2, tables) {
+    const ranges = [];
+    for (const table of tables) {
+      const rows = [table.header, ...table.body];
+      const rowCount = rows.length;
+      const columnCount = table.header.length;
+      rows.forEach((cells, row) => {
+        const first = cells[0];
+        if (!first) return;
+        const line = doc2.lineAt(first.sourceOffset);
+        cells.forEach((cell, column) => {
+          const next = cells[column + 1];
+          ranges.push({
+            from: column === 0 ? line.from : cell.sourceOffset,
+            to: next?.sourceOffset ?? line.to + 1,
+            position: { row, column, rowCount, columnCount }
+          });
+        });
+      });
+    }
+    return immutableProjectionRanges(ranges);
+  }
+  function calloutRangeIncludingPendingQuoteLines(doc2, range) {
+    let line = doc2.lineAt(range.to);
+    let to = range.to;
+    if (range.to > line.from && /^\s*>[ \t]*$/.test(line.text)) {
+      to = line.to;
+    }
+    while (line.number < doc2.lines) {
+      const next = doc2.line(line.number + 1);
+      if (!/^\s*>[ \t]*$/.test(next.text)) break;
+      to = next.to;
+      line = next;
+    }
+    return { from: range.from, to };
+  }
+  function finalizedLiveProjectionIndex(doc2, topologyIdentity, syntax, excluded, codeBlocks, inlineRanges, listPrefixRanges, taskItemRanges, footnotes, tables, callouts, mathExpressions, frontmatterRange, hasUnclosedFrontmatter) {
+    const immutableExcluded = immutableProjectionRanges(excluded);
+    const immutableCodeBlocks = immutableProjectionRanges(codeBlocks);
+    const immutableFrontmatter = frontmatterRange === null ? null : Object.freeze({ ...frontmatterRange });
+    const immutableTables = Object.freeze([...tables]);
+    const immutableCallouts = Object.freeze([...callouts]);
+    const immutableMathExpressions = Object.freeze([...mathExpressions]);
+    const footnoteRanges = immutableProjectionRanges(
+      footnotes.references.map(({ from, to }) => ({ from, to }))
+    );
+    const immutableCommandProtectedRanges = commandProtectionRanges(
+      immutableExcluded,
+      immutableFrontmatter ?? void 0
+    );
+    const immutableStructuralRanges = immutableProjectionRanges([
+      ...immutableTables,
+      ...immutableCallouts,
+      ...footnotes.definitions,
+      ...footnotes.references,
+      // Both inline and display mathematics cache source content for KaTeX.
+      // Editing inside either expression must rebuild that presentation even
+      // when the surrounding Markdown topology is otherwise unchanged.
+      ...immutableMathExpressions
+    ].map(({ from, to }) => ({ from, to })));
+    return Object.freeze({
+      topologyIdentity,
+      syntax,
+      literals: Object.freeze({
+        excluded: immutableExcluded,
+        codeBlocks: immutableCodeBlocks
+      }),
+      inlineRanges: immutableProjectionRanges(inlineRanges),
+      listPrefixRanges: immutableProjectionRanges(listPrefixRanges),
+      taskItemRanges: immutableProjectionRanges(taskItemRanges),
+      footnotes,
+      tables: immutableTables,
+      callouts: immutableCallouts,
+      mathExpressions: immutableMathExpressions,
+      frontmatterRange: immutableFrontmatter,
+      commandProtectedRanges: immutableCommandProtectedRanges,
+      structuralRanges: immutableStructuralRanges,
+      mutationSensitiveRanges: immutableProjectionRanges([
+        ...immutableCommandProtectedRanges,
+        ...immutableStructuralRanges
+      ]),
+      blockRanges: immutableProjectionRanges([
+        // Headings are source-visible syntax projections rather than widgets,
+        // but vertical traversal still needs their exact block boundary so a
+        // caret can enter the heading from the blank line below it.
+        ...syntax.blocks.filter(({ kind }) => kind === "heading").map(({ from, to }) => ({ from, to, kind: "heading" })),
+        ...immutableTables.map(({ from, to }) => ({ from, to, kind: "table" })),
+        ...immutableCallouts.map(({ from, to }) => ({ from, to, kind: "callout" })),
+        ...immutableMathExpressions.flatMap(({ from, to, kind }) => kind === "display" ? [{ from, to, kind: "math" }] : [])
+      ]),
+      footnoteRanges,
+      tablePositionRanges: indexedTablePositionRanges(doc2, immutableTables),
+      hasUnclosedFrontmatter
+    });
+  }
+  function mathExpressionsFromCatalog(state, syntax) {
+    const expressions = [];
+    for (const inline of syntax.inlines.filter((candidate) => candidate.kind === "inlineMath")) {
+      const contentRange = inline.visibleRanges[0];
+      const opening = inline.markerRanges[0];
+      if (!contentRange || !opening) continue;
+      const sourceContent = state.doc.sliceString(contentRange.from, contentRange.to);
+      const content2 = sourceContent.length > 2 && /^\s/.test(sourceContent) && /\s$/.test(sourceContent) && /\S/.test(sourceContent) ? sourceContent.slice(1, -1) : sourceContent;
+      expressions.push({
+        kind: "inline",
+        content: content2,
+        delimiterLength: opening.to - opening.from,
+        from: inline.from,
+        to: inline.to,
+        contentFrom: contentRange.from,
+        contentTo: contentRange.to
+      });
+    }
+    for (const block of syntax.blocks.filter((candidate) => candidate.kind === "displayMath")) {
+      const opening = block.markerRanges[0];
+      const closing2 = block.markerRanges.at(-1);
+      if (!opening || !closing2 || opening === closing2) continue;
+      const openingLine = state.doc.lineAt(opening.from);
+      const closingLine = state.doc.lineAt(closing2.from);
+      const contentFrom = openingLine.number < state.doc.lines ? state.doc.line(openingLine.number + 1).from : openingLine.to;
+      const contentTo = closingLine.from;
+      expressions.push({
+        kind: "display",
+        content: state.doc.sliceString(contentFrom, contentTo).replace(/^[\r\n]+|[\r\n]+$/g, ""),
+        delimiterLength: opening.to - opening.from,
+        from: block.from,
+        to: block.to,
+        contentFrom,
+        contentTo
+      });
+    }
+    return expressions.sort((left, right) => left.from - right.from || left.to - right.to);
+  }
+  function buildLiveProjectionIndex(state, dialect, recordMetric) {
+    const startedAt = performance.now();
+    const tree = ensureSyntaxTree(state, state.doc.length) ?? syntaxTree(state);
+    const syntax = semanticProjectionRanges(
+      state,
+      [{ from: 0, to: state.doc.length }],
+      0,
+      tree
+    );
+    const codeBlocks = syntax.blocks.filter((block) => block.kind === "code").map((block) => ({
+      from: block.from,
+      to: block.to,
+      fenced: block.nodeName === "FencedCode",
+      markerRanges: block.markerRanges
+    }));
+    const excluded = [
+      ...codeBlocks,
+      ...syntax.blocks.filter((block) => block.kind === "html" || block.kind === "comment").map(({ from, to }) => ({ from, to })),
+      ...syntax.inlines.filter((inline) => inline.kind === "code").map(({ from, to }) => ({ from, to })),
+      ...syntax.literals.map(({ from, to }) => ({ from, to }))
+    ];
+    const inlineRanges = syntax.inlines.map(({ from, to }) => ({ from, to }));
+    const namedDefinitionStarts = new Set(syntax.blocks.filter((block) => block.kind === "footnoteDefinition").map((block) => block.from));
+    const inlineDefinitionRanges = /* @__PURE__ */ new Set();
+    const referenceRanges = new Set(syntax.inlines.filter((inline) => inline.kind === "footnoteReference" || inline.kind === "inlineFootnote").map((inline) => rangeKey(inline.from, inline.to)));
+    for (const inline of syntax.inlines.filter((candidate) => candidate.kind === "inlineFootnote")) {
+      inlineDefinitionRanges.add(rangeKey(inline.from, inline.to));
+    }
+    const tableRanges = syntax.blocks.filter((block) => block.kind === "table").map(({ from, to }) => ({ from, to }));
+    const calloutRanges = syntax.blocks.filter((block) => block.kind === "callout").map(({ from, to }) => calloutRangeIncludingPendingQuoteLines(state.doc, { from, to }));
+    const yamlBoundary = frontmatterBoundary(state.doc);
+    const yamlBodyFrom = yamlBoundary.endLine === 0 ? 0 : yamlBoundary.endLine < state.doc.lines ? state.doc.line(yamlBoundary.endLine + 1).from : state.doc.line(yamlBoundary.endLine).to;
+    const frontmatterRange = yamlBodyFrom > 0 ? { from: 0, to: yamlBodyFrom } : null;
+    const footnoteExcluded = [...excluded];
+    if (frontmatterRange) footnoteExcluded.push(frontmatterRange);
+    let completeSource = null;
+    const source = () => completeSource ??= state.doc.toString();
+    let footnotes = { definitions: [], references: [] };
+    if (namedDefinitionStarts.size > 0 || inlineDefinitionRanges.size > 0 || referenceRanges.size > 0) {
+      const projectedFootnotes = footnotePresentation(
+        source(),
+        footnoteExcluded,
+        dialect?.footnotes
+      );
+      footnotes = {
+        definitions: projectedFootnotes.definitions.filter((definition) => definition.isInline ? inlineDefinitionRanges.has(rangeKey(definition.from, definition.to)) : namedDefinitionStarts.has(definition.from)),
+        references: projectedFootnotes.references.filter((reference) => referenceRanges.has(rangeKey(reference.from, reference.to)))
+      };
+    }
+    const tables = tableRanges.flatMap((range) => {
+      const presentation = tablePresentation(source(), range.from, range.to);
+      return presentation ? [presentation] : [];
+    });
+    const callouts = calloutRanges.map((range) => ({
+      ...range,
+      source: state.doc.sliceString(range.from, range.to)
+    }));
+    const mathExpressions = mathExpressionsFromCatalog(state, syntax);
+    const index = finalizedLiveProjectionIndex(
+      state.doc,
+      Object.freeze({}),
+      syntax,
+      excluded,
+      codeBlocks,
+      inlineRanges,
+      indexedListPrefixRanges(state.doc, syntax),
+      indexedTaskItemRanges(syntax),
+      footnotes,
+      tables,
+      callouts,
+      mathExpressions,
+      frontmatterRange,
+      yamlBoundary.unclosed
+    );
+    recordMetric("projection-index", startedAt, {
+      documentLength: state.doc.length,
+      literalCount: excluded.length,
+      tableCount: tables.length,
+      calloutCount: callouts.length,
+      footnoteCount: footnotes.definitions.length + footnotes.references.length
+    });
+    return index;
+  }
+  function mapLiveProjectionIndex(index, transaction) {
+    const map = (position) => transaction.changes.mapPos(position);
+    const syntax = mapSemanticProjectionRanges(index.syntax, transaction.state, map);
+    const footnotes = {
+      definitions: index.footnotes.definitions.map((definition) => ({
+        ...definition,
+        from: map(definition.from),
+        to: map(definition.to),
+        contentFrom: map(definition.contentFrom)
+      })),
+      references: index.footnotes.references.map((reference) => ({
+        ...reference,
+        from: map(reference.from),
+        to: map(reference.to),
+        definitionFrom: reference.definitionFrom === null ? null : map(reference.definitionFrom),
+        definitionContentFrom: reference.definitionContentFrom === null ? null : map(reference.definitionContentFrom)
+      }))
+    };
+    const tables = index.tables.map((presentation) => ({
+      ...presentation,
+      from: map(presentation.from),
+      to: map(presentation.to),
+      header: presentation.header.map((cell) => ({ ...cell, sourceOffset: map(cell.sourceOffset) })),
+      body: presentation.body.map((row) => row.map((cell) => ({ ...cell, sourceOffset: map(cell.sourceOffset) })))
+    }));
+    const callouts = index.callouts.map((presentation) => ({
+      ...presentation,
+      from: map(presentation.from),
+      to: map(presentation.to)
+    }));
+    const mathExpressions = index.mathExpressions.map((expression) => ({
+      ...expression,
+      from: map(expression.from),
+      to: map(expression.to),
+      contentFrom: map(expression.contentFrom),
+      contentTo: map(expression.contentTo)
+    }));
+    const frontmatterRange = index.frontmatterRange === null ? null : {
+      from: map(index.frontmatterRange.from),
+      to: map(index.frontmatterRange.to)
+    };
+    return finalizedLiveProjectionIndex(
+      transaction.state.doc,
+      index.topologyIdentity,
+      syntax,
+      index.literals.excluded.map((range) => ({ from: map(range.from), to: map(range.to) })),
+      index.literals.codeBlocks.map((range) => ({
+        from: map(range.from),
+        to: map(range.to),
+        fenced: range.fenced,
+        markerRanges: range.markerRanges.map((marker) => ({
+          from: map(marker.from),
+          to: map(marker.to)
+        }))
+      })),
+      index.inlineRanges.map((range) => ({ from: map(range.from), to: map(range.to) })),
+      index.listPrefixRanges.map((range) => ({ from: map(range.from), to: map(range.to) })),
+      index.taskItemRanges.map((range) => ({
+        from: map(range.from),
+        to: map(range.to),
+        markerFrom: map(range.markerFrom),
+        markerTo: map(range.markerTo)
+      })),
+      footnotes,
+      tables,
+      callouts,
+      mathExpressions,
+      frontmatterRange,
+      index.hasUnclosedFrontmatter
+    );
+  }
+  function createLiveProjectionIndexController(options) {
+    const build = (state) => buildLiveProjectionIndex(
+      state,
+      options.editingDialect(),
+      options.recordMetric
+    );
+    const field = StateField.define({
+      create: build,
+      update(previous, transaction) {
+        if (!transaction.docChanged) {
+          return transactionChangedSyntaxTree(transaction) ? build(transaction.state) : previous;
+        }
+        const structuralMarker = /[\r\n`~<>%$\[\]!*_|^:#=]/;
+        if (previous.mutationSensitiveRanges.length === 0 && !transactionMayCreateProjection(transaction, structuralMarker)) {
+          return mapLiveProjectionIndex(previous, transaction);
+        }
+        return transactionCanMapProjectionTopology(
+          transaction,
+          structuralMarker,
+          previous.mutationSensitiveRanges,
+          previous.syntax
+        ) ? mapLiveProjectionIndex(previous, transaction) : build(transaction.state);
+      }
+    });
+    const index = (state) => state.field(field, false) ?? build(state);
+    return {
+      extension: field,
+      index,
+      topologyWasMapped(transaction) {
+        return index(transaction.startState).topologyIdentity === index(transaction.state).topologyIdentity;
+      },
+      visibleInlineMathExpressions(state, coveredRanges, currentIndex) {
+        if (!options.editingDialect() || coveredRanges.length === 0) return [];
+        return currentIndex.mathExpressions.filter((expression) => expression.kind === "inline" && coveredRanges.some((range) => range.from <= expression.from && range.to >= expression.to) && (!currentIndex.frontmatterRange || expression.from >= currentIndex.frontmatterRange.to) && expression.to <= state.doc.length);
+      }
+    };
+  }
+
   // heading-accessibility.ts
   function bodyHeadingAccessibilityLevel(markdownLevel) {
     return Math.min(6, Math.max(1, markdownLevel) + 1);
@@ -33657,10 +34024,21 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     if (!block.fenced) return false;
     return block.markerRanges.some((range) => doc2.lineAt(range.from).from === lineFrom);
   }
+  function authoredQuoteDepth(text, fallback) {
+    let index = 0;
+    let depth2 = 0;
+    while (index < text.length && depth2 < 3) {
+      while (index < text.length && (text[index] === " " || text[index] === "	")) index += 1;
+      if (text[index] !== ">") break;
+      depth2 += 1;
+      index += 1;
+    }
+    return Math.max(1, Math.min(depth2 || fallback, 3));
+  }
   function affectedProjectionAndCodeBlockRanges(indexController, state, previousSelections, nextSelections) {
     const changedCodeBlocks = indexController.index(state).literals.codeBlocks.filter((block) => {
-      const wasActive = previousSelections.some((selection) => selectionActivatesSyntax(selection, block));
-      const isActive = nextSelections.some((selection) => selectionActivatesSyntax(selection, block));
+      const wasActive = previousSelections.some((selection) => selectionActivatesSyntax(selection, codeBlockActivationRange(state.doc, block)));
+      const isActive = nextSelections.some((selection) => selectionActivatesSyntax(selection, codeBlockActivationRange(state.doc, block)));
       return wasActive !== isActive;
     });
     return immutableProjectionRanges([
@@ -33730,7 +34108,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         line.from,
         lineQueryTo
       )[0] ?? null;
-      const codeBlockActive = codeBlock !== null && selection.selection(state).ranges.some((range) => selectionActivatesSyntax(range, codeBlock));
+      const codeBlockActive = codeBlock !== null && selection.selection(state).ranges.some((range) => selectionActivatesSyntax(range, codeBlockActivationRange(state.doc, codeBlock)));
       const heading2 = blocks.find((block) => block.kind === "heading") ?? null;
       const headingLevel = heading2?.headingLevel ?? null;
       const headingMarkers = heading2?.markerRanges.filter((range) => range.from < lineQueryTo && range.to > line.from) ?? [];
@@ -33834,7 +34212,11 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
           if (line.from <= paragraph.from) classes.add("cm-live-paragraph-start");
           if (line.to >= paragraph.to) classes.add("cm-live-paragraph-end");
         }
-        if (quote) classes.add("cm-live-quote");
+        if (quote) {
+          classes.add("cm-live-quote");
+          const quoteDepth = authoredQuoteDepth(line.text, quoteMarkers.length);
+          classes.add(`cm-live-quote-depth-${quoteDepth}`);
+        }
         if (rule && outsideFrontmatter && !active) classes.add("cm-live-rule");
         if (list && listMarker) {
           classes.add("cm-live-list");
@@ -34476,12 +34858,20 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
           label.textContent = `${this.label} `;
           root.append(label);
         }
+        if (this.label && this.title.trim().length === 0) {
+          const fallbackTitle = document.createElement("span");
+          fallbackTitle.className = "scholium-callout-title scholium-callout-default-title";
+          fallbackTitle.textContent = this.label;
+          root.append(fallbackTitle);
+        }
         return root;
       }
       updateDOM(root) {
         const button = root.querySelector("button");
         const label = root.querySelector(".cm-live-callout-role-label");
-        if (!!button !== this.foldable || !!label !== !!this.label) return false;
+        const fallbackTitle = root.querySelector(".scholium-callout-default-title");
+        const needsFallbackTitle = this.label.length > 0 && this.title.trim().length === 0;
+        if (!!button !== this.foldable || !!label !== !!this.label || !!fallbackTitle !== needsFallbackTitle) return false;
         root.dataset.calloutFrom = String(this.from);
         if (button) {
           button.textContent = this.collapsed ? "\u25B8" : "\u25BE";
@@ -34489,6 +34879,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
           button.setAttribute("aria-label", `${localized("Callout")}: ${this.title || this.label}`);
         }
         if (label) label.textContent = `${this.label} `;
+        if (fallbackTitle) fallbackTitle.textContent = this.label;
         return true;
       }
       ignoreEvent() {
@@ -34781,12 +35172,26 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       const atomicDecorationRanges = [];
       const projectionRanges = [];
       const active = (from, to) => options.selection.selection(state).ranges.some((range) => selectionActivatesSyntax(range, { from, to }));
+      for (const definition of presentation.definitions) {
+        if (definition.isInline) continue;
+        const markerTo = Math.min(definition.to, definition.contentFrom);
+        if (markerTo > definition.from) {
+          decorationRanges.push(
+            Decoration.mark({ class: "cm-live-footnote-source-marker" }).range(definition.from, markerTo)
+          );
+        }
+      }
       for (const reference of presentation.references) {
         const containedByDefinition = presentation.definitions.some((definition) => !definition.isInline && definition.from <= reference.from && definition.to >= reference.to);
         const trailing = trailingFootnotePunctuation(state, reference.to);
         const projectionTo = reference.to + trailing.length;
         projectionRanges.push({ from: reference.from, to: projectionTo });
-        if (containedByDefinition || active(reference.from, projectionTo)) continue;
+        if (containedByDefinition || active(reference.from, projectionTo)) {
+          decorationRanges.push(
+            Decoration.mark({ class: "cm-live-footnote-source-marker" }).range(reference.from, reference.to)
+          );
+          continue;
+        }
         const replacement = Decoration.replace({
           widget: new FootnoteReferenceWidget(reference, trailing)
         }).range(reference.from, projectionTo);
@@ -35276,379 +35681,6 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
   }, {
     decorations: (value) => value.decorations
   });
-
-  // live-projection-index.ts
-  function indexedListPrefixRanges(doc2, syntax) {
-    const contentStarts = /* @__PURE__ */ new Map();
-    for (const block of syntax.blocks) {
-      if (block.kind !== "paragraph" || block.parent?.kind !== "listItem") continue;
-      const key = rangeKey(block.parent.from, block.parent.to);
-      contentStarts.set(key, Math.min(contentStarts.get(key) ?? block.from, block.from));
-    }
-    return syntax.blocks.filter((block) => block.kind === "listItem" && block.markerRanges.length > 0).map((block) => {
-      const line = doc2.lineAt(block.from);
-      const markerFrom = block.markerRanges.reduce(
-        (minimum, marker) => Math.min(minimum, marker.from),
-        line.to
-      );
-      const markerTo = block.markerRanges.reduce(
-        (maximum, marker) => Math.max(maximum, marker.to),
-        block.from
-      );
-      let from = markerFrom;
-      while (from > line.from) {
-        const character = doc2.sliceString(from - 1, from);
-        if (character !== " " && character !== "	") break;
-        from -= 1;
-      }
-      const contentStart = contentStarts.get(rangeKey(block.from, block.to));
-      let to = contentStart !== void 0 && contentStart >= line.from && contentStart <= line.to ? contentStart : markerTo;
-      while (to < line.to) {
-        const character = doc2.sliceString(to, to + 1);
-        if (character !== " " && character !== "	") break;
-        to += 1;
-      }
-      return {
-        from,
-        to
-      };
-    }).filter((range) => range.to > range.from);
-  }
-  function indexedTaskItemRanges(syntax) {
-    return syntax.blocks.flatMap((block) => {
-      if (block.kind !== "listItem" || block.taskMarkerRange === null) return [];
-      return [{
-        from: block.from,
-        to: block.to,
-        markerFrom: block.taskMarkerRange.from,
-        markerTo: block.taskMarkerRange.to
-      }];
-    });
-  }
-  function indexedTablePositionRanges(doc2, tables) {
-    const ranges = [];
-    for (const table of tables) {
-      const rows = [table.header, ...table.body];
-      const rowCount = rows.length;
-      const columnCount = table.header.length;
-      rows.forEach((cells, row) => {
-        const first = cells[0];
-        if (!first) return;
-        const line = doc2.lineAt(first.sourceOffset);
-        cells.forEach((cell, column) => {
-          const next = cells[column + 1];
-          ranges.push({
-            from: column === 0 ? line.from : cell.sourceOffset,
-            to: next?.sourceOffset ?? line.to + 1,
-            position: { row, column, rowCount, columnCount }
-          });
-        });
-      });
-    }
-    return immutableProjectionRanges(ranges);
-  }
-  function calloutRangeIncludingPendingQuoteLines(doc2, range) {
-    let line = doc2.lineAt(range.to);
-    let to = range.to;
-    if (range.to > line.from && /^\s*>[ \t]*$/.test(line.text)) {
-      to = line.to;
-    }
-    while (line.number < doc2.lines) {
-      const next = doc2.line(line.number + 1);
-      if (!/^\s*>[ \t]*$/.test(next.text)) break;
-      to = next.to;
-      line = next;
-    }
-    return { from: range.from, to };
-  }
-  function finalizedLiveProjectionIndex(doc2, topologyIdentity, syntax, excluded, codeBlocks, inlineRanges, listPrefixRanges, taskItemRanges, footnotes, tables, callouts, mathExpressions, frontmatterRange, hasUnclosedFrontmatter) {
-    const immutableExcluded = immutableProjectionRanges(excluded);
-    const immutableCodeBlocks = immutableProjectionRanges(codeBlocks);
-    const immutableFrontmatter = frontmatterRange === null ? null : Object.freeze({ ...frontmatterRange });
-    const immutableTables = Object.freeze([...tables]);
-    const immutableCallouts = Object.freeze([...callouts]);
-    const immutableMathExpressions = Object.freeze([...mathExpressions]);
-    const footnoteRanges = immutableProjectionRanges(
-      footnotes.references.map(({ from, to }) => ({ from, to }))
-    );
-    const immutableCommandProtectedRanges = commandProtectionRanges(
-      immutableExcluded,
-      immutableFrontmatter ?? void 0
-    );
-    const immutableStructuralRanges = immutableProjectionRanges([
-      ...immutableTables,
-      ...immutableCallouts,
-      ...footnotes.definitions,
-      ...footnotes.references,
-      // Both inline and display mathematics cache source content for KaTeX.
-      // Editing inside either expression must rebuild that presentation even
-      // when the surrounding Markdown topology is otherwise unchanged.
-      ...immutableMathExpressions
-    ].map(({ from, to }) => ({ from, to })));
-    return Object.freeze({
-      topologyIdentity,
-      syntax,
-      literals: Object.freeze({
-        excluded: immutableExcluded,
-        codeBlocks: immutableCodeBlocks
-      }),
-      inlineRanges: immutableProjectionRanges(inlineRanges),
-      listPrefixRanges: immutableProjectionRanges(listPrefixRanges),
-      taskItemRanges: immutableProjectionRanges(taskItemRanges),
-      footnotes,
-      tables: immutableTables,
-      callouts: immutableCallouts,
-      mathExpressions: immutableMathExpressions,
-      frontmatterRange: immutableFrontmatter,
-      commandProtectedRanges: immutableCommandProtectedRanges,
-      structuralRanges: immutableStructuralRanges,
-      mutationSensitiveRanges: immutableProjectionRanges([
-        ...immutableCommandProtectedRanges,
-        ...immutableStructuralRanges
-      ]),
-      blockRanges: immutableProjectionRanges([
-        // Headings are source-visible syntax projections rather than widgets,
-        // but vertical traversal still needs their exact block boundary so a
-        // caret can enter the heading from the blank line below it.
-        ...syntax.blocks.filter(({ kind }) => kind === "heading").map(({ from, to }) => ({ from, to, kind: "heading" })),
-        ...immutableTables.map(({ from, to }) => ({ from, to, kind: "table" })),
-        ...immutableCallouts.map(({ from, to }) => ({ from, to, kind: "callout" })),
-        ...immutableMathExpressions.flatMap(({ from, to, kind }) => kind === "display" ? [{ from, to, kind: "math" }] : [])
-      ]),
-      footnoteRanges,
-      tablePositionRanges: indexedTablePositionRanges(doc2, immutableTables),
-      hasUnclosedFrontmatter
-    });
-  }
-  function mathExpressionsFromCatalog(state, syntax) {
-    const expressions = [];
-    for (const inline of syntax.inlines.filter((candidate) => candidate.kind === "inlineMath")) {
-      const contentRange = inline.visibleRanges[0];
-      const opening = inline.markerRanges[0];
-      if (!contentRange || !opening) continue;
-      const sourceContent = state.doc.sliceString(contentRange.from, contentRange.to);
-      const content2 = sourceContent.length > 2 && /^\s/.test(sourceContent) && /\s$/.test(sourceContent) && /\S/.test(sourceContent) ? sourceContent.slice(1, -1) : sourceContent;
-      expressions.push({
-        kind: "inline",
-        content: content2,
-        delimiterLength: opening.to - opening.from,
-        from: inline.from,
-        to: inline.to,
-        contentFrom: contentRange.from,
-        contentTo: contentRange.to
-      });
-    }
-    for (const block of syntax.blocks.filter((candidate) => candidate.kind === "displayMath")) {
-      const opening = block.markerRanges[0];
-      const closing2 = block.markerRanges.at(-1);
-      if (!opening || !closing2 || opening === closing2) continue;
-      const openingLine = state.doc.lineAt(opening.from);
-      const closingLine = state.doc.lineAt(closing2.from);
-      const contentFrom = openingLine.number < state.doc.lines ? state.doc.line(openingLine.number + 1).from : openingLine.to;
-      const contentTo = closingLine.from;
-      expressions.push({
-        kind: "display",
-        content: state.doc.sliceString(contentFrom, contentTo).replace(/^[\r\n]+|[\r\n]+$/g, ""),
-        delimiterLength: opening.to - opening.from,
-        from: block.from,
-        to: block.to,
-        contentFrom,
-        contentTo
-      });
-    }
-    return expressions.sort((left, right) => left.from - right.from || left.to - right.to);
-  }
-  function buildLiveProjectionIndex(state, dialect, recordMetric) {
-    const startedAt = performance.now();
-    const tree = ensureSyntaxTree(state, state.doc.length) ?? syntaxTree(state);
-    const syntax = semanticProjectionRanges(
-      state,
-      [{ from: 0, to: state.doc.length }],
-      0,
-      tree
-    );
-    const codeBlocks = syntax.blocks.filter((block) => block.kind === "code").map((block) => ({
-      from: block.from,
-      to: block.to,
-      fenced: block.nodeName === "FencedCode",
-      markerRanges: block.markerRanges
-    }));
-    const excluded = [
-      ...codeBlocks,
-      ...syntax.blocks.filter((block) => block.kind === "html" || block.kind === "comment").map(({ from, to }) => ({ from, to })),
-      ...syntax.inlines.filter((inline) => inline.kind === "code").map(({ from, to }) => ({ from, to })),
-      ...syntax.literals.map(({ from, to }) => ({ from, to }))
-    ];
-    const inlineRanges = syntax.inlines.map(({ from, to }) => ({ from, to }));
-    const namedDefinitionStarts = new Set(syntax.blocks.filter((block) => block.kind === "footnoteDefinition").map((block) => block.from));
-    const inlineDefinitionRanges = /* @__PURE__ */ new Set();
-    const referenceRanges = new Set(syntax.inlines.filter((inline) => inline.kind === "footnoteReference" || inline.kind === "inlineFootnote").map((inline) => rangeKey(inline.from, inline.to)));
-    for (const inline of syntax.inlines.filter((candidate) => candidate.kind === "inlineFootnote")) {
-      inlineDefinitionRanges.add(rangeKey(inline.from, inline.to));
-    }
-    const tableRanges = syntax.blocks.filter((block) => block.kind === "table").map(({ from, to }) => ({ from, to }));
-    const calloutRanges = syntax.blocks.filter((block) => block.kind === "callout").map(({ from, to }) => calloutRangeIncludingPendingQuoteLines(state.doc, { from, to }));
-    const yamlBoundary = frontmatterBoundary(state.doc);
-    const yamlBodyFrom = yamlBoundary.endLine === 0 ? 0 : yamlBoundary.endLine < state.doc.lines ? state.doc.line(yamlBoundary.endLine + 1).from : state.doc.line(yamlBoundary.endLine).to;
-    const frontmatterRange = yamlBodyFrom > 0 ? { from: 0, to: yamlBodyFrom } : null;
-    const footnoteExcluded = [...excluded];
-    if (frontmatterRange) footnoteExcluded.push(frontmatterRange);
-    let completeSource = null;
-    const source = () => completeSource ??= state.doc.toString();
-    let footnotes = { definitions: [], references: [] };
-    if (namedDefinitionStarts.size > 0 || inlineDefinitionRanges.size > 0 || referenceRanges.size > 0) {
-      const projectedFootnotes = footnotePresentation(
-        source(),
-        footnoteExcluded,
-        dialect?.footnotes
-      );
-      footnotes = {
-        definitions: projectedFootnotes.definitions.filter((definition) => definition.isInline ? inlineDefinitionRanges.has(rangeKey(definition.from, definition.to)) : namedDefinitionStarts.has(definition.from)),
-        references: projectedFootnotes.references.filter((reference) => referenceRanges.has(rangeKey(reference.from, reference.to)))
-      };
-    }
-    const tables = tableRanges.flatMap((range) => {
-      const presentation = tablePresentation(source(), range.from, range.to);
-      return presentation ? [presentation] : [];
-    });
-    const callouts = calloutRanges.map((range) => ({
-      ...range,
-      source: state.doc.sliceString(range.from, range.to)
-    }));
-    const mathExpressions = mathExpressionsFromCatalog(state, syntax);
-    const index = finalizedLiveProjectionIndex(
-      state.doc,
-      Object.freeze({}),
-      syntax,
-      excluded,
-      codeBlocks,
-      inlineRanges,
-      indexedListPrefixRanges(state.doc, syntax),
-      indexedTaskItemRanges(syntax),
-      footnotes,
-      tables,
-      callouts,
-      mathExpressions,
-      frontmatterRange,
-      yamlBoundary.unclosed
-    );
-    recordMetric("projection-index", startedAt, {
-      documentLength: state.doc.length,
-      literalCount: excluded.length,
-      tableCount: tables.length,
-      calloutCount: callouts.length,
-      footnoteCount: footnotes.definitions.length + footnotes.references.length
-    });
-    return index;
-  }
-  function mapLiveProjectionIndex(index, transaction) {
-    const map = (position) => transaction.changes.mapPos(position);
-    const syntax = mapSemanticProjectionRanges(index.syntax, transaction.state, map);
-    const footnotes = {
-      definitions: index.footnotes.definitions.map((definition) => ({
-        ...definition,
-        from: map(definition.from),
-        to: map(definition.to),
-        contentFrom: map(definition.contentFrom)
-      })),
-      references: index.footnotes.references.map((reference) => ({
-        ...reference,
-        from: map(reference.from),
-        to: map(reference.to),
-        definitionFrom: reference.definitionFrom === null ? null : map(reference.definitionFrom),
-        definitionContentFrom: reference.definitionContentFrom === null ? null : map(reference.definitionContentFrom)
-      }))
-    };
-    const tables = index.tables.map((presentation) => ({
-      ...presentation,
-      from: map(presentation.from),
-      to: map(presentation.to),
-      header: presentation.header.map((cell) => ({ ...cell, sourceOffset: map(cell.sourceOffset) })),
-      body: presentation.body.map((row) => row.map((cell) => ({ ...cell, sourceOffset: map(cell.sourceOffset) })))
-    }));
-    const callouts = index.callouts.map((presentation) => ({
-      ...presentation,
-      from: map(presentation.from),
-      to: map(presentation.to)
-    }));
-    const mathExpressions = index.mathExpressions.map((expression) => ({
-      ...expression,
-      from: map(expression.from),
-      to: map(expression.to),
-      contentFrom: map(expression.contentFrom),
-      contentTo: map(expression.contentTo)
-    }));
-    const frontmatterRange = index.frontmatterRange === null ? null : {
-      from: map(index.frontmatterRange.from),
-      to: map(index.frontmatterRange.to)
-    };
-    return finalizedLiveProjectionIndex(
-      transaction.state.doc,
-      index.topologyIdentity,
-      syntax,
-      index.literals.excluded.map((range) => ({ from: map(range.from), to: map(range.to) })),
-      index.literals.codeBlocks.map((range) => ({
-        from: map(range.from),
-        to: map(range.to),
-        fenced: range.fenced,
-        markerRanges: range.markerRanges.map((marker) => ({
-          from: map(marker.from),
-          to: map(marker.to)
-        }))
-      })),
-      index.inlineRanges.map((range) => ({ from: map(range.from), to: map(range.to) })),
-      index.listPrefixRanges.map((range) => ({ from: map(range.from), to: map(range.to) })),
-      index.taskItemRanges.map((range) => ({
-        from: map(range.from),
-        to: map(range.to),
-        markerFrom: map(range.markerFrom),
-        markerTo: map(range.markerTo)
-      })),
-      footnotes,
-      tables,
-      callouts,
-      mathExpressions,
-      frontmatterRange,
-      index.hasUnclosedFrontmatter
-    );
-  }
-  function createLiveProjectionIndexController(options) {
-    const build = (state) => buildLiveProjectionIndex(
-      state,
-      options.editingDialect(),
-      options.recordMetric
-    );
-    const field = StateField.define({
-      create: build,
-      update(previous, transaction) {
-        if (!transaction.docChanged) {
-          return transactionChangedSyntaxTree(transaction) ? build(transaction.state) : previous;
-        }
-        const structuralMarker = /[\r\n`~<>%$\[\]!*_|^:#=]/;
-        if (previous.mutationSensitiveRanges.length === 0 && !transactionMayCreateProjection(transaction, structuralMarker)) {
-          return mapLiveProjectionIndex(previous, transaction);
-        }
-        return transactionCanMapProjectionTopology(
-          transaction,
-          structuralMarker,
-          previous.mutationSensitiveRanges,
-          previous.syntax
-        ) ? mapLiveProjectionIndex(previous, transaction) : build(transaction.state);
-      }
-    });
-    const index = (state) => state.field(field, false) ?? build(state);
-    return {
-      extension: field,
-      index,
-      topologyWasMapped(transaction) {
-        return index(transaction.startState).topologyIdentity === index(transaction.state).topologyIdentity;
-      },
-      visibleInlineMathExpressions(state, coveredRanges, currentIndex) {
-        if (!options.editingDialect() || coveredRanges.length === 0) return [];
-        return currentIndex.mathExpressions.filter((expression) => expression.kind === "inline" && coveredRanges.some((range) => range.from <= expression.from && range.to >= expression.to) && (!currentIndex.frontmatterRange || expression.from >= currentIndex.frontmatterRange.to) && expression.to <= state.doc.length);
-      }
-    };
-  }
 
   // node_modules/@codemirror/search/dist/index.js
   var basicNormalize = typeof String.prototype.normalize == "function" ? (x) => x.normalize("NFKD") : (x) => x;
@@ -37152,12 +37184,17 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       coveredRanges,
       index
     );
-    const addHidden = (from, to) => {
+    const addHidden = (from, to, forceSyntaxToken = false, atomic = true) => {
       if (to <= from) return;
       const source = doc2.sliceString(from, to);
-      const range = (canDisplaceSyntax(source) ? syntaxToken(source, from, to, false) : hiddenSyntax).range(from, to);
+      const range = (forceSyntaxToken || canDisplaceSyntax(source) ? syntaxToken(source, from, to, false) : hiddenSyntax).range(from, to);
       decorations2.push(range);
-      atomicRanges2.push(range);
+      if (atomic) atomicRanges2.push(range);
+    };
+    const addSyntaxMark = (from, to, className) => {
+      if (to <= from) return;
+      const source = doc2.sliceString(from, to);
+      decorations2.push(syntaxToken(source, from, to, true, "inline", className).range(from, to));
     };
     const addAtomicReplacement = (decoration, from, to) => {
       if (to <= from) return;
@@ -37256,12 +37293,30 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
           )[0];
           if (semanticCodeBlock) {
             const fenceLine = semanticCodeBlock ? isFencedDelimiterLine2(doc2, semanticCodeBlock, line.from) : false;
-            const codeBlockActive = projectionSelections.some((range) => selectionActivatesSyntax(range, semanticCodeBlock));
+            const codeBlockActive = projectionSelections.some((range) => selectionActivatesSyntax(
+              range,
+              codeBlockActivationRange(doc2, semanticCodeBlock)
+            ));
             if (fenceLine && !codeBlockActive) {
-              addHidden(line.from, line.to);
+              addHidden(line.from, line.to, true);
             } else if (codeBlockActive) {
-              for (const marker of semanticCodeBlock.markerRanges) {
-                addMark(Math.max(scanFrom, marker.from), Math.min(scanTo, marker.to), "cm-live-syntax-marker");
+              if (fenceLine) {
+                addSyntaxMark(line.from, line.to, "cm-live-syntax-marker");
+              } else {
+                for (const marker of semanticCodeBlock.markerRanges) {
+                  addMark(Math.max(scanFrom, marker.from), Math.min(scanTo, marker.to), "cm-live-syntax-marker");
+                }
+              }
+            } else if (!semanticCodeBlock.fenced) {
+              const indentation2 = codeBlockSourceIndentation(doc2, semanticCodeBlock);
+              if (indentation2 > 0) {
+                let hiddenTo = line.from;
+                while (hiddenTo < line.to && hiddenTo < line.from + indentation2) {
+                  const character = doc2.sliceString(hiddenTo, hiddenTo + 1);
+                  if (character !== " " && character !== "	") break;
+                  hiddenTo += 1;
+                }
+                if (hiddenTo > line.from) addHidden(line.from, hiddenTo, false, false);
               }
             }
             if (line.to === doc2.length) break;
@@ -37572,12 +37627,13 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       } else if (liveSelection.changed(update.startState, update.state)) {
         const projectionIndex = liveProjectionIndex.index(update.state);
         const inlineRanges = projectionIndex.inlineRanges;
+        const codeBlockRanges = projectionIndex.literals.codeBlocks.map((block) => codeBlockActivationRange(update.state.doc, block));
         const codeBlockActivationUnchanged = activeProjectionSignature(
           liveSelection.selection(update.startState).ranges,
-          projectionIndex.literals.codeBlocks
+          codeBlockRanges
         ) === activeProjectionSignature(
           liveSelection.selection(update.state).ranges,
-          projectionIndex.literals.codeBlocks
+          codeBlockRanges
         );
         if (!update.view.composing && codeBlockActivationUnchanged && selectionProjectionSignature(
           update.startState.doc,

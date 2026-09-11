@@ -85,7 +85,7 @@
   min-width: 0;
   margin: 0;
   font-size: 100%;
-  line-height: 1.35;
+  line-height: inherit;
   text-wrap: pretty;
 }
 
@@ -105,8 +105,28 @@
   letter-spacing: .02em;
 }
 
+/* The role remains in the accessibility tree as metadata. The visible
+   heading is either the authored title or the explicit default title span;
+   never render both as competing headings. */
+.scholium-callout-role-context {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
 .scholium-callout-title {
-  font: 650 100%/1.35 Alegreya, Georgia, serif;
+  font-family: inherit;
+  font-size: 100%;
+  line-height: inherit;
+  font-style: inherit;
+  font-weight: 650;
   letter-spacing: 0;
 }
 
@@ -131,6 +151,39 @@
 .scholium-callout-content > :last-child,
 .scholium-callout-quotation > :last-child {
   margin-bottom: 0;
+}
+
+.scholium-callout-content,
+.scholium-callout-quotation {
+  min-width: 0;
+}
+
+/* Callout owns its internal rhythm. Do not let the document-level paragraph
+   padding add a second, invisible line below the final body paragraph. */
+.scholium-callout-body p {
+  padding-block: 0;
+}
+
+/* Content inside a Callout remains ordinary Markdown. Give nested lists and
+   quotations their own small rhythm so the outer role treatment never makes
+   their first line look fused to the heading or to the preceding paragraph. */
+.scholium-callout-content > :is(ul, ol) {
+  margin-block: .28rem 0;
+}
+
+.scholium-callout-content > :is(p, ul, ol) + :is(p, ul, ol) {
+  margin-block-start: .42rem;
+}
+
+.scholium-callout-content > blockquote:not(.scholium-callout-quotation) {
+  margin-block: .62rem;
+  padding-inline-start: .78rem;
+  border-inline-start: 1px solid var(--scholium-callout-rule);
+  color: var(--scholium-callout-secondary-ink);
+}
+
+.scholium-callout-content > .scholium-callout {
+  margin-block: .72rem;
 }
 
 .scholium-callout a:not(.wiki-link) {
@@ -283,7 +336,28 @@
 }
 
 #editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-role-state {
-  border-inline-start: 3px solid var(--scholium-document-accent, var(--scholium-color-accent));
+  border-inline-start: 0;
+  padding-inline: .9em;
+}
+
+#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-role-state.cm-live-callout-start {
+  border-block-start: 1px solid var(--scholium-callout-rule);
+}
+
+#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-role-state.cm-live-callout-header {
+  padding-block-end: .42em;
+  border-block-end: 1px solid var(--scholium-callout-rule);
+}
+
+#editor .cm-editor.scholium-live-mode
+  .cm-line.cm-live-callout-role-state.cm-live-callout-header
+  + .cm-line.cm-live-callout-role-state.cm-live-callout-body-line {
+  padding-block-start: .48em;
+}
+
+#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-role-state.cm-live-callout-end {
+  padding-block-end: .62em;
+  border-block-end: 1px solid var(--scholium-callout-rule);
 }
 
 #editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-role-illustrate.cm-live-callout-start {
@@ -382,7 +456,8 @@
   font-weight: 600;
 }
 
-/* Statement — one compact argument spine with a stable label-title-body axis. */
+/* Statement — a proposition gets typographic emphasis and horizontal rules,
+   with no alert-like rail or rounded enclosure. */
 .scholium-callout-state .scholium-callout-title,
 .cm-live-callout-role-state .scholium-callout-title {
   font-size: 100%;
@@ -390,14 +465,23 @@
 }
 
 .scholium-callout-state {
-  padding-block: .14rem .18rem;
-  padding-inline-start: .9rem;
-  border-inline-start: 3px solid var(--scholium-document-accent, var(--scholium-color-accent));
+  padding: .55rem .9rem .62rem;
+  border-block: 1px solid var(--scholium-callout-rule);
+}
+
+.scholium-callout-state > header,
+.scholium-callout-state > summary {
+  padding-block-end: .42rem;
+  border-block-end: 1px solid var(--scholium-callout-rule);
+}
+
+.scholium-callout-state .scholium-callout-heading {
+  gap: .28rem;
 }
 
 aside.scholium-callout-state .scholium-callout-body {
   max-width: none;
-  margin-top: .34rem;
+  margin-top: .48rem;
 }
 
 aside.scholium-callout-state .scholium-callout-content > p:first-child {
@@ -448,7 +532,10 @@ aside.scholium-callout-illustrate .scholium-callout-body {
 .scholium-callout-quote .scholium-callout-role,
 .scholium-callout-quote .scholium-callout-title,
 .cm-live-callout-role-quote .scholium-callout-title {
-  font: 600 82%/1.35 system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: inherit;
+  font-size: 82%;
+  line-height: inherit;
+  font-weight: 600;
   letter-spacing: .02em;
 }
 
@@ -582,9 +669,16 @@ aside.scholium-callout-quote .scholium-callout-body {
 
 @media (max-width: 430px) {
   .scholium-callout-orient,
-  .scholium-callout-state,
   aside.scholium-callout-quote {
     padding-inline-start: .65rem;
+  }
+
+  .scholium-callout-state {
+    padding-inline: .65rem;
+  }
+
+  #editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-role-state {
+    padding-inline: .65rem;
   }
 
   .scholium-callout-connect .scholium-callout-body,

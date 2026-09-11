@@ -3352,6 +3352,10 @@ struct FrontendArchitectureTests {
             contentsOf: repository.appendingPathComponent("WebEditor/live-structured-block-projections.ts"),
             encoding: .utf8
         )
+        let semanticLayoutSource = try String(
+            contentsOf: repository.appendingPathComponent("WebEditor/live-semantic-layout.ts"),
+            encoding: .utf8
+        )
         let noteSource = try String(
             contentsOf: repository.appendingPathComponent(
                 "Scholium/Views/Note/NoteContentView.swift"),
@@ -3436,10 +3440,21 @@ struct FrontendArchitectureTests {
         #expect(cursorGeometrySource.contains("domAtPos"))
         #expect(cursorGeometrySource.contains("cm-cursor-primary"))
         #expect(syntaxPresentationSource.contains("getComputedTiming"))
+        #expect(syntaxPresentationSource.contains("{opacity: previous.opacity, color: fromColor}"))
+        #expect(syntaxPresentationSource.contains("{opacity: targetOpacity, color: toColor}"))
+        #expect(!syntaxPresentationSource.contains("fromWidth"))
+        #expect(!syntaxPresentationSource.contains("fromMarginInlineStart"))
         #expect(syntaxPresentationSource.contains("scholium-frontmatter-delimiter-line"))
         #expect(editorSource.contains("data-scholium-yaml-delimiter"))
         #expect(structuredProjectionSource.contains("calloutMotion"))
+        #expect(semanticLayoutSource.contains(#"classes.add(`cm-live-quote-depth-${quoteDepth}`)"#))
         #expect(editorStyles.contains(".cm-cursor"))
+        #expect(editorStyles.contains(".cm-live-footnote-source-marker"))
+        #expect(editorStyles.contains(".cm-syntax-token {"))
+        #expect(editorStyles.contains("font-family: inherit;"))
+        #expect(editorStyles.contains("var(--scholium-document-technical-surface)"))
+        #expect(ScholiumMathAssets.css.contains(".scholium-math-display"))
+        #expect(!ScholiumMathAssets.css.contains("background: var(--scholium-document-technical-surface);"))
         #expect(!editorStyles.contains(".cm-cursor-primary"))
         #expect(!editorStyles.contains(".cm-live-authored-extra-space"))
         #expect(!editorSource.contains("liveAuthoredExtraSpaces"))
@@ -4278,8 +4293,14 @@ struct FrontendArchitectureTests {
             ))
         #expect(
             calloutCSS.contains(
-                ".scholium-callout-state {\n  padding-block: .14rem .18rem;\n  padding-inline-start: .9rem;\n  border-inline-start: 3px solid var(--scholium-document-accent, var(--scholium-color-accent));"
+                ".scholium-callout-state {\n  padding: .55rem .9rem .62rem;\n  border-block: 1px solid var(--scholium-callout-rule);"
             ))
+        #expect(!calloutCSS.contains(".scholium-callout-state {\n  padding-block: .14rem .18rem;"))
+        #expect(!calloutCSS.contains(".scholium-callout-state {\n  padding: .55rem .9rem .62rem;\n  border-inline-start:"))
+        #expect(calloutCSS.contains(".scholium-callout-state > header,\n.scholium-callout-state > summary"))
+        #expect(calloutCSS.contains(".cm-live-callout-role-state.cm-live-callout-start"))
+        #expect(calloutCSS.contains("border-block-start: 1px solid var(--scholium-callout-rule);"))
+        #expect(calloutCSS.contains("font-family: inherit;\n  font-size: 100%;\n  line-height: inherit;"))
         #expect(calloutCSS.contains("--scholium-callout-connect-content-indent: .72em;"))
         #expect(
             calloutCSS.contains(
@@ -4294,7 +4315,10 @@ struct FrontendArchitectureTests {
         #expect(!calloutCSS.contains("content: \"—\";"))
         #expect(
             calloutCSS.contains(
-                "aside.scholium-callout-state .scholium-callout-body {\n  max-width: none;\n  margin-top: .34rem;"))
+                "aside.scholium-callout-state .scholium-callout-body {\n  max-width: none;\n  margin-top: .48rem;"))
+        #expect(calloutCSS.contains(".scholium-callout-content > :is(ul, ol)"))
+        #expect(calloutCSS.contains(".scholium-callout-content > blockquote:not(.scholium-callout-quotation)"))
+        #expect(calloutCSS.contains(".scholium-callout-content > .scholium-callout"))
         #expect(calloutCSS.contains("aside.scholium-callout-illustrate {\n  display: grid;"))
         #expect(calloutCSS.contains("border-block: 1px solid var(--scholium-callout-rule);"))
         #expect(calloutCSS.contains("aside.scholium-callout-quote > header {\n  order: 2;"))
@@ -4309,6 +4333,26 @@ struct FrontendArchitectureTests {
         #expect(calloutCSS.contains("text-align: start;"))
         #expect(!calloutCSS.contains("text-align: justify;"))
         #expect(!calloutCSS.contains("text-align-last:"))
+        #expect(
+            ScholiumWebDesignTokens.documentPresentationCSS.contains(
+                "cm-live-quote.cm-live-quote-depth-2"
+            ))
+        #expect(
+            ScholiumWebDesignTokens.documentPresentationCSS.contains(
+                "border-inline-start: 1px solid var(--scholium-color-separator);"
+            ))
+        #expect(
+            ScholiumWebDesignTokens.documentPresentationCSS.contains(
+                ".scholium-document blockquote blockquote:not(.scholium-callout-quotation)"
+            ))
+        #expect(
+            !ScholiumWebDesignTokens.documentPresentationCSS.contains(
+                ".scholium-document blockquote.scholium-quote-depth-2"
+            ))
+        #expect(
+            ScholiumWebDesignTokens.documentPresentationCSS.contains(
+                "Nested quotations are real children of their parent quotation"
+            ))
     }
 
     @Test("Ordinary quotation uses the document Accent alias in Read and Live Preview")
@@ -4704,6 +4748,13 @@ struct FrontendArchitectureTests {
         #expect(css.contains(".cm-live-footnote-reference-widget"))
         #expect(!css.contains(".cm-live-footnotes-widget"))
         #expect(css.contains(".footnote-content:has(> p:only-child)"))
+        #expect(css.contains(".scholium-document .footnotes"))
+        #expect(css.contains(".scholium-document .footnotes li::marker"))
+        #expect(css.contains("font-family: inherit;\n  font-size: .72em;"))
+        #expect(css.contains("display: inline;\n  box-sizing: border-box;"))
+        #expect(css.contains("border-radius: 0;"))
+        #expect(!css.contains("--scholium-content-hover-surface"))
+        #expect(css.contains("@media (prefers-reduced-motion: reduce)"))
         #expect(editorHTML.contains(css))
         #expect(
             SafeMarkdownReadWebView.Coordinator.documentHTML(
@@ -4771,9 +4822,12 @@ struct FrontendArchitectureTests {
         #expect(!footnoteSource.contains("class FootnoteSectionWidget"))
         #expect(!footnoteSource.contains("cm-live-footnotes-widget"))
         #expect(!footnoteSource.contains("cm-live-footnote-definition-source"))
+        #expect(footnoteSource.contains("cm-live-footnote-source-marker"))
         #expect(readHTML.contains("class=\"footnote-reference\""))
         #expect(readHTML.contains("class=\"footnote-return\""))
         #expect(readRuntime.contains("showFootnotePopover"))
+        #expect(readRuntime.contains("activeFootnoteButton"))
+        #expect(readRuntime.contains("setFootnoteExpanded"))
         #expect(readRuntime.contains("eventElement?.closest<HTMLButtonElement>('.footnote-reference')"))
         #expect(readRuntime.contains("eventElement?.closest<HTMLElement>('.footnote-return')"))
     }

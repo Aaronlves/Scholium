@@ -277,6 +277,7 @@ enum DocumentAppearanceStyles {
             }
             \(selector) .scholium-callout-body p {
               margin-block: 0;
+              padding-block: 0;
             }
             \(selector) .scholium-callout-body p + p {
               margin-block-start: \(number(callout.paragraphSpacingEm))em;

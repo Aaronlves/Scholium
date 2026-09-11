@@ -24,6 +24,7 @@ struct InterfacePresentationOwnershipTests {
             webShadows == [
                 "Scholium/Resources/Editor/callouts.css": 1,
                 "Scholium/Resources/Editor/editor.css": 1,
+                "Scholium/UI/Foundation/ScholiumDesignSystem.swift": 2,
             ],
             Comment(rawValue: diagnostic(for: webShadows))
         )

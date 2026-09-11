@@ -476,7 +476,7 @@ function appendCallout(
     && parts.title.length > 0
     && parts.body.trim().length === 0;
   const role = document.createElement("span");
-  role.className = "scholium-callout-role";
+  role.className = "scholium-callout-role scholium-callout-role-context";
   role.dir = "auto";
   role.title = parts.definition.meaning;
   role.textContent = parts.definition.label;
@@ -486,6 +486,12 @@ function appendCallout(
     title.className = "scholium-callout-title";
     title.dir = "auto";
     appendInlineMarkdown(parts.title, title, optionsAt(options, parts.titleFrom));
+    heading.append(title);
+  } else {
+    const title = document.createElement("span");
+    title.className = "scholium-callout-title scholium-callout-default-title";
+    title.dir = "auto";
+    title.textContent = parts.definition.label;
     heading.append(title);
   }
   headingContainer.append(heading);

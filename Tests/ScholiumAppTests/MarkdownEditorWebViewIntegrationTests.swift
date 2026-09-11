@@ -1048,7 +1048,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
     }
 
-    @Test("Active fenced code has one block surface and no visual blank after its closing fence")
+    @Test("Active fenced code has one block surface and keeps the shared source inset")
     func activeFencedCodeUsesOneSurface() async throws {
         let source = "Before `inline`.\n\n```swift\nstruct Fixture {}\n```\n\nAfter.\n"
         let codeCaret =
@@ -1102,7 +1102,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(snapshot["activeBlockLineCount"] as? Int == 3)
         #expect(snapshot["fencedInlineCodeCount"] as? Int == 0)
         #expect(snapshot["totalInlineCodeCount"] as? Int == 1)
-        #expect(snapshot["closingPaddingBottom"] as? Double == 0)
+        #expect(snapshot["closingPaddingBottom"] as? Double == 16)
         #expect(snapshot["authoredBlankIsSourceLine"] as? Bool == true)
         #expect(snapshot["authoredBlankUsesCodeSurface"] as? Bool == false)
         #expect(
@@ -2403,6 +2403,34 @@ struct MarkdownEditorWebViewIntegrationTests {
         let sourcePresentation = try await harness.session.testingAccessibilitySnapshot()
         #expect(sourcePresentation.footnoteReferenceCount == 1)
         #expect(sourcePresentation.footnoteDefinitionSourceCount == 1)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+
+        let referenceFrom =
+            try #require(source.range(of: "[^note]")?.lowerBound)
+            .utf16Offset(in: source) + 1
+        harness.session.revealSourceRange(fromUTF16: referenceFrom, toUTF16: referenceFrom)
+        try await harness.waitUntilSelection(head: referenceFrom)
+        let activeSourceMarkerCount =
+            try await harness.callPageJavaScript(
+                "return document.querySelectorAll('.cm-live-footnote-source-marker').length;"
+            ) as? Int
+        #expect((activeSourceMarkerCount ?? 0) >= 2)
+        #expect(
+            try await harness.callPageJavaScript(
+                "return document.querySelectorAll('.cm-live-footnote-reference-widget').length;"
+            ) as? Int == 0)
+        let sourceMarkerMetrics =
+            try await harness.callPageJavaScript(
+                """
+                return [...document.querySelectorAll('.cm-live-footnote-source-marker')].map((node) => {
+                  const style = getComputedStyle(node);
+                  return [style.fontFamily, style.fontSize, style.lineHeight].join('|');
+                }).join('||');
+                """
+            ) as? String
+        let metricValues = sourceMarkerMetrics?.components(separatedBy: "||") ?? []
+        #expect(metricValues.count >= 2)
+        #expect(Set(metricValues).count == 1)
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
         await harness.closeAndDrain()
     }
@@ -4216,6 +4244,46 @@ struct MarkdownEditorWebViewIntegrationTests {
         let activeMarkerRight = try #require(active["markerRight"])
         let activeTextLeft = try #require(active["textLeft"])
         #expect(activeMarkerRight <= activeTextLeft + 0.5)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        #expect(!harness.session.isDirty)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Edit preserves authored quotation depth in cumulative visual indentation")
+    func editQuotationDepthUsesCumulativeInset() async throws {
+        let source = "> 一级引用\n>\n> > 二级引用\n"
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        let geometry = try #require(
+            try await harness.callPageJavaScript(
+                """
+                const quotes = [...document.querySelectorAll('.cm-line.cm-live-quote')];
+                const first = quotes.find(line => (line.textContent || '').includes('一级引用'));
+                const second = quotes.find(line => (line.textContent || '').includes('二级引用'));
+                if (!first || !second) return null;
+                return {
+                  firstClass: first.className,
+                  secondClass: second.className,
+                  firstInset: getComputedStyle(first).paddingInlineStart,
+                  secondInset: getComputedStyle(second).paddingInlineStart,
+                  secondMargin: getComputedStyle(second).marginInlineStart,
+                  firstBorder: getComputedStyle(first).borderInlineStartWidth,
+                  secondBorder: getComputedStyle(second).borderInlineStartWidth,
+                  parentRail: getComputedStyle(second, '::before').borderInlineStartWidth
+                };
+                """
+            ) as? [String: Any]
+        )
+        #expect((geometry["firstClass"] as? String)?.contains("cm-live-quote-depth-1") == true)
+        #expect((geometry["secondClass"] as? String)?.contains("cm-live-quote-depth-2") == true)
+        #expect(geometry["firstInset"] as? String == "16px")
+        #expect(geometry["secondInset"] as? String == "16px")
+        #expect(geometry["secondMargin"] as? String == "16px")
+        #expect(geometry["firstBorder"] as? String == "3px")
+        #expect(geometry["secondBorder"] as? String == "1px")
+        #expect(geometry["parentRail"] as? String == "3px")
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
         #expect(!harness.session.isDirty)
         await harness.closeAndDrain()

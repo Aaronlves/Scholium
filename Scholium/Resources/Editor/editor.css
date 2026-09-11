@@ -148,15 +148,19 @@ body,
 }
 
 /* Revealed syntax has one semantic color; authored text retains its style.
-   A descendant rule also covers nested links/highlights around delimiters. */
+   Source markers inherit the line's document metrics so toggling a construct
+   never introduces a second baseline or caret height. A descendant rule also
+   covers nested links/highlights around delimiters. */
 .scholium-live-mode :is(.cm-live-syntax-marker, .cm-live-heading-source-marker,
-  .cm-live-quote-source-marker, .cm-live-callout-source-marker, .cm-live-list-source-prefix),
+  .cm-live-quote-source-marker, .cm-live-callout-source-marker,
+  .cm-live-footnote-source-marker, .cm-live-list-source-prefix),
 .scholium-live-mode .cm-live-syntax-marker * {
   color: var(--scholium-color-secondary-text);
 }
 
-/* Syntax occupies the document measure. Exact short tokens stay mounted so
-   reveal and conceal can share one reversible, source-neutral transition. */
+/* Syntax occupies the document measure. Exact source tokens stay mounted so
+   reveal and conceal can share one reversible transition. Line geometry stays
+   deterministic; only opacity and the quiet syntax color are animated. */
 .scholium-live-mode .cm-syntax-token {
   display: inline-block;
   box-sizing: border-box;
@@ -166,19 +170,22 @@ body,
   clip-path: inset(0);
   vertical-align: baseline;
   white-space: pre;
-  font-family: var(--scholium-document-source-font-family);
-  font-style: normal;
-  font-weight: 400;
-  font-variant-caps: normal;
-  letter-spacing: 0;
-  color: var(--scholium-color-secondary-text);
-  transition: color 100ms ease-out;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  font-style: inherit;
+  font-weight: inherit;
+  font-variant-caps: inherit;
+  letter-spacing: inherit;
+  color: var(--scholium-color-primary-text);
+  transition: color 120ms ease-out;
 }
 .scholium-live-mode .cm-syntax-token[data-syntax-open="false"] {
   inline-size: 0;
   font-size: 0;
   line-height: 0;
   opacity: 0;
+  color: var(--scholium-color-primary-text);
   pointer-events: none;
 }
 .scholium-live-mode .cm-syntax-token[data-syntax-open="true"] {
@@ -188,12 +195,15 @@ body,
 }
 .cm-live-heading-source-marker,
 .cm-live-quote-source-marker,
-.cm-live-callout-source-marker {
-  font-family: var(--scholium-document-source-font-family);
-  font-style: normal;
-  font-weight: 400;
-  font-variant-caps: normal;
-  letter-spacing: 0;
+.cm-live-callout-source-marker,
+.cm-live-footnote-source-marker {
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  font-style: inherit;
+  font-weight: inherit;
+  font-variant-caps: inherit;
+  letter-spacing: inherit;
   overflow-wrap: anywhere;
 }
 @media (prefers-reduced-motion: reduce) {
@@ -447,6 +457,40 @@ body,
   padding-inline-start: var(--scholium-rhythm-quote-inset);
   padding-inline-end: 0;
 }
+#editor .cm-editor.scholium-live-mode .cm-line.cm-live-quote.cm-live-quote-depth-2 {
+  margin-inline-start: var(--scholium-rhythm-quote-inset);
+  padding-inline-start: var(--scholium-rhythm-quote-inset);
+}
+#editor .cm-editor.scholium-live-mode .cm-line.cm-live-quote.cm-live-quote-depth-3 {
+  margin-inline-start: calc(
+    var(--scholium-rhythm-quote-inset) + var(--scholium-rhythm-quote-inset)
+  );
+  padding-inline-start: var(--scholium-rhythm-quote-inset);
+}
+
+/* Live Preview is line-backed rather than tree-backed. The semantic quote
+   depth therefore paints the same ancestor rails that the nested Review
+   blockquotes own, so a child line never visually detaches from its parent. */
+#editor .cm-editor.scholium-live-mode .cm-line.cm-live-quote.cm-live-quote-depth-2::before,
+#editor .cm-editor.scholium-live-mode .cm-line.cm-live-quote.cm-live-quote-depth-3::before,
+#editor .cm-editor.scholium-live-mode .cm-line.cm-live-quote.cm-live-quote-depth-3::after {
+  position: absolute;
+  inset-block: 0;
+  pointer-events: none;
+  content: "";
+}
+#editor .cm-editor.scholium-live-mode .cm-line.cm-live-quote.cm-live-quote-depth-2::before {
+  inset-inline-start: calc(-1 * var(--scholium-rhythm-quote-inset));
+  border-inline-start: 3px solid var(--scholium-document-accent);
+}
+#editor .cm-editor.scholium-live-mode .cm-line.cm-live-quote.cm-live-quote-depth-3::before {
+  inset-inline-start: calc(-1 * var(--scholium-rhythm-quote-inset));
+  border-inline-start: 1px solid var(--scholium-color-separator);
+}
+#editor .cm-editor.scholium-live-mode .cm-line.cm-live-quote.cm-live-quote-depth-3::after {
+  inset-inline-start: calc(-2 * var(--scholium-rhythm-quote-inset));
+  border-inline-start: 3px solid var(--scholium-document-accent);
+}
 
 /* Protected Callout presentation is injected from callouts.css by the app. */
 
@@ -477,8 +521,7 @@ body,
   line-height: var(--scholium-rhythm-source-line-height);
 }
 .scholium-live-mode :is(.cm-live-table, .cm-live-math-source) {
-  background: color-mix(in srgb, var(--scholium-color-primary-text) 3%,
-    var(--scholium-color-document-background));
+  background: var(--scholium-document-technical-surface);
 }
 @media (prefers-contrast: more) {
   .scholium-live-mode .cm-syntax-token[data-syntax-open="true"] {

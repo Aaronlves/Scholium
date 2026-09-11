@@ -573,6 +573,11 @@ enum ScholiumWebDesignTokens {
             --scholium-rhythm-heading-line-height: \(number(headings.lineHeight));
             \(DocumentAppearanceStyles.headingTransportDeclarations(for: defaults))
             --scholium-rhythm-code-inset: \(ScholiumDocumentRhythm.codeBlockInset)px;
+            --scholium-document-technical-surface: color-mix(
+              in srgb,
+              var(--scholium-color-primary-text) 7%,
+              transparent
+            );
             --scholium-rhythm-quote-inset: \(ScholiumDocumentRhythm.quoteInlineInset)px;
             --scholium-rhythm-semantic-block-gap: 1em;
             --scholium-rhythm-rule-block-gap: 0.5em;
@@ -1001,8 +1006,19 @@ enum ScholiumWebDesignTokens {
           border-inline-start: 3px solid var(--scholium-document-accent);
           color: color-mix(in srgb, var(--scholium-color-primary-text) 78%, transparent);
         }
+        /* Nested quotations are real children of their parent quotation in
+           Review. The parent rail therefore remains continuous through the
+           child; only the child rail recedes in weight and ink. */
+        .scholium-document blockquote blockquote:not(.scholium-callout-quotation),
+        .cm-editor.scholium-live-mode .cm-live-quote.cm-live-quote-depth-2,
+        .cm-editor.scholium-live-mode .cm-live-quote.cm-live-quote-depth-3 {
+          border-inline-start: 1px solid var(--scholium-color-separator);
+          color: color-mix(in srgb, var(--scholium-color-primary-text) 66%, transparent);
+        }
+        .scholium-document blockquote blockquote:not(.scholium-callout-quotation) {
+          padding-inline-start: var(--scholium-rhythm-quote-inset);
+        }
         .scholium-document pre,
-        .scholium-document pre code,
         .cm-editor.scholium-live-mode .cm-live-codeblock {
           box-sizing: border-box;
           font-family: var(--scholium-document-source-font-family);
@@ -1010,7 +1026,19 @@ enum ScholiumWebDesignTokens {
           line-height: var(--scholium-rhythm-source-line-height);
           font-style: normal;
           font-variant-caps: normal;
-          background: color-mix(in srgb, var(--scholium-color-primary-text) 7%, transparent);
+          background: var(--scholium-document-technical-surface);
+        }
+        /* The block owns the source surface. Its inline code child only carries
+           the same Source Text metrics and must not paint a second rectangle
+           over the block background. */
+        .scholium-document pre code {
+          box-sizing: border-box;
+          font-family: var(--scholium-document-source-font-family);
+          font-size: var(--scholium-document-source-font-size);
+          line-height: var(--scholium-rhythm-source-line-height);
+          font-style: normal;
+          font-variant-caps: normal;
+          background: transparent;
         }
         .scholium-document pre.raw-html,
         .cm-editor.scholium-live-mode .cm-live-raw-html {
@@ -1049,11 +1077,6 @@ enum ScholiumWebDesignTokens {
           padding-block-end: var(--scholium-rhythm-code-inset);
           border-end-start-radius: var(--scholium-corner-document-code-block);
           border-end-end-radius: var(--scholium-corner-document-code-block);
-        }
-        .cm-editor.scholium-live-mode .cm-live-codeblock-active.cm-live-codeblock-end {
-          /* The visible closing fence is already the active block's final source
-             line. Do not synthesize a blank-looking inset below those exact bytes. */
-          padding-block-end: 0;
         }
         .cm-editor.scholium-live-mode .cm-live-raw-html-end {
           padding-block-end: var(--scholium-rhythm-code-inset);
@@ -1100,8 +1123,12 @@ enum ScholiumWebDesignTokens {
           padding: 0.08em 0.25em;
           border-radius: var(--scholium-corner-document-inline-code);
           background: color-mix(in srgb, var(--scholium-color-primary-text) 8%, transparent);
-          font-family: "Victor Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
-          font-size: 0.82em;
+          font-family: var(--scholium-document-source-font-family);
+          font-size: var(--scholium-document-source-font-size);
+          line-height: inherit;
+          font-style: normal;
+          font-variant-caps: normal;
+          vertical-align: baseline;
         }
         .scholium-document a:not(.wiki-link),
         .scholium-live-mode .cm-live-link {
