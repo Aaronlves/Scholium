@@ -120,22 +120,22 @@ runtime adapters does not change its Note-snapshot contract.
 
 ### 8.7.1 Conversation continuity
 
-Viewing a conversation is independent of running it. Researchers can browse,
-search, create and draft in other conversations while execution continues.
-Independent conversations may run concurrently; replies, approvals, input,
-Stop and Agent Changes always belong to their exact conversation and execution.
-Changing the visible conversation never transfers an operation or its permission.
-Concurrency does not bypass per-Note revision and source-operation coordination.
-Connection and account state belong to the Triptych; execution, input, approvals,
-errors and cancellation belong to each conversation. Disconnect closes the shared connection and revokes admission for
-all of its conversations. Stop targets only the explicitly addressed conversation.
-Additional input targets its active execution; Send now steers it, while Queue
-for Next Turn retains ordered input and staged material. After confirmed
-completion, the first item may dispatch once. Interruption, failure,
-disconnection or reopening leaves it for explicit Send Next or removal.
-Material preparation never retargets input after its execution ends. If admission
-fails, draft and materials remain. Only matching acknowledgement or history
-confirms dispatch; uncertainty is retained without retry.
+Conversations can be browsed, searched, created, drafted and run independently.
+Replies, approvals, input, Stop and Agent Changes belong to their exact conversation
+and execution; navigation transfers neither operations nor permission. Concurrent
+work retains per-Note revision and source-operation coordination. Connection/account
+state belongs to the Triptych; execution, input, approvals, errors and cancellation
+belong to each conversation. Disconnect revokes admission across the shared connection;
+Stop targets its addressed conversation.
+Send Now steers the active execution; Queue for Next Turn retains ordered input
+and materials. Add to Current Turn sends a queued item's retained materials,
+quotations and Skills to the exact bound turn without consuming the draft.
+Ended/replaced turns preserve input; preflight rejection restores queue position.
+Uncertain delivery enters existing recovery, never automatic queue retry.
+After confirmed completion, the queue head may dispatch once. Interruption,
+failure, disconnect or reopening requires explicit Send Next or removal.
+Preparation never retargets ended executions. Failed admission preserves draft
+and materials; only matching acknowledgement or history confirms dispatch.
 Late responses from an earlier connection or execution cannot reactivate admission.
 Runtime interaction identities must be unambiguous across the shared connection.
 A reused pending request identity closes that connection without forwarding a
@@ -502,22 +502,23 @@ their owning turn; no historical activity can regain approval authority.
 An expired approval cannot leave its tool displayed as waiting for a decision;
 without a confirmed tool outcome, retain uncertainty.
 
-Research questions and operation approvals are distinct interactions. Questions
-show the actual prompt, offered choices and free text, retaining answers until
-the runtime acknowledges them. An unanswered question remains inspectable when
-viewing another conversation. Unsupported form or URL interactions fail visibly;
+Research questions are distinct from approvals. They retain actual prompts,
+choices and answers until runtime acknowledgement, including across conversations. Unsupported form or URL interactions fail visibly;
 an external authorization route opens only the exact validated provider request.
 Question options retain their labels and descriptions, without a preselected
 answer. A custom response is available when the request permits it, or when
 there are no options. Secret input uses a secure field and never enters retained
 conversation prose or technical details. Invalid or partially understood question
 sets are rejected as a whole; they never turn into an operation-approval prompt.
-Reply submits only the requested answers; Skip supplies no answers and grants no
+Completion submits the requested answers; Skip supplies no answers and grants no
 operation permission. Pending question text is separate from the chat draft.
+Asynchronous questions survive turn completion and reopening. Identity-bound
+replies steer the active turn or start a new one, preserving the draft and the
+same acknowledgement and uncertain-delivery rules.
 An input request correlated with a runtime tool call retains that tool's identity
 and inspectable arguments. It is presented as tool input, since an offered answer
 may authorize the referenced action; it is not labelled as a philosophical
-research question. Its alternative to replying is Stop Turn rather than an
+research question. Decline Request stops its turn without an
 assumed empty or default answer. Tool arguments remain transient request details;
 retained input records contain the identity, questions and nonsecret responses.
 

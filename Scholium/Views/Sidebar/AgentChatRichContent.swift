@@ -2,7 +2,7 @@ import AppKit
 import ScholiumContracts
 import SwiftUI
 
-/// Ranges refer to the same native rendered reply used by quotation validation.
+/// Ranges identify table and code content in the object-copy projection.
 struct AgentChatRichSegment: Identifiable {
   let id: Int
   var range: NSRange
@@ -11,7 +11,7 @@ struct AgentChatRichSegment: Identifiable {
   var language: String?
   var isObject: Bool { columns > 0 || code != nil }
 
-  static func collect(_ layout: AgentChatSelectableText.Layout) -> [Self] {
+  static func collect(_ layout: AgentChatObjectProjection.Layout) -> [Self] {
     var segments: [Self] = []
     for item in layout.blocks {
       var segment = Self(id: item.block.id, range: item.range)
@@ -40,7 +40,7 @@ struct AgentChatRichContent: View {
   var expandedDiagramSize: CGSize?
 
   var body: some View {
-    let layout = AgentChatSelectableText.layoutReply(source)
+    let layout = AgentChatObjectProjection.layoutReply(source)
     if let segment = AgentChatRichSegment.collect(layout).first(where: { $0.id == onlySegment }) {
       VStack(alignment: .leading, spacing: 8) {
         HStack {
@@ -56,7 +56,7 @@ struct AgentChatRichContent: View {
             .frame(height: max(80, (expandedDiagramSize?.height ?? 160) + 24))
         } else {
           ScrollView(.horizontal) {
-            AgentChatAttributedText(text: layout.text.attributedSubstring(from: segment.range), quote: nil, openLink: openLink)
+            AgentChatObjectText(text: layout.text.attributedSubstring(from: segment.range), openLink: openLink)
               .frame(width: max(280, expandedDiagramSize?.width ?? 400))
           }
         }
@@ -65,22 +65,20 @@ struct AgentChatRichContent: View {
   }
 }
 
-struct AgentChatAttributedText: NSViewRepresentable {
+struct AgentChatObjectText: NSViewRepresentable {
   let text: NSAttributedString
-  let quote: ((NSRange, String) -> Void)?
   let openLink: (URL) -> Void
-  func makeNSView(context: Context) -> AgentChatReplyTextView { AgentChatReplyTextView() }
-  func updateNSView(_ view: AgentChatReplyTextView, context: Context) {
-    view.quote = quote
+  func makeNSView(context: Context) -> AgentChatObjectTextView { AgentChatObjectTextView() }
+  func updateNSView(_ view: AgentChatObjectTextView, context: Context) {
     view.openLink = openLink
     if !view.attributedString().isEqual(to: text) { view.textStorage?.setAttributedString(text) }
   }
-  func sizeThatFits(_ proposal: ProposedViewSize, nsView: AgentChatReplyTextView, context: Context) -> CGSize? {
+  func sizeThatFits(_ proposal: ProposedViewSize, nsView: AgentChatObjectTextView, context: Context) -> CGSize? {
     guard let width = proposal.width, width.isFinite, width > 0 else { return nil }
     return CGSize(width: width, height: nsView.measuredHeight(width: width))
   }
-  static func dismantleNSView(_ view: AgentChatReplyTextView, coordinator: ()) {
-    view.quote = nil; view.openLink = nil
+  static func dismantleNSView(_ view: AgentChatObjectTextView, coordinator: ()) {
+    view.openLink = nil
   }
 }
 

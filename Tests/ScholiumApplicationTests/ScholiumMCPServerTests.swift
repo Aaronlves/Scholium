@@ -93,6 +93,13 @@ struct ScholiumMCPServerTests {
         let input = try object(update["inputSchema"])
         let alternatives = try #require(input["oneOf"] as? [[String: Any]])
         #expect(alternatives.count == 2)
+        for branch in alternatives {
+            let fields = try object(branch["properties"])
+            #expect(fields["content"] != nil && fields["expected_fingerprint"] != nil)
+            let required = Set(try #require(branch["required"] as? [String]))
+            #expect(required.isSuperset(of: ["triptych_id", "note_id", "expected_fingerprint", "mode"]))
+            #expect(required.contains("content") || required.contains("edits"))
+        }
         let properties = try object(input["properties"])
         let edits = try object(properties["edits"])
         #expect(edits["maxItems"] as? Int == 100)

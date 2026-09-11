@@ -366,6 +366,13 @@ for line in sys.stdin:
                 'agentThreadId': children[0], 'agentPath': '/root/source-check', 'kind': 'interacted'}
             turn['items'].append(lifecycle)
             event('item/completed', {'threadId': tid, 'turnId': turn['id'], 'item': lifecycle})
+        if 'async-form' in text:
+            question = {'id': 'async-' + turn['id'], 'type': 'agentMessage', 'delivery': 'async',
+                'text': 'Choose how to read and where to begin.', 'questions': [
+                    {'title': 'How should we read this passage?', 'options': ['Compare the passages', 'Examine an objection']},
+                    {'title': 'Where should we begin?', 'options': ['First paragraph', 'Conclusion']}]}
+            turn['items'].append(question)
+            event('item/completed', {'threadId': tid, 'turnId': turn['id'], 'item': question})
         if 'questions' in text:
             rid = 'question-' + turn['id']
             pending_questions[rid] = tid

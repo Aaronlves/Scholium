@@ -72,23 +72,20 @@ struct AgentChatContentTests {
   }
 
   @Test func inlineCodeUsesNativeBackground() {
-    let rendered = AgentChatSelectableText.renderReply("普通 `concept` 文字")
+    let rendered = AgentChatObjectProjection.layoutReply("普通 `concept` 文字").text
     let range = (rendered.string as NSString).range(of: "concept")
     #expect(rendered.attribute(.backgroundColor, at: range.location, effectiveRange: nil) as? NSColor == .quaternaryLabelColor)
     #expect(rendered.attribute(.backgroundColor, at: 0, effectiveRange: nil) == nil)
   }
 
-  @Test func richSegmentsPreserveQuotationOffsets() throws {
+  @Test func richSegmentsPreserveObjectContent() throws {
     let source = "前文 😀\n\n| 概念 | 理由 |\n|---|---|\n|情绪|评价|\n\n后文中的评价。\n\n```mermaid\ngraph LR\nA --> B\n```"
-    let layout = AgentChatSelectableText.layoutReply(source)
+    let layout = AgentChatObjectProjection.layoutReply(source)
     let segments = AgentChatRichSegment.collect(layout)
     #expect(segments.count == 4)
     #expect(segments[1].columns == 2)
     #expect(segments.last?.language == "mermaid")
     #expect(segments.map { layout.text.attributedSubstring(from: $0.range).string }.joined() == layout.text.string)
-    let range = (layout.text.string as NSString).range(of: "后文中的评价")
-    let selection = AgentChatReplySelection(range: range, renderedText: layout.text.string)
-    #expect(AgentChatReplyQuotation.passage(selection, in: source) != nil)
   }
 
   @Test func viewedIsPerReceiptAndNotAnOutcome() {

@@ -2,15 +2,31 @@ import ScholiumContracts
 import SwiftUI
 
 struct AgentChatQuestionForm: View {
-  @Environment(\.accessibilityReduceMotion) private var reduceMotion
   let questions: [AgentChatQuestion]
   @Binding var answers: [String: AgentChatQuestionAnswer]
   let isSubmitting: Bool
   let failure: String?
   var toolContext: String? = nil
   var technicalDetail: String? = nil
+  var stop: (() -> Void)? = nil
   let reply: () -> Void
   let skip: () -> Void
+  @State private var questionIndex = 0
+
+  private var currentQuestion: AgentChatQuestion? {
+    questions.indices.contains(questionIndex) ? questions[questionIndex] : nil
+  }
+
+  private var hasCustomAnswer: Bool {
+    guard let question = currentQuestion, case .text = answers[question.id] else { return false }
+    return answers[question.id]?.value(for: question) != nil
+  }
+
+  private func advance() {
+    guard !isSubmitting, let question = currentQuestion, answers[question.id]?.value(for: question) != nil else { return }
+    if questionIndex + 1 < questions.count { questionIndex += 1 }
+    else if questions.allSatisfy({ answers[$0.id]?.value(for: $0) != nil }) { reply() }
+  }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
@@ -26,87 +42,84 @@ struct AgentChatQuestionForm: View {
               Text("Details", bundle: .module).font(.caption).foregroundStyle(.secondary)
             }
           }
+        }.padding(.horizontal, 4)
+      }
+      AgentChatContentScroll {
+        if let question = currentQuestion {
+          AgentChatQuestionField(question: question, isReadOnly: isSubmitting,
+            isLast: questionIndex == questions.count - 1,
+            answer: Binding(get: { answers[question.id] }, set: { answers[question.id] = $0 }),
+            advance: advance)
+            .id(question.id)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
       }
-      ScrollView {
-        VStack(alignment: .leading, spacing: 16) {
-          ForEach(questions) { question in
-            GroupBox {
-              AgentChatQuestionField(
-                question: question, isReadOnly: isSubmitting,
-                answer: Binding(
-                  get: { answers[question.id] }, set: { answers[question.id] = $0 })
-              )
-              .frame(maxWidth: .infinity, alignment: .leading).padding(6)
-            }
-          }
-        }.frame(maxWidth: .infinity, alignment: .leading)
-      }.frame(maxHeight: 320)
-      if isSubmitting {
-        if let failure {
-          Text(failure).font(.caption).foregroundStyle(.secondary)
-        } else {
-          HStack(spacing: 8) {
-            if reduceMotion {
-              Image(systemName: "ellipsis").accessibilityHidden(true)
-            } else {
-              ProgressView().controlSize(.small).accessibilityHidden(true)
-            }
-            Text("Waiting for Confirmation…", bundle: .module).font(.caption).foregroundStyle(.secondary)
-          }
+      if isSubmitting { AgentChatSubmissionStatus(failure: failure) }
+      HStack(spacing: 12) {
+        if isSubmitting && failure != nil, let stop {
+          Button("End Turn", action: stop)
         }
-      } else {
-        HStack {
+        if questionIndex > 0 && !isSubmitting {
+          Button { questionIndex -= 1 } label: {
+            Label { Text("Previous Question", bundle: .module) } icon: { Image(systemName: "chevron.backward") }
+          }.labelStyle(.iconOnly)
+            .help(Text("Previous Question", bundle: .module))
+        }
+        if !isSubmitting {
           Button(action: skip) {
-            if toolContext != nil { Text("Stop Turn", bundle: .module) } else { Text("Skip", bundle: .module) }
-          }
-          Spacer(minLength: 0)
-          Button(action: reply) { Text("Reply", bundle: .module) }
-            .disabled(questions.contains { answers[$0.id]?.value(for: $0) == nil })
+            if toolContext != nil {
+              Label { Text("Decline Request", bundle: .module) } icon: { Image(systemName: "xmark") }
+            } else {
+              Label { Text("Skip Questions", bundle: .module) } icon: { Image(systemName: "forward.end") }
+            }
+          }.labelStyle(.iconOnly)
+            .help(Text(toolContext != nil
+              ? "Decline this tool input request and stop the current turn."
+              : "Skip all questions in this request without supplying answers.", bundle: .module))
         }
-      }
-    }.padding()
+        Spacer(minLength: 0)
+        if questions.count > 1 {
+          Text("Question \(questionIndex + 1) of \(questions.count)", bundle: .module)
+            .font(.caption).foregroundStyle(.secondary)
+        }
+        if !isSubmitting, let question = currentQuestion, question.options.isEmpty || question.allowsOther {
+          Button(action: advance) {
+            Label {
+              Text(questionIndex == questions.count - 1 ? "Send Answer" : "Next Question", bundle: .module)
+            } icon: { Image(systemName: questionIndex == questions.count - 1 ? "arrow.up" : "arrow.right") }
+          }
+          .labelStyle(.iconOnly)
+          .buttonStyle(.borderedProminent)
+          .buttonBorderShape(.circle)
+          .disabled(!hasCustomAnswer)
+        }
+      }.buttonStyle(.borderless).controlSize(.regular)
+
+    }
+      .buttonStyle(.borderless)
+      .textFieldStyle(.roundedBorder)
       .accessibilityElement(children: .contain)
       .accessibilityIdentifier("scholium.chat.questions")
   }
 }
 
 private struct AgentChatQuestionField: View {
-  private enum Choice: Hashable {
-    case option(String)
-    case other
-  }
   let question: AgentChatQuestion
   let isReadOnly: Bool
+  let isLast: Bool
   @Binding var answer: AgentChatQuestionAnswer?
-  private var selection: Binding<Choice?> {
-    Binding(
-      get: {
-        switch answer {
-        case .option(let value): .option(value)
-        case .text: .other
-        case nil: nil
-        }
-      },
-      set: { value in
-        switch value {
-        case .option(let label): answer = .option(label)
-        case .other: answer = .text("")
-        case nil: answer = nil
-        }
-      })
-  }
+  let advance: () -> Void
+  @AccessibilityFocusState private var promptIsFocused: Bool
+
   private var text: Binding<String> {
     Binding(get: { if case .text(let value) = answer { value } else { "" } }, set: { answer = .text($0) })
   }
-  private var showsText: Bool {
-    if question.options.isEmpty { return true }
-    if case .text = answer { return true }
-    return false
-  }
+
   var body: some View {
-    VStack(alignment: .leading, spacing: 8) {
-      Text(question.prompt).font(.body).fixedSize(horizontal: false, vertical: true)
+    VStack(alignment: .leading, spacing: 12) {
+      Text(question.prompt).font(.headline).fixedSize(horizontal: false, vertical: true)
+        .accessibilityAddTraits(.isHeader)
+        .accessibilityFocused($promptIsFocused)
       if isReadOnly {
         if question.isSecret {
           Text("Answer Hidden", bundle: .module).foregroundStyle(.secondary)
@@ -114,25 +127,43 @@ private struct AgentChatQuestionField: View {
           Text(value).textSelection(.enabled)
         }
       } else {
-        if !question.options.isEmpty {
-          Picker(question.prompt, selection: selection) {
-            ForEach(question.options, id: \.label) { option in
+        ForEach(question.options, id: \.label) { option in
+          Button {
+            answer = .option(option.label)
+            advance()
+          } label: {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
               VStack(alignment: .leading, spacing: 2) {
                 Text(option.label)
-                if !option.description.isEmpty { Text(option.description).font(.caption).foregroundStyle(.secondary) }
-              }.fixedSize(horizontal: false, vertical: true).tag(Optional(Choice.option(option.label)))
-            }
-            if question.allowsOther { Text("Write an Answer", bundle: .module).tag(Optional(Choice.other)) }
-          }.pickerStyle(.radioGroup).labelsHidden()
-        }
-        if showsText {
-          if question.isSecret {
-            SecureField(text: text) { Text("Your Answer", bundle: .module) }
-          } else {
-            TextField(text: text, axis: .vertical) { Text("Your Answer", bundle: .module) }.lineLimit(2...5)
+                if !option.description.isEmpty {
+                  Text(option.description).font(.caption).foregroundStyle(.secondary)
+                }
+              }.fixedSize(horizontal: false, vertical: true)
+              Spacer(minLength: 0)
+              Image(systemName: answer == .option(option.label) ? "checkmark" : "chevron.forward")
+                .font(.caption).foregroundStyle(.secondary)
+            }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
           }
+          .buttonStyle(.borderless)
+          .accessibilityAddTraits(answer == .option(option.label) ? .isSelected : [])
+          .help(Text(isLast ? "Send Answer" : "Next Question", bundle: .module))
+        }
+        if question.options.isEmpty || question.allowsOther {
+          Group {
+            if question.isSecret {
+              SecureField(text: text) { Text("Your Answer", bundle: .module) }
+            } else {
+              TextField(text: text, axis: .vertical) { Text("Your Answer", bundle: .module) }
+                .lineLimit(1...5)
+            }
+          }
+          .simultaneousGesture(TapGesture().onEnded { answer = .text(text.wrappedValue) })
         }
       }
-    }.accessibilityElement(children: .contain)
+    }
+    .onAppear {
+      promptIsFocused = true
+    }
+    .accessibilityElement(children: .contain)
   }
 }

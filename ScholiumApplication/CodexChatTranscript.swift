@@ -6,10 +6,6 @@ public struct CodexChatOperationContext: Sendable {
   let value: MCPJSONValue
   public init(_ value: MCPJSONValue) { self.value = value }
 
-  public func technicalDetails(request: [String: MCPJSONValue]) -> MCPJSONValue {
-    var details = request; details["operation"] = value
-    return .object(details)
-  }
 
   public func toolQuestion() throws -> (identity: String, arguments: MCPJSONValue?)? {
     guard let item = value.objectValue, item["type"]?.stringValue == "mcpToolCall" else { return nil }
@@ -151,7 +147,9 @@ public enum CodexChatTranscript {
     if type == "agentMessage" {
       guard let text = object["text"]?.stringValue else { throw CodexConnectionError.invalidMessage }
       return .init(id: id, content: .assistant(text: text,
-        phase: object["phase"]?.stringValue.flatMap(AgentChatMessage.Phase.init(rawValue:))))
+        phase: object["phase"]?.stringValue.flatMap(AgentChatMessage.Phase.init(rawValue:))),
+        asyncQuestions: completed && object["delivery"]?.stringValue == "async"
+          ? try CodexChatAsyncQuestions.parse(object, id: id, text: text) : nil)
     }
     if type == "userMessage" {
       guard let values = object["content"]?.arrayValue else { throw CodexConnectionError.invalidMessage }

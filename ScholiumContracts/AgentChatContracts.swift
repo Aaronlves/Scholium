@@ -77,6 +77,8 @@ public struct AgentChatMessage: Codable, Equatable, Identifiable, Sendable {
   public var methods: [AgentChatMethodSelection]?
   public var coordinationTarget: AgentChatCoordinationTarget?
   public var replyQuotes: [AgentChatReplyQuote]?
+  public var asyncQuestion: AgentChatAsyncQuestion?
+  public var questionReplies: [AgentChatQuestionReply]?
   public let attachments: [AgentChatAttachment]
   public let localMaterials: [AgentChatLocalMaterial]
 

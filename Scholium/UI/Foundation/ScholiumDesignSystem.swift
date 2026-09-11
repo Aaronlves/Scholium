@@ -2872,6 +2872,27 @@ enum ScholiumChatAppearance {
     static var messageNSForeground: NSColor { ScholiumColorRole.primaryText.nsColor }
     static var messageLinkNSForeground: NSColor { ScholiumColorRole.accent.nsColor }
     static let messageLineHeight: CGFloat = 1.55
+    static var inlineCodeBackground: NSColor { .quaternaryLabelColor }
+    static func inlineCodeCSS(dark: Bool, increasedContrast: Bool) -> String {
+        let name: NSAppearance.Name = increasedContrast
+            ? (dark ? .accessibilityHighContrastDarkAqua : .accessibilityHighContrastAqua)
+            : (dark ? .darkAqua : .aqua)
+        var background = "transparent"
+        NSAppearance(named: name)?.performAsCurrentDrawingAppearance {
+            if let color = inlineCodeBackground.usingColorSpace(.sRGB) {
+                background = String(format: "rgba(%.0f, %.0f, %.0f, %.4f)",
+                    color.redComponent * 255, color.greenComponent * 255,
+                    color.blueComponent * 255, color.alphaComponent)
+            }
+        }
+        return """
+        .scholium-document :not(pre) > code {
+            font-family: 'SFMono-Regular', ui-monospace, monospace;
+            font-size: 1em; line-height: inherit; color: inherit;
+            background: \(background); border: 0; border-radius: 0; padding: 0;
+        }
+        """
+    }
 
     static var userMessageBackground: Color { ScholiumColorRole.accent.color.opacity(0.3) }
 }

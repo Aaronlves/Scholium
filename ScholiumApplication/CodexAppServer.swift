@@ -46,12 +46,7 @@ public actor CodexAppServer {
     child.executableURL = executable
     child.arguments = ["app-server", "--stdio", "-c", "analytics.enabled=false",
       "-c", "project_doc_max_bytes=0", "-c", "project_root_markers=[]"]
-    let inherited = ProcessInfo.processInfo.environment
-    var environment = inherited.filter {
-      ["HOME", "USER", "LOGNAME", "PATH", "TMPDIR", "LANG", "LC_ALL", "SHELL"].contains($0.key)
-    }
-    environment["CODEX_HOME"] = home.path
-    child.environment = environment
+    child.environment = Self.processEnvironment(ProcessInfo.processInfo.environment, home: home)
     child.currentDirectoryURL = home
     child.standardInput = stdin
     child.standardOutput = stdout
@@ -86,6 +81,18 @@ public actor CodexAppServer {
       while !errors.availableData.isEmpty {}
       try? errors.close()
     }
+  }
+
+  /// Preserve the caller's network route without inheriting unrelated credentials.
+  static func processEnvironment(_ inherited: [String: String], home: URL) -> [String: String] {
+    let allowed: Set<String> = [
+      "HOME", "USER", "LOGNAME", "PATH", "TMPDIR", "LANG", "LC_ALL", "SHELL",
+      "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY",
+      "http_proxy", "https_proxy", "all_proxy", "no_proxy",
+    ]
+    var result = inherited.filter { allowed.contains($0.key) }
+    result["CODEX_HOME"] = home.path
+    return result
   }
 
   public func request(_ method: String, params: [String: MCPJSONValue] = [:]) async throws

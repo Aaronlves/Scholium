@@ -12,7 +12,7 @@ struct AgentChatApproval: Identifiable {
   let title: String
   let detail: String
   let questions: [AgentChatQuestion]
-  var technicalDetail: String? = nil
+  var toolInputDetails: String? = nil
   var runtimeRequestID: MCPJSONValue? = nil
   var turnID: String? = nil
   var submission: Bool? = nil
@@ -244,9 +244,13 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
   var selected: AgentChatConversation? { conversations.first { $0.id == selectedID } }
   var isBusy: Bool { selectedID.map(isBusy(in:)) ?? (connectionState == .connecting) }
   var hasActiveExecutions: Bool { executions.values.contains(where: \.isBusy) }
-  var needsInput: Bool { executions.values.contains { $0.approvals.contains { !$0.isSubmitting } } }
+  var needsInput: Bool { executions.values.contains { $0.approvals.contains { !$0.isSubmitting } }
+    || conversations.contains { $0.archivedAt == nil && $0.messages.contains { $0.asyncQuestion?.isPending == true } } }
   var needsInputPublisher: AnyPublisher<Bool, Never> {
-    $executions.map { $0.values.contains { $0.approvals.contains { !$0.isSubmitting } } }.removeDuplicates().eraseToAnyPublisher()
+    $executions.combineLatest($conversations).map { executions, conversations in
+      executions.values.contains { $0.approvals.contains { !$0.isSubmitting } }
+        || conversations.contains { $0.archivedAt == nil && $0.messages.contains { $0.asyncQuestion?.isPending == true } }
+    }.removeDuplicates().eraseToAnyPublisher()
   }
   var isRefreshingHistory: Bool { selectedID.flatMap { executions[$0]?.isRefreshingHistory } ?? false }
   func state(for id: UUID?) -> State {
@@ -263,7 +267,8 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
   }
   func approvalCount(in id: UUID) -> Int { executions[id]?.approvals.filter { $0.questions.isEmpty && !$0.isSubmitting }.count ?? 0 }
   func questionCount(in id: UUID) -> Int {
-    executions[id]?.approvals.filter { !$0.questions.isEmpty && $0.submission == nil }.count ?? 0
+    (executions[id]?.approvals.filter { !$0.questions.isEmpty && $0.submission == nil }.count ?? 0)
+      + (conversation(id)?.messages.filter { $0.asyncQuestion?.isPending == true }.count ?? 0)
   }
   func canArchive(_ id: UUID) -> Bool { executions[id] != nil && executions[id]?.isBusy == false }
   func owns(token: UUID) -> Bool { executionID(for: token) != nil }
@@ -1070,6 +1075,19 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
     return dispatchQueuedMessage(messageID, in: selectedID)
   }
 
+  func canSteerQueuedMessage(_ messageID: String) -> Bool {
+    guard let selected, let execution = executions[selected.id], execution.state == .working,
+      execution.turnID != nil,
+      let message = selected.queuedMessages.first(where: { $0.id == messageID }) else { return false }
+    return canSend(message: message, in: selected)
+  }
+
+  @discardableResult
+  func steerQueuedMessage(_ messageID: String, expectedTurnID: String) -> Bool {
+    guard let selectedID else { return false }
+    return dispatchQueuedMessage(messageID, in: selectedID, expectedTurnID: expectedTurnID)
+  }
+
   func removeQueuedMessage(_ messageID: String, in conversationID: UUID? = nil) {
     guard let owner = conversationID ?? selectedID,
       let message = conversation(owner)?.queuedMessages.first(where: { $0.id == messageID }) else { return }
@@ -1100,17 +1118,24 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
   }
 
   @discardableResult
-  private func dispatchQueuedMessage(_ messageID: String, in conversationID: UUID) -> Bool {
+  private func dispatchQueuedMessage(_ messageID: String, in conversationID: UUID,
+                                    expectedTurnID: String? = nil) -> Bool {
     guard connectionState == .ready, let conversation = conversation(conversationID),
-      executions[conversationID]?.state == .ready,
-      let message = conversation.queuedMessages.first, message.id == messageID,
-      canSend(message: message, in: conversation) else { return false }
+      let execution = executions[conversationID],
+      let index = conversation.queuedMessages.firstIndex(where: { $0.id == messageID }) else { return false }
+    if let expectedTurnID {
+      guard execution.state == .working, execution.turnID == expectedTurnID else { return false }
+    } else {
+      guard execution.state == .ready, index == 0 else { return false }
+    }
+    let message = conversation.queuedMessages[index]
+    guard canSend(message: message, in: conversation) else { return false }
     update(in: conversationID) { $0.queuedMessages.removeAll { $0.id == messageID } }
     send(message, in: conversation, consumesDraft: false) { [weak self] receipt in
       guard let self, receipt == .unavailable else { return }
       self.update(in: conversationID) { conversation in
         guard !conversation.queuedMessages.contains(where: { $0.id == message.id }) else { return }
-        conversation.queuedMessages.insert(message, at: 0)
+        conversation.queuedMessages.insert(message, at: min(index, conversation.queuedMessages.count))
       }
       self.persist()
     }
@@ -1121,6 +1146,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
   private func drainQueuedMessage(in conversationID: UUID) {
     guard connectionState == .ready, !isRenewingSettings,
       executions[conversationID]?.state == .ready,
+      conversation(conversationID)?.messages.contains(where: { $0.asyncQuestion?.isPending == true }) != true,
       let message = conversation(conversationID)?.queuedMessages.first else { return }
     if !dispatchQueuedMessage(message.id, in: conversationID) {
       executions[conversationID]?.error = ScholiumL10n.string(
@@ -1173,7 +1199,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
           self.materialErrors[conversationID] = String(localized: "The retained file \(validatingFileName) is missing or changed. Replace or remove it before sending.")
           return
         }
-        let suppliedText = self.inputText(message)
+        let suppliedText = try self.inputText(message)
         if (try JSONEncoder().encode(MCPJSONValue.string(suppliedText))).count > 7 * 1_024 * 1_024 {
           self.materialErrors[conversationID] = String(localized: "This message contains too much material. Send fewer files or shorter passages.")
           return
@@ -1231,7 +1257,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
           .object(["type": .string("text"), "text": .string(suppliedText)])
         ]
         input += fileInput
-        if let skill = try? ScholiumAgentIntegrationResources.coreProtocolSkillDirectoryURL() {
+        if message.questionReplies == nil, let skill = try? ScholiumAgentIntegrationResources.coreProtocolSkillDirectoryURL() {
           input.append(
             .object([
               "type": .string("skill"), "name": .string("scholium-core-protocol"),
@@ -1399,12 +1425,16 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
               conversation.messages.insert(.init(id: item.id, role: .assistant, text: text, phase: phase), at: insertion)
             }
           }
+          retainAsyncQuestions(item, in: conversationID)
           previousMessageID = item.id
         case .activity(let value):
           guard !item.isManagedTool, let activity = AgentChatActivityProjection.withLocalizedFailure(value) else { continue }
           recordActivity(activity, id: "runtime:\(item.id)", conversationID: conversationID, turnID: turn.id)
           previousMessageID = "runtime:\(item.id)"
-        case .user:
+        case .user(let text, let hasAdditionalMaterial):
+          if !hasAdditionalMaterial, let replies = CodexChatAsyncQuestions.decode(text) {
+            receiveQuestionReplies(replies, in: conversationID)
+          }
           if let clientID = item.clientMessageID {
             update(in: conversationID) { if $0.pendingMessageID == clientID { $0.pendingMessageID = nil } }
             previousMessageID = clientID
@@ -1456,7 +1486,8 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
     return params
   }
 
-  private func inputText(_ message: AgentChatMessage) -> String {
+  private func inputText(_ message: AgentChatMessage) throws -> String {
+    if let replies = message.questionReplies { return try CodexChatAsyncQuestions.encode(replies) }
     var text = message.text
     for quote in message.replyQuotes ?? [] {
       if let data = try? JSONEncoder().encode(quote), let value = String(data: data, encoding: .utf8) {
@@ -1497,9 +1528,90 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
     return text
   }
 
+  var pendingAsyncQuestion: AgentChatMessage? {
+    guard let selected, selected.archivedAt == nil else { return nil }
+    return selected.messages.first { $0.asyncQuestion?.isPending == true }
+  }
+
+  func editAsyncAnswers(_ id: String, values: [String: AgentChatQuestionAnswer]) {
+    guard selected?.archivedAt == nil else { return }
+    update { conversation in
+      guard let index = conversation.messages.firstIndex(where: { $0.id == id }),
+        conversation.messages[index].asyncQuestion?.pendingMessageID == nil else { return }
+      conversation.messages[index].asyncQuestion?.answers = values
+    }
+    persist()
+  }
+
+  private func retainAsyncQuestions(_ item: AgentChatTranscript.Item, in conversationID: UUID) {
+    guard let questions = item.asyncQuestions else { return }
+    update(in: conversationID) { conversation in
+      guard let index = conversation.messages.firstIndex(where: { $0.id == item.id }),
+        conversation.messages[index].asyncQuestion == nil else { return }
+      conversation.messages[index].asyncQuestion = .init(questions: questions)
+    }
+  }
+
+  private func receiveQuestionReplies(_ replies: [AgentChatQuestionReply], in conversationID: UUID) {
+    update(in: conversationID) { conversation in
+      for index in conversation.messages.indices {
+        guard var request = conversation.messages[index].asyncQuestion else { continue }
+        for reply in replies where request.questions.contains(where: { $0.id == reply.questionItemId && $0.prompt == reply.question }) {
+          request.responses[reply.questionItemId] = reply.answer
+        }
+        if request.remaining.isEmpty {
+          if conversation.pendingMessageID == request.pendingMessageID { conversation.pendingMessageID = nil }
+          request.pendingMessageID = nil
+        }
+        conversation.messages[index].asyncQuestion = request
+      }
+    }
+  }
+
+  func answerAsyncQuestion(_ id: String, skip: Bool = false) {
+    guard let selected, let request = selected.messages.first(where: { $0.id == id })?.asyncQuestion,
+      request.isPending, request.pendingMessageID == nil else { return }
+    let replies = request.remaining.compactMap { question -> AgentChatQuestionReply? in
+      guard let answer = skip ? "" : request.answers[question.id]?.value(for: question) else { return nil }
+      return .init(questionItemId: question.id, question: question.prompt, answer: answer)
+    }
+    guard replies.count == request.remaining.count else { return }
+    var message = AgentChatMessage(role: .user, text: replies.map {
+      $0.question + "\n" + ($0.answer.isEmpty ? ScholiumL10n.string("Skipped") : $0.answer)
+    }.joined(separator: "\n\n"))
+    message.questionReplies = replies
+    guard canSend(message: message, in: selected) else { return }
+    update(in: selected.id) { conversation in
+      if let index = conversation.messages.firstIndex(where: { $0.id == id }) {
+        conversation.messages[index].asyncQuestion?.pendingMessageID = message.id
+      }
+    }
+    send(message, in: selected, consumesDraft: false) { [weak self] receipt in
+      guard let self else { return }
+      switch receipt {
+      case .received: self.receiveQuestionReplies(replies, in: selected.id)
+      case .unavailable:
+        self.update(in: selected.id) { conversation in
+          if let index = conversation.messages.firstIndex(where: { $0.id == id }) {
+            conversation.messages[index].asyncQuestion?.pendingMessageID = nil
+          }
+        }
+      case .unconfirmed: break // Retain identity; explicit recovery never replays this reply.
+      }
+      self.persist()
+    }
+  }
+
   func confirmContinueAfterUncertainDelivery() {
     guard !isBusy else { return }
-    update { $0.pendingMessageID = nil }
+    update { conversation in
+      if let pending = conversation.pendingMessageID {
+        for index in conversation.messages.indices where conversation.messages[index].asyncQuestion?.pendingMessageID == pending {
+          conversation.messages[index].asyncQuestion?.continuedAfterUncertainty = true
+        }
+      }
+      conversation.pendingMessageID = nil
+    }
     if let selectedID { executions[selectedID]?.error = nil }
     persist()  // Deliberately never resends the uncertain message.
   }
@@ -1900,7 +2012,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
           executions[conversationID]?.approvals.append(
             .init(
               id: id, title: Self.operationTitle(request), detail: detail,
-              questions: [], technicalDetail: Self.displayJSON(.object(request.arguments)), updatePreview: updatePreview))
+              questions: [], updatePreview: updatePreview))
           executions[conversationID]?.replies[id] = { reply in
             if case .note(let allowed) = reply { continuation.resume(returning: allowed) }
             else { continuation.resume(returning: false) }
@@ -2498,8 +2610,13 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
             $0.messages.append(message)
           }
         }
+        retainAsyncQuestions(item, in: conversationID)
         persist()
-      case .user: break
+      case .user(let text, let hasAdditionalMaterial):
+        if completed, !hasAdditionalMaterial, let replies = CodexChatAsyncQuestions.decode(text) {
+          receiveQuestionReplies(replies, in: conversationID)
+          persist()
+        }
       }
     case .activityDelta(let id, let text):
       update(in: conversationID) { conversation in
@@ -2597,9 +2714,8 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
       let item = executions[owner]?.runtimeItems[itemID]
       let request = try CodexChatRuntimeApproval.parse(method: method, params: params, item: item)
       let localID = UUID(), connection = connectionID
-      let details = item?.technicalDetails(request: params) ?? .object(params)
       let approval = AgentChatApproval(id: localID, title: "", detail: "", questions: [],
-        technicalDetail: Self.displayJSON(details), runtimeRequestID: requestID, turnID: turn,
+        runtimeRequestID: requestID, turnID: turn,
         runtimeApproval: request.presentation, runtimeItemID: itemID)
       executions[owner]?.approvals.append(approval)
       notifyInput(in: owner)
@@ -2647,7 +2763,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
         toolDetails = question.arguments.map(Self.displayJSON)
       }
       let approval = AgentChatApproval(id: localID, title: "", detail: "", questions: questions,
-        technicalDetail: toolDetails, runtimeRequestID: requestID, turnID: turn,
+        toolInputDetails: toolDetails, runtimeRequestID: requestID, turnID: turn,
         runtimeItemID: params["itemId"]?.stringValue, toolQuestionContext: context)
       executions[owner]?.approvals.append(approval)
       notifyInput(in: owner)

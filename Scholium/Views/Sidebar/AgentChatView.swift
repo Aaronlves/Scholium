@@ -30,7 +30,6 @@ struct AgentChatView: View {
   @State private var showsConversationList = true
   @State private var showsFiles = false
   @State private var showsContext = false
-  @State private var showsComposerContext = false
   @State private var showsDiagnostics = false
   @State private var diagnosticMessageID: String?
   @State private var diagnosticError: String?
@@ -103,7 +102,6 @@ struct AgentChatView: View {
       completion.dismiss()
       showsFiles = false
       showsContext = false
-      showsComposerContext = false
       showsDiagnostics = false
       diagnosticError = nil
       expandedActivityIDs = []
@@ -136,8 +134,7 @@ struct AgentChatView: View {
         messageIsFocused = false
         showsFiles = false
         showsContext = false
-        showsComposerContext = false
-        showsDiagnostics = false
+          showsDiagnostics = false
         diagnosticError = nil
       }
     }
@@ -544,9 +541,6 @@ struct AgentChatView: View {
               }.id(item.id)
             }
             currentActivity
-            if let approval = controller.approvals.first(where: { !$0.isSubmitting }) ?? controller.approvals.first {
-              approvalView(approval)
-            }
             Color.clear.frame(height: 1).id("latest")
           }.padding(.horizontal, ScholiumSidebarLayout.textInset)
             .padding(.vertical, ScholiumSidebarLayout.edgeInset)
@@ -622,7 +616,7 @@ struct AgentChatView: View {
                   showsArchived = false
                 }
               }.buttonStyle(.glass).padding()
-            } else { composer }
+            } else { inputDock }
           }
         }
         .task(id: replyNavigation) {
@@ -640,7 +634,7 @@ struct AgentChatView: View {
         }
       }
     }
-    .task { if isVisible { messageIsFocused = true } }
+    .task { if isVisible && pendingRequest == nil && controller.pendingAsyncQuestion == nil { messageIsFocused = true } }
     .id(controller.selectedID)
   }
 
@@ -680,11 +674,15 @@ struct AgentChatView: View {
           coordinationReference(target)
         }
         if let plan = message.plan { AgentChatPlanView(plan: plan) }
-        if !message.text.isEmpty {
+        if let request = message.asyncQuestion {
+          ForEach(request.questions) { question in
+            Text(question.prompt).font(.callout).foregroundStyle(.secondary)
+          }
+        } else if !message.text.isEmpty {
           AgentChatMarkdown(text: message.text, expandsToFillWidth: message.role != .user,
             quoteSelection: canQuote(message) ? { selection in quote(message, selection: selection, in: conversationID) } : nil)
         }
-        if message.role == .assistant, message.phase != .commentary, !message.text.isEmpty,
+        if message.role == .assistant, message.asyncQuestion == nil, message.phase != .commentary, !message.text.isEmpty,
           (!controller.isBusy || message.turnID != controller.currentTurnID) {
           AgentChatReplyActions(text: message.text, openNote: { _ = openReference($0) },
             context: .init(reply: message, history: controller.selected?.messages ?? []),
@@ -896,7 +894,8 @@ struct AgentChatView: View {
   @ViewBuilder
   private var currentActivity: some View {
     if controller.isBusy {
-      if controller.state == .working && controller.approvals.isEmpty && currentActivityID == nil {
+      if controller.state == .working && controller.approvals.isEmpty && currentActivityID == nil
+        && controller.currentTurnID.map({ turn in timelineMessages.contains { $0.turnID == turn } }) != true {
         // No pulse is shown until the runtime supplies a concrete public
         // activity. This keeps the turn header calm while preserving the
         // active-row signal for observed work below.
@@ -1083,19 +1082,58 @@ struct AgentChatView: View {
       quotas: controller.quotas, quotaError: controller.quotaError,
       isRefreshing: controller.isRefreshingQuota, canRefresh: controller.account != nil,
       canCompact: controller.canCompact,
-      compact: { showsContext = false; showsComposerContext = false; controller.compactContext() },
+      compact: { showsContext = false; controller.compactContext() },
       refresh: controller.refreshQuota)
+  }
+
+  private var pendingRequest: AgentChatApproval? {
+    controller.approvals.first(where: { !$0.isSubmitting }) ?? controller.approvals.first
+  }
+
+  private var inputDock: some View {
+    let pending = pendingRequest
+    let asyncMessage = pending == nil ? controller.pendingAsyncQuestion : nil
+    let title = pending?.toolQuestionContext != nil
+      ? String(localized: "Tool Input Request", bundle: .module)
+      : pending?.questions.isEmpty == false || asyncMessage != nil
+        ? String(localized: "Answer Agent", bundle: .module)
+        : String(localized: "Review Permission", bundle: .module)
+    let turnID = controller.currentTurnID
+    return VStack(spacing: 0) {
+      if !controller.queuedMessages.isEmpty {
+        AgentChatQueueView(messages: controller.queuedMessages,
+          canSend: { controller.canSendQueuedMessage($0.id) },
+          send: { _ = controller.sendQueuedMessage($0) },
+          canSteer: { controller.canSteerQueuedMessage($0.id) },
+          steer: { id in if let turnID { _ = controller.steerQueuedMessage(id, expectedTurnID: turnID) } },
+          remove: { controller.removeQueuedMessage($0) })
+      }
+      AgentChatInputDock(requestID: pending.map { "approval:\($0.id)" } ?? asyncMessage.map { "question:\($0.id)" }, requestTitle: title,
+        requestCount: controller.approvals.count + (asyncMessage == nil ? 0 : 1), isActive: isVisible && !showsConversationList,
+        isReadingHistory: isAwayFromLatest || transcriptIsScrolling,
+        isEditingDraft: messageIsFocused && (controller.selected?.draft.isEmpty == false
+          || (NSApp.keyWindow?.firstResponder as? NSTextView)?.hasMarkedText() == true),
+        composerIsFocused: $messageIsFocused) {
+          if let pending { approvalView(pending) }
+          else if let message = asyncMessage, let request = message.asyncQuestion {
+            AgentChatQuestionForm(questions: request.remaining, answers: Binding(
+              get: { controller.selected?.messages.first { $0.id == message.id }?.asyncQuestion?.answers ?? [:] },
+              set: { controller.editAsyncAnswers(message.id, values: $0) }),
+              isSubmitting: request.pendingMessageID != nil, failure: controller.error,
+              reply: { controller.answerAsyncQuestion(message.id) },
+              skip: { controller.answerAsyncQuestion(message.id, skip: true) })
+              .id(request.remaining.map(\.id))
+          }
+        } composer: {
+          composer
+        }
+      .padding(.top, controller.queuedMessages.isEmpty ? 0 : -28)
+    }
   }
 
   private var composer: some View {
     let conversationID = controller.selectedID
     return VStack(alignment: .leading) {
-      if !controller.queuedMessages.isEmpty {
-        AgentChatQueueView(messages: controller.queuedMessages,
-          canSend: { controller.canSendQueuedMessage($0.id) },
-          send: { _ = controller.sendQueuedMessage($0) },
-          remove: { controller.removeQueuedMessage($0) })
-      }
       if let methods = controller.selected?.selectedMethods, !methods.isEmpty {
         ScrollView(.horizontal) {
           HStack(spacing: 8) {
@@ -1220,58 +1258,29 @@ struct AgentChatView: View {
             }
           }
           }.disabled(controller.isBusy)
-          Button("Context") { showsContext = true }
+          AgentChatModelMenu(models: controller.models,
+            preferences: controller.selected?.preferences ?? .init(), selectedModel: controller.selectedModel,
+            isEnabled: !controller.isBusy && controller.account != nil,
+            selectModel: controller.setModel, selectEffort: controller.setEffort)
+          Menu("Permission") {
+            Picker("Permission", selection: Binding(
+              get: { controller.selected?.permission ?? .ask }, set: controller.setPermission)) {
+              Text("Ask for Approval").tag(AgentChatPermission.ask)
+              Text("Full Access").tag(AgentChatPermission.fullAccess)
+            }
+          }.disabled(controller.isBusy)
+          Button("Context and Usage") { showsContext = true }
+          if controller.canQueue {
+            Divider()
+            Button("Queue for Next Turn") { _ = controller.queue() }
+          }
         } label: {
           Label("Chat Actions", systemImage: "plus").labelStyle(.iconOnly)
             .foregroundStyle(.primary)
         }
         .help("Chat Actions").accessibilityLabel("Chat Actions")
         .accessibilityIdentifier("scholium.chat.addMaterial")
-        AgentChatModelMenu(models: controller.models,
-          preferences: controller.selected?.preferences ?? .init(), selectedModel: controller.selectedModel,
-          isEnabled: !controller.isBusy && controller.account != nil,
-          selectModel: controller.setModel, selectEffort: controller.setEffort)
-        Menu {
-          Picker(
-            "Permission",
-            selection: Binding(
-              get: { controller.selected?.permission ?? .ask }, set: controller.setPermission)
-          ) {
-            Text("Ask for Approval").tag(AgentChatPermission.ask)
-            Text("Full Access").tag(AgentChatPermission.fullAccess)
-          }
-          .pickerStyle(.inline)
-        } label: {
-          Label(
-            "Permission",
-            systemImage: controller.selected?.permission == .fullAccess
-              ? "shield" : "hand.raised"
-          )
-          .labelStyle(.iconOnly).foregroundStyle(.primary)
-        }
-        .disabled(controller.isBusy)
-        .accessibilityLabel("Permission")
-        .accessibilityValue(
-          controller.selected?.permission == .fullAccess
-            ? String(localized: "Full Access") : String(localized: "Ask for Approval")
-        )
-        .accessibilityIdentifier("scholium.chat.permission")
-        .help(
-          controller.selected?.permission == .fullAccess
-            ? String(localized: "Full Access") : String(localized: "Ask for Approval"))
         Spacer(minLength: 0)
-        if let fraction = AgentChatContextPresentation.fraction(controller.selected?.contextUsage) {
-          Button { showsComposerContext = true } label: {
-            Text(fraction.formatted(.percent.precision(.fractionLength(0))))
-              .font(.caption).monospacedDigit().foregroundStyle(.secondary)
-          }
-          .buttonStyle(.plain)
-          .accessibilityLabel("Context Usage")
-          .accessibilityValue(fraction.formatted(.percent.precision(.fractionLength(0))))
-          .help("Last reported context use")
-          .accessibilityIdentifier("scholium.chat.contextUsage")
-          .popover(isPresented: $showsComposerContext) { contextPanel }
-        }
         if controller.state == .working || controller.state == .compacting || controller.state == .stopping {
           Button {
             controller.stop()
@@ -1281,16 +1290,7 @@ struct AgentChatView: View {
           .disabled(controller.state == .stopping)
           .help("Stop").accessibilityLabel("Stop")
         }
-        if controller.canQueue {
-          Button {
-            _ = controller.queue()
-          } label: {
-            Image(systemName: "text.badge.plus")
-          }
-          .help("Queue for Next Turn")
-          .accessibilityLabel("Queue for Next Turn")
-          .accessibilityIdentifier("scholium.chat.queueForNextTurn")
-        }
+        if !controller.isBusy || controller.selected?.draft.isEmpty == false {
         Button {
           controller.send()
         } label: {
@@ -1298,14 +1298,17 @@ struct AgentChatView: View {
         }
         .buttonStyle(.borderedProminent)
         .buttonBorderShape(.circle)
-        .tint(ScholiumColorRole.accent.color)
         .controlSize(.regular)
         .keyboardShortcut(.return, modifiers: .command)
         .disabled(!controller.canSend)
         .help(controller.state == .disconnected
           ? String(localized: "Connect an agent before sending.", bundle: .module)
-          : String(localized: "Send", bundle: .module))
-        .accessibilityLabel("Send")
+          : controller.state == .working && controller.currentTurnID != nil
+            ? String(localized: "Add this message to the current turn.", bundle: .module)
+            : String(localized: "Send", bundle: .module))
+        .accessibilityLabel(controller.state == .working && controller.currentTurnID != nil
+          ? String(localized: "Send Now", bundle: .module) : String(localized: "Send", bundle: .module))
+        }
       }
       .controlSize(.regular)
       .scholiumMenuStyle(.borderlessButton)
@@ -1318,22 +1321,19 @@ struct AgentChatView: View {
       }
     }
     .buttonStyle(.borderless)
-    .padding(12)
-    .scholiumFloatingSurface(in: RoundedRectangle(cornerRadius: 24))
     .overlay(alignment: .top) {
       if completion.query != nil {
         AgentChatComposerCandidates(completion: completion, candidates: completionCandidates)
           .offset(y: -(CGFloat(max(1, completionCandidates.count)) * 44 + 18))
       }
     }
-    .padding(ScholiumSidebarLayout.edgeInset)
   }
 
   @ViewBuilder
   private func approvalView(_ approval: AgentChatApproval) -> some View {
     if let request = approval.runtimeApproval {
-      AgentChatRuntimeApprovalView(request: request, technicalDetail: approval.technicalDetail ?? "",
-        decision: approval.runtimeDecision, failure: approval.failure) {
+      AgentChatRuntimeApprovalView(request: request,
+        decision: approval.runtimeDecision, failure: approval.failure, stop: controller.stop) {
         controller.answerRuntimeApproval(approval.id, decision: $0)
       }.id(approval.id)
     } else if !approval.questions.isEmpty {
@@ -1341,36 +1341,28 @@ struct AgentChatView: View {
         get: { controller.questionAnswers(approval.id) },
         set: { controller.editQuestionAnswers(approval.id, values: $0) }),
         isSubmitting: approval.submission != nil, failure: approval.failure,
-        toolContext: approval.toolQuestionContext, technicalDetail: approval.technicalDetail,
-        reply: { controller.answer(approval.id, allow: true) },
+        toolContext: approval.toolQuestionContext, technicalDetail: approval.toolInputDetails,
+        stop: controller.stop, reply: { controller.answer(approval.id, allow: true) },
         skip: { controller.answer(approval.id, allow: false) })
         .id(approval.id)
     } else {
-    GroupBox {
-    VStack(alignment: .leading) {
+    VStack(alignment: .leading, spacing: 12) {
+      Text(approval.title).font(.headline).padding(.horizontal, 4)
       if approval.updatePreview != nil {
         Button("Review Changes") { comparisonRequest = approval }
           .accessibilityIdentifier("scholium.chat.reviewProposedChanges")
       }
-      ScrollView {
-        Text(approval.detail).font(.caption).textSelection(.enabled).frame(
+      AgentChatContentScroll {
+        Text(approval.detail).font(.callout).textSelection(.enabled).frame(
           maxWidth: .infinity, alignment: .leading)
       }
-      .frame(maxHeight: 150)
-      if let technicalDetail = approval.technicalDetail {
-        DisclosureGroup("Details") {
-          ScrollView { Text(technicalDetail).font(.caption).textSelection(.enabled) }.frame(
-            maxHeight: 100)
-        }
-      }
-      HStack {
+      HStack(spacing: 12) {
         Button("Decline") { controller.answer(approval.id, allow: false) }
         Spacer(minLength: 8)
         Button("Allow Once") { controller.answer(approval.id, allow: true) }
-      }
-    }.padding(6)
-    } label: { Text(approval.title).font(.headline) }
-    .padding().id(approval.id)
+          .buttonStyle(.borderedProminent).buttonBorderShape(.capsule)
+      }.controlSize(.regular)
+    }.buttonStyle(.borderless).id(approval.id)
     }
   }
 }

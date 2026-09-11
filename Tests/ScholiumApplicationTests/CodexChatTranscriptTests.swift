@@ -41,6 +41,28 @@ struct CodexChatTranscriptTests {
     #expect(context == nil && event.turnID == "turn")
   }
 
+  @Test("Async structured questions retain protocol identity in live and restored history; prose stays prose")
+  func asyncQuestions() throws {
+    var item: [String: MCPJSONValue] = ["id": .string("call/中文"), "type": .string("agentMessage"),
+      "delivery": .string("async"), "text": .string("Summary"), "questions": .array([
+        .object(["title": .string("Which passage?"), "options": .array([.string("First"), .string("Second")])]),
+        .object(["title": .string("Why?")])])]
+    let history = try CodexChatTranscript.turn(turn(items: [.object(item)]), threadID: "thread")
+    let questions = try #require(history.items.first?.asyncQuestions)
+    #expect(questions.map(\.id) == ["[\"request_user_input_async\",\"call/中文\",0]", "[\"request_user_input_async\",\"call/中文\",1]"])
+    #expect(questions[0].allowsOther && questions[1].options.isEmpty)
+    let reply = AgentChatQuestionReply(questionItemId: questions[0].id, question: questions[0].prompt, answer: "其他\n答案")
+    let encoded = try CodexChatAsyncQuestions.encode([reply])
+    #expect(CodexChatAsyncQuestions.decode(encoded) == [reply])
+    #expect(CodexChatAsyncQuestions.decode("Quoted " + encoded) == nil)
+    item["delivery"] = nil
+    #expect(try CodexChatTranscript.turn(turn(items: [.object(item)]), threadID: "thread").items.first?.asyncQuestions == nil)
+    item["delivery"] = .string("async"); item["questions"] = .null
+    #expect(try CodexChatTranscript.turn(turn(items: [.object(item)]), threadID: "thread").items.first?.asyncQuestions?.first?.id == "call/中文")
+    item["questions"] = .array([.object(["title": .string("Choose"), "options": .array([.integer(1)])])])
+    #expect(throws: CodexConnectionError.self) { try CodexChatTranscript.turn(turn(items: [.object(item)]), threadID: "thread") }
+  }
+
   @Test("Public identity, private exclusions and tool outcomes do not depend on parent completion")
   func identitiesAndActivities() throws {
     let command: MCPJSONValue = .object(["id": .string("command"), "type": .string("commandExecution"),

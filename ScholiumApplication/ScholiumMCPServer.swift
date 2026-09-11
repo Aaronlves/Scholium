@@ -540,7 +540,24 @@ public actor ScholiumMCPServer {
         destructive: Bool,
         idempotent: Bool
     ) -> MCPJSONValue {
-        .object([
+        // Some runtime tool renderers project oneOf branches without the parent.
+        // Make every branch self-contained while preserving its constraints.
+        let completeAlternatives = alternatives.map { alternative -> MCPJSONValue in
+            guard var branch = alternative.objectValue else { return alternative }
+            var fields = properties
+            for (key, value) in branch["properties"]?.objectValue ?? [:] {
+                if let base = fields[key]?.objectValue, let refinement = value.objectValue {
+                    fields[key] = .object(base.merging(refinement) { _, new in new })
+                } else { fields[key] = value }
+            }
+            let extra = branch["required"]?.arrayValue?.compactMap(\.stringValue) ?? []
+            branch["type"] = .string("object")
+            branch["properties"] = .object(fields)
+            branch["required"] = .array(Array(Set(required + extra)).sorted().map(MCPJSONValue.string))
+            branch["additionalProperties"] = .bool(false)
+            return .object(branch)
+        }
+        return .object([
             "name": .string(name.rawValue),
             "description": .string(description),
             "inputSchema": .object([
@@ -548,7 +565,7 @@ public actor ScholiumMCPServer {
                 "properties": .object(properties),
                 "required": .array(required.map(MCPJSONValue.string)),
                 "additionalProperties": .bool(false),
-            ].merging(alternatives.isEmpty ? [:] : ["oneOf": .array(alternatives)]) { _, value in value }),
+            ].merging(alternatives.isEmpty ? [:] : ["oneOf": .array(completeAlternatives)]) { _, value in value }),
             "outputSchema": outputSchema(for: name),
             "annotations": .object([
                 "readOnlyHint": .bool(readOnly),

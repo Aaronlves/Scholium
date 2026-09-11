@@ -9,6 +9,7 @@ import Testing
 enum NativeChatSourceScope {
   static let paths: Set<String> = [
     "Scholium/Views/Sidebar/AgentChatView.swift",
+    "Scholium/Views/Sidebar/AgentChatInputDock.swift",
     "Scholium/Views/Sidebar/AgentChatActivityText.swift",
     "Scholium/Views/Sidebar/AgentChatDiagnosticsView.swift",
     "Scholium/Views/Sidebar/AgentChatActivityDetails.swift",
@@ -17,7 +18,7 @@ enum NativeChatSourceScope {
     "Scholium/Views/Sidebar/AgentChatSourceEvidenceView.swift",
     "Scholium/Views/Note/AgentSelectionResultView.swift",
     "Scholium/Views/Sidebar/AgentChatMarkdown.swift",
-    "Scholium/Views/Sidebar/AgentChatSelectableText.swift",
+    "Scholium/Views/Sidebar/AgentChatObjectProjection.swift",
     "Scholium/Views/Sidebar/AgentChatReplyQuoteCard.swift",
     "Scholium/Views/Sidebar/AgentChatMaterialChip.swift",
     "Scholium/Views/Sidebar/AgentChatLocalMaterialChip.swift",
@@ -128,18 +129,6 @@ struct AgentChatPresentationTests {
     #expect(blocks[1].kind == .tableRow(true))
     #expect(blocks[1].cells.map { String($0.characters) } == ["View", "Objection"])
     #expect(blocks[2].cells.map { String($0.characters) } == ["One", "Two"])
-  }
-
-  @Test("Semantic replies use the safe reader only when native text cannot preserve them")
-  func semanticRichReplies() {
-    let prose = AgentChatMarkdownBlock.parse("A plain philosophical distinction.")
-    #expect(!AgentChatMarkdownBlock.requiresRichReader("A plain philosophical distinction.", blocks: prose))
-    let math = "The relation is $x + y$."
-    #expect(AgentChatMarkdownBlock.requiresRichReader(math, blocks: AgentChatMarkdownBlock.parse(math)))
-    let footnote = "A claim.[^source]\n\n[^source]: Primary text."
-    #expect(AgentChatMarkdownBlock.requiresRichReader(footnote, blocks: AgentChatMarkdownBlock.parse(footnote)))
-    let callout = "> [!state] Claim\n> The premise remains open."
-    #expect(AgentChatMarkdownBlock.requiresRichReader(callout, blocks: AgentChatMarkdownBlock.parse(callout)))
   }
 
   @Test("Activity can collapse without hiding replies or losing exact change links")

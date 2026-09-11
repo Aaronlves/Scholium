@@ -2,7 +2,7 @@ import AppKit
 import ScholiumContracts
 import SwiftUI
 
-/// Rich replies reuse the safe document reader so one native WebKit selection
+/// All message bodies reuse the safe document reader so one WebKit selection
 /// spans prose, lists, code and horizontally scrolling tables.
 struct AgentChatReadReply: View {
     let source: String
@@ -60,7 +60,7 @@ struct AgentChatReadReply: View {
         case .height(let value): height = value
         case .quote(let text): quote?(.reader(source: source, excerpt: text))
         case .object(let index, let copy, let size, let anchor, let view):
-            let layout = AgentChatSelectableText.layoutReply(source)
+            let layout = AgentChatObjectProjection.layoutReply(source)
             let objects = AgentChatRichSegment.collect(layout).filter(\.isObject)
             guard objects.indices.contains(index) else { return }
             let segment = objects[index]
@@ -76,14 +76,14 @@ struct AgentChatReadReply: View {
     }
 
     private var css: String {
-        AgentChatDiagram.presentationCSS(dark: colorScheme == .dark, increasedContrast: contrast == .increased) + """
+        AgentChatDiagram.presentationCSS(dark: colorScheme == .dark, increasedContrast: contrast == .increased)
+        + ScholiumChatAppearance.inlineCodeCSS(dark: colorScheme == .dark, increasedContrast: contrast == .increased) + """
         html, body { overflow: hidden; }
         .scholium-document { padding: 0; margin: 0; font: \(ScholiumChatAppearance.messageNSFont.pointSize)px/\(ScholiumChatAppearance.messageLineHeight) -apple-system, BlinkMacSystemFont, system-ui, sans-serif; color: var(--scholium-color-primary-text); }
         .scholium-document > :first-child { margin-top: 0; }
         .scholium-document > :last-child { margin-bottom: 0; }
         .scholium-document p { margin: 0 0 12px; }
         .scholium-document a { color: var(--scholium-color-accent); text-decoration-color: var(--scholium-color-accent); }
-        .scholium-document :not(pre) > code { background: color-mix(in srgb, currentColor 8%, transparent); border-radius: 3px; padding: 1px 3px; }
         .scholium-reply-object { margin-block: 12px; }
         .scholium-reply-controls { display: flex; justify-content: end; gap: 8px; user-select: none; }
         .scholium-reply-controls button { border: 0; background: transparent; color: var(--scholium-color-secondary-text); width: 24px; height: 24px; font: inherit; cursor: pointer; }

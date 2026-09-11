@@ -256,10 +256,16 @@ Public assistant phase metadata is retained on the message by streaming and hist
 reconciliation. Timeline grouping uses explicit turn and phase metadata; a process
 disclosure owns only expansion, keeping each tool item distinct from the final answer.
 Reply actions copy original text and project explicit links into Sources.
-`AgentChatReplyTextView` owns plain reply selection. Rich replies use one safe
-reader so DOM selection crosses prose, tables and code. `AgentChatReplyQuotation`
-validates native ranges or bounded reader excerpts against the current reply identity
-and exact source. Whole-reply Copy retains original Markdown. The controller
+`AgentChatInputDock` owns only the view-local request disclosure. It keeps the
+native composer mounted and inert while a request occupies the same bottom
+surface; request identities, answers and submission remain controller-owned.
+Queue-to-steer reuses the current-turn send path with the captured turn identity
+and exact retained message, leaving the unsent draft untouched.
+`AgentChatReadReply` owns every user, commentary and answer body through the same
+safe reader, including plain prose. DOM selection crosses prose, tables and code;
+reader height events reserve each message’s wrapped space in the transcript. Native
+attributed text remains limited to expanded object previews. `AgentChatReplyQuotation`
+validates bounded reader excerpts against the current reply identity and exact source. Whole-reply Copy retains original Markdown. The controller
 stages compact `AgentChatReplyQuote` values in the existing conversation draft,
 then retains them on the sent message. They are Agent prose, not Note snapshots;
 source navigation retains its conversation/reply identity and no independent archive.
@@ -456,7 +462,7 @@ readiness. The capability owner applies saved Skill roots through its private
 connection-initialization route; ordinary configuration edits retain the existing
 idle admission check. Renewal cannot block its own initialization.
 
-Turn completion expires pending interactions independently of runtime tool
+Turn completion expires blocking interactions independently of runtime tool
 observations. Item events and restored item statuses own tool outcomes; an ended
 turn cannot manufacture an interruption. Connection invalidation marks running
 runtime observations uncertain while revoking all execution admission.
@@ -506,7 +512,7 @@ receipt identities and an immediate source-conversation/turn link. Late or
 cancelled creation does not select or admit a new conversation. Other selected
 discussions remain selected when the original source is no longer being viewed.
 
-Runtime research questions use `CodexChatQuestions` decoding into `AgentChatQuestion` and the
+Blocking runtime questions use `CodexChatQuestions` decoding into `AgentChatQuestion` and the
 same conversation-owned pending-interaction queue as approvals. Their native
 form owns presentation only; answer drafts and submission state live in
 `AgentChatExecutionState`. Reply writes the exact requested answer mapping once,
@@ -520,6 +526,13 @@ responses; secret values remain ephemeral and are discarded at resolution or
 termination. Active forms replace their duplicate activity row except during
 Find. Reopening displays interrupted public records without restoring request
 authority or secret input.
+
+Explicit async delivery uses `CodexChatAsyncQuestions` and the same native form.
+`AgentChatMessage.asyncQuestion` owns persisted nonsecret questions, drafts and
+receipts outside execution state. Identity-bound reply envelopes use the existing
+send/steer path without consuming the composer draft. Confirmed user input or a
+send receipt resolves matching questions; uncertain sends retain their message
+identity and never replay during recovery. Turn completion does not expire them.
 
 `CodexChatRuntimeApproval` strictly projects supported command, terminal input,
 network, file and permission requests without inferring effective access. Native

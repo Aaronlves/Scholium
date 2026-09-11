@@ -175,6 +175,85 @@ struct AgentChatTests {
   private var executable: URL {
     repository.appendingPathComponent("Tests/Fixtures/agent-chat-runtime.py")
   }
+  @Test("Async questions survive completed turns and reopening; replies preserve drafts and exact question identity",
+    arguments: [false, true])
+  func asyncQuestionDelivery(working: Bool) async throws {
+    let root = try root()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let triptych = UUID()
+    let controller = AgentChatController(triptychID: triptych, root: root, toolHandler: success)
+    try await connect(controller)
+    controller.editDraft(working ? "hold async-form" : "async-form"); controller.send()
+    try await eventually { controller.pendingAsyncQuestion != nil && (working || !controller.isBusy) }
+    let message = try #require(controller.pendingAsyncQuestion)
+    let questions = try #require(message.asyncQuestion?.questions)
+    #expect(questions.count == 2 && controller.approvals.isEmpty && controller.needsInput)
+    let turn = controller.currentTurnID
+    controller.editDraft("Keep this unsent draft")
+    controller.editAsyncAnswers(message.id, values: [questions[0].id: .option("Compare the passages"),
+      questions[1].id: .text("第二段，保留原文。")])
+    controller.answerAsyncQuestion(message.id)
+    try await eventually { controller.pendingAsyncQuestion == nil }
+    #expect(controller.selected?.draft == "Keep this unsent draft")
+    let data = try Data(contentsOf: controller.runtimeHome.appendingPathComponent("last-turn.json"))
+    let sent = try JSONDecoder().decode(MCPJSONValue.self, from: data)
+    #expect(sent.objectValue?["expectedTurnId"]?.stringValue == (working ? turn : nil))
+    let input = try #require(sent.objectValue?["input"]?.arrayValue)
+    #expect(input.count == 1)
+    let text = try #require(input.first?.objectValue?["text"]?.stringValue)
+    let replies = try #require(CodexChatAsyncQuestions.decode(text))
+    #expect(replies.map(\.questionItemId) == questions.map(\.id))
+    #expect(replies.map(\.answer) == ["Compare the passages", "第二段，保留原文。"])
+    #expect(controller.selected?.messages.last(where: { $0.role == .user })?.text.contains("send_user_message") == false)
+    await controller.disconnect()
+    let reopened = AgentChatController(triptychID: triptych, root: root, toolHandler: success)
+    try await eventually { reopened.isLoaded }
+    #expect(reopened.pendingAsyncQuestion == nil)
+    #expect(reopened.selected?.messages.first(where: { $0.id == message.id })?.asyncQuestion?.responses.count == 2)
+    await reopened.disconnect()
+  }
+
+  @Test("Unanswered async questions restore with their drafts; skipping and uncertain recovery do not replay", arguments: [false, true])
+  func asyncQuestionRecovery(uncertain: Bool) async throws {
+    let root = try root()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let triptych = UUID()
+    let initial = AgentChatController(triptychID: triptych, root: root, toolHandler: success)
+    try await connect(initial)
+    initial.editDraft("async-form"); initial.send()
+    try await eventually { initial.pendingAsyncQuestion != nil && !initial.isBusy }
+    let request = try #require(initial.pendingAsyncQuestion)
+    let questions = try #require(request.asyncQuestion?.questions)
+    initial.editAsyncAnswers(request.id, values: [questions[0].id: .text("保留回答草稿")])
+    await initial.disconnect()
+    let controller = AgentChatController(triptychID: triptych, root: root, toolHandler: success)
+    try await connect(controller)
+    #expect(controller.pendingAsyncQuestion?.asyncQuestion?.answers[questions[0].id] == .text("保留回答草稿"))
+    let conversationID = try #require(controller.selectedID)
+    controller.setArchived(conversationID, archived: true)
+    #expect(!controller.needsInput && controller.pendingAsyncQuestion == nil)
+    controller.editAsyncAnswers(request.id, values: [:])
+    controller.setArchived(conversationID, archived: false)
+    #expect(controller.pendingAsyncQuestion?.asyncQuestion?.answers[questions[0].id] == .text("保留回答草稿"))
+    if uncertain { try Data().write(to: controller.runtimeHome.appendingPathComponent("hold-parent-input")) }
+    controller.answerAsyncQuestion(request.id, skip: true)
+    if uncertain {
+      try await eventually { controller.selected?.pendingMessageID != nil }
+      await controller.disconnect()
+      #expect(controller.pendingAsyncQuestion?.asyncQuestion?.pendingMessageID != nil)
+      let userCount = controller.selected?.messages.filter { $0.role == .user }.count
+      controller.confirmContinueAfterUncertainDelivery()
+      #expect(controller.pendingAsyncQuestion == nil)
+      #expect(controller.selected?.messages.first { $0.id == request.id }?.asyncQuestion?.responses.isEmpty == true)
+      #expect(controller.selected?.messages.filter { $0.role == .user }.count == userCount)
+    } else {
+      try await eventually { controller.pendingAsyncQuestion == nil }
+      #expect(controller.selected?.messages.first { $0.id == request.id }?.asyncQuestion?.responses ==
+        Dictionary(uniqueKeysWithValues: questions.map { ($0.id, "") }))
+      await controller.disconnect()
+    }
+  }
+
   private func root() throws -> URL {
     let root = repository.appendingPathComponent(".build/agent-chat-tests/\(UUID())")
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
@@ -561,6 +640,82 @@ struct AgentChatTests {
     try await eventually { controller.state == .ready }
     #expect(controller.selected?.draft == "Retained draft")
     #expect(controller.selected?.messages.last?.activity?.status == .interrupted)
+    await controller.disconnect()
+  }
+
+  @Test("Queue steering keeps the draft and snapshots, and never retries an uncertain receipt", arguments: [false, true])
+  func steerQueuedInput(uncertain: Bool) async throws {
+    let root = try root()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let controller = AgentChatController(triptychID: UUID(), root: root, toolHandler: success)
+    try await connect(controller)
+    controller.editDraft("hold active turn"); controller.send()
+    try await eventually { controller.state == .working && controller.selected?.pendingMessageID == nil }
+    let turn = try #require(controller.currentTurnID)
+    controller.editDraft("first stays queued"); #expect(controller.queue())
+    let attachment = AgentChatAttachment(noteID: UUID(), vaultID: UUID(), relativePath: "Topics/Fixture.md",
+      text: "Exact retained passage", fingerprint: .init(content: "Exact retained passage"))
+    #expect(controller.attachContext([attachment]))
+    controller.editDraft(uncertain ? "hold mismatched-steer-ack" : "hold queued addition")
+    #expect(controller.queue())
+    let messages = controller.queuedMessages
+    let selected = try #require(messages.last)
+    controller.editDraft("Unsent draft stays here")
+    #expect(controller.canSteerQueuedMessage(selected.id))
+    #expect(!controller.steerQueuedMessage(selected.id, expectedTurnID: "stale"))
+    #expect(controller.queuedMessages == messages)
+    #expect(controller.steerQueuedMessage(selected.id, expectedTurnID: turn))
+    try await eventually {
+      uncertain ? controller.selected?.lastRunStatus == .uncertain
+        : controller.selected?.messages.contains(where: { $0.id == selected.id }) == true
+          && controller.selected?.pendingMessageID == nil
+    }
+    #expect(controller.selected?.draft == "Unsent draft stays here")
+    #expect(controller.queuedMessages.map(\.id) == [messages[0].id])
+    let sent = try #require(controller.selected?.messages.first { $0.id == selected.id })
+    #expect(sent.attachments == [attachment] && sent.turnID == turn)
+    let request = try JSONDecoder().decode(MCPJSONValue.self,
+      from: Data(contentsOf: controller.runtimeHome.appendingPathComponent("last-turn.json")))
+    #expect(request.objectValue?["expectedTurnId"]?.stringValue == turn)
+    #expect(request.objectValue?["input"]?.arrayValue?.first?.objectValue?["text"]?.stringValue?.contains("Exact retained passage") == true)
+    if uncertain {
+      #expect(controller.selected?.pendingMessageID == selected.id)
+      #expect(!controller.canSteerQueuedMessage(messages[0].id))
+    } else {
+      controller.stop()
+      try await eventually { controller.state == .ready }
+      #expect(!controller.steerQueuedMessage(messages[0].id, expectedTurnID: turn))
+      #expect(controller.queuedMessages.map(\.id) == [messages[0].id])
+    }
+    await controller.disconnect()
+  }
+
+  @Test("A queued steering preflight failure restores the same queue position")
+  func steerQueuedMissingMaterial() async throws {
+    let root = try root()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let controller = AgentChatController(triptychID: UUID(), root: root, toolHandler: success)
+    try await connect(controller)
+    controller.editDraft("hold active turn"); controller.send()
+    try await eventually { controller.state == .working && controller.selected?.pendingMessageID == nil }
+    let turn = try #require(controller.currentTurnID)
+    controller.editDraft("first stays queued"); #expect(controller.queue())
+    let file = root.appendingPathComponent("Fixture.txt")
+    try Data("Retained file text".utf8).write(to: file)
+    await controller.addLocalFiles([file], to: try #require(controller.selectedID))
+    controller.editDraft("hold material addition"); #expect(controller.queue())
+    let messages = controller.queuedMessages
+    let selected = try #require(messages.last)
+    let material = try #require(selected.localMaterials.first)
+    let retained = try await controller.previewLocalMaterial(material)
+    try FileManager.default.removeItem(at: retained)
+    controller.editDraft("Keep this draft")
+    #expect(controller.steerQueuedMessage(selected.id, expectedTurnID: turn))
+    try await eventually { controller.queuedMessages.count == messages.count }
+    #expect(controller.queuedMessages == messages)
+    #expect(controller.selected?.draft == "Keep this draft")
+    #expect(controller.selected?.pendingMessageID == nil)
+    #expect(controller.selected?.messages.contains(where: { $0.id == selected.id }) == false)
     await controller.disconnect()
   }
 

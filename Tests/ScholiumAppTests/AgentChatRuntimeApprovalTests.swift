@@ -6,6 +6,26 @@ import Testing
 
 @Suite("Runtime approval interaction", .serialized) @MainActor
 struct AgentChatRuntimeApprovalTests {
+  @Test("Readable access summaries keep exact scope inspectable and preserve unfamiliar patterns")
+  func readableAccess() {
+    let permissions = AgentChatRuntimeApproval.Permissions(network: true, rules: [
+      .init(access: .read, path: .literal("/fixture/sources")),
+      .init(access: .write, path: .pattern("/fixture/output/**/*.md")),
+      .init(access: .write, path: .pattern("/fixture/[ab]/*.txt")),
+      .init(access: .deny, path: .literal("/fixture/private"))], globScanMaxDepth: nil)
+    let request = AgentChatRuntimeApproval(kind: .permissions, command: nil, cwd: "/fixture",
+      environmentID: nil, reason: nil, networkHost: nil, networkProtocol: nil,
+      permissions: permissions, files: [], grantRoot: nil, grants: [.turn], rejection: .decline)
+    let locale = Locale(identifier: "en")
+    let overview = request.accessOverview(locale: locale).joined(separator: "\n")
+    #expect(overview.contains("Markdown files in /fixture/output and its subfolders"))
+    #expect(overview.contains("/fixture/[ab]/*.txt"))
+    #expect(overview.contains("Connect to the internet"))
+    let exact = request.scopeLines(locale: locale).joined(separator: "\n")
+    #expect(exact.contains("/fixture/output/**/*.md") && exact.contains("/fixture/private"))
+    #expect(exact.contains("/fixture/sources"))
+  }
+
   @Test("Expired approval clears its tool's waiting state without inventing a tool outcome", arguments: [false, true])
   func expiredToolWaitingState(submit: Bool) async throws {
     let root = repository.appendingPathComponent(".build/agent-chat-tests/expired-tool-approval-\(UUID())")
@@ -81,7 +101,7 @@ struct AgentChatRuntimeApprovalTests {
     let owner = try #require(controller.selectedID), approval = try #require(controller.approvals.first)
     let request = try #require(approval.runtimeApproval)
     #expect(request.kind == .permissions && request.permissions?.rules.count == 3)
-    #expect(approval.detail.isEmpty && approval.technicalDetail?.contains("permissions") == true)
+    #expect(approval.detail.isEmpty && approval.toolInputDetails == nil)
     controller.editDraft("Keep this draft")
     try Data().write(to: controller.runtimeHome.appendingPathComponent("hold-approval-resolution"))
     controller.newConversation()

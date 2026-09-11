@@ -273,7 +273,7 @@ struct AgentChatVisualEvidenceTests {
         let content = AgentChatQuestionForm(questions: questions, answers: .constant(answers),
           isSubmitting: state == "pending", failure: nil,
           toolContext: state == "tool" ? "fixture_library · choose_source" : nil,
-          technicalDetail: state == "tool" ? "Synthetic tool arguments" : nil, reply: {}, skip: {})
+          technicalDetail: state == "tool" ? "Synthetic tool arguments" : nil, stop: {}, reply: {}, skip: {})
           .frame(width: 340).background(Color(nsColor: .windowBackgroundColor))
           .environment(\.colorScheme, scheme).environment(\.locale, Locale(identifier: "zh-Hans"))
         let host = NSHostingView(rootView: content)
@@ -507,8 +507,8 @@ struct AgentChatVisualEvidenceTests {
     for (name, request, decision) in [("command", command, Optional<AgentChatRuntimeApproval.Decision>.none),
       ("permissions", permissions, nil), ("files", files, nil), ("network", network, nil), ("submitted", permissions, .session)] {
       for scheme in [ColorScheme.light, .dark] {
-        let content = AgentChatRuntimeApprovalView(request: request.presentation, technicalDetail: "Synthetic runtime request",
-          decision: decision, failure: nil, respond: { _ in })
+        let content = AgentChatRuntimeApprovalView(request: request.presentation,
+          decision: decision, failure: nil, stop: {}, respond: { _ in })
           .frame(width: 300).background(Color(nsColor: .windowBackgroundColor))
           .environment(\.colorScheme, scheme).environment(\.locale, Locale(identifier: "zh-Hans"))
         let host = NSHostingView(rootView: content)

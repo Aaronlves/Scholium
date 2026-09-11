@@ -113,7 +113,7 @@ struct AgentChatQuestionTests {
     let controller = try await controller(root, text: "hold tool-questions")
     let request = try #require(controller.approvals.first)
     #expect(request.toolQuestionContext == "fixture_library · choose_source")
-    #expect(request.technicalDetail?.contains("do-not-archive-this-argument") == true)
+    #expect(request.toolInputDetails?.contains("do-not-archive-this-argument") == true)
     controller.answer(request.id, allow: false)
     try await wait { !controller.isBusy }
     #expect(controller.approvals.isEmpty && !FileManager.default.fileExists(atPath: controller.runtimeHome.appendingPathComponent("question-response.json").path))

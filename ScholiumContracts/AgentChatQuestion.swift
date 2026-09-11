@@ -1,7 +1,7 @@
 import Foundation
 
-public struct AgentChatQuestion: Identifiable, Equatable, Sendable {
-  public struct Option: Equatable, Sendable {
+public struct AgentChatQuestion: Identifiable, Codable, Equatable, Sendable {
+  public struct Option: Codable, Equatable, Sendable {
     public let label: String
     public let description: String
     public init(label: String, description: String) {

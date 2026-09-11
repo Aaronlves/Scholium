@@ -82,27 +82,7 @@ struct AgentChatMarkdownBlock: Identifiable {
     return blocks
   }
 
-  /// Rich reading is reserved for semantic Markdown that the native text
-  /// projection cannot represent faithfully. The inexpensive marker check
-  /// keeps ordinary prose on the native path; only a candidate containing
-  /// math, footnotes, callouts, HTML, tables, or fenced code is parsed into
-  /// the safe WebKit reader.
-  static func requiresRichReader(_ source: String, blocks: [Self]) -> Bool {
-    if blocks.contains(where: { block in
-      if case .tableRow = block.kind { return true }
-      return block.kind == .code
-    }) { return true }
-    guard source.contains("$") || source.contains("[^") || source.contains("^[")
-      || source.range(of: #"(?m)^\s*>\s*\[!"#, options: .regularExpression) != nil
-      || source.range(of: #"(?m)^\s*<[^>]+>"#, options: .regularExpression) != nil
-    else { return false }
-    let semantic = MarkdownSemanticDocument(parsing: NoteDocument(relativePath: "Reply.md", rawContent: source))
-    return !semantic.callouts.isEmpty
-      || !semantic.footnoteDefinitions.isEmpty
-      || !semantic.footnoteReferences.isEmpty
-      || !semantic.mathExpressions.isEmpty
-      || semantic.blocks.contains { $0.kind == .html }
-  }
+
 }
 
 struct AgentChatMarkdown: View {
@@ -112,22 +92,7 @@ struct AgentChatMarkdown: View {
   @Environment(\.openURL) private var openURL
 
   var body: some View {
-    let blocks = AgentChatMarkdownBlock.parse(text)
-    Group {
-      if AgentChatMarkdownBlock.requiresRichReader(text, blocks: blocks) {
-        AgentChatReadReply(source: text, quote: quoteSelection, openLink: { openURL($0) })
-      } else {
-        // Keep ordinary researcher and Agent messages on the same native
-        // renderer. This removes the SwiftUI/AppKit font and line-wrap drift
-        // that used to make otherwise identical messages look different.
-        AgentChatSelectableText(source: text,
-          quote: quoteSelection.map { selection in
-            { range, rendered in
-              selection(.init(range: range, renderedText: rendered))
-            }
-          }, openLink: { openURL($0) })
-      }
-    }
+    AgentChatReadReply(source: text, quote: quoteSelection, openLink: { openURL($0) })
     .font(ScholiumChatAppearance.messageFont)
     .foregroundStyle(ScholiumChatAppearance.messageForeground)
     .frame(maxWidth: expandsToFillWidth ? .infinity : nil, alignment: .leading)

@@ -67,8 +67,8 @@ A disconnected-state Connect Codex action starts initial setup or retries a real
 unresolved failure; restored connections require no repeated setup. Sign-in appears
 only when needed. Connection editing belongs in
 Settings, with manual paths editable only in its explicitly advanced connection group. Composer secondary controls
-are borderless; permission uses an icon with a checked menu and accessible current
-value. The circular Send button uses shared Accent; availability, keyboard sending and
+are borderless; permissions expose their current value in the actions menu.
+The circular Send button uses native control styling; availability, keyboard sending and
 native state feedback remain authoritative. The whole message input rectangle, including
 whitespace, is editable; text clicks position the native caret. Return sends when
 available; Shift-Return or Option-Return inserts a newline. Marked-text Return belongs
@@ -141,7 +141,9 @@ disclosure reuses the existing Note/file/image previews and identifies the suppl
 representation; it never presents all materials as citations or adds another reader.
 Sources and conversation file-operation history have distinct scopes. Ratings and
 export actions are not part of this initial reply-action surface.
-Reply prose wraps normally. Inline code has a semantic system-gray background.
+Reply prose wraps normally. User messages, public commentary and final answers
+share one Markdown presentation; adding a table or other rich object does not
+change existing prose or inline-code styling. Inline code has a semantic system-gray background.
 Tables and code retain bounded horizontal scrolling; Mermaid reuses the local
 safe renderer with visible failure fallback. Diagrams omit developer hints,
 format labels and a separate source disclosure; Copy returns exact diagram code.
@@ -321,17 +323,28 @@ text or sends the message on selection. Literal punctuation outside an active
 candidate query remains ordinary prose. Selection replaces only that query and
 preserves surrounding text, native Undo and the captured conversation. A single
 discoverable actions entry offers the same routes without requiring memorized
-syntax. Send/Stop, current model and permission remain immediately inspectable;
-separate permanent Skill and web-search buttons are removed. Model choice never
-lives inside Add Material. Native menus and named pickers expose selected values;
+syntax. During an active turn, Send is named Send Now and explains that it adds
+to the current turn; Queue for Next Turn retains its separate consequence.
+Queued input appears in a native Liquid Glass surface behind the input surface.
+Each queued message has one visible summary row and a direct Steer action; idle
+input exposes Send Next. Multiple messages expand into rows in a bounded scrolling
+region. Only empty surface margins overlap; text, focus rings and controls remain
+clear of the front input surface. Selecting a summary opens a native popover showing its
+full text once, with retained Note snapshots, file representation labels, quotations
+and requested Skills available in its material disclosure. Add to Current Turn explicitly sends the selected item as
+additional input to its bound running turn; Send Next retains queue order while
+idle. Inspection cannot dispatch, edit or reorder input. The composer shows only
+its text and necessary delivery controls. Chat Actions groups materials, Skills,
+web search, model/reasoning, permissions and context; these do not occupy permanent
+rows or separate icons. Native menus and named pickers expose selected values;
 short labels and direct
 actions lead, with explanations only for unavailable or consequential states.
 An explicit web-search mode is distinguishable from Note Search.
 
 Conversation options expose Rename, Find, Branch, Context and Diagnostics.
-A compact composer percentage opens the same native Context popover by click or
-keyboard when runtime usage and capacity are known; unknown usage remains unnamed
-numerically. Context separates last-reported occupancy from cumulative consumption,
+Context and Usage also remains reachable through Chat Actions, including when
+runtime usage is unavailable. It never shows a guessed percentage. Context
+separates last-reported occupancy from cumulative consumption,
 with bounded native progress, token details and a state-valid Compact Context action.
 It never estimates subscription charges or invents unreported token breakdowns. Account quota
 has a separate labelled presentation. Search in the conversation list retains
@@ -339,11 +352,49 @@ its scope and query; in-conversation Find provides match navigation and Close.
 Both preserve drafts and running work. A branch names its origin and does not
 look like an edit to historical messages.
 
-Research questions use native option controls with their short descriptions,
-an ordinary or secure answer field as appropriate, and Reply / Skip actions.
+The bottom input surface changes in place between composing, answering and
+authorizing. One active request occupies the same container as the draft; no
+second actionable request card appears in the transcript. The native draft
+remains retained with its selection, Undo and materials while hidden and inert.
+Answering or confirmed authorization restores composing. Incoming requests do
+not interrupt active typing, marked-text composition or reading older messages;
+a persistent named entry lets the researcher open them. Open question and approval
+cards provide no return-to-composer action or Escape shortcut. Completing or
+declining the request restores composing without discarding the retained draft.
+Required requests remain reachable until resolved. Submission and uncertainty
+retain the request's identity and recovery state; only runtime acknowledgement
+removes a pending decision. Multiple requests show a count, and switching
+conversations never transfers answers or permissions. Composing and requests share
+one native Liquid Glass shell, fitted to their content with bounded scrolling.
+Request content uses typography and spacing rather than nested surface cards;
+one bottom action row groups the previous-question and skip icons
+with native borderless styling. Sending retains the composer's native circular
+button. No action occupies an otherwise empty header row. Scrollable request
+content reserves space for native text-field focus rings. The lower composing row contains
+Chat Actions and only the currently necessary Send/Stop controls.
+
+Research questions appear one at a time with a position indicator and Previous
+Question action when a request contains several. Clicking an offered answer advances
+to the next question; completing the last submits the complete set. Earlier answers
+remain editable before submission. Custom answers use a directly visible ordinary
+or secure field and a Next/Send icon in the bottom action row, without a separate
+option selector.
+A labelled skip icon supplies no answers for the entire ordinary request; declining
+a tool-input request instead stops its turn and explains this consequence. There is
+no duplicate Stop action in the request header.
 They do not show Allow Once or an expanded protocol payload. Choices begin
 unselected; the selected option remains apparent. Operation approvals retain
-their own operation, scope and allow/decline presentation.
+their own operation, scope and allow/decline presentation. Secondary actions use native borderless controls; primary delivery and
+authorization actions use native emphasized controls. Permissions retain explicit
+action labels, while message delivery uses circular symbols. The approval card
+leads with the requested action and a readable overview of affected files or
+network access, retaining exact targets and restrictions in that overview. It
+shows no Access Details or Technical Details controls and does not repeat internal
+connection names. Known tool-permission prompts distinguish permission to request
+a Note change from approval of the concrete source comparison. Unknown commands
+or path patterns are not given an invented
+purpose or narrower scope. Unconfirmed submission exposes an explicit end-turn
+recovery action; ordinary pending cards expose no separate Stop or return action.
 
 A Note update prompt names its target and offers Review Changes. The comparison
 reuses the existing exact-source comparison surface, with saved source and
@@ -354,7 +405,7 @@ request ends. The compact prompt contains no duplicate full proposed source.
 
 Runtime approval presents the actual command or terminal input, reported file
 proposal, or requested permission rules as a native read-only form. Exact paths
-and scope precede optional technical details. Allow Once and Allow for This Turn
+and scope remain in the readable overview. Allow Once and Allow for This Turn
 remain distinct from an explicit Allow for Session action. Unsupported approval
 scope shows its unavailability without offering an unchecked grant. Waiting for
 confirmation replaces decision controls and preserves the inspected request.
