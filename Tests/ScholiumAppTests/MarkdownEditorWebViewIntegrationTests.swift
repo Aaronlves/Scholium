@@ -199,8 +199,8 @@ struct MarkdownEditorWebViewIntegrationTests {
         }
     }
 
-    @Test("Frontmatter stays in source order, renders quietly, and shares Undo")
-    func frontmatterStaysInSourceOrder() async throws {
+    @Test("Document title precedes quiet frontmatter, which stays before the body")
+    func frontmatterFollowsDocumentTitle() async throws {
         let source = "\u{FEFF}---\r\n# 注释 😀\r\nunknown: 'keep'\r\nsummary: |\r\n  原文\r\n---\r\n# Body\r\n\r\nUntouched body.\r\n"
         let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
         defer { harness.close() }
@@ -208,16 +208,24 @@ struct MarkdownEditorWebViewIntegrationTests {
         let webView = try #require(harness.session.webView)
         try await Task.sleep(for: .milliseconds(200))
         let titleOffset = try await harness.callPageJavaScript("return document.querySelector('.scholium-note-title-input').getBoundingClientRect().top - document.querySelector('.cm-scroller').getBoundingClientRect().top;") as? Double
-        let yamlBottom = try await harness.callPageJavaScript("return Math.max(...Array.from(document.querySelectorAll('.scholium-frontmatter-line'), e => e.getBoundingClientRect().bottom - document.querySelector('.cm-scroller').getBoundingClientRect().top));") as? Double
-        let yamlTop = try await harness.callPageJavaScript("return Math.min(...Array.from(document.querySelectorAll('.scholium-frontmatter-line'), e => e.getBoundingClientRect().top - document.querySelector('.cm-scroller').getBoundingClientRect().top));") as? Double
+        let yamlBottom = try await harness.callPageJavaScript("return Math.max(...Array.from(document.querySelectorAll('.scholium-frontmatter-line:not(.scholium-frontmatter-delimiter-line)'), e => e.getBoundingClientRect().bottom - document.querySelector('.cm-scroller').getBoundingClientRect().top));") as? Double
+        let yamlTop = try await harness.callPageJavaScript("return Math.min(...Array.from(document.querySelectorAll('.scholium-frontmatter-line:not(.scholium-frontmatter-delimiter-line)'), e => e.getBoundingClientRect().top - document.querySelector('.cm-scroller').getBoundingClientRect().top));") as? Double
+        let headingTop = try await harness.callPageJavaScript("return document.querySelector('.cm-line.cm-live-h1')?.getBoundingClientRect().top - document.querySelector('.cm-scroller').getBoundingClientRect().top;") as? Double
         let delimiterCount = try await harness.callPageJavaScript("return document.querySelectorAll('.cm-live-yaml-delimiter').length;") as? Int
+        let delimitersQuiet = try await harness.callPageJavaScript("return Array.from(document.querySelectorAll('.scholium-frontmatter-delimiter-line')).every(line => line.getBoundingClientRect().height > 0.5 && getComputedStyle(line).opacity === '0');") as? Bool
         let renderedLineCount = try await harness.callPageJavaScript("return document.querySelectorAll('[data-scholium-yaml-rendered=\\\"true\\\"]').length;") as? Int
         #expect((yamlTop ?? -1) >= 0)
-        #expect((titleOffset ?? -1) > (yamlBottom ?? .greatestFiniteMagnitude))
-        #expect(delimiterCount == 2)
+        #expect((titleOffset ?? .greatestFiniteMagnitude) < (yamlTop ?? -1))
+        #expect((yamlBottom ?? .greatestFiniteMagnitude) <= (headingTop ?? -1))
+        #expect(delimiterCount == 0)
+        #expect(delimitersQuiet == true)
         #expect((renderedLineCount ?? 0) > 0)
         _ = try await harness.session.send(.goToLine(2, focusesEditor: true), in: webView)
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        let activeDelimiterCount = try await harness.callPageJavaScript("return document.querySelectorAll('.cm-live-yaml-delimiter').length;") as? Int
+        let activeDelimitersVisible = try await harness.callPageJavaScript("return Array.from(document.querySelectorAll('.scholium-frontmatter-delimiter-line')).every(line => line.getBoundingClientRect().height > 0.5 && getComputedStyle(line).fontSize !== '0px');") as? Bool
+        #expect(activeDelimiterCount == 2)
+        #expect(activeDelimitersVisible == true)
         let controls = try await harness.callPageJavaScript("return document.querySelectorAll('.scholium-frontmatter-entry').length;") as? Int
         #expect(controls == 0)
         try await harness.session.focusAndWait()
@@ -230,7 +238,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
     }
 
-    @Test("Mathematics opening keeps YAML before the title after rendering settles")
+    @Test("Mathematics opening keeps title, YAML, and H1 order after rendering settles")
     func mathematicsOpeningPreservesFrontmatterOrder() async throws {
         let source = "---\nsummary: QA\nkeywords: [test]\n---\n# Mathematics\n\nInline $a^2+b^2=c^2$.\n\n$$\n\\int_0^1 x^2\\,dx = \\frac{1}{3}\n$$\n\nEnd.\n"
         let harness = EditorHarness(documentTitle: "Mathematics", source: source,
@@ -241,14 +249,18 @@ struct MarkdownEditorWebViewIntegrationTests {
         for _ in 0..<5 {
             let geometry = try await harness.callPageJavaScript("""
                 const top = document.querySelector('.cm-scroller').getBoundingClientRect().top;
-                const yamlBottom = Math.max(...Array.from(document.querySelectorAll('.scholium-frontmatter-line'), e => e.getBoundingClientRect().bottom - top));
                 const title = document.querySelector('.scholium-note-title-input').getBoundingClientRect().top - top;
-                return JSON.stringify({title, yamlBottom});
+                const yamlLines = Array.from(document.querySelectorAll('.scholium-frontmatter-line:not(.scholium-frontmatter-delimiter-line)'));
+                const yamlTop = Math.min(...yamlLines.map(e => e.getBoundingClientRect().top - top));
+                const yamlBottom = Math.max(...yamlLines.map(e => e.getBoundingClientRect().bottom - top));
+                const heading = document.querySelector('.cm-line.cm-live-h1').getBoundingClientRect().top - top;
+                return JSON.stringify({title, yamlTop, yamlBottom, heading});
                 """) as? String
             let payload = try #require(geometry?.data(using: .utf8).flatMap {
                 try? JSONSerialization.jsonObject(with: $0) as? [String: Double]
             })
-            #expect((payload["title"] ?? -1) > (payload["yamlBottom"] ?? .greatestFiniteMagnitude))
+            #expect((payload["title"] ?? .greatestFiniteMagnitude) < (payload["yamlTop"] ?? -1))
+            #expect((payload["yamlBottom"] ?? .greatestFiniteMagnitude) <= (payload["heading"] ?? -1))
             try await Task.sleep(for: .milliseconds(100))
         }
         try await harness.session.testingApplyScrollFraction(0.8)
@@ -258,14 +270,18 @@ struct MarkdownEditorWebViewIntegrationTests {
         try await Task.sleep(for: .milliseconds(200))
         let reopenedGeometry = try await harness.callPageJavaScript("""
             const top = document.querySelector('.cm-scroller').getBoundingClientRect().top;
-            const yamlBottom = Math.max(...Array.from(document.querySelectorAll('.scholium-frontmatter-line'), e => e.getBoundingClientRect().bottom - top));
             const title = document.querySelector('.scholium-note-title-input').getBoundingClientRect().top - top;
-            return JSON.stringify({title, yamlBottom});
+            const yamlLines = Array.from(document.querySelectorAll('.scholium-frontmatter-line:not(.scholium-frontmatter-delimiter-line)'));
+            const yamlTop = Math.min(...yamlLines.map(e => e.getBoundingClientRect().top - top));
+            const yamlBottom = Math.max(...yamlLines.map(e => e.getBoundingClientRect().bottom - top));
+            const heading = document.querySelector('.cm-line.cm-live-h1').getBoundingClientRect().top - top;
+            return JSON.stringify({title, yamlTop, yamlBottom, heading});
             """) as? String
         let reopenedPayload = try #require(reopenedGeometry?.data(using: .utf8).flatMap {
             try? JSONSerialization.jsonObject(with: $0) as? [String: Double]
         })
-        #expect((reopenedPayload["title"] ?? -1) > (reopenedPayload["yamlBottom"] ?? .greatestFiniteMagnitude))
+        #expect((reopenedPayload["title"] ?? .greatestFiniteMagnitude) < (reopenedPayload["yamlTop"] ?? -1))
+        #expect((reopenedPayload["yamlBottom"] ?? .greatestFiniteMagnitude) <= (reopenedPayload["heading"] ?? -1))
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
     }
 
@@ -367,7 +383,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
     }
 
-    @Test("示例材料 keeps rendered frontmatter in source order across reopening")
+    @Test("示例材料 keeps title, rendered frontmatter, and body order across reopening")
     func exampleMaterialOpeningFrames() async throws {
         let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
             .deletingLastPathComponent().deletingLastPathComponent()
@@ -389,15 +405,16 @@ struct MarkdownEditorWebViewIntegrationTests {
                 for (let i = 0; i < 20; i++) {
                   const top = document.querySelector('.cm-scroller').getBoundingClientRect().top;
                   const title = document.querySelector('.scholium-note-title-input').getBoundingClientRect().top - top;
-                  const yamlLines = Array.from(document.querySelectorAll('.scholium-frontmatter-line'));
+                  const yamlLines = Array.from(document.querySelectorAll('.scholium-frontmatter-line:not(.scholium-frontmatter-delimiter-line)'));
                   const yamlTop = Math.min(...yamlLines.map(e => e.getBoundingClientRect().top - top));
                   const yamlBottom = Math.max(...yamlLines.map(e => e.getBoundingClientRect().bottom - top));
+                  const heading = document.querySelector('.cm-line.cm-live-h1')?.getBoundingClientRect().top - top;
                   const renderedYaml = document.querySelectorAll('[data-scholium-yaml-rendered="true"]').length;
                   const renderedKeys = document.querySelectorAll('.cm-live-yaml-key').length;
-                  samples.push({title, yamlTop, yamlBottom, renderedYaml, renderedKeys});
+                  samples.push({title, yamlTop, yamlBottom, heading, renderedYaml, renderedKeys});
                   await Promise.race([new Promise(resolve => requestAnimationFrame(resolve)), new Promise(resolve => setTimeout(resolve, 50))]);
                 }
-                return JSON.stringify(samples.filter(s => s.yamlTop < 0 || s.title <= s.yamlBottom || s.renderedYaml === 0 || s.renderedKeys === 0));
+                return JSON.stringify(samples.filter(s => s.yamlTop < 0 || s.title >= s.yamlTop || typeof s.heading !== "number" || s.yamlBottom > s.heading || s.renderedYaml === 0 || s.renderedKeys === 0));
                 """) as? String
             #expect(samples == "[]", "Opening \(opening): \(samples ?? "missing geometry")")
             #expect(try await harness.session.currentText(for: harness.documentID) == source)
@@ -2737,6 +2754,125 @@ struct MarkdownEditorWebViewIntegrationTests {
 
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
         #expect(!harness.session.isDirty)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Edit cursor follows heading syntax expansion")
+    func editCursorFollowsHeadingSyntaxExpansion() async throws {
+        let source = "# 材料正文中的一级标题\nFollowing paragraph.\n"
+        let title = "材料正文中的一级标题"
+        let titleRange = try #require(source.range(of: title))
+        let titleTo = titleRange.upperBound.utf16Offset(in: source)
+        let paragraphFrom = try #require(source.range(of: "Following paragraph."))
+            .lowerBound.utf16Offset(in: source)
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        harness.session.goToLine(2)
+        try await harness.waitUntilSelection(head: paragraphFrom, stage: "inactive heading")
+
+        let clickPoint = try #require(try await harness.callPageJavaScript(
+            """
+            const heading = document.querySelector('.cm-line.cm-live-h1');
+            if (!heading) return null;
+            const walker = document.createTreeWalker(heading, NodeFilter.SHOW_TEXT);
+            let node;
+            while ((node = walker.nextNode())) {
+              if (node.parentElement?.closest('[data-syntax-open="false"]')) continue;
+              const index = node.textContent?.indexOf(title) ?? -1;
+              if (index < 0) continue;
+              const range = document.createRange();
+              range.setStart(node, index);
+              range.setEnd(node, index + title.length);
+              const rect = range.getBoundingClientRect();
+              return {x: rect.right + 2, y: (rect.top + rect.bottom) / 2};
+            }
+            return null;
+            """,
+            arguments: ["title": title]
+        ) as? [String: Any])
+        _ = try await harness.callPageJavaScript(
+            """
+            const target = document.elementFromPoint(x, y) || document.querySelector('.cm-line.cm-live-h1');
+            if (!target) return false;
+            const init = {view: window, bubbles: true, cancelable: true,
+              clientX: x, clientY: y, button: 0, buttons: 1};
+            target.dispatchEvent(new MouseEvent('mousedown', init));
+            document.dispatchEvent(new MouseEvent('mouseup', {...init, buttons: 0}));
+            return true;
+            """,
+            arguments: [
+                "x": try #require((clickPoint["x"] as? NSNumber)?.doubleValue),
+                "y": try #require((clickPoint["y"] as? NSNumber)?.doubleValue),
+            ]
+        )
+        try await harness.waitUntilSelection(head: titleTo, stage: "expanded heading end")
+        try await harness.waitUntilFocused()
+        try await Task.sleep(for: .milliseconds(180))
+
+        let geometry = try #require(try await harness.callPageJavaScript(
+            """
+            const heading = document.querySelector('.cm-line.cm-live-h1');
+            const cursor = document.querySelector('.cm-cursor-primary');
+            const scroller = document.querySelector('.cm-scroller');
+            if (!heading || !cursor || !scroller) return null;
+            const walker = document.createTreeWalker(heading, NodeFilter.SHOW_TEXT);
+            let node;
+            while ((node = walker.nextNode())) {
+              const index = node.textContent?.indexOf(title) ?? -1;
+              if (index < 0) continue;
+              const range = document.createRange();
+              range.setStart(node, index);
+              range.setEnd(node, index + title.length);
+              const textRect = range.getBoundingClientRect();
+              const scrollerRect = scroller.getBoundingClientRect();
+              const expectedLeft = textRect.right - scrollerRect.left + scroller.scrollLeft;
+              return {distance: String(Math.abs(parseFloat(cursor.style.left) - expectedLeft)),
+                markerVisible: heading.textContent?.startsWith('#') === true};
+            }
+            return null;
+            """,
+            arguments: ["title": title]
+        ) as? [String: Any])
+        #expect((geometry["markerVisible"] as? Bool) == true)
+        let cursorDistance = try #require(Double(geometry["distance"] as? String ?? ""))
+        #expect(cursorDistance < 4)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Edit callout roles use styling without duplicate visible labels")
+    func editCalloutRolesUseStylingWithoutVisibleLabels() async throws {
+        let source = "> [!warning] Limitation\n> First body.\n\n"
+            + "> [!state] Claim\n> Second body.\n\n"
+            + "> [!quote] Source\n> Third body.\n"
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        let result = try #require(try await harness.callPageJavaScript(
+            """
+            const labels = [...document.querySelectorAll('.cm-live-callout-role-label')];
+            const roleClasses = ['flag', 'state', 'quote'].map(role =>
+              !!document.querySelector(`.cm-live-callout-role-${role}`));
+            const visuallyHidden = labels.every(label => {
+              const rect = label.getBoundingClientRect();
+              const style = getComputedStyle(label);
+              return rect.width <= 1.5 && rect.height <= 1.5
+                && style.position === 'absolute';
+            });
+            return {
+              labelCount: labels.length,
+              visuallyHidden,
+              roleClasses,
+            };
+            """
+        ) as? [String: Any])
+        #expect((result["labelCount"] as? NSNumber)?.intValue == 3)
+        #expect(result["visuallyHidden"] as? Bool == true)
+        #expect(result["roleClasses"] as? [Bool] == [true, true, true])
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
         await harness.closeAndDrain()
     }
 

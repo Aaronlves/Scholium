@@ -426,6 +426,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 body: body,
                 linkPreviews: linkPreviews
             )
+            let sourceDocument = NoteDocument(relativePath: documentID, rawContent: source)
             installBridgeScripts(
                 presentationCSS: presentationCSS,
                 userCSS: userCSS,
@@ -437,7 +438,9 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             )
             let html = Self.documentHTML(
                 body: body,
-                frontmatter: NoteDocument(relativePath: documentID, rawContent: source).rawFrontmatter,
+                frontmatter: sourceDocument.rawFrontmatter,
+                frontmatterHasAuthoredBodyBlankLine: sourceDocument.body.first == "\n"
+                    || sourceDocument.body.first == "\r",
                 documentTitle: documentTitle,
                 includesMathRuntime: includesMathRuntime,
                 localization: interfaceLocalization
@@ -1281,6 +1284,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         static func documentHTML(
             body: String,
             frontmatter: String? = nil,
+            frontmatterHasAuthoredBodyBlankLine: Bool = false,
             documentTitle: String? = nil,
             includesMathRuntime: Bool? = nil,
             localization: WebKitInterfaceLocalization = .current()
@@ -1295,7 +1299,13 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 <div class="scholium-note-title" role="heading" aria-level="1" dir="auto" data-scholium-protected="note-title">\(escapedHTMLText(title))</div>
                 """
             } ?? ""
-            let frontmatterMarkup = frontmatter.map { "<pre class=\"scholium-frontmatter-source\">\(escapedHTMLText($0))</pre>" } ?? ""
+            let frontmatterMarkup = frontmatter.map {
+                frontmatterMarkup(
+                    for: $0,
+                    hasAuthoredBodyBlankLine: frontmatterHasAuthoredBodyBlankLine,
+                    localization: localization
+                )
+            } ?? ""
             let bodyMarkup = if body.isEmpty {
                 """
                 <section class="scholium-document-empty-state" role="status" aria-label="\(escapedHTMLText(ScholiumL10n.string("Empty Note")))" data-scholium-protected="empty-document">
@@ -1317,7 +1327,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
               <style id="scholium-user-css"></style>
             </head>
             <body>
-              <main id="scholium-document" class="scholium-document">\(frontmatterMarkup)\(titleMarkup)\(bodyMarkup)</main>
+              <main id="scholium-document" class="scholium-document">\(titleMarkup)\(frontmatterMarkup)\(bodyMarkup)</main>
               <aside id="scholium-preview-popover" class="scholium-preview-popover" data-scholium-protected="preview-popover" role="note" aria-labelledby="scholium-preview-title" aria-live="polite" hidden>
                 <h2 id="scholium-preview-title" class="scholium-preview-title"></h2>
                 <p class="scholium-preview-metadata" hidden></p>
@@ -1326,6 +1336,62 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             </body>
             </html>
             """
+        }
+
+        private static func frontmatterMarkup(
+            for source: String,
+            hasAuthoredBodyBlankLine: Bool,
+            localization: WebKitInterfaceLocalization
+        ) -> String {
+            let normalized = source
+                .replacingOccurrences(of: "\r\n", with: "\n")
+                .replacingOccurrences(of: "\r", with: "\n")
+            var lines = normalized
+                .split(separator: "\n", omittingEmptySubsequences: false)
+                .map(String.init)
+            // NoteDocument keeps the newline immediately before the closing
+            // delimiter in rawFrontmatter. The delimiter owns that boundary;
+            // do not manufacture a second empty YAML row in Review.
+            if lines.last == "" { lines.removeLast() }
+            let renderedLines = lines.map(frontmatterLineMarkup).joined()
+            let label = escapedHTMLText(localization.string("YAML frontmatter"))
+            let delimiter = "<div class=\"scholium-frontmatter-line scholium-frontmatter-delimiter-line\" aria-hidden=\"true\">---</div>"
+            let wrapperClass = hasAuthoredBodyBlankLine
+                ? "scholium-frontmatter-source scholium-frontmatter-followed-by-blank-line"
+                : "scholium-frontmatter-source"
+            return """
+            <div class="\(wrapperClass)" role="group" aria-label="\(label)" data-scholium-protected="frontmatter">\(delimiter)\(renderedLines)\(delimiter)</div>
+            """
+        }
+
+        private static func frontmatterLineMarkup(_ line: String) -> String {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            let content: String
+            if trimmed.isEmpty {
+                content = ""
+            } else if trimmed.hasPrefix("#") {
+                content = "<span class=\"cm-live-yaml-comment\">\(escapedHTMLText(line))</span>"
+            } else if let colon = line.firstIndex(of: ":"), colon > line.startIndex {
+                let key = String(line[..<colon])
+                let valueStart = line.index(after: colon)
+                let value = String(line[valueStart...])
+                let valueClass = frontmatterValueClass(value)
+                content = "<span class=\"cm-live-yaml-key\">\(escapedHTMLText(key))</span>:<span class=\"\(valueClass)\">\(escapedHTMLText(value))</span>"
+            } else {
+                content = "<span class=\"\(frontmatterValueClass(line))\">\(escapedHTMLText(line))</span>"
+            }
+            return "<div class=\"scholium-frontmatter-line\" data-scholium-yaml-rendered=\"true\" dir=\"auto\">\(content)</div>"
+        }
+
+        private static func frontmatterValueClass(_ value: String) -> String {
+            let trimmed = value.trimmingCharacters(in: .whitespaces)
+            guard let first = trimmed.first else { return "cm-live-yaml-value" }
+            if first == "\"" || first == "'" { return "cm-live-yaml-string" }
+            if first == "[" || first == "{" || trimmed.hasPrefix("- ") {
+                return "cm-live-yaml-collection"
+            }
+            if first == "|" || first == ">" { return "cm-live-yaml-scalar" }
+            return "cm-live-yaml-value"
         }
 
         private static func escapedHTMLText(_ value: String) -> String {

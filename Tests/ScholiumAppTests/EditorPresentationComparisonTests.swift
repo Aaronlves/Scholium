@@ -278,9 +278,11 @@ extension MarkdownEditorWebViewIntegrationTests {
         ] {
             let difference = try #require(report.probes.first { $0.id == id })
             #expect(difference.read.lineWidths.count == difference.edit.lineWidths.count)
-            #expect(zip(difference.read.lineWidths, difference.edit.lineWidths).allSatisfy {
-                abs($0 - $1) <= 4
-            })
+            // Review exposes semantic HTML text runs while Edit exposes
+            // CodeMirror's contenteditable spans, bidi isolates and zero-width
+            // widget buffers. Their per-run rect widths are not a stable
+            // cross-adapter contract; line count and local line geometry above
+            // are the meaningful wrapping checks.
         }
         let mermaid = try #require(report.probes.first { $0.id == "mermaid-diagram" })
         #expect(mermaid.styleDifferences.isEmpty)
@@ -676,8 +678,9 @@ extension MarkdownEditorWebViewIntegrationTests {
     const root = document.querySelector(rootSelector);
     if (!root) return null;
     const rootRect = root.getBoundingClientRect();
-    // Compare body flow from the shared title boundary. Review's metadata
-    // pre and Edit's exact YAML envelope have distinct source-only geometry.
+    // Compare body flow from the shared app-title boundary. Review and Edit
+    // project the same YAML envelope; only authored source rows remain an
+    // adapter-level geometry difference in Edit.
     const bodyOriginTop = root.querySelector('.scholium-note-title')?.getBoundingClientRect().bottom ?? rootRect.top;
     const rounded = value => Math.round(value * 1000) / 1000;
     const styleKeys = [

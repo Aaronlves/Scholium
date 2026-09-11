@@ -1,5 +1,5 @@
 import {Range, StateEffect, StateField, type EditorState, type Extension} from "@codemirror/state";
-import {Decoration, DecorationSet, EditorView, WidgetType} from "@codemirror/view";
+import {Decoration, DecorationSet, EditorView, ViewPlugin, WidgetType, type ViewUpdate} from "@codemirror/view";
 import {createTableDOM} from "./markdown-fragment";
 import {localized} from "./localization";
 import {calloutDefinition, calloutHeader} from "./callout-presentation";
@@ -176,6 +176,8 @@ export function createLiveStructuredBlockProjections(options: {
         const label = document.createElement("span");
         label.className = "cm-live-callout-role-label";
         label.textContent = `${this.label} `;
+        // Keep the role name available to assistive technology without
+        // repeating it as visible prose beside the authored callout title.
         root.append(label);
       }
       return root;
@@ -280,8 +282,101 @@ export function createLiveStructuredBlockProjections(options: {
     ],
   });
 
+  interface CalloutMotionGroup {
+    readonly expanded: boolean;
+    readonly header: HTMLElement | null;
+    readonly bodyLines: readonly HTMLElement[];
+  }
+
+  const calloutMotion = ViewPlugin.fromClass(class {
+    private previous = new Map<string, CalloutMotionGroup>();
+    private animations: Animation[] = [];
+    private reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
+
+    constructor(readonly view: EditorView) {
+      this.previous = this.readGroups();
+      this.view.requestMeasure({
+        key: this,
+        read: () => this.readGroups(),
+        write: groups => { this.previous = groups; },
+      });
+      this.reduced.addEventListener("change", this.stop);
+    }
+
+    private readGroups() {
+      const groups = new Map<string, {
+        header: HTMLElement | null;
+        bodyLines: HTMLElement[];
+      }>();
+      for (const line of this.view.contentDOM.querySelectorAll<HTMLElement>(
+        ".cm-line.cm-live-callout[data-scholium-callout-from]",
+      )) {
+        const key = line.dataset.scholiumCalloutFrom;
+        if (!key) continue;
+        const group = groups.get(key) ?? {header: null, bodyLines: []};
+        if (line.classList.contains("cm-live-callout-header")) group.header = line;
+        if (line.classList.contains("cm-live-callout-body-line")) group.bodyLines.push(line);
+        groups.set(key, group);
+      }
+      return new Map([...groups].map(([key, group]) => [key, {
+        expanded: group.bodyLines.length > 0,
+        header: group.header,
+        bodyLines: group.bodyLines,
+      }]));
+    }
+
+    update(update: ViewUpdate) {
+      if (update.transactions.length === 0) return;
+      this.stop();
+      const animate = !update.docChanged && !this.view.composing && !this.reduced.matches;
+      this.view.requestMeasure({
+        key: this,
+        read: () => this.readGroups(),
+        write: groups => {
+          if (animate) {
+            for (const [key, group] of groups) {
+              const previous = this.previous.get(key);
+              if (!previous || previous.expanded === group.expanded) continue;
+              const disclosure = group.header?.querySelector<HTMLElement>(
+                ".cm-live-callout-disclosure",
+              );
+              if (disclosure) {
+                this.animations.push(disclosure.animate(
+                  [{opacity: .55}, {opacity: 1}],
+                  {duration: 120, easing: "ease-out", fill: "both"},
+                ));
+              }
+              if (group.expanded && !previous.expanded) {
+                for (const line of group.bodyLines) {
+                  this.animations.push(line.animate(
+                    [{opacity: 0}, {opacity: 1}],
+                    {duration: 140, easing: "ease-out", fill: "both"},
+                  ));
+                }
+              }
+            }
+          }
+          this.previous = groups;
+        },
+      });
+    }
+
+    readonly stop = () => {
+      for (const animation of this.animations) animation.cancel();
+      this.animations = [];
+    };
+
+    destroy() {
+      this.stop();
+      this.reduced.removeEventListener("change", this.stop);
+    }
+  }, {eventHandlers: {
+    mousedown() { this.stop(); },
+    compositionstart() { this.stop(); },
+  }});
+
   return {
     tableExtension: tableField,
-    calloutExtension: calloutField,
+    calloutExtension: [calloutField, calloutMotion],
   };
 }

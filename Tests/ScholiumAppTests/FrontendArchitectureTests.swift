@@ -3294,6 +3294,18 @@ struct FrontendArchitectureTests {
             contentsOf: repository.appendingPathComponent("Scholium/Resources/Editor/editor.css"),
             encoding: .utf8
         )
+        let syntaxPresentationSource = try String(
+            contentsOf: repository.appendingPathComponent("WebEditor/syntax-presentation.ts"),
+            encoding: .utf8
+        )
+        let cursorGeometrySource = try String(
+            contentsOf: repository.appendingPathComponent("WebEditor/live-cursor-geometry.ts"),
+            encoding: .utf8
+        )
+        let structuredProjectionSource = try String(
+            contentsOf: repository.appendingPathComponent("WebEditor/live-structured-block-projections.ts"),
+            encoding: .utf8
+        )
         let noteSource = try String(
             contentsOf: repository.appendingPathComponent(
                 "Scholium/Views/Note/NoteContentView.swift"),
@@ -3370,6 +3382,19 @@ struct FrontendArchitectureTests {
         #expect(editorStyles.contains(".scholium-live-mode .cm-activeLine"))
         #expect(editorStyles.contains("#editor .cm-editor.scholium-live-mode .cm-scroller"))
         #expect(editorStyles.contains("#editor .cm-editor.scholium-source-mode .cm-scroller"))
+        #expect(editorStyles.contains("cm-live-frontmatter-body-start"))
+        #expect(editorStyles.contains("scholium-rhythm-frontmatter-inline-inset"))
+        #expect(!syntaxPresentationSource.contains("scholium-syntax-motion"))
+        #expect(syntaxPresentationSource.contains("readLiveCursorGeometry"))
+        #expect(syntaxPresentationSource.contains("writeLiveCursorGeometry"))
+        #expect(cursorGeometrySource.contains("domAtPos"))
+        #expect(cursorGeometrySource.contains("cm-cursor-primary"))
+        #expect(syntaxPresentationSource.contains("getComputedTiming"))
+        #expect(syntaxPresentationSource.contains("scholium-frontmatter-delimiter-line"))
+        #expect(editorSource.contains("data-scholium-yaml-delimiter"))
+        #expect(structuredProjectionSource.contains("calloutMotion"))
+        #expect(editorStyles.contains(".cm-cursor"))
+        #expect(!editorStyles.contains(".cm-cursor-primary"))
         #expect(!editorStyles.contains(".cm-live-authored-extra-space"))
         #expect(!editorSource.contains("liveAuthoredExtraSpaces"))
         #expect(!editorSource.contains("editor.dom.classList.toggle"))

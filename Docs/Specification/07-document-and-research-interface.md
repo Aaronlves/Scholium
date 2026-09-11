@@ -142,15 +142,18 @@ sheet reveals each level's spacing controls on demand.
 Low-frequency letter spacing, word spacing, hyphenation, kerning, and ligatures
 are not structured appearance fields or native controls. Advanced CSS is their
 single explicit configuration surface and is applied after generated appearance
-CSS in both Review and Edit. Frontmatter remains
-at its authored beginning,
-above the document title, in the same scrolling document plane. Review and Edit
-present it as quiet, source-located YAML; Source retains the exact text. It is
-never hidden, replaced by a field editor, or repositioned for opening, and no
-disclosure or timed collapse exists. Opening and switching use the ordinary
-document scroll position or an explicit retained/locator target; saving does
-not reset the viewport. Document switching presents only the requested mode
-after readiness, without showing a temporary layout from another mode.
+CSS in both Review and Edit. Frontmatter remains at its authored beginning in
+the source, while the shared scrolling document plane projects the app-owned
+filename title first, then the quiet source-located YAML, then the authored
+body (including its first H1). Review and Edit use the same YAML presentation;
+Source retains the exact text. It is never replaced by a field editor or
+reordered in the source, and no disclosure or timed collapse exists. Outside
+an active YAML selection, its fence lines are visually suppressed; entering or
+selecting YAML restores the exact delimiters at their source locations.
+Opening and switching use the ordinary document scroll position or an explicit
+retained/locator target; saving does not reset the viewport. Document switching
+presents only the requested mode after readiness, without showing a temporary
+layout from another mode.
 A View-menu action may navigate to Frontmatter without creating an empty
 envelope or changing its document order.
 Source always displays the full original text. The documented `appearances.json`
@@ -239,6 +242,12 @@ their exact width without acquiring visible whitespace markers in ordinary
 Edit prose. Ordinary prose follows language-aware line-breaking rules, and
 closing punctuation is not left alone at a visual-line start merely because it
 follows an interactive inline projection.
+
+Edit Callouts retain their exact authored markers when active, but do not repeat
+generated role names such as `Caution`, `Statement`, or `Quotation` as visible
+prose beside the authored title. Their role-specific surface and structure
+carry the semantic distinction; the role name remains available to assistive
+technology, and Source always exposes the complete authored text.
 
 Outline and document statistics currently have no interface entry, including
 Inspector, toolbar, menus and popovers.

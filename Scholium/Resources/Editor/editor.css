@@ -93,6 +93,17 @@ body,
   color: var(--scholium-color-accent);
 }
 
+/* YAML is authored source, but its quiet projection gets a small inset so it
+   reads as document context rather than as the first body paragraph. The
+   body-start padding is generated appearance space; it never inserts a source
+   row and remains shared with Review's frontmatter wrapper. */
+#editor .cm-editor.scholium-live-mode .cm-line.scholium-frontmatter-line {
+  padding-inline: var(--scholium-rhythm-frontmatter-inline-inset, 1.5em);
+}
+#editor .cm-editor.scholium-live-mode .cm-line.cm-live-frontmatter-body-start {
+  padding-block-start: var(--scholium-rhythm-frontmatter-after, 0.75em);
+}
+
 .scholium-source-mode .cm-activeLine,
 .scholium-source-mode .cm-activeLineGutter {
   background: color-mix(in srgb, var(--scholium-color-raised-surface-background) 58%, transparent);
@@ -188,6 +199,10 @@ body,
 @media (prefers-reduced-motion: reduce) {
   .scholium-live-mode .cm-syntax-token { transition: none; }
 }
+
+/* The cursor remains CodeMirror-owned and is refreshed from the authoritative
+   source selection when Live Preview changes inline geometry. It has no
+   independent CSS transition that could lag behind the syntax it follows. */
 
 .cm-live-callout-start { padding-block-start: .55em; }
 .cm-live-callout-end { padding-block-end: .55em; }
@@ -436,11 +451,14 @@ body,
 }
 
 .cm-live-callout-role-label {
-  display: inline;
-  margin-inline-end: .65em;
-  font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-  font-size: .7em;
-  font-weight: 600;
-  font-style: normal;
-  color: var(--scholium-color-secondary-text);
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
 }

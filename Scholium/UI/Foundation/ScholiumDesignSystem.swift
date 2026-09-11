@@ -548,6 +548,8 @@ enum ScholiumWebDesignTokens {
             --scholium-rhythm-quote-inset: \(ScholiumDocumentRhythm.quoteInlineInset)px;
             --scholium-rhythm-semantic-block-gap: 1em;
             --scholium-rhythm-rule-block-gap: 0.5em;
+            --scholium-rhythm-frontmatter-inline-inset: 1.5em;
+            --scholium-rhythm-frontmatter-after: 0.75em;
             --scholium-list-marker-track: 1.25em;
             --scholium-list-marker-gap: 0.35em;
             --scholium-list-indent: calc(
@@ -737,22 +739,86 @@ enum ScholiumWebDesignTokens {
         .cm-editor.scholium-live-mode .cm-live-paragraph {
           box-sizing: border-box;
         }
-        .scholium-document .scholium-frontmatter-source,
-        .cm-editor.scholium-live-mode .cm-content > .cm-line.scholium-frontmatter-line {
+        :is(
+          .scholium-document .scholium-frontmatter-source,
+          .cm-editor.scholium-live-mode .cm-content > .cm-line.scholium-frontmatter-line
+        ) {
           font-family: var(--scholium-document-source-font-family);
           font-size: var(--scholium-document-source-font-size);
           line-height: 1.7;
-          color: var(--scholium-color-secondary-text);
-          padding-inline: 20px;
           text-indent: 0;
           background: transparent;
           border: 0;
           white-space: pre-wrap;
           overflow-wrap: anywhere;
         }
-        .scholium-document .scholium-frontmatter-source { margin: 0 0 48px; }
+        .scholium-document .scholium-frontmatter-source {
+          display: block;
+          margin: 0;
+          padding-inline: var(--scholium-rhythm-frontmatter-inline-inset, 1.5em);
+        }
+        .scholium-document .scholium-frontmatter-source {
+          margin-block-end: var(--scholium-rhythm-frontmatter-after, 0.75em);
+        }
+        .scholium-document .scholium-frontmatter-source.scholium-frontmatter-followed-by-blank-line {
+          margin-block-end: calc(
+            var(--scholium-document-prose-font-size)
+            * var(--scholium-rhythm-prose-line-height)
+            * var(--scholium-document-text-scale-factor)
+          );
+        }
+        .scholium-document .scholium-frontmatter-line {
+          display: block;
+          min-block-size: 1lh;
+        }
+        .scholium-document .scholium-frontmatter-delimiter-line {
+          display: block;
+          min-block-size: 1lh;
+          opacity: 0;
+        }
         .cm-editor .scholium-frontmatter-line * { color: inherit; }
-        .cm-editor .scholium-frontmatter-line + .cm-live-note-title { padding-top: 48px; }
+        .cm-editor.scholium-live-mode .cm-content > .cm-line.scholium-frontmatter-delimiter-line {
+          /* The authored YAML envelope already owns these source rows. Keep
+             their space stable in Live mode; the fence is presentation-only
+             and disappears through opacity rather than layout collapse. */
+          block-size: auto;
+          min-block-size: 1.7em;
+          line-height: 1.7;
+          font-size: var(--scholium-document-source-font-size);
+          overflow: visible;
+          opacity: 0;
+        }
+        .cm-editor.scholium-live-mode .cm-content > .cm-line.scholium-frontmatter-delimiter-line-active {
+          opacity: 1;
+        }
+        :is(
+          .scholium-document .scholium-frontmatter-source,
+          #editor .cm-editor.scholium-live-mode .cm-content
+        ) .cm-live-yaml-delimiter,
+        :is(
+          .scholium-document .scholium-frontmatter-source,
+          #editor .cm-editor.scholium-live-mode .cm-content
+        ) .cm-live-yaml-comment {
+          color: var(--scholium-color-secondary-text);
+        }
+        :is(
+          .scholium-document .scholium-frontmatter-source,
+          #editor .cm-editor.scholium-live-mode .cm-content
+        ) .cm-live-yaml-key {
+          color: var(--scholium-color-primary-text);
+        }
+        :is(
+          .scholium-document .scholium-frontmatter-source,
+          #editor .cm-editor.scholium-live-mode .cm-content
+        ) :is(.cm-live-yaml-value, .cm-live-yaml-scalar, .cm-live-yaml-collection) {
+          color: var(--scholium-color-secondary-text);
+        }
+        :is(
+          .scholium-document .scholium-frontmatter-source,
+          #editor .cm-editor.scholium-live-mode .cm-content
+        ) .cm-live-yaml-string {
+          color: var(--scholium-color-accent);
+        }
         .scholium-note-title {
           box-sizing: border-box;
           margin: 0;
@@ -996,6 +1062,9 @@ enum ScholiumWebDesignTokens {
         }
         .scholium-document .wiki-link,
         .scholium-live-mode .cm-live-wiki-link {
+          display: inline-block;
+          max-inline-size: 100%;
+          vertical-align: baseline;
           color: var(--scholium-color-accent);
           line-height: 1.2;
           text-decoration-line: underline;

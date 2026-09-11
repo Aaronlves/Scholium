@@ -1,4 +1,9 @@
 import {Decoration, EditorView, ViewPlugin, type ViewUpdate} from "@codemirror/view";
+import {
+  readLiveCursorGeometry,
+  writeLiveCursorGeometry,
+  type LiveCursorGeometry,
+} from "./live-cursor-geometry";
 
 /** Only short, single-line delimiters may displace prose. Destinations,
  * annotations and technical source retain ordinary wrapping instead. */
@@ -20,7 +25,35 @@ export function syntaxToken(source: string, from: number, to: number, exposed: b
   });
 }
 
-interface TokenFrame { width: number; height: number; open: boolean; multiline: boolean }
+interface TokenFrame {
+  width: number;
+  height: number;
+  opacity: number;
+  marginInlineStart: number;
+  open: boolean;
+  multiline: boolean;
+}
+
+interface TokenTransition {
+  animation: Animation;
+  fromWidth: number;
+  toWidth: number;
+  fromOpacity: number;
+  toOpacity: number;
+  fromMarginInlineStart: number;
+  toMarginInlineStart: number;
+}
+
+interface FrontmatterFrame {
+  opacity: number;
+  open: boolean;
+}
+
+interface FrontmatterTransition {
+  animation: Animation;
+  fromOpacity: number;
+  toOpacity: number;
+}
 
 export function prefixNeedsMargin(textWidth: number, tokenWidth: number,
   measure: number, availableMargin: number): boolean {
@@ -33,9 +66,11 @@ export function prefixNeedsMargin(textWidth: number, tokenWidth: number,
  * Input, composition, scrolling and resizing finish motion immediately. */
 export const syntaxPresentation = ViewPlugin.fromClass(class {
   private frames = new Map<string, TokenFrame>();
+  private frontmatterFrames = new Map<string, FrontmatterFrame>();
   private borrowed = new Set<string>();
   private placements = new Map<string, {node: HTMLElement; width: number; animation: Animation}>();
-  private transitions = new Map<string, {animation: Animation; from: number; to: number}>();
+  private transitions = new Map<string, TokenTransition>();
+  private frontmatterTransitions = new Map<string, FrontmatterTransition>();
   private animations: Animation[] = [];
   private objects = new Set<HTMLElement>();
   private frame = 0;
@@ -55,6 +90,7 @@ export const syntaxPresentation = ViewPlugin.fromClass(class {
       this.placements.clear();
       this.borrowed.clear();
       this.frames.clear();
+      this.frontmatterFrames.clear();
       this.measure(false);
     });
     this.resize.observe(view.scrollDOM);
@@ -66,21 +102,36 @@ export const syntaxPresentation = ViewPlugin.fromClass(class {
     this.frame = 0;
     for (const animation of this.animations) animation.cancel();
     this.animations = [];
+    this.frontmatterTransitions.clear();
   };
 
   update(update: ViewUpdate) {
     if (!update.docChanged && !update.selectionSet && update.transactions.length === 0) return;
-    const animate = !update.docChanged && !update.viewportChanged
+    const animate = !update.docChanged
       && !this.view.composing
       && update.state.selection.main.empty && !this.reduced.matches;
     for (const [key, transition] of this.transitions) {
       const frame = this.frames.get(key);
       const progress = transition.animation.effect?.getComputedTiming().progress;
       if (frame && typeof progress === "number") {
-        frame.width = transition.from + (transition.to - transition.from) * progress;
+        frame.width = transition.fromWidth
+          + (transition.toWidth - transition.fromWidth) * progress;
+        frame.opacity = transition.fromOpacity
+          + (transition.toOpacity - transition.fromOpacity) * progress;
+        frame.marginInlineStart = transition.fromMarginInlineStart
+          + (transition.toMarginInlineStart - transition.fromMarginInlineStart) * progress;
+      }
+    }
+    for (const [key, transition] of this.frontmatterTransitions) {
+      const frame = this.frontmatterFrames.get(key);
+      const progress = transition.animation.effect?.getComputedTiming().progress;
+      if (frame && typeof progress === "number") {
+        frame.opacity = transition.fromOpacity
+          + (transition.toOpacity - transition.fromOpacity) * progress;
       }
     }
     this.transitions.clear();
+    this.frontmatterTransitions.clear();
     this.stop();
     this.measure(animate);
   }
@@ -91,6 +142,18 @@ export const syntaxPresentation = ViewPlugin.fromClass(class {
       read: () => ({
         objects: [...this.view.contentDOM.querySelectorAll<HTMLElement>(
           ".cm-live-table-widget, .cm-live-table, .cm-live-math, .cm-live-math-source, .cm-live-mermaid-widget, .cm-live-footnote-reference-widget, .cm-live-embed")],
+        cursor: readLiveCursorGeometry(this.view),
+        frontmatter: [...this.view.contentDOM.querySelectorAll<HTMLElement>(
+          ".scholium-frontmatter-delimiter-line[data-scholium-yaml-delimiter]")]
+        .map((node, index) => {
+          const style = getComputedStyle(node);
+          return {
+            node,
+            key: node.dataset.scholiumYamlDelimiter ?? String(index),
+            opacity: Number.parseFloat(style.opacity) || 0,
+            open: node.classList.contains("scholium-frontmatter-delimiter-line-active"),
+          };
+        }),
         tokens: [...this.view.contentDOM.querySelectorAll<HTMLElement>(".cm-syntax-token")]
         .map(node => {
           const key = node.dataset.syntaxKey!;
@@ -121,11 +184,37 @@ export const syntaxPresentation = ViewPlugin.fromClass(class {
                 node.getBoundingClientRect().left - this.view.scrollDOM.getBoundingClientRect().left);
           }
           const parentStyle = getComputedStyle(node.parentElement!);
+          const style = getComputedStyle(node);
           return {node, key, open, width, height, multiline, borrow,
+            opacity: Number.parseFloat(style.opacity) || 0,
+            marginInlineStart: borrow ? -width : 0,
             fontSize: parentStyle.fontSize, lineHeight: parentStyle.lineHeight};
         })}),
-      write: ({tokens, objects}) => {
+      write: ({tokens, objects, cursor, frontmatter}: {
+        tokens: readonly {
+          node: HTMLElement;
+          key: string;
+          open: boolean;
+          width: number;
+          height: number;
+          multiline: boolean;
+          borrow: boolean;
+          opacity: number;
+          marginInlineStart: number;
+          fontSize: string;
+          lineHeight: string;
+        }[];
+        objects: readonly HTMLElement[];
+        cursor: LiveCursorGeometry | null;
+        frontmatter: readonly {
+          node: HTMLElement;
+          key: string;
+          opacity: number;
+          open: boolean;
+        }[];
+      }) => {
         if (this.destroyed) return;
+        writeLiveCursorGeometry(this.view, cursor);
         for (const object of objects) {
           if (animate && this.objects.size && !this.objects.has(object) && typeof object.animate === "function") {
             this.animations.push(object.animate([{opacity: .65}, {opacity: 1}],
@@ -133,10 +222,28 @@ export const syntaxPresentation = ViewPlugin.fromClass(class {
           }
         }
         this.objects = new Set(objects);
+        const nextFrontmatter = new Map<string, FrontmatterFrame>();
+        for (const {node, key, opacity, open} of frontmatter) {
+          const previous = this.frontmatterFrames.get(key);
+          nextFrontmatter.set(key, {opacity, open});
+          if (!animate || !previous || previous.open === open || typeof node.animate !== "function") continue;
+          const fromOpacity = open ? 0 : previous.opacity;
+          const toOpacity = open ? opacity : 0;
+          const animation = node.animate([
+            {opacity: fromOpacity},
+            {opacity: toOpacity},
+          ], {duration: 140, easing: "cubic-bezier(.2, 0, .2, 1)", fill: "both"});
+          this.animations.push(animation);
+          this.frontmatterTransitions.set(key, {
+            animation,
+            fromOpacity,
+            toOpacity,
+          });
+        }
+        this.frontmatterFrames = nextFrontmatter;
         const next = new Map<string, TokenFrame>();
         for (const {node, key, open, width, height, multiline, borrow, fontSize, lineHeight} of tokens) {
           const previous = this.frames.get(key);
-          const wasBorrowed = this.borrowed.has(key);
           if (borrow) this.borrowed.add(key); else this.borrowed.delete(key);
           const placement = this.placements.get(key);
           if (!borrow || placement?.node !== node || placement.width !== width) {
@@ -149,15 +256,48 @@ export const syntaxPresentation = ViewPlugin.fromClass(class {
               this.placements.set(key, {node, width, animation});
             }
           }
-          next.set(key, {open, width, height, multiline});
+          const targetOpacity = open ? 1 : 0;
+          const targetMarginInlineStart = borrow ? -width : 0;
+          next.set(key, {
+            open,
+            width,
+            height,
+            opacity: targetOpacity,
+            marginInlineStart: targetMarginInlineStart,
+            multiline,
+          });
           if (!animate || !previous || previous.open === open || previous.multiline || multiline || typeof node.animate !== "function") continue;
           const motionHeight = open ? height : previous.height;
           const animation = node.animate([
-            {width: `${previous.width}px`, height: `${motionHeight}px`, fontSize, lineHeight, whiteSpace: "pre", marginInlineStart: `${wasBorrowed ? -previous.width : 0}px`, opacity: open ? .15 : 1},
-            {width: `${width}px`, height: `${motionHeight}px`, fontSize, lineHeight, whiteSpace: "pre", marginInlineStart: `${borrow ? -width : 0}px`, opacity: open ? 1 : 0},
-          ], {duration: 120, easing: "cubic-bezier(.2, 0, .2, 1)"});
+            {
+              width: `${previous.width}px`,
+              height: `${motionHeight}px`,
+              fontSize,
+              lineHeight,
+              whiteSpace: "pre",
+              marginInlineStart: `${previous.marginInlineStart}px`,
+              opacity: previous.opacity,
+            },
+            {
+              width: `${width}px`,
+              height: `${motionHeight}px`,
+              fontSize,
+              lineHeight,
+              whiteSpace: "pre",
+              marginInlineStart: `${targetMarginInlineStart}px`,
+              opacity: targetOpacity,
+            },
+          ], {duration: 120, easing: "cubic-bezier(.2, 0, .2, 1)", fill: "both"});
           this.animations.push(animation);
-          this.transitions.set(key, {animation, from: previous.width, to: width});
+          this.transitions.set(key, {
+            animation,
+            fromWidth: previous.width,
+            toWidth: width,
+            fromOpacity: previous.opacity,
+            toOpacity: targetOpacity,
+            fromMarginInlineStart: previous.marginInlineStart,
+            toMarginInlineStart: targetMarginInlineStart,
+          });
         }
         this.frames = next;
         for (const key of this.borrowed) if (!next.has(key)) this.borrowed.delete(key);
@@ -165,7 +305,11 @@ export const syntaxPresentation = ViewPlugin.fromClass(class {
           placement.animation.cancel();
           this.placements.delete(key);
         }
-        if (this.animations.length) this.tick();
+        if (this.animations.some(animation => animation.playState === "running")) {
+          this.tick();
+        } else {
+          this.stop();
+        }
       },
     });
   }
@@ -173,9 +317,7 @@ export const syntaxPresentation = ViewPlugin.fromClass(class {
   private tick() {
     this.frame = requestAnimationFrame(() => {
       if (this.destroyed) return;
-      this.view.requestMeasure();
-      if (this.animations.some(animation => animation.playState === "running")) this.tick();
-      else this.stop();
+      this.measure(false);
     });
   }
 

@@ -46,16 +46,9 @@ extension MarkdownEditorSession {
         let calloutFontSize: String
         let calloutLineHeight: String
         let calloutWidth: Double
-        let calloutRoleColor: String
         let calloutRolePosition: String
         let calloutRoleWidth: Double
         let calloutRoleHeight: Double
-        let calloutRoleFontFamily: String
-        let calloutRoleFontSize: String
-        let calloutRoleFontWeight: String
-        let calloutRoleLineHeight: String
-        let calloutRoleLetterSpacing: String
-        let calloutRoleTextTransform: String
         let calloutTitleColor: String
         let calloutTitleFontFamily: String
         let calloutTitleFontSize: String
@@ -549,16 +542,9 @@ extension MarkdownEditorSession {
                     calloutFontSize: calloutStyle?.fontSize || '',
                     calloutLineHeight: calloutStyle?.lineHeight || '',
                     calloutWidth: width('.cm-live-callout-role-state'),
-                    calloutRoleColor: calloutRoleStyle?.color || '',
                     calloutRolePosition: calloutRoleStyle?.position || '',
                     calloutRoleWidth: width('.cm-live-callout-role-state .cm-live-callout-role-label'),
                     calloutRoleHeight: document.querySelector('.cm-live-callout-role-state .cm-live-callout-role-label')?.getBoundingClientRect().height || 0,
-                    calloutRoleFontFamily: calloutRoleStyle?.fontFamily || '',
-                    calloutRoleFontSize: calloutRoleStyle?.fontSize || '',
-                    calloutRoleFontWeight: calloutRoleStyle?.fontWeight || '',
-                    calloutRoleLineHeight: calloutRoleStyle?.lineHeight || '',
-                    calloutRoleLetterSpacing: calloutRoleStyle?.letterSpacing || '',
-                    calloutRoleTextTransform: calloutRoleStyle?.textTransform || '',
                     calloutTitleColor: calloutTitleStyle?.color || '',
                     calloutTitleFontFamily: calloutTitleStyle?.fontFamily || '',
                     calloutTitleFontSize: calloutTitleStyle?.fontSize || '',

@@ -103,7 +103,6 @@ import {
 } from "./projection-update";
 import {
   ExactSourceMirror,
-  frontmatterBodyOffset,
   frontmatterBoundary,
   normalizedDocumentText,
   replacementChange,
@@ -438,7 +437,7 @@ class DocumentTitleWidget extends WidgetType {
   ignoreEvent() { return true; }
 }
 
-function documentTitleDecorations(state: EditorState) {
+function documentTitleDecorations() {
   if (!documentTitle) return Decoration.none;
   return Decoration.set([
     Decoration.widget({
@@ -448,7 +447,7 @@ function documentTitleDecorations(state: EditorState) {
       ),
       block: true,
       side: -2,
-    }).range(frontmatterBodyOffset(state.doc)),
+    }).range(0),
   ]);
 }
 
@@ -487,12 +486,12 @@ function resolveDocumentTitleRename(
 }
 
 const liveDocumentTitle = StateField.define<DecorationSet>({
-  create: (state) => documentTitleDecorations(state),
+  create: () => documentTitleDecorations(),
   update: (decorations, transaction) => {
     const titleChanged = transaction.effects.some((effect) =>
       effect.is(refreshDocumentTitleEffect));
     return transaction.docChanged || titleChanged
-      ? documentTitleDecorations(transaction.state)
+      ? documentTitleDecorations()
       : decorations;
   },
   provide: (field) => EditorView.decorations.from(field),
@@ -1381,10 +1380,24 @@ function buildFrontmatterPresentation(state: EditorState): DecorationSet {
   const lines: Range<Decoration>[] = [];
   const end = index.frontmatterRange?.to ?? (index.hasUnclosedFrontmatter ? state.doc.length : 0);
   if (end === 0) return Decoration.none;
+  const frontmatterIsActive = lastDocumentFocusTarget !== "title"
+    && state.selection.ranges.some((range) => range.empty
+      ? range.head < end
+      : range.from < end && range.to > 0);
+  const boundary = frontmatterBoundary(state.doc);
   for (let n = 1; n <= state.doc.lines && state.doc.line(n).from < end; n++) {
+    const isDelimiterLine = boundary.endLine > 0
+      && (n === 1 || n === boundary.endLine);
+    const classes = ["scholium-frontmatter-line"];
+    const attributes: Record<string, string> = {"data-scholium-yaml-rendered": "true"};
+    if (isDelimiterLine) {
+      classes.push("scholium-frontmatter-delimiter-line");
+      if (frontmatterIsActive) classes.push("scholium-frontmatter-delimiter-line-active");
+      attributes["data-scholium-yaml-delimiter"] = n === 1 ? "opening" : "closing";
+    }
     lines.push(Decoration.line({
-      class: "scholium-frontmatter-line",
-      attributes: {"data-scholium-yaml-rendered": "true"},
+      class: classes.join(" "),
+      attributes,
     }).range(state.doc.line(n).from));
   }
 
@@ -1393,8 +1406,7 @@ function buildFrontmatterPresentation(state: EditorState): DecorationSet {
     lines.push(Decoration.mark({class: className}).range(from, Math.min(to, end)));
   };
 
-  const boundary = frontmatterBoundary(state.doc);
-  if (boundary.endLine > 0) {
+  if (boundary.endLine > 0 && frontmatterIsActive) {
     const opening = state.doc.line(1);
     const openingFrom = opening.text.charCodeAt(0) === 0xfeff
       ? opening.from + 1 : opening.from;
@@ -1423,7 +1435,7 @@ function buildFrontmatterPresentation(state: EditorState): DecorationSet {
 const liveFrontmatterLines = StateField.define<DecorationSet>({
   create: buildFrontmatterPresentation,
   update(previous, transaction) {
-    return transaction.docChanged || transactionChangedSyntaxTree(transaction)
+    return transaction.docChanged || transaction.selection || transactionChangedSyntaxTree(transaction)
       ? buildFrontmatterPresentation(transaction.state) : previous;
   },
   provide: field => EditorView.decorations.from(field),

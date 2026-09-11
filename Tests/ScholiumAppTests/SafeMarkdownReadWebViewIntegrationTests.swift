@@ -518,8 +518,8 @@ extension MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
-    @Test("Review keeps authored YAML before the app title at the document start")
-    func reviewFrontmatterStaysInSourceOrder() async throws {
+    @Test("Review places the app title before quiet authored YAML and the body")
+    func reviewFrontmatterFollowsDocumentTitle() async throws {
         let source = "---\ntitle: Fixture\nsummary: Read in place\n---\n# First section\n\n" +
             (1...40).map { "Research paragraph \($0) remains available." }
                 .joined(separator: "\n\n") + "\n"
@@ -542,13 +542,26 @@ extension MarkdownEditorWebViewIntegrationTests {
             const frontmatter = document.querySelector('.scholium-frontmatter-source');
             const title = document.querySelector('.scholium-note-title');
             if (!scroller || !frontmatter || !title) return null;
-            const frontmatterBounds = frontmatter.getBoundingClientRect();
             const titleBounds = title.getBoundingClientRect();
+            const frontmatterBounds = frontmatter.getBoundingClientRect();
+            const firstHeading = document.querySelector('#scholium-document > h1');
+            const headingBounds = firstHeading?.getBoundingClientRect();
+            const delimiters = Array.from(frontmatter.querySelectorAll('.scholium-frontmatter-delimiter-line'));
             return {
               scrollY: window.scrollY,
               frontmatterTop: frontmatterBounds.top,
               frontmatterBottom: frontmatterBounds.bottom,
-              titleTop: titleBounds.top
+              titleTop: titleBounds.top,
+              titleBottom: titleBounds.bottom,
+              headingTop: headingBounds?.top ?? -1,
+              yamlKeyCount: frontmatter.querySelectorAll('.cm-live-yaml-key').length,
+              yamlStringCount: frontmatter.querySelectorAll('.cm-live-yaml-string').length,
+              delimitersQuiet: delimiters.every(element => {
+                const style = getComputedStyle(element);
+                return element.getBoundingClientRect().height > 0.5
+                  && style.display === 'block'
+                  && style.opacity === '0';
+              })
             };
             """
         ) as? [String: Any])
@@ -556,9 +569,19 @@ extension MarkdownEditorWebViewIntegrationTests {
         let frontmatterTop = (result["frontmatterTop"] as? NSNumber)?.doubleValue ?? -10_000
         let frontmatterBottom = (result["frontmatterBottom"] as? NSNumber)?.doubleValue ?? 0
         let titleTop = (result["titleTop"] as? NSNumber)?.doubleValue ?? 0
+        let titleBottom = (result["titleBottom"] as? NSNumber)?.doubleValue ?? 0
+        let headingTop = (result["headingTop"] as? NSNumber)?.doubleValue ?? -1
+        let yamlKeyCount = (result["yamlKeyCount"] as? NSNumber)?.intValue ?? 0
+        let yamlStringCount = (result["yamlStringCount"] as? NSNumber)?.intValue ?? 0
+        let delimitersQuiet = result["delimitersQuiet"] as? Bool ?? false
         #expect(abs(scrollY) < 0.5)
         #expect(frontmatterTop >= 0)
-        #expect(titleTop > frontmatterBottom)
+        #expect(titleTop < frontmatterTop)
+        #expect(titleBottom <= frontmatterTop)
+        #expect(frontmatterBottom <= headingTop)
+        #expect(yamlKeyCount == 2)
+        #expect(yamlStringCount == 0)
+        #expect(delimitersQuiet)
         await harness.closeAndDrain()
     }
 
@@ -1548,16 +1571,9 @@ extension MarkdownEditorWebViewIntegrationTests {
         #expect(live.calloutFontSize == read.calloutFontSize)
         #expect(live.calloutLineHeight == read.calloutLineHeight)
         #expect(abs(live.calloutWidth - read.calloutWidth) <= 1)
-        #expect(live.calloutRoleColor == read.calloutRoleColor)
-        #expect(live.calloutRolePosition == read.calloutRolePosition)
-        #expect(abs(live.calloutRoleWidth - read.calloutRoleWidth) <= 1)
-        #expect(abs(live.calloutRoleHeight - read.calloutRoleHeight) <= 1)
-        #expect(live.calloutRoleFontFamily == read.calloutRoleFontFamily)
-        #expect(live.calloutRoleFontSize == read.calloutRoleFontSize)
-        #expect(live.calloutRoleFontWeight == read.calloutRoleFontWeight)
-        #expect(live.calloutRoleLineHeight == read.calloutRoleLineHeight)
-        #expect(live.calloutRoleLetterSpacing == read.calloutRoleLetterSpacing)
-        #expect(live.calloutRoleTextTransform == read.calloutRoleTextTransform)
+        #expect(live.calloutRolePosition == "absolute")
+        #expect(live.calloutRoleWidth <= 1.5)
+        #expect(live.calloutRoleHeight <= 1.5)
         #expect(live.calloutTitleColor == read.calloutTitleColor)
         #expect(live.calloutTitleFontFamily == read.calloutTitleFontFamily)
         #expect(live.calloutTitleFontSize == read.calloutTitleFontSize)
@@ -1568,12 +1584,6 @@ extension MarkdownEditorWebViewIntegrationTests {
         #expect(read.calloutRolePosition == "static")
         #expect(read.calloutRoleWidth > 1)
         #expect(read.calloutRoleHeight > 1)
-        #expect(read.calloutTitleFontFamily != read.calloutRoleFontFamily)
-        #expect(read.calloutTitleFontSize != read.calloutRoleFontSize)
-        #expect(read.calloutTitleFontWeight != read.calloutRoleFontWeight)
-        #expect(read.calloutTitleLineHeight != read.calloutRoleLineHeight)
-        #expect(read.calloutTitleLetterSpacing != read.calloutRoleLetterSpacing)
-        #expect(read.calloutTitleTextTransform == read.calloutRoleTextTransform)
         #expect(live.orientationTextAlign == read.orientationTextAlign)
         #expect(read.orientationTextAlign == "start")
 
@@ -2455,16 +2465,9 @@ extension MarkdownEditorWebViewIntegrationTests {
                     calloutFontSize: calloutStyle?.fontSize || '',
                     calloutLineHeight: calloutStyle?.lineHeight || '',
                     calloutWidth: width('.scholium-document > .scholium-callout-state'),
-                    calloutRoleColor: calloutRoleStyle?.color || '',
                     calloutRolePosition: calloutRoleStyle?.position || '',
                     calloutRoleWidth: width('.scholium-document > .scholium-callout-state .scholium-callout-role'),
                     calloutRoleHeight: document.querySelector('.scholium-document > .scholium-callout-state .scholium-callout-role')?.getBoundingClientRect().height || 0,
-                    calloutRoleFontFamily: calloutRoleStyle?.fontFamily || '',
-                    calloutRoleFontSize: calloutRoleStyle?.fontSize || '',
-                    calloutRoleFontWeight: calloutRoleStyle?.fontWeight || '',
-                    calloutRoleLineHeight: calloutRoleStyle?.lineHeight || '',
-                    calloutRoleLetterSpacing: calloutRoleStyle?.letterSpacing || '',
-                    calloutRoleTextTransform: calloutRoleStyle?.textTransform || '',
                     calloutTitleColor: calloutTitleStyle?.color || '',
                     calloutTitleFontFamily: calloutTitleStyle?.fontFamily || '',
                     calloutTitleFontSize: calloutTitleStyle?.fontSize || '',

@@ -1,11 +1,6 @@
 import {Text} from "@codemirror/state";
 import {describe, expect, it} from "vitest";
-import {
-  frontmatterBodyOffset,
-  frontmatterBoundary,
-  frontmatterEndLine,
-  hasUnclosedFrontmatter,
-} from "../state";
+import {frontmatterBoundary} from "../state";
 
 function documentText(source: string) {
   return Text.of(source.replaceAll("\r\n", "\n").split("\n"));
@@ -20,16 +15,12 @@ describe("frontmatter boundary", () => {
     ]) {
       const doc = documentText(source);
       expect(frontmatterBoundary(doc)).toEqual({endLine: 3, unclosed: false});
-      expect(frontmatterEndLine(doc)).toBe(3);
-      expect(frontmatterBodyOffset(doc)).toBe(doc.line(4).from);
-      expect(hasUnclosedFrontmatter(doc)).toBe(false);
     }
   });
 
   it("fails closed when an opening delimiter has no closing delimiter", () => {
     const doc = documentText("---\ntitle: Scope\nBody\n");
     expect(frontmatterBoundary(doc)).toEqual({endLine: 0, unclosed: true});
-    expect(hasUnclosedFrontmatter(doc)).toBe(true);
   });
 
   it("does not claim an ordinary thematic break or single delimiter line", () => {
@@ -44,7 +35,6 @@ describe("frontmatter boundary", () => {
       "---\ncustom: |+\n  before\n  ---\n  after\n---\n",
     );
     expect(frontmatterBoundary(blockScalar)).toEqual({endLine: 6, unclosed: false});
-    expect(frontmatterBodyOffset(blockScalar)).toBe(blockScalar.length);
 
     expect(frontmatterBoundary(documentText("  ---\nkey: value\n---\n")))
       .toEqual({endLine: 0, unclosed: false});
@@ -54,12 +44,11 @@ describe("frontmatter boundary", () => {
       .toEqual({endLine: 0, unclosed: true});
   });
 
-  it("owns the closing-delimiter newline and handles YAML-only source", () => {
+  it("recognizes closed YAML envelopes with and without a body", () => {
     const withBody = documentText("---\ntitle: Note\n---\n# Body");
-    expect(withBody.sliceString(0, frontmatterBodyOffset(withBody)))
-      .toBe("---\ntitle: Note\n---\n");
+    expect(frontmatterBoundary(withBody)).toEqual({endLine: 3, unclosed: false});
 
     const yamlOnly = documentText("---\ntitle: Note\n---");
-    expect(frontmatterBodyOffset(yamlOnly)).toBe(yamlOnly.length);
+    expect(frontmatterBoundary(yamlOnly)).toEqual({endLine: 3, unclosed: false});
   });
 });

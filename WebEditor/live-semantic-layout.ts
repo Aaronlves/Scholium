@@ -160,6 +160,10 @@ export function createLiveSemanticLayout(options: {
     const ownsCollapsedCaret = selection.selection(state).ranges.some((range) =>
       range.empty && range.head >= line.from && range.head <= line.to);
     const outsideFrontmatter = !index.frontmatterRange || line.from >= index.frontmatterRange.to;
+    const followsFrontmatter = index.frontmatterRange !== null
+      && index.frontmatterRange.to < state.doc.length
+      && line.from === index.frontmatterRange.to
+      && !/^\s*$/.test(line.text);
     const blocks = projectionRangesIntersecting(index.syntax.blocks, line.from, lineQueryTo);
     const codeBlock = projectionRangesIntersecting(
       index.literals.codeBlocks,
@@ -222,6 +226,7 @@ export function createLiveSemanticLayout(options: {
         && range.from <= line.to
         && !state.doc.sliceString(range.from, range.to).startsWith("[")) ?? null;
     const classes = new Set<string>();
+    if (followsFrontmatter) classes.add("cm-live-frontmatter-body-start");
     if (/^\s*$/.test(state.doc.sliceString(line.from, line.to))
         && outsideFrontmatter && !codeBlock) {
       classes.add("cm-live-blank-line");
@@ -354,6 +359,11 @@ export function createLiveSemanticLayout(options: {
         const attributes: Record<string, string> = {};
         if (presentation.classes.length > 0) {
           attributes.class = presentation.classes.join(" ");
+        }
+        if (presentation.calloutPresentation) {
+          attributes["data-scholium-callout-from"] = String(
+            presentation.calloutPresentation.from,
+          );
         }
         if (direction) attributes.dir = direction;
         if (presentation.headingLevel !== null) {

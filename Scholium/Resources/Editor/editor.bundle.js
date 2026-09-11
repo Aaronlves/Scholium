@@ -3557,14 +3557,6 @@
     }
     return { endLine: 0, unclosed: true };
   }
-  function frontmatterEndLine(doc2) {
-    return frontmatterBoundary(doc2).endLine;
-  }
-  function frontmatterBodyOffset(doc2) {
-    const endLine = frontmatterEndLine(doc2);
-    if (endLine === 0) return 0;
-    return endLine < doc2.lines ? doc2.line(endLine + 1).from : doc2.line(endLine).to;
-  }
 
   // passage-replacement.ts
   function passageReplacement(source, expected, from, to, replacement) {
@@ -13975,6 +13967,46 @@
     return last;
   }
 
+  // live-cursor-geometry.ts
+  function readLiveCursorGeometry(view) {
+    const selection = view.state.selection.main;
+    if (!selection.empty) return null;
+    const assoc = selection.assoc || 1;
+    let rect = null;
+    try {
+      const line = view.state.doc.lineAt(selection.head);
+      const side = selection.head === line.to ? -1 : selection.head === line.from ? 1 : assoc;
+      const point = view.domAtPos(selection.head, side);
+      const range = view.dom.ownerDocument.createRange();
+      range.setStart(point.node, point.offset);
+      range.collapse(true);
+      rect = range.getBoundingClientRect();
+    } catch {
+      rect = null;
+    }
+    if (!rect || rect.height < 1 || !Number.isFinite(rect.left)) {
+      const fallback = view.coordsAtPos(selection.head, assoc);
+      if (!fallback) return null;
+      return { left: fallback.left, top: fallback.top, bottom: fallback.bottom };
+    }
+    return { left: rect.left, top: rect.top, bottom: rect.bottom };
+  }
+  function writeLiveCursorGeometry(view, geometry) {
+    if (!geometry) return;
+    const cursor = view.scrollDOM.querySelector(".cm-cursor-primary");
+    if (!cursor) return;
+    const outer = view.scrollDOM.getBoundingClientRect();
+    const scaleX = view.scaleX ?? 1;
+    const scaleY = view.scaleY ?? 1;
+    const scrollLeft = view.scrollDOM.scrollLeft * scaleX;
+    const scrollTop = view.scrollDOM.scrollTop * scaleY;
+    const baseLeft = view.textDirection === Direction.LTR ? outer.left - scrollLeft : outer.right - view.scrollDOM.clientWidth * scaleX - scrollLeft;
+    const baseTop = outer.top - scrollTop;
+    cursor.style.left = `${(geometry.left - baseLeft) / scaleX}px`;
+    cursor.style.top = `${(geometry.top - baseTop) / scaleY}px`;
+    cursor.style.height = `${(geometry.bottom - geometry.top) / scaleY}px`;
+  }
+
   // syntax-presentation.ts
   function canDisplaceSyntax(source) {
     return source.length > 0 && source.length <= 24 && /^[\x20-\x7e]+$/.test(source);
@@ -14007,6 +14039,7 @@
         this.placements.clear();
         this.borrowed.clear();
         this.frames.clear();
+        this.frontmatterFrames.clear();
         this.measure(false);
       });
       this.resize.observe(view.scrollDOM);
@@ -14014,9 +14047,11 @@
     }
     view;
     frames = /* @__PURE__ */ new Map();
+    frontmatterFrames = /* @__PURE__ */ new Map();
     borrowed = /* @__PURE__ */ new Set();
     placements = /* @__PURE__ */ new Map();
     transitions = /* @__PURE__ */ new Map();
+    frontmatterTransitions = /* @__PURE__ */ new Map();
     animations = [];
     objects = /* @__PURE__ */ new Set();
     frame = 0;
@@ -14029,18 +14064,29 @@
       this.frame = 0;
       for (const animation of this.animations) animation.cancel();
       this.animations = [];
+      this.frontmatterTransitions.clear();
     };
     update(update) {
       if (!update.docChanged && !update.selectionSet && update.transactions.length === 0) return;
-      const animate = !update.docChanged && !update.viewportChanged && !this.view.composing && update.state.selection.main.empty && !this.reduced.matches;
+      const animate = !update.docChanged && !this.view.composing && update.state.selection.main.empty && !this.reduced.matches;
       for (const [key, transition] of this.transitions) {
         const frame = this.frames.get(key);
         const progress = transition.animation.effect?.getComputedTiming().progress;
         if (frame && typeof progress === "number") {
-          frame.width = transition.from + (transition.to - transition.from) * progress;
+          frame.width = transition.fromWidth + (transition.toWidth - transition.fromWidth) * progress;
+          frame.opacity = transition.fromOpacity + (transition.toOpacity - transition.fromOpacity) * progress;
+          frame.marginInlineStart = transition.fromMarginInlineStart + (transition.toMarginInlineStart - transition.fromMarginInlineStart) * progress;
+        }
+      }
+      for (const [key, transition] of this.frontmatterTransitions) {
+        const frame = this.frontmatterFrames.get(key);
+        const progress = transition.animation.effect?.getComputedTiming().progress;
+        if (frame && typeof progress === "number") {
+          frame.opacity = transition.fromOpacity + (transition.toOpacity - transition.fromOpacity) * progress;
         }
       }
       this.transitions.clear();
+      this.frontmatterTransitions.clear();
       this.stop();
       this.measure(animate);
     }
@@ -14051,6 +14097,18 @@
           objects: [...this.view.contentDOM.querySelectorAll(
             ".cm-live-table-widget, .cm-live-table, .cm-live-math, .cm-live-math-source, .cm-live-mermaid-widget, .cm-live-footnote-reference-widget, .cm-live-embed"
           )],
+          cursor: readLiveCursorGeometry(this.view),
+          frontmatter: [...this.view.contentDOM.querySelectorAll(
+            ".scholium-frontmatter-delimiter-line[data-scholium-yaml-delimiter]"
+          )].map((node, index) => {
+            const style = getComputedStyle(node);
+            return {
+              node,
+              key: node.dataset.scholiumYamlDelimiter ?? String(index),
+              opacity: Number.parseFloat(style.opacity) || 0,
+              open: node.classList.contains("scholium-frontmatter-delimiter-line-active")
+            };
+          }),
           tokens: [...this.view.contentDOM.querySelectorAll(".cm-syntax-token")].map((node) => {
             const key = node.dataset.syntaxKey;
             const open = node.dataset.syntaxOpen === "true";
@@ -14070,9 +14128,9 @@
                 range.selectNodeContents(text);
                 for (const rect of range.getClientRects()) textWidth += rect.width;
               }
-              const style = getComputedStyle(line);
-              const measure = line.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
-              borrow = node.offsetLeft <= parseFloat(style.paddingLeft) + 1 && prefixNeedsMargin(
+              const style2 = getComputedStyle(line);
+              const measure = line.clientWidth - parseFloat(style2.paddingLeft) - parseFloat(style2.paddingRight);
+              borrow = node.offsetLeft <= parseFloat(style2.paddingLeft) + 1 && prefixNeedsMargin(
                 textWidth,
                 width,
                 measure,
@@ -14080,6 +14138,7 @@
               );
             }
             const parentStyle = getComputedStyle(node.parentElement);
+            const style = getComputedStyle(node);
             return {
               node,
               key,
@@ -14088,13 +14147,16 @@
               height,
               multiline,
               borrow,
+              opacity: Number.parseFloat(style.opacity) || 0,
+              marginInlineStart: borrow ? -width : 0,
               fontSize: parentStyle.fontSize,
               lineHeight: parentStyle.lineHeight
             };
           })
         }),
-        write: ({ tokens, objects }) => {
+        write: ({ tokens, objects, cursor, frontmatter }) => {
           if (this.destroyed) return;
+          writeLiveCursorGeometry(this.view, cursor);
           for (const object of objects) {
             if (animate && this.objects.size && !this.objects.has(object) && typeof object.animate === "function") {
               this.animations.push(object.animate(
@@ -14104,10 +14166,28 @@
             }
           }
           this.objects = new Set(objects);
+          const nextFrontmatter = /* @__PURE__ */ new Map();
+          for (const { node, key, opacity, open } of frontmatter) {
+            const previous = this.frontmatterFrames.get(key);
+            nextFrontmatter.set(key, { opacity, open });
+            if (!animate || !previous || previous.open === open || typeof node.animate !== "function") continue;
+            const fromOpacity = open ? 0 : previous.opacity;
+            const toOpacity = open ? opacity : 0;
+            const animation = node.animate([
+              { opacity: fromOpacity },
+              { opacity: toOpacity }
+            ], { duration: 140, easing: "cubic-bezier(.2, 0, .2, 1)", fill: "both" });
+            this.animations.push(animation);
+            this.frontmatterTransitions.set(key, {
+              animation,
+              fromOpacity,
+              toOpacity
+            });
+          }
+          this.frontmatterFrames = nextFrontmatter;
           const next = /* @__PURE__ */ new Map();
           for (const { node, key, open, width, height, multiline, borrow, fontSize, lineHeight } of tokens) {
             const previous = this.frames.get(key);
-            const wasBorrowed = this.borrowed.has(key);
             if (borrow) this.borrowed.add(key);
             else this.borrowed.delete(key);
             const placement = this.placements.get(key);
@@ -14122,15 +14202,48 @@
                 this.placements.set(key, { node, width, animation: animation2 });
               }
             }
-            next.set(key, { open, width, height, multiline });
+            const targetOpacity = open ? 1 : 0;
+            const targetMarginInlineStart = borrow ? -width : 0;
+            next.set(key, {
+              open,
+              width,
+              height,
+              opacity: targetOpacity,
+              marginInlineStart: targetMarginInlineStart,
+              multiline
+            });
             if (!animate || !previous || previous.open === open || previous.multiline || multiline || typeof node.animate !== "function") continue;
             const motionHeight = open ? height : previous.height;
             const animation = node.animate([
-              { width: `${previous.width}px`, height: `${motionHeight}px`, fontSize, lineHeight, whiteSpace: "pre", marginInlineStart: `${wasBorrowed ? -previous.width : 0}px`, opacity: open ? 0.15 : 1 },
-              { width: `${width}px`, height: `${motionHeight}px`, fontSize, lineHeight, whiteSpace: "pre", marginInlineStart: `${borrow ? -width : 0}px`, opacity: open ? 1 : 0 }
-            ], { duration: 120, easing: "cubic-bezier(.2, 0, .2, 1)" });
+              {
+                width: `${previous.width}px`,
+                height: `${motionHeight}px`,
+                fontSize,
+                lineHeight,
+                whiteSpace: "pre",
+                marginInlineStart: `${previous.marginInlineStart}px`,
+                opacity: previous.opacity
+              },
+              {
+                width: `${width}px`,
+                height: `${motionHeight}px`,
+                fontSize,
+                lineHeight,
+                whiteSpace: "pre",
+                marginInlineStart: `${targetMarginInlineStart}px`,
+                opacity: targetOpacity
+              }
+            ], { duration: 120, easing: "cubic-bezier(.2, 0, .2, 1)", fill: "both" });
             this.animations.push(animation);
-            this.transitions.set(key, { animation, from: previous.width, to: width });
+            this.transitions.set(key, {
+              animation,
+              fromWidth: previous.width,
+              toWidth: width,
+              fromOpacity: previous.opacity,
+              toOpacity: targetOpacity,
+              fromMarginInlineStart: previous.marginInlineStart,
+              toMarginInlineStart: targetMarginInlineStart
+            });
           }
           this.frames = next;
           for (const key of this.borrowed) if (!next.has(key)) this.borrowed.delete(key);
@@ -14138,16 +14251,18 @@
             placement.animation.cancel();
             this.placements.delete(key);
           }
-          if (this.animations.length) this.tick();
+          if (this.animations.some((animation) => animation.playState === "running")) {
+            this.tick();
+          } else {
+            this.stop();
+          }
         }
       });
     }
     tick() {
       this.frame = requestAnimationFrame(() => {
         if (this.destroyed) return;
-        this.view.requestMeasure();
-        if (this.animations.some((animation) => animation.playState === "running")) this.tick();
-        else this.stop();
+        this.measure(false);
       });
     }
     destroy() {
@@ -33565,6 +33680,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       const active = selection.selection(state).ranges.some((range) => range.head >= line.from && range.head <= line.to || !range.empty && range.from < lineQueryTo && range.to >= line.from);
       const ownsCollapsedCaret = selection.selection(state).ranges.some((range) => range.empty && range.head >= line.from && range.head <= line.to);
       const outsideFrontmatter = !index.frontmatterRange || line.from >= index.frontmatterRange.to;
+      const followsFrontmatter = index.frontmatterRange !== null && index.frontmatterRange.to < state.doc.length && line.from === index.frontmatterRange.to && !/^\s*$/.test(line.text);
       const blocks = projectionRangesIntersecting(index.syntax.blocks, line.from, lineQueryTo);
       const codeBlock = projectionRangesIntersecting(
         index.literals.codeBlocks,
@@ -33610,6 +33726,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       const list = blocks.filter((block) => block.kind === "listItem").filter((block) => block.markerRanges.some((range) => range.from >= line.from && range.from <= line.to)).sort((left, right) => (right.listDepth ?? 0) - (left.listDepth ?? 0))[0] ?? null;
       const listMarker = list?.markerRanges.find((range) => range.from >= line.from && range.from <= line.to && !state.doc.sliceString(range.from, range.to).startsWith("[")) ?? null;
       const classes = /* @__PURE__ */ new Set();
+      if (followsFrontmatter) classes.add("cm-live-frontmatter-body-start");
       if (/^\s*$/.test(state.doc.sliceString(line.from, line.to)) && outsideFrontmatter && !codeBlock) {
         classes.add("cm-live-blank-line");
         if (ownsCollapsedCaret) classes.add("cm-live-blank-line-active");
@@ -33716,6 +33833,11 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
           const attributes = {};
           if (presentation.classes.length > 0) {
             attributes.class = presentation.classes.join(" ");
+          }
+          if (presentation.calloutPresentation) {
+            attributes["data-scholium-callout-from"] = String(
+              presentation.calloutPresentation.from
+            );
           }
           if (direction) attributes.dir = direction;
           if (presentation.headingLevel !== null) {
@@ -34401,9 +34523,95 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         EditorView.editorAttributes.from(field, (value) => value.active ? { "data-scholium-active-live-block": "callout" } : {})
       ]
     });
+    const calloutMotion = ViewPlugin.fromClass(class {
+      constructor(view) {
+        this.view = view;
+        this.previous = this.readGroups();
+        this.view.requestMeasure({
+          key: this,
+          read: () => this.readGroups(),
+          write: (groups) => {
+            this.previous = groups;
+          }
+        });
+        this.reduced.addEventListener("change", this.stop);
+      }
+      view;
+      previous = /* @__PURE__ */ new Map();
+      animations = [];
+      reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
+      readGroups() {
+        const groups = /* @__PURE__ */ new Map();
+        for (const line of this.view.contentDOM.querySelectorAll(
+          ".cm-line.cm-live-callout[data-scholium-callout-from]"
+        )) {
+          const key = line.dataset.scholiumCalloutFrom;
+          if (!key) continue;
+          const group = groups.get(key) ?? { header: null, bodyLines: [] };
+          if (line.classList.contains("cm-live-callout-header")) group.header = line;
+          if (line.classList.contains("cm-live-callout-body-line")) group.bodyLines.push(line);
+          groups.set(key, group);
+        }
+        return new Map([...groups].map(([key, group]) => [key, {
+          expanded: group.bodyLines.length > 0,
+          header: group.header,
+          bodyLines: group.bodyLines
+        }]));
+      }
+      update(update) {
+        if (update.transactions.length === 0) return;
+        this.stop();
+        const animate = !update.docChanged && !this.view.composing && !this.reduced.matches;
+        this.view.requestMeasure({
+          key: this,
+          read: () => this.readGroups(),
+          write: (groups) => {
+            if (animate) {
+              for (const [key, group] of groups) {
+                const previous = this.previous.get(key);
+                if (!previous || previous.expanded === group.expanded) continue;
+                const disclosure = group.header?.querySelector(
+                  ".cm-live-callout-disclosure"
+                );
+                if (disclosure) {
+                  this.animations.push(disclosure.animate(
+                    [{ opacity: 0.55 }, { opacity: 1 }],
+                    { duration: 120, easing: "ease-out", fill: "both" }
+                  ));
+                }
+                if (group.expanded && !previous.expanded) {
+                  for (const line of group.bodyLines) {
+                    this.animations.push(line.animate(
+                      [{ opacity: 0 }, { opacity: 1 }],
+                      { duration: 140, easing: "ease-out", fill: "both" }
+                    ));
+                  }
+                }
+              }
+            }
+            this.previous = groups;
+          }
+        });
+      }
+      stop = () => {
+        for (const animation of this.animations) animation.cancel();
+        this.animations = [];
+      };
+      destroy() {
+        this.stop();
+        this.reduced.removeEventListener("change", this.stop);
+      }
+    }, { eventHandlers: {
+      mousedown() {
+        this.stop();
+      },
+      compositionstart() {
+        this.stop();
+      }
+    } });
     return {
       tableExtension: tableField,
-      calloutExtension: calloutField
+      calloutExtension: [calloutField, calloutMotion]
     };
   }
 
@@ -36614,7 +36822,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       return true;
     }
   };
-  function documentTitleDecorations(state) {
+  function documentTitleDecorations() {
     if (!documentTitle) return Decoration.none;
     return Decoration.set([
       Decoration.widget({
@@ -36624,7 +36832,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         ),
         block: true,
         side: -2
-      }).range(frontmatterBodyOffset(state.doc))
+      }).range(0)
     ]);
   }
   function resolveDocumentTitleRename(requestID, accepted, title, error) {
@@ -36652,10 +36860,10 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     }
   }
   var liveDocumentTitle = StateField.define({
-    create: (state) => documentTitleDecorations(state),
+    create: () => documentTitleDecorations(),
     update: (decorations2, transaction) => {
       const titleChanged = transaction.effects.some((effect) => effect.is(refreshDocumentTitleEffect));
-      return transaction.docChanged || titleChanged ? documentTitleDecorations(transaction.state) : decorations2;
+      return transaction.docChanged || titleChanged ? documentTitleDecorations() : decorations2;
     },
     provide: (field) => EditorView.decorations.from(field)
   });
@@ -37354,18 +37562,27 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     const lines = [];
     const end = index.frontmatterRange?.to ?? (index.hasUnclosedFrontmatter ? state.doc.length : 0);
     if (end === 0) return Decoration.none;
+    const frontmatterIsActive = lastDocumentFocusTarget !== "title" && state.selection.ranges.some((range) => range.empty ? range.head < end : range.from < end && range.to > 0);
+    const boundary = frontmatterBoundary(state.doc);
     for (let n = 1; n <= state.doc.lines && state.doc.line(n).from < end; n++) {
+      const isDelimiterLine = boundary.endLine > 0 && (n === 1 || n === boundary.endLine);
+      const classes = ["scholium-frontmatter-line"];
+      const attributes = { "data-scholium-yaml-rendered": "true" };
+      if (isDelimiterLine) {
+        classes.push("scholium-frontmatter-delimiter-line");
+        if (frontmatterIsActive) classes.push("scholium-frontmatter-delimiter-line-active");
+        attributes["data-scholium-yaml-delimiter"] = n === 1 ? "opening" : "closing";
+      }
       lines.push(Decoration.line({
-        class: "scholium-frontmatter-line",
-        attributes: { "data-scholium-yaml-rendered": "true" }
+        class: classes.join(" "),
+        attributes
       }).range(state.doc.line(n).from));
     }
     const addMark = (from, to, className) => {
       if (from < 0 || to <= from || from >= end) return;
       lines.push(Decoration.mark({ class: className }).range(from, Math.min(to, end)));
     };
-    const boundary = frontmatterBoundary(state.doc);
-    if (boundary.endLine > 0) {
+    if (boundary.endLine > 0 && frontmatterIsActive) {
       const opening = state.doc.line(1);
       const openingFrom = opening.text.charCodeAt(0) === 65279 ? opening.from + 1 : opening.from;
       addMark(openingFrom, Math.min(openingFrom + 3, opening.to), "cm-live-yaml-delimiter");
@@ -37390,7 +37607,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
   var liveFrontmatterLines = StateField.define({
     create: buildFrontmatterPresentation,
     update(previous, transaction) {
-      return transaction.docChanged || transactionChangedSyntaxTree(transaction) ? buildFrontmatterPresentation(transaction.state) : previous;
+      return transaction.docChanged || transaction.selection || transactionChangedSyntaxTree(transaction) ? buildFrontmatterPresentation(transaction.state) : previous;
     },
     provide: (field) => EditorView.decorations.from(field)
   });
