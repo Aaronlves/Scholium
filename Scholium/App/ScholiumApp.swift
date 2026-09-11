@@ -317,7 +317,6 @@ private struct ScholiumBootstrapRoot: View {
                 WorkspaceSetupView(context: workspaceSetupContext)
             }
         }
-        .tint(ScholiumColorRole.accent.color)
         .scholiumButtonStyle(.automatic)
         .ignoresSafeArea(.container, edges: .top)
         .background(
@@ -647,7 +646,6 @@ private struct ScholiumWindowObservedRoot: View {
         .navigationSubtitle(workspaceWindowSubtitle)
         .toolbar(removing: .sidebarToggle)
         .toolbar(removing: .title)
-        .tint(ScholiumColorRole.accent.color)
         .scholiumButtonStyle(.automatic)
         .focusedSceneObject(appState)
         .focusedSceneObject(appState.commandObservation)

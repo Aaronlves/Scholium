@@ -720,7 +720,7 @@ authored `accTitle` or `accDescr` keeps a source-based assistive alternative and
 adds an ordinary visible diagnostic, not a repeatedly announced live region,
 rather than synthesizing philosophical meaning.
 Runtime theme input comes only from the protected document-background,
-surface, primary-text, Accent, and separator semantic variables; Edit rebuilds
+surface, system Accent, primary-text, and separator semantic variables; Edit rebuilds
 its inactive widget when presentation or system appearance changes, and Read
 rerenders the retained source-backed figure on the same system changes. The
 esbuild input graph deterministically regenerates the distributed Mermaid and

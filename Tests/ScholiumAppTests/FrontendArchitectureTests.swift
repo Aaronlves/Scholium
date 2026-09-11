@@ -754,7 +754,7 @@ struct FrontendArchitectureTests {
             pattern: #"ScholiumColorRole\.[A-Za-z]+\.color(?:\([^)]*\))?\.opacity\([0-9]"#
         )
         let rawSwiftColorInput = try NSRegularExpression(
-            pattern: #"\b(?:Color\((?:red|white):|NSColor\((?:calibrated|device|sRGB))"#
+            pattern: #"\b(?:Color\(\s*(?:red|white):|NSColor\((?:calibrated|device|sRGB))"#
         )
 
         for (path, source) in applicationSources.sorted(by: { $0.key < $1.key }) {
@@ -3785,13 +3785,12 @@ struct FrontendArchitectureTests {
         #expect(!source.contains("SpotlightSearchOverlay"))
     }
 
-    @Test("Two color Variables resolve the approved light, dark, and contrast roles")
+    @Test("Paper resolves the approved roles while Accent follows macOS")
     func reviewedAppearancePalettes() throws {
-        #expect(ScholiumColorVariable.allCases == [.accent, .paper])
-        #expect(ScholiumColorVariables.editorialCopper[.accent] == 0xA94C22)
-        #expect(ScholiumColorVariables.editorialCopper[.paper] == 0xFEF8ED)
+        #expect(ScholiumColorVariable.allCases == [.paper])
+        #expect(ScholiumColorVariables.editorialPaper[.paper] == 0xFEF8ED)
 
-        let expectedLight: [ScholiumColorRole: UInt32] = [
+        let baseLight: [ScholiumColorRole: UInt32] = [
             .documentBackground: 0xFEF8ED,
             .surfaceBackground: 0xF4EEE3,
             .navigationSurfaceBackground: 0xECE8E1,
@@ -3800,7 +3799,6 @@ struct FrontendArchitectureTests {
             .primaryText: 0x28241D,
             .secondaryText: 0x4C473E,
             .separator: 0xC5C0B5,
-            .accent: 0x9D4114,
             .information: 0x3D6379,
             .attention: 0x81520A,
             .destructive: 0x8D453E,
@@ -3811,7 +3809,7 @@ struct FrontendArchitectureTests {
             .comparisonRemovalBackground: 0xFED7D2,
             .comparisonInsertionBackground: 0xCBEBD4,
         ]
-        let expectedDark: [ScholiumColorRole: UInt32] = [
+        let baseDark: [ScholiumColorRole: UInt32] = [
             .documentBackground: 0x2E2921,
             .surfaceBackground: 0x3F3A31,
             .navigationSurfaceBackground: 0x383530,
@@ -3820,7 +3818,6 @@ struct FrontendArchitectureTests {
             .primaryText: 0xF0EAE1,
             .secondaryText: 0xD0CABF,
             .separator: 0x7C776D,
-            .accent: 0xFFA17B,
             .information: 0x95BED6,
             .attention: 0xE3AF71,
             .destructive: 0xF6A39A,
@@ -3831,7 +3828,7 @@ struct FrontendArchitectureTests {
             .comparisonRemovalBackground: 0x50312E,
             .comparisonInsertionBackground: 0x274230,
         ]
-        let expectedIncreasedContrastLight: [ScholiumColorRole: UInt32] = [
+        let baseIncreasedContrastLight: [ScholiumColorRole: UInt32] = [
             .documentBackground: 0xFEF8ED,
             .surfaceBackground: 0xF4EEE3,
             .navigationSurfaceBackground: 0xECE8E1,
@@ -3840,7 +3837,6 @@ struct FrontendArchitectureTests {
             .primaryText: 0x28241D,
             .secondaryText: 0x454138,
             .separator: 0x8B857C,
-            .accent: 0x6E2B0A,
             .information: 0x163C50,
             .attention: 0x4E3107,
             .destructive: 0x681212,
@@ -3851,7 +3847,7 @@ struct FrontendArchitectureTests {
             .comparisonRemovalBackground: 0xF9C1BB,
             .comparisonInsertionBackground: 0xB2DEBF,
         ]
-        let expectedIncreasedContrastDark: [ScholiumColorRole: UInt32] = [
+        let baseIncreasedContrastDark: [ScholiumColorRole: UInt32] = [
             .documentBackground: 0x2E2921,
             .surfaceBackground: 0x3F3A31,
             .navigationSurfaceBackground: 0x383530,
@@ -3860,7 +3856,6 @@ struct FrontendArchitectureTests {
             .primaryText: 0xF0EAE1,
             .secondaryText: 0xEAE4D9,
             .separator: 0xA39E94,
-            .accent: 0xFEDCCF,
             .information: 0xC5E8FD,
             .attention: 0xFEDFBC,
             .destructive: 0xFFDBD6,
@@ -3873,16 +3868,33 @@ struct FrontendArchitectureTests {
         ]
 
         for palette in [
-            expectedLight,
-            expectedDark,
-            expectedIncreasedContrastLight,
-            expectedIncreasedContrastDark,
+            baseLight,
+            baseDark,
+            baseIncreasedContrastLight,
+            baseIncreasedContrastDark,
         ] {
-            #expect(Set(palette.keys) == Set(ScholiumColorRole.allCases))
+            #expect(
+                Set(palette.keys)
+                    == Set(ScholiumColorRole.allCases.filter { $0 != .accent })
+            )
         }
 
         let aqua = try #require(NSAppearance(named: .aqua))
         let darkAqua = try #require(NSAppearance(named: .darkAqua))
+        let systemAccentLight = try #require(
+            rgbValue(of: ScholiumNativeColorRole.controlAccent.nsColor, appearance: aqua)
+        )
+        let systemAccentDark = try #require(
+            rgbValue(of: ScholiumNativeColorRole.controlAccent.nsColor, appearance: darkAqua)
+        )
+        var expectedLight = baseLight
+        var expectedDark = baseDark
+        var expectedIncreasedContrastLight = baseIncreasedContrastLight
+        var expectedIncreasedContrastDark = baseIncreasedContrastDark
+        expectedLight[.accent] = systemAccentLight
+        expectedDark[.accent] = systemAccentDark
+        expectedIncreasedContrastLight[.accent] = systemAccentLight
+        expectedIncreasedContrastDark[.accent] = systemAccentDark
         for role in ScholiumColorRole.allCases {
             let light = try #require(expectedLight[role])
             let dark = try #require(expectedDark[role])
@@ -3910,13 +3922,21 @@ struct FrontendArchitectureTests {
             ),
         ] {
             for (role, value) in palette {
+                if role == .accent {
+                    #expect(
+                        declarations.contains(
+                            "\(role.cssVariableName): \(ScholiumWebDesignTokens.systemAccentCSSValue);"
+                        )
+                    )
+                    continue
+                }
                 let declaration = "\(role.cssVariableName): \(String(format: "#%06x", value));"
                 #expect(declarations.contains(declaration))
             }
         }
 
         let foregroundRoles: [ScholiumColorRole] = [
-            .primaryText, .secondaryText, .accent,
+            .primaryText, .secondaryText,
             .information, .attention, .destructive, .confirmed, .agentAuthorship,
         ]
         let backgroundRoles: [ScholiumColorRole] = [

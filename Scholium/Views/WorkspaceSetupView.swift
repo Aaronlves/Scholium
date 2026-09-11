@@ -112,7 +112,6 @@ private struct BootstrapFlowView: View {
         }
         .scholiumForeground(.primaryText)
         .background(ScholiumColorRole.documentBackground.color)
-        .tint(ScholiumColorRole.accent.color)
         .scholiumButtonStyle(.automatic)
         .task {
             await context.refreshAssignment()

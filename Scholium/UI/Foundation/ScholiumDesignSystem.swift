@@ -3,26 +3,20 @@ import Foundation
 import ScholiumContracts
 import SwiftUI
 
-/// The complete configurable color boundary.
+/// The configurable document identity boundary.
 enum ScholiumColorVariable: String, CaseIterable, Sendable {
-    case accent
     case paper
 }
 
-/// The only configurable color inputs. Every interface color is a resolved
-/// semantic role rather than another independently configurable swatch.
+/// The only app-owned color input. The interface Accent is supplied by macOS
+/// and is never persisted as a Scholium Variable.
 struct ScholiumColorVariables: Equatable, Sendable {
-    let accent: UInt32
     let paper: UInt32
 
-    static let editorialCopper = Self(
-        accent: 0xA94C22,
-        paper: 0xFEF8ED
-    )
+    static let editorialPaper = Self(paper: 0xFEF8ED)
 
     subscript(variable: ScholiumColorVariable) -> UInt32 {
         switch variable {
-        case .accent: accent
         case .paper: paper
         }
     }
@@ -71,7 +65,10 @@ enum ScholiumColorRole: String, CaseIterable, Sendable {
     }
 
     private func makeNSColor(increasedContrast: Bool?) -> NSColor {
-        NSColor(name: nil) { appearance in
+        if self == .accent {
+            return ScholiumNativeColorRole.controlAccent.nsColor
+        }
+        return NSColor(name: nil) { appearance in
             Self.rgb(
                 resolvedRGBValue(
                     for: appearance,
@@ -85,11 +82,20 @@ enum ScholiumColorRole: String, CaseIterable, Sendable {
         for appearance: NSAppearance,
         increasedContrast: Bool
     ) -> UInt32 {
+        if self == .accent {
+            return Self.systemAccentRGBValue(for: appearance)
+        }
         let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
         return resolvedRGBValue(isDark: isDark, increasedContrast: increasedContrast)
     }
 
     func resolvedRGBValue(isDark: Bool, increasedContrast: Bool) -> UInt32 {
+        if self == .accent {
+            guard let appearance = NSAppearance(named: isDark ? .darkAqua : .aqua) else {
+                return 0
+            }
+            return Self.systemAccentRGBValue(for: appearance)
+        }
         let palette: ScholiumResolvedColorPalette =
             switch (isDark, increasedContrast) {
             case (false, false): Self.lightPalette
@@ -100,7 +106,7 @@ enum ScholiumColorRole: String, CaseIterable, Sendable {
         return palette[self]
     }
 
-    private static let resolver = ScholiumColorResolver(variables: .editorialCopper)
+    private static let resolver = ScholiumColorResolver(variables: .editorialPaper)
     private static let lightPalette = resolver.resolve(isDark: false, increasedContrast: false)
     private static let increasedContrastLightPalette = resolver.resolve(
         isDark: false, increasedContrast: true)
@@ -115,6 +121,25 @@ enum ScholiumColorRole: String, CaseIterable, Sendable {
             blue: CGFloat(value & 0xFF) / 255,
             alpha: 1
         )
+    }
+
+    static func systemAccentRGBValue(for appearance: NSAppearance) -> UInt32 {
+        var value: UInt32 = 0
+        appearance.performAsCurrentDrawingAppearance {
+            guard let color = NSColor.controlAccentColor.usingColorSpace(.sRGB) else {
+                return
+            }
+            var red: CGFloat = 0
+            var green: CGFloat = 0
+            var blue: CGFloat = 0
+            var alpha: CGFloat = 0
+            color.getRed(&red, green: &green, blue: &blue, alpha: &alpha)
+            value =
+                (UInt32((red * 255).rounded()) << 16)
+                | (UInt32((green * 255).rounded()) << 8)
+                | UInt32((blue * 255).rounded())
+        }
+        return value
     }
 }
 
@@ -145,7 +170,9 @@ enum ScholiumNativeColorRole: Sendable {
     }
 }
 
-/// A complete appearance result generated from the two configurable inputs.
+/// A complete appearance result generated from the app-owned Paper input.
+/// Accent is a resolved snapshot from the macOS system color; the source of
+/// truth remains the system color rather than this adapted palette.
 /// Call sites consume `ScholiumColorRole`; this value never becomes a second
 /// configuration or persistence authority.
 struct ScholiumResolvedColorPalette: Equatable, Sendable {
@@ -192,16 +219,15 @@ struct ScholiumResolvedColorPalette: Equatable, Sendable {
     }
 }
 
-/// Resolves both native and WebKit roles from the same two sRGB variables.
+/// Resolves app-owned Paper-derived roles for native and WebKit presentation.
 /// Fixed functional anchors supply semantic hue direction but aren't exposed
-/// as researcher configuration. Contrast is checked against every opaque
-/// surface before a foreground result is accepted.
+/// as researcher configuration. Accent is a system-owned role and is resolved
+/// separately from the macOS control accent color.
 struct ScholiumColorResolver: Sendable {
     let variables: ScholiumColorVariables
 
     func resolve(isDark: Bool, increasedContrast: Bool) -> ScholiumResolvedColorPalette {
         let paperSource = Self.oklch(from: variables.paper)
-        let accentSource = Self.oklch(from: variables.accent)
         let contrastTarget = increasedContrast ? 7.0 : 4.5
         let paperChroma = isDark ? 0.018 : 0.028
 
@@ -266,16 +292,6 @@ struct ScholiumColorResolver: Sendable {
                 : (increasedContrast ? 0.62 : 0.808),
             chromaLimit: 0.020
         )
-        let accent = Self.contrastColor(
-            accentSource,
-            startingLightness: isDark
-                ? (increasedContrast ? 0.84 : 0.74)
-                : (increasedContrast ? 0.38 : 0.50),
-            chromaLimit: isDark ? 0.17 : 0.18,
-            backgrounds: backgrounds,
-            target: contrastTarget,
-            preferLight: isDark
-        )
         let comparisonBackgroundLightness =
             isDark
             ? (increasedContrast ? 0.43 : 0.35)
@@ -320,6 +336,13 @@ struct ScholiumColorResolver: Sendable {
                 preferLight: isDark
             )
         }
+
+        let accent: UInt32 = {
+            guard let appearance = NSAppearance(named: isDark ? .darkAqua : .aqua) else {
+                return 0
+            }
+            return ScholiumColorRole.systemAccentRGBValue(for: appearance)
+        }()
 
         return ScholiumResolvedColorPalette(
             documentBackground: documentBackground,
@@ -494,12 +517,15 @@ struct ScholiumColorResolver: Sendable {
 /// not a second set of configurable color Variables.
 enum ScholiumWebDesignTokens {
     /// Fixed document-markup colors are not Appearance inputs and do not
-    /// participate in the Accent/Paper resolver. They are shared verbatim by
-    /// Review and Edit so Markdown semantics cannot drift by mode or theme.
+    /// participate in the Paper resolver. They are shared verbatim by Review
+    /// and Edit so Markdown semantics cannot drift by mode or theme.
     static let fixedDocumentSyntaxCSSDeclarations = """
         --scholium-mark-highlight-background: #ff9a00;
         --scholium-mark-highlight-text: #28241d;
         """
+    /// WebKit's macOS system color keeps document Accent consumers live with
+    /// the user's current System Settings choice.
+    static let systemAccentCSSValue = "-apple-system-control-accent"
     static let resolvedColorRoleCSSVariableNames = Set(
         ScholiumColorRole.allCases.map(\.cssVariableName)
     )
@@ -565,7 +591,7 @@ enum ScholiumWebDesignTokens {
             """
     }()
 
-    private static let colorResolver = ScholiumColorResolver(variables: .editorialCopper)
+    private static let colorResolver = ScholiumColorResolver(variables: .editorialPaper)
 
     static let rootCSSDeclarations = colorDeclarations(
         isDark: false,
@@ -605,6 +631,9 @@ enum ScholiumWebDesignTokens {
             increasedContrast: increasedContrast
         )
         return ScholiumColorRole.allCases.map { role in
+            if role == .accent {
+                return "\(role.cssVariableName): \(systemAccentCSSValue);"
+            }
             let value = String(format: "#%06x", palette[role])
             return "\(role.cssVariableName): \(value);"
         }.joined(separator: "\n")

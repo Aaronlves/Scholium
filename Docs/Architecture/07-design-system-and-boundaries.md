@@ -12,7 +12,7 @@ standard system control or copy a feature's layout recipe.
 
 | Responsibility | Current implementation owner |
 | --- | --- |
-| Background/Accent input and adapted document colors | `ScholiumColorVariables`, `ScholiumColorResolver`, `ScholiumColorRole` in `Scholium/UI/Foundation/ScholiumDesignSystem.swift`. |
+| Paper input and adapted document colors; system Accent role | `ScholiumColorVariables`, `ScholiumColorResolver`, `ScholiumColorRole` and `ScholiumNativeColorRole` in `Scholium/UI/Foundation/ScholiumDesignSystem.swift`. |
 | Native semantic colors | `ScholiumNativeColorRole`; AppKit/SwiftUI owns actual control rendering. |
 | Native-to-document style transport | `ScholiumWebDesignTokens`; generated CSS consumes resolved values, not another palette or settings store. |
 | Shared custom geometry | `ScholiumGrid`, `ScholiumMetrics`, `ScholiumShape`, surface/boundary/elevation roles; exact defaults remain in code. |

@@ -10,7 +10,8 @@ belong to §§18.1–18.7; accessibility and adaptation requirements belong to �
 Scholium is a native Mac research environment centered on the document.
 **Scholarly Editorialism** means a quiet reading and writing space, clear
 editorial hierarchy, and tools that remain subordinate to the researcher's work.
-Only the configured main workspace adds Scholium background color and Accent.
+Only the configured main workspace adds Scholium's Paper background; Accent
+follows the researcher's macOS system preference.
 Its controls, navigation, typography outside document content, geometry,
 feedback, and auxiliary windows follow macOS.
 
@@ -52,13 +53,14 @@ it uses the system material and retains native input and accessibility.
 
 ### 19.2 Background and Accent
 
-The main workspace has two configurable identity inputs:
+The main workspace has one app-owned identity input:
 
 - **Paper** `#FEF8ED`: the light document-background anchor, adapted for appearance.
-- **Accent** `#A94C22`: restrained main-workspace emphasis through supported
-  native tinting and document links.
+Accent is not a Scholium Variable. Native controls, document links and other
+main-workspace emphasis use the macOS system Accent, including its user choice
+and system appearance/accessibility adaptation.
 
-These colors express identity; they do not replace system label, separator,
+Paper and system Accent express identity; they do not replace system label, separator,
 control, selection, focus, warning or destructive semantics. Ordinary actions
 retain native prominence. Do not tint every clickable item or impose a separate
 neutral-selection skin. System accessibility and appearance preferences take

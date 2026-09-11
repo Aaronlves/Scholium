@@ -211,6 +211,14 @@ struct AgentChatMessageStyleTests {
         for (dark, increasedContrast) in [(false, false), (true, false), (false, true), (true, true)] {
             let css = AgentChatDiagram.presentationCSS(dark: dark, increasedContrast: increasedContrast)
             for (role, key) in [(ScholiumColorRole.primaryText, "primary-text"), (.accent, "accent")] {
+                if role == .accent {
+                    #expect(
+                        css.contains(
+                            "--scholium-color-\(key): \(ScholiumWebDesignTokens.systemAccentCSSValue);"
+                        )
+                    )
+                    continue
+                }
                 let declaration = String(
                     format: "--scholium-color-%@: #%06x;", key,
                     role.resolvedRGBValue(isDark: dark, increasedContrast: increasedContrast))

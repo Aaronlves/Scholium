@@ -205,7 +205,7 @@ struct BootstrapStageArtwork: View {
             boundary.addLine(to: point(0.56, 0.92, in: size))
             context.stroke(
                 boundary,
-                with: .color(BootstrapArtworkPalette.accent),
+                with: .color(BootstrapArtworkPalette.constellationHighlight),
                 style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round)
             )
         }
@@ -222,12 +222,12 @@ struct BootstrapStageArtwork: View {
         )
 
         for (index, node) in points.enumerated() {
-            if stage == .agent, index == plan.accentIndex {
+            if stage == .agent, index == plan.highlightedNodeIndex {
                 drawKeyhole(at: node, in: &context)
             } else {
                 drawNode(
                     at: node,
-                    accent: index == plan.accentIndex,
+                    isHighlighted: index == plan.highlightedNodeIndex,
                     in: &context
                 )
             }
@@ -244,7 +244,7 @@ struct BootstrapStageArtwork: View {
                     .init(x: 0.55, y: 0.70), .init(x: 0.42, y: 0.89),
                 ],
                 links: [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5)],
-                accentIndex: 4
+                highlightedNodeIndex: 4
             )
         case .triptych:
             BootstrapConstellationPlan(
@@ -254,7 +254,7 @@ struct BootstrapStageArtwork: View {
                     .init(x: 0.84, y: 0.31), .init(x: 0.78, y: 0.68),
                 ],
                 links: [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5)],
-                accentIndex: 2
+                highlightedNodeIndex: 2
             )
         case .agent:
             BootstrapConstellationPlan(
@@ -266,7 +266,7 @@ struct BootstrapStageArtwork: View {
                     .init(x: 0.90, y: 0.50), .init(x: 0.87, y: 0.77),
                 ],
                 links: [(0, 1), (1, 2), (3, 4), (4, 5), (7, 6), (8, 6), (9, 6)],
-                accentIndex: 6
+                highlightedNodeIndex: 6
             )
         case .ready:
             BootstrapConstellationPlan(
@@ -276,20 +276,24 @@ struct BootstrapStageArtwork: View {
                     .init(x: 0.74, y: 0.48), .init(x: 0.50, y: 0.58),
                 ],
                 links: [(0, 5), (1, 5), (2, 5), (3, 5), (4, 5)],
-                accentIndex: 5
+                highlightedNodeIndex: 5
             )
         }
     }
 
     private func drawNode(
         at center: CGPoint,
-        accent: Bool,
+        isHighlighted: Bool,
         in context: inout GraphicsContext
     ) {
         let frame = CGRect(x: center.x - 8, y: center.y - 8, width: 16, height: 16)
         context.fill(
             Path(ellipseIn: frame),
-            with: .color(accent ? BootstrapArtworkPalette.accent : BootstrapArtworkPalette.paper)
+            with: .color(
+                isHighlighted
+                    ? BootstrapArtworkPalette.constellationHighlight
+                    : BootstrapArtworkPalette.paper
+            )
         )
         context.stroke(
             Path(ellipseIn: frame),
@@ -318,7 +322,7 @@ struct BootstrapStageArtwork: View {
             control2: CGPoint(x: center.x - 11, y: center.y - 10)
         )
         keyhole.closeSubpath()
-        context.fill(keyhole, with: .color(BootstrapArtworkPalette.accent))
+        context.fill(keyhole, with: .color(BootstrapArtworkPalette.constellationHighlight))
         context.stroke(
             keyhole,
             with: .color(BootstrapArtworkPalette.ink),
@@ -334,7 +338,7 @@ struct BootstrapStageArtwork: View {
 private struct BootstrapConstellationPlan {
     let points: [CGPoint]
     let links: [(Int, Int)]
-    let accentIndex: Int
+    let highlightedNodeIndex: Int
 }
 
 private enum BootstrapArtworkPalette {
@@ -344,5 +348,9 @@ private enum BootstrapArtworkPalette {
     static let oxblood = Color(red: 128.0 / 255, green: 91.0 / 255, blue: 87.0 / 255)
     static let paper = Color(red: 232.0 / 255, green: 210.0 / 255, blue: 172.0 / 255)
     static let ink = Color(red: 25.0 / 255, green: 48.0 / 255, blue: 61.0 / 255)
-    static let accent = Color(red: 155.0 / 255, green: 74.0 / 255, blue: 43.0 / 255)
+    static let constellationHighlight = Color(
+        red: 155.0 / 255,
+        green: 74.0 / 255,
+        blue: 43.0 / 255
+    )
 }

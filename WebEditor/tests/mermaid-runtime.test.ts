@@ -163,7 +163,7 @@ describe("shared Mermaid runtime boundary", () => {
       ["--scholium-color-document-background", "#fef8ed"],
       ["--scholium-color-surface-background", "#f4eee3"],
       ["--scholium-color-primary-text", "#28241d"],
-      ["--scholium-color-accent", "#9d4114"],
+      ["--scholium-color-accent", "-apple-system-control-accent"],
       ["--scholium-color-separator", "#c5c0b5"],
     ]);
     const style = {getPropertyValue: (name: string) => colors.get(name) ?? ""};
@@ -174,7 +174,7 @@ describe("shared Mermaid runtime boundary", () => {
         background: "#fef8ed",
         primaryColor: "#f4eee3",
         primaryTextColor: "#28241d",
-        primaryBorderColor: "#9d4114",
+        primaryBorderColor: "-apple-system-control-accent",
         lineColor: "#c5c0b5",
         secondaryColor: "#fef8ed",
         secondaryTextColor: "#28241d",
@@ -184,7 +184,7 @@ describe("shared Mermaid runtime boundary", () => {
         tertiaryBorderColor: "#c5c0b5",
         mainBkg: "#f4eee3",
         nodeBkg: "#f4eee3",
-        nodeBorder: "#9d4114",
+        nodeBorder: "-apple-system-control-accent",
         clusterBkg: "#fef8ed",
         clusterBorder: "#c5c0b5",
         edgeLabelBackground: "#fef8ed",
@@ -197,8 +197,9 @@ describe("shared Mermaid runtime boundary", () => {
       expect(theme?.variables[`cScale${index}`]).toBe(index % 2 === 0 ? "#f4eee3" : "#fef8ed");
       expect(theme?.variables[`cScaleLabel${index}`]).toBe("#28241d");
       expect(theme?.variables[`cScaleInv${index}`]).toBe("#c5c0b5");
-      expect(theme?.variables[`lineColor${index}`]).toBe("#9d4114");
+      expect(theme?.variables[`lineColor${index}`]).toBe("-apple-system-control-accent");
     }
+    expect(mermaidThemeFromStyle(style, "#007aff")?.variables.primaryBorderColor).toBe("#007aff");
     colors.set("--scholium-color-accent", "url(https://example.invalid/accent)");
     expect(mermaidThemeFromStyle(style)).toBeNull();
   });

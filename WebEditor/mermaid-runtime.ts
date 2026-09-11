@@ -155,9 +155,45 @@ interface ScholiumMermaidTheme {
 
 type MermaidThemeStyle = Pick<CSSStyleDeclaration, "getPropertyValue">;
 
-function semanticColor(style: MermaidThemeStyle, name: string) {
+function semanticColor(style: MermaidThemeStyle, name: string, systemAccent?: string) {
   const value = style.getPropertyValue(name).trim();
-  return /^#[0-9a-f]{6}$/i.test(value) ? value : null;
+  if (/^#[0-9a-f]{6}$/i.test(value)) return value;
+  // The macOS WKWebView document contract deliberately keeps Accent as a
+  // live system color. Resolve it only for Mermaid's generated SVG, whose
+  // theme parser needs a concrete color; arbitrary CSS values remain rejected.
+  if (name === "--scholium-color-accent" && value === "-apple-system-control-accent") {
+    return systemAccent ?? value;
+  }
+  return null;
+}
+
+function cssRGBToHex(value: string) {
+  const match = /^rgba?\(([^)]+)\)$/i.exec(value.trim());
+  if (!match) return null;
+  const channels = match[1].split(/[,\s/]+/).filter(Boolean).slice(0, 3);
+  if (channels.length !== 3) return null;
+  const values = channels.map((channel) => {
+    if (channel.endsWith("%")) return Number.parseFloat(channel) * 2.55;
+    return Number.parseFloat(channel);
+  });
+  if (values.some((channel) => !Number.isFinite(channel) || channel < 0 || channel > 255)) return null;
+  return `#${values.map((channel) => Math.round(channel).toString(16).padStart(2, "0")).join("")}`;
+}
+
+function resolvedSystemAccent(themeRoot: Element) {
+  const style = getComputedStyle(themeRoot);
+  if (style.getPropertyValue("--scholium-color-accent").trim() !== "-apple-system-control-accent") {
+    return null;
+  }
+  const document = themeRoot.ownerDocument;
+  const parent = document.body ?? themeRoot;
+  const probe = document.createElement("span");
+  probe.setAttribute("aria-hidden", "true");
+  probe.style.cssText = "position:fixed;inline-size:0;block-size:0;visibility:hidden;pointer-events:none;color:-apple-system-control-accent";
+  parent.append(probe);
+  const resolved = cssRGBToHex(getComputedStyle(probe).color);
+  probe.remove();
+  return resolved;
 }
 
 function relativeLuminance(hex: string) {
@@ -166,11 +202,14 @@ function relativeLuminance(hex: string) {
   return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
 }
 
-export function mermaidThemeFromStyle(style: MermaidThemeStyle): ScholiumMermaidTheme | null {
+export function mermaidThemeFromStyle(
+  style: MermaidThemeStyle,
+  systemAccent?: string,
+): ScholiumMermaidTheme | null {
   const background = semanticColor(style, "--scholium-color-document-background");
   const surface = semanticColor(style, "--scholium-color-surface-background");
   const text = semanticColor(style, "--scholium-color-primary-text");
-  const accent = semanticColor(style, "--scholium-color-accent");
+  const accent = semanticColor(style, "--scholium-color-accent", systemAccent);
   const separator = semanticColor(style, "--scholium-color-separator");
   if (!background || !surface || !text || !accent || !separator) return null;
   const diagramScale = Object.fromEntries(Array.from({length: 12}, (_, index) => [
@@ -286,7 +325,9 @@ export function renderMermaid(request: ScholiumMermaidRenderRequest): Promise<Sc
   if (!request) return Promise.resolve({ok: false, reason: "invalid-source"});
   const themeRoot = request.themeRoot
     ?? (typeof document === "undefined" ? null : document.documentElement);
-  const theme = themeRoot ? mermaidThemeFromStyle(getComputedStyle(themeRoot)) : null;
+  const theme = themeRoot
+    ? mermaidThemeFromStyle(getComputedStyle(themeRoot), resolvedSystemAccent(themeRoot) ?? undefined)
+    : null;
   if (!theme) return Promise.resolve({ok: false, reason: "invalid-theme"});
   const result = renderQueue
     .catch(() => {})

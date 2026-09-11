@@ -5,7 +5,8 @@ import Testing
 
 @testable import ScholiumApp
 
-/// Chat is a native macOS reading and control surface; only Paper and Accent are branded.
+/// Chat is a native macOS reading and control surface; Paper is branded and
+/// Accent follows the macOS system preference.
 enum NativeChatSourceScope {
     static let paths: Set<String> = [
         "Scholium/Views/Sidebar/AgentChatView.swift",
