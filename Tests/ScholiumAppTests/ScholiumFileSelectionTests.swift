@@ -163,9 +163,14 @@ struct ScholiumFileSelectionTests {
         let workspaceRoot = appSource[
             workspaceRootStart.lowerBound..<settingsRootStart.lowerBound
         ]
-        let recoverySheet = try #require(workspaceRoot.range(of: ".sheet(item:"))
+        let compactWorkspaceRoot = workspaceRoot.replacingOccurrences(
+            of: #"\s+"#,
+            with: "",
+            options: .regularExpression
+        )
+        let recoverySheet = try #require(compactWorkspaceRoot.range(of: ".sheet(item:"))
         let sceneOwner = try #require(
-            workspaceRoot.range(
+            compactWorkspaceRoot.range(
                 of: ".scholiumFileSelectionScene("
             ))
         #expect(

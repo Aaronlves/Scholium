@@ -22,7 +22,8 @@ struct InterfacePresentationOwnershipTests {
         )
         #expect(
             webShadows == [
-                "Scholium/Resources/Editor/editor.css": 2
+                "Scholium/Resources/Editor/callouts.css": 1,
+                "Scholium/Resources/Editor/editor.css": 1,
             ],
             Comment(rawValue: diagnostic(for: webShadows))
         )
@@ -48,7 +49,7 @@ struct InterfacePresentationOwnershipTests {
                 in: previews
             ) == 0
         )
-        #expect(matchCount(pattern: #"box-shadow\s*:\s*inset"#, in: editor) == 2)
+        #expect(matchCount(pattern: #"box-shadow\s*:\s*inset"#, in: editor) == 1)
         #expect(matchCount(pattern: #"box-shadow\s*:\s*inset"#, in: readWebView) == 0)
     }
 

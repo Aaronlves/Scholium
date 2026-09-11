@@ -1878,6 +1878,7 @@ const livePreviewMode = [
   EditorView.editorAttributes.of({class: "scholium-live-mode"}),
   EditorView.contentAttributes.of(editorAccessibilityAttributes("livePreview")),
   Prec.high(liveSelection.extension),
+  documentTextLanguage,
   syntaxPresentation,
   liveProjectionIndex.extension,
   liveDocumentTitle,
@@ -1925,7 +1926,6 @@ const editorExtensions = [
       closeBrackets(),
       rectangularSelection(),
       EditorView.perLineTextDirection.of(true),
-      documentTextLanguage,
       // Share Markdown's high precedence while preceding its generic list
       // continuation. Scholium must compose the Callout quote and nested list
       // prefixes before the base Markdown command can consume Return.

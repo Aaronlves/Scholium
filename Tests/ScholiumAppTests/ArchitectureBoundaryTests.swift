@@ -164,6 +164,7 @@ struct ArchitectureBoundaryTests {
             "Scholium/Styling/ScholiumMathAssets.swift",
             "Scholium/Styling/ScholiumMermaidAssets.swift",
             "Scholium/Styling/ScholiumPreviewStyles.swift",
+            "Scholium/Styling/CSSSnippetStore.swift",
         ]
         let prohibited = ["URLSession", "SQLite", "FSEventStream", "Data(contentsOf:", "String(contentsOf:", "FileManager"]
         let verificationScript = try String(

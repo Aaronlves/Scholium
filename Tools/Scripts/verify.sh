@@ -87,9 +87,11 @@ if rg -n --glob '*.swift' \
   exit 1
 fi
 
-# The current server surface is closed and has exactly eighteen tool identities.
-if [[ "$(rg -c 'case [A-Za-z]+ = "scholium_' "${ROOT}/ScholiumContracts/ScholiumMCPContracts.swift")" != "18" ]]; then
-  echo "MCP surface guard failed: expected exactly eighteen Scholium tool identities." >&2
+# The shared enum is closed: eighteen external research tools plus four
+# in-app Chat capability controls. The latter are filtered from the standalone
+# server surface by ScholiumMCPToolName.isChatControl.
+if [[ "$(rg -c 'case [A-Za-z]+ = "scholium_' "${ROOT}/ScholiumContracts/ScholiumMCPContracts.swift")" != "22" ]]; then
+  echo "MCP surface guard failed: expected 22 identities (18 external plus 4 Chat controls)." >&2
   exit 1
 fi
 
@@ -198,6 +200,7 @@ if rg -n --glob '*.swift' \
   --glob '!**/Styling/ScholiumMathAssets.swift' \
   --glob '!**/Styling/ScholiumMermaidAssets.swift' \
   --glob '!**/Styling/ScholiumPreviewStyles.swift' \
+  --glob '!**/Styling/CSSSnippetStore.swift' \
   '\bFileManager\b|Data\(contentsOf:|String\(contentsOf:' \
   "${ROOT}/Scholium"; then
   echo "I/O wall guard failed: frontend filesystem I/O is outside its delivery allowlist." >&2

@@ -115,7 +115,12 @@ struct SearchStatePresentationTests {
         #expect(source.contains("ContentUnavailableView("))
         #expect(source.contains("\"No Search Results\""))
         #expect(source.contains("No results match the current query and scope."))
-        #expect(source.contains("List(selection:"))
+        let compactSource = source.replacingOccurrences(
+            of: #"\s+"#,
+            with: "",
+            options: .regularExpression
+        )
+        #expect(compactSource.contains("List(selection:"))
         #expect(!source.contains("listRowBackground"))
     }
 

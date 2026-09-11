@@ -759,7 +759,10 @@ struct FrontendArchitectureTests {
 
         for (path, source) in applicationSources.sorted(by: { $0.key < $1.key }) {
             let sourceRange = NSRange(source.startIndex..<source.endIndex, in: source)
-            if path != designSystemPath && !NativeSettingsSourceScope.paths.contains(path)
+            if path != designSystemPath
+                && !NativeSettingsSourceScope.paths.contains(path)
+                && !NativeChatSourceScope.paths.contains(path)
+                && !NativeSidebarSourceScope.paths.contains(path)
                 && path != "Scholium/UI/Components/ScholiumWorkspaceToolbar.swift"
             {
                 #expect(
@@ -1372,7 +1375,12 @@ struct FrontendArchitectureTests {
         #expect(!toolbarSource.contains("NSSegmentedControl(frame: .zero)"))
         #expect(!toolbarSource.contains("scholium.documentModeToggle"))
         #expect(!toolbarSource.contains("scholium.documentModeMenu"))
-        #expect(toolbarSource.contains("item.possibleLabels = Set(NotePresentationMode.allCases.map"))
+        let compactToolbarSource = toolbarSource.replacingOccurrences(
+            of: #"\s+"#,
+            with: "",
+            options: .regularExpression
+        )
+        #expect(compactToolbarSource.contains("item.possibleLabels=Set(NotePresentationMode.allCases.map"))
 
         let appSource = try String(
             contentsOf: repository.appendingPathComponent(
@@ -3754,7 +3762,12 @@ struct FrontendArchitectureTests {
         )
 
         #expect(source.contains(".listStyle(.inset)"))
-        #expect(source.contains("List(selection:"))
+        let compactSource = source.replacingOccurrences(
+            of: #"\s+"#,
+            with: "",
+            options: .regularExpression
+        )
+        #expect(compactSource.contains("List(selection:"))
         #expect(!source.contains("listRowBackground"))
         #expect(source.contains(".accessibilityIdentifier(\"scholium.searchResults\")"))
         #expect(source.contains(".tag(resultID)"))

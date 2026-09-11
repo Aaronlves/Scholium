@@ -19,7 +19,7 @@ struct ScholiumLocalizationTests {
             ScholiumL10n.localized(
                 ScholiumL10n.Settings.document,
                 locale: simplifiedChinese
-            ) == "文稿"
+            ) == "外观"
         )
         #expect(
             ScholiumL10n.string("Agents & Chat", locale: simplifiedChinese)

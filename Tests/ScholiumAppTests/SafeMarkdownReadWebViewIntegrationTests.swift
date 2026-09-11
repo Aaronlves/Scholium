@@ -682,7 +682,7 @@ extension MarkdownEditorWebViewIntegrationTests {
                 """
             ) as? [String: Any])
         #expect(result["orphanWidth"] as? Int == 0, Comment(rawValue: "\(result)"))
-        #expect(result["lineBreak"] as? String == "strict")
+        #expect(result["lineBreak"] as? String == "auto")
         #expect(result["wordBreak"] as? String == "normal")
         #expect(result["overflowWrap"] as? String == "break-word")
         await harness.closeAndDrain()

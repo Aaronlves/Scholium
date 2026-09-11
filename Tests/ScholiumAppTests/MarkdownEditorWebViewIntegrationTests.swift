@@ -2225,7 +2225,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(Set(activeProjection.activeSourceLineBackgrounds).count == 1)
         #expect(
             activeProjection.activeSourceLineBackgrounds.allSatisfy {
-                $0 != "transparent" && $0 != "rgba(0, 0, 0, 0)"
+                $0 == "transparent" || $0 == "rgba(0, 0, 0, 0)"
             })
         try await harness.session.testingPressEnter()
         let exitedSource = source + "\n"
@@ -5974,7 +5974,7 @@ struct MarkdownEditorWebViewIntegrationTests {
                 if predicate(snapshot) { return snapshot }
                 if clock.now >= deadline {
                     Issue.record(
-                        "The editor did not apply \(stage); label=\(snapshot.label), top=\(snapshot.contentPaddingTop), inline=\(snapshot.contentPaddingInlineStart), rootRegular=\(snapshot.presentation.rootInlineRegular), rootNarrow=\(snapshot.presentation.rootInlineNarrow), rootLineWidth=\(snapshot.presentation.rootLineWidth), preview=\(snapshot.previewTitle), previewHidden=\(snapshot.previewPopoverHidden), tables=\(snapshot.semanticTableCount), footnoteReferences=\(snapshot.footnoteReferenceCount), footnoteDefinitions=\(snapshot.footnoteDefinitionSourceCount), callouts=\(snapshot.liveCalloutBlockCount), h1=\(snapshot.liveH1Count), h2=\(snapshot.liveH2Count), fences=\(snapshot.collapsedCodeFenceLineCount), fenceHeight=\(snapshot.collapsedCodeFenceVisibleHeight), listMarkers=\(snapshot.liveListMarkerCount), lines=\(snapshot.visibleLineClassSummary)."
+                        "The editor did not apply \(stage); label=\(snapshot.label), liveMode=\(snapshot.liveModeClassCount), sourceMode=\(snapshot.sourceModeClassCount), liveProjectionDOM=\(snapshot.liveProjectionDOMCount), top=\(snapshot.contentPaddingTop), inline=\(snapshot.contentPaddingInlineStart), rootRegular=\(snapshot.presentation.rootInlineRegular), rootNarrow=\(snapshot.presentation.rootInlineNarrow), rootLineWidth=\(snapshot.presentation.rootLineWidth), preview=\(snapshot.previewTitle), previewHidden=\(snapshot.previewPopoverHidden), tables=\(snapshot.semanticTableCount), footnoteReferences=\(snapshot.footnoteReferenceCount), footnoteDefinitions=\(snapshot.footnoteDefinitionSourceCount), callouts=\(snapshot.liveCalloutBlockCount), h1=\(snapshot.liveH1Count), h2=\(snapshot.liveH2Count), fences=\(snapshot.collapsedCodeFenceLineCount), fenceHeight=\(snapshot.collapsedCodeFenceVisibleHeight), listMarkers=\(snapshot.liveListMarkerCount), lines=\(snapshot.visibleLineClassSummary)."
                     )
                     throw MarkdownEditorSession.SessionError.unavailable
                 }

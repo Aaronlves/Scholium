@@ -1607,7 +1607,12 @@ struct WindowControllerArchitectureTests {
                 "private var markdownImportTask: Task<Void, Never>?"
             ))
         #expect(libraryMutationSource.contains("func requestMarkdownImport(_ urls: [URL])"))
-        #expect(libraryMutationSource.contains("failures.append(WindowMarkdownImportFailure("))
+        let compactLibraryMutationSource = libraryMutationSource.replacingOccurrences(
+            of: #"\s+"#,
+            with: "",
+            options: .regularExpression
+        )
+        #expect(compactLibraryMutationSource.contains("failures.append(WindowMarkdownImportFailure("))
         #expect(
             libraryMutationSource.contains(
                 "identityRecoveryWarnings.append(warning)"
