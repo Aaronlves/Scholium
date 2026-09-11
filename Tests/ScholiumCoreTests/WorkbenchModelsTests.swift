@@ -1,6 +1,7 @@
 import Foundation
-import Testing
 import ScholiumContracts
+import Testing
+
 @testable import ScholiumCore
 
 @Suite("Workbench completion models")
@@ -65,7 +66,7 @@ struct WorkbenchModelsTests {
                 SavedSearch(
                     name: "Must not replace",
                     definition: SearchDefinition(query: "test", presentationScope: .triptych)
-                ),
+                )
             ])
         }
         #expect(try Data(contentsOf: file) == corrupt)

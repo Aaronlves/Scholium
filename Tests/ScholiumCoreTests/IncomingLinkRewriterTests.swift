@@ -1,6 +1,7 @@
 import Foundation
-import Testing
 import ScholiumContracts
+import Testing
+
 @testable import ScholiumCore
 
 @Suite("Source-located incoming link rewrites")
@@ -12,9 +13,9 @@ struct IncomingLinkRewriterTests {
         let source = NoteDocument(
             relativePath: "A.md",
             rawContent: """
-            [[Topics/B|alias]] [[Topics/B#Claim]]{{Keep this annotation exact.}} [B](Topics/B.md#Claim)
-            `[[Topics/B]]`
-            """
+                [[Topics/B|alias]] [[Topics/B#Claim]]{{Keep this annotation exact.}} [B](Topics/B.md#Claim)
+                `[[Topics/B]]`
+                """
         )
 
         let plan = standalonePlan(
@@ -254,16 +255,17 @@ struct IncomingLinkRewriterTests {
             relativePath: "Reference.md",
             rawContent: "See [[Source/First]].\n"
         )
-        let documents = Dictionary(uniqueKeysWithValues: [first, second, reference].map {
-            document in
-            (
-                VaultQualifiedNoteID(
-                    vaultID: vaultID,
-                    relativePath: document.relativePath
-                ),
-                document
-            )
-        })
+        let documents = Dictionary(
+            uniqueKeysWithValues: [first, second, reference].map {
+                document in
+                (
+                    VaultQualifiedNoteID(
+                        vaultID: vaultID,
+                        relativePath: document.relativePath
+                    ),
+                    document
+                )
+            })
         let semantics = documents.mapValues(MarkdownSemanticDocument.init(parsing:))
         let catalog = documents.map { id, document in
             LinkCatalogNote(
@@ -329,18 +331,21 @@ struct IncomingLinkRewriterTests {
             VaultQualifiedNoteID(vaultID: vaultID, relativePath: target.relativePath): target,
         ]
         let graph = workspaceGraph(documents)
-        let incompleteCatalog = [LinkCatalogNote(
-            vaultID: vaultID,
-            document: source
-        )]
+        let incompleteCatalog = [
+            LinkCatalogNote(
+                vaultID: vaultID,
+                document: source
+            )
+        ]
 
-        #expect(IncomingLinkRewriter.planUsingValidatedSnapshot(
-            documents: documents,
-            catalog: incompleteCatalog,
-            graph: graph,
-            moving: VaultQualifiedNoteID(vaultID: vaultID, relativePath: target.relativePath),
-            to: VaultQualifiedNoteID(vaultID: vaultID, relativePath: "Moved/B.md")
-        ) == nil)
+        #expect(
+            IncomingLinkRewriter.planUsingValidatedSnapshot(
+                documents: documents,
+                catalog: incompleteCatalog,
+                graph: graph,
+                moving: VaultQualifiedNoteID(vaultID: vaultID, relativePath: target.relativePath),
+                to: VaultQualifiedNoteID(vaultID: vaultID, relativePath: "Moved/B.md")
+            ) == nil)
     }
 
     @Test("A graph from another source manifest cannot authorize a fast move plan")
@@ -368,13 +373,14 @@ struct IncomingLinkRewriterTests {
             sourceManifestHash: "not-the-current-source-manifest"
         )
 
-        #expect(IncomingLinkRewriter.planUsingValidatedSnapshot(
-            documents: documents,
-            catalog: catalog,
-            graph: staleGraph,
-            moving: VaultQualifiedNoteID(vaultID: vaultID, relativePath: target.relativePath),
-            to: VaultQualifiedNoteID(vaultID: vaultID, relativePath: "Moved/B.md")
-        ) == nil)
+        #expect(
+            IncomingLinkRewriter.planUsingValidatedSnapshot(
+                documents: documents,
+                catalog: catalog,
+                graph: staleGraph,
+                moving: VaultQualifiedNoteID(vaultID: vaultID, relativePath: target.relativePath),
+                to: VaultQualifiedNoteID(vaultID: vaultID, relativePath: "Moved/B.md")
+            ) == nil)
     }
 
     private func workspaceGraph(
@@ -396,13 +402,14 @@ struct IncomingLinkRewriterTests {
     private func sourceManifestHash(
         _ documents: [VaultQualifiedNoteID: NoteDocument]
     ) -> String {
-        SearchSourceManifest.hash(documents.map { id, document in
-            SearchSourceManifestEntry(
-                vaultID: id.vaultID,
-                relativePath: id.relativePath,
-                fingerprint: document.fingerprint
-            )
-        })
+        SearchSourceManifest.hash(
+            documents.map { id, document in
+                SearchSourceManifestEntry(
+                    vaultID: id.vaultID,
+                    relativePath: id.relativePath,
+                    fingerprint: document.fingerprint
+                )
+            })
     }
 
     private func standalonePlan(
@@ -411,9 +418,10 @@ struct IncomingLinkRewriterTests {
         moving oldRelativePath: String,
         to newRelativePath: String
     ) -> [IncomingLinkRewrite] {
-        let qualified = Dictionary(uniqueKeysWithValues: documents.map { document in
-            (VaultQualifiedNoteID(vaultID: vaultID, relativePath: document.relativePath), document)
-        })
+        let qualified = Dictionary(
+            uniqueKeysWithValues: documents.map { document in
+                (VaultQualifiedNoteID(vaultID: vaultID, relativePath: document.relativePath), document)
+            })
         let semantics = qualified.mapValues(MarkdownSemanticDocument.init(parsing:))
         let catalog = qualified.map { id, document in
             LinkCatalogNote(vaultID: id.vaultID, document: document, semantic: semantics[id])

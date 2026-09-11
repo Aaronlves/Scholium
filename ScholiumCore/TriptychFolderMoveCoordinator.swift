@@ -46,7 +46,8 @@ public actor TriptychFolderMoveCoordinator {
             )
         }
         guard let sourceRepository = repositories[plan.vaultID],
-              sourceRepository.identity.id == plan.vaultID else {
+            sourceRepository.identity.id == plan.vaultID
+        else {
             throw TriptychTransactionError.invalidPlan(
                 "No matching repository is registered for the folder's vault."
             )
@@ -54,19 +55,22 @@ public actor TriptychFolderMoveCoordinator {
 
         let sourcePrefix = plan.sourceFolder.rawValue + "/"
         let destinationPrefix = plan.destinationFolder.rawValue + "/"
-        guard plan.noteMoves.allSatisfy({ move in
-            move.source.vaultID == plan.vaultID
-                && move.destination.vaultID == plan.vaultID
-                && move.source.relativePath.hasPrefix(sourcePrefix)
-                && move.destination.relativePath
-                    == destinationPrefix + move.source.relativePath.dropFirst(sourcePrefix.count)
-        }) else {
+        guard
+            plan.noteMoves.allSatisfy({ move in
+                move.source.vaultID == plan.vaultID
+                    && move.destination.vaultID == plan.vaultID
+                    && move.source.relativePath.hasPrefix(sourcePrefix)
+                    && move.destination.relativePath
+                        == destinationPrefix + move.source.relativePath.dropFirst(sourcePrefix.count)
+            })
+        else {
             throw TriptychTransactionError.invalidPlan(
                 "A folder move must preserve every descendant note's relative suffix."
             )
         }
         guard Set(plan.noteMoves.map(\.source)).count == plan.noteMoves.count,
-              Set(plan.noteMoves.map(\.destination)).count == plan.noteMoves.count else {
+            Set(plan.noteMoves.map(\.destination)).count == plan.noteMoves.count
+        else {
             throw TriptychTransactionError.invalidPlan(
                 "A folder move cannot contain duplicate note locations."
             )
@@ -102,7 +106,8 @@ public actor TriptychFolderMoveCoordinator {
         do {
             for rewrite in plan.rewrites {
                 guard let repository = repositories[rewrite.source.vaultID],
-                      repository.identity.id == rewrite.source.vaultID else {
+                    repository.identity.id == rewrite.source.vaultID
+                else {
                     throw TriptychTransactionError.invalidPlan(
                         "No repository is registered for an incoming-link source."
                     )
@@ -112,7 +117,8 @@ public actor TriptychFolderMoveCoordinator {
                 if let move = movesBySource[rewrite.source] {
                     mutationPath = move.destination.relativePath
                     guard let sourceBefore = documentsByPath[move.source.relativePath],
-                          sourceBefore.fingerprint == rewrite.expectedRevision else {
+                        sourceBefore.fingerprint == rewrite.expectedRevision
+                    else {
                         throw TriptychTransactionError.invalidPlan(
                             "A moved note and its link rewrite have different starting revisions."
                         )
@@ -134,12 +140,13 @@ public actor TriptychFolderMoveCoordinator {
                         proposed.validationWarnings.joined(separator: "\n")
                     )
                 }
-                prepared.append(PreparedRewrite(
-                    plan: rewrite,
-                    repository: repository,
-                    mutationPath: mutationPath,
-                    before: before
-                ))
+                prepared.append(
+                    PreparedRewrite(
+                        plan: rewrite,
+                        repository: repository,
+                        mutationPath: mutationPath,
+                        before: before
+                    ))
             }
         } catch let error as TriptychTransactionError {
             throw error
@@ -161,9 +168,10 @@ public actor TriptychFolderMoveCoordinator {
                 expectedDocuments: expectedDocuments,
                 createMissingParents: false
             )
-            movedDocumentsByPath = Dictionary(uniqueKeysWithValues: folderMove.documents.map {
-                ($0.relativePath, $0)
-            })
+            movedDocumentsByPath = Dictionary(
+                uniqueKeysWithValues: folderMove.documents.map {
+                    ($0.relativePath, $0)
+                })
             folderDidMove = true
             for move in plan.noteMoves {
                 try await sourceRepository.migrateRecoveryLedger(
@@ -178,10 +186,11 @@ public actor TriptychFolderMoveCoordinator {
                     changeSet: .exactContent(rewrite.plan.updatedSource),
                     expectedRevision: rewrite.plan.expectedRevision
                 )
-                applied.append(AppliedRewrite(
-                    prepared: rewrite,
-                    committed: saved.document
-                ))
+                applied.append(
+                    AppliedRewrite(
+                        prepared: rewrite,
+                        committed: saved.document
+                    ))
             }
         } catch {
             if !folderDidMove {
@@ -201,9 +210,11 @@ public actor TriptychFolderMoveCoordinator {
             uniqueKeysWithValues: applied.map { ($0.prepared.plan.source, $0) }
         )
         let noteCommits = try plan.noteMoves.map { move in
-            guard let committedDocument = appliedBySource[move.source]?.committed
+            guard
+                let committedDocument = appliedBySource[move.source]?.committed
                     ?? movedDocumentsByPath[move.destination.relativePath],
-                  committedDocument.relativePath == move.destination.relativePath else {
+                committedDocument.relativePath == move.destination.relativePath
+            else {
                 throw TriptychTransactionError.invalidPlan(
                     "The committed source for \(move.destination.relativePath) is unavailable."
                 )
@@ -218,7 +229,8 @@ public actor TriptychFolderMoveCoordinator {
             )
         }.sorted { $0.source < $1.source }
         let rewriteCommits = applied.map { rewrite in
-            let projectedNote = movesBySource[rewrite.prepared.plan.source]?.destination
+            let projectedNote =
+                movesBySource[rewrite.prepared.plan.source]?.destination
                 ?? rewrite.prepared.plan.source
             return CoordinatedIncomingLinkRewriteResult(
                 note: projectedNote,
@@ -312,17 +324,19 @@ public actor TriptychFolderMoveCoordinator {
         } else {
             folderState = .externallyChanged
         }
-        var files = [TriptychMutationRecoveryFile(
-            vaultID: plan.vaultID,
-            path: plan.sourceFolder.rawValue,
-            alternatePath: plan.destinationFolder.rawValue,
-            role: .movedFolder,
-            beforeRevision: nil,
-            intendedRevision: nil,
-            observedRevision: nil,
-            state: folderState,
-            detail: "Folder paths have no identity. Inspect both locations and their descendant notes before resolving recovery."
-        )]
+        var files = [
+            TriptychMutationRecoveryFile(
+                vaultID: plan.vaultID,
+                path: plan.sourceFolder.rawValue,
+                alternatePath: plan.destinationFolder.rawValue,
+                role: .movedFolder,
+                beforeRevision: nil,
+                intendedRevision: nil,
+                observedRevision: nil,
+                state: folderState,
+                detail: "Folder paths have no identity. Inspect both locations and their descendant notes before resolving recovery."
+            )
+        ]
         for rewrite in applied {
             let observed = try? await rewrite.prepared.repository.load(
                 relativePath: rewrite.prepared.mutationPath
@@ -338,16 +352,17 @@ public actor TriptychFolderMoveCoordinator {
             } else {
                 state = .externallyChanged
             }
-            files.append(TriptychMutationRecoveryFile(
-                vaultID: rewrite.prepared.plan.source.vaultID,
-                path: rewrite.prepared.mutationPath,
-                role: .incomingLinkRewrite,
-                beforeRevision: rewrite.prepared.before.fingerprint,
-                intendedRevision: intended,
-                observedRevision: observed?.fingerprint,
-                state: state,
-                detail: "Incoming link rewrite for \(rewrite.prepared.plan.rewrittenOccurrences) resolved occurrence(s)."
-            ))
+            files.append(
+                TriptychMutationRecoveryFile(
+                    vaultID: rewrite.prepared.plan.source.vaultID,
+                    path: rewrite.prepared.mutationPath,
+                    role: .incomingLinkRewrite,
+                    beforeRevision: rewrite.prepared.before.fingerprint,
+                    intendedRevision: intended,
+                    observedRevision: observed?.fingerprint,
+                    state: state,
+                    detail: "Incoming link rewrite for \(rewrite.prepared.plan.rewrittenOccurrences) resolved occurrence(s)."
+                ))
         }
         let detail = ([cause.localizedDescription] + rollbackErrors).joined(separator: "\n")
         let record = TriptychMutationRecoveryRecord(

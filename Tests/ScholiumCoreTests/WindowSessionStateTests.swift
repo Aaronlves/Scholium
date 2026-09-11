@@ -1,6 +1,7 @@
 import Foundation
 import ScholiumContracts
 import Testing
+
 @testable import ScholiumCore
 
 @Suite("External window-session persistence")
@@ -45,7 +46,7 @@ struct WindowSessionStateTests {
                             sourceFingerprint: "fingerprint",
                             selections: [WindowDocumentSelectionRange(anchor: 4, head: 9)],
                             focusTarget: .editor
-                        ),
+                        )
                     ],
                     inspectorMode: "outgoing",
                     documentMode: "source"
@@ -85,7 +86,7 @@ struct WindowSessionStateTests {
                         "Present.md": WindowDocumentPresentationSnapshot(scrollFraction: 0.8),
                         "Missing.md": WindowDocumentPresentationSnapshot(scrollFraction: 0.2),
                     ]
-                ),
+                )
             ]
         )
 
@@ -97,9 +98,10 @@ struct WindowSessionStateTests {
         )
         #expect(session.openDocuments == [present])
         #expect(session.selectedDocument == nil)
-        #expect(session.documentPresentations == [
-            "Present.md": WindowDocumentPresentationSnapshot(scrollFraction: 0.8),
-        ])
+        #expect(
+            session.documentPresentations == [
+                "Present.md": WindowDocumentPresentationSnapshot(scrollFraction: 0.8)
+            ])
     }
 
     @Test("A late older lifecycle generation cannot replace newer window state")
@@ -146,7 +148,7 @@ struct WindowSessionStateTests {
                     openDocuments: [matchingDocument],
                     selectedDocument: matchingDocument,
                     documentPresentations: [
-                        "Old.md": WindowDocumentPresentationSnapshot(scrollFraction: 0.6),
+                        "Old.md": WindowDocumentPresentationSnapshot(scrollFraction: 0.6)
                     ]
                 ),
                 WindowWorkspaceSessionSnapshot(
@@ -173,9 +175,10 @@ struct WindowSessionStateTests {
             migrated.workspaceSession(for: .topicKnowledge)
         )
         #expect(analyses.selectedDocument?.relativePath == "New.md")
-        #expect(analyses.documentPresentations == [
-            "New.md": WindowDocumentPresentationSnapshot(scrollFraction: 0.6),
-        ])
+        #expect(
+            analyses.documentPresentations == [
+                "New.md": WindowDocumentPresentationSnapshot(scrollFraction: 0.6)
+            ])
         #expect(topics.selectedDocument == peerDocument)
     }
 

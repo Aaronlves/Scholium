@@ -3,6 +3,7 @@ import Foundation
 import ScholiumContracts
 import Testing
 import WebKit
+
 @testable import ScholiumApp
 
 @Suite("Markdown editor protocol")
@@ -25,7 +26,6 @@ struct MarkdownEditorProtocolTests {
         #expect(object["value"] as? String == "Reasons and Emotion")
         #expect(try JSONDecoder().decode(MarkdownEditorOperation.self, from: data) == operation)
     }
-
 
     @Test("Preview request round trips as a nonmutating bridge operation")
     func previewOperationRoundTrip() throws {
@@ -94,20 +94,22 @@ struct MarkdownEditorProtocolTests {
 
     @Test("Document find round trips and only replacements serialize source mutation")
     func documentFindRoundTrip() throws {
-        let update = MarkdownEditorOperation.documentFind(DocumentFindQuery(
-            query: "value",
-            replacement: "replacement",
-            caseSensitive: false,
-            wholeWord: true,
-            action: .update
-        ))
-        let replacement = MarkdownEditorOperation.documentFind(DocumentFindQuery(
-            query: "value",
-            replacement: "replacement",
-            caseSensitive: false,
-            wholeWord: true,
-            action: .replaceAll
-        ))
+        let update = MarkdownEditorOperation.documentFind(
+            DocumentFindQuery(
+                query: "value",
+                replacement: "replacement",
+                caseSensitive: false,
+                wholeWord: true,
+                action: .update
+            ))
+        let replacement = MarkdownEditorOperation.documentFind(
+            DocumentFindQuery(
+                query: "value",
+                replacement: "replacement",
+                caseSensitive: false,
+                wholeWord: true,
+                action: .replaceAll
+            ))
         let encoded = try JSONEncoder().encode(update)
         #expect(try JSONDecoder().decode(MarkdownEditorOperation.self, from: encoded) == update)
         #expect(!update.serializesSourceMutation)
@@ -191,9 +193,10 @@ struct MarkdownEditorProtocolTests {
         #expect(message.clientX == 120.5)
         #expect(message.clientY == 88)
         #expect(message.mode == .livePreview)
-        #expect(message.context.selections == [
-            MarkdownEditorSelectionRange(anchor: 4, head: 12)
-        ])
+        #expect(
+            message.context.selections == [
+                MarkdownEditorSelectionRange(anchor: 4, head: 12)
+            ])
         #expect(message.context.availableCommands == [.toggleTask])
     }
 
@@ -229,7 +232,6 @@ struct MarkdownEditorProtocolTests {
         #expect(EditorBridgeMessageDecoder.decode(malformed) == nil)
     }
 
-
     @Test("Inbound bridge rejects unknown, stale-version, and extra-field messages")
     func inboundBridgeRejectsUnrecognizedContracts() {
         let envelope: [String: Any] = [
@@ -239,26 +241,35 @@ struct MarkdownEditorProtocolTests {
             "startingFingerprint": String(repeating: "a", count: 64),
             "documentVersion": 3,
         ]
-        #expect(EditorBridgeMessageDecoder.decode(envelope.merging([
-            "type": "unknown",
-        ]) { _, next in next }) == nil)
-        #expect(EditorBridgeMessageDecoder.decode(envelope.merging([
-            "type": "requestSave",
-            "protocolVersion": 14,
-        ]) { _, next in next }) == nil)
-        #expect(EditorBridgeMessageDecoder.decode(envelope.merging([
-            "type": "requestSave",
-            "legacyDirty": true,
-        ]) { _, next in next }) == nil)
-        #expect(EditorBridgeMessageDecoder.decode([
-            "type": "editorError",
-            "message": "unbound",
-        ]) == nil)
-        #expect(EditorBridgeMessageDecoder.decode(envelope.merging([
-            "type": "editorError",
-            "message": "invalid",
-            "legacyFailure": true,
-        ]) { _, next in next }) == nil)
+        #expect(
+            EditorBridgeMessageDecoder.decode(
+                envelope.merging([
+                    "type": "unknown"
+                ]) { _, next in next }) == nil)
+        #expect(
+            EditorBridgeMessageDecoder.decode(
+                envelope.merging([
+                    "type": "requestSave",
+                    "protocolVersion": 14,
+                ]) { _, next in next }) == nil)
+        #expect(
+            EditorBridgeMessageDecoder.decode(
+                envelope.merging([
+                    "type": "requestSave",
+                    "legacyDirty": true,
+                ]) { _, next in next }) == nil)
+        #expect(
+            EditorBridgeMessageDecoder.decode([
+                "type": "editorError",
+                "message": "unbound",
+            ]) == nil)
+        #expect(
+            EditorBridgeMessageDecoder.decode(
+                envelope.merging([
+                    "type": "editorError",
+                    "message": "invalid",
+                    "legacyFailure": true,
+                ]) { _, next in next }) == nil)
     }
 
     @Test("Interaction messages carry only a typed document focus target")
@@ -389,24 +400,27 @@ struct MarkdownEditorProtocolTests {
             generation: 3,
             ranges: [range]
         )
-        #expect(snapshot.isValid(
-            documentID: "document",
-            fingerprint: "fingerprint",
-            generation: 3,
-            editorUTF16Length: 5
-        ))
-        #expect(!snapshot.isValid(
-            documentID: "other",
-            fingerprint: "fingerprint",
-            generation: 3,
-            editorUTF16Length: 5
-        ))
-        #expect(!snapshot.isValid(
-            documentID: "document",
-            fingerprint: "fingerprint",
-            generation: 2,
-            editorUTF16Length: 5
-        ))
+        #expect(
+            snapshot.isValid(
+                documentID: "document",
+                fingerprint: "fingerprint",
+                generation: 3,
+                editorUTF16Length: 5
+            ))
+        #expect(
+            !snapshot.isValid(
+                documentID: "other",
+                fingerprint: "fingerprint",
+                generation: 3,
+                editorUTF16Length: 5
+            ))
+        #expect(
+            !snapshot.isValid(
+                documentID: "document",
+                fingerprint: "fingerprint",
+                generation: 2,
+                editorUTF16Length: 5
+            ))
     }
 
     @MainActor
@@ -612,11 +626,12 @@ struct MarkdownEditorProtocolTests {
         session.loadDocument("", documentID: "large-insertion", mode: .livePreview)
         let insertion = String(repeating: "a", count: 2_000_001)
 
-        #expect(session.acceptEditorChanges(
-            [EditorBridgeChange(from: 0, to: 0, insert: insertion)],
-            baseGeneration: 0,
-            resultingGeneration: 1
-        ))
+        #expect(
+            session.acceptEditorChanges(
+                [EditorBridgeChange(from: 0, to: 0, insert: insertion)],
+                baseGeneration: 0,
+                resultingGeneration: 1
+            ))
         #expect(session.generation == 1)
         #expect(session.checkedSource.utf8.count == insertion.utf8.count)
         #expect(session.isDirty)
@@ -628,40 +643,47 @@ struct MarkdownEditorProtocolTests {
         let session = MarkdownEditorSession()
         session.loadDocument("abc", documentID: "context-menu-live-source", mode: .livePreview)
 
-        #expect(session.acceptEditorChanges(
-            [EditorBridgeChange(from: 3, to: 3, insert: " value")],
-            baseGeneration: 0,
-            resultingGeneration: 1
-        ))
-        #expect(session.acceptsInteractionRanges(
-            [MarkdownEditorSelectionRange(anchor: 9, head: 9)],
-            documentVersion: 1
-        ))
-        #expect(!session.acceptsInteractionRanges(
-            [MarkdownEditorSelectionRange(anchor: 9, head: 9)],
-            documentVersion: 0
-        ))
-        #expect(!session.acceptsInteractionRanges(
-            [MarkdownEditorSelectionRange(anchor: 10, head: 10)],
-            documentVersion: 1
-        ))
+        #expect(
+            session.acceptEditorChanges(
+                [EditorBridgeChange(from: 3, to: 3, insert: " value")],
+                baseGeneration: 0,
+                resultingGeneration: 1
+            ))
+        #expect(
+            session.acceptsInteractionRanges(
+                [MarkdownEditorSelectionRange(anchor: 9, head: 9)],
+                documentVersion: 1
+            ))
+        #expect(
+            !session.acceptsInteractionRanges(
+                [MarkdownEditorSelectionRange(anchor: 9, head: 9)],
+                documentVersion: 0
+            ))
+        #expect(
+            !session.acceptsInteractionRanges(
+                [MarkdownEditorSelectionRange(anchor: 10, head: 10)],
+                documentVersion: 1
+            ))
     }
 
     @MainActor
     @Test("Editor navigation allows only the main in-memory document")
     func editorNavigationRemainsLocal() {
-        #expect(MarkdownEditorWebView.Coordinator.navigationPolicy(
-            url: URL(string: "about:blank"),
-            isMainFrame: true
-        ) == .allow)
-        #expect(MarkdownEditorWebView.Coordinator.navigationPolicy(
-            url: URL(string: "https://example.test/redirect"),
-            isMainFrame: true
-        ) == .cancel)
-        #expect(MarkdownEditorWebView.Coordinator.navigationPolicy(
-            url: URL(string: "about:blank"),
-            isMainFrame: false
-        ) == .cancel)
+        #expect(
+            MarkdownEditorWebView.Coordinator.navigationPolicy(
+                url: URL(string: "about:blank"),
+                isMainFrame: true
+            ) == .allow)
+        #expect(
+            MarkdownEditorWebView.Coordinator.navigationPolicy(
+                url: URL(string: "https://example.test/redirect"),
+                isMainFrame: true
+            ) == .cancel)
+        #expect(
+            MarkdownEditorWebView.Coordinator.navigationPolicy(
+                url: URL(string: "about:blank"),
+                isMainFrame: false
+            ) == .cancel)
     }
 
     @MainActor
@@ -753,14 +775,15 @@ struct MarkdownEditorProtocolTests {
             fallbackFraction: 0.6
         )
         #expect(anchor.isValid(forUTF16Length: 40))
-        #expect(!EditorScrollAnchor(
-            sourceFingerprint: "fingerprint",
-            sourceUTF16Offset: 12,
-            blockUTF16LowerBound: 10,
-            blockUTF16UpperBound: 20,
-            relativeBlockPosition: 1.25,
-            fallbackFraction: 0.6
-        ).isValid(forUTF16Length: 40))
+        #expect(
+            !EditorScrollAnchor(
+                sourceFingerprint: "fingerprint",
+                sourceUTF16Offset: 12,
+                blockUTF16LowerBound: 10,
+                blockUTF16UpperBound: 20,
+                relativeBlockPosition: 1.25,
+                fallbackFraction: 0.6
+            ).isValid(forUTF16Length: 40))
 
         let wire = MarkdownEditorWireScrollAnchor(
             sourceUTF16Offset: 12,
@@ -770,9 +793,10 @@ struct MarkdownEditorProtocolTests {
             fallbackFraction: 0.6
         )
         let operation = MarkdownEditorOperation.setScrollAnchor(wire)
-        #expect(try JSONDecoder().decode(
-            MarkdownEditorOperation.self,
-            from: JSONEncoder().encode(operation)
-        ) == operation)
+        #expect(
+            try JSONDecoder().decode(
+                MarkdownEditorOperation.self,
+                from: JSONEncoder().encode(operation)
+            ) == operation)
     }
 }

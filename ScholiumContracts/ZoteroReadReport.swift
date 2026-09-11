@@ -3,13 +3,20 @@ import Foundation
 /// What an identified public runtime event reported. Never an App-verified read receipt.
 public struct ZoteroReadReport: Codable, Equatable, Sendable {
     public enum Representation: String, Codable, Sendable {
-        case text = "utf8_text", pdfText = "pdf_text", pdfImage = "pdf_page_image", image, annotation
+        case text = "utf8_text"
+        case pdfText = "pdf_text"
+        case pdfImage = "pdf_page_image"
+        case image, annotation
     }
     public struct TextRange: Codable, Equatable, Sendable {
         public let start: Int
         public let end: Int
         public let total: Int
-        public init(start: Int, end: Int, total: Int) { self.start = start; self.end = end; self.total = total }
+        public init(start: Int, end: Int, total: Int) {
+            self.start = start
+            self.end = end
+            self.total = total
+        }
     }
     public let server: String
     public let tool: String
@@ -23,22 +30,33 @@ public struct ZoteroReadReport: Codable, Equatable, Sendable {
     public let commentIsTruncated: Bool
     public let pageLabel: String?
 
-    public init(server: String, tool: String, reference: ZoteroReference, representation: Representation,
-                fingerprint: String, range: TextRange? = nil, excerpt: String = "", excerptIsTruncated: Bool = false,
-                comment: String? = nil, commentIsTruncated: Bool = false, pageLabel: String? = nil) {
-        self.server = server; self.tool = tool; self.reference = reference; self.representation = representation
-        self.fingerprint = fingerprint; self.range = range; self.excerpt = excerpt; self.excerptIsTruncated = excerptIsTruncated
-        self.comment = comment; self.commentIsTruncated = commentIsTruncated; self.pageLabel = pageLabel
+    public init(
+        server: String, tool: String, reference: ZoteroReference, representation: Representation,
+        fingerprint: String, range: TextRange? = nil, excerpt: String = "", excerptIsTruncated: Bool = false,
+        comment: String? = nil, commentIsTruncated: Bool = false, pageLabel: String? = nil
+    ) {
+        self.server = server
+        self.tool = tool
+        self.reference = reference
+        self.representation = representation
+        self.fingerprint = fingerprint
+        self.range = range
+        self.excerpt = excerpt
+        self.excerptIsTruncated = excerptIsTruncated
+        self.comment = comment
+        self.commentIsTruncated = commentIsTruncated
+        self.pageLabel = pageLabel
     }
 
     /// Retained history is also checked before presentation; decoding grants no new trust.
     public var isValid: Bool {
         guard !server.isEmpty, server.utf8.count <= 128,
-              server.utf8.allSatisfy({ (48...57).contains($0) || (65...90).contains($0) || (97...122).contains($0) || [45, 46, 95].contains($0) }),
-              fingerprint.utf8.count == 64,
-              fingerprint.utf8.allSatisfy({ (48...57).contains($0) || (97...102).contains($0) }),
-              excerpt.utf8.count <= 1_600, (comment?.utf8.count ?? 0) <= 1_600,
-              (pageLabel?.utf8.count ?? 0) <= 256 else { return false }
+            server.utf8.allSatisfy({ (48...57).contains($0) || (65...90).contains($0) || (97...122).contains($0) || [45, 46, 95].contains($0) }),
+            fingerprint.utf8.count == 64,
+            fingerprint.utf8.allSatisfy({ (48...57).contains($0) || (97...102).contains($0) }),
+            excerpt.utf8.count <= 1_600, (comment?.utf8.count ?? 0) <= 1_600,
+            (pageLabel?.utf8.count ?? 0) <= 256
+        else { return false }
         if representation == .annotation {
             return tool == "zotero_read_annotation" && reference.kind == .pdf && reference.annotationKey != nil && range == nil
         }

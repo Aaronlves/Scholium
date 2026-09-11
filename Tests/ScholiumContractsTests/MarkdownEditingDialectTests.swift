@@ -9,9 +9,10 @@ struct MarkdownEditingDialectTests {
         let dialect = MarkdownEditingDialect.current
 
         #expect(dialect.version == 5)
-        #expect(dialect.callouts.map(\.identifier) == [
-            "orient", "cite", "connect", "state", "illustrate", "quote", "flag",
-        ])
+        #expect(
+            dialect.callouts.map(\.identifier) == [
+                "orient", "cite", "connect", "state", "illustrate", "quote", "flag",
+            ])
         #expect(dialect.callouts.first { $0.identifier == "orient" }?.aliases == ["mini"])
         #expect(dialect.callouts.first { $0.identifier == "state" }?.aliases.contains("objection") == true)
         #expect(dialect.linkAnnotation.openingDelimiter == "{{")
@@ -47,11 +48,12 @@ struct MarkdownEditingDialectTests {
 
     @Test("Exact-source fixture catalog preserves hostile source forms")
     func exactSourceFixtureCatalog() throws {
-        let url = try #require(Bundle.module.url(
-            forResource: "exact-source-fixtures",
-            withExtension: "json",
-            subdirectory: "Fixtures"
-        ))
+        let url = try #require(
+            Bundle.module.url(
+                forResource: "exact-source-fixtures",
+                withExtension: "json",
+                subdirectory: "Fixtures"
+            ))
         let fixtures = try JSONDecoder().decode([Fixture].self, from: Data(contentsOf: url))
         #expect(fixtures.count >= 12)
         #expect(fixtures.contains { $0.source.hasPrefix("\u{FEFF}") })
@@ -63,60 +65,75 @@ struct MarkdownEditingDialectTests {
 
     @Test("Shared semantic fixtures match the canonical parser")
     func semanticParityFixtures() throws {
-        let url = try #require(Bundle.module.url(
-            forResource: "semantic-parity-fixtures",
-            withExtension: "json",
-            subdirectory: "Fixtures"
-        ))
+        let url = try #require(
+            Bundle.module.url(
+                forResource: "semantic-parity-fixtures",
+                withExtension: "json",
+                subdirectory: "Fixtures"
+            ))
         let fixtures = try JSONDecoder().decode([SemanticFixture].self, from: Data(contentsOf: url))
         for fixture in fixtures {
-            let semantic = MarkdownSemanticDocument(parsing: NoteDocument(
-                relativePath: "Fixture.md",
-                rawContent: fixture.source
-            ))
+            let semantic = MarkdownSemanticDocument(
+                parsing: NoteDocument(
+                    relativePath: "Fixture.md",
+                    rawContent: fixture.source
+                ))
             #expect(semantic.callouts.map(\.kind) == fixture.callouts)
-            #expect(semantic.links.map { LinkFixture(
-                target: $0.target,
-                annotation: $0.annotation?.markdown
-            ) } == fixture.links)
+            #expect(
+                semantic.links.map {
+                    LinkFixture(
+                        target: $0.target,
+                        annotation: $0.annotation?.markdown
+                    )
+                } == fixture.links)
             #expect(semantic.footnoteDefinitions.map(\.identifier) == fixture.footnoteDefinitions)
             #expect(semantic.footnoteDefinitions.map(\.content) == fixture.footnoteDefinitionContents)
             #expect(semantic.footnoteReferences.map(\.identifier) == fixture.footnoteReferences)
-            #expect(semantic.mathExpressions.map { MathFixture(
-                kind: $0.kind.rawValue,
-                content: $0.content
-            ) } == fixture.mathExpressions)
+            #expect(
+                semantic.mathExpressions.map {
+                    MathFixture(
+                        kind: $0.kind.rawValue,
+                        content: $0.content
+                    )
+                } == fixture.mathExpressions)
             let source = fixture.source as NSString
-            #expect(semantic.callouts.map { source.substring(with: $0.headerSpan.nsRange) }
-                == fixture.sourceSlices.calloutHeaders)
-            #expect(semantic.links.map { source.substring(with: $0.span.nsRange) }
-                == fixture.sourceSlices.links)
-            #expect(semantic.footnoteDefinitions.map { source.substring(with: $0.span.nsRange) }
-                == fixture.sourceSlices.footnoteDefinitions)
-            #expect(semantic.footnoteReferences.map { source.substring(with: $0.span.nsRange) }
-                == fixture.sourceSlices.footnoteReferences)
-            #expect(semantic.mathExpressions.map { expression in
-                MathSourceSlice(
-                    source: source.substring(with: expression.span.nsRange),
-                    content: source.substring(with: expression.contentSpan.nsRange)
-                )
-            } == fixture.sourceSlices.mathExpressions)
+            #expect(
+                semantic.callouts.map { source.substring(with: $0.headerSpan.nsRange) }
+                    == fixture.sourceSlices.calloutHeaders)
+            #expect(
+                semantic.links.map { source.substring(with: $0.span.nsRange) }
+                    == fixture.sourceSlices.links)
+            #expect(
+                semantic.footnoteDefinitions.map { source.substring(with: $0.span.nsRange) }
+                    == fixture.sourceSlices.footnoteDefinitions)
+            #expect(
+                semantic.footnoteReferences.map { source.substring(with: $0.span.nsRange) }
+                    == fixture.sourceSlices.footnoteReferences)
+            #expect(
+                semantic.mathExpressions.map { expression in
+                    MathSourceSlice(
+                        source: source.substring(with: expression.span.nsRange),
+                        content: source.substring(with: expression.contentSpan.nsRange)
+                    )
+                } == fixture.sourceSlices.mathExpressions)
         }
     }
 
     @Test("Shared base-syntax fixtures match exact CommonMark and GFM source spans")
     func baseSyntaxParityFixtures() throws {
-        let url = try #require(Bundle.module.url(
-            forResource: "base-syntax-parity-fixtures",
-            withExtension: "json",
-            subdirectory: "Fixtures"
-        ))
+        let url = try #require(
+            Bundle.module.url(
+                forResource: "base-syntax-parity-fixtures",
+                withExtension: "json",
+                subdirectory: "Fixtures"
+            ))
         let fixtures = try JSONDecoder().decode([BaseSyntaxFixture].self, from: Data(contentsOf: url))
         for fixture in fixtures {
-            let semantic = MarkdownSemanticDocument(parsing: NoteDocument(
-                relativePath: "Fixture.md",
-                rawContent: fixture.source
-            ))
+            let semantic = MarkdownSemanticDocument(
+                parsing: NoteDocument(
+                    relativePath: "Fixture.md",
+                    rawContent: fixture.source
+                ))
             let source = fixture.source as NSString
             let blocks = semantic.blocks.map {
                 LocatedSyntax(

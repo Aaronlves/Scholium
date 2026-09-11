@@ -35,10 +35,11 @@ struct SelectionActionsSettingsView: View {
                             .labelsHidden()
                             .toggleStyle(.checkbox)
                             .accessibilityLabel(
-                                Text(verbatim: String(
-                                    format: ScholiumL10n.string("Enable %@"),
-                                    displayName(for: action)
-                                ))
+                                Text(
+                                    verbatim: String(
+                                        format: ScholiumL10n.string("Enable %@"),
+                                        displayName(for: action)
+                                    ))
                             )
                         }
                         .width(58)
@@ -107,7 +108,8 @@ struct SelectionActionsSettingsView: View {
                 }
 
                 if let message = error ?? preferences.loadError
-                    ?? SelectionActionPreferences.validationError(draft) {
+                    ?? SelectionActionPreferences.validationError(draft)
+                {
                     Text(message)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -159,11 +161,13 @@ struct SelectionActionsSettingsView: View {
                     editingAction = nil
                     isAddingAction = false
                 },
-                onDelete: isAddingAction ? nil : {
-                    remove(action.id)
-                    editingAction = nil
-                    isAddingAction = false
-                }
+                onDelete: isAddingAction
+                    ? nil
+                    : {
+                        remove(action.id)
+                        editingAction = nil
+                        isAddingAction = false
+                    }
             )
         }
         .accessibilityIdentifier("scholium.selectionActions.settings")
@@ -226,7 +230,8 @@ struct SelectionActionsSettingsView: View {
 
     private func move(_ id: UUID, by delta: Int) {
         guard let index = draft.firstIndex(where: { $0.id == id }),
-              draft.indices.contains(index + delta) else { return }
+            draft.indices.contains(index + delta)
+        else { return }
         draft.swapAt(index, index + delta)
     }
 

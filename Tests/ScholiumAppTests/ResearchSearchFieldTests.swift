@@ -2,6 +2,7 @@ import AppKit
 import ScholiumContracts
 import SwiftUI
 import Testing
+
 @testable import ScholiumApp
 
 @MainActor
@@ -21,7 +22,8 @@ struct ResearchSearchFieldTests {
     func filtersPreserveQuery() throws {
         var query = "aurora-fixture"
         var scope: SearchPresentationScope = .triptych
-        let field = ResearchSearchField(text: Binding(get: { query }, set: { query = $0 }),
+        let field = ResearchSearchField(
+            text: Binding(get: { query }, set: { query = $0 }),
             placeholder: "Search", scope: Binding(get: { scope }, set: { scope = $0 }),
             openAdvanced: {},
             isActive: true, focusRequestID: nil, replacementID: 0, beganEditing: {}, endedEditing: {}, command: { _ in false })
@@ -39,7 +41,8 @@ struct ResearchSearchFieldTests {
     }
 
     private func field(openAdvanced: (() -> Void)?) -> ResearchSearchField {
-        ResearchSearchField(text: .constant(""), placeholder: "Search",
+        ResearchSearchField(
+            text: .constant(""), placeholder: "Search",
             scope: .constant(.triptych), openAdvanced: openAdvanced,
             isActive: false, focusRequestID: nil, replacementID: 0, beganEditing: {}, endedEditing: {}, command: { _ in false })
     }

@@ -1,5 +1,5 @@
-import ScholiumContracts
 import Foundation
+import ScholiumContracts
 
 /// One researcher-owned portable metadata field resolved across Contracts and
 /// GUI presentation policy. It never represents a same-named YAML key.
@@ -84,7 +84,8 @@ struct PropertyEditorModel: Sendable {
     var analysisSourceType: AnalysisSourceType? {
         if let analysisSourceTypeOverride { return analysisSourceTypeOverride }
         guard profile == .analysis,
-              case .string(let raw)? = note.managedMetadataValue(named: "type") else { return nil }
+            case .string(let raw)? = note.managedMetadataValue(named: "type")
+        else { return nil }
         return AnalysisSourceType(rawValue: raw)
     }
 
@@ -153,17 +154,20 @@ struct PropertyEditorModel: Sendable {
             for: profile,
             catalog: metadataCatalog
         ).compactMap { presentation in
-            guard let contract = metadataCatalog.contract(
-                for: presentation.key,
-                profile: profile
-            ) else { return nil }
-            let presentValue = note.managedMetadataValue(named: presentation.key)
-            let hasEditableValueShape = presentValue.map {
-                PropertyContractCatalog.supportsTargetedStructuredEditing(
-                    $0,
-                    as: contract.valueKind
+            guard
+                let contract = metadataCatalog.contract(
+                    for: presentation.key,
+                    profile: profile
                 )
-            } ?? true
+            else { return nil }
+            let presentValue = note.managedMetadataValue(named: presentation.key)
+            let hasEditableValueShape =
+                presentValue.map {
+                    PropertyContractCatalog.supportsTargetedStructuredEditing(
+                        $0,
+                        as: contract.valueKind
+                    )
+                } ?? true
             return PropertyEditorField(
                 presentation: presentation,
                 contract: contract,

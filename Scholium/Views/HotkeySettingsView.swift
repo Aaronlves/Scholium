@@ -127,42 +127,43 @@ struct HotkeySettingsView: View {
     }
 
     private func hotkeyMenu(_ command: ScholiumHotkeyCommand) -> some View {
-            Menu {
-                hotkeyActions(command)
-            } label: {
-                Text(binding(for: command)?.displayName ?? "None")
-                    .monospacedDigit()
-                    .frame(minWidth: 64)
-            }
-            .menuStyle(.button)
-            .controlSize(.small)
-            .accessibilityLabel(Text("Shortcut for \(String(localized: command.title))"))
-            .accessibilityValue(Text(binding(for: command)?.displayName ?? "None"))
-            .accessibilityIdentifier("scholium.hotkeys.command.\(command.rawValue)")
+        Menu {
+            hotkeyActions(command)
+        } label: {
+            Text(binding(for: command)?.displayName ?? "None")
+                .monospacedDigit()
+                .frame(minWidth: 64)
+        }
+        .menuStyle(.button)
+        .controlSize(.small)
+        .accessibilityLabel(Text("Shortcut for \(String(localized: command.title))"))
+        .accessibilityValue(Text(binding(for: command)?.displayName ?? "None"))
+        .accessibilityIdentifier("scholium.hotkeys.command.\(command.rawValue)")
     }
     @ViewBuilder
     private func hotkeyActions(_ command: ScholiumHotkeyCommand) -> some View {
-                Button("Record New Shortcut…") { editingCommand = command }
-                Button("Clear Shortcut") {
-                    preferencesData = ScholiumHotkeyPreferences.data(
-                        setting: nil,
-                        for: command,
-                        in: preferencesData
-                    )
-                }
-                .disabled(binding(for: command) == nil)
-                Divider()
-                Button("Restore Default") {
-                    preferencesData = ScholiumHotkeyPreferences.data(
-                        setting: command.defaultBinding,
-                        for: command,
-                        in: preferencesData
-                    )
-                }
-                .disabled(!ScholiumHotkeyPreferences.isCustomized(
-                    command,
-                    data: preferencesData
-                ))
+        Button("Record New Shortcut…") { editingCommand = command }
+        Button("Clear Shortcut") {
+            preferencesData = ScholiumHotkeyPreferences.data(
+                setting: nil,
+                for: command,
+                in: preferencesData
+            )
+        }
+        .disabled(binding(for: command) == nil)
+        Divider()
+        Button("Restore Default") {
+            preferencesData = ScholiumHotkeyPreferences.data(
+                setting: command.defaultBinding,
+                for: command,
+                in: preferencesData
+            )
+        }
+        .disabled(
+            !ScholiumHotkeyPreferences.isCustomized(
+                command,
+                data: preferencesData
+            ))
     }
 
     private func binding(
@@ -189,10 +190,11 @@ private struct HotkeyRecordingSheet: View {
         self.command = command
         self.preferencesData = preferencesData
         self.save = save
-        _draft = State(initialValue: ScholiumHotkeyPreferences.binding(
-            for: command,
-            data: preferencesData
-        ))
+        _draft = State(
+            initialValue: ScholiumHotkeyPreferences.binding(
+                for: command,
+                data: preferencesData
+            ))
     }
 
     var body: some View {
@@ -281,7 +283,8 @@ private struct HotkeyRecorderControl: NSViewRepresentable {
     }
 
     private func update(_ button: RecorderButton, coordinator: Coordinator) {
-        button.title = isRecording
+        button.title =
+            isRecording
             ? String(localized: "Press a Shortcut…")
             : binding?.displayName ?? String(localized: "Record Shortcut")
         button.isRecording = isRecording
@@ -353,11 +356,12 @@ private struct HotkeyRecorderControl: NSViewRepresentable {
                 return
             }
             guard let characters = event.charactersIgnoringModifiers,
-                  let character = characters.first,
-                  let binding = ScholiumHotkeyBinding(
+                let character = characters.first,
+                let binding = ScholiumHotkeyBinding(
                     key: String(character),
                     modifiers: ScholiumHotkeyModifiers.from(event.modifierFlags)
-                  ) else {
+                )
+            else {
                 NSSound.beep()
                 return
             }

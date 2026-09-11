@@ -10,7 +10,9 @@ struct OverviewMetadataCreator: Identifiable {
         self.id = id
         if case .object(let object) = value {
             values = object.compactMapValues(\.scalarString)
-        } else { values = [:] }
+        } else {
+            values = [:]
+        }
         singleName = values["literal"] != nil
     }
 
@@ -24,7 +26,10 @@ struct OverviewMetadataCreator: Identifiable {
 struct OverviewMetadataListValue: Identifiable {
     let id: UUID
     var text: String
-    init(text: String, id: UUID = UUID()) { self.text = text; self.id = id }
+    init(text: String, id: UUID = UUID()) {
+        self.text = text
+        self.id = id
+    }
 }
 
 struct OverviewMetadataDraft {
@@ -124,7 +129,8 @@ struct OverviewMetadataError: LocalizedError {
             baseline = note.managedMetadataFields
             revision = note.workspaceSnapshot?.metadata?.revision
         } else if dirtyKeys.isEmpty && !isSaving && error == nil && composing.isEmpty,
-                  note.workspaceSnapshot?.metadata?.revision != revision {
+            note.workspaceSnapshot?.metadata?.revision != revision
+        {
             baseline = note.managedMetadataFields
             revision = note.workspaceSnapshot?.metadata?.revision
             undoManager.removeAllActions()
@@ -138,7 +144,8 @@ struct OverviewMetadataError: LocalizedError {
 
     func edit(_ key: String, _ change: (inout OverviewMetadataDraft) -> Void) {
         guard fields.first(where: { $0.key == key })?.isReadOnly == false,
-              var draft = drafts[key] else { return }
+            var draft = drafts[key]
+        else { return }
         change(&draft)
         removedKeys.remove(key)
         drafts[key] = draft
@@ -146,7 +153,10 @@ struct OverviewMetadataError: LocalizedError {
     }
 
     var orderedVisibleKeys: [String] {
-        let primary = ["title", "authors", "publication_date", "container_title", "type", "publisher", "publisher_place", "volume", "issue", "pages", "doi", "url", "accessed_date"]
+        let primary = [
+            "title", "authors", "publication_date", "container_title", "type", "publisher", "publisher_place", "volume", "issue", "pages", "doi", "url",
+            "accessed_date",
+        ]
         return visibleKeys.sorted { left, right in
             let lhs = primary.firstIndex(of: left) ?? (primary.count + (visibleKeys.firstIndex(of: left) ?? 0))
             let rhs = primary.firstIndex(of: right) ?? (primary.count + (visibleKeys.firstIndex(of: right) ?? 0))
@@ -158,8 +168,10 @@ struct OverviewMetadataError: LocalizedError {
 
     func requestCommit() {
         guard composing.isEmpty else { return }
-        do { pendingValues = try candidate() }
-        catch { changed?(); return }
+        do { pendingValues = try candidate() } catch {
+            changed?()
+            return
+        }
         pendingCommit = true
         guard saveTask == nil else { return }
         saveTask = Task { @MainActor [weak self] in
@@ -182,8 +194,7 @@ struct OverviewMetadataError: LocalizedError {
         var result = baseline
         for key in dirtyKeys {
             guard let field = fields.first(where: { $0.key == key }), let draft = drafts[key] else { continue }
-            do { result[key] = removedKeys.contains(key) ? nil : try draft.value(kind: field.valueKind) }
-            catch {
+            do { result[key] = removedKeys.contains(key) ? nil : try draft.value(kind: field.valueKind) } catch {
                 self.error = (key, error.localizedDescription)
                 throw error
             }
@@ -201,9 +212,13 @@ struct OverviewMetadataError: LocalizedError {
                     error = nil
                     for key in Array(dirtyKeys) {
                         guard let field = fields.first(where: { $0.key == key }), let draft = drafts[key] else { continue }
-                        if (try? draft.value(kind: field.valueKind)) == baseline[key] { dirtyKeys.remove(key); removedKeys.remove(key) }
+                        if (try? draft.value(kind: field.valueKind)) == baseline[key] {
+                            dirtyKeys.remove(key)
+                            removedKeys.remove(key)
+                        }
                     }
-                    changed?(); return
+                    changed?()
+                    return
                 }
                 guard let save else { return }
                 isSaving = true
@@ -219,7 +234,10 @@ struct OverviewMetadataError: LocalizedError {
                 for key in committedKeys {
                     guard let field = fields.first(where: { $0.key == key }), let draft = drafts[key] else { continue }
                     let current = removedKeys.contains(key) ? nil : try? draft.value(kind: field.valueKind)
-                    if current == candidate[key] { dirtyKeys.remove(key); removedKeys.remove(key) }
+                    if current == candidate[key] {
+                        dirtyKeys.remove(key)
+                        removedKeys.remove(key)
+                    }
                 }
                 if shouldRegister { registerHistory(previous, inverse: candidate) }
                 didCommit?()
@@ -275,7 +293,8 @@ struct OverviewMetadataError: LocalizedError {
     func cancelDraft(_ key: String) {
         guard !isSaving, let field = fields.first(where: { $0.key == key }) else { return }
         drafts[key] = OverviewMetadataDraft(baseline[key], kind: field.valueKind, retaining: drafts[key])
-        dirtyKeys.remove(key); removedKeys.remove(key)
+        dirtyKeys.remove(key)
+        removedKeys.remove(key)
         if error?.key == key { error = nil }
         changed?()
     }
@@ -285,12 +304,19 @@ struct OverviewMetadataError: LocalizedError {
         Task { @MainActor in
             do {
                 let loaded = try await reload()
-                baseline = loaded.fields; revision = loaded.revision
-                dirtyKeys.removeAll(); removedKeys.removeAll(); composing.removeAll()
-                error = nil; undoManager.removeAllActions()
+                baseline = loaded.fields
+                revision = loaded.revision
+                dirtyKeys.removeAll()
+                removedKeys.removeAll()
+                composing.removeAll()
+                error = nil
+                undoManager.removeAllActions()
                 for field in fields { drafts[field.key] = OverviewMetadataDraft(baseline[field.key], kind: field.valueKind, retaining: drafts[field.key]) }
                 changed?()
-            } catch { self.error = (self.error?.key, error.localizedDescription); changed?() }
+            } catch {
+                self.error = (self.error?.key, error.localizedDescription)
+                changed?()
+            }
         }
     }
 }

@@ -1,20 +1,25 @@
 import Foundation
-import Testing
 import ScholiumContracts
+import Testing
+
 @testable import ScholiumCore
 
 @Suite("Lossless note documents")
 struct NoteDocumentTests {
     @Test("Body edits preserve frontmatter bytes and CRLF")
     func bodyPreservation() throws {
-        let source = "\u{FEFF}---\r\ntitle: \"A: title\" # keep\r\nnested:\r\n  key: value\r\ntags: [one, \"two, three\"]\r\nanalysis_updated_at: 2025-01-01\r\n---\r\n# Old\r\n\r\nTail\r\n"
+        let source =
+            "\u{FEFF}---\r\ntitle: \"A: title\" # keep\r\nnested:\r\n  key: value\r\ntags: [one, \"two, three\"]\r\nanalysis_updated_at: 2025-01-01\r\n---\r\n# Old\r\n\r\nTail\r\n"
         let document = NoteDocument(relativePath: "papers/a.md", rawContent: source)
         let result = try document.applying(.body("# New\r\n\r\nTail\r\n"), timestampKey: nil)
 
         #expect(document.sourceBytes == Data(source.utf8))
         #expect(document.frontmatterByteRange != nil)
         #expect(document.bodyByteRange.upperBound == document.sourceBytes.count)
-        #expect(result.hasPrefix("\u{FEFF}---\r\ntitle: \"A: title\" # keep\r\nnested:\r\n  key: value\r\ntags: [one, \"two, three\"]\r\nanalysis_updated_at: 2025-01-01\r\n---\r\n"))
+        #expect(
+            result.hasPrefix(
+                "\u{FEFF}---\r\ntitle: \"A: title\" # keep\r\nnested:\r\n  key: value\r\ntags: [one, \"two, three\"]\r\nanalysis_updated_at: 2025-01-01\r\n---\r\n"
+            ))
         #expect(result.hasSuffix("# New\r\n\r\nTail\r\n"))
     }
 
@@ -33,14 +38,18 @@ struct NoteDocumentTests {
 
     @Test("Canonical summary shares the exact targeted YAML write path")
     func canonicalSummaryPreservesUnknownYAMLAndBody() throws {
-        let source = "\u{FEFF}---\r\n# researcher context\r\nsummary: Old map   # keep attribution-adjacent comment\r\nunknown:\r\n  nested: 'exact value'\r\n---\r\n# Body 😀\r\n\r\nUnchanged evidence."
+        let source =
+            "\u{FEFF}---\r\n# researcher context\r\nsummary: Old map   # keep attribution-adjacent comment\r\nunknown:\r\n  nested: 'exact value'\r\n---\r\n# Body 😀\r\n\r\nUnchanged evidence."
         let document = NoteDocument(relativePath: "Topics/Map.md", rawContent: source)
         let result = try document.applying(
             .frontmatter(["summary": .string("Agent-refined: claim remains contested")]),
             timestampKey: nil
         )
 
-        #expect(result == "\u{FEFF}---\r\n# researcher context\r\nsummary: \"Agent-refined: claim remains contested\"   # keep attribution-adjacent comment\r\nunknown:\r\n  nested: 'exact value'\r\n---\r\n# Body 😀\r\n\r\nUnchanged evidence.")
+        #expect(
+            result
+                == "\u{FEFF}---\r\n# researcher context\r\nsummary: \"Agent-refined: claim remains contested\"   # keep attribution-adjacent comment\r\nunknown:\r\n  nested: 'exact value'\r\n---\r\n# Body 😀\r\n\r\nUnchanged evidence."
+        )
         #expect(NoteDocument(relativePath: "Topics/Map.md", rawContent: result).body == document.body)
     }
 
@@ -101,20 +110,23 @@ struct NoteDocumentTests {
                 .frontmatter(["custom": .string(value)]),
                 timestampKey: nil
             )
-            #expect(NoteDocument(relativePath: "scalar.md", rawContent: result)
-                .parsedFrontmatter["custom"] == .string(value))
+            #expect(
+                NoteDocument(relativePath: "scalar.md", rawContent: result)
+                    .parsedFrontmatter["custom"] == .string(value))
         }
     }
 
-    @Test("Ambiguous YAML constructs refuse without producing replacement bytes", arguments: [
-        "\"title\": Old\n",
-        "title: One\ntitle: Two\n",
-        "base: &base value\ntitle: *base\n",
-        "base: &base\n  title: Old\n<<: *base\n",
-        "{title: Old, custom: true}\n",
-        "title: |\n  Old value\n",
-        "title: Old value\n  continued value\n",
-    ])
+    @Test(
+        "Ambiguous YAML constructs refuse without producing replacement bytes",
+        arguments: [
+            "\"title\": Old\n",
+            "title: One\ntitle: Two\n",
+            "base: &base value\ntitle: *base\n",
+            "base: &base\n  title: Old\n<<: *base\n",
+            "{title: Old, custom: true}\n",
+            "title: |\n  Old value\n",
+            "title: Old value\n  continued value\n",
+        ])
     func ambiguousYAMLRefuses(frontmatter: String) {
         #expect(throws: FrontmatterPatchRefusal.self) {
             _ = try FrontmatterPatchPlanner.plan(
@@ -127,13 +139,14 @@ struct NoteDocumentTests {
 
     @Test("A bounded mapping edit preserves unrelated members and source bytes")
     func boundedMappingEdit() throws {
-        let source = "---\n# keep this comment\ntitle: Old\nresearch_unit:\n  scope: Old scope\n  limitations:\n    - Old boundary\ncustom:\n  nested: true\n---\nBody\n"
+        let source =
+            "---\n# keep this comment\ntitle: Old\nresearch_unit:\n  scope: Old scope\n  limitations:\n    - Old boundary\ncustom:\n  nested: true\n---\nBody\n"
         let document = NoteDocument(relativePath: "papers/a.md", rawContent: source)
         let result = try document.applying(
             .frontmatter([
                 "research_unit": .mapping([
                     "scope": .string("Introduction and Chapters 1–4"),
-                    "limitations": .array(["Chapters 5–8 remain outside the note."])
+                    "limitations": .array(["Chapters 5–8 remain outside the note."]),
                 ])
             ]),
             timestampKey: nil
@@ -316,39 +329,43 @@ struct NoteDocumentTests {
     @Test("Frontmatter state distinguishes YAML-free source from malformed boundaries")
     func frontmatterStateDistinguishesInsertionSafety() {
         #expect(NoteDocument(relativePath: "plain.md", rawContent: "Body\n").frontmatterState == .absent)
-        #expect(NoteDocument(
-            relativePath: "valid.md",
-            rawContent: "---\ntags: [one]\n---\nBody\n"
-        ).frontmatterState == .valid)
-        #expect(NoteDocument(
-            relativePath: "unclosed.md",
-            rawContent: "---\ntags: [one]\n"
-        ).frontmatterState == .malformed)
+        #expect(
+            NoteDocument(
+                relativePath: "valid.md",
+                rawContent: "---\ntags: [one]\n---\nBody\n"
+            ).frontmatterState == .valid)
+        #expect(
+            NoteDocument(
+                relativePath: "unclosed.md",
+                rawContent: "---\ntags: [one]\n"
+            ).frontmatterState == .malformed)
         let closedInvalid = NoteDocument(
             relativePath: "closed-invalid.md",
             rawContent: "---\ntags: [\n---\n"
         )
         #expect(closedInvalid.frontmatterState == .malformed)
         #expect(closedInvalid.hasProvableBodyBoundary)
-        #expect(!NoteDocument(
-            relativePath: "unclosed.md",
-            rawContent: "---\ntags: [one]\n"
-        ).hasProvableBodyBoundary)
+        #expect(
+            !NoteDocument(
+                relativePath: "unclosed.md",
+                rawContent: "---\ntags: [one]\n"
+            ).hasProvableBodyBoundary)
     }
 
     @Test("Creator sequences serialize as mappings without changing neighboring bytes")
     func creatorSequenceTargetedEdit() throws {
         let source = "---\n# keep\ntitle: Exact\nauthors:\n  - family: Old\ncustom: 'literal'\n---\nBody\n"
         let document = NoteDocument(relativePath: "analysis.md", rawContent: source)
-        let result = try document.applying(.frontmatter([
-            "authors": .sequence([
-                .mapping([
-                    "family": .string("Tappolet"),
-                    "given": .string("Christine"),
-                ]),
-                .mapping(["literal": .string("World Health Organization")]),
-            ]),
-        ]), timestampKey: nil)
+        let result = try document.applying(
+            .frontmatter([
+                "authors": .sequence([
+                    .mapping([
+                        "family": .string("Tappolet"),
+                        "given": .string("Christine"),
+                    ]),
+                    .mapping(["literal": .string("World Health Organization")]),
+                ])
+            ]), timestampKey: nil)
 
         #expect(result.contains("# keep\n"))
         #expect(result.contains("custom: 'literal'\n"))

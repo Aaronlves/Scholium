@@ -1,6 +1,7 @@
 import Foundation
 import ScholiumContracts
 import Testing
+
 @testable import ScholiumApp
 
 @Suite("Document tab controller")
@@ -221,16 +222,17 @@ struct DocumentTabControllerTests {
         let original = fixtureDocument(path: "Topics/Old.md")
         _ = try add(original, to: controller)
         let descriptor = original.workspaceDescriptor!
-        let renamed = WindowSelectedDocument.workspace(WindowDocumentDescriptor(
-            sessionKey: descriptor.sessionKey,
-            reference: VaultNoteReference(
-                vaultID: descriptor.reference.vaultID,
-                vaultName: descriptor.reference.vaultName,
-                vaultRole: descriptor.reference.vaultRole,
-                relativePath: "Topics/New.md",
-                stableNoteID: descriptor.reference.stableNoteID
-            )
-        ))
+        let renamed = WindowSelectedDocument.workspace(
+            WindowDocumentDescriptor(
+                sessionKey: descriptor.sessionKey,
+                reference: VaultNoteReference(
+                    vaultID: descriptor.reference.vaultID,
+                    vaultName: descriptor.reference.vaultName,
+                    vaultRole: descriptor.reference.vaultRole,
+                    relativePath: "Topics/New.md",
+                    stableNoteID: descriptor.reference.stableNoteID
+                )
+            ))
 
         controller.updateDocumentProjection(
             renamed,
@@ -265,15 +267,16 @@ struct DocumentTabControllerTests {
         vaultID: UUID = UUID(),
         noteID: UUID = UUID()
     ) -> WindowSelectedDocument {
-        .workspace(WindowDocumentDescriptor(
-            sessionKey: DocumentSessionKey(vaultID: vaultID, noteID: noteID),
-            reference: VaultNoteReference(
-                vaultID: vaultID,
-                vaultName: "Fixture Topics",
-                vaultRole: .topicKnowledge,
-                relativePath: path,
-                stableNoteID: noteID.uuidString.lowercased()
-            )
-        ))
+        .workspace(
+            WindowDocumentDescriptor(
+                sessionKey: DocumentSessionKey(vaultID: vaultID, noteID: noteID),
+                reference: VaultNoteReference(
+                    vaultID: vaultID,
+                    vaultName: "Fixture Topics",
+                    vaultRole: .topicKnowledge,
+                    relativePath: path,
+                    stableNoteID: noteID.uuidString.lowercased()
+                )
+            ))
     }
 }

@@ -1,5 +1,5 @@
-import ScholiumContracts
 import Foundation
+import ScholiumContracts
 
 extension ScholiumCLI {
     static func runVault(_ arguments: [String], context: CLIContext) async throws {
@@ -88,16 +88,17 @@ extension ScholiumCLI {
         let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedQuery.isEmpty else { throw CLIError.usage("Search query cannot be empty.") }
         let limitText = option("--limit", in: arguments) ?? "20"
-        guard let limit = Int(limitText), (1 ... 500).contains(limit) else {
+        guard let limit = Int(limitText), (1...500).contains(limit) else {
             throw CLIError.usage("--limit must be a whole number from 1 through 500.")
         }
         let handle = try await context.handle(for: assignment)
-        let response = try await handle.discovery.search(SearchRequest(
-            query: trimmedQuery,
-            presentationScope: presentationScope,
-            executionScope: executionScope,
-            limit: limit
-        ))
+        let response = try await handle.discovery.search(
+            SearchRequest(
+                query: trimmedQuery,
+                presentationScope: presentationScope,
+                executionScope: executionScope,
+                limit: limit
+            ))
         if let diagnostic = response.diagnostics.first {
             throw CLIError.searchDiagnostic(diagnostic)
         }
@@ -111,14 +112,16 @@ extension ScholiumCLI {
             let summary = SearchSummaryRecord(response: response)
             write(String(decoding: try encoder.encode(summary), as: UTF8.self) + "\n")
             for result in response.results {
-                write(String(
-                    decoding: try encoder.encode(SearchResultJSONRecord(
-                        result: result,
-                        contractVersion: response.contractVersion,
-                        scope: response.scope
-                    )),
-                    as: UTF8.self
-                ) + "\n")
+                write(
+                    String(
+                        decoding: try encoder.encode(
+                            SearchResultJSONRecord(
+                                result: result,
+                                contractVersion: response.contractVersion,
+                                scope: response.scope
+                            )),
+                        as: UTF8.self
+                    ) + "\n")
             }
         case "text":
             let availability = SearchAvailabilityRecord(response.availability)
@@ -186,41 +189,41 @@ extension ScholiumCLI {
         init(_ availability: SearchAvailability) {
             provider = .note
             switch availability {
-                case .unavailable:
-                    status = "unavailable"
-                    noteGeneration = nil
-                    progress = nil
-                    reason = nil
-                case .building(let value):
-                    status = "building"
-                    noteGeneration = nil
-                    progress = value
-                    reason = nil
-                case .current(let generation):
-                    status = "current"
-                    noteGeneration = generation
-                    progress = nil
-                    reason = nil
-                case .limited(let generation):
-                    status = "limited"
-                    noteGeneration = generation
-                    progress = nil
-                    reason = nil
-                case .refreshing(let generation):
-                    status = "refreshing"
-                    noteGeneration = generation
-                    progress = nil
-                    reason = nil
-                case .stale(let generation, let value):
-                    status = "stale"
-                    noteGeneration = generation
-                    progress = nil
-                    reason = value
-                case .failed(let generation, let value):
-                    status = "failed"
-                    noteGeneration = generation
-                    progress = nil
-                    reason = value
+            case .unavailable:
+                status = "unavailable"
+                noteGeneration = nil
+                progress = nil
+                reason = nil
+            case .building(let value):
+                status = "building"
+                noteGeneration = nil
+                progress = value
+                reason = nil
+            case .current(let generation):
+                status = "current"
+                noteGeneration = generation
+                progress = nil
+                reason = nil
+            case .limited(let generation):
+                status = "limited"
+                noteGeneration = generation
+                progress = nil
+                reason = nil
+            case .refreshing(let generation):
+                status = "refreshing"
+                noteGeneration = generation
+                progress = nil
+                reason = nil
+            case .stale(let generation, let value):
+                status = "stale"
+                noteGeneration = generation
+                progress = nil
+                reason = value
+            case .failed(let generation, let value):
+                status = "failed"
+                noteGeneration = generation
+                progress = nil
+                reason = value
             }
         }
 
@@ -330,7 +333,8 @@ extension ScholiumCLI {
         var textDescription: String {
             let providerSource = providerWasExplicit ? "explicit" : "default"
             let clauseText = clauses.map(\.textDescription).joined(separator: " AND ")
-            let query = clauseText.isEmpty
+            let query =
+                clauseText.isEmpty
                 ? "provider=\(provider.rawValue) (\(providerSource)); no clauses"
                 : "provider=\(provider.rawValue) (\(providerSource)); \(clauseText)"
             let normalizationText = normalization.map(\.rawValue).joined(separator: ",")
@@ -399,10 +403,11 @@ extension ScholiumCLI {
                     : "property:\(property.key) (\(property.valueKind.rawValue))"
             case "link":
                 guard let link else { return kind }
-                let source = link.occurrences.first.map {
-                    " source=\($0.sourceNote.vaultID.uuidString.lowercased())/"
-                        + "\($0.sourceNote.relativePath):\($0.linkSpan.start.line):\($0.linkSpan.start.utf16Column)"
-                } ?? ""
+                let source =
+                    link.occurrences.first.map {
+                        " source=\($0.sourceNote.vaultID.uuidString.lowercased())/"
+                            + "\($0.sourceNote.relativePath):\($0.linkSpan.start.line):\($0.linkSpan.start.utf16Column)"
+                    } ?? ""
                 return "\(link.direction.rawValue):\(link.anchorIdentity)" + source
             default:
                 return kind
@@ -470,11 +475,12 @@ extension ScholiumCLI {
         ) {
             switch result {
             case .note(let hit):
-                self = .note(NoteSearchResultJSONRecord(
-                    hit: hit,
-                    contractVersion: contractVersion,
-                    scope: scope
-                ))
+                self = .note(
+                    NoteSearchResultJSONRecord(
+                        hit: hit,
+                        contractVersion: contractVersion,
+                        scope: scope
+                    ))
             }
         }
 
@@ -506,7 +512,8 @@ extension ScholiumCLI {
             let assignment = try await context.triptych(containing: [vault.id])
             let handle = try await context.handle(for: assignment)
             let id = VaultQualifiedNoteID(vaultID: vault.id, relativePath: path)
-            let direction: WorkspaceLinkDirection = subcommand == "incoming"
+            let direction: WorkspaceLinkDirection =
+                subcommand == "incoming"
                 ? .incoming
                 : .outgoing
             let edges = try await handle.discovery.links(for: id, direction: direction)

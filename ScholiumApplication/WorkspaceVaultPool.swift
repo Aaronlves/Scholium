@@ -1,5 +1,5 @@
-import ScholiumContracts
 import Foundation
+import ScholiumContracts
 import ScholiumCore
 
 enum WorkspaceVaultPoolMode: Sendable {
@@ -47,9 +47,10 @@ actor PooledWorkspaceVault {
 
     func start() async throws {
         guard !isShutDown,
-              !rootAuthorityIsInvalid,
-              watcherTask == nil,
-              let watcher else { return }
+            !rootAuthorityIsInvalid,
+            watcherTask == nil,
+            let watcher
+        else { return }
         let events = try await watcher.start()
         let token = UUID()
         watcherTaskToken = token
@@ -123,10 +124,11 @@ actor PooledWorkspaceVault {
             publish(event)
         } catch {
             await sourceCatalog.requireFullReconcile()
-            publish(.reconciliationRequired(
-                sequence: event.sequence,
-                rootChanged: event.rootChanged
-            ))
+            publish(
+                .reconciliationRequired(
+                    sequence: event.sequence,
+                    rootChanged: event.rootChanged
+                ))
         }
     }
 
@@ -145,10 +147,11 @@ actor PooledWorkspaceVault {
         guard !isShutDown, !rootAuthorityIsInvalid else { return }
         rootAuthorityIsInvalid = true
         await sourceCatalog.requireFullReconcile()
-        publish(.reconciliationRequired(
-            sequence: sequence,
-            rootChanged: true
-        ))
+        publish(
+            .reconciliationRequired(
+                sequence: sequence,
+                rootChanged: true
+            ))
         if let watcher { await watcher.stop() }
     }
 
@@ -283,7 +286,8 @@ actor WorkspaceVaultPool {
     /// abandoning consumers of the prior pooled authority.
     func restore(_ previous: PooledWorkspaceVault, vaultID: UUID) async {
         if let replacement = vaults.removeValue(forKey: vaultID),
-           replacement !== previous {
+            replacement !== previous
+        {
             await replacement.shutdown()
         }
         vaults[vaultID] = previous
@@ -342,10 +346,11 @@ actor WorkspaceVaultPool {
                 applicationSupportURL: applicationSupportURL,
                 vaultRole: registeredVault.role
             )
-            let watcher: WorkspaceFileEventWatcher? = switch mode {
-            case .live: WorkspaceFileEventWatcher(rootURL: rootURL)
-            case .snapshot: nil
-            }
+            let watcher: WorkspaceFileEventWatcher? =
+                switch mode {
+                case .live: WorkspaceFileEventWatcher(rootURL: rootURL)
+                case .snapshot: nil
+                }
             let pooled = PooledWorkspaceVault(
                 vault: registeredVault,
                 rootURL: rootURL,
@@ -395,8 +400,9 @@ actor WorkspaceVaultPool {
         }
         let resolvedCanonical = resolved.resolvingSymlinksInPath().standardizedFileURL
         guard !stale,
-              resolvedCanonical.path == canonical.path,
-              resolved.startAccessingSecurityScopedResource() else {
+            resolvedCanonical.path == canonical.path,
+            resolved.startAccessingSecurityScopedResource()
+        else {
             throw WorkspaceRegistryError.vaultAccessUnavailable(vault.canonicalPath)
         }
         return (resolvedCanonical, resolved)

@@ -52,7 +52,8 @@ public actor BootstrapTriptychStructurePreparer {
         }
 
         let parent = parentURL.resolvingSymlinksInPath().standardizedFileURL
-        let root = parent
+        let root =
+            parent
             .appendingPathComponent(folderName, isDirectory: true)
             .standardizedFileURL
         guard root.deletingLastPathComponent().path == parent.path else {

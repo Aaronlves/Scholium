@@ -1,7 +1,8 @@
-import ScholiumContracts
 import Foundation
+import ScholiumContracts
+
 #if canImport(AppKit)
-import AppKit
+    import AppKit
 #endif
 
 /// macOS presentation adapter over the Application-owned Zotero capability.
@@ -32,16 +33,16 @@ actor ZoteroBridge {
 
     func openZotero() {
         #if canImport(AppKit)
-        if let url = URL(string: "zotero://select/library") {
-            NSWorkspace.shared.open(url)
-        }
+            if let url = URL(string: "zotero://select/library") {
+                NSWorkspace.shared.open(url)
+            }
         #endif
     }
 
     func openInZotero(binding: AnalysisZoteroBinding) {
         guard let url = Self.itemURL(binding: binding) else { return }
         #if canImport(AppKit)
-        NSWorkspace.shared.open(url)
+            NSWorkspace.shared.open(url)
         #endif
     }
 

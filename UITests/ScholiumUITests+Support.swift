@@ -1,6 +1,6 @@
-@preconcurrency import XCTest
 import AppKit
 import CryptoKit
+@preconcurrency import XCTest
 import notify
 
 extension ScholiumUITests {
@@ -11,11 +11,14 @@ extension ScholiumUITests {
             withBundleIdentifier: bundleIdentifier
         )
         runningApplications.forEach { $0.terminate() }
-        if !waitUntil(timeout: 5, condition: {
-            NSRunningApplication.runningApplications(
-                withBundleIdentifier: bundleIdentifier
-            ).isEmpty
-        }) {
+        if !waitUntil(
+            timeout: 5,
+            condition: {
+                NSRunningApplication.runningApplications(
+                    withBundleIdentifier: bundleIdentifier
+                ).isEmpty
+            })
+        {
             NSRunningApplication.runningApplications(
                 withBundleIdentifier: bundleIdentifier
             ).forEach { $0.forceTerminate() }
@@ -29,7 +32,6 @@ extension ScholiumUITests {
             "The previous isolated QA process did not terminate before launch."
         )
     }
-
 
     @MainActor
     func accessibilityText(of element: XCUIElement) -> String {
@@ -52,7 +54,6 @@ extension ScholiumUITests {
         }
         return nil
     }
-
 
     @MainActor
     func scrollUntilHittable(
@@ -127,9 +128,10 @@ extension ScholiumUITests {
                 forDuration: 0.15,
                 thenDragTo: titlebar.withOffset(CGVector(dx: -requiredShift - 12, dy: 0))
             )
-            XCTAssertTrue(waitUntil(timeout: 5) {
-                window.frame.minX < currentFrame.minX - requiredShift / 2
-            })
+            XCTAssertTrue(
+                waitUntil(timeout: 5) {
+                    window.frame.minX < currentFrame.minX - requiredShift / 2
+                })
             currentFrame = window.frame
         }
 
@@ -138,7 +140,8 @@ extension ScholiumUITests {
             let widthDelta = width - currentFrame.width
             let heightDelta = height.map { $0 - currentFrame.height } ?? 0
             if abs(widthDelta) <= QAWorkspaceMetricContract.frameTolerance,
-               abs(heightDelta) <= QAWorkspaceMetricContract.frameTolerance {
+                abs(heightDelta) <= QAWorkspaceMetricContract.frameTolerance
+            {
                 break
             }
             let resizeCorner = window.coordinate(
@@ -159,12 +162,13 @@ extension ScholiumUITests {
                     } ?? true)
             }
         }
-        XCTAssertTrue(waitUntil(timeout: 5) {
-            abs(window.frame.width - width) <= QAWorkspaceMetricContract.frameTolerance
-                && (height.map {
-                    abs(window.frame.height - $0) <= QAWorkspaceMetricContract.frameTolerance
-                } ?? true)
-        })
+        XCTAssertTrue(
+            waitUntil(timeout: 5) {
+                abs(window.frame.width - width) <= QAWorkspaceMetricContract.frameTolerance
+                    && (height.map {
+                        abs(window.frame.height - $0) <= QAWorkspaceMetricContract.frameTolerance
+                    } ?? true)
+            })
         RunLoop.current.run(until: Date().addingTimeInterval(0.25))
     }
 
@@ -250,9 +254,9 @@ extension ScholiumUITests {
             return
         }
         guard targetIdentifier.hasPrefix("scholium-main-"),
-              let windowID = UUID(
-                  uuidString: String(targetIdentifier.suffix(36))
-              )
+            let windowID = UUID(
+                uuidString: String(targetIdentifier.suffix(36))
+            )
         else {
             XCTFail("The requested workspace must expose its native scene identity.")
             return
@@ -264,7 +268,6 @@ extension ScholiumUITests {
         )
         RunLoop.current.run(until: Date().addingTimeInterval(1))
     }
-
 
     @MainActor
     func waitForCurrentDocumentSurface() {
@@ -281,7 +284,6 @@ extension ScholiumUITests {
             window.descendants(matching: .any)["scholium.settings.root"].exists
         } ?? app.windows.firstMatch
     }
-
 
     @MainActor
     func documentSurfaceIsUsable(for relativePath: String? = nil) -> Bool {
@@ -433,16 +435,16 @@ extension ScholiumUITests {
             let modeGroup = app.descendants(matching: .any)[
                 "scholium.inspectorMode"
             ].firstMatch
-            XCTAssertTrue(waitUntil(timeout: 8) {
-                modeGroup.value as? String == modeLabel
-            })
+            XCTAssertTrue(
+                waitUntil(timeout: 8) {
+                    modeGroup.value as? String == modeLabel
+                })
         }
         let scrollableInspector = app.scrollViews[
             "scholium.researchInspector"
         ].firstMatch
         return scrollableInspector.exists ? scrollableInspector : inspector
     }
-
 
     @MainActor
     func openNote(
@@ -534,9 +536,10 @@ extension ScholiumUITests {
         case "Edit":
             if documentModeState(mode) == "Source" {
                 app.typeKey("r", modifierFlags: [.command])
-                XCTAssertTrue(waitUntil(timeout: 8) {
-                    self.documentModeState(mode) == "Review"
-                })
+                XCTAssertTrue(
+                    waitUntil(timeout: 8) {
+                        self.documentModeState(mode) == "Review"
+                    })
             }
             app.typeKey("r", modifierFlags: [.command])
         case "Source":
@@ -594,7 +597,6 @@ extension ScholiumUITests {
             ? chat : sidebarModeControl("Library", in: root)
     }
 
-
     @MainActor
     func clickInspectorVisibilityControl(in root: XCUIElement? = nil) {
         let control = inspectorVisibilityControl(in: root)
@@ -615,16 +617,16 @@ extension ScholiumUITests {
         ).click()
     }
 
-
     @MainActor
     func documentTitle(in root: XCUIElement? = nil) -> String? {
         let window: XCUIElement
         if let root {
             window = root
         } else {
-            window = app.windows.matching(
-                NSPredicate(format: "identifier BEGINSWITH %@", "scholium-main-")
-            ).firstMatch
+            window =
+                app.windows.matching(
+                    NSPredicate(format: "identifier BEGINSWITH %@", "scholium-main-")
+                ).firstMatch
         }
         guard window.exists else { return nil }
         return window.title
@@ -632,9 +634,11 @@ extension ScholiumUITests {
 
     @MainActor
     func documentTitleElement(in root: XCUIElement? = nil) -> XCUIElement {
-        let window = root ?? app.windows.matching(
-            NSPredicate(format: "identifier BEGINSWITH %@", "scholium-main-")
-        ).firstMatch
+        let window =
+            root
+            ?? app.windows.matching(
+                NSPredicate(format: "identifier BEGINSWITH %@", "scholium-main-")
+            ).firstMatch
         guard let title = documentTitle(in: window) else {
             return window.staticTexts.firstMatch
         }
@@ -658,7 +662,8 @@ extension ScholiumUITests {
     func enterLivePreview(in root: XCUIElement? = nil) -> XCUIElement {
         selectDocumentMode("Edit", in: root)
 
-        let editor = root?.descendants(matching: .any)["Markdown editor, Edit mode"]
+        let editor =
+            root?.descendants(matching: .any)["Markdown editor, Edit mode"]
             ?? app.descendants(matching: .any)["Markdown editor, Edit mode"]
         XCTAssertTrue(editor.waitForExistence(timeout: 8))
         XCTAssertTrue(waitUntil(timeout: 8) { editor.isHittable })
@@ -708,7 +713,8 @@ extension ScholiumUITests {
 
     @MainActor
     func authorizePortableFolder(_ folder: URL, in owner: XCUIElement? = nil) {
-        let authorizeButton = owner == nil
+        let authorizeButton =
+            owner == nil
             ? app.buttons["Authorize This Folder"]
             : app.buttons["Authorize folder containing Works"]
         XCTAssertTrue(authorizeButton.waitForExistence(timeout: 5))
@@ -786,10 +792,12 @@ extension ScholiumUITests {
         // registry only after the app has configured this disposable
         // Triptych. The CLI then exercises the real packaged boundary without
         // receiving a synthetic assignment or touching researcher state.
-        let appRegistry = homeDirectory
+        let appRegistry =
+            homeDirectory
             .appendingPathComponent("ApplicationSupport", isDirectory: true)
             .appendingPathComponent("Workspace", isDirectory: true)
-        let cliRegistry = homeDirectory
+        let cliRegistry =
+            homeDirectory
             .appendingPathComponent("registry", isDirectory: true)
         guard FileManager.default.fileExists(atPath: appRegistry.path) else {
             throw NSError(
@@ -797,7 +805,7 @@ extension ScholiumUITests {
                 code: 2,
                 userInfo: [
                     NSLocalizedDescriptionKey:
-                        "The isolated QA registry is unavailable.",
+                        "The isolated QA registry is unavailable."
                 ]
             )
         }
@@ -808,7 +816,8 @@ extension ScholiumUITests {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let executable = repositoryRoot
+        let executable =
+            repositoryRoot
             .appendingPathComponent(".build/qa-swiftpm/debug/scholium")
         XCTAssertTrue(FileManager.default.isExecutableFile(atPath: executable.path))
         let process = Process()
@@ -864,7 +873,6 @@ extension ScholiumUITests {
         return ["sha256": digest, "byteCount": data.count]
     }
 
-
     func createIsolatedTriptych() throws {
         // The Xcode 26.6 runner can deny a sandboxed test bundle direct writes
         // to the literal /tmp root. Its process-specific temporary directory
@@ -889,7 +897,8 @@ extension ScholiumUITests {
         let sourceRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let stagedFixturePath = ProcessInfo.processInfo.environment["SCHOLIUM_QA_FIXTURES"]
+        let stagedFixturePath =
+            ProcessInfo.processInfo.environment["SCHOLIUM_QA_FIXTURES"]
             .flatMap { $0.isEmpty ? nil : $0 }
             ?? sourceRoot.appendingPathComponent(".build/qa-runtime/fixtures", isDirectory: true).path
         let stagedFixtures = URL(fileURLWithPath: stagedFixturePath, isDirectory: true)
@@ -899,7 +908,7 @@ extension ScholiumUITests {
                 code: 2,
                 userInfo: [
                     NSLocalizedDescriptionKey:
-                        "The disposable TestVaults copy was not staged by build-qa-app.sh.",
+                        "The disposable TestVaults copy was not staged by build-qa-app.sh."
                 ]
             )
         }
@@ -925,14 +934,15 @@ extension ScholiumUITests {
                 code: 3,
                 userInfo: [
                     NSLocalizedDescriptionKey:
-                        "The static TestVault anchor is missing: \(staticAnchor.lastPathComponent)",
+                        "The static TestVault anchor is missing: \(staticAnchor.lastPathComponent)"
                 ]
             )
         }
         if name.contains("testNativeFolderSelectionAndArrowKeysOwnDisclosure")
             || name.contains(
                 "testNativeSidebarToggleAndLibraryTriptychIdentityRemainAvailable"
-            ) {
+            )
+        {
             let cluster = analyses.appendingPathComponent(
                 "Cluster-01",
                 isDirectory: true
@@ -979,18 +989,18 @@ extension ScholiumUITests {
             try write(
                 existingVisualFixture + #"""
 
-                ## Mixed-script measure fixture
+                    ## Mixed-script measure fixture
 
-                A readable scholarly line should hold an argument together without making the eye travel across the entire window. This paragraph repeats enough conceptual structure to expose the selected measure, its centering, and its relation to the surrounding editorial panes.
+                    A readable scholarly line should hold an argument together without making the eye travel across the entire window. This paragraph repeats enough conceptual structure to expose the selected measure, its centering, and its relation to the surrounding editorial panes.
 
-                中文段落用于检查混合文字在默认正文宽度下的换行。价值、理由、反对意见与回应应当保持清楚的节奏，同时窄窗口必须自然回流，不能产生整页横向阅读滚动。
+                    中文段落用于检查混合文字在默认正文宽度下的换行。价值、理由、反对意见与回应应当保持清楚的节奏，同时窄窗口必须自然回流，不能产生整页横向阅读滚动。
 
-                $$
-                \int_0^1 x^2\,dx = \frac{1}{3}
-                $$
+                    $$
+                    \int_0^1 x^2\,dx = \frac{1}{3}
+                    $$
 
-                A final long paragraph makes the lower page rhythm visible after tables, code, mathematics, and callouts. It remains synthetic, contains no private research material, and exists only inside this test-owned Triptych copy.
-                """# + "\n",
+                    A final long paragraph makes the lower page rhythm visible after tables, code, mathematics, and callouts. It remains synthetic, contains no private research material, and exists only inside this test-owned Triptych copy.
+                    """# + "\n",
                 to: visualNoteURL
             )
         }
@@ -1101,15 +1111,18 @@ extension ScholiumUITests {
         terminateRunningQAApplications()
         app.launch()
         guard app.windows.firstMatch.waitForExistence(timeout: 15),
-              waitUntil(timeout: readyTimeout, condition: {
-                  self.documentSurfaceIsUsable()
-              }) else {
+            waitUntil(
+                timeout: readyTimeout,
+                condition: {
+                    self.documentSurfaceIsUsable()
+                })
+        else {
             throw NSError(
                 domain: "ScholiumUITests.Configuration",
                 code: 4,
                 userInfo: [
                     NSLocalizedDescriptionKey:
-                        "The fixture preflight did not create current portable identities.",
+                        "The fixture preflight did not create current portable identities."
                 ]
             )
         }
@@ -1142,7 +1155,6 @@ extension ScholiumUITests {
     func write(_ string: String, to url: URL) throws {
         try Data(string.utf8).write(to: url, options: .atomic)
     }
-
 
     func documentHeadingStudySource() -> String {
         #"""
@@ -1262,16 +1274,19 @@ extension ScholiumUITests {
 
     @MainActor
     func searchResult(named title: String, in container: XCUIElement? = nil) -> XCUIElement {
-        let rows = if let container {
-            container.descendants(matching: .any)
-        } else {
-            app.descendants(matching: .any)
-        }
-        return rows.matching(NSPredicate(
-            format: "identifier BEGINSWITH %@ AND label BEGINSWITH %@",
-            "scholium.searchResult.",
-            "\(title),"
-        )).firstMatch
+        let rows =
+            if let container {
+                container.descendants(matching: .any)
+            } else {
+                app.descendants(matching: .any)
+            }
+        return rows.matching(
+            NSPredicate(
+                format: "identifier BEGINSWITH %@ AND label BEGINSWITH %@",
+                "scholium.searchResult.",
+                "\(title),"
+            )
+        ).firstMatch
     }
 
     private func seedManagedTopicAliases(
@@ -1284,9 +1299,10 @@ extension ScholiumUITests {
         )
         let identityDocument = try XCTUnwrap(
             try JSONSerialization.jsonObject(
-                with: Data(contentsOf: controlDirectory.appendingPathComponent(
-                    "identities.json"
-                ))
+                with: Data(
+                    contentsOf: controlDirectory.appendingPathComponent(
+                        "identities.json"
+                    ))
             ) as? [String: Any]
         )
         let matchingRecords = (identityDocument["records"] as? [[String: Any]] ?? [])
@@ -1303,8 +1319,8 @@ extension ScholiumUITests {
             "noteID": noteID,
             "fields": [
                 "aliases": [
-                    "array": ["_0": encodedAliases],
-                ],
+                    "array": ["_0": encodedAliases]
+                ]
             ],
         ]
         let destinationDirectory = controlDirectory.appendingPathComponent(
@@ -1386,11 +1402,13 @@ extension ScholiumUITests {
         let noteID = try XCTUnwrap(identity["id"] as? String)
         let bindings: [String: Any] = [
             "schemaVersion": 1,
-            "bindings": [[
-                "note_id": noteID,
-                "library": ["kind": "user"],
-                "item_key": itemKey,
-            ]],
+            "bindings": [
+                [
+                    "note_id": noteID,
+                    "library": ["kind": "user"],
+                    "item_key": itemKey,
+                ]
+            ],
         ]
         let destination = controlDirectory.appendingPathComponent(
             "analysis-zotero-bindings.json"

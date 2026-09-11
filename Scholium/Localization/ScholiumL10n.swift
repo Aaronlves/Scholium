@@ -1,5 +1,6 @@
 import Foundation
 import ScholiumContracts
+
 /// Application-owned interface language.
 ///
 /// Researcher-authored prose, quotations, citations, note titles, paths, and

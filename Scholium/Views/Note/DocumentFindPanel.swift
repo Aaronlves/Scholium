@@ -1,5 +1,5 @@
-import SwiftUI
 import AppKit
+import SwiftUI
 
 enum DocumentFindPresentationOperation: Hashable, Sendable {
     case execute(DocumentFindAction)
@@ -171,7 +171,8 @@ struct DocumentFindPanel: View {
     }
 
     var body: some View {
-        let columns = usesCompactLayout
+        let columns =
+            usesCompactLayout
             ? AnyLayout(VStackLayout(alignment: .trailing, spacing: 8))
             : AnyLayout(HStackLayout(alignment: .top, spacing: 8))
         VStack(alignment: .leading, spacing: 8) {
@@ -229,7 +230,11 @@ struct DocumentFindPanel: View {
                     .accessibilityIdentifier("scholium.documentFind.error")
             }
         }
-        .onGeometryChange(for: Bool.self) { $0.size.width < 420 } action: { usesCompactLayout = $0 }
+        .onGeometryChange(for: Bool.self) {
+            $0.size.width < 420
+        } action: {
+            usesCompactLayout = $0
+        }
         .buttonStyle(.automatic)
         .menuStyle(.automatic)
         .tint(nil as Color?)
@@ -238,7 +243,12 @@ struct DocumentFindPanel: View {
         .scholiumFloatingSurface(in: panelShape)
         .containerShape(panelShape)
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: model.replacementIsPresented)
-        .transaction { if reduceMotion { $0.animation = nil; $0.disablesAnimations = true } }
+        .transaction {
+            if reduceMotion {
+                $0.animation = nil
+                $0.disablesAnimations = true
+            }
+        }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Document Find")
         .accessibilityIdentifier("scholium.documentFind")
@@ -284,9 +294,11 @@ struct DocumentFindPanel: View {
     }
 
     private var activeOptions: String {
-        [model.caseSensitive ? ScholiumL10n.string("Case Sensitive") : nil,
-         model.wholeWord ? ScholiumL10n.string("Whole Word") : nil]
-            .compactMap { $0 }.joined(separator: " · ")
+        [
+            model.caseSensitive ? ScholiumL10n.string("Case Sensitive") : nil,
+            model.wholeWord ? ScholiumL10n.string("Whole Word") : nil,
+        ]
+        .compactMap { $0 }.joined(separator: " · ")
     }
     private var matchDescription: String {
         if model.isSearching { return ScholiumL10n.string("Finding…") }
@@ -296,8 +308,9 @@ struct DocumentFindPanel: View {
     }
     private var matchAccessibilityLabel: String {
         guard canNavigate else { return matchDescription }
-        return String(localized: "Match \(model.result.current) of \(model.result.total)",
-                      table: "Localizable", bundle: .module)
+        return String(
+            localized: "Match \(model.result.current) of \(model.result.total)",
+            table: "Localizable", bundle: .module)
     }
 }
 
@@ -314,11 +327,19 @@ struct DocumentFindOverlay: View {
                     .frame(width: min(560, max(0, geometry.size.width - 24)))
                     .padding(12)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                    .transition(reduceMotion ? .identity : .offset(x: direction == .leftToRight ? 14 : -14)
-                        .combined(with: .opacity))
+                    .transition(
+                        reduceMotion
+                            ? .identity
+                            : .offset(x: direction == .leftToRight ? 14 : -14)
+                                .combined(with: .opacity))
             }
         }
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: model.isPresented)
-        .transaction { if reduceMotion { $0.animation = nil; $0.disablesAnimations = true } }
+        .transaction {
+            if reduceMotion {
+                $0.animation = nil
+                $0.disablesAnimations = true
+            }
+        }
     }
 }

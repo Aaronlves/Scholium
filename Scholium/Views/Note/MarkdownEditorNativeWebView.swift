@@ -22,7 +22,8 @@ final class WindowAttachedWebView: WKWebView {
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         guard window != nil,
-              let action = onFirstWindowAttachment else { return }
+            let action = onFirstWindowAttachment
+        else { return }
         onFirstWindowAttachment = nil
         action()
     }
@@ -34,8 +35,9 @@ final class WindowAttachedWebView: WKWebView {
         mode: MarkdownEditorMode
     ) {
         guard clientX.isFinite,
-              clientY.isFinite,
-              window != nil else { return }
+            clientY.isFinite,
+            window != nil
+        else { return }
         let menu = makeEditorContextMenu(
             context: context,
             mode: mode,
@@ -65,11 +67,12 @@ final class WindowAttachedWebView: WKWebView {
             forClasses: [NSURL.self],
             options: [.urlReadingFileURLsOnly: true]
         ) as? [URL],
-           let url = urls.first,
-           let contentType = try? url.resourceValues(
-            forKeys: [.contentTypeKey]
-           ).contentType,
-           contentType.conforms(to: .image) {
+            let url = urls.first,
+            let contentType = try? url.resourceValues(
+                forKeys: [.contentTypeKey]
+            ).contentType,
+            contentType.conforms(to: .image)
+        {
             return .file(url)
         }
 
@@ -77,14 +80,17 @@ final class WindowAttachedWebView: WKWebView {
             NSPasteboard.PasteboardType("public.png"),
             .tiff,
         ]
-        let candidates = preferredTypes + (pasteboard.types ?? []).filter {
-            !preferredTypes.contains($0)
-        }
+        let candidates =
+            preferredTypes
+            + (pasteboard.types ?? []).filter {
+                !preferredTypes.contains($0)
+            }
         for pasteboardType in candidates {
             guard let type = UTType(pasteboardType.rawValue),
-                  type.conforms(to: .image),
-                  let data = pasteboard.data(forType: pasteboardType),
-                  !data.isEmpty else { continue }
+                type.conforms(to: .image),
+                let data = pasteboard.data(forType: pasteboardType),
+                !data.isEmpty
+            else { continue }
             let pathExtension = type.preferredFilenameExtension ?? "png"
             return .data(
                 data,
@@ -114,18 +120,20 @@ final class WindowAttachedWebView: WKWebView {
         menu.autoenablesItems = false
         let hasSelection = context.selections.contains(where: \.isNonempty)
 
-        menu.addItem(standardEditItem(
-            ScholiumL10n.string("Cut"),
-            action: #selector(NSText.cut(_:)),
-            identifier: "cut",
-            isEnabled: hasSelection && !context.composing
-        ))
-        menu.addItem(standardEditItem(
-            ScholiumL10n.string("Copy"),
-            action: #selector(NSText.copy(_:)),
-            identifier: "copy",
-            isEnabled: hasSelection
-        ))
+        menu.addItem(
+            standardEditItem(
+                ScholiumL10n.string("Cut"),
+                action: #selector(NSText.cut(_:)),
+                identifier: "cut",
+                isEnabled: hasSelection && !context.composing
+            ))
+        menu.addItem(
+            standardEditItem(
+                ScholiumL10n.string("Copy"),
+                action: #selector(NSText.copy(_:)),
+                identifier: "copy",
+                isEnabled: hasSelection
+            ))
         let pasteItem = standardEditItem(
             ScholiumL10n.string("Paste"),
             action: #selector(performPaste(_:)),
@@ -135,27 +143,30 @@ final class WindowAttachedWebView: WKWebView {
         pasteItem.target = self
         menu.addItem(pasteItem)
         menu.addItem(.separator())
-        menu.addItem(standardEditItem(
-            ScholiumL10n.string("Select All"),
-            action: #selector(NSResponder.selectAll(_:)),
-            identifier: "selectAll",
-            isEnabled: !context.composing
-        ))
+        menu.addItem(
+            standardEditItem(
+                ScholiumL10n.string("Select All"),
+                action: #selector(NSResponder.selectAll(_:)),
+                identifier: "selectAll",
+                isEnabled: !context.composing
+            ))
         menu.addItem(.separator())
         menu.addItem(spellingAndGrammarItem())
 
         // System edit actions are always first. Scholium adds only commands
         // whose meaning depends on one collapsed, clicked Edit construct.
         guard mode == .livePreview,
-              !hasSelection,
-              !context.composing else { return menu }
+            !hasSelection,
+            !context.composing
+        else { return menu }
         let available = Set(context.availableCommands)
         var contextualItems: [NSMenuItem] = []
         if available.contains(.toggleTask) {
-            contextualItems.append(editorMenuItem(
-                ScholiumL10n.string("Toggle Task"),
-                command: .toggleTask
-            ))
+            contextualItems.append(
+                editorMenuItem(
+                    ScholiumL10n.string("Toggle Task"),
+                    command: .toggleTask
+                ))
         }
 
         let tableCommands: [(String, MarkdownEditorCommand)] = [
@@ -250,8 +261,9 @@ final class WindowAttachedWebView: WKWebView {
 
     @objc private func performEditorCommand(_ sender: NSMenuItem) {
         guard let rawValue = sender.representedObject as? String,
-              let command = MarkdownEditorCommand(rawValue: rawValue),
-              let editorSession else { return }
+            let command = MarkdownEditorCommand(rawValue: rawValue),
+            let editorSession
+        else { return }
         Task { @MainActor in
             do {
                 try await editorSession.perform(command)

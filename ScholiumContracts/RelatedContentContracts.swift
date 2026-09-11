@@ -216,10 +216,15 @@ public struct RelatedContentPassage: Codable, Hashable, Sendable, Identifiable {
     public var id: String {
         "\(candidate.note.vaultID):\(candidate.note.relativePath):\(candidate.fingerprint.sha256):\(range.utf16LowerBound)"
     }
-    public init(candidate: RelatedContentCandidate, range: SearchSourceRange, source: String,
-                displayText: String, matches: [RelatedContentSeedTermMatch]) {
-        self.candidate = candidate; self.range = range; self.source = source
-        self.displayText = displayText; self.matches = matches
+    public init(
+        candidate: RelatedContentCandidate, range: SearchSourceRange, source: String,
+        displayText: String, matches: [RelatedContentSeedTermMatch]
+    ) {
+        self.candidate = candidate
+        self.range = range
+        self.source = source
+        self.displayText = displayText
+        self.matches = matches
     }
 }
 
@@ -227,7 +232,8 @@ public struct RelatedContentSource: Sendable {
     public let candidate: RelatedContentCandidate
     public let document: NoteDocument
     public init(candidate: RelatedContentCandidate, document: NoteDocument) {
-        self.candidate = candidate; self.document = document
+        self.candidate = candidate
+        self.document = document
     }
 }
 

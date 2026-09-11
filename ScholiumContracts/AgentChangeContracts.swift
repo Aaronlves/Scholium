@@ -119,10 +119,11 @@ public struct AgentChangeEvidence: Sendable {
 
     public func exactUpdateComparison() throws -> ExactSourceComparison {
         guard change.operation == .update || change.operation == .move || change.operation.isRecordMutation,
-              let beforeData,
-              let afterData,
-              let beforeFingerprint = change.beforeFingerprint,
-              let afterFingerprint = change.afterFingerprint else {
+            let beforeData,
+            let afterData,
+            let beforeFingerprint = change.beforeFingerprint,
+            let afterFingerprint = change.afterFingerprint
+        else {
             throw AgentChangeError.undoUnavailable(change.id)
         }
         return try ExactSourceComparisonBuilder.build(
@@ -212,11 +213,16 @@ public struct AgentNoteUpdatePreview: Sendable {
     public let comparison: ExactSourceComparison
     public let movePreview: AgentNoteMovePreview?
     public let linkedComparisons: [AgentMoveSourceComparison]
-    public init(noteID: UUID, relativePath: String, comparison: ExactSourceComparison,
-                movePreview: AgentNoteMovePreview? = nil, linkedComparisons: [AgentMoveSourceComparison] = [], operation: AgentChangeOperation = .update) {
+    public init(
+        noteID: UUID, relativePath: String, comparison: ExactSourceComparison,
+        movePreview: AgentNoteMovePreview? = nil, linkedComparisons: [AgentMoveSourceComparison] = [], operation: AgentChangeOperation = .update
+    ) {
         self.operation = operation
-        self.noteID = noteID; self.relativePath = relativePath; self.comparison = comparison
-        self.movePreview = movePreview; self.linkedComparisons = linkedComparisons
+        self.noteID = noteID
+        self.relativePath = relativePath
+        self.comparison = comparison
+        self.movePreview = movePreview
+        self.linkedComparisons = linkedComparisons
     }
 }
 

@@ -1,19 +1,23 @@
 import Foundation
-import Testing
 import ScholiumContracts
+import Testing
+
 @testable import ScholiumCore
 
 @Suite("Portable Triptych control directory")
 struct TriptychControlTests {
     @Test("Attachment replacement preserves an external final-window edit and reports uncertain post-swap results")
     func attachmentReplacementConflictAndReadback() async throws {
-        let fixture = try Fixture(); defer { fixture.remove() }
+        let fixture = try Fixture()
+        defer { fixture.remove() }
         let seed = TriptychControlStore(worksVaultURL: fixture.works)
         let vault = UUID()
         _ = try await seed.bootstrap(vaultIDs: [.paperAnalysis: UUID(), .topicKnowledge: UUID(), .output: vault])
         let identity = try #require(try await seed.identity(forVaultID: vault, relativePath: "Work.md", fingerprint: .init(content: "Work")))
-        let original = try await seed.registerDocumentAttachment(noteID: identity.id, vaultID: vault, location: .external(try .init(filename: "Original.pdf"))).record
-        let replacement = DocumentAttachmentRecord(id: original.id, noteID: identity.id, vaultID: vault, location: .external(try .init(filename: "Replacement.pdf")))
+        let original = try await seed.registerDocumentAttachment(noteID: identity.id, vaultID: vault, location: .external(try .init(filename: "Original.pdf")))
+            .record
+        let replacement = DocumentAttachmentRecord(
+            id: original.id, noteID: identity.id, vaultID: vault, location: .external(try .init(filename: "Replacement.pdf")))
         let external = DocumentAttachmentRecord(id: original.id, noteID: identity.id, vaultID: vault, location: .external(try .init(filename: "External.pdf")))
         let externalBytes = try AgentRecordChange.attachment(external)
         let conflicting = TriptychControlStore(worksVaultURL: fixture.works, controlWriteHook: { url in try externalBytes.write(to: url, options: .atomic) })
@@ -26,14 +30,18 @@ struct TriptychControlTests {
             try await uncertain.replaceDocumentAttachment(external, with: replacement)
             Issue.record("A post-swap error must not be reported as a successful write.")
         } catch let error as DocumentAttachmentError {
-            guard case .catalogCommitUncertain = error else { Issue.record("Unexpected error: \(error)"); return }
+            guard case .catalogCommitUncertain = error else {
+                Issue.record("Unexpected error: \(error)")
+                return
+            }
         }
         #expect(try await seed.documentAttachmentRecords(noteID: identity.id) == [replacement])
     }
 
     @Test("Portable Note metadata is identity-keyed, revision-checked, and independent of YAML")
     func portableNoteMetadataLifecycle() async throws {
-        let fixture = try Fixture(); defer { fixture.remove() }
+        let fixture = try Fixture()
+        defer { fixture.remove() }
         let store = TriptychControlStore(worksVaultURL: fixture.works)
         let vaultID = UUID()
         let topicVaultID = UUID()
@@ -43,11 +51,12 @@ struct TriptychControlTests {
             .output: UUID(),
         ])
         let sourceRevision = DocumentFingerprint(content: "# Authored source\n")
-        let identity = try #require(try await store.identity(
-            forVaultID: vaultID,
-            relativePath: "Paper.md",
-            fingerprint: sourceRevision
-        ))
+        let identity = try #require(
+            try await store.identity(
+                forVaultID: vaultID,
+                relativePath: "Paper.md",
+                fingerprint: sourceRevision
+            ))
         let first = try await store.saveNoteMetadata(
             noteID: identity.id,
             fields: [
@@ -73,11 +82,12 @@ struct TriptychControlTests {
                 expectedRevision: first.revision
             )
         }
-        let topicIdentity = try #require(try await store.identity(
-            forVaultID: topicVaultID,
-            relativePath: "Topic.md",
-            fingerprint: DocumentFingerprint(content: "# Topic\n")
-        ))
+        let topicIdentity = try #require(
+            try await store.identity(
+                forVaultID: topicVaultID,
+                relativePath: "Topic.md",
+                fingerprint: DocumentFingerprint(content: "# Topic\n")
+            ))
         await #expect(throws: NoteMetadataError.self) {
             try await store.saveNoteMetadata(
                 noteID: topicIdentity.id,
@@ -103,7 +113,8 @@ struct TriptychControlTests {
 
     @Test("Saved custom definitions immediately govern Metadata records for their role")
     func customMetadataDefinitionLifecycle() async throws {
-        let fixture = try Fixture(); defer { fixture.remove() }
+        let fixture = try Fixture()
+        defer { fixture.remove() }
         let store = TriptychControlStore(worksVaultURL: fixture.works)
         let analysisVaultID = UUID()
         let topicVaultID = UUID()
@@ -115,7 +126,7 @@ struct TriptychControlTests {
         let settingsSnapshot = try await store.settings()
         var settings = settingsSnapshot.settings
         settings.metadataFields[.paperAnalysis] = [
-            MetadataFieldDefinition(key: "argument_stage", valueKind: .text),
+            MetadataFieldDefinition(key: "argument_stage", valueKind: .text)
         ]
         _ = try await store.saveSettings(
             settings,
@@ -124,11 +135,12 @@ struct TriptychControlTests {
         let catalog = try await store.metadataCatalog()
         #expect(catalog.contract(for: "argument_stage", profile: .analysis) != nil)
 
-        let analysis = try #require(try await store.identity(
-            forVaultID: analysisVaultID,
-            relativePath: "Argument.md",
-            fingerprint: DocumentFingerprint(content: "Argument")
-        ))
+        let analysis = try #require(
+            try await store.identity(
+                forVaultID: analysisVaultID,
+                relativePath: "Argument.md",
+                fingerprint: DocumentFingerprint(content: "Argument")
+            ))
         let saved = try await store.saveNoteMetadata(
             noteID: analysis.id,
             fields: ["argument_stage": .string("reply")],
@@ -136,11 +148,12 @@ struct TriptychControlTests {
         )
         #expect(saved.record.fields["argument_stage"] == .string("reply"))
 
-        let topic = try #require(try await store.identity(
-            forVaultID: topicVaultID,
-            relativePath: "Topic.md",
-            fingerprint: DocumentFingerprint(content: "Topic")
-        ))
+        let topic = try #require(
+            try await store.identity(
+                forVaultID: topicVaultID,
+                relativePath: "Topic.md",
+                fingerprint: DocumentFingerprint(content: "Topic")
+            ))
         await #expect(throws: NoteMetadataError.self) {
             try await store.saveNoteMetadata(
                 noteID: topic.id,
@@ -152,7 +165,8 @@ struct TriptychControlTests {
 
     @Test("One invalid Metadata record is fingerprint-bound and archived without disturbing neighbors")
     func invalidMetadataRecordRecoveryIsSingleRecord() async throws {
-        let fixture = try Fixture(); defer { fixture.remove() }
+        let fixture = try Fixture()
+        defer { fixture.remove() }
         let store = TriptychControlStore(worksVaultURL: fixture.works)
         let analysisVaultID = UUID()
         _ = try await store.bootstrap(vaultIDs: [
@@ -160,16 +174,18 @@ struct TriptychControlTests {
             .topicKnowledge: UUID(),
             .output: UUID(),
         ])
-        let firstIdentity = try #require(try await store.identity(
-            forVaultID: analysisVaultID,
-            relativePath: "First.md",
-            fingerprint: DocumentFingerprint(content: "First")
-        ))
-        let secondIdentity = try #require(try await store.identity(
-            forVaultID: analysisVaultID,
-            relativePath: "Second.md",
-            fingerprint: DocumentFingerprint(content: "Second")
-        ))
+        let firstIdentity = try #require(
+            try await store.identity(
+                forVaultID: analysisVaultID,
+                relativePath: "First.md",
+                fingerprint: DocumentFingerprint(content: "First")
+            ))
+        let secondIdentity = try #require(
+            try await store.identity(
+                forVaultID: analysisVaultID,
+                relativePath: "Second.md",
+                fingerprint: DocumentFingerprint(content: "Second")
+            ))
         let first = try await store.saveNoteMetadata(
             noteID: firstIdentity.id,
             fields: ["title": .string("First")],
@@ -267,11 +283,12 @@ struct TriptychControlTests {
         )
         _ = try await store.bootstrap(vaultIDs: vaultIDs)
         let vaultID = try #require(vaultIDs[.output])
-        let firstIdentity = try #require(try await store.identity(
-            forVaultID: vaultID,
-            relativePath: "First.md",
-            fingerprint: .init(content: "First")
-        ))
+        let firstIdentity = try #require(
+            try await store.identity(
+                forVaultID: vaultID,
+                relativePath: "First.md",
+                fingerprint: .init(content: "First")
+            ))
         let firstNote = firstIdentity.id
         let secondNote = UUID()
         let location = AttachmentLocation.external(
@@ -299,8 +316,9 @@ struct TriptychControlTests {
         #expect(reused.record != first.record)
         #expect(second.created)
         #expect(second.record.id != first.record.id)
-        #expect(Set(try await store.documentAttachmentRecords(noteID: firstNote))
-            == Set([first.record, reused.record]))
+        #expect(
+            Set(try await store.documentAttachmentRecords(noteID: firstNote))
+                == Set([first.record, reused.record]))
         #expect(try await store.documentAttachmentRecords().count == 3)
 
         // A filename is only a portable descriptor. Two local files with the
@@ -313,8 +331,9 @@ struct TriptychControlTests {
             location: location
         )
         try await store.replaceDocumentAttachment(first.record, with: sameFilename)
-        #expect(try await store.documentAttachmentRecords(noteID: firstNote)
-            .count == 2)
+        #expect(
+            try await store.documentAttachmentRecords(noteID: firstNote)
+                .count == 2)
 
         let firstURL = fixture.root
             .appendingPathComponent(".scholium/document-attachments/v2")
@@ -327,10 +346,12 @@ struct TriptychControlTests {
 
         try await store.removeDocumentAttachment(first.record)
         await #expect(throws: DocumentAttachmentError.self) { try await store.removeDocumentAttachment(first.record) }
-        #expect(try await store.documentAttachmentRecords(noteID: firstNote)
-            == [reused.record])
-        #expect(try await store.documentAttachmentRecords(noteID: secondNote)
-            == [second.record])
+        #expect(
+            try await store.documentAttachmentRecords(noteID: firstNote)
+                == [reused.record])
+        #expect(
+            try await store.documentAttachmentRecords(noteID: secondNote)
+                == [second.record])
     }
 
     @Test("Legacy attachment catalogs remain opaque and cannot be bootstrapped")
@@ -346,14 +367,16 @@ struct TriptychControlTests {
         let store = TriptychControlStore(worksVaultURL: fixture.works)
 
         await #expect(throws: TriptychControlError.self) {
-            _ = try await store.bootstrap(vaultIDs: Dictionary(
-                uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map { ($0, UUID()) }
-            ))
+            _ = try await store.bootstrap(
+                vaultIDs: Dictionary(
+                    uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map { ($0, UUID()) }
+                ))
         }
         #expect(try Data(contentsOf: record) == bytes)
-        #expect(!FileManager.default.fileExists(
-            atPath: fixture.root.appendingPathComponent(".scholium/manifest.json").path
-        ))
+        #expect(
+            !FileManager.default.fileExists(
+                atPath: fixture.root.appendingPathComponent(".scholium/manifest.json").path
+            ))
     }
 
     @Test("Current attachment catalogs are validated before use")
@@ -407,12 +430,13 @@ struct TriptychControlTests {
                 as? [String: Any]
         )
 
-        #expect(Set(object.keys) == [
-            "schemaVersion",
-            "metadataFields",
-            "about",
-            "attentionDismissalDays",
-        ])
+        #expect(
+            Set(object.keys) == [
+                "schemaVersion",
+                "metadataFields",
+                "about",
+                "attentionDismissalDays",
+            ])
         #expect((object["schemaVersion"] as? NSNumber)?.intValue == 8)
     }
 
@@ -422,9 +446,10 @@ struct TriptychControlTests {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let data = try Data(contentsOf: repositoryRoot.appendingPathComponent(
-            "Tools/Fixtures/qa-triptych-settings-v8.json"
-        ))
+        let data = try Data(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Tools/Fixtures/qa-triptych-settings-v8.json"
+            ))
         let settings = try JSONDecoder().decode(TriptychSettings.self, from: data)
 
         #expect(settings.schemaVersion == TriptychSettings.currentSchemaVersion)
@@ -432,12 +457,13 @@ struct TriptychControlTests {
         let object = try #require(
             JSONSerialization.jsonObject(with: data) as? [String: Any]
         )
-        #expect(Set(object.keys) == [
-            "schemaVersion",
-            "metadataFields",
-            "about",
-            "attentionDismissalDays",
-        ])
+        #expect(
+            Set(object.keys) == [
+                "schemaVersion",
+                "metadataFields",
+                "about",
+                "attentionDismissalDays",
+            ])
     }
 
     @Test("Properties configuration preserves order and removes duplicate fields")
@@ -522,12 +548,14 @@ struct TriptychControlTests {
         )
         let loaded = try await store.settings()
 
-        #expect(loaded.settings.metadataFields[.output]?.map(\.key) == [
-            "target_words", "draft_stage",
-        ])
-        #expect(loaded.settings.metadataFields[.output]?[1].allowedValues == [
-            "complete", "review", "draft",
-        ])
+        #expect(
+            loaded.settings.metadataFields[.output]?.map(\.key) == [
+                "target_words", "draft_stage",
+            ])
+        #expect(
+            loaded.settings.metadataFields[.output]?[1].allowedValues == [
+                "complete", "review", "draft",
+            ])
     }
 
     @Test("Missing vault Properties entries receive role defaults")
@@ -535,7 +563,7 @@ struct TriptychControlTests {
         let settings = TriptychSettings(about: [
             .paperAnalysis: VaultAboutConfiguration(
                 visibleFields: ["authors"]
-            ),
+            )
         ])
 
         #expect(settings.about.count == WorkspaceVaultSlot.allCases.count)
@@ -569,11 +597,13 @@ struct TriptychControlTests {
 
     @Test("Settings compiler rejects authored About fields before write")
     func settingsCompilerRejectsInvalidCandidates() async throws {
-        let fixture = try Fixture(); defer { fixture.remove() }
+        let fixture = try Fixture()
+        defer { fixture.remove() }
         let store = TriptychControlStore(worksVaultURL: fixture.works)
-        _ = try await store.bootstrap(vaultIDs: Dictionary(
-            uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map { ($0, UUID()) }
-        ))
+        _ = try await store.bootstrap(
+            vaultIDs: Dictionary(
+                uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map { ($0, UUID()) }
+            ))
         let initial = try await store.settings()
         var invalid = initial.settings
         invalid.about[.paperAnalysis] = VaultAboutConfiguration(
@@ -606,11 +636,13 @@ struct TriptychControlTests {
 
     @Test("Settings loader distinguishes old, future, corrupt, and current-schema review states")
     func settingsFailureStatesRemainDistinct() async throws {
-        let fixture = try Fixture(); defer { fixture.remove() }
+        let fixture = try Fixture()
+        defer { fixture.remove() }
         let store = TriptychControlStore(worksVaultURL: fixture.works)
-        _ = try await store.bootstrap(vaultIDs: Dictionary(
-            uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map { ($0, UUID()) }
-        ))
+        _ = try await store.bootstrap(
+            vaultIDs: Dictionary(
+                uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map { ($0, UUID()) }
+            ))
         let url = fixture.root.appendingPathComponent(".scholium/settings.json")
 
         var invalidObject = try #require(
@@ -651,11 +683,13 @@ struct TriptychControlTests {
 
     @Test("Typed Settings load preserves repairable data and distinguishes unavailable states")
     func typedSettingsLoadState() async throws {
-        let fixture = try Fixture(); defer { fixture.remove() }
+        let fixture = try Fixture()
+        defer { fixture.remove() }
         let store = TriptychControlStore(worksVaultURL: fixture.works)
-        _ = try await store.bootstrap(vaultIDs: Dictionary(
-            uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map { ($0, UUID()) }
-        ))
+        _ = try await store.bootstrap(
+            vaultIDs: Dictionary(
+                uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map { ($0, UUID()) }
+            ))
         let url = fixture.root.appendingPathComponent(".scholium/settings.json")
         #expect((try await store.settingsLoadState()).authorizesAboutProjection)
 
@@ -667,8 +701,10 @@ struct TriptychControlTests {
         let reviewableBytes = try JSONSerialization.data(withJSONObject: reviewableObject)
         let reviewable = try JSONDecoder().decode(TriptychSettings.self, from: reviewableBytes)
         try reviewableBytes.write(to: url, options: .atomic)
-        guard case .needsReview(let decoded, let revision, let reason) =
-            try await store.settingsLoadState() else {
+        guard
+            case .needsReview(let decoded, let revision, let reason) =
+                try await store.settingsLoadState()
+        else {
             Issue.record("Expected a repairable current-schema state.")
             return
         }
@@ -692,15 +728,17 @@ struct TriptychControlTests {
 
     @Test("An uncoordinated final-window replacement is preserved instead of overwritten")
     func settingsFinalWindowConflict() async throws {
-        let fixture = try Fixture(); defer { fixture.remove() }
+        let fixture = try Fixture()
+        defer { fixture.remove() }
         let external = Data("external replacement".utf8)
         let store = TriptychControlStore(
             worksVaultURL: fixture.works,
             controlWriteHook: { url in try external.write(to: url, options: .atomic) }
         )
-        _ = try await store.bootstrap(vaultIDs: Dictionary(
-            uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map { ($0, UUID()) }
-        ))
+        _ = try await store.bootstrap(
+            vaultIDs: Dictionary(
+                uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map { ($0, UUID()) }
+            ))
         let initial = try await store.settings()
         var candidate = initial.settings
         candidate.attentionDismissalDays = 30
@@ -713,15 +751,17 @@ struct TriptychControlTests {
 
     @Test("Every post-swap Settings failure is commit-uncertain and rereadable")
     func settingsPostSwapFailureIsTyped() async throws {
-        let fixture = try Fixture(); defer { fixture.remove() }
+        let fixture = try Fixture()
+        defer { fixture.remove() }
         let store = TriptychControlStore(
             worksVaultURL: fixture.works,
             controlWriteHook: { _ in },
             controlPostSwapHook: { _ in throw POSIXError(.EIO) }
         )
-        _ = try await store.bootstrap(vaultIDs: Dictionary(
-            uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map { ($0, UUID()) }
-        ))
+        _ = try await store.bootstrap(
+            vaultIDs: Dictionary(
+                uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map { ($0, UUID()) }
+            ))
         let initial = try await store.settings()
         var candidate = initial.settings
         candidate.attentionDismissalDays = 30
@@ -749,7 +789,8 @@ struct TriptychControlTests {
 
     @Test("An identity final-window replacement is preserved instead of publishing a false record")
     func identityFinalWindowConflict() async throws {
-        let fixture = try Fixture(); defer { fixture.remove() }
+        let fixture = try Fixture()
+        defer { fixture.remove() }
         let external = Data("external identity replacement".utf8)
         let store = TriptychControlStore(
             worksVaultURL: fixture.works,
@@ -758,9 +799,10 @@ struct TriptychControlTests {
                 try external.write(to: url, options: .atomic)
             }
         )
-        _ = try await store.bootstrap(vaultIDs: Dictionary(
-            uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map { ($0, UUID()) }
-        ))
+        _ = try await store.bootstrap(
+            vaultIDs: Dictionary(
+                uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map { ($0, UUID()) }
+            ))
 
         await #expect(throws: TriptychControlError.self) {
             _ = try await store.identity(
@@ -780,18 +822,20 @@ struct TriptychControlTests {
 
     @Test("Bootstrap never replaces an identity file claimed by another process")
     func bootstrapIdentityClaimIsNoReplace() async throws {
-        let fixture = try Fixture(); defer { fixture.remove() }
+        let fixture = try Fixture()
+        defer { fixture.remove() }
         let vaultIDs = Dictionary(
             uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map { ($0, UUID()) }
         )
         let seedStore = TriptychControlStore(worksVaultURL: fixture.works)
         _ = try await seedStore.bootstrap(vaultIDs: vaultIDs)
         let analysisVaultID = try #require(vaultIDs[.paperAnalysis])
-        let expected = try #require(await seedStore.identity(
-            forVaultID: analysisVaultID,
-            relativePath: "Concurrent.md",
-            fingerprint: DocumentFingerprint(content: "Concurrent")
-        ))
+        let expected = try #require(
+            await seedStore.identity(
+                forVaultID: analysisVaultID,
+                relativePath: "Concurrent.md",
+                fingerprint: DocumentFingerprint(content: "Concurrent")
+            ))
         let controlURL = fixture.root.appendingPathComponent(".scholium")
         let identitiesURL = controlURL.appendingPathComponent("identities.json")
         let externallyClaimed = try Data(contentsOf: identitiesURL)
@@ -819,11 +863,12 @@ struct TriptychControlTests {
         let ids = Dictionary(uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map { ($0, UUID()) })
         _ = try await store.bootstrap(vaultIDs: ids)
         let analysesID = try #require(ids[.paperAnalysis])
-        let note = try #require(try await store.identity(
-            forVaultID: analysesID,
-            relativePath: "Bound.md",
-            fingerprint: DocumentFingerprint(content: "Bound")
-        ))
+        let note = try #require(
+            try await store.identity(
+                forVaultID: analysesID,
+                relativePath: "Bound.md",
+                fingerprint: DocumentFingerprint(content: "Bound")
+            ))
         let noteID = note.id
         let initial = try await store.zoteroBindings()
         let binding = try AnalysisZoteroBinding(
@@ -855,9 +900,10 @@ struct TriptychControlTests {
     @Test("Binding decode validates item and library identity")
     func bindingDecodeFailsClosed() throws {
         let noteID = UUID()
-        let invalidItem = Data("""
-        {"note_id":"\(noteID.uuidString)","library":{"kind":"user"},"item_key":"../bad"}
-        """.utf8)
+        let invalidItem = Data(
+            """
+            {"note_id":"\(noteID.uuidString)","library":{"kind":"user"},"item_key":"../bad"}
+            """.utf8)
         #expect(throws: (any Error).self) {
             try JSONDecoder().decode(AnalysisZoteroBinding.self, from: invalidItem)
         }
@@ -868,7 +914,8 @@ struct TriptychControlTests {
 
     @Test("Creation recovery cannot purge an identity with a Zotero binding")
     func ordinaryIdentityPurgePreservesBoundIdentity() async throws {
-        let fixture = try Fixture(); defer { fixture.remove() }
+        let fixture = try Fixture()
+        defer { fixture.remove() }
         let store = TriptychControlStore(worksVaultURL: fixture.works)
         let analysesID = UUID()
         _ = try await store.bootstrap(vaultIDs: [
@@ -877,11 +924,12 @@ struct TriptychControlTests {
             .output: UUID(),
         ])
         let fingerprint = DocumentFingerprint(content: "Analysis")
-        let identity = try #require(try await store.identity(
-            forVaultID: analysesID,
-            relativePath: "Bound.md",
-            fingerprint: fingerprint
-        ))
+        let identity = try #require(
+            try await store.identity(
+                forVaultID: analysesID,
+                relativePath: "Bound.md",
+                fingerprint: fingerprint
+            ))
         let binding = try AnalysisZoteroBinding(
             noteID: identity.id,
             library: .group(42),
@@ -899,16 +947,18 @@ struct TriptychControlTests {
                 relativePath: "Bound.md"
             )
         }
-        #expect(try await store.identityRecord(
-            vaultID: analysesID,
-            relativePath: "Bound.md"
-        ) == identity)
+        #expect(
+            try await store.identityRecord(
+                vaultID: analysesID,
+                relativePath: "Bound.md"
+            ) == identity)
         #expect(try await store.zoteroBindings().binding(for: identity.id) == binding)
     }
 
     @Test("Managed creation orphan removal fences a concurrent Zotero bind")
     func managedCreationIdentityRemovalFencesBinding() async throws {
-        let fixture = try Fixture(); defer { fixture.remove() }
+        let fixture = try Fixture()
+        defer { fixture.remove() }
         let coordinationURL = fixture.root.appendingPathComponent("Application Support/Triptych")
         let store = try TriptychControlStore(
             worksVaultURL: fixture.works,
@@ -922,12 +972,13 @@ struct TriptychControlTests {
         ])
         let intended = DocumentFingerprint(content: "intended")
         let reservedID = UUID()
-        _ = try #require(try await store.identity(
-            forVaultID: vaultID,
-            relativePath: "Created.md",
-            fingerprint: intended,
-            preferredID: reservedID
-        ))
+        _ = try #require(
+            try await store.identity(
+                forVaultID: vaultID,
+                relativePath: "Created.md",
+                fingerprint: intended,
+                preferredID: reservedID
+            ))
         let barrier = PortableControlWriteBarrier()
         let reconciling = try TriptychControlStore(
             worksVaultURL: fixture.works,
@@ -964,17 +1015,19 @@ struct TriptychControlTests {
         await #expect(throws: TriptychControlError.self) {
             _ = try await bindingWrite.value
         }
-        #expect(try await store.identityRecord(
-            vaultID: vaultID,
-            relativePath: "Created.md"
-        ) == nil)
+        #expect(
+            try await store.identityRecord(
+                vaultID: vaultID,
+                relativePath: "Created.md"
+            ) == nil)
         #expect(try await store.identityRecord(id: reservedID) == nil)
         #expect(try await store.zoteroBindings().binding(for: reservedID) == nil)
     }
 
     @Test("Managed creation replacement cannot overwrite a final-window reserved identity")
     func managedCreationIdentityReplacementRejectsReservedRace() async throws {
-        let fixture = try Fixture(); defer { fixture.remove() }
+        let fixture = try Fixture()
+        defer { fixture.remove() }
         let coordinationURL = fixture.root.appendingPathComponent("Application Support/Triptych")
         let store = try TriptychControlStore(
             worksVaultURL: fixture.works,
@@ -1006,9 +1059,10 @@ struct TriptychControlTests {
                 let encoder = JSONEncoder()
                 encoder.dateEncodingStrategy = .iso8601
                 let encoded = try encoder.encode(reserved)
-                records.append(try #require(
-                    JSONSerialization.jsonObject(with: encoded) as? [String: Any]
-                ))
+                records.append(
+                    try #require(
+                        JSONSerialization.jsonObject(with: encoded) as? [String: Any]
+                    ))
                 object["records"] = records
                 try JSONSerialization.data(withJSONObject: object)
                     .write(to: url, options: .atomic)
@@ -1024,13 +1078,15 @@ struct TriptychControlTests {
                 sourceIsPresent: true
             )
         }
-        #expect(try await store.identityRecord(
-            vaultID: vaultID,
-            relativePath: "Created.md"
-        ) == nil)
-        let retainedReserved = try #require(try await store.identityRecord(
-            id: reserved.id
-        ))
+        #expect(
+            try await store.identityRecord(
+                vaultID: vaultID,
+                relativePath: "Created.md"
+            ) == nil)
+        let retainedReserved = try #require(
+            try await store.identityRecord(
+                id: reserved.id
+            ))
         #expect(retainedReserved.vaultID == reserved.vaultID)
         #expect(retainedReserved.relativePath == reserved.relativePath)
         #expect(retainedReserved.fingerprint == reserved.fingerprint)
@@ -1038,7 +1094,8 @@ struct TriptychControlTests {
 
     @Test("Managed creation recovery never replaces another same-revision identity")
     func managedCreationIdentityRejectsForeignPathIdentity() async throws {
-        let fixture = try Fixture(); defer { fixture.remove() }
+        let fixture = try Fixture()
+        defer { fixture.remove() }
         let coordinationURL = fixture.root.appendingPathComponent("Application Support/Triptych")
         let store = try TriptychControlStore(
             worksVaultURL: fixture.works,
@@ -1054,11 +1111,12 @@ struct TriptychControlTests {
 
         for sourceIsPresent in [true, false] {
             let path = sourceIsPresent ? "Present.md" : "Absent.md"
-            let foreign = try #require(try await store.identity(
-                forVaultID: vaultID,
-                relativePath: path,
-                fingerprint: intended
-            ))
+            let foreign = try #require(
+                try await store.identity(
+                    forVaultID: vaultID,
+                    relativePath: path,
+                    fingerprint: intended
+                ))
             await #expect(throws: TriptychControlError.self) {
                 try await store.reconcileManagedCreationIdentity(
                     vaultID: vaultID,
@@ -1068,16 +1126,18 @@ struct TriptychControlTests {
                     sourceIsPresent: sourceIsPresent
                 )
             }
-            #expect(try await store.identityRecord(
-                vaultID: vaultID,
-                relativePath: path
-            ) == foreign)
+            #expect(
+                try await store.identityRecord(
+                    vaultID: vaultID,
+                    relativePath: path
+                ) == foreign)
         }
     }
 
     @Test("Managed creation rolls identity back after an uncoordinated binding change")
     func managedCreationIdentityRollsBackBindingRace() async throws {
-        let fixture = try Fixture(); defer { fixture.remove() }
+        let fixture = try Fixture()
+        defer { fixture.remove() }
         let coordinationURL = fixture.root.appendingPathComponent("Application Support/Triptych")
         let store = try TriptychControlStore(
             worksVaultURL: fixture.works,
@@ -1089,11 +1149,12 @@ struct TriptychControlTests {
             .topicKnowledge: UUID(),
             .output: UUID(),
         ])
-        let other = try #require(try await store.identity(
-            forVaultID: vaultID,
-            relativePath: "Other.md",
-            fingerprint: DocumentFingerprint(content: "other")
-        ))
+        let other = try #require(
+            try await store.identity(
+                forVaultID: vaultID,
+                relativePath: "Other.md",
+                fingerprint: DocumentFingerprint(content: "other")
+            ))
         let externalBinding = try AnalysisZoteroBinding(
             noteID: other.id,
             library: .group(42),
@@ -1129,13 +1190,15 @@ struct TriptychControlTests {
                 sourceIsPresent: true
             )
         }
-        #expect(try await store.identityRecord(
-            vaultID: vaultID,
-            relativePath: "Created.md"
-        ) == nil)
+        #expect(
+            try await store.identityRecord(
+                vaultID: vaultID,
+                relativePath: "Created.md"
+            ) == nil)
         #expect(try await store.identityRecord(id: reservedID) == nil)
-        #expect(try await store.zoteroBindings().binding(for: other.id)
-            == externalBinding)
+        #expect(
+            try await store.zoteroBindings().binding(for: other.id)
+                == externalBinding)
     }
 
     @Test("Bootstrap writes only portable state beside Works")
@@ -1228,18 +1291,21 @@ struct TriptychControlTests {
         )
 
         #expect(!FileManager.default.fileExists(atPath: control.path))
-        #expect(try Data(contentsOf: preserved.appendingPathComponent("manifest.json"))
-            == legacyBytes[0])
-        #expect(try Data(contentsOf: preserved.appendingPathComponent("legacy/nested/opaque.bin"))
-            == legacyBytes[1])
+        #expect(
+            try Data(contentsOf: preserved.appendingPathComponent("manifest.json"))
+                == legacyBytes[0])
+        #expect(
+            try Data(contentsOf: preserved.appendingPathComponent("legacy/nested/opaque.bin"))
+                == legacyBytes[1])
         for (url, data) in zip(researchFiles, researchBytes) {
             #expect(try Data(contentsOf: url) == data)
         }
         let store = TriptychControlStore(worksVaultURL: fixture.works)
         let ids = Dictionary(uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map { ($0, UUID()) })
         #expect(try await store.bootstrap(vaultIDs: ids).vaultIDs == ids)
-        #expect(try Data(contentsOf: preserved.appendingPathComponent("manifest.json"))
-            == legacyBytes[0])
+        #expect(
+            try Data(contentsOf: preserved.appendingPathComponent("manifest.json"))
+                == legacyBytes[0])
         await #expect(throws: ExactStatePreservationError.self) {
             _ = try await TriptychControlStore.preserveUnsupportedControlBundle(
                 worksVaultURL: fixture.works
@@ -1261,11 +1327,12 @@ struct TriptychControlTests {
         ]
         _ = try await store.bootstrap(vaultIDs: ids)
         let fingerprint = DocumentFingerprint(content: "# A\n")
-        let original = try #require(try await store.identity(
-            forVaultID: vaultID,
-            relativePath: "A.md",
-            fingerprint: fingerprint
-        ))
+        let original = try #require(
+            try await store.identity(
+                forVaultID: vaultID,
+                relativePath: "A.md",
+                fingerprint: fingerprint
+            ))
 
         let moved = try await store.moveIdentity(
             id: original.id,
@@ -1297,11 +1364,12 @@ struct TriptychControlTests {
             .output: vaultID,
         ])
         let fingerprint = DocumentFingerprint(content: "# Work\n")
-        let original = try #require(try await store.identity(
-            forVaultID: vaultID,
-            relativePath: "Work.md",
-            fingerprint: fingerprint
-        ))
+        let original = try #require(
+            try await store.identity(
+                forVaultID: vaultID,
+                relativePath: "Work.md",
+                fingerprint: fingerprint
+            ))
         _ = try await store.purgeIdentity(
             id: original.id,
             vaultID: vaultID,
@@ -1340,11 +1408,12 @@ struct TriptychControlTests {
             .output: vaultID,
         ])
         let fingerprint = DocumentFingerprint(content: "# Work\n")
-        let identity = try #require(try await store.identity(
-            forVaultID: vaultID,
-            relativePath: "Work.md",
-            fingerprint: fingerprint
-        ))
+        let identity = try #require(
+            try await store.identity(
+                forVaultID: vaultID,
+                relativePath: "Work.md",
+                fingerprint: fingerprint
+            ))
         _ = try await store.moveIdentity(
             id: identity.id,
             to: "Archive/Work.md",
@@ -1359,12 +1428,13 @@ struct TriptychControlTests {
 
         #expect(removed?.id == identity.id)
         #expect(try await store.pendingIdentityRebindings(vaultID: vaultID).isEmpty)
-        #expect(try await store.identity(
-            forVaultID: vaultID,
-            relativePath: "Archive/Work.md",
-            fingerprint: fingerprint,
-            createIfMissing: false
-        ) == nil)
+        #expect(
+            try await store.identity(
+                forVaultID: vaultID,
+                relativePath: "Archive/Work.md",
+                fingerprint: fingerprint,
+                createIfMissing: false
+            ) == nil)
     }
 
     @Test("An external copy cannot steal the identity of a still-present note")
@@ -1379,11 +1449,12 @@ struct TriptychControlTests {
             .output: vaultID,
         ])
         let fingerprint = DocumentFingerprint(content: "same bytes")
-        let original = try #require(try await store.identity(
-            forVaultID: vaultID,
-            relativePath: "Z Original.md",
-            fingerprint: fingerprint
-        ))
+        let original = try #require(
+            try await store.identity(
+                forVaultID: vaultID,
+                relativePath: "Z Original.md",
+                fingerprint: fingerprint
+            ))
 
         let result = try await store.reconcileIdentityInventory(
             vaultID: vaultID,
@@ -1411,11 +1482,12 @@ struct TriptychControlTests {
             .output: vaultID,
         ])
         let fingerprint = DocumentFingerprint(content: "renamed bytes")
-        let original = try #require(try await store.identity(
-            forVaultID: vaultID,
-            relativePath: "Before.md",
-            fingerprint: fingerprint
-        ))
+        let original = try #require(
+            try await store.identity(
+                forVaultID: vaultID,
+                relativePath: "Before.md",
+                fingerprint: fingerprint
+            ))
 
         let result = try await store.reconcileIdentityInventory(
             vaultID: vaultID,
@@ -1423,11 +1495,14 @@ struct TriptychControlTests {
         )
 
         #expect(result.identities["After.md"]?.id == original.id)
-        #expect(result.rebound == [NoteIdentityRebinding(
-            id: original.id,
-            previousRelativePath: "Before.md",
-            relativePath: "After.md"
-        )])
+        #expect(
+            result.rebound == [
+                NoteIdentityRebinding(
+                    id: original.id,
+                    previousRelativePath: "Before.md",
+                    relativePath: "After.md"
+                )
+            ])
         #expect(result.ambiguities.isEmpty)
         #expect(result.pendingRebindings.count == 1)
         #expect(result.pendingRebindings.first?.noteID == original.id)
@@ -1450,16 +1525,18 @@ struct TriptychControlTests {
             .output: vaultID,
         ])
         let fingerprint = DocumentFingerprint(content: "ambiguous bytes")
-        let first = try #require(try await store.identity(
-            forVaultID: vaultID,
-            relativePath: "Old A.md",
-            fingerprint: fingerprint
-        ))
-        _ = try #require(try await store.identity(
-            forVaultID: vaultID,
-            relativePath: "Old B.md",
-            fingerprint: fingerprint
-        ))
+        let first = try #require(
+            try await store.identity(
+                forVaultID: vaultID,
+                relativePath: "Old A.md",
+                fingerprint: fingerprint
+            ))
+        _ = try #require(
+            try await store.identity(
+                forVaultID: vaultID,
+                relativePath: "Old B.md",
+                fingerprint: fingerprint
+            ))
 
         let unresolved = try await store.reconcileIdentityInventory(
             vaultID: vaultID,
@@ -1481,10 +1558,11 @@ struct TriptychControlTests {
         #expect(pending.noteID == first.id)
         #expect(pending.previousRelativePath == "Old A.md")
         #expect(pending.relativePath == "Moved.md")
-        #expect(try await store.reconcileIdentityInventory(
-            vaultID: vaultID,
-            documents: [("Moved.md", fingerprint)]
-        ).identities["Moved.md"]?.id == first.id)
+        #expect(
+            try await store.reconcileIdentityInventory(
+                vaultID: vaultID,
+                documents: [("Moved.md", fingerprint)]
+            ).identities["Moved.md"]?.id == first.id)
     }
 
     @Test("Identical paths and bytes in different vaults never share identity recovery")
@@ -1500,16 +1578,18 @@ struct TriptychControlTests {
             .output: UUID(),
         ])
         let fingerprint = DocumentFingerprint(content: "same bytes")
-        let analysis = try #require(try await store.identity(
-            forVaultID: analysesID,
-            relativePath: "Shared.md",
-            fingerprint: fingerprint
-        ))
-        let topic = try #require(try await store.identity(
-            forVaultID: topicsID,
-            relativePath: "Shared.md",
-            fingerprint: fingerprint
-        ))
+        let analysis = try #require(
+            try await store.identity(
+                forVaultID: analysesID,
+                relativePath: "Shared.md",
+                fingerprint: fingerprint
+            ))
+        let topic = try #require(
+            try await store.identity(
+                forVaultID: topicsID,
+                relativePath: "Shared.md",
+                fingerprint: fingerprint
+            ))
 
         let analysisResult = try await store.reconcileIdentityInventory(
             vaultID: analysesID,
@@ -1534,16 +1614,18 @@ struct TriptychControlTests {
             .output: vaultID,
         ])
         let originalFingerprint = DocumentFingerprint(content: "same original bytes")
-        let first = try #require(try await store.identity(
-            forVaultID: vaultID,
-            relativePath: "First.md",
-            fingerprint: originalFingerprint
-        ))
-        _ = try #require(try await store.identity(
-            forVaultID: vaultID,
-            relativePath: "Second.md",
-            fingerprint: originalFingerprint
-        ))
+        let first = try #require(
+            try await store.identity(
+                forVaultID: vaultID,
+                relativePath: "First.md",
+                fingerprint: originalFingerprint
+            ))
+        _ = try #require(
+            try await store.identity(
+                forVaultID: vaultID,
+                relativePath: "Second.md",
+                fingerprint: originalFingerprint
+            ))
         let initial = try await store.reconcileIdentityInventory(
             vaultID: vaultID,
             documents: [("Moved.md", originalFingerprint)]

@@ -39,13 +39,15 @@ struct EditorModeContractTests {
         )
         #expect(contract.referenceMode == "Review")
         #expect(sourceData.starts(with: [0xEF, 0xBB, 0xBF]))
-        #expect(Set(contract.comparisons.map(\.classification)) == Set([
-            "mustMatchReview",
-            "permittedEditingDifference",
-            "requiredSourceDifference",
-            "forbiddenSourceLeak",
-            "mustPreserve",
-        ]))
+        #expect(
+            Set(contract.comparisons.map(\.classification))
+                == Set([
+                    "mustMatchReview",
+                    "permittedEditingDifference",
+                    "requiredSourceDifference",
+                    "forbiddenSourceLeak",
+                    "mustPreserve",
+                ]))
         #expect(contract.comparisons.allSatisfy { !$0.surface.isEmpty && !$0.properties.isEmpty })
         for token in contract.requiredSourceTokens {
             #expect(source.contains(token), "Missing fixed editor-contract construct: \(token)")

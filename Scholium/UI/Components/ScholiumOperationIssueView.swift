@@ -8,9 +8,11 @@ struct ScholiumOperationIssueView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Label(issue.message, systemImage: issue.kind == .error ? "xmark.octagon" : (issue.kind == .information ? "info.circle" : "exclamationmark.triangle"))
-                .font(ScholiumTypography.interface(.body))
-                .scholiumForeground(issue.kind == .error ? .destructive : (issue.kind == .information ? .information : .attention))
+            Label(
+                issue.message, systemImage: issue.kind == .error ? "xmark.octagon" : (issue.kind == .information ? "info.circle" : "exclamationmark.triangle")
+            )
+            .font(ScholiumTypography.interface(.body))
+            .scholiumForeground(issue.kind == .error ? .destructive : (issue.kind == .information ? .information : .attention))
             if let detail = issue.detail {
                 Text(detail).font(ScholiumTypography.interface(.small)).textSelection(.enabled)
             }

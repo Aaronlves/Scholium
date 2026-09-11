@@ -2,6 +2,7 @@ import AppKit
 import Foundation
 import Testing
 import UniformTypeIdentifiers
+
 @testable import ScholiumApp
 
 @Suite("Scholium file selection")
@@ -99,17 +100,19 @@ struct ScholiumFileSelectionTests {
             if source.contains("NSOpenPanel") {
                 nativePanelOwners.append(relativePath)
             }
-            let requestCount = source.components(
-                separatedBy: "ScholiumFileSelectionRequest("
-            ).count - 1
+            let requestCount =
+                source.components(
+                    separatedBy: "ScholiumFileSelectionRequest("
+                ).count - 1
             if requestCount > 0 {
                 requestOwners[relativePath] = requestCount
                 if relativePath == "Features/Document/DocumentController.swift" {
                     #expect(source.contains("presenter: ScholiumFileSelectionPresenter"))
                 } else if relativePath != "App/ScholiumApp.swift" {
-                    #expect(source.contains(
-                        "@Environment(\\.scholiumFileSelectionPresenter)"
-                    ))
+                    #expect(
+                        source.contains(
+                            "@Environment(\\.scholiumFileSelectionPresenter)"
+                        ))
                 }
             }
             for forbiddenAPI in [
@@ -126,15 +129,16 @@ struct ScholiumFileSelectionTests {
         }
 
         #expect(nativePanelOwners == ["UI/Components/ScholiumFileSelection.swift"])
-        #expect(requestOwners == [
-            "App/ScholiumApp.swift": 1,
-            "Views/Note/NoteContentView.swift": 1,
-            "Features/Document/DocumentController.swift": 1,
-            "Views/AgentChatConnectionSettingsView.swift": 1,
-            "Views/RestoreWorkspaceAccessView.swift": 1,
-            "Views/WorkspaceSettingsView.swift": 3,
-            "Views/WorkspaceSetupView.swift": 2,
-        ])
+        #expect(
+            requestOwners == [
+                "App/ScholiumApp.swift": 1,
+                "Views/Note/NoteContentView.swift": 1,
+                "Features/Document/DocumentController.swift": 1,
+                "Views/AgentChatConnectionSettingsView.swift": 1,
+                "Views/RestoreWorkspaceAccessView.swift": 1,
+                "Views/WorkspaceSettingsView.swift": 3,
+                "Views/WorkspaceSetupView.swift": 2,
+            ])
 
         let appSource = try String(
             contentsOf: sourceRoot.appendingPathComponent("App/ScholiumApp.swift"),
@@ -147,20 +151,23 @@ struct ScholiumFileSelectionTests {
         )
         #expect(appSource.contains("fileSelectionPresenter.selectURLs("))
 
-        let workspaceRootStart = try #require(appSource.range(
-            of: "private struct ScholiumWindowObservedRoot"
-        ))
-        let settingsRootStart = try #require(appSource.range(
-            of: "private struct ScholiumSettingsRoot",
-            range: workspaceRootStart.upperBound..<appSource.endIndex
-        ))
+        let workspaceRootStart = try #require(
+            appSource.range(
+                of: "private struct ScholiumWindowObservedRoot"
+            ))
+        let settingsRootStart = try #require(
+            appSource.range(
+                of: "private struct ScholiumSettingsRoot",
+                range: workspaceRootStart.upperBound..<appSource.endIndex
+            ))
         let workspaceRoot = appSource[
             workspaceRootStart.lowerBound..<settingsRootStart.lowerBound
         ]
         let recoverySheet = try #require(workspaceRoot.range(of: ".sheet(item:"))
-        let sceneOwner = try #require(workspaceRoot.range(
-            of: ".scholiumFileSelectionScene("
-        ))
+        let sceneOwner = try #require(
+            workspaceRoot.range(
+                of: ".scholiumFileSelectionScene("
+            ))
         #expect(
             recoverySheet.lowerBound < sceneOwner.lowerBound,
             "Restore Access must remain inside the scene presenter's environment boundary."
@@ -254,7 +261,8 @@ struct ScholiumFileSelectionTests {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let parent = repositoryRoot
+        let parent =
+            repositoryRoot
             .appendingPathComponent(".build", isDirectory: true)
             .appendingPathComponent("file-selection-tests", isDirectory: true)
         try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)

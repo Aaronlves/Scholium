@@ -1,6 +1,7 @@
 import Foundation
 import ScholiumContracts
 import Testing
+
 @testable import ScholiumApp
 
 @Suite("Editor link completion index")
@@ -34,11 +35,12 @@ struct EditorLinkCompletionIndexTests {
     func localeStableUnicodeQueries() async throws {
         let vaultID = UUID()
         let index = EditorLinkCompletionIndex()
-        await index.replace(notes: [
-            note(vaultID: vaultID, path: "NFD/e\u{301}.md", title: "Café"),
-            note(vaultID: vaultID, path: "Cities/Istanbul.md", title: "İstanbul"),
-            note(vaultID: vaultID, path: "中文/价值.md", title: "价值理论"),
-        ], generation: 3)
+        await index.replace(
+            notes: [
+                note(vaultID: vaultID, path: "NFD/e\u{301}.md", title: "Café"),
+                note(vaultID: vaultID, path: "Cities/Istanbul.md", title: "İstanbul"),
+                note(vaultID: vaultID, path: "中文/价值.md", title: "价值理论"),
+            ], generation: 3)
 
         #expect(try await index.query(kind: .wikilink, "cafe", sourcePath: "Source.md", currentVaultID: vaultID, generation: 3).count == 1)
         #expect(try await index.query(kind: .wikilink, "istanbul", sourcePath: "Source.md", currentVaultID: vaultID, generation: 3).count == 1)
@@ -114,14 +116,15 @@ struct EditorLinkCompletionIndexTests {
     func aliasInsertion() async throws {
         let vaultID = UUID()
         let index = EditorLinkCompletionIndex()
-        await index.replace(notes: [
-            note(
-                vaultID: vaultID,
-                path: "Value.md",
-                title: "Axiology",
-                aliases: ["Value Theory"]
-            ),
-        ], generation: 4)
+        await index.replace(
+            notes: [
+                note(
+                    vaultID: vaultID,
+                    path: "Value.md",
+                    title: "Axiology",
+                    aliases: ["Value Theory"]
+                )
+            ], generation: 4)
 
         let aliasResults = try await index.query(
             kind: .wikilink,
@@ -151,22 +154,23 @@ struct EditorLinkCompletionIndexTests {
         let analysisVaultID = UUID()
         let topicVaultID = UUID()
         let index = EditorLinkCompletionIndex()
-        await index.replace(notes: [
-            note(
-                vaultID: analysisVaultID,
-                vaultName: "Analyses",
-                role: .sourceCorpus,
-                path: "What We Owe.md",
-                title: "What We Owe to Each Other",
-                authors: ["T. M. Scanlon"],
-                publicationDate: "1998-01-01"
-            ),
-            note(
-                vaultID: topicVaultID,
-                path: "Scanlon.md",
-                title: "Scanlon"
-            ),
-        ], generation: 5)
+        await index.replace(
+            notes: [
+                note(
+                    vaultID: analysisVaultID,
+                    vaultName: "Analyses",
+                    role: .sourceCorpus,
+                    path: "What We Owe.md",
+                    title: "What We Owe to Each Other",
+                    authors: ["T. M. Scanlon"],
+                    publicationDate: "1998-01-01"
+                ),
+                note(
+                    vaultID: topicVaultID,
+                    path: "Scanlon.md",
+                    title: "Scanlon"
+                ),
+            ], generation: 5)
 
         let results = try await index.query(
             kind: .analysisReference,

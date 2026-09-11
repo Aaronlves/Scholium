@@ -1,7 +1,8 @@
 import Darwin
 import Foundation
-import Testing
 import ScholiumContracts
+import Testing
+
 @testable import ScholiumCore
 
 @Suite("File Provider and process interruption fixtures", .serialized)
@@ -113,7 +114,8 @@ struct FileProviderProcessInterruptionFixtureTests {
             _exit(0)
         }
 
-        let expectedCanonical = point == .staged
+        let expectedCanonical =
+            point == .staged
             ? fixture.original
             : fixture.candidateData
         #expect(try Data(contentsOf: fixture.note) == expectedCanonical)
@@ -127,7 +129,8 @@ struct FileProviderProcessInterruptionFixtureTests {
 
         let reopened = try fixture.repository()
         let reopenedDocument = try await reopened.load(relativePath: fixture.relativePath)
-        let expectedCanonicalContent = point == .staged
+        let expectedCanonicalContent =
+            point == .staged
             ? fixture.originalContent
             : fixture.candidate
         #expect(reopenedDocument.rawContent == expectedCanonicalContent)
@@ -278,7 +281,8 @@ struct FileProviderProcessInterruptionFixtureTests {
                 .deletingLastPathComponent()
                 .deletingLastPathComponent()
                 .deletingLastPathComponent()
-            base = repositoryRoot
+            base =
+                repositoryRoot
                 .appendingPathComponent(
                     ".build/file-provider-process-interruption",
                     isDirectory: true
@@ -312,7 +316,8 @@ struct FileProviderProcessInterruptionFixtureTests {
         }
 
         func pendingMutationDirectories() throws -> [URL] {
-            let directory = support
+            let directory =
+                support
                 .appendingPathComponent("Vaults", isDirectory: true)
                 .appendingPathComponent(identity.id.uuidString, isDirectory: true)
                 .appendingPathComponent("save-transactions-v1", isDirectory: true)
@@ -322,7 +327,8 @@ struct FileProviderProcessInterruptionFixtureTests {
                 includingPropertiesForKeys: [.isDirectoryKey]
             ).filter { url in
                 guard url.lastPathComponent != ".transactions.lock",
-                      let values = try? url.resourceValues(forKeys: [.isDirectoryKey]) else {
+                    let values = try? url.resourceValues(forKeys: [.isDirectoryKey])
+                else {
                     return false
                 }
                 return values.isDirectory == true

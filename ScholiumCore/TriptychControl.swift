@@ -50,14 +50,16 @@ public actor TriptychControlStore {
         init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
             records = try container.decodeIfPresent([NoteIdentityRecord].self, forKey: .records) ?? []
-            pendingRebindings = try container.decodeIfPresent(
-                [NoteIdentityPendingRebinding].self,
-                forKey: .pendingRebindings
-            ) ?? []
-            unresolvedAmbiguities = try container.decodeIfPresent(
-                [StoredIdentityAmbiguity].self,
-                forKey: .unresolvedAmbiguities
-            ) ?? []
+            pendingRebindings =
+                try container.decodeIfPresent(
+                    [NoteIdentityPendingRebinding].self,
+                    forKey: .pendingRebindings
+                ) ?? []
+            unresolvedAmbiguities =
+                try container.decodeIfPresent(
+                    [StoredIdentityAmbiguity].self,
+                    forKey: .unresolvedAmbiguities
+                ) ?? []
         }
     }
 
@@ -116,9 +118,11 @@ public actor TriptychControlStore {
         let controlURL = worksVaultURL.standardizedFileURL
             .deletingLastPathComponent()
             .appendingPathComponent(".scholium", isDirectory: true)
-        guard try await unsupportedControlStateExists(
-            worksVaultURL: worksVaultURL
-        ) else {
+        guard
+            try await unsupportedControlStateExists(
+                worksVaultURL: worksVaultURL
+            )
+        else {
             throw ExactStatePreservationError.preservationFailed(
                 "The portable control folder changed and no longer requires recovery. Reload its current state."
             )
@@ -127,9 +131,11 @@ public actor TriptychControlStore {
             controlURL: controlURL,
             fileManager: fileManager
         )
-        guard try await unsupportedControlStateExists(
-            worksVaultURL: worksVaultURL
-        ) else {
+        guard
+            try await unsupportedControlStateExists(
+                worksVaultURL: worksVaultURL
+            )
+        else {
             throw ExactStatePreservationError.preservationFailed(
                 "The portable control folder changed and no longer requires recovery. Reload its current state."
             )
@@ -174,8 +180,9 @@ public actor TriptychControlStore {
             throw error
         }
         guard manifest.schemaVersion == TriptychManifest.currentSchemaVersion,
-              Set(manifest.vaultIDs.keys) == Set(WorkspaceVaultSlot.allCases),
-              Set(manifest.vaultIDs.values).count == WorkspaceVaultSlot.allCases.count else {
+            Set(manifest.vaultIDs.keys) == Set(WorkspaceVaultSlot.allCases),
+            Set(manifest.vaultIDs.values).count == WorkspaceVaultSlot.allCases.count
+        else {
             return true
         }
         do {
@@ -184,9 +191,9 @@ public actor TriptychControlStore {
         } catch let error as TriptychControlError {
             switch error {
             case .invalidManifest, .settingsMissing, .settingsOldSchema,
-                 .settingsFutureSchema, .settingsCorrupted,
-                 .invalidZoteroBindings, .invalidIdentities,
-                 .invalidAttachmentCatalog:
+                .settingsFutureSchema, .settingsCorrupted,
+                .invalidZoteroBindings, .invalidIdentities,
+                .invalidAttachmentCatalog:
                 return true
             default:
                 throw error
@@ -202,19 +209,21 @@ public actor TriptychControlStore {
     ) throws -> DocumentFingerprint {
         let root = controlURL.standardizedFileURL
         var enumerationFailure: Error?
-        guard let enumerator = fileManager.enumerator(
-            at: root,
-            includingPropertiesForKeys: [
-                .isRegularFileKey,
-                .isDirectoryKey,
-                .isSymbolicLinkKey,
-            ],
-            options: [],
-            errorHandler: { _, error in
-                enumerationFailure = error
-                return false
-            }
-        ) else {
+        guard
+            let enumerator = fileManager.enumerator(
+                at: root,
+                includingPropertiesForKeys: [
+                    .isRegularFileKey,
+                    .isDirectoryKey,
+                    .isSymbolicLinkKey,
+                ],
+                options: [],
+                errorHandler: { _, error in
+                    enumerationFailure = error
+                    return false
+                }
+            )
+        else {
             throw ExactStatePreservationError.unsafe(
                 "The portable control directory could not be enumerated for recovery."
             )
@@ -232,7 +241,8 @@ public actor TriptychControlStore {
             let rootParts = root.pathComponents
             let parts = url.standardizedFileURL.pathComponents
             guard parts.count > rootParts.count,
-                  Array(parts.prefix(rootParts.count)) == rootParts else {
+                Array(parts.prefix(rootParts.count)) == rootParts
+            else {
                 throw ExactStatePreservationError.unsafe(
                     "Portable control recovery escaped its authorized directory."
                 )
@@ -247,9 +257,11 @@ public actor TriptychControlStore {
             ])
             if values.isSymbolicLink == true {
                 token.append(2)
-                token.append(Data(try fileManager.destinationOfSymbolicLink(
-                    atPath: url.path
-                ).utf8))
+                token.append(
+                    Data(
+                        try fileManager.destinationOfSymbolicLink(
+                            atPath: url.path
+                        ).utf8))
             } else if values.isDirectory == true {
                 token.append(3)
             } else if values.isRegularFile == true {
@@ -298,13 +310,16 @@ public actor TriptychControlStore {
         settingsURL = controlURL.appendingPathComponent("settings.json")
         identitiesURL = controlURL.appendingPathComponent("identities.json")
         analysisZoteroBindingsURL = controlURL.appendingPathComponent("analysis-zotero-bindings.json")
-        attachmentCatalogURL = controlURL
+        attachmentCatalogURL =
+            controlURL
             .appendingPathComponent("attachments", isDirectory: true)
             .appendingPathComponent("v2", isDirectory: true)
-        documentAttachmentCatalogURL = controlURL
+        documentAttachmentCatalogURL =
+            controlURL
             .appendingPathComponent("document-attachments", isDirectory: true)
             .appendingPathComponent("v2", isDirectory: true)
-        noteMetadataCatalogURL = controlURL
+        noteMetadataCatalogURL =
+            controlURL
             .appendingPathComponent("note-metadata", isDirectory: true)
             .appendingPathComponent("v1", isDirectory: true)
         self.fileManager = fileManager
@@ -326,13 +341,16 @@ public actor TriptychControlStore {
         settingsURL = controlURL.appendingPathComponent("settings.json")
         identitiesURL = controlURL.appendingPathComponent("identities.json")
         analysisZoteroBindingsURL = controlURL.appendingPathComponent("analysis-zotero-bindings.json")
-        attachmentCatalogURL = controlURL
+        attachmentCatalogURL =
+            controlURL
             .appendingPathComponent("attachments", isDirectory: true)
             .appendingPathComponent("v2", isDirectory: true)
-        documentAttachmentCatalogURL = controlURL
+        documentAttachmentCatalogURL =
+            controlURL
             .appendingPathComponent("document-attachments", isDirectory: true)
             .appendingPathComponent("v2", isDirectory: true)
-        noteMetadataCatalogURL = controlURL
+        noteMetadataCatalogURL =
+            controlURL
             .appendingPathComponent("note-metadata", isDirectory: true)
             .appendingPathComponent("v1", isDirectory: true)
         self.fileManager = fileManager
@@ -372,13 +390,16 @@ public actor TriptychControlStore {
         settingsURL = controlURL.appendingPathComponent("settings.json")
         identitiesURL = controlURL.appendingPathComponent("identities.json")
         analysisZoteroBindingsURL = controlURL.appendingPathComponent("analysis-zotero-bindings.json")
-        attachmentCatalogURL = controlURL
+        attachmentCatalogURL =
+            controlURL
             .appendingPathComponent("attachments", isDirectory: true)
             .appendingPathComponent("v2", isDirectory: true)
-        documentAttachmentCatalogURL = controlURL
+        documentAttachmentCatalogURL =
+            controlURL
             .appendingPathComponent("document-attachments", isDirectory: true)
             .appendingPathComponent("v2", isDirectory: true)
-        noteMetadataCatalogURL = controlURL
+        noteMetadataCatalogURL =
+            controlURL
             .appendingPathComponent("note-metadata", isDirectory: true)
             .appendingPathComponent("v1", isDirectory: true)
         self.fileManager = fileManager
@@ -401,13 +422,16 @@ public actor TriptychControlStore {
         settingsURL = controlURL.appendingPathComponent("settings.json")
         identitiesURL = controlURL.appendingPathComponent("identities.json")
         analysisZoteroBindingsURL = controlURL.appendingPathComponent("analysis-zotero-bindings.json")
-        attachmentCatalogURL = controlURL
+        attachmentCatalogURL =
+            controlURL
             .appendingPathComponent("attachments", isDirectory: true)
             .appendingPathComponent("v2", isDirectory: true)
-        documentAttachmentCatalogURL = controlURL
+        documentAttachmentCatalogURL =
+            controlURL
             .appendingPathComponent("document-attachments", isDirectory: true)
             .appendingPathComponent("v2", isDirectory: true)
-        noteMetadataCatalogURL = controlURL
+        noteMetadataCatalogURL =
+            controlURL
             .appendingPathComponent("note-metadata", isDirectory: true)
             .appendingPathComponent("v1", isDirectory: true)
         self.fileManager = fileManager
@@ -442,7 +466,8 @@ public actor TriptychControlStore {
             throw TriptychControlError.invalidManifest
         }
         guard !fileManager.fileExists(atPath: legacyAttachmentCatalogURL.path),
-              !fileManager.fileExists(atPath: legacyDocumentAttachmentCatalogURL.path) else {
+            !fileManager.fileExists(atPath: legacyDocumentAttachmentCatalogURL.path)
+        else {
             throw TriptychControlError.invalidAttachmentCatalog
         }
         if fileManager.fileExists(atPath: attachmentCatalogURL.path) {
@@ -488,10 +513,12 @@ public actor TriptychControlStore {
             contentsOf: manifestURL,
             options: [.mappedIfSafe]
         )
-        guard var manifest = try? decoder().decode(
-            TriptychManifest.self,
-            from: manifestData
-        ) else {
+        guard
+            var manifest = try? decoder().decode(
+                TriptychManifest.self,
+                from: manifestData
+            )
+        else {
             throw TriptychControlError.invalidManifest
         }
         if manifest.vaultIDs != vaultIDs {
@@ -505,10 +532,11 @@ public actor TriptychControlStore {
                 conflict: TriptychControlError.invalidManifest
             )
             guard readback == candidate,
-                  let decoded = try? decoder().decode(
-                      TriptychManifest.self,
-                      from: readback
-                  ), decoded.vaultIDs == vaultIDs else {
+                let decoded = try? decoder().decode(
+                    TriptychManifest.self,
+                    from: readback
+                ), decoded.vaultIDs == vaultIDs
+            else {
                 throw TriptychControlError.invalidManifest
             }
             manifest = decoded
@@ -540,13 +568,16 @@ public actor TriptychControlStore {
     public func manifest() throws -> TriptychManifest {
         do {
             guard !fileManager.fileExists(atPath: legacyAttachmentCatalogURL.path),
-                  !fileManager.fileExists(atPath: legacyDocumentAttachmentCatalogURL.path) else {
+                !fileManager.fileExists(atPath: legacyDocumentAttachmentCatalogURL.path)
+            else {
                 throw TriptychControlError.invalidAttachmentCatalog
             }
-            guard let manifest: TriptychManifest = try decodeIfPresent(
-                TriptychManifest.self,
-                from: manifestURL
-            ) else {
+            guard
+                let manifest: TriptychManifest = try decodeIfPresent(
+                    TriptychManifest.self,
+                    from: manifestURL
+                )
+            else {
                 throw TriptychControlError.invalidManifest
             }
             return manifest
@@ -581,7 +612,8 @@ public actor TriptychControlStore {
             _ = try noteMetadataRecords(catalog: metadataCatalog())
         }
         guard !fileManager.fileExists(atPath: legacyAttachmentCatalogURL.path),
-              !fileManager.fileExists(atPath: legacyDocumentAttachmentCatalogURL.path) else {
+            !fileManager.fileExists(atPath: legacyDocumentAttachmentCatalogURL.path)
+        else {
             throw TriptychControlError.invalidAttachmentCatalog
         }
         if fileManager.fileExists(atPath: attachmentCatalogURL.path) {
@@ -661,10 +693,12 @@ public actor TriptychControlStore {
         guard DocumentFingerprint(data: current) == expectedRevision.fingerprint else {
             throw TriptychControlError.settingsRevisionConflict
         }
-        guard let currentSettings = try? decoder().decode(
-            TriptychSettings.self,
-            from: current
-        ) else {
+        guard
+            let currentSettings = try? decoder().decode(
+                TriptychSettings.self,
+                from: current
+            )
+        else {
             throw TriptychControlError.settingsCorrupted
         }
         do {
@@ -683,8 +717,9 @@ public actor TriptychControlStore {
             conflict: TriptychControlError.settingsRevisionConflict
         )
         guard readback == candidate,
-              let decoded = try? decodeValidatedSettings(readback),
-              decoded == settings else {
+            let decoded = try? decodeValidatedSettings(readback),
+            decoded == settings
+        else {
             throw TriptychControlError.settingsCorrupted
         }
         return TriptychSettingsSnapshot(
@@ -724,13 +759,14 @@ public actor TriptychControlStore {
                 .isSymbolicLinkKey,
             ])
             guard values.isRegularFile == true,
-                  values.isSymbolicLink != true,
-                  let record = try? decoder().decode(
+                values.isSymbolicLink != true,
+                let record = try? decoder().decode(
                     PortableAttachmentRecord.self,
                     from: Data(contentsOf: url, options: [.mappedIfSafe])
-                  ),
-                  url.deletingPathExtension().lastPathComponent
-                    == record.id.uuidString.lowercased() else {
+                ),
+                url.deletingPathExtension().lastPathComponent
+                    == record.id.uuidString.lowercased()
+            else {
                 throw ImageAttachmentError.invalidCatalog
             }
             records.append(record)
@@ -742,7 +778,8 @@ public actor TriptychControlStore {
             return "\(record.vaultID.uuidString):\(path.rawValue)"
         }
         guard Set(records.map(\.id)).count == records.count,
-              Set(relativeKeys).count == relativeKeys.count else {
+            Set(relativeKeys).count == relativeKeys.count
+        else {
             throw ImageAttachmentError.invalidCatalog
         }
         return records.sorted { $0.id.uuidString < $1.id.uuidString }
@@ -756,9 +793,10 @@ public actor TriptychControlStore {
         try withPortableControlLock {
             try ensureAttachmentCatalogDirectory()
             if case .vaultRelative = location,
-               let existing = try attachmentRecords().first(where: {
-                   $0.vaultID == vaultID && $0.location == location
-               }) {
+                let existing = try attachmentRecords().first(where: {
+                    $0.vaultID == vaultID && $0.location == location
+                })
+            {
                 return (existing, false)
             }
             let record = PortableAttachmentRecord(
@@ -794,8 +832,9 @@ public actor TriptychControlStore {
                 )
             }
             guard readback == candidate,
-                  (try? decoder().decode(PortableAttachmentRecord.self, from: readback))
-                    == record else {
+                (try? decoder().decode(PortableAttachmentRecord.self, from: readback))
+                    == record
+            else {
                 throw ImageAttachmentError.catalogCommitUncertain(
                     "The record readback did not match the exact candidate bytes."
                 )
@@ -856,13 +895,14 @@ public actor TriptychControlStore {
                 .isSymbolicLinkKey,
             ])
             guard values.isRegularFile == true,
-                  values.isSymbolicLink != true,
-                  let record = try? decoder().decode(
+                values.isSymbolicLink != true,
+                let record = try? decoder().decode(
                     DocumentAttachmentRecord.self,
                     from: Data(contentsOf: url, options: [.mappedIfSafe])
-                  ),
-                  url.deletingPathExtension().lastPathComponent
-                    == record.id.uuidString.lowercased() else {
+                ),
+                url.deletingPathExtension().lastPathComponent
+                    == record.id.uuidString.lowercased()
+            else {
                 throw DocumentAttachmentError.invalidCatalog
             }
             records.append(record)
@@ -874,10 +914,12 @@ public actor TriptychControlStore {
             return "\(record.noteID.uuidString):\(record.vaultID.uuidString):\(path.rawValue)"
         }
         guard Set(records.map(\.id)).count == records.count,
-              Set(relativeKeys).count == relativeKeys.count else {
+            Set(relativeKeys).count == relativeKeys.count
+        else {
             throw DocumentAttachmentError.invalidCatalog
         }
-        return records
+        return
+            records
             .filter { noteID == nil || $0.noteID == noteID }
             .sorted {
                 let order = $0.filename.localizedStandardCompare($1.filename)
@@ -896,9 +938,10 @@ public actor TriptychControlStore {
         try withPortableControlLock {
             try ensureDocumentAttachmentCatalogDirectory()
             if case .vaultRelative = location,
-               let existing = try documentAttachmentRecords(noteID: noteID).first(where: {
-                   $0.vaultID == vaultID && $0.location == location
-               }) {
+                let existing = try documentAttachmentRecords(noteID: noteID).first(where: {
+                    $0.vaultID == vaultID && $0.location == location
+                })
+            {
                 return (existing, false)
             }
             let record = DocumentAttachmentRecord(
@@ -938,8 +981,9 @@ public actor TriptychControlStore {
                 )
             }
             guard readback == candidate,
-                  (try? decoder().decode(DocumentAttachmentRecord.self, from: readback))
-                    == record else {
+                (try? decoder().decode(DocumentAttachmentRecord.self, from: readback))
+                    == record
+            else {
                 throw DocumentAttachmentError.catalogCommitUncertain(
                     "The record readback did not match the exact candidate bytes."
                 )
@@ -952,21 +996,24 @@ public actor TriptychControlStore {
     public func replaceDocumentAttachment(_ expected: DocumentAttachmentRecord, with replacement: DocumentAttachmentRecord) throws {
         try withPortableControlLock {
             guard expected.id == replacement.id, expected.noteID == replacement.noteID,
-                  expected.vaultID == replacement.vaultID,
-                  let identity = try identityRecord(id: expected.noteID), identity.vaultID == expected.vaultID else {
+                expected.vaultID == replacement.vaultID,
+                let identity = try identityRecord(id: expected.noteID), identity.vaultID == expected.vaultID
+            else {
                 throw DocumentAttachmentError.catalogConflict
             }
             let records = try documentAttachmentRecords()
             let duplicateVaultRelativeLocation = records.contains { record in
                 guard record.id != expected.id,
-                      record.noteID == replacement.noteID,
-                      case .vaultRelative = replacement.location else {
+                    record.noteID == replacement.noteID,
+                    case .vaultRelative = replacement.location
+                else {
                     return false
                 }
                 return record.location == replacement.location
             }
             guard records.first(where: { $0.id == expected.id }) == expected,
-                  !duplicateVaultRelativeLocation else {
+                !duplicateVaultRelativeLocation
+            else {
                 throw DocumentAttachmentError.catalogConflict
             }
             let url = documentAttachmentRecordURL(id: expected.id)
@@ -976,8 +1023,9 @@ public actor TriptychControlStore {
             }
             do {
                 let candidate = try encodedData(replacement)
-                let readback = try replaceExactFile(at: url, expected: current, candidate: candidate,
-                                                   conflict: DocumentAttachmentError.catalogConflict)
+                let readback = try replaceExactFile(
+                    at: url, expected: current, candidate: candidate,
+                    conflict: DocumentAttachmentError.catalogConflict)
                 guard readback == candidate else { throw DocumentAttachmentError.catalogCommitUncertain("Relationship readback differs.") }
             } catch let error as TriptychControlError {
                 if case .controlFileCommitUncertain(let reason) = error { throw DocumentAttachmentError.catalogCommitUncertain(reason) }
@@ -1047,7 +1095,8 @@ public actor TriptychControlStore {
                 .isSymbolicLinkKey,
             ])
             guard values.isRegularFile == true,
-                  values.isSymbolicLink != true else {
+                values.isSymbolicLink != true
+            else {
                 throw NoteMetadataError.invalidCatalog
             }
             let data = try Data(contentsOf: url, options: [.mappedIfSafe])
@@ -1058,10 +1107,11 @@ public actor TriptychControlStore {
                 profilesByVaultID: profilesByVaultID,
                 catalog: catalog
             )
-            snapshots.append(NoteMetadataSnapshot(
-                record: record,
-                revision: DocumentFingerprint(data: data)
-            ))
+            snapshots.append(
+                NoteMetadataSnapshot(
+                    record: record,
+                    revision: DocumentFingerprint(data: data)
+                ))
         }
         guard Set(snapshots.map(\.record.noteID)).count == snapshots.count else {
             throw NoteMetadataError.invalidCatalog
@@ -1108,8 +1158,9 @@ public actor TriptychControlStore {
     ) throws -> URL {
         try withPortableControlLock {
             guard issue.fileName == URL(fileURLWithPath: issue.fileName).lastPathComponent,
-                  !issue.fileName.isEmpty,
-                  (issue.fileName as NSString).pathExtension == "json" else {
+                !issue.fileName.isEmpty,
+                (issue.fileName as NSString).pathExtension == "json"
+            else {
                 throw NoteMetadataError.recoveryIssueChanged
             }
             try validateNoteMetadataCatalogDirectory()
@@ -1128,7 +1179,8 @@ public actor TriptychControlStore {
                     fileManager: fileManager
                 )
             } catch ExactStatePreservationError.missing,
-                    ExactStatePreservationError.unsafe {
+                ExactStatePreservationError.unsafe
+            {
                 throw NoteMetadataError.recoveryIssueChanged
             } catch ExactStatePreservationError.preservationFailed(let reason) {
                 if reason == "The file changed and no longer qualifies for recovery. Reload its current state." {
@@ -1156,10 +1208,11 @@ public actor TriptychControlStore {
             let profilesByVaultID = try noteMetadataProfilesByVaultID()
             let catalog = try metadataCatalog()
             guard let profile = profilesByVaultID[identity.vaultID],
-                  catalog.validate(
+                catalog.validate(
                     fields: fields,
                     profile: profile
-                  ).isEmpty else {
+                ).isEmpty
+            else {
                 throw NoteMetadataError.invalidRecord(noteID)
             }
             try ensureNoteMetadataCatalogDirectory()
@@ -1170,7 +1223,8 @@ public actor TriptychControlStore {
             if fileManager.fileExists(atPath: url.path) {
                 let current = try Data(contentsOf: url, options: [.mappedIfSafe])
                 guard let expectedRevision,
-                      DocumentFingerprint(data: current) == expectedRevision else {
+                    DocumentFingerprint(data: current) == expectedRevision
+                else {
                     throw NoteMetadataError.revisionConflict(noteID)
                 }
                 do {
@@ -1197,7 +1251,8 @@ public actor TriptychControlStore {
                     throw NoteMetadataError.revisionConflict(noteID)
                 } catch {
                     if let current = try? Data(contentsOf: url, options: [.mappedIfSafe]),
-                       current == candidate {
+                        current == candidate
+                    {
                         readback = current
                     } else if fileManager.fileExists(atPath: url.path) {
                         throw NoteMetadataError.commitUncertain(
@@ -1207,10 +1262,12 @@ public actor TriptychControlStore {
                     } else {
                         throw error
                     }
-                    guard let decoded = try? decoder().decode(
-                        NoteMetadataRecord.self,
-                        from: readback
-                    ), decoded == record else {
+                    guard
+                        let decoded = try? decoder().decode(
+                            NoteMetadataRecord.self,
+                            from: readback
+                        ), decoded == record
+                    else {
                         throw NoteMetadataError.commitUncertain(
                             noteID,
                             "The record readback did not match the candidate."
@@ -1231,10 +1288,11 @@ public actor TriptychControlStore {
                 }
             }
             guard readback == candidate,
-                  let decoded = try? decoder().decode(
+                let decoded = try? decoder().decode(
                     NoteMetadataRecord.self,
                     from: readback
-                  ), decoded == record else {
+                ), decoded == record
+            else {
                 throw NoteMetadataError.commitUncertain(
                     noteID,
                     "The record readback did not match the exact candidate bytes."
@@ -1355,12 +1413,14 @@ public actor TriptychControlStore {
         }
         try ensureControlDirectory()
         try commitIdentityPayload(payload, replacing: &snapshot)
-        guard let record = snapshot.payload.records.first(where: {
-                  $0.id == expectedRecordID
-                      && $0.vaultID == vaultID
-                      && $0.relativePath == relativePath
-                      && $0.fingerprint == fingerprint
-              }) else {
+        guard
+            let record = snapshot.payload.records.first(where: {
+                $0.id == expectedRecordID
+                    && $0.vaultID == vaultID
+                    && $0.relativePath == relativePath
+                    && $0.fingerprint == fingerprint
+            })
+        else {
             throw TriptychControlError.invalidIdentities
         }
         return record
@@ -1370,9 +1430,11 @@ public actor TriptychControlStore {
         _ records: [NoteIdentityRecord]
     ) -> Bool {
         Set(records.map(\.id)).count == records.count
-            && Set(records.map {
-                "\($0.vaultID.uuidString.lowercased())\u{0}\($0.relativePath)"
-            }).count == records.count
+            && Set(
+                records.map {
+                    "\($0.vaultID.uuidString.lowercased())\u{0}\($0.relativePath)"
+                }
+            ).count == records.count
     }
 
     public func identityRecord(vaultID: UUID, relativePath: String) throws -> NoteIdentityRecord? {
@@ -1398,11 +1460,13 @@ public actor TriptychControlStore {
         guard let index = payload.records.firstIndex(where: { $0.id == id }) else {
             throw CocoaError(.fileNoSuchFile)
         }
-        guard !payload.records.contains(where: {
-            $0.id != id
-                && $0.vaultID == payload.records[index].vaultID
-                && $0.relativePath == relativePath
-        }) else {
+        guard
+            !payload.records.contains(where: {
+                $0.id != id
+                    && $0.vaultID == payload.records[index].vaultID
+                    && $0.relativePath == relativePath
+            })
+        else {
             throw TriptychControlError.identityPathAlreadyAssigned(relativePath)
         }
         let previousPath = payload.records[index].relativePath
@@ -1449,7 +1513,8 @@ public actor TriptychControlStore {
                 throw CocoaError(.fileReadNoPermission)
             }
             if payload.records[byID].relativePath == sourcePath
-                || payload.records[byID].relativePath == relativePath {
+                || payload.records[byID].relativePath == relativePath
+            {
                 index = byID
             } else if let bySource = payload.records.firstIndex(where: {
                 $0.vaultID == vaultID && $0.relativePath == sourcePath
@@ -1491,19 +1556,23 @@ public actor TriptychControlStore {
             )
             payload.records.append(recovered)
             try commitIdentityPayload(payload, replacing: &snapshot)
-            guard let committed = snapshot.payload.records.first(where: {
-                $0.id == recovered.id
-            }) else {
+            guard
+                let committed = snapshot.payload.records.first(where: {
+                    $0.id == recovered.id
+                })
+            else {
                 throw TriptychControlError.invalidIdentities
             }
             return committed
         }
 
-        guard !payload.records.contains(where: {
-            $0.id != payload.records[index].id
-                && $0.vaultID == vaultID
-                && $0.relativePath == relativePath
-        }) else {
+        guard
+            !payload.records.contains(where: {
+                $0.id != payload.records[index].id
+                    && $0.vaultID == vaultID
+                    && $0.relativePath == relativePath
+            })
+        else {
             throw TriptychControlError.identityPathAlreadyAssigned(relativePath)
         }
 
@@ -1554,19 +1623,23 @@ public actor TriptychControlStore {
         var payload = snapshot.payload
         let movingIDs = Set(ids)
         for move in moves {
-            guard let record = payload.records.first(where: {
-                $0.id == move.stableNoteID
-            }), record.vaultID == move.source.vaultID,
-                  move.source.vaultID == move.destination.vaultID,
-                  record.relativePath == move.source.relativePath
-                    || record.relativePath == move.destination.relativePath else {
+            guard
+                let record = payload.records.first(where: {
+                    $0.id == move.stableNoteID
+                }), record.vaultID == move.source.vaultID,
+                move.source.vaultID == move.destination.vaultID,
+                record.relativePath == move.source.relativePath
+                    || record.relativePath == move.destination.relativePath
+            else {
                 throw TriptychControlError.invalidIdentityCandidate(move.stableNoteID)
             }
-            guard !payload.records.contains(where: {
-                !movingIDs.contains($0.id)
-                    && $0.vaultID == move.destination.vaultID
-                    && $0.relativePath == move.destination.relativePath
-            }) else {
+            guard
+                !payload.records.contains(where: {
+                    !movingIDs.contains($0.id)
+                        && $0.vaultID == move.destination.vaultID
+                        && $0.relativePath == move.destination.relativePath
+                })
+            else {
                 throw TriptychControlError.identityPathAlreadyAssigned(
                     move.destination.relativePath
                 )
@@ -1576,9 +1649,11 @@ public actor TriptychControlStore {
         let timestamp = Date()
         var updated: [NoteIdentityRecord] = []
         for move in moves {
-            guard let index = payload.records.firstIndex(where: {
-                $0.id == move.stableNoteID
-            }) else {
+            guard
+                let index = payload.records.firstIndex(where: {
+                    $0.id == move.stableNoteID
+                })
+            else {
                 throw TriptychControlError.invalidIdentityCandidate(move.stableNoteID)
             }
             let previousPath = payload.records[index].relativePath
@@ -1716,9 +1791,10 @@ public actor TriptychControlStore {
             if sourceIsPresent {
                 if let reservedIdentity {
                     guard reservedIdentity.vaultID == vaultID,
-                          reservedIdentity.relativePath == relativePath,
-                          reservedIdentity.fingerprint == intendedRevision,
-                          pathIdentity?.id == reservedIdentityID else {
+                        reservedIdentity.relativePath == relativePath,
+                        reservedIdentity.fingerprint == intendedRevision,
+                        pathIdentity?.id == reservedIdentityID
+                    else {
                         throw TriptychControlError.invalidIdentityCandidate(
                             reservedIdentityID
                         )
@@ -1729,40 +1805,44 @@ public actor TriptychControlStore {
                     )
                 }
                 guard pathIdentity == nil,
-                      bindingSnapshot.binding(for: reservedIdentityID) == nil,
-                      !payload.pendingRebindings.contains(where: {
-                          $0.noteID == reservedIdentityID
-                      }),
-                      !payload.unresolvedAmbiguities.contains(where: {
-                          $0.candidateIDs.contains(reservedIdentityID)
-                      }) else {
+                    bindingSnapshot.binding(for: reservedIdentityID) == nil,
+                    !payload.pendingRebindings.contains(where: {
+                        $0.noteID == reservedIdentityID
+                    }),
+                    !payload.unresolvedAmbiguities.contains(where: {
+                        $0.candidateIDs.contains(reservedIdentityID)
+                    })
+                else {
                     throw TriptychControlError.invalidIdentityCandidate(
                         pathIdentity?.id ?? reservedIdentityID
                     )
                 }
-                payload.records.append(NoteIdentityRecord(
-                    id: reservedIdentityID,
-                    vaultID: vaultID,
-                    relativePath: relativePath,
-                    fingerprint: intendedRevision
-                ))
+                payload.records.append(
+                    NoteIdentityRecord(
+                        id: reservedIdentityID,
+                        vaultID: vaultID,
+                        relativePath: relativePath,
+                        fingerprint: intendedRevision
+                    ))
             } else {
                 guard pathIdentity?.id == reservedIdentityID || pathIdentity == nil,
-                      reservedIdentity == nil
+                    reservedIdentity == nil
                         || (reservedIdentity?.vaultID == vaultID
                             && reservedIdentity?.relativePath == relativePath
-                            && reservedIdentity?.fingerprint == intendedRevision) else {
+                            && reservedIdentity?.fingerprint == intendedRevision)
+                else {
                     throw TriptychControlError.invalidIdentityCandidate(
                         pathIdentity?.id ?? reservedIdentityID
                     )
                 }
                 guard bindingSnapshot.binding(for: reservedIdentityID) == nil,
-                      !payload.pendingRebindings.contains(where: {
-                          $0.noteID == reservedIdentityID
-                      }),
-                      !payload.unresolvedAmbiguities.contains(where: {
-                          $0.candidateIDs.contains(reservedIdentityID)
-                      }) else {
+                    !payload.pendingRebindings.contains(where: {
+                        $0.noteID == reservedIdentityID
+                    }),
+                    !payload.unresolvedAmbiguities.contains(where: {
+                        $0.candidateIDs.contains(reservedIdentityID)
+                    })
+                else {
                     throw TriptychControlError.invalidIdentityCandidate(
                         reservedIdentityID
                     )
@@ -1782,8 +1862,9 @@ public actor TriptychControlStore {
             })
             if sourceIsPresent {
                 guard final?.vaultID == vaultID,
-                      final?.relativePath == relativePath,
-                      final?.fingerprint == intendedRevision else {
+                    final?.relativePath == relativePath,
+                    final?.fingerprint == intendedRevision
+                else {
                     throw TriptychControlError.invalidIdentities
                 }
                 return ManagedCreationIdentityReconciliation(
@@ -1826,11 +1907,13 @@ public actor TriptychControlStore {
                 payload.records.removeAll { $0.id == current.id }
             }
             if let previous = reconciliation.previousReservedIdentity {
-                guard !payload.records.contains(where: {
-                    $0.id == previous.id
-                        || ($0.vaultID == vaultID
-                            && $0.relativePath == relativePath)
-                }) else {
+                guard
+                    !payload.records.contains(where: {
+                        $0.id == previous.id
+                            || ($0.vaultID == vaultID
+                                && $0.relativePath == relativePath)
+                    })
+                else {
                     throw TriptychControlError.invalidIdentities
                 }
                 payload.records.append(previous)
@@ -1899,12 +1982,13 @@ public actor TriptychControlStore {
                     payload.unresolvedAmbiguities[unresolvedIndex].fingerprint = document.fingerprint
                     changed = true
                 }
-                ambiguities.append(NoteIdentityAmbiguity(
-                    vaultID: vaultID,
-                    relativePath: document.relativePath,
-                    fingerprint: document.fingerprint,
-                    candidates: candidates
-                ))
+                ambiguities.append(
+                    NoteIdentityAmbiguity(
+                        vaultID: vaultID,
+                        relativePath: document.relativePath,
+                        fingerprint: document.fingerprint,
+                        candidates: candidates
+                    ))
                 continue
             }
             let candidateIndices = payload.records.indices.filter { index in
@@ -1918,11 +2002,12 @@ public actor TriptychControlStore {
                 payload.records[index].updatedAt = Date()
                 claimedIDs.insert(payload.records[index].id)
                 result[document.relativePath] = payload.records[index]
-                rebound.append(NoteIdentityRebinding(
-                    id: payload.records[index].id,
-                    previousRelativePath: previousPath,
-                    relativePath: document.relativePath
-                ))
+                rebound.append(
+                    NoteIdentityRebinding(
+                        id: payload.records[index].id,
+                        previousRelativePath: previousPath,
+                        relativePath: document.relativePath
+                    ))
                 Self.enqueuePendingRebinding(
                     NoteIdentityPendingRebinding(
                         noteID: payload.records[index].id,
@@ -1948,20 +2033,22 @@ public actor TriptychControlStore {
                 payload.unresolvedAmbiguities.removeAll {
                     $0.vaultID == vaultID && $0.relativePath == document.relativePath
                 }
-                payload.unresolvedAmbiguities.append(StoredIdentityAmbiguity(
-                    vaultID: vaultID,
-                    relativePath: document.relativePath,
-                    fingerprint: document.fingerprint,
-                    candidateIDs: candidateIndices.map { payload.records[$0].id },
-                    detectedAt: Date()
-                ))
+                payload.unresolvedAmbiguities.append(
+                    StoredIdentityAmbiguity(
+                        vaultID: vaultID,
+                        relativePath: document.relativePath,
+                        fingerprint: document.fingerprint,
+                        candidateIDs: candidateIndices.map { payload.records[$0].id },
+                        detectedAt: Date()
+                    ))
                 changed = true
-                ambiguities.append(NoteIdentityAmbiguity(
-                    vaultID: vaultID,
-                    relativePath: document.relativePath,
-                    fingerprint: document.fingerprint,
-                    candidates: candidateIndices.map { payload.records[$0] }
-                ))
+                ambiguities.append(
+                    NoteIdentityAmbiguity(
+                        vaultID: vaultID,
+                        relativePath: document.relativePath,
+                        fingerprint: document.fingerprint,
+                        candidates: candidateIndices.map { payload.records[$0] }
+                    ))
             }
         }
         if changed {
@@ -1989,9 +2076,11 @@ public actor TriptychControlStore {
     ) throws -> NoteIdentityRecord {
         var snapshot = try identitySnapshot()
         var payload = snapshot.payload
-        guard !payload.records.contains(where: {
-            $0.vaultID == vaultID && $0.relativePath == relativePath
-        }) else {
+        guard
+            !payload.records.contains(where: {
+                $0.vaultID == vaultID && $0.relativePath == relativePath
+            })
+        else {
             throw TriptychControlError.identityPathAlreadyAssigned(relativePath)
         }
 
@@ -2000,9 +2089,11 @@ public actor TriptychControlStore {
             let storedCandidates = payload.unresolvedAmbiguities.first(where: {
                 $0.vaultID == vaultID && $0.relativePath == relativePath
             })?.candidateIDs
-            guard let index = payload.records.firstIndex(where: {
-                $0.id == candidateID && $0.vaultID == vaultID
-            }), storedCandidates?.contains(candidateID) ?? (payload.records[index].fingerprint == fingerprint) else {
+            guard
+                let index = payload.records.firstIndex(where: {
+                    $0.id == candidateID && $0.vaultID == vaultID
+                }), storedCandidates?.contains(candidateID) ?? (payload.records[index].fingerprint == fingerprint)
+            else {
                 throw TriptychControlError.invalidIdentityCandidate(candidateID)
             }
             let previousPath = payload.records[index].relativePath
@@ -2032,9 +2123,11 @@ public actor TriptychControlStore {
         }
         try ensureControlDirectory()
         try commitIdentityPayload(payload, replacing: &snapshot)
-        guard let committed = snapshot.payload.records.first(where: {
-            $0.id == record.id
-        }) else {
+        guard
+            let committed = snapshot.payload.records.first(where: {
+                $0.id == record.id
+            })
+        else {
             throw TriptychControlError.invalidIdentities
         }
         return committed
@@ -2044,7 +2137,8 @@ public actor TriptychControlStore {
         vaultID: UUID? = nil
     ) throws -> [NoteIdentityPendingRebinding] {
         let pending = try identityPayload().pendingRebindings
-        return pending
+        return
+            pending
             .filter { vaultID == nil || $0.vaultID == vaultID }
             .sorted {
                 if $0.vaultID != $1.vaultID {
@@ -2060,11 +2154,13 @@ public actor TriptychControlStore {
     public func completeIdentityRebinding(_ rebinding: NoteIdentityPendingRebinding) throws {
         var snapshot = try identitySnapshot()
         var payload = snapshot.payload
-        guard let record = payload.records.first(where: {
-            $0.id == rebinding.noteID
-                && $0.vaultID == rebinding.vaultID
-                && $0.relativePath == rebinding.relativePath
-        }) else {
+        guard
+            let record = payload.records.first(where: {
+                $0.id == rebinding.noteID
+                    && $0.vaultID == rebinding.vaultID
+                    && $0.relativePath == rebinding.relativePath
+            })
+        else {
             throw TriptychControlError.identityRebindingNotFound(rebinding.noteID)
         }
         _ = record
@@ -2097,7 +2193,8 @@ public actor TriptychControlStore {
         }
         let data = try Data(contentsOf: identitiesURL, options: [.mappedIfSafe])
         guard let payload = try? decoder().decode(IdentityFile.self, from: data),
-              Self.hasUniqueIdentityRecords(payload.records) else {
+            Self.hasUniqueIdentityRecords(payload.records)
+        else {
             throw TriptychControlError.invalidIdentities
         }
         return IdentityFileSnapshot(payload: payload, data: data)
@@ -2118,8 +2215,9 @@ public actor TriptychControlStore {
             conflict: TriptychControlError.identitiesRevisionConflict
         )
         guard readback == candidate,
-              let decoded = try? decoder().decode(IdentityFile.self, from: readback),
-              Self.hasUniqueIdentityRecords(decoded.records) else {
+            let decoded = try? decoder().decode(IdentityFile.self, from: readback),
+            Self.hasUniqueIdentityRecords(decoded.records)
+        else {
             throw TriptychControlError.invalidIdentities
         }
         snapshot = IdentityFileSnapshot(payload: decoded, data: readback)
@@ -2168,10 +2266,12 @@ public actor TriptychControlStore {
             }
         }
         let canonicalControl = controlURL.resolvingSymlinksInPath().standardizedFileURL
-        let canonicalCatalog = noteMetadataCatalogURL
+        let canonicalCatalog =
+            noteMetadataCatalogURL
             .resolvingSymlinksInPath()
             .standardizedFileURL
-        let rootPath = canonicalControl.path.hasSuffix("/")
+        let rootPath =
+            canonicalControl.path.hasSuffix("/")
             ? canonicalControl.path
             : canonicalControl.path + "/"
         guard canonicalCatalog.path.hasPrefix(rootPath) else {
@@ -2187,14 +2287,16 @@ public actor TriptychControlStore {
     }
 
     private func noteMetadataProfilesByVaultID() throws -> [UUID: SchemaProfileID] {
-        Dictionary(uniqueKeysWithValues: try manifest().vaultIDs.map { slot, vaultID in
-            let profile: SchemaProfileID = switch slot {
-            case .paperAnalysis: .analysis
-            case .topicKnowledge: .topicMarkdown
-            case .output: .draftProject
-            }
-            return (vaultID, profile)
-        })
+        Dictionary(
+            uniqueKeysWithValues: try manifest().vaultIDs.map { slot, vaultID in
+                let profile: SchemaProfileID =
+                    switch slot {
+                    case .paperAnalysis: .analysis
+                    case .topicKnowledge: .topicMarkdown
+                    case .output: .draftProject
+                    }
+                return (vaultID, profile)
+            })
     }
 
     private func decodedNoteMetadataRecord(
@@ -2206,38 +2308,45 @@ public actor TriptychControlStore {
     ) throws -> NoteMetadataRecord {
         let fingerprint = DocumentFingerprint(data: data)
         guard let record = try? decoder().decode(NoteMetadataRecord.self, from: data) else {
-            throw NoteMetadataError.recoveryRequired(NoteMetadataRecoveryIssue(
-                fileName: url.lastPathComponent,
-                fingerprint: fingerprint,
-                noteID: nil,
-                reason: .invalidEnvelope
-            ))
+            throw NoteMetadataError.recoveryRequired(
+                NoteMetadataRecoveryIssue(
+                    fileName: url.lastPathComponent,
+                    fingerprint: fingerprint,
+                    noteID: nil,
+                    reason: .invalidEnvelope
+                ))
         }
-        guard url.deletingPathExtension().lastPathComponent
-                == record.noteID.uuidString.lowercased() else {
-            throw NoteMetadataError.recoveryRequired(NoteMetadataRecoveryIssue(
-                fileName: url.lastPathComponent,
-                fingerprint: fingerprint,
-                noteID: record.noteID,
-                reason: .fileIdentityMismatch
-            ))
+        guard
+            url.deletingPathExtension().lastPathComponent
+                == record.noteID.uuidString.lowercased()
+        else {
+            throw NoteMetadataError.recoveryRequired(
+                NoteMetadataRecoveryIssue(
+                    fileName: url.lastPathComponent,
+                    fingerprint: fingerprint,
+                    noteID: record.noteID,
+                    reason: .fileIdentityMismatch
+                ))
         }
         guard let identity = identities[record.noteID] else {
-            throw NoteMetadataError.recoveryRequired(NoteMetadataRecoveryIssue(
-                fileName: url.lastPathComponent,
-                fingerprint: fingerprint,
-                noteID: record.noteID,
-                reason: .orphanedNoteIdentity
-            ))
+            throw NoteMetadataError.recoveryRequired(
+                NoteMetadataRecoveryIssue(
+                    fileName: url.lastPathComponent,
+                    fingerprint: fingerprint,
+                    noteID: record.noteID,
+                    reason: .orphanedNoteIdentity
+                ))
         }
         guard let profile = profilesByVaultID[identity.vaultID],
-              catalog.validate(fields: record.fields, profile: profile).isEmpty else {
-            throw NoteMetadataError.recoveryRequired(NoteMetadataRecoveryIssue(
-                fileName: url.lastPathComponent,
-                fingerprint: fingerprint,
-                noteID: record.noteID,
-                reason: .invalidRoleOrFields
-            ))
+            catalog.validate(fields: record.fields, profile: profile).isEmpty
+        else {
+            throw NoteMetadataError.recoveryRequired(
+                NoteMetadataRecoveryIssue(
+                    fileName: url.lastPathComponent,
+                    fingerprint: fingerprint,
+                    noteID: record.noteID,
+                    reason: .invalidRoleOrFields
+                ))
         }
         return record
     }
@@ -2254,10 +2363,12 @@ public actor TriptychControlStore {
             }
         }
         let canonicalControl = controlURL.resolvingSymlinksInPath().standardizedFileURL
-        let canonicalCatalog = attachmentCatalogURL
+        let canonicalCatalog =
+            attachmentCatalogURL
             .resolvingSymlinksInPath()
             .standardizedFileURL
-        let rootPath = canonicalControl.path.hasSuffix("/")
+        let rootPath =
+            canonicalControl.path.hasSuffix("/")
             ? canonicalControl.path
             : canonicalControl.path + "/"
         guard canonicalCatalog.path.hasPrefix(rootPath) else {
@@ -2277,10 +2388,12 @@ public actor TriptychControlStore {
             }
         }
         let canonicalControl = controlURL.resolvingSymlinksInPath().standardizedFileURL
-        let canonicalCatalog = documentAttachmentCatalogURL
+        let canonicalCatalog =
+            documentAttachmentCatalogURL
             .resolvingSymlinksInPath()
             .standardizedFileURL
-        let rootPath = canonicalControl.path.hasSuffix("/")
+        let rootPath =
+            canonicalControl.path.hasSuffix("/")
             ? canonicalControl.path
             : canonicalControl.path + "/"
         guard canonicalCatalog.path.hasPrefix(rootPath) else {
@@ -2349,14 +2462,16 @@ public actor TriptychControlStore {
 
     private func decodeSettingsLoadState(_ data: Data) -> TriptychSettingsLoadState {
         guard let object = try? JSONSerialization.jsonObject(with: data),
-              let envelope = object as? [String: Any] else {
+            let envelope = object as? [String: Any]
+        else {
             return .corrupted
         }
         guard let rawVersion = envelope["schemaVersion"] else {
             return .oldSchema(nil)
         }
         guard let number = rawVersion as? NSNumber,
-              CFGetTypeID(number) != CFBooleanGetTypeID() else {
+            CFGetTypeID(number) != CFBooleanGetTypeID()
+        else {
             return .corrupted
         }
         let version = number.intValue
@@ -2384,10 +2499,11 @@ public actor TriptychControlStore {
                 reason: error.localizedDescription
             )
         }
-        return .current(TriptychSettingsSnapshot(
-            settings: settings,
-            revision: revision
-        ))
+        return .current(
+            TriptychSettingsSnapshot(
+                settings: settings,
+                revision: revision
+            ))
     }
 
     /// Replaces a portable control file only if the exact authorized preimage
@@ -2428,9 +2544,10 @@ public actor TriptychControlStore {
                 defer { Darwin.close(stagingDescriptor) }
                 var stagingStatus = stat()
                 guard fstat(stagingDescriptor, &stagingStatus) == 0,
-                      (stagingStatus.st_mode & S_IFMT) == S_IFREG,
-                      stagingStatus.st_nlink == 1,
-                      fsync(stagingDescriptor) == 0 else {
+                    (stagingStatus.st_mode & S_IFMT) == S_IFREG,
+                    stagingStatus.st_nlink == 1,
+                    fsync(stagingDescriptor) == 0
+                else {
                     throw POSIXError(.EIO)
                 }
 
@@ -2438,13 +2555,15 @@ public actor TriptychControlStore {
                 guard rechecked == expected else { throw conflict() }
                 try self.controlWriteHook?(coordinatedURL)
 
-                guard renameatx_np(
-                    AT_FDCWD,
-                    stagingURL.path,
-                    AT_FDCWD,
-                    coordinatedURL.path,
-                    UInt32(RENAME_SWAP)
-                ) == 0 else {
+                guard
+                    renameatx_np(
+                        AT_FDCWD,
+                        stagingURL.path,
+                        AT_FDCWD,
+                        coordinatedURL.path,
+                        UInt32(RENAME_SWAP)
+                    ) == 0
+                else {
                     throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
                 }
                 swapOccurred = true
@@ -2455,13 +2574,14 @@ public actor TriptychControlStore {
                     let displaced = try Data(contentsOf: stagingURL, options: [.mappedIfSafe])
                     guard canonical == candidate, displaced == expected else {
                         if canonical == candidate,
-                           renameatx_np(
-                            AT_FDCWD,
-                            stagingURL.path,
-                            AT_FDCWD,
-                            coordinatedURL.path,
-                            UInt32(RENAME_SWAP)
-                           ) == 0 {
+                            renameatx_np(
+                                AT_FDCWD,
+                                stagingURL.path,
+                                AT_FDCWD,
+                                coordinatedURL.path,
+                                UInt32(RENAME_SWAP)
+                            ) == 0
+                        {
                             swapOccurred = false
                             throw conflict()
                         }
@@ -2485,7 +2605,8 @@ public actor TriptychControlStore {
                 } catch {
                     if !swapOccurred { throw error }
                     if let controlError = error as? TriptychControlError,
-                       case .controlFileCommitUncertain = controlError {
+                        case .controlFileCommitUncertain = controlError
+                    {
                         throw controlError
                     }
                     throw TriptychControlError.controlFileCommitUncertain(
@@ -2539,7 +2660,8 @@ public actor TriptychControlStore {
             conflict: TriptychControlError.zoteroBindingsRevisionConflict
         )
         guard readback == candidate,
-              let decoded = try? decoder().decode(AnalysisZoteroBindingFile.self, from: readback) else {
+            let decoded = try? decoder().decode(AnalysisZoteroBindingFile.self, from: readback)
+        else {
             throw TriptychControlError.invalidZoteroBindings
         }
         return AnalysisZoteroBindingsSnapshot(

@@ -1,6 +1,7 @@
 import Foundation
 import ScholiumContracts
 import Testing
+
 @testable import ScholiumApplication
 
 @Suite("Architecture stability measurement", .serialized)
@@ -11,7 +12,8 @@ struct ArchitectureStabilityMeasurementTests {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let root = repositoryRoot
+        let root =
+            repositoryRoot
             .appendingPathComponent(".build/architecture-refresh", isDirectory: true)
             .appendingPathComponent(UUID().uuidString.lowercased(), isDirectory: true)
         let fixtureRoot = root.appendingPathComponent("rdf1", isDirectory: true)
@@ -40,15 +42,17 @@ struct ArchitectureStabilityMeasurementTests {
         generator.standardError = generatorOutput
         try generator.run()
         generator.waitUntilExit()
-        let generatedOutput = String(
-            data: generatorOutput.fileHandleForReading.readDataToEndOfFile(),
-            encoding: .utf8
-        ) ?? ""
+        let generatedOutput =
+            String(
+                data: generatorOutput.fileHandleForReading.readDataToEndOfFile(),
+                encoding: .utf8
+            ) ?? ""
         #expect(generator.terminationStatus == 0, Comment(rawValue: generatedOutput))
 
-        let manifestData = try Data(contentsOf: fixtureRoot.appendingPathComponent(
-            "manifest.json"
-        ))
+        let manifestData = try Data(
+            contentsOf: fixtureRoot.appendingPathComponent(
+                "manifest.json"
+            ))
         let manifest = try #require(
             JSONSerialization.jsonObject(with: manifestData) as? [String: Any]
         )
@@ -72,10 +76,12 @@ struct ArchitectureStabilityMeasurementTests {
             "03-works",
             isDirectory: true
         )
-        let configurationRuntime = WorkspaceRuntime(configuration: .live(.init(
-            applicationSupportURL: applicationSupportURL,
-            workspaceRegistryStorageURL: registryStorageURL
-        )))
+        let configurationRuntime = WorkspaceRuntime(
+            configuration: .live(
+                .init(
+                    applicationSupportURL: applicationSupportURL,
+                    workspaceRegistryStorageURL: registryStorageURL
+                )))
         let configured: WorkspaceHandle
         do {
             configured = try await configurationRuntime.configureTriptych(
@@ -92,11 +98,13 @@ struct ArchitectureStabilityMeasurementTests {
         let assignment = configured.assignment
         await configurationRuntime.shutdown()
 
-        let runtime = WorkspaceRuntime(configuration: .snapshot(.init(
-            applicationSupportURL: applicationSupportURL,
-            workspaceRegistryStorageURL: registryStorageURL,
-            assignments: [assignment]
-        )))
+        let runtime = WorkspaceRuntime(
+            configuration: .snapshot(
+                .init(
+                    applicationSupportURL: applicationSupportURL,
+                    workspaceRegistryStorageURL: registryStorageURL,
+                    assignments: [assignment]
+                )))
         do {
             let handle = try await runtime.openWorkspace(id: assignment.id)
             let initial = await handle.latestRefreshMeasurement
@@ -118,14 +126,15 @@ struct ArchitectureStabilityMeasurementTests {
             try Data("# Architecture Delta\n\nInitial delta.\n".utf8).write(
                 to: noteURL
             )
-            try await catalog.apply(VaultWatchEvent(
-                added: [relativePath],
-                modified: [],
-                deleted: [],
-                sequence: 1,
-                requiresFullRescan: false,
-                rootChanged: false
-            ))
+            try await catalog.apply(
+                VaultWatchEvent(
+                    added: [relativePath],
+                    modified: [],
+                    deleted: [],
+                    sequence: 1,
+                    requiresFullRescan: false,
+                    rootChanged: false
+                ))
             let added = try await build(
                 assignment: assignment,
                 dependencies: dependencies,
@@ -136,14 +145,15 @@ struct ArchitectureStabilityMeasurementTests {
                 to: noteURL,
                 options: .atomic
             )
-            try await catalog.apply(VaultWatchEvent(
-                added: [],
-                modified: [relativePath],
-                deleted: [],
-                sequence: 2,
-                requiresFullRescan: false,
-                rootChanged: false
-            ))
+            try await catalog.apply(
+                VaultWatchEvent(
+                    added: [],
+                    modified: [relativePath],
+                    deleted: [],
+                    sequence: 2,
+                    requiresFullRescan: false,
+                    rootChanged: false
+                ))
             let edited = try await build(
                 assignment: assignment,
                 dependencies: dependencies,
@@ -151,14 +161,15 @@ struct ArchitectureStabilityMeasurementTests {
             )
 
             try FileManager.default.moveItem(at: noteURL, to: renamedURL)
-            try await catalog.apply(VaultWatchEvent(
-                added: [renamedPath],
-                modified: [],
-                deleted: [relativePath],
-                sequence: 3,
-                requiresFullRescan: false,
-                rootChanged: false
-            ))
+            try await catalog.apply(
+                VaultWatchEvent(
+                    added: [renamedPath],
+                    modified: [],
+                    deleted: [relativePath],
+                    sequence: 3,
+                    requiresFullRescan: false,
+                    rootChanged: false
+                ))
             let renamed = try await build(
                 assignment: assignment,
                 dependencies: dependencies,
@@ -166,14 +177,15 @@ struct ArchitectureStabilityMeasurementTests {
             )
 
             try FileManager.default.removeItem(at: renamedURL)
-            try await catalog.apply(VaultWatchEvent(
-                added: [],
-                modified: [],
-                deleted: [renamedPath],
-                sequence: 4,
-                requiresFullRescan: false,
-                rootChanged: false
-            ))
+            try await catalog.apply(
+                VaultWatchEvent(
+                    added: [],
+                    modified: [],
+                    deleted: [renamedPath],
+                    sequence: 4,
+                    requiresFullRescan: false,
+                    rootChanged: false
+                ))
             let deleted = try await build(
                 assignment: assignment,
                 dependencies: dependencies,

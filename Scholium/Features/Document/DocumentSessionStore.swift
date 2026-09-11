@@ -1,5 +1,5 @@
-import ScholiumContracts
 import Combine
+import ScholiumContracts
 import SwiftUI
 
 /// A document session follows stable vault and note identities. Paths and
@@ -295,7 +295,8 @@ final class DocumentSessionModel: ObservableObject {
 
     func acknowledgeScrollRestoreRequest(id: UInt64, fingerprint: String) {
         guard scrollRestoreRequest?.id == id,
-              scrollRestoreRequest?.fingerprint == fingerprint else { return }
+            scrollRestoreRequest?.fingerprint == fingerprint
+        else { return }
         scrollRestoreRequest = nil
     }
 }
@@ -390,8 +391,9 @@ final class DocumentSessionStore {
     func reapEligibleSessions() -> [ReapedPresentation] {
         let eligible = entries.compactMap { target, entry -> ReapedPresentation? in
             guard entry.leaseCount == 0,
-                  pinReasons(for: entry.session).isEmpty,
-                  !entry.session.editorSession.hasAttachedWebView else { return nil }
+                pinReasons(for: entry.session).isEmpty,
+                !entry.session.editorSession.hasAttachedWebView
+            else { return nil }
             return ReapedPresentation(
                 target: target,
                 scrollPosition: entry.session.observedScrollPosition

@@ -1,6 +1,7 @@
 import Darwin
 import Foundation
 import Testing
+
 @testable import ScholiumContracts
 @testable import ScholiumCore
 
@@ -130,7 +131,8 @@ struct VaultMutationCoordinatorTests {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let base = repositoryRoot
+        let base =
+            repositoryRoot
             .appendingPathComponent(".build/vault-parent-races", isDirectory: true)
             .appendingPathComponent(String(UUID().uuidString.prefix(12)).lowercased(), isDirectory: true)
         defer { try? FileManager.default.removeItem(at: base) }
@@ -208,14 +210,16 @@ struct VaultMutationCoordinatorTests {
             hooks: VaultMutationHooks(didReach: { phase in
                 guard phase == .replaced else { return }
                 try Data("provider-owned".utf8).withUnsafeBytes { bytes in
-                    guard setxattr(
-                        fixture.note.path,
-                        attributeName,
-                        bytes.baseAddress,
-                        bytes.count,
-                        0,
-                        0
-                    ) == 0 else {
+                    guard
+                        setxattr(
+                            fixture.note.path,
+                            attributeName,
+                            bytes.baseAddress,
+                            bytes.count,
+                            0,
+                            0
+                        ) == 0
+                    else {
                         throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
                     }
                 }
@@ -251,9 +255,10 @@ struct VaultMutationCoordinatorTests {
         )
         #expect(try Data(contentsOf: fixture.root.appendingPathComponent("Moved.md")) == fixture.original)
         try coordinator.delete(path: movedPath, expected: fixture.original)
-        #expect(!FileManager.default.fileExists(
-            atPath: fixture.root.appendingPathComponent("Moved.md").path
-        ))
+        #expect(
+            !FileManager.default.fileExists(
+                atPath: fixture.root.appendingPathComponent("Moved.md").path
+            ))
     }
 
     @Test("Deletion never converts a presence error into confirmed absence")
@@ -285,7 +290,8 @@ struct VaultMutationCoordinatorTests {
                 .deletingLastPathComponent()
                 .deletingLastPathComponent()
                 .deletingLastPathComponent()
-            root = repositoryRoot
+            root =
+                repositoryRoot
                 .appendingPathComponent(".build/vault-mutations", isDirectory: true)
                 .appendingPathComponent(UUID().uuidString.lowercased(), isDirectory: true)
             try FileManager.default.createDirectory(

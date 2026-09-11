@@ -33,15 +33,18 @@ extension WorkspaceHandle {
         try requireActive()
         let records = try await services.transactionRecoveryStore.pending()
         guard let record = records.first(where: { $0.id == id }),
-              record.triptychID == self.id else {
+            record.triptychID == self.id
+        else {
             throw TriptychTransactionError.invalidPlan(
                 "The selected recovery record is unavailable for this Triptych."
             )
         }
         if let plan = record.systemTrashDeletionPlan,
-           plan.sourceReceipts.contains(where: { $0.progress == .outcomeUnknown }) {
+            plan.sourceReceipts.contains(where: { $0.progress == .outcomeUnknown })
+        {
             guard let vaultID = plan.preview.sources.first?.vaultID,
-                  plan.preview.sources.allSatisfy({ $0.vaultID == vaultID }) else {
+                plan.preview.sources.allSatisfy({ $0.vaultID == vaultID })
+            else {
                 throw TriptychTransactionError.invalidPlan(
                     "The unknown system-Trash outcome cannot be resolved automatically."
                 )
@@ -77,14 +80,15 @@ extension WorkspaceHandle {
         reference: ManagedCreationRecoveryReference
     ) async throws {
         guard record.operation == .noteCreation,
-              record.triptychID == id,
-              record.files.count == 1,
-              let file = record.files.first,
-              file.role == .createdNote,
-              file.beforeRevision == nil,
-              file.vaultID == reference.target.vaultID,
-              file.path == reference.target.relativePath,
-              let intendedRevision = file.intendedRevision else {
+            record.triptychID == id,
+            record.files.count == 1,
+            let file = record.files.first,
+            file.role == .createdNote,
+            file.beforeRevision == nil,
+            file.vaultID == reference.target.vaultID,
+            file.path == reference.target.relativePath,
+            let intendedRevision = file.intendedRevision
+        else {
             throw TriptychTransactionError.invalidPlan(
                 "The managed creation recovery does not describe one exact new Note."
             )
@@ -174,10 +178,11 @@ extension WorkspaceHandle {
                 noteID: reference.reservedIdentityID
             )
             guard finalSource.fingerprint == intendedRevision,
-                  finalPathIdentity?.id == reference.reservedIdentityID,
-                  finalPathIdentity?.fingerprint == intendedRevision,
-                  finalReservedIdentity == finalPathIdentity,
-                  finalMetadata?.record.fields == reference.metadataFields else {
+                finalPathIdentity?.id == reference.reservedIdentityID,
+                finalPathIdentity?.fingerprint == intendedRevision,
+                finalReservedIdentity == finalPathIdentity,
+                finalMetadata?.record.fields == reference.metadataFields
+            else {
                 if let createdMetadata {
                     try? await services.controlStore.removeNoteMetadata(createdMetadata)
                 }

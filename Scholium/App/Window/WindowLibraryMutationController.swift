@@ -39,38 +39,44 @@ struct WindowLibraryMutationContext {
 
 @MainActor
 struct WindowLibraryMutationDependencies {
-    typealias CurrencyAwareOperation = @MainActor @Sendable (
-        DocumentTransitionCoordinator.Currency
-    ) async throws -> Void
+    typealias CurrencyAwareOperation =
+        @MainActor @Sendable (
+            DocumentTransitionCoordinator.Currency
+        ) async throws -> Void
 
     let context: @MainActor () -> WindowLibraryMutationContext?
-    let enqueueDocumentTransition: @MainActor (
-        _ operation: @escaping CurrencyAwareOperation,
-        _ didFail: @escaping @MainActor @Sendable (Error) -> Void,
-        _ didFinish: @escaping @MainActor @Sendable () -> Void
-    ) -> Void
+    let enqueueDocumentTransition:
+        @MainActor (
+            _ operation: @escaping CurrencyAwareOperation,
+            _ didFail: @escaping @MainActor @Sendable (Error) -> Void,
+            _ didFinish: @escaping @MainActor @Sendable () -> Void
+        ) -> Void
     let flushEditors: @MainActor (UUID) async throws -> Void
     let flushActiveTarget: @MainActor (NoteMutationTarget) async throws -> Void
     let expectedRevision: @MainActor (NoteMutationTarget) throws -> DocumentFingerprint
-    let committedNoteCreated: @MainActor (
-        WorkspaceMutationOutcome<WorkspaceManagedNoteCommit>,
-        @MainActor () -> Bool
-    ) async -> Void
+    let committedNoteCreated:
+        @MainActor (
+            WorkspaceMutationOutcome<WorkspaceManagedNoteCommit>,
+            @MainActor () -> Bool
+        ) async -> Void
     let committedFolderCreated: @MainActor (WorkspaceMutationOutcome<VaultRelativeFolderPath>) async -> Void
     let committedFolderMoved: @MainActor (WorkspaceMutationOutcome<FolderMoveCommit>) async -> Void
-    let committedNoteDuplicated: @MainActor (
-        WorkspaceMutationOutcome<NoteDocument>,
-        NoteMutationTarget,
-        String
-    ) async -> Void
-    let committedNoteMoved: @MainActor (
-        WorkspaceMutationOutcome<TriptychMoveCommit>,
-        NoteMutationTarget
-    ) async -> Void
-    let committedSystemTrash: @MainActor (
-        SystemTrashDeletionPreview,
-        WorkspaceMutationOutcome<SystemTrashDeletionCommit>?
-    ) async -> Void
+    let committedNoteDuplicated:
+        @MainActor (
+            WorkspaceMutationOutcome<NoteDocument>,
+            NoteMutationTarget,
+            String
+        ) async -> Void
+    let committedNoteMoved:
+        @MainActor (
+            WorkspaceMutationOutcome<TriptychMoveCommit>,
+            NoteMutationTarget
+        ) async -> Void
+    let committedSystemTrash:
+        @MainActor (
+            SystemTrashDeletionPreview,
+            WorkspaceMutationOutcome<SystemTrashDeletionCommit>?
+        ) async -> Void
     let importedDocumentsCommitted: @MainActor (RegisteredVault) async throws -> Void
     let presentImportOutcome: @MainActor (WindowMarkdownImportBatchOutcome) -> Void
     let presentSystemTrash: @MainActor (SystemTrashDeletionPreview) -> Void
@@ -125,34 +131,39 @@ final class WindowLibraryMutationController: ObservableObject {
     func requestUntitledNoteCreation(in folderRelativePath: String?) {
         guard !isCreatingNote else { return }
         isCreatingNote = true
-        dependencies.enqueueDocumentTransition({ [weak self] isCurrent in
-            guard let self,
-                  let context = self.dependencies.context(),
-                  context.sourceScope == .library else {
-                throw WorkspaceRegistryError.incompleteWorkspace
-            }
-            let outcome = try await self.requireOperations().createUntitledNote(
-                inVault: context.vault.id,
-                folderRelativePath: folderRelativePath
-            )
-            await self.dependencies.committedNoteCreated(outcome, isCurrent)
-        }, { [weak self] error in
-            self?.dependencies.reportError(
-                String(
-                    localized: "Could not create note: \(error.localizedDescription)",
-                    table: "Localizable",
-                    bundle: .module
+        dependencies.enqueueDocumentTransition(
+            { [weak self] isCurrent in
+                guard let self,
+                    let context = self.dependencies.context(),
+                    context.sourceScope == .library
+                else {
+                    throw WorkspaceRegistryError.incompleteWorkspace
+                }
+                let outcome = try await self.requireOperations().createUntitledNote(
+                    inVault: context.vault.id,
+                    folderRelativePath: folderRelativePath
                 )
-            )
-        }, { [weak self] in
-            self?.isCreatingNote = false
-        })
+                await self.dependencies.committedNoteCreated(outcome, isCurrent)
+            },
+            { [weak self] error in
+                self?.dependencies.reportError(
+                    String(
+                        localized: "Could not create note: \(error.localizedDescription)",
+                        table: "Localizable",
+                        bundle: .module
+                    )
+                )
+            },
+            { [weak self] in
+                self?.isCreatingNote = false
+            })
     }
 
     func requestUntitledFolderCreation(in parentRelativePath: String?) {
         guard !isMutatingFolder else { return }
         guard let context = dependencies.context(),
-              context.sourceScope == .library else {
+            context.sourceScope == .library
+        else {
             dependencies.reportError(
                 WorkspaceRegistryError.incompleteWorkspace.localizedDescription
             )
@@ -200,7 +211,8 @@ final class WindowLibraryMutationController: ObservableObject {
             throw WindowLibraryMutationError.folderMutationInProgress
         }
         guard let context = dependencies.context(),
-              target.vaultID == context.vault.id else {
+            target.vaultID == context.vault.id
+        else {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
         isMutatingFolder = true
@@ -332,7 +344,8 @@ final class WindowLibraryMutationController: ObservableObject {
         _ preview: SystemTrashDeletionPreview
     ) async throws {
         guard let context = dependencies.context(),
-              preview.sources.first?.vaultID != nil else {
+            preview.sources.first?.vaultID != nil
+        else {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
         try await dependencies.flushEditors(context.assignmentID)
@@ -406,10 +419,11 @@ final class WindowLibraryMutationController: ObservableObject {
             } catch is CancellationError {
                 throw CancellationError()
             } catch {
-                failures.append(WindowMarkdownImportFailure(
-                    sourceName: url.lastPathComponent,
-                    reason: error.localizedDescription
-                ))
+                failures.append(
+                    WindowMarkdownImportFailure(
+                        sourceName: url.lastPathComponent,
+                        reason: error.localizedDescription
+                    ))
             }
         }
         var presentationWarning: String?

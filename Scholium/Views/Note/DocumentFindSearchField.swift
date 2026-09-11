@@ -37,13 +37,17 @@ struct DocumentFindSearchField: NSViewRepresentable {
     func updateNSView(_ field: FindSearchField, context: Context) {
         context.coordinator.model = model
         if !((field.currentEditor() as? NSTextView)?.hasMarkedText() ?? false),
-           field.stringValue != model.query { field.stringValue = model.query }
+            field.stringValue != model.query
+        {
+            field.stringValue = model.query
+        }
         field.focusRequestID = model.focusRequestID
     }
 
     func sizeThatFits(_ proposal: ProposedViewSize, nsView: FindSearchField, context: Context) -> CGSize? {
-        CGSize(width: proposal.width ?? nsView.intrinsicContentSize.width,
-               height: nsView.intrinsicContentSize.height)
+        CGSize(
+            width: proposal.width ?? nsView.intrinsicContentSize.width,
+            height: nsView.intrinsicContentSize.height)
     }
 
     final class FindSearchField: NSSearchField {
@@ -57,8 +61,9 @@ struct DocumentFindSearchField: NSViewRepresentable {
 
         private func applyFocusRequest() {
             guard let focusRequestID, focusRequestID != appliedFocusRequestID,
-                  !((currentEditor() as? NSTextView)?.hasMarkedText() ?? false),
-                  let window, window.makeFirstResponder(self) else { return }
+                !((currentEditor() as? NSTextView)?.hasMarkedText() ?? false),
+                let window, window.makeFirstResponder(self)
+            else { return }
             appliedFocusRequestID = focusRequestID
             currentEditor()?.selectAll(nil)
         }
@@ -72,8 +77,7 @@ struct DocumentFindSearchField: NSViewRepresentable {
 
         @objc func searchChanged(_ sender: NSTextField) {
             guard !((sender.currentEditor() as? NSTextView)?.hasMarkedText() ?? false) else { return }
-            if sender is NSSearchField { model.setQuery(sender.stringValue) }
-            else { model.setReplacement(sender.stringValue) }
+            if sender is NSSearchField { model.setQuery(sender.stringValue) } else { model.setReplacement(sender.stringValue) }
         }
 
         func controlTextDidChange(_ notification: Notification) {
@@ -97,8 +101,7 @@ struct DocumentFindSearchField: NSViewRepresentable {
             switch commandSelector {
             case #selector(NSResponder.insertNewline(_:)):
                 guard control is NSSearchField else { return false }
-                if NSApp.currentEvent?.modifierFlags.contains(.shift) == true { model.previous() }
-                else { model.next() }
+                if NSApp.currentEvent?.modifierFlags.contains(.shift) == true { model.previous() } else { model.next() }
                 return true
             case #selector(NSResponder.cancelOperation(_:)):
                 model.dismiss()

@@ -1,5 +1,5 @@
-import ScholiumContracts
 import Foundation
+import ScholiumContracts
 import ScholiumCore
 
 /// Immutable state exposed to the native C callback. The continuation is the
@@ -38,10 +38,11 @@ enum WorkspaceWatchEventBuffer {
         guard case .dropped(let displaced) = continuation.yield(event) else {
             return
         }
-        continuation.yield(.reconciliationRequired(
-            sequence: max(displaced.sequence, event.sequence),
-            rootChanged: displaced.rootChanged || event.rootChanged
-        ))
+        continuation.yield(
+            .reconciliationRequired(
+                sequence: max(displaced.sequence, event.sequence),
+                rootChanged: displaced.rootChanged || event.rootChanged
+            ))
     }
 }
 
@@ -82,10 +83,12 @@ actor WorkspaceFileEventWatcher {
     func start() throws -> AsyncStream<VaultWatchEvent> {
         if let eventStream { return eventStream }
         var isDirectory: ObjCBool = false
-        guard FileManager.default.fileExists(
-            atPath: rootURL.path,
-            isDirectory: &isDirectory
-        ), isDirectory.boolValue else {
+        guard
+            FileManager.default.fileExists(
+                atPath: rootURL.path,
+                isDirectory: &isDirectory
+            ), isDirectory.boolValue
+        else {
             throw WorkspaceFileEventWatcherError.rootUnavailable(rootURL.path)
         }
 
@@ -118,99 +121,111 @@ actor WorkspaceFileEventWatcher {
                 | kFSEventStreamCreateFlagNoDefer
                 | kFSEventStreamCreateFlagWatchRoot
         )
-        guard let stream = FSEventStreamCreate(
-            kCFAllocatorDefault,
-            { _, callbackInfo, eventCount, eventPaths, eventFlags, eventIDs in
-                guard let callbackInfo else { return }
-                let owner = Unmanaged<WorkspaceFSEventCallbackContext>
-                    .fromOpaque(callbackInfo)
-                    .takeUnretainedValue()
-                let paths = Unmanaged<NSArray>.fromOpaque(eventPaths).takeUnretainedValue()
-                guard eventCount <= paths.count else { return }
+        guard
+            let stream = FSEventStreamCreate(
+                kCFAllocatorDefault,
+                { _, callbackInfo, eventCount, eventPaths, eventFlags, eventIDs in
+                    guard let callbackInfo else { return }
+                    let owner = Unmanaged<WorkspaceFSEventCallbackContext>
+                        .fromOpaque(callbackInfo)
+                        .takeUnretainedValue()
+                    let paths = Unmanaged<NSArray>.fromOpaque(eventPaths).takeUnretainedValue()
+                    guard eventCount <= paths.count else { return }
 
-                var added: [String] = []
-                var modified: [String] = []
-                var deleted: [String] = []
-                var requiresFullRescan = false
-                var rootChanged = false
-                var latestEventID: UInt64 = 0
-                var sawRenamedMarkdownAddition = false
-                var sawRenamedMarkdownDeletion = false
+                    var added: [String] = []
+                    var modified: [String] = []
+                    var deleted: [String] = []
+                    var requiresFullRescan = false
+                    var rootChanged = false
+                    var latestEventID: UInt64 = 0
+                    var sawRenamedMarkdownAddition = false
+                    var sawRenamedMarkdownDeletion = false
 
-                for index in 0..<eventCount {
-                    guard let fullPath = paths[index] as? String else { continue }
-                    let flag = eventFlags[index]
-                    latestEventID = max(latestEventID, eventIDs[index])
-                    requiresFullRescan = requiresFullRescan
-                        || (flag & UInt32(kFSEventStreamEventFlagMustScanSubDirs)) != 0
-                        || (flag & UInt32(kFSEventStreamEventFlagUserDropped)) != 0
-                        || (flag & UInt32(kFSEventStreamEventFlagKernelDropped)) != 0
-                        || (flag & UInt32(kFSEventStreamEventFlagEventIdsWrapped)) != 0
-                    rootChanged = rootChanged
-                        || (flag & UInt32(kFSEventStreamEventFlagRootChanged)) != 0
+                    for index in 0..<eventCount {
+                        guard let fullPath = paths[index] as? String else { continue }
+                        let flag = eventFlags[index]
+                        latestEventID = max(latestEventID, eventIDs[index])
+                        requiresFullRescan =
+                            requiresFullRescan
+                            || (flag & UInt32(kFSEventStreamEventFlagMustScanSubDirs)) != 0
+                            || (flag & UInt32(kFSEventStreamEventFlagUserDropped)) != 0
+                            || (flag & UInt32(kFSEventStreamEventFlagKernelDropped)) != 0
+                            || (flag & UInt32(kFSEventStreamEventFlagEventIdsWrapped)) != 0
+                        rootChanged =
+                            rootChanged
+                            || (flag & UInt32(kFSEventStreamEventFlagRootChanged)) != 0
 
-                    let created = (flag & UInt32(kFSEventStreamEventFlagItemCreated)) != 0
-                    let removed = (flag & UInt32(kFSEventStreamEventFlagItemRemoved)) != 0
-                    let renamed = (flag & UInt32(kFSEventStreamEventFlagItemRenamed)) != 0
-                    let isDirectory = (flag & UInt32(
-                        kFSEventStreamEventFlagItemIsDir
-                    )) != 0
-                    // Directory events do not identify every descendant
-                    // Markdown path, so treat them as intentionally coarse.
-                    // This keeps empty-folder inventory correct without
-                    // guessing a partial note delta.
-                    requiresFullRescan = requiresFullRescan
-                        || (isDirectory && (created || removed || renamed))
+                        let created = (flag & UInt32(kFSEventStreamEventFlagItemCreated)) != 0
+                        let removed = (flag & UInt32(kFSEventStreamEventFlagItemRemoved)) != 0
+                        let renamed = (flag & UInt32(kFSEventStreamEventFlagItemRenamed)) != 0
+                        let isDirectory =
+                            (flag
+                                & UInt32(
+                                    kFSEventStreamEventFlagItemIsDir
+                                )) != 0
+                        // Directory events do not identify every descendant
+                        // Markdown path, so treat them as intentionally coarse.
+                        // This keeps empty-folder inventory correct without
+                        // guessing a partial note delta.
+                        requiresFullRescan =
+                            requiresFullRescan
+                            || (isDirectory && (created || removed || renamed))
 
-                    guard let relativePath = VaultPath.relativePath(
-                        for: URL(fileURLWithPath: fullPath),
-                        in: owner.rootURL
-                    ), relativePath.lowercased().hasSuffix(".md") else {
-                        continue
+                        guard
+                            let relativePath = VaultPath.relativePath(
+                                for: URL(fileURLWithPath: fullPath),
+                                in: owner.rootURL
+                            ), relativePath.lowercased().hasSuffix(".md")
+                        else {
+                            continue
+                        }
+                        let changed = (flag & UInt32(kFSEventStreamEventFlagItemModified)) != 0
+                        let metadataChanged =
+                            (flag & UInt32(kFSEventStreamEventFlagItemChangeOwner)) != 0
+                            || (flag & UInt32(kFSEventStreamEventFlagItemXattrMod)) != 0
+                        let exists = FileManager.default.fileExists(atPath: fullPath)
+
+                        if removed || (renamed && !exists) {
+                            deleted.append(relativePath)
+                            if renamed { sawRenamedMarkdownDeletion = true }
+                        } else if created || (renamed && exists) {
+                            added.append(relativePath)
+                            if renamed { sawRenamedMarkdownAddition = true }
+                        } else if changed || metadataChanged {
+                            modified.append(relativePath)
+                        }
                     }
-                    let changed = (flag & UInt32(kFSEventStreamEventFlagItemModified)) != 0
-                    let metadataChanged =
-                        (flag & UInt32(kFSEventStreamEventFlagItemChangeOwner)) != 0
-                        || (flag & UInt32(kFSEventStreamEventFlagItemXattrMod)) != 0
-                    let exists = FileManager.default.fileExists(atPath: fullPath)
 
-                    if removed || (renamed && !exists) {
-                        deleted.append(relativePath)
-                        if renamed { sawRenamedMarkdownDeletion = true }
-                    } else if created || (renamed && exists) {
-                        added.append(relativePath)
-                        if renamed { sawRenamedMarkdownAddition = true }
-                    } else if changed || metadataChanged {
-                        modified.append(relativePath)
+                    // macOS may split one rename across separate native
+                    // callbacks. A callback containing only one side is coarse:
+                    // reconcile from descriptor-authorized authority so Scholium
+                    // never publishes a transient Added or Deleted generation.
+                    // When both sides arrive together, retain the precise delta.
+                    if sawRenamedMarkdownAddition != sawRenamedMarkdownDeletion {
+                        requiresFullRescan = true
                     }
-                }
 
-                // macOS may split one rename across separate native
-                // callbacks. A callback containing only one side is coarse:
-                // reconcile from descriptor-authorized authority so Scholium
-                // never publishes a transient Added or Deleted generation.
-                // When both sides arrive together, retain the precise delta.
-                if sawRenamedMarkdownAddition != sawRenamedMarkdownDeletion {
-                    requiresFullRescan = true
-                }
-
-                guard !added.isEmpty || !modified.isEmpty || !deleted.isEmpty
-                        || requiresFullRescan || rootChanged else { return }
-                WorkspaceWatchEventBuffer.yield(VaultWatchEvent(
-                    added: added,
-                    modified: modified,
-                    deleted: deleted,
-                    sequence: latestEventID,
-                    requiresFullRescan: requiresFullRescan,
-                    rootChanged: rootChanged
-                ), to: owner.continuation)
-            },
-            &context,
-            [rootURL.path] as CFArray,
-            FSEventStreamEventId(kFSEventStreamEventIdSinceNow),
-            0.25,
-            flags
-        ) else {
+                    guard
+                        !added.isEmpty || !modified.isEmpty || !deleted.isEmpty
+                            || requiresFullRescan || rootChanged
+                    else { return }
+                    WorkspaceWatchEventBuffer.yield(
+                        VaultWatchEvent(
+                            added: added,
+                            modified: modified,
+                            deleted: deleted,
+                            sequence: latestEventID,
+                            requiresFullRescan: requiresFullRescan,
+                            rootChanged: rootChanged
+                        ), to: owner.continuation)
+                },
+                &context,
+                [rootURL.path] as CFArray,
+                FSEventStreamEventId(kFSEventStreamEventIdSinceNow),
+                0.25,
+                flags
+            )
+        else {
             pair.continuation.finish()
             throw WorkspaceFileEventWatcherError.streamUnavailable(rootURL.path)
         }

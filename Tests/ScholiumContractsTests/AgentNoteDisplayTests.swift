@@ -9,7 +9,8 @@ struct AgentNoteDisplayTests {
         let bytes = Data("\u{feff}# 原文\r\n\r\nExact **text** 😀.\r\n".utf8)
         let range = try #require(bytes.range(of: Data("text".utf8)))
         func target(_ start: Int?, _ end: Int?, _ text: String?) throws -> AgentNoteDisplayTarget {
-            try .init(triptychID: UUID(), noteID: UUID(), note: .init(vaultID: UUID(), relativePath: "Source.md"),
+            try .init(
+                triptychID: UUID(), noteID: UUID(), note: .init(vaultID: UUID(), relativePath: "Source.md"),
                 fingerprint: .init(data: bytes), source: bytes, startUTF8: start, endUTF8: end, expectedText: text)
         }
         let exact = try target(range.lowerBound, range.upperBound, "text")

@@ -95,7 +95,8 @@ struct SettingsInteractionView: View {
     }
 
     private func restoreCategory() {
-        category = SettingsInteractionCategory(rawValue: persistedCategory)
+        category =
+            SettingsInteractionCategory(rawValue: persistedCategory)
             ?? .keyboardShortcuts
         selectCategoryForSearch()
     }
@@ -108,10 +109,12 @@ struct SettingsInteractionView: View {
         if ["chat", "queue", "steer", "return", "聊天", "回车", "排队"].contains(where: query.contains) {
             category = .chat
         } else if ["selection", "action", "prompt", "instruction", "选段", "操作"]
-            .contains(where: query.contains) {
+            .contains(where: query.contains)
+        {
             category = .selectionActions
         } else if ["keyboard", "hotkey", "shortcut", "command", "menu", "快捷键"]
-            .contains(where: query.contains) {
+            .contains(where: query.contains)
+        {
             category = .keyboardShortcuts
         }
     }
@@ -173,10 +176,12 @@ struct SettingsIntegrationsView: View {
         guard !query.isEmpty else { return }
 
         if ["zotero", "citation", "library", "local api", "引用"]
-            .contains(where: query.contains) {
+            .contains(where: query.contains)
+        {
             category = .zotero
         } else if ["agent", "chat", "codex", "claude", "mcp", "skill", "tool", "bridge", "智能体"]
-            .contains(where: query.contains) {
+            .contains(where: query.contains)
+        {
             category = .agents
         }
     }

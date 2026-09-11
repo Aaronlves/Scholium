@@ -130,7 +130,9 @@ struct IdentityMigrationNotice: View {
         ScholiumRecoveryNotice(
             ScholiumRecoveryNoticePresentation(
                 "Identity Recovery Required",
-                message: Text("This note remains readable, but identity-dependent restore and file changes are unavailable until its portable records finish moving from \(rebinding.previousRelativePath) to \(rebinding.relativePath)."),
+                message: Text(
+                    "This note remains readable, but identity-dependent restore and file changes are unavailable until its portable records finish moving from \(rebinding.previousRelativePath) to \(rebinding.relativePath)."
+                ),
                 detail: message.map { Text(verbatim: $0) },
                 systemImage: "exclamationmark.arrow.triangle.2.circlepath"
             ),
@@ -168,7 +170,8 @@ struct IdentityAmbiguityNotice: View {
     }
 
     private var ambiguityExplanation: String {
-        let opening = ambiguity.candidates.isEmpty
+        let opening =
+            ambiguity.candidates.isEmpty
             ? "This file’s prior identity is unresolved."
             : "This file matches \(ambiguity.candidates.count) previous notes."
         return opening + " You can keep reading, but identity-dependent restore and file changes remain unavailable until you identify it."

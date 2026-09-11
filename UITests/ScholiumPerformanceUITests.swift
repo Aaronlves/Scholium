@@ -1,6 +1,6 @@
-@preconcurrency import XCTest
 import AppKit
 import CryptoKit
+@preconcurrency import XCTest
 import notify
 
 /// External driver for the frozen RDF-1 performance protocol. This class does
@@ -465,7 +465,8 @@ final class ScholiumPerformanceUITests: XCTestCase {
             || metric == .editorCachedPreview
             || metric == .warmEditActivation
             || metric == .firstEditActivation
-            || metric == .editorVisibleProjection {
+            || metric == .editorVisibleProjection
+        {
             application.launchArguments.append(
                 "--scholium-performance-editor-mode-notifications"
             )
@@ -498,7 +499,7 @@ final class ScholiumPerformanceUITests: XCTestCase {
             application.launchEnvironment["SCHOLIUM_UI_TEST_OPEN_SLOT"] = "output"
             application.launchEnvironment["SCHOLIUM_PERFORMANCE_EXPECTED_DOCUMENT"] = "Long/Canonical-5000-Word-Work.md"
         case .editorKeyToPaint, .editorModeTransition, .editorCachedPreview,
-             .warmEditActivation, .editorVisibleProjection:
+            .warmEditActivation, .editorVisibleProjection:
             application.launchEnvironment["SCHOLIUM_UI_TEST_OPEN_SLOT"] = "output"
             application.launchEnvironment["SCHOLIUM_UI_TEST_OPEN_NOTE"] = "Long/Canonical-5000-Word-Work.md"
             application.launchEnvironment["SCHOLIUM_PERFORMANCE_EXPECTED_DOCUMENT"] = "Long/Canonical-5000-Word-Work.md"
@@ -521,7 +522,7 @@ final class ScholiumPerformanceUITests: XCTestCase {
         case .warmReadActivation:
             setupDocument = "Cluster-01/analysis-note-002.md"
         case .editorKeyToPaint, .editorModeTransition, .editorCachedPreview,
-             .warmEditActivation, .editorVisibleProjection:
+            .warmEditActivation, .editorVisibleProjection:
             setupDocument = "Long/Canonical-5000-Word-Work.md"
         case .warmLibraryLaunch, .firstReadActivation, .firstEditActivation:
             return
@@ -553,13 +554,15 @@ final class ScholiumPerformanceUITests: XCTestCase {
         if metric == .editorModeTransition || metric == .editorKeyToPaint
             || metric == .editorCachedPreview
             || metric == .warmEditActivation
-            || metric == .editorVisibleProjection {
+            || metric == .editorVisibleProjection
+        {
             let modeMenu = documentModeControl(in: application)
             XCTAssertTrue(modeMenu.waitForExistence(timeout: 10))
             if documentModeState(modeMenu) != "Edit"
                 || !application.descendants(matching: .any)[
                     "Markdown editor, Edit mode"
-                ].exists {
+                ].exists
+            {
                 requestPerformanceEditorAction("activation")
             }
             XCTAssertTrue(
@@ -729,7 +732,8 @@ final class ScholiumPerformanceUITests: XCTestCase {
                 "Sample \(sample): Editor mode transition did not publish exactly one performance record."
             )
             let modeMenu = documentModeControl(in: application)
-            let accessibilityLabel = sourceMode
+            let accessibilityLabel =
+                sourceMode
                 ? "Markdown source editor"
                 : "Markdown editor, Edit mode"
             XCTAssertTrue(modeMenu.waitForExistence(timeout: 10))
@@ -1006,7 +1010,8 @@ final class ScholiumPerformanceUITests: XCTestCase {
         application: XCUIApplication,
         documentID: String
     ) {
-        let notificationName = title == "Edit"
+        let notificationName =
+            title == "Edit"
             ? "com.scholium.qa.performance-editor-mode.live-preview"
             : "com.scholium.qa.performance-editor-mode.source"
         let deadline = Date().addingTimeInterval(20)
@@ -1016,10 +1021,13 @@ final class ScholiumPerformanceUITests: XCTestCase {
                 UInt32(NOTIFY_STATUS_OK),
                 "The QA Editor mode request could not be posted."
             )
-            if waitUntil(timeout: 1.5, condition: {
-                self.documentModeState(modeMenu) == title
-                    && application.descendants(matching: .any)[accessibilityLabel].exists
-            }) {
+            if waitUntil(
+                timeout: 1.5,
+                condition: {
+                    self.documentModeState(modeMenu) == title
+                        && application.descendants(matching: .any)[accessibilityLabel].exists
+                })
+            {
                 return
             }
         } while Date() < deadline
@@ -1032,7 +1040,8 @@ final class ScholiumPerformanceUITests: XCTestCase {
     private func requestMeasuredEditorMode(
         _ title: String
     ) {
-        let notificationName = title == "Edit"
+        let notificationName =
+            title == "Edit"
             ? "com.scholium.qa.performance-editor-mode.live-preview"
             : "com.scholium.qa.performance-editor-mode.source"
         XCTAssertEqual(
@@ -1075,7 +1084,8 @@ final class ScholiumPerformanceUITests: XCTestCase {
         documentID: String
     ) {
         if documentModeState(modeMenu) != title {
-            let notificationName = title == "Edit"
+            let notificationName =
+                title == "Edit"
                 ? "com.scholium.qa.performance-editor-mode.live-preview"
                 : "com.scholium.qa.performance-editor-mode.source"
             XCTAssertEqual(

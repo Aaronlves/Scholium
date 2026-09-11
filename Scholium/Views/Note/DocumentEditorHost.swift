@@ -89,12 +89,14 @@ struct DocumentEditorHost<ReadSurface: View, EditorSurface: View>: View {
         ZStack {
             readSurface
                 .opacity(!presentsEditor || allowsPendingReadRecovery ? 1 : 0)
-                .allowsHitTesting(presentationGate.allowsReadHitTesting(
-                    documentID: documentID,
-                    presentsEditor: presentsEditor,
-                    editorIsReady: editorIsReady,
-                    allowsPendingRecovery: allowsPendingReadRecovery
-                ))
+                .allowsHitTesting(
+                    presentationGate.allowsReadHitTesting(
+                        documentID: documentID,
+                        presentsEditor: presentsEditor,
+                        editorIsReady: editorIsReady,
+                        allowsPendingRecovery: allowsPendingReadRecovery
+                    )
+                )
                 .accessibilityHidden(presentsEditor && !allowsPendingReadRecovery)
                 .zIndex(showsEditor ? 0 : 1)
 

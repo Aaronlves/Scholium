@@ -52,9 +52,10 @@ public actor VaultAttachmentStore {
         let altText = resolvedSource.deletingPathExtension().lastPathComponent
 
         if management == .indexAbsolutePath {
-            let location = AttachmentLocation.external(try ExternalAttachmentReference(
-                filename: resolvedSource.lastPathComponent
-            ))
+            let location = AttachmentLocation.external(
+                try ExternalAttachmentReference(
+                    filename: resolvedSource.lastPathComponent
+                ))
             return PreparedVaultImageFile(
                 location: location,
                 markdownDestination: Self.absoluteMarkdownDestination(
@@ -89,7 +90,8 @@ public actor VaultAttachmentStore {
             .isSymbolicLinkKey,
         ])
         guard directValues.isRegularFile == true,
-              directValues.isSymbolicLink != true else {
+            directValues.isSymbolicLink != true
+        else {
             throw DocumentAttachmentError.unsupportedDocument(sourceURL.path)
         }
         let resolvedSource = sourceURL.resolvingSymlinksInPath().standardizedFileURL
@@ -101,9 +103,10 @@ public actor VaultAttachmentStore {
 
         if management == .referenceOriginal {
             return PreparedVaultDocumentFile(
-                location: .external(try ExternalAttachmentReference(
-                    filename: filename
-                )),
+                location: .external(
+                    try ExternalAttachmentReference(
+                        filename: filename
+                    )),
                 copiedFileFingerprint: nil,
                 copiedRelativePath: nil
             )
@@ -121,7 +124,8 @@ public actor VaultAttachmentStore {
     /// Copies an immutable document snapshot selected through an existing scoped owner.
     public func copyDocumentSnapshot(_ data: Data, filename: String, attachmentID: UUID) throws -> PreparedVaultDocumentFile {
         guard filename == URL(fileURLWithPath: filename).lastPathComponent,
-              !filename.isEmpty, filename != ".", filename != "..", !filename.contains("\0") else {
+            !filename.isEmpty, filename != ".", filename != "..", !filename.contains("\0")
+        else {
             throw DocumentAttachmentError.unsupportedDocument(filename)
         }
         let relativePath = try AttachmentRelativePath(
@@ -210,20 +214,23 @@ public actor VaultAttachmentStore {
                     guard fstat(fd, &before) == 0, (before.st_mode & S_IFMT) == S_IFREG else { throw CocoaError(.fileReadUnsupportedScheme) }
                     guard before.st_size >= 0, before.st_size <= maximumByteCount else { throw CocoaError(.fileReadTooLarge) }
                     let bytes = try VaultDescriptorAccess.readAll(from: fd, maximumByteCount: maximumByteCount)
-                    var after = stat(); var current = stat()
+                    var after = stat()
+                    var current = stat()
                     guard fstat(fd, &after) == 0, fstatat(parent, name, &current, AT_SYMLINK_NOFOLLOW) == 0,
-                          before.st_dev == after.st_dev, before.st_ino == after.st_ino,
-                          before.st_size == after.st_size, after.st_size == bytes.count,
-                          before.st_mtimespec.tv_sec == after.st_mtimespec.tv_sec, before.st_mtimespec.tv_nsec == after.st_mtimespec.tv_nsec,
-                          before.st_ctimespec.tv_sec == after.st_ctimespec.tv_sec, before.st_ctimespec.tv_nsec == after.st_ctimespec.tv_nsec,
-                          (current.st_mode & S_IFMT) == S_IFREG, current.st_dev == after.st_dev, current.st_ino == after.st_ino else {
+                        before.st_dev == after.st_dev, before.st_ino == after.st_ino,
+                        before.st_size == after.st_size, after.st_size == bytes.count,
+                        before.st_mtimespec.tv_sec == after.st_mtimespec.tv_sec, before.st_mtimespec.tv_nsec == after.st_mtimespec.tv_nsec,
+                        before.st_ctimespec.tv_sec == after.st_ctimespec.tv_sec, before.st_ctimespec.tv_nsec == after.st_ctimespec.tv_nsec,
+                        (current.st_mode & S_IFMT) == S_IFREG, current.st_dev == after.st_dev, current.st_ino == after.st_ino
+                    else {
                         throw ImageAttachmentError.sourceChanged(relativePath.rawValue)
                     }
                     // Rewalk parents as well: a directory replacement must not retarget the read.
                     try self.withParentDescriptor(relativePath: relativePath, createDirectories: false) { freshParent, freshName in
                         var fresh = stat()
                         guard fstatat(freshParent, freshName, &fresh, AT_SYMLINK_NOFOLLOW) == 0,
-                              fresh.st_dev == after.st_dev, fresh.st_ino == after.st_ino else { throw ImageAttachmentError.sourceChanged(relativePath.rawValue) }
+                            fresh.st_dev == after.st_dev, fresh.st_ino == after.st_ino
+                        else { throw ImageAttachmentError.sourceChanged(relativePath.rawValue) }
                     }
                     return bytes
                 }
@@ -285,7 +292,8 @@ public actor VaultAttachmentStore {
             filename = "Pasted Image"
         }
         if URL(fileURLWithPath: filename).pathExtension.isEmpty,
-           let pathExtension = type.preferredFilenameExtension {
+            let pathExtension = type.preferredFilenameExtension
+        {
             filename += ".\(pathExtension)"
         }
         return try prepareImportedImage(
@@ -349,8 +357,9 @@ public actor VaultAttachmentStore {
     ) throws {
         let components = relativePath.components.map(String.init)
         guard components.count >= 3,
-              components[0] == "Attachments",
-              UUID(uuidString: components[1]) != nil else {
+            components[0] == "Attachments",
+            UUID(uuidString: components[1]) != nil
+        else {
             throw ImageAttachmentError.cleanupRefused(relativePath.rawValue)
         }
         let candidate = vaultURL.appendingPathComponent(
@@ -393,10 +402,11 @@ public actor VaultAttachmentStore {
 
     private func validateImageData(_ data: Data, path: String) throws -> UTType {
         guard let source = CGImageSourceCreateWithData(data as CFData, nil),
-              CGImageSourceGetCount(source) > 0,
-              let identifier = CGImageSourceGetType(source),
-              let type = UTType(identifier as String),
-              type.conforms(to: .image) else {
+            CGImageSourceGetCount(source) > 0,
+            let identifier = CGImageSourceGetType(source),
+            let type = UTType(identifier as String),
+            type.conforms(to: .image)
+        else {
             throw ImageAttachmentError.unsupportedImage(path)
         }
         return type
@@ -405,8 +415,9 @@ public actor VaultAttachmentStore {
     private func validateDocumentType(at url: URL) throws {
         let type = try url.resourceValues(forKeys: [.contentTypeKey]).contentType
         guard let type,
-              !type.conforms(to: .image),
-              !type.conforms(to: .audiovisualContent) else {
+            !type.conforms(to: .image),
+            !type.conforms(to: .audiovisualContent)
+        else {
             throw DocumentAttachmentError.unsupportedDocument(url.path)
         }
     }
@@ -431,25 +442,28 @@ public actor VaultAttachmentStore {
         defer { Darwin.close(descriptor) }
         var initial = stat()
         guard fstat(descriptor, &initial) == 0,
-              (initial.st_mode & S_IFMT) == S_IFREG else {
+            (initial.st_mode & S_IFMT) == S_IFREG
+        else {
             throw ImageAttachmentError.unsupportedImage(url.path)
         }
         let data = try VaultDescriptorAccess.readAll(from: descriptor)
         var final = stat()
         guard fstat(descriptor, &final) == 0,
-              initial.st_dev == final.st_dev,
-              initial.st_ino == final.st_ino,
-              initial.st_size == final.st_size,
-              initial.st_mtimespec.tv_sec == final.st_mtimespec.tv_sec,
-              initial.st_mtimespec.tv_nsec == final.st_mtimespec.tv_nsec,
-              Int(final.st_size) == data.count else {
+            initial.st_dev == final.st_dev,
+            initial.st_ino == final.st_ino,
+            initial.st_size == final.st_size,
+            initial.st_mtimespec.tv_sec == final.st_mtimespec.tv_sec,
+            initial.st_mtimespec.tv_nsec == final.st_mtimespec.tv_nsec,
+            Int(final.st_size) == data.count
+        else {
             throw ImageAttachmentError.sourceChanged(url.path)
         }
         var current = stat()
         guard lstat(url.path, &current) == 0,
-              (current.st_mode & S_IFMT) == S_IFREG,
-              current.st_dev == final.st_dev,
-              current.st_ino == final.st_ino else {
+            (current.st_mode & S_IFMT) == S_IFREG,
+            current.st_dev == final.st_dev,
+            current.st_ino == final.st_ino
+        else {
             throw ImageAttachmentError.sourceChanged(url.path)
         }
         return data
@@ -521,8 +535,9 @@ public actor VaultAttachmentStore {
             }
             var status = stat()
             guard fstat(descriptor, &status) == 0,
-                  (status.st_mode & S_IFMT) == S_IFREG,
-                  Int(status.st_size) == data.count else {
+                (status.st_mode & S_IFMT) == S_IFREG,
+                Int(status.st_size) == data.count
+            else {
                 throw VaultRepositoryError.commitUncertain(
                     "The imported attachment did not preserve its exact bytes."
                 )
@@ -561,19 +576,22 @@ public actor VaultAttachmentStore {
             defer { Darwin.close(descriptor) }
             var opened = stat()
             guard fstat(descriptor, &opened) == 0,
-                  (opened.st_mode & S_IFMT) == S_IFREG else {
+                (opened.st_mode & S_IFMT) == S_IFREG
+            else {
                 throw ImageAttachmentError.cleanupRefused(relativePath.rawValue)
             }
             let data = try VaultDescriptorAccess.readAll(from: descriptor)
             var current = stat()
             guard fstatat(parentDescriptor, name, &current, AT_SYMLINK_NOFOLLOW) == 0,
-                  current.st_dev == opened.st_dev,
-                  current.st_ino == opened.st_ino,
-                  DocumentFingerprint(data: data) == expectedFingerprint else {
+                current.st_dev == opened.st_dev,
+                current.st_ino == opened.st_ino,
+                DocumentFingerprint(data: data) == expectedFingerprint
+            else {
                 throw ImageAttachmentError.cleanupRefused(relativePath.rawValue)
             }
             guard unlinkat(parentDescriptor, name, 0) == 0,
-                  fsync(parentDescriptor) == 0 else {
+                fsync(parentDescriptor) == 0
+            else {
                 throw ImageAttachmentError.cleanupRefused(relativePath.rawValue)
             }
         }
@@ -609,8 +627,10 @@ public actor VaultAttachmentStore {
                 O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC
             )
             if nextDescriptor < 0, errno == ENOENT, createDirectories {
-                guard mkdirat(currentDescriptor, component, mode_t(0o755)) == 0
-                        || errno == EEXIST else {
+                guard
+                    mkdirat(currentDescriptor, component, mode_t(0o755)) == 0
+                        || errno == EEXIST
+                else {
                     throw POSIXError(Self.posixCode(errno))
                 }
                 nextDescriptor = openat(
@@ -641,12 +661,14 @@ public actor VaultAttachmentStore {
         if !noteComponents.isEmpty { noteComponents.removeLast() }
         var attachmentComponents = attachmentPath.components.map(String.init)
         while let noteFirst = noteComponents.first,
-              let attachmentFirst = attachmentComponents.first,
-              noteFirst == attachmentFirst {
+            let attachmentFirst = attachmentComponents.first,
+            noteFirst == attachmentFirst
+        {
             noteComponents.removeFirst()
             attachmentComponents.removeFirst()
         }
-        let relativeComponents = Array(repeating: "..", count: noteComponents.count)
+        let relativeComponents =
+            Array(repeating: "..", count: noteComponents.count)
             + attachmentComponents
         return relativeComponents.map(percentEncodedPathComponent).joined(separator: "/")
     }

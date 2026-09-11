@@ -67,7 +67,8 @@ public enum NoteIdentityMigrationError: LocalizedError, Sendable {
     public var errorDescription: String? {
         switch self {
         case .incomplete(let message):
-            return "The note identity was confirmed, but its app-owned records have not finished moving. Identity-dependent actions remain unavailable. \(message)"
+            return
+                "The note identity was confirmed, but its app-owned records have not finished moving. Identity-dependent actions remain unavailable. \(message)"
         }
     }
 }

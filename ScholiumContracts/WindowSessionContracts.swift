@@ -29,7 +29,8 @@ public struct WindowDocumentPresentationSnapshot: Codable, Hashable, Sendable {
         selections: [WindowDocumentSelectionRange] = [],
         focusTarget: WindowDocumentFocusTarget? = nil
     ) {
-        self.scrollFraction = scrollFraction.isFinite
+        self.scrollFraction =
+            scrollFraction.isFinite
             ? min(1, max(0, scrollFraction))
             : 0
         self.sourceFingerprint = sourceFingerprint
@@ -60,7 +61,8 @@ public struct WindowWorkspaceSessionSnapshot: Codable, Hashable, Sendable {
         documentMode: String = "read"
     ) {
         self.workspace = workspace
-        self.vaultID = vaultID
+        self.vaultID =
+            vaultID
             ?? selectedDocument?.vaultID
             ?? openDocuments.first?.vaultID
         self.openDocuments = openDocuments
@@ -76,7 +78,8 @@ public struct WindowWorkspaceSessionSnapshot: Codable, Hashable, Sendable {
             availablePaths.contains($0.relativePath)
         }
         if let selectedDocument,
-           !result.openDocuments.contains(selectedDocument) {
+            !result.openDocuments.contains(selectedDocument)
+        {
             result.selectedDocument = nil
         }
         result.documentPresentations = documentPresentations.filter {
@@ -93,23 +96,26 @@ public struct WindowWorkspaceSessionSnapshot: Codable, Hashable, Sendable {
         var result = self
         result.openDocuments = openDocuments.map { document in
             guard document.vaultID == vaultID,
-                  document.relativePath == sourcePath else { return document }
+                document.relativePath == sourcePath
+            else { return document }
             return VaultQualifiedNoteID(
                 vaultID: vaultID,
                 relativePath: destinationPath
             )
         }
         if selectedDocument?.vaultID == vaultID,
-           selectedDocument?.relativePath == sourcePath {
+            selectedDocument?.relativePath == sourcePath
+        {
             result.selectedDocument = VaultQualifiedNoteID(
                 vaultID: vaultID,
                 relativePath: destinationPath
             )
         }
         if self.vaultID == vaultID,
-           let presentation = result.documentPresentations.removeValue(
-            forKey: sourcePath
-           ) {
+            let presentation = result.documentPresentations.removeValue(
+                forKey: sourcePath
+            )
+        {
             result.documentPresentations[destinationPath] = presentation
         }
         return result

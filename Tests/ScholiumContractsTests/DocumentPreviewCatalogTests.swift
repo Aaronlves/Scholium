@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+
 @testable import ScholiumContracts
 
 @Suite("Document preview catalog")
@@ -41,13 +42,15 @@ struct DocumentPreviewCatalogTests {
             graph: graph,
             documents: [sourceID: source, targetID: target],
             profiles: [targetID: .analysis],
-            metadata: [targetID: NoteMetadataSnapshot(
-                record: NoteMetadataRecord(
-                    noteID: UUID(),
-                    fields: ["title": .string("Target B")]
-                ),
-                revision: DocumentFingerprint(content: "target-metadata")
-            )]
+            metadata: [
+                targetID: NoteMetadataSnapshot(
+                    record: NoteMetadataRecord(
+                        noteID: UUID(),
+                        fields: ["title": .string("Target B")]
+                    ),
+                    revision: DocumentFingerprint(content: "target-metadata")
+                )
+            ]
         )
 
         #expect(preview.contractVersion == 3)

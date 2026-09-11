@@ -92,7 +92,8 @@ final class WindowShellState: ObservableObject {
             initialInspectorModes[workspace] = .about
         }
         inspectorModesByWorkspace = initialInspectorModes
-        colorScheme = userDefaults.string(forKey: WindowColorSchemeChoice.defaultsKey)
+        colorScheme =
+            userDefaults.string(forKey: WindowColorSchemeChoice.defaultsKey)
             .flatMap(WindowColorSchemeChoice.init(rawValue:))
             ?? .system
     }
@@ -193,12 +194,16 @@ final class WindowShellState: ObservableObject {
     }
 
     @discardableResult
-    func reportOperationIssue(_ message: String, kind: WindowOperationIssueKind,
-                              detail: String? = nil, offersRefresh: Bool = false) -> UUID {
+    func reportOperationIssue(
+        _ message: String, kind: WindowOperationIssueKind,
+        detail: String? = nil, offersRefresh: Bool = false
+    ) -> UUID {
         if let existing = operationIssues.first(where: {
             $0.message == message && $0.kind == kind && $0.detail == detail
                 && $0.offersRefresh == offersRefresh
-        }) { return existing.id }
+        }) {
+            return existing.id
+        }
         let issue = WindowOperationIssue(
             message: message, kind: kind, detail: detail, offersRefresh: offersRefresh
         )

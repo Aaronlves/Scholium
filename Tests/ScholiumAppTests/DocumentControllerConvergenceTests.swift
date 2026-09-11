@@ -1,7 +1,8 @@
-import ScholiumContracts
 import Foundation
 import ScholiumApplication
+import ScholiumContracts
 import Testing
+
 @testable import ScholiumApp
 
 @Suite("Document controller convergence")
@@ -9,7 +10,8 @@ import Testing
 struct DocumentControllerConvergenceTests {
     @Test("Accepted workspace updates invalidate attachment listings without replacing an unsaved document")
     func attachmentRefreshKeepsDraft() throws {
-        let vault = UUID(), id = UUID()
+        let vault = UUID()
+        let id = UUID()
         let original = note(vaultID: vault, noteID: id, path: "Analysis.md", source: "Saved source\n")
         let controller = DocumentController()
         controller.installOpenedDocument(original, vaultName: "Analyses", vaultRole: .sourceCorpus)
@@ -24,7 +26,8 @@ struct DocumentControllerConvergenceTests {
 
     @Test("Source navigation is document-bound and stale acknowledgements cannot consume a newer activation")
     func sourceNavigationOwnership() throws {
-        let controller = DocumentController(), vault = UUID()
+        let controller = DocumentController()
+        let vault = UUID()
         controller.selectUnavailableDocument(vaultID: vault, relativePath: "First.md")
         controller.requestSourceLocation(line: 2)
         let old = try #require(controller.sourceLocationRequest)
@@ -69,10 +72,12 @@ struct DocumentControllerConvergenceTests {
             managedCreationBodyStartUTF16: created.document.bodyUTF16Offset
         )
 
-        let session = try #require(controller.retainedSession(for: .init(
-            vaultID: vaultID,
-            noteID: noteID
-        )))
+        let session = try #require(
+            controller.retainedSession(
+                for: .init(
+                    vaultID: vaultID,
+                    noteID: noteID
+                )))
         #expect(controller.currentPresentationMode == .livePreview)
         #expect(controller.requestedPresentationMode == nil)
         #expect(controller.sourceLocationRequest == nil)
@@ -107,10 +112,12 @@ struct DocumentControllerConvergenceTests {
             vaultRole: .sourceCorpus,
             managedCreationBodyStartUTF16: created.document.bodyUTF16Offset
         )
-        let session = try #require(controller.retainedSession(for: .init(
-            vaultID: vaultID,
-            noteID: noteID
-        )))
+        let session = try #require(
+            controller.retainedSession(
+                for: .init(
+                    vaultID: vaultID,
+                    noteID: noteID
+                )))
         session.editorSession.loadDocument(
             initialSource,
             documentID: session.editorSession.bridgeDocumentID,
@@ -221,10 +228,11 @@ struct DocumentControllerConvergenceTests {
         )
         let document = try #require(controller.activeDocument)
         let session = controller.session(for: document)
-        let target = DocumentEditingTarget.workspace(.init(
-            vaultID: vaultID,
-            noteID: noteID
-        ))
+        let target = DocumentEditingTarget.workspace(
+            .init(
+                vaultID: vaultID,
+                noteID: noteID
+            ))
         controller.beginEditing(
             session: session,
             target: target,
@@ -517,10 +525,11 @@ struct DocumentControllerConvergenceTests {
 
         for boundary in boundaries {
             let start = try #require(source.range(of: boundary.start))
-            let end = try #require(source.range(
-                of: boundary.end,
-                range: start.upperBound..<source.endIndex
-            ))
+            let end = try #require(
+                source.range(
+                    of: boundary.end,
+                    range: start.upperBound..<source.endIndex
+                ))
             let region = String(source[start.lowerBound..<end.lowerBound])
 
             #expect(
@@ -588,21 +597,23 @@ struct DocumentControllerConvergenceTests {
             triptych: triptych,
             mode: .live,
             generatedAt: Date(),
-            vaults: [WorkspaceVaultSnapshot(
-                slot: .paperAnalysis,
-                vault: vault,
-                pathComparisonPolicy: VaultPathComparisonPolicy(
-                    caseSensitive: true,
-                    normalizationSensitive: true
-                ),
-                documents: notes,
-                identityRecovery: NoteIdentityRecoveryState(
-                    identities: [:],
-                    ambiguities: [],
-                    pendingRebindings: [],
-                    failures: []
+            vaults: [
+                WorkspaceVaultSnapshot(
+                    slot: .paperAnalysis,
+                    vault: vault,
+                    pathComparisonPolicy: VaultPathComparisonPolicy(
+                        caseSensitive: true,
+                        normalizationSensitive: true
+                    ),
+                    documents: notes,
+                    identityRecovery: NoteIdentityRecoveryState(
+                        identities: [:],
+                        ambiguities: [],
+                        pendingRebindings: [],
+                        failures: []
+                    )
                 )
-            )],
+            ],
             discovery: WorkspaceDiscoverySnapshot(
                 catalog: catalog,
                 searchGeneration: SearchGenerationID(

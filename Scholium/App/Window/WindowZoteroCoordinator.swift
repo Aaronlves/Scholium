@@ -67,7 +67,8 @@ final class WindowZoteroCoordinator {
         switch plan.mode {
         case .linkAndFill:
             if result.filledKeys.isEmpty {
-                message = retained == 0
+                message =
+                    retained == 0
                     ? String(localized: "Zotero link saved. No empty supported Metadata fields needed filling.")
                     : String(localized: "Zotero link saved. Existing Metadata values were kept.")
             } else if retained == 0 {

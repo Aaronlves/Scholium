@@ -24,8 +24,9 @@ public struct MarkdownRelativePath: Codable, Hashable, Sendable,
 
     public init(_ rawValue: String) throws {
         guard !rawValue.isEmpty,
-              !rawValue.hasPrefix("/"),
-              !rawValue.contains("\0") else {
+            !rawValue.hasPrefix("/"),
+            !rawValue.contains("\0")
+        else {
             throw MarkdownRelativePathError.invalid(rawValue)
         }
         let components = rawValue.split(separator: "/", omittingEmptySubsequences: false)
@@ -76,9 +77,10 @@ public struct VaultRelativeFolderPath: Codable, Hashable, Sendable,
 
     public init(_ rawValue: String) throws {
         guard !rawValue.isEmpty,
-              !rawValue.hasPrefix("/"),
-              !rawValue.hasSuffix("/"),
-              !rawValue.contains("\0") else {
+            !rawValue.hasPrefix("/"),
+            !rawValue.hasSuffix("/"),
+            !rawValue.contains("\0")
+        else {
             throw VaultRelativeFolderPathError.invalid(rawValue)
         }
         let components = rawValue.split(separator: "/", omittingEmptySubsequences: false)

@@ -230,13 +230,15 @@ public final class ScholiumAppBridgeClient: @unchecked Sendable {
             }
             let serverNonce = Data(challenge.prefix(32))
             let serverTag = Data(challenge.suffix(32))
-            guard AppBridgeAuthentication.verify(
-                tag: serverTag,
-                role: "server",
-                secret: secret,
-                clientNonce: clientNonce,
-                serverNonce: serverNonce
-            ) else { throw ScholiumAppBridgeError.permissionDenied }
+            guard
+                AppBridgeAuthentication.verify(
+                    tag: serverTag,
+                    role: "server",
+                    secret: secret,
+                    clientNonce: clientNonce,
+                    serverNonce: serverNonce
+                )
+            else { throw ScholiumAppBridgeError.permissionDenied }
             let tag = AppBridgeAuthentication.tag(
                 role: "client",
                 secret: secret,
@@ -268,7 +270,8 @@ public final class ScholiumAppBridgeClient: @unchecked Sendable {
 }
 
 public final class ScholiumAppBridgeServer: @unchecked Sendable {
-    public typealias Handler = @Sendable (ScholiumAppBridgeRequest) async throws
+    public typealias Handler =
+        @Sendable (ScholiumAppBridgeRequest) async throws
         -> ScholiumMCPBridgeResponse
 
     private let queue = DispatchQueue(label: "com.scholium.app-bridge")
@@ -392,7 +395,10 @@ public final class ScholiumAppBridgeServer: @unchecked Sendable {
                 draining.enter()
                 return true
             }
-            guard admitted else { Darwin.close(peer); continue }
+            guard admitted else {
+                Darwin.close(peer)
+                continue
+            }
             peerQueue.async { [self] in
                 defer {
                     lock.withLock {
@@ -427,13 +433,15 @@ public final class ScholiumAppBridgeServer: @unchecked Sendable {
                 throw ScholiumAppBridgeError.permissionDenied
             }
             let clientTag = Data(authenticated.prefix(32))
-            guard AppBridgeAuthentication.verify(
-                tag: clientTag,
-                role: "client",
-                secret: secret,
-                clientNonce: clientNonce,
-                serverNonce: serverNonce
-            ) else { throw ScholiumAppBridgeError.permissionDenied }
+            guard
+                AppBridgeAuthentication.verify(
+                    tag: clientTag,
+                    role: "client",
+                    secret: secret,
+                    clientNonce: clientNonce,
+                    serverNonce: serverNonce
+                )
+            else { throw ScholiumAppBridgeError.permissionDenied }
             let request = try AppBridgeCoding.decode(
                 ScholiumAppBridgeRequest.self,
                 from: Data(authenticated.dropFirst(32))
@@ -469,9 +477,11 @@ public final class ScholiumAppBridgeServer: @unchecked Sendable {
                 task.cancel()
                 throw ScholiumAppBridgeError.outcomeUnknown
             }
-            let result = try box.result?.get() ?? {
-                throw ScholiumAppBridgeError.invalidResponse
-            }()
+            let result =
+                try box.result?.get()
+                ?? {
+                    throw ScholiumAppBridgeError.invalidResponse
+                }()
             let response = try ScholiumAppBridgeResponse(
                 correlationID: correlationID,
                 mcpResponse: result
@@ -585,9 +595,10 @@ private enum AppBridgeAuthentication {
             clientNonce: clientNonce,
             serverNonce: serverNonce
         )
-        return expected.count == tag.count && zip(expected, tag).reduce(0) {
-            $0 | ($1.0 ^ $1.1)
-        } == 0
+        return expected.count == tag.count
+            && zip(expected, tag).reduce(0) {
+                $0 | ($1.0 ^ $1.1)
+            } == 0
     }
 }
 
@@ -609,8 +620,9 @@ private enum AppBridgeIO {
             throw ScholiumAppBridgeError.systemCall("inspect its directory", errno)
         }
         guard (status.st_mode & S_IFMT) == S_IFDIR,
-              status.st_uid == geteuid(),
-              status.st_mode & 0o077 == 0 else {
+            status.st_uid == geteuid(),
+            status.st_mode & 0o077 == 0
+        else {
             throw ScholiumAppBridgeError.permissionDenied
         }
     }
@@ -643,11 +655,12 @@ private enum AppBridgeIO {
         defer { Darwin.close(descriptor) }
         var status = stat()
         guard fstat(descriptor, &status) == 0,
-              (status.st_mode & S_IFMT) == S_IFREG,
-              status.st_uid == geteuid(),
-              status.st_nlink == 1,
-              status.st_mode & 0o077 == 0,
-              status.st_size == 32 else {
+            (status.st_mode & S_IFMT) == S_IFREG,
+            status.st_uid == geteuid(),
+            status.st_nlink == 1,
+            status.st_mode & 0o077 == 0,
+            status.st_size == 32
+        else {
             throw ScholiumAppBridgeError.permissionDenied
         }
         return try readExactly(32, from: descriptor)
@@ -671,13 +684,15 @@ private enum AppBridgeIO {
 
     static func configure(_ descriptor: Int32, timeout: TimeInterval) throws {
         var noSigPipe: Int32 = 1
-        guard setsockopt(
-            descriptor,
-            SOL_SOCKET,
-            SO_NOSIGPIPE,
-            &noSigPipe,
-            socklen_t(MemoryLayout<Int32>.size)
-        ) == 0 else {
+        guard
+            setsockopt(
+                descriptor,
+                SOL_SOCKET,
+                SO_NOSIGPIPE,
+                &noSigPipe,
+                socklen_t(MemoryLayout<Int32>.size)
+            ) == 0
+        else {
             throw ScholiumAppBridgeError.systemCall("configure its socket", errno)
         }
         var interval = timeval(
@@ -685,13 +700,15 @@ private enum AppBridgeIO {
             tv_usec: Int32((timeout - floor(timeout)) * 1_000_000)
         )
         for option in [SO_RCVTIMEO, SO_SNDTIMEO] {
-            guard setsockopt(
-                descriptor,
-                SOL_SOCKET,
-                option,
-                &interval,
-                socklen_t(MemoryLayout<timeval>.size)
-            ) == 0 else {
+            guard
+                setsockopt(
+                    descriptor,
+                    SOL_SOCKET,
+                    option,
+                    &interval,
+                    socklen_t(MemoryLayout<timeval>.size)
+                ) == 0
+            else {
                 throw ScholiumAppBridgeError.systemCall("configure its timeout", errno)
             }
         }
@@ -699,13 +716,15 @@ private enum AppBridgeIO {
 
     static func configureListener(_ descriptor: Int32) throws {
         var reuseAddress: Int32 = 1
-        guard setsockopt(
-            descriptor,
-            SOL_SOCKET,
-            SO_REUSEADDR,
-            &reuseAddress,
-            socklen_t(MemoryLayout<Int32>.size)
-        ) == 0 else {
+        guard
+            setsockopt(
+                descriptor,
+                SOL_SOCKET,
+                SO_REUSEADDR,
+                &reuseAddress,
+                socklen_t(MemoryLayout<Int32>.size)
+            ) == 0
+        else {
             throw ScholiumAppBridgeError.systemCall(
                 "configure listener reuse",
                 errno
@@ -717,7 +736,8 @@ private enum AppBridgeIO {
         let header = try readExactly(4, from: descriptor)
         let length = header.reduce(UInt32(0)) { ($0 << 8) | UInt32($1) }
         guard length > 0,
-              length <= ScholiumAppBridgeLocation.maximumFrameByteCount else {
+            length <= ScholiumAppBridgeLocation.maximumFrameByteCount
+        else {
             throw ScholiumAppBridgeError.invalidFrame
         }
         return try readExactly(Int(length), from: descriptor)
@@ -725,7 +745,8 @@ private enum AppBridgeIO {
 
     static func writeFrame(_ data: Data, to descriptor: Int32) throws {
         guard !data.isEmpty,
-              data.count <= ScholiumAppBridgeLocation.maximumFrameByteCount else {
+            data.count <= ScholiumAppBridgeLocation.maximumFrameByteCount
+        else {
             throw ScholiumAppBridgeError.invalidFrame
         }
         let length = UInt32(data.count)
@@ -751,7 +772,10 @@ private enum AppBridgeIO {
                     count - offset
                 )
             }
-            if amount > 0 { offset += amount; continue }
+            if amount > 0 {
+                offset += amount
+                continue
+            }
             if amount == 0 { throw ScholiumAppBridgeError.invalidFrame }
             if errno == EINTR { continue }
             if [EAGAIN, EWOULDBLOCK].contains(errno) {
@@ -772,7 +796,10 @@ private enum AppBridgeIO {
                     data.count - offset
                 )
             }
-            if amount > 0 { offset += amount; continue }
+            if amount > 0 {
+                offset += amount
+                continue
+            }
             if errno == EINTR { continue }
             if [EAGAIN, EWOULDBLOCK].contains(errno) {
                 throw ScholiumAppBridgeError.timeout

@@ -1,6 +1,7 @@
 import Foundation
 import ScholiumContracts
 import Testing
+
 @testable import ScholiumApp
 
 @Suite("Editor source offset map")
@@ -44,11 +45,13 @@ struct EditorSourceOffsetMapTests {
                     insertion: "\r\n尾"
                 ),
             ],
-            [MarkdownEditorDelta(
-                fromUTF16: 0,
-                toUTF16: (source as NSString).length,
-                insertion: "LF\n重建\r\nfinal"
-            )],
+            [
+                MarkdownEditorDelta(
+                    fromUTF16: 0,
+                    toUTF16: (source as NSString).length,
+                    insertion: "LF\n重建\r\nfinal"
+                )
+            ],
         ]
 
         for deltas in batches {
@@ -95,8 +98,9 @@ struct EditorSourceOffsetMapTests {
         var editorOffset = 0
         while sourceOffset < units.count, editorOffset < requested {
             if sourceOffset + 1 < units.count,
-               units[sourceOffset] == 13,
-               units[sourceOffset + 1] == 10 {
+                units[sourceOffset] == 13,
+                units[sourceOffset + 1] == 10
+            {
                 sourceOffset += 2
             } else {
                 sourceOffset += 1
@@ -113,8 +117,9 @@ struct EditorSourceOffsetMapTests {
         var editorOffset = 0
         while sourceOffset < requested {
             if sourceOffset + 1 < units.count,
-               units[sourceOffset] == 13,
-               units[sourceOffset + 1] == 10 {
+                units[sourceOffset] == 13,
+                units[sourceOffset + 1] == 10
+            {
                 guard sourceOffset + 2 <= requested else { return nil }
                 sourceOffset += 2
             } else {

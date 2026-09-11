@@ -1,6 +1,7 @@
 import Foundation
 import ScholiumContracts
 import Testing
+
 @testable import ScholiumApp
 
 @Suite("Window Workspace controller")
@@ -12,7 +13,8 @@ struct WindowWorkspaceControllerTests {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let root = repositoryRoot
+        let root =
+            repositoryRoot
             .appendingPathComponent(".build/app-unit-state", isDirectory: true)
             .appendingPathComponent(UUID().uuidString.lowercased(), isDirectory: true)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -32,24 +34,25 @@ struct WindowWorkspaceControllerTests {
         var installCount = 0
         var didStart = false
         var didFinish = false
-        controller.bindDependencies(WindowWorkspaceDependencies(
-            installSession: { _, _ in
-                installCount += 1
-                guard installCount > 1 else {
-                    return ["Fixture transaction recovery issue"]
-                }
-                didStart = true
-                do {
-                    try await Task.sleep(for: .seconds(30))
-                    didFinish = true
-                } catch is CancellationError {
-                    throw CancellationError()
-                }
-                return []
-            },
-            didRemoveRegistration: { _ in },
-            reportInformation: { _ in }
-        ))
+        controller.bindDependencies(
+            WindowWorkspaceDependencies(
+                installSession: { _, _ in
+                    installCount += 1
+                    guard installCount > 1 else {
+                        return ["Fixture transaction recovery issue"]
+                    }
+                    didStart = true
+                    do {
+                        try await Task.sleep(for: .seconds(30))
+                        didFinish = true
+                    } catch is CancellationError {
+                        throw CancellationError()
+                    }
+                    return []
+                },
+                didRemoveRegistration: { _ in },
+                reportInformation: { _ in }
+            ))
         let assignment = try await controller.configureTriptych(
             paperAnalysisURL: analyses,
             topicKnowledgeURL: topics,
@@ -59,15 +62,17 @@ struct WindowWorkspaceControllerTests {
             triptychName: "Recovery",
             openingVault: .paperAnalysis
         )
-        #expect(controller.state.recoveryMessage?.contains(
-            "Fixture transaction recovery issue"
-        ) == true)
+        #expect(
+            controller.state.recoveryMessage?.contains(
+                "Fixture transaction recovery issue"
+            ) == true)
         let registeredAnalyses = try #require(assignment.vault(for: .paperAnalysis))
-        #expect(controller.recordRecovery(
-            for: WorkspaceRegistryError.vaultAccessUnavailable(
-                registeredAnalyses.canonicalPath
-            )
-        ))
+        #expect(
+            controller.recordRecovery(
+                for: WorkspaceRegistryError.vaultAccessUnavailable(
+                    registeredAnalyses.canonicalPath
+                )
+            ))
 
         let task = Task { @MainActor in
             try await controller.restoreWorkspaceAccess(

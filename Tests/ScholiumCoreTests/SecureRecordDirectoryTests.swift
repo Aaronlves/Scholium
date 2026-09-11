@@ -1,6 +1,7 @@
 import Foundation
-@testable import ScholiumCore
 import Testing
+
+@testable import ScholiumCore
 
 @Suite("Secure record directory")
 struct SecureRecordDirectoryTests {
@@ -49,8 +50,11 @@ struct SecureRecordDirectoryTests {
                 return
             }
         }
-        #expect(!FileManager.default.fileExists(atPath: root
-            .appendingPathComponent("post-rename-fault/oversize.json").path))
+        #expect(
+            !FileManager.default.fileExists(
+                atPath:
+                    root
+                    .appendingPathComponent("post-rename-fault/oversize.json").path))
     }
 
     private func fixtureRoot() -> URL {

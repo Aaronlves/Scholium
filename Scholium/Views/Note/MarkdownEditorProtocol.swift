@@ -127,7 +127,6 @@ struct MarkdownEditorLinkPreview: Codable, Hashable, Sendable {
     let htmlBody: String
 }
 
-
 struct MarkdownEditorContext: Codable, Hashable, Sendable {
     let selections: [MarkdownEditorSelectionRange]
     let activeInlineConstructs: [String]
@@ -254,9 +253,11 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
         case replacement, expectedText, committedText, committedFingerprint, command, argument
     }
     private enum Kind: String, Codable {
-        case initialize, setMode, setDocumentTitle, setPresentationCSS, setUserCSS, setLinkPreviews, showPreview, measureVisibleProjection, showPreviewAt, announceStatus
+        case initialize, setMode, setDocumentTitle, setPresentationCSS, setUserCSS, setLinkPreviews, showPreview, measureVisibleProjection, showPreviewAt,
+            announceStatus
         case goToLine, revealSourceRange, setScrollFraction, setScrollAnchor, queryText, querySelection, queryContext, queryScrollAnchor, queryPerformance
-        case captureRecovery, restoreRecovery, acknowledgeCommittedSnapshot, replacePassage, command, documentFind, clearDocumentFind, markClean, focus, focusTitle, blur
+        case captureRecovery, restoreRecovery, acknowledgeCommittedSnapshot, replacePassage, command, documentFind, clearDocumentFind, markClean, focus,
+            focusTitle, blur
     }
 
     init(from decoder: any Decoder) throws {
@@ -310,7 +311,8 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
                 fingerprint: container.decode(String.self, forKey: .committedFingerprint)
             )
         case .replacePassage:
-            self = try .replacePassage(expectedText: container.decode(String.self, forKey: .expectedText),
+            self = try .replacePassage(
+                expectedText: container.decode(String.self, forKey: .expectedText),
                 fromUTF16: container.decode(Int.self, forKey: .fromUTF16),
                 toUTF16: container.decode(Int.self, forKey: .toUTF16),
                 replacement: container.decode(String.self, forKey: .replacement))
@@ -329,7 +331,7 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
     func encode(to encoder: any Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         switch self {
-        case let .initialize(text, mode, dialect, initialSelection):
+        case .initialize(let text, let mode, let dialect, let initialSelection):
             try container.encode(Kind.initialize, forKey: .type)
             try container.encode(text, forKey: .text)
             try container.encode(mode, forKey: .mode)
@@ -338,50 +340,50 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
                 initialSelection,
                 forKey: .initialSelection
             )
-        case let .setMode(mode): try pair(.setMode, mode, .mode, into: &container)
-        case let .setDocumentTitle(value):
+        case .setMode(let mode): try pair(.setMode, mode, .mode, into: &container)
+        case .setDocumentTitle(let value):
             try pair(.setDocumentTitle, value, .value, into: &container)
-        case let .setPresentationCSS(value): try pair(.setPresentationCSS, value, .value, into: &container)
-        case let .setUserCSS(value): try pair(.setUserCSS, value, .value, into: &container)
-        case let .setLinkPreviews(value): try pair(.setLinkPreviews, value, .value, into: &container)
+        case .setPresentationCSS(let value): try pair(.setPresentationCSS, value, .value, into: &container)
+        case .setUserCSS(let value): try pair(.setUserCSS, value, .value, into: &container)
+        case .setLinkPreviews(let value): try pair(.setLinkPreviews, value, .value, into: &container)
         case .showPreview: try container.encode(Kind.showPreview, forKey: .type)
         case .measureVisibleProjection:
             try container.encode(Kind.measureVisibleProjection, forKey: .type)
-        case let .showPreviewAt(x, y):
+        case .showPreviewAt(let x, let y):
             try container.encode(Kind.showPreviewAt, forKey: .type)
             try container.encode(x, forKey: .x)
             try container.encode(y, forKey: .y)
-        case let .announceStatus(value): try pair(.announceStatus, value, .value, into: &container)
-        case let .goToLine(line, focusesEditor):
+        case .announceStatus(let value): try pair(.announceStatus, value, .value, into: &container)
+        case .goToLine(let line, let focusesEditor):
             try pair(.goToLine, line, .line, into: &container)
             try container.encode(focusesEditor, forKey: .focusesEditor)
-        case let .revealSourceRange(fromUTF16, toUTF16):
+        case .revealSourceRange(let fromUTF16, let toUTF16):
             try container.encode(Kind.revealSourceRange, forKey: .type)
             try container.encode(fromUTF16, forKey: .fromUTF16)
             try container.encode(toUTF16, forKey: .toUTF16)
-        case let .setScrollFraction(fraction): try pair(.setScrollFraction, fraction, .fraction, into: &container)
-        case let .setScrollAnchor(anchor): try pair(.setScrollAnchor, anchor, .anchor, into: &container)
+        case .setScrollFraction(let fraction): try pair(.setScrollFraction, fraction, .fraction, into: &container)
+        case .setScrollAnchor(let anchor): try pair(.setScrollAnchor, anchor, .anchor, into: &container)
         case .queryText: try container.encode(Kind.queryText, forKey: .type)
         case .querySelection: try container.encode(Kind.querySelection, forKey: .type)
         case .queryContext: try container.encode(Kind.queryContext, forKey: .type)
         case .queryScrollAnchor: try container.encode(Kind.queryScrollAnchor, forKey: .type)
         case .queryPerformance: try container.encode(Kind.queryPerformance, forKey: .type)
-        case let .documentFind(value): try pair(.documentFind, value, .value, into: &container)
+        case .documentFind(let value): try pair(.documentFind, value, .value, into: &container)
         case .clearDocumentFind: try container.encode(Kind.clearDocumentFind, forKey: .type)
         case .captureRecovery: try container.encode(Kind.captureRecovery, forKey: .type)
-        case let .restoreRecovery(snapshot): try pair(.restoreRecovery, snapshot, .snapshot, into: &container)
-        case let .acknowledgeCommittedSnapshot(expected, committed, fingerprint):
+        case .restoreRecovery(let snapshot): try pair(.restoreRecovery, snapshot, .snapshot, into: &container)
+        case .acknowledgeCommittedSnapshot(let expected, let committed, let fingerprint):
             try container.encode(Kind.acknowledgeCommittedSnapshot, forKey: .type)
             try container.encode(expected, forKey: .expectedText)
             try container.encode(committed, forKey: .committedText)
             try container.encode(fingerprint, forKey: .committedFingerprint)
-        case let .replacePassage(expectedText, fromUTF16, toUTF16, replacement):
+        case .replacePassage(let expectedText, let fromUTF16, let toUTF16, let replacement):
             try container.encode(Kind.replacePassage, forKey: .type)
             try container.encode(expectedText, forKey: .expectedText)
             try container.encode(fromUTF16, forKey: .fromUTF16)
             try container.encode(toUTF16, forKey: .toUTF16)
             try container.encode(replacement, forKey: .replacement)
-        case let .command(command, argument):
+        case .command(let command, let argument):
             try container.encode(Kind.command, forKey: .type)
             try container.encode(command, forKey: .command)
             try container.encodeIfPresent(argument, forKey: .argument)

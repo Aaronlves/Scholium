@@ -54,10 +54,11 @@ public enum ZoteroLocalRequestPolicy {
         query: [URLQueryItem] = []
     ) -> URLRequest? {
         guard allowed(path: path, library: library),
-              Set(query.map(\.name)).isSubset(of: [
+            Set(query.map(\.name)).isSubset(of: [
                 "format", "itemType", "q", "qmode", "limit",
-              ]),
-              let baseURL = baseURL(for: library) else {
+            ]),
+            let baseURL = baseURL(for: library)
+        else {
             return nil
         }
         var components = URLComponents(
@@ -66,9 +67,10 @@ public enum ZoteroLocalRequestPolicy {
         )
         if !query.isEmpty { components?.queryItems = query }
         guard let url = components?.url,
-              url.scheme == "http",
-              url.host == "127.0.0.1",
-              url.port == 23119 else { return nil }
+            url.scheme == "http",
+            url.host == "127.0.0.1",
+            url.port == 23119
+        else { return nil }
 
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
@@ -103,12 +105,12 @@ public enum ZoteroLocalRequestPolicy {
         if path == "items" { return true }
         let components = path.split(separator: "/", omittingEmptySubsequences: false)
         if components.count == 2,
-           components[0] == "items" {
+            components[0] == "items"
+        {
             return validObjectKey(String(components[1]))
         }
         return false
     }
-
 
     private static func validObjectKey(_ key: String) -> Bool {
         return !key.isEmpty
@@ -285,24 +287,25 @@ public enum ZoteroMetadataDecoder {
         } else if let dictionary = object as? [String: Any] {
             objects = [dictionary]
         } else {
-            throw DecodingError.dataCorrupted(.init(
-                codingPath: [],
-                debugDescription: "Zotero returned a non-object JSON response."
-            ))
+            throw DecodingError.dataCorrupted(
+                .init(
+                    codingPath: [],
+                    debugDescription: "Zotero returned a non-object JSON response."
+                ))
         }
         return try objects.map(decodeItem)
     }
-
 
     private static func jsonObject(from data: Data) throws -> Any {
         do {
             return try JSONSerialization.jsonObject(with: data)
         } catch {
-            throw DecodingError.dataCorrupted(.init(
-                codingPath: [],
-                debugDescription: "Zotero returned invalid JSON.",
-                underlyingError: error
-            ))
+            throw DecodingError.dataCorrupted(
+                .init(
+                    codingPath: [],
+                    debugDescription: "Zotero returned invalid JSON.",
+                    underlyingError: error
+                ))
         }
     }
 
@@ -354,7 +357,8 @@ public enum ZoteroMetadataDecoder {
             "publicationTitle", "bookTitle", "proceedingsTitle", "encyclopediaTitle",
             "dictionaryTitle", "conferenceName",
         ].compactMap { nonempty(item[$0] as? String) }.first
-        let citationKey = nonempty(item["citationKey"] as? String)
+        let citationKey =
+            nonempty(item["citationKey"] as? String)
             ?? citationKeyFromExtra(item["extra"] as? String)
         let collectionKeys = (item["collections"] as? [String] ?? [])
             .compactMap(nonempty)
@@ -394,8 +398,9 @@ public enum ZoteroMetadataDecoder {
         for line in extra.split(whereSeparator: \.isNewline) {
             let parts = line.split(separator: ":", maxSplits: 1).map(String.init)
             guard parts.count == 2,
-                  parts[0].trimmingCharacters(in: .whitespacesAndNewlines)
-                    .caseInsensitiveCompare("Citation Key") == .orderedSame else { continue }
+                parts[0].trimmingCharacters(in: .whitespacesAndNewlines)
+                    .caseInsensitiveCompare("Citation Key") == .orderedSame
+            else { continue }
             return nonempty(parts[1])
         }
         return nil
@@ -411,7 +416,8 @@ public enum ZoteroMetadataDecoder {
 
     private static func nonempty(_ value: String?) -> String? {
         guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !value.isEmpty else { return nil }
+            !value.isEmpty
+        else { return nil }
         return value
     }
 }

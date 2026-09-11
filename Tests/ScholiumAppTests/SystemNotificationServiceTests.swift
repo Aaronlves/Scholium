@@ -2,6 +2,7 @@ import Foundation
 import ScholiumContracts
 import Testing
 import UserNotifications
+
 @testable import ScholiumApp
 
 @Suite("System notification delivery")
@@ -113,7 +114,10 @@ struct SystemNotificationServiceTests {
         #expect(!changeRoute.matches(change(noteID: receipt.noteID, triptychID: receipt.triptychID)))
         var opened: [SystemNotificationRoute] = []
         let windowID = UUID()
-        service.registerWindow(id: windowID) { opened.append($0); return true }
+        service.registerWindow(id: windowID) {
+            opened.append($0)
+            return true
+        }
         service.open(route)
         #expect(opened == [route])
         #expect(service.pendingRoute == nil)
@@ -153,7 +157,8 @@ struct SystemNotificationServiceTests {
     func chatCoalescing() async throws {
         let transport = FakeNotificationTransport(status: .authorized)
         let service = SystemNotificationService(transport: transport, delay: .milliseconds(10), isActive: { false })
-        let triptych = UUID(), conversation = UUID()
+        let triptych = UUID()
+        let conversation = UUID()
         let first = AgentChatNotificationRoute(triptychID: triptych, conversationID: conversation, event: .completed)
         let latest = AgentChatNotificationRoute(triptychID: triptych, conversationID: conversation, event: .inputRequired)
         let other = AgentChatNotificationRoute(triptychID: triptych, conversationID: UUID(), event: .failed)
@@ -191,13 +196,16 @@ struct SystemNotificationServiceTests {
         #expect(transport.delivered.isEmpty)
     }
 
-    private func change(noteID: UUID = UUID(), triptychID: UUID = UUID(),
-                        state: AgentChangeRecoveryState = .confirmed) -> AgentChange {
-        AgentChange(id: UUID(), triptychID: triptychID, operation: .update,
-                    noteID: noteID, role: .topicKnowledge,
-                    originalRelativePath: "private-note.md", finalRelativePath: "private-note.md",
-                    beforeFingerprint: nil, afterFingerprint: nil, state: state,
-                    createdAt: .now, confirmedAt: .now, undoneAt: nil)
+    private func change(
+        noteID: UUID = UUID(), triptychID: UUID = UUID(),
+        state: AgentChangeRecoveryState = .confirmed
+    ) -> AgentChange {
+        AgentChange(
+            id: UUID(), triptychID: triptychID, operation: .update,
+            noteID: noteID, role: .topicKnowledge,
+            originalRelativePath: "private-note.md", finalRelativePath: "private-note.md",
+            beforeFingerprint: nil, afterFingerprint: nil, state: state,
+            createdAt: .now, confirmedAt: .now, undoneAt: nil)
     }
 
     private func eventually(_ predicate: () -> Bool) async throws {

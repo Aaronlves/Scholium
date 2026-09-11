@@ -29,10 +29,11 @@ final class DocumentNavigationHistoryController: ObservableObject {
 
     func target(for direction: DocumentNavigationDirection) -> WindowSelectedDocument? {
         guard let currentIndex else { return nil }
-        let targetIndex = switch direction {
-        case .back: currentIndex - 1
-        case .forward: currentIndex + 1
-        }
+        let targetIndex =
+            switch direction {
+            case .back: currentIndex - 1
+            case .forward: currentIndex + 1
+            }
         guard entries.indices.contains(targetIndex) else { return nil }
         return entries[targetIndex]
     }
@@ -54,10 +55,11 @@ final class DocumentNavigationHistoryController: ObservableObject {
         to document: WindowSelectedDocument
     ) -> Bool {
         guard let currentIndex else { return false }
-        let targetIndex = switch direction {
-        case .back: currentIndex - 1
-        case .forward: currentIndex + 1
-        }
+        let targetIndex =
+            switch direction {
+            case .back: currentIndex - 1
+            case .forward: currentIndex + 1
+            }
         guard entries.indices.contains(targetIndex), entries[targetIndex] == document else {
             return false
         }

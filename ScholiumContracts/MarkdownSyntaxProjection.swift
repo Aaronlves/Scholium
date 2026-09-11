@@ -9,9 +9,10 @@ public enum MarkdownSyntaxProjection {
         isEditable: Bool
     ) -> Bool {
         guard isEditable,
-              enclosingRange.location != NSNotFound,
-              enclosingRange.location >= 0,
-              enclosingRange.length >= 0 else { return false }
+            enclosingRange.location != NSNotFound,
+            enclosingRange.location >= 0,
+            enclosingRange.length >= 0
+        else { return false }
 
         let end = NSMaxRange(enclosingRange)
         return selections.contains { selection in
@@ -79,8 +80,9 @@ public enum MarkdownEditorDeltaApplier {
         var previousLowerBound = sourceLength
         for delta in ordered {
             guard delta.fromUTF16 >= 0,
-                  delta.toUTF16 >= delta.fromUTF16,
-                  delta.toUTF16 <= sourceLength else {
+                delta.toUTF16 >= delta.fromUTF16,
+                delta.toUTF16 <= sourceLength
+            else {
                 throw MarkdownEditorDeltaError.invalidRange
             }
             guard delta.toUTF16 <= previousLowerBound else {

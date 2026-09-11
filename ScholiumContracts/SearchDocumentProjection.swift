@@ -57,8 +57,7 @@ public struct SearchTextSegment: Codable, Hashable, Sendable {
         guard !overlapping.isEmpty else {
             return sourceRange.map { $0.utf16LowerBound..<$0.utf16UpperBound }
         }
-        return overlapping.map(\.sourceUTF16LowerBound).min()!
-            ..< overlapping.map(\.sourceUTF16UpperBound).max()!
+        return overlapping.map(\.sourceUTF16LowerBound).min()!..<overlapping.map(\.sourceUTF16UpperBound).max()!
     }
 }
 
@@ -98,25 +97,31 @@ public struct SearchDocumentProjection: Codable, Hashable, Sendable {
             document: document,
             profile: profile
         )
-        let summaryMember = PropertyContractCatalog.contract(
-            for: "summary",
-            profile: profile
-        ) == nil ? nil : propertyProjection.entry(forExactKey: "summary")
-            .flatMap { entry in
-                entry.valueKind == .string && entry.stringMembers.count == 1
-                    ? entry.stringMembers.first
-                    : nil
-            }
+        let summaryMember =
+            PropertyContractCatalog.contract(
+                for: "summary",
+                profile: profile
+            ) == nil
+            ? nil
+            : propertyProjection.entry(forExactKey: "summary")
+                .flatMap { entry in
+                    entry.valueKind == .string && entry.stringMembers.count == 1
+                        ? entry.stringMembers.first
+                        : nil
+                }
         summary = summaryMember?.value
         authors = []
         publicationDate = nil
-        let keywordMembers: [SearchPropertyProjection.StringMember] = PropertyContractCatalog.contract(
-            for: "keywords",
-            profile: profile
-        ) == nil ? [] : propertyProjection.entry(forExactKey: "keywords")
-            .flatMap { entry in
-                entry.valueKind == .stringSequence ? entry.stringMembers : nil
-            } ?? []
+        let keywordMembers: [SearchPropertyProjection.StringMember] =
+            PropertyContractCatalog.contract(
+                for: "keywords",
+                profile: profile
+            ) == nil
+            ? []
+            : propertyProjection.entry(forExactKey: "keywords")
+                .flatMap { entry in
+                    entry.valueKind == .stringSequence ? entry.stringMembers : nil
+                } ?? []
         tags = keywordMembers.map(\.value)
         path = document.relativePath
         self.hasBrokenLink = hasBrokenLink
@@ -125,58 +130,62 @@ public struct SearchDocumentProjection: Codable, Hashable, Sendable {
         let sourceLocator = SearchSourceLocator(source: document.rawContent)
         sourceLineStartsUTF16 = sourceLocator.lineStartsUTF16
         var builtSegments: [SearchTextSegment] = []
-        builtSegments.append(SearchProjectionBuilder.segment(
-            field: .title,
-            ordinal: builtSegments.count,
-            text: title,
-            sourceRange: nil,
-            source: document.rawContent,
-            sourceLocator: sourceLocator
-        ))
+        builtSegments.append(
+            SearchProjectionBuilder.segment(
+                field: .title,
+                ordinal: builtSegments.count,
+                text: title,
+                sourceRange: nil,
+                source: document.rawContent,
+                sourceLocator: sourceLocator
+            ))
         for member in keywordMembers where !member.value.isEmpty {
             let range = member.sourceRange.map {
                 $0.utf16LowerBound..<$0.utf16UpperBound
             }
-            builtSegments.append(SearchProjectionBuilder.segment(
-                field: .tag,
-                ordinal: builtSegments.count,
-                text: member.value,
-                sourceRange: range,
-                source: document.rawContent,
-                sourceLocator: sourceLocator,
-                explicitMap: range.map {
-                    SearchProjectionBuilder.alignedFragments(
-                        text: member.value,
-                        sourceRange: $0,
-                        source: document.rawContent
-                    )
-                }
-            ))
+            builtSegments.append(
+                SearchProjectionBuilder.segment(
+                    field: .tag,
+                    ordinal: builtSegments.count,
+                    text: member.value,
+                    sourceRange: range,
+                    source: document.rawContent,
+                    sourceLocator: sourceLocator,
+                    explicitMap: range.map {
+                        SearchProjectionBuilder.alignedFragments(
+                            text: member.value,
+                            sourceRange: $0,
+                            source: document.rawContent
+                        )
+                    }
+                ))
         }
-        builtSegments.append(SearchProjectionBuilder.segment(
-            field: .path,
-            ordinal: builtSegments.count,
-            text: document.relativePath,
-            sourceRange: nil,
-            source: document.rawContent,
-            sourceLocator: sourceLocator
-        ))
+        builtSegments.append(
+            SearchProjectionBuilder.segment(
+                field: .path,
+                ordinal: builtSegments.count,
+                text: document.relativePath,
+                sourceRange: nil,
+                source: document.rawContent,
+                sourceLocator: sourceLocator
+            ))
 
         for heading in semantic.headings {
             let range = heading.span.utf16Range
-            builtSegments.append(SearchProjectionBuilder.segment(
-                field: .heading,
-                ordinal: builtSegments.count,
-                text: heading.text,
-                sourceRange: range,
-                source: document.rawContent,
-                sourceLocator: sourceLocator,
-                explicitMap: SearchProjectionBuilder.alignedFragments(
+            builtSegments.append(
+                SearchProjectionBuilder.segment(
+                    field: .heading,
+                    ordinal: builtSegments.count,
                     text: heading.text,
                     sourceRange: range,
-                    source: document.rawContent
-                )
-            ))
+                    source: document.rawContent,
+                    sourceLocator: sourceLocator,
+                    explicitMap: SearchProjectionBuilder.alignedFragments(
+                        text: heading.text,
+                        sourceRange: range,
+                        source: document.rawContent
+                    )
+                ))
         }
         if let summaryMember, let summarySourceRange = summaryMember.sourceRange {
             let range = Range(
@@ -185,19 +194,20 @@ public struct SearchDocumentProjection: Codable, Hashable, Sendable {
                     summarySourceRange.utf16UpperBound
                 )
             )
-            builtSegments.append(SearchProjectionBuilder.segment(
-                field: .summary,
-                ordinal: builtSegments.count,
-                text: summaryMember.value,
-                sourceRange: range,
-                source: document.rawContent,
-                sourceLocator: sourceLocator,
-                explicitMap: SearchProjectionBuilder.alignedFragments(
+            builtSegments.append(
+                SearchProjectionBuilder.segment(
+                    field: .summary,
+                    ordinal: builtSegments.count,
                     text: summaryMember.value,
                     sourceRange: range,
-                    source: document.rawContent
-                )
-            ))
+                    source: document.rawContent,
+                    sourceLocator: sourceLocator,
+                    explicitMap: SearchProjectionBuilder.alignedFragments(
+                        text: summaryMember.value,
+                        sourceRange: range,
+                        source: document.rawContent
+                    )
+                ))
         }
         for callout in semantic.callouts {
             let visible = [callout.title, MarkdownVisibleText.render(callout.bodySource)]
@@ -206,56 +216,60 @@ public struct SearchDocumentProjection: Codable, Hashable, Sendable {
                 .joined(separator: " ")
             guard !visible.isEmpty else { continue }
             let range = callout.span.utf16Range
-            builtSegments.append(SearchProjectionBuilder.segment(
-                field: .callout,
-                ordinal: builtSegments.count,
-                text: visible,
-                sourceRange: range,
-                source: document.rawContent,
-                sourceLocator: sourceLocator,
-                explicitMap: SearchProjectionBuilder.alignedFragments(
+            builtSegments.append(
+                SearchProjectionBuilder.segment(
+                    field: .callout,
+                    ordinal: builtSegments.count,
                     text: visible,
                     sourceRange: range,
-                    source: document.rawContent
-                )
-            ))
+                    source: document.rawContent,
+                    sourceLocator: sourceLocator,
+                    explicitMap: SearchProjectionBuilder.alignedFragments(
+                        text: visible,
+                        sourceRange: range,
+                        source: document.rawContent
+                    )
+                ))
         }
         for footnote in semantic.footnoteDefinitions where !footnote.content.isEmpty {
             let visible = MarkdownVisibleText.render(footnote.content)
             guard !visible.isEmpty else { continue }
             let range = footnote.span.utf16Range
-            builtSegments.append(SearchProjectionBuilder.segment(
-                field: .footnote,
-                ordinal: builtSegments.count,
-                text: visible,
-                sourceRange: range,
-                source: document.rawContent,
-                sourceLocator: sourceLocator,
-                explicitMap: SearchProjectionBuilder.alignedFragments(
+            builtSegments.append(
+                SearchProjectionBuilder.segment(
+                    field: .footnote,
+                    ordinal: builtSegments.count,
                     text: visible,
                     sourceRange: range,
-                    source: document.rawContent
-                )
-            ))
+                    source: document.rawContent,
+                    sourceLocator: sourceLocator,
+                    explicitMap: SearchProjectionBuilder.alignedFragments(
+                        text: visible,
+                        sourceRange: range,
+                        source: document.rawContent
+                    )
+                ))
         }
         for annotation in semantic.links.compactMap(\.annotation) {
             let range = annotation.contentSpan.utf16Range
-            builtSegments.append(SearchProjectionBuilder.segment(
-                field: .linkAnnotation,
-                ordinal: builtSegments.count,
-                text: annotation.text,
-                sourceRange: range,
-                source: document.rawContent,
-                sourceLocator: sourceLocator,
-                explicitMap: SearchProjectionBuilder.alignedFragments(
+            builtSegments.append(
+                SearchProjectionBuilder.segment(
+                    field: .linkAnnotation,
+                    ordinal: builtSegments.count,
                     text: annotation.text,
                     sourceRange: range,
-                    source: document.rawContent
-                )
-            ))
+                    source: document.rawContent,
+                    sourceLocator: sourceLocator,
+                    explicitMap: SearchProjectionBuilder.alignedFragments(
+                        text: annotation.text,
+                        sourceRange: range,
+                        source: document.rawContent
+                    )
+                ))
         }
 
-        let excluded = semantic.headings.map(\.span.utf16Range)
+        let excluded =
+            semantic.headings.map(\.span.utf16Range)
             + semantic.callouts.map(\.span.utf16Range)
             + semantic.footnoteDefinitions.map(\.span.utf16Range)
             + semantic.links.compactMap { $0.annotation?.span.utf16Range }
@@ -268,15 +282,16 @@ public struct SearchDocumentProjection: Codable, Hashable, Sendable {
         )
         collector.visit(Document(parsing: document.body))
         if !collector.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            builtSegments.append(SearchProjectionBuilder.segment(
-                field: .body,
-                ordinal: builtSegments.count,
-                text: collector.text,
-                sourceRange: collector.coveringSourceRange,
-                source: document.rawContent,
-                sourceLocator: sourceLocator,
-                explicitMap: collector.fragments
-            ))
+            builtSegments.append(
+                SearchProjectionBuilder.segment(
+                    field: .body,
+                    ordinal: builtSegments.count,
+                    text: collector.text,
+                    sourceRange: collector.coveringSourceRange,
+                    source: document.rawContent,
+                    sourceLocator: sourceLocator,
+                    explicitMap: collector.fragments
+                ))
         }
 
         segments = builtSegments
@@ -318,21 +333,26 @@ public struct SearchDocumentProjection: Codable, Hashable, Sendable {
         guard let metadata else { return self }
         var updated = self
         let fields = metadata.record.fields
-        let managedTitle: String? = if profile == .analysis,
-                                      case .string(let value)? = fields["title"] {
-            value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                ? nil
-                : value
-        } else {
-            nil
-        }
-        let aliases = profile == .topicMarkdown
+        let managedTitle: String? =
+            if profile == .analysis,
+                case .string(let value)? = fields["title"]
+            {
+                value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    ? nil
+                    : value
+            } else {
+                nil
+            }
+        let aliases =
+            profile == .topicMarkdown
             ? fields["aliases"]?.canonicalStringList ?? []
             : []
-        let creators = profile == .analysis
+        let creators =
+            profile == .analysis
             ? fields["authors"].flatMap(PropertyContractCatalog.creatorNames(from:)) ?? []
             : []
-        let publicationDate = profile == .analysis
+        let publicationDate =
+            profile == .analysis
             ? fields["publication_date"]?.canonicalSearchText
             : nil
 
@@ -342,24 +362,26 @@ public struct SearchDocumentProjection: Codable, Hashable, Sendable {
 
         let filenameTitleSegment = updated.segments.first { $0.field == .title }
         var segments = filenameTitleSegment.map { [$0] } ?? []
-        segments.append(contentsOf: updated.segments.filter { segment in
-            switch segment.field {
-            case .title: false
-            case .alias, .author, .publicationDate: false
-            default: true
-            }
-        })
+        segments.append(
+            contentsOf: updated.segments.filter { segment in
+                switch segment.field {
+                case .title: false
+                case .alias, .author, .publicationDate: false
+                default: true
+                }
+            })
         let locator = SearchSourceLocator(source: source)
         func append(_ values: [String], field: SearchMatchedField) {
             for value in values where !value.isEmpty {
-                segments.append(SearchProjectionBuilder.segment(
-                    field: field,
-                    ordinal: segments.count,
-                    text: value,
-                    sourceRange: nil,
-                    source: source,
-                    sourceLocator: locator
-                ))
+                segments.append(
+                    SearchProjectionBuilder.segment(
+                        field: field,
+                        ordinal: segments.count,
+                        text: value,
+                        sourceRange: nil,
+                        source: source,
+                        sourceLocator: locator
+                    ))
             }
         }
         if let managedTitle, managedTitle != updated.title {
@@ -389,9 +411,10 @@ public struct SearchDocumentProjection: Codable, Hashable, Sendable {
         segments: [SearchTextSegment],
         hasBrokenLink: Bool
     ) -> String {
-        let stableMaterial = segments.map {
-            "\($0.field.rawValue)\u{1F}\($0.ordinal)\u{1F}\($0.normalizedText)"
-        }.joined(separator: "\u{1E}")
+        let stableMaterial =
+            segments.map {
+                "\($0.field.rawValue)\u{1F}\($0.ordinal)\u{1F}\($0.normalizedText)"
+            }.joined(separator: "\u{1E}")
             + "\u{1D}\(hasBrokenLink)"
         return SHA256.hash(data: Data(stableMaterial.utf8))
             .map { String(format: "%02x", $0) }
@@ -427,14 +450,17 @@ private enum SearchProjectionBuilder {
         sourceRange: Range<Int>,
         source: String
     ) -> [SearchVisibleFragment] {
-        let fallback = [SearchVisibleFragment(
-            textRange: 0..<text.utf16.count,
-            sourceRange: sourceRange,
-            exact: false
-        )]
+        let fallback = [
+            SearchVisibleFragment(
+                textRange: 0..<text.utf16.count,
+                sourceRange: sourceRange,
+                exact: false
+            )
+        ]
         let nsSource = source as NSString
         guard sourceRange.lowerBound >= 0,
-              sourceRange.upperBound <= nsSource.length else { return fallback }
+            sourceRange.upperBound <= nsSource.length
+        else { return fallback }
         var fragments: [SearchVisibleFragment] = []
         var sourceCursor = sourceRange.lowerBound
         var textCursor = 0
@@ -447,11 +473,12 @@ private enum SearchProjectionBuilder {
             )
             let match = nsSource.range(of: value, options: [], range: remaining)
             guard match.location != NSNotFound else { return fallback }
-            fragments.append(SearchVisibleFragment(
-                textRange: textCursor..<(textCursor + textLength),
-                sourceRange: match.location..<NSMaxRange(match),
-                exact: true
-            ))
+            fragments.append(
+                SearchVisibleFragment(
+                    textRange: textCursor..<(textCursor + textLength),
+                    sourceRange: match.location..<NSMaxRange(match),
+                    exact: true
+                ))
             sourceCursor = NSMaxRange(match)
             textCursor += textLength
         }
@@ -492,20 +519,25 @@ private enum SearchProjectionBuilder {
         var map: [SearchSegmentOffset] = []
         var hasPendingWhitespace = false
         var pendingWhitespaceSource: Range<Int>?
-        let fragments = explicitMap ?? [SearchVisibleFragment(
-            textRange: 0..<text.utf16.count,
-            sourceRange: sourceRange,
-            exact: sourceRange?.count == text.utf16.count
-        )]
+        let fragments =
+            explicitMap ?? [
+                SearchVisibleFragment(
+                    textRange: 0..<text.utf16.count,
+                    sourceRange: sourceRange,
+                    exact: sourceRange?.count == text.utf16.count
+                )
+            ]
 
         for fragment in fragments {
             let nsText = text as NSString
             guard fragment.textRange.lowerBound >= 0,
-                  fragment.textRange.upperBound <= nsText.length else { continue }
-            let fragmentText = nsText.substring(with: NSRange(
-                location: fragment.textRange.lowerBound,
-                length: fragment.textRange.count
-            ))
+                fragment.textRange.upperBound <= nsText.length
+            else { continue }
+            let fragmentText = nsText.substring(
+                with: NSRange(
+                    location: fragment.textRange.lowerBound,
+                    length: fragment.textRange.count
+                ))
             var localUTF16 = 0
             for character in fragmentText {
                 let characterLength = String(character).utf16.count
@@ -529,12 +561,13 @@ private enum SearchProjectionBuilder {
                     normalized.append(" ")
                     normalizedUTF16Count += 1
                     if let pendingWhitespaceSource {
-                        map.append(SearchSegmentOffset(
-                            normalizedUTF16LowerBound: lower,
-                            normalizedUTF16UpperBound: lower + 1,
-                            sourceUTF16LowerBound: pendingWhitespaceSource.lowerBound,
-                            sourceUTF16UpperBound: pendingWhitespaceSource.upperBound
-                        ))
+                        map.append(
+                            SearchSegmentOffset(
+                                normalizedUTF16LowerBound: lower,
+                                normalizedUTF16UpperBound: lower + 1,
+                                sourceUTF16LowerBound: pendingWhitespaceSource.lowerBound,
+                                sourceUTF16UpperBound: pendingWhitespaceSource.upperBound
+                            ))
                     }
                     hasPendingWhitespace = false
                     pendingWhitespaceSource = nil
@@ -545,12 +578,13 @@ private enum SearchProjectionBuilder {
                 normalizedUTF16Count += folded.utf16.count
                 let upper = normalizedUTF16Count
                 if let mappedSource {
-                    map.append(SearchSegmentOffset(
-                        normalizedUTF16LowerBound: lower,
-                        normalizedUTF16UpperBound: upper,
-                        sourceUTF16LowerBound: mappedSource.lowerBound,
-                        sourceUTF16UpperBound: mappedSource.upperBound
-                    ))
+                    map.append(
+                        SearchSegmentOffset(
+                            normalizedUTF16LowerBound: lower,
+                            normalizedUTF16UpperBound: upper,
+                            sourceUTF16LowerBound: mappedSource.lowerBound,
+                            sourceUTF16UpperBound: mappedSource.upperBound
+                        ))
                 }
             }
         }
@@ -599,16 +633,19 @@ private struct SearchSourceLocator {
     }
 
     func utf16Range(forUTF8Range range: Range<Int>) -> Range<Int>? {
-        guard let lowerUTF8 = source.utf8.index(
-            source.utf8.startIndex,
-            offsetBy: range.lowerBound,
-            limitedBy: source.utf8.endIndex
-        ), let upperUTF8 = source.utf8.index(
-            source.utf8.startIndex,
-            offsetBy: range.upperBound,
-            limitedBy: source.utf8.endIndex
-        ), let lower = lowerUTF8.samePosition(in: source),
-           let upper = upperUTF8.samePosition(in: source) else { return nil }
+        guard
+            let lowerUTF8 = source.utf8.index(
+                source.utf8.startIndex,
+                offsetBy: range.lowerBound,
+                limitedBy: source.utf8.endIndex
+            ),
+            let upperUTF8 = source.utf8.index(
+                source.utf8.startIndex,
+                offsetBy: range.upperBound,
+                limitedBy: source.utf8.endIndex
+            ), let lower = lowerUTF8.samePosition(in: source),
+            let upper = upperUTF8.samePosition(in: source)
+        else { return nil }
         return lower.utf16Offset(in: source)..<upper.utf16Offset(in: source)
     }
 
@@ -673,7 +710,10 @@ private struct SearchVisibleTextCollector: MarkupWalker {
     mutating func visitHeading(_ heading: Heading) { descendInto(heading) }
     mutating func visitText(_ node: Markdown.Text) { append(node.string, range: node.range) }
     mutating func visitInlineCode(_ node: InlineCode) { append(node.code, range: node.range) }
-    mutating func visitCodeBlock(_ node: CodeBlock) { append(node.code, range: node.range); appendSeparator("\n") }
+    mutating func visitCodeBlock(_ node: CodeBlock) {
+        append(node.code, range: node.range)
+        appendSeparator("\n")
+    }
     mutating func visitSoftBreak(_ softBreak: SoftBreak) { appendSeparator("\n") }
     mutating func visitLineBreak(_ lineBreak: LineBreak) { appendSeparator("\n") }
     mutating func visitImage(_ image: Image) {
@@ -691,12 +731,14 @@ private struct SearchVisibleTextCollector: MarkupWalker {
         let fullRange = relative.map {
             ($0.lowerBound + fullSourceUTF16Offset)..<($0.upperBound + fullSourceUTF16Offset)
         }
-        let exact = relative.map { range in
-            (source as NSString).substring(with: NSRange(
-                location: range.lowerBound,
-                length: range.count
-            )) == value
-        } ?? false
+        let exact =
+            relative.map { range in
+                (source as NSString).substring(
+                    with: NSRange(
+                        location: range.lowerBound,
+                        length: range.count
+                    )) == value
+            } ?? false
         if let fullRange, exact, appendProjectedSource(in: fullRange) { return }
         if let fullRange, excludedFullSourceRanges.contains(where: { overlaps($0, fullRange) }) {
             return
@@ -714,17 +756,19 @@ private struct SearchVisibleTextCollector: MarkupWalker {
             guard lower < upper else { return nil }
             return SourceProjection(range: lower..<upper, replacement: nil, replacementSourceRange: nil)
         }
-        projections.append(contentsOf: links.compactMap { link -> SourceProjection? in
-            guard link.syntax == .wikilink || link.syntax == .embed else { return nil }
-            let linkRange = link.linkSpan.utf16Range
-            guard fullRange.lowerBound <= linkRange.lowerBound,
-                  linkRange.upperBound <= fullRange.upperBound else { return nil }
-            return SourceProjection(
-                range: linkRange,
-                replacement: link.alias ?? link.target,
-                replacementSourceRange: visibleLabelRange(for: link)
-            )
-        })
+        projections.append(
+            contentsOf: links.compactMap { link -> SourceProjection? in
+                guard link.syntax == .wikilink || link.syntax == .embed else { return nil }
+                let linkRange = link.linkSpan.utf16Range
+                guard fullRange.lowerBound <= linkRange.lowerBound,
+                    linkRange.upperBound <= fullRange.upperBound
+                else { return nil }
+                return SourceProjection(
+                    range: linkRange,
+                    replacement: link.alias ?? link.target,
+                    replacementSourceRange: visibleLabelRange(for: link)
+                )
+            })
         guard !projections.isEmpty else { return false }
         projections.sort {
             if $0.range.lowerBound != $1.range.lowerBound {
@@ -743,8 +787,9 @@ private struct SearchVisibleTextCollector: MarkupWalker {
                 appendExactSource(cursor..<projection.range.lowerBound)
             }
             if projection.range.lowerBound >= cursor,
-               let replacement = projection.replacement,
-               !replacement.isEmpty {
+                let replacement = projection.replacement,
+                !replacement.isEmpty
+            {
                 let sourceRange = projection.replacementSourceRange ?? projection.range
                 appendFragment(
                     replacement,
@@ -761,11 +806,13 @@ private struct SearchVisibleTextCollector: MarkupWalker {
     private mutating func appendExactSource(_ fullRange: Range<Int>) {
         let relative = (fullRange.lowerBound - fullSourceUTF16Offset)..<(fullRange.upperBound - fullSourceUTF16Offset)
         guard relative.lowerBound >= 0,
-              relative.upperBound <= (source as NSString).length else { return }
-        let value = (source as NSString).substring(with: NSRange(
-            location: relative.lowerBound,
-            length: relative.count
-        ))
+            relative.upperBound <= (source as NSString).length
+        else { return }
+        let value = (source as NSString).substring(
+            with: NSRange(
+                location: relative.lowerBound,
+                length: relative.count
+            ))
         appendFragment(value, sourceRange: fullRange, exact: true)
     }
 
@@ -778,11 +825,12 @@ private struct SearchVisibleTextCollector: MarkupWalker {
         let start = textUTF16Count
         text += value
         textUTF16Count += value.utf16.count
-        fragments.append(SearchVisibleFragment(
-            textRange: start..<textUTF16Count,
-            sourceRange: sourceRange,
-            exact: exact
-        ))
+        fragments.append(
+            SearchVisibleFragment(
+                textRange: start..<textUTF16Count,
+                sourceRange: sourceRange,
+                exact: exact
+            ))
     }
 
     private func visibleLabelRange(for link: LinkOccurrence) -> Range<Int>? {
@@ -802,10 +850,11 @@ private struct SearchVisibleTextCollector: MarkupWalker {
         let relative = (fullRange.lowerBound - fullSourceUTF16Offset)..<(fullRange.upperBound - fullSourceUTF16Offset)
         let nsSource = source as NSString
         guard relative.lowerBound >= 0, relative.upperBound <= nsSource.length else { return false }
-        return nsSource.substring(with: NSRange(
-            location: relative.lowerBound,
-            length: relative.count
-        )) == value
+        return nsSource.substring(
+            with: NSRange(
+                location: relative.lowerBound,
+                length: relative.count
+            )) == value
     }
 
     private mutating func appendSeparator(_ value: String) {
@@ -813,11 +862,12 @@ private struct SearchVisibleTextCollector: MarkupWalker {
         let start = textUTF16Count
         text += value
         textUTF16Count += value.utf16.count
-        fragments.append(SearchVisibleFragment(
-            textRange: start..<textUTF16Count,
-            sourceRange: nil,
-            exact: false
-        ))
+        fragments.append(
+            SearchVisibleFragment(
+                textRange: start..<textUTF16Count,
+                sourceRange: nil,
+                exact: false
+            ))
     }
 
     private func overlaps(_ lhs: Range<Int>, _ rhs: Range<Int>) -> Bool {
@@ -850,8 +900,9 @@ private struct SearchMarkdownSourceMapper {
 
     func utf16Range(_ range: Markdown.SourceRange) -> Range<Int>? {
         guard let lower = utf16Offset(line: range.lowerBound.line, utf8Column: range.lowerBound.column),
-              let upper = utf16Offset(line: range.upperBound.line, utf8Column: range.upperBound.column),
-              upper >= lower else { return nil }
+            let upper = utf16Offset(line: range.upperBound.line, utf8Column: range.upperBound.column),
+            upper >= lower
+        else { return nil }
         return lower..<upper
     }
 
@@ -859,16 +910,19 @@ private struct SearchMarkdownSourceMapper {
         guard line > 0, line <= lineStarts.count, utf8Column > 0 else { return nil }
         let lineStart = lineStarts[line - 1]
         let lineEnd = line < lineStarts.count ? lineStarts[line] : nsSource.length
-        let lineString = nsSource.substring(with: NSRange(
-            location: lineStart,
-            length: lineEnd - lineStart
-        ))
+        let lineString = nsSource.substring(
+            with: NSRange(
+                location: lineStart,
+                length: lineEnd - lineStart
+            ))
         let byteOffset = utf8Column - 1
-        guard let utf8 = lineString.utf8.index(
-            lineString.utf8.startIndex,
-            offsetBy: byteOffset,
-            limitedBy: lineString.utf8.endIndex
-        ), let stringIndex = utf8.samePosition(in: lineString) else { return nil }
+        guard
+            let utf8 = lineString.utf8.index(
+                lineString.utf8.startIndex,
+                offsetBy: byteOffset,
+                limitedBy: lineString.utf8.endIndex
+            ), let stringIndex = utf8.samePosition(in: lineString)
+        else { return nil }
         return lineStart + stringIndex.utf16Offset(in: lineString)
     }
 }

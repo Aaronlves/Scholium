@@ -1,6 +1,7 @@
-import ScholiumContracts
 import Foundation
+import ScholiumContracts
 import Testing
+
 @testable import ScholiumApplication
 
 @Suite("Headless workspace runtime")
@@ -15,10 +16,11 @@ struct WorkspaceRuntimeTests {
         )
         let firstHandle = try await firstRuntime.openWorkspace(id: fixture.assignment.id)
         let firstSnapshot = try await firstHandle.snapshot()
-        let firstProjection = try #require(firstSnapshot.discovery.catalog.notes.first {
-            $0.reference.vaultID == fixture.analysisNoteID.vaultID
-                && $0.reference.relativePath == fixture.analysisNoteID.relativePath
-        })
+        let firstProjection = try #require(
+            firstSnapshot.discovery.catalog.notes.first {
+                $0.reference.vaultID == fixture.analysisNoteID.vaultID
+                    && $0.reference.relativePath == fixture.analysisNoteID.relativePath
+            })
         let noteID = try #require(
             firstProjection.reference.stableNoteID.flatMap(UUID.init(uuidString:))
         )
@@ -40,10 +42,11 @@ struct WorkspaceRuntimeTests {
         )
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
         let snapshot = try await handle.snapshot()
-        let projected = try #require(snapshot.discovery.catalog.notes.first {
-            $0.reference.vaultID == fixture.analysisNoteID.vaultID
-                && $0.reference.relativePath == fixture.analysisNoteID.relativePath
-        })
+        let projected = try #require(
+            snapshot.discovery.catalog.notes.first {
+                $0.reference.vaultID == fixture.analysisNoteID.vaultID
+                    && $0.reference.relativePath == fixture.analysisNoteID.relativePath
+            })
 
         #expect(projected.reference.stableNoteID == noteID.uuidString.lowercased())
         #expect(projected.zoteroBinding == expected)
@@ -72,10 +75,12 @@ struct WorkspaceRuntimeTests {
             "Fresh Registry",
             isDirectory: true
         )
-        let runtime = WorkspaceRuntime(configuration: .live(.init(
-            applicationSupportURL: freshSupport,
-            workspaceRegistryStorageURL: freshRegistry
-        )))
+        let runtime = WorkspaceRuntime(
+            configuration: .live(
+                .init(
+                    applicationSupportURL: freshSupport,
+                    workspaceRegistryStorageURL: freshRegistry
+                )))
 
         let handle = try await runtime.configureTriptych(
             paperAnalysisURL: fixture.analysesURL,
@@ -110,10 +115,12 @@ struct WorkspaceRuntimeTests {
             "Invalid Fresh Registry",
             isDirectory: true
         )
-        let runtime = WorkspaceRuntime(configuration: .live(.init(
-            applicationSupportURL: freshSupport,
-            workspaceRegistryStorageURL: freshRegistry
-        )))
+        let runtime = WorkspaceRuntime(
+            configuration: .live(
+                .init(
+                    applicationSupportURL: freshSupport,
+                    workspaceRegistryStorageURL: freshRegistry
+                )))
 
         await #expect(throws: (any Error).self) {
             _ = try await runtime.configureTriptych(
@@ -125,11 +132,12 @@ struct WorkspaceRuntimeTests {
         }
 
         #expect(try Data(contentsOf: manifestURL) == invalidManifest)
-        #expect(!FileManager.default.fileExists(
-            atPath: freshRegistry.appendingPathComponent(
-                "workspace-registration-v3.json"
-            ).path
-        ))
+        #expect(
+            !FileManager.default.fileExists(
+                atPath: freshRegistry.appendingPathComponent(
+                    "workspace-registration-v3.json"
+                ).path
+            ))
         await runtime.shutdown()
     }
 
@@ -137,14 +145,18 @@ struct WorkspaceRuntimeTests {
     func overlapFailsBeforeAnyRegistrationMutation() async throws {
         let fixture = try await ApplicationFixture.make()
         defer { fixture.remove() }
-        let registryURLs = [fixture.registryStorageURL.appendingPathComponent(
-            "workspace-registration-v3.json"
-        )]
+        let registryURLs = [
+            fixture.registryStorageURL.appendingPathComponent(
+                "workspace-registration-v3.json"
+            )
+        ]
         let originalBytes = try registryURLs.map { try Data(contentsOf: $0) }
-        let runtime = WorkspaceRuntime(configuration: .live(.init(
-            applicationSupportURL: fixture.applicationSupportURL,
-            workspaceRegistryStorageURL: fixture.registryStorageURL
-        )))
+        let runtime = WorkspaceRuntime(
+            configuration: .live(
+                .init(
+                    applicationSupportURL: fixture.applicationSupportURL,
+                    workspaceRegistryStorageURL: fixture.registryStorageURL
+                )))
 
         await #expect(throws: WorkspaceRegistryError.self) {
             _ = try await runtime.configureTriptych(
@@ -186,15 +198,19 @@ struct WorkspaceRuntimeTests {
         let secondManifestURL = secondControl.appendingPathComponent("manifest.json")
         try encoder.encode(secondManifest).write(to: secondManifestURL, options: .atomic)
 
-        let registryURLs = [fixture.registryStorageURL.appendingPathComponent(
-            "workspace-registration-v3.json"
-        )]
+        let registryURLs = [
+            fixture.registryStorageURL.appendingPathComponent(
+                "workspace-registration-v3.json"
+            )
+        ]
         let originalRegistryBytes = try registryURLs.map { try Data(contentsOf: $0) }
         let originalManifestBytes = try Data(contentsOf: secondManifestURL)
-        let runtime = WorkspaceRuntime(configuration: .live(.init(
-            applicationSupportURL: fixture.applicationSupportURL,
-            workspaceRegistryStorageURL: fixture.registryStorageURL
-        )))
+        let runtime = WorkspaceRuntime(
+            configuration: .live(
+                .init(
+                    applicationSupportURL: fixture.applicationSupportURL,
+                    workspaceRegistryStorageURL: fixture.registryStorageURL
+                )))
 
         await #expect(throws: WorkspaceRegistryError.self) {
             _ = try await runtime.configureTriptych(
@@ -243,15 +259,19 @@ struct WorkspaceRuntimeTests {
         let secondManifestURL = secondControl.appendingPathComponent("manifest.json")
         try encoder.encode(secondManifest).write(to: secondManifestURL, options: .atomic)
 
-        let registryURLs = [fixture.registryStorageURL.appendingPathComponent(
-            "workspace-registration-v3.json"
-        )]
+        let registryURLs = [
+            fixture.registryStorageURL.appendingPathComponent(
+                "workspace-registration-v3.json"
+            )
+        ]
         let originalRegistryBytes = try registryURLs.map { try Data(contentsOf: $0) }
         let originalManifestBytes = try Data(contentsOf: secondManifestURL)
-        let runtime = WorkspaceRuntime(configuration: .live(.init(
-            applicationSupportURL: fixture.applicationSupportURL,
-            workspaceRegistryStorageURL: fixture.registryStorageURL
-        )))
+        let runtime = WorkspaceRuntime(
+            configuration: .live(
+                .init(
+                    applicationSupportURL: fixture.applicationSupportURL,
+                    workspaceRegistryStorageURL: fixture.registryStorageURL
+                )))
 
         await #expect(throws: WorkspaceRegistryError.self) {
             _ = try await runtime.configureTriptych(
@@ -336,16 +356,19 @@ struct WorkspaceRuntimeTests {
         #expect(initial.generation == 0)
         #expect(initial.snapshot.vaults.count == 3)
         #expect(initial.snapshot.vaults.flatMap(\.documents).count == 3)
-        let analysesSnapshot = try #require(initial.snapshot.vaults.first {
-            $0.vault.id == fixture.analysisNoteID.vaultID
-        })
+        let analysesSnapshot = try #require(
+            initial.snapshot.vaults.first {
+                $0.vault.id == fixture.analysisNoteID.vaultID
+            })
         let volumeValues = try fixture.analysesURL.resourceValues(forKeys: [
-            .volumeSupportsCaseSensitiveNamesKey,
+            .volumeSupportsCaseSensitiveNamesKey
         ])
-        #expect(analysesSnapshot.pathComparisonPolicy == VaultPathComparisonPolicy(
-            caseSensitive: volumeValues.volumeSupportsCaseSensitiveNames ?? true,
-            normalizationSensitive: false
-        ))
+        #expect(
+            analysesSnapshot.pathComparisonPolicy
+                == VaultPathComparisonPolicy(
+                    caseSensitive: volumeValues.volumeSupportsCaseSensitiveNames ?? true,
+                    normalizationSensitive: false
+                ))
         if case .snapshot(let event) = initial {
             let analysis = try #require(event.snapshot.document(id: fixture.analysisNoteID))
             #expect(analysis.document.rawContent.contains("Freedom enables action"))
@@ -392,9 +415,11 @@ struct WorkspaceRuntimeTests {
         let fixture = try await ApplicationFixture.make()
         defer { fixture.remove() }
         let sourceURL = fixture.rootURL.appendingPathComponent("Imported.md")
-        let source = Data([0xEF, 0xBB, 0xBF]) + Data(
-            "---\r\nunknown: [source material\r\n---\r\n# Imported\r\n".utf8
-        )
+        let source =
+            Data([0xEF, 0xBB, 0xBF])
+            + Data(
+                "---\r\nunknown: [source material\r\n---\r\n# Imported\r\n".utf8
+            )
         try source.write(to: sourceURL)
         let runtime = try await WorkspaceRuntime.snapshot(
             applicationSupportURL: fixture.applicationSupportURL,
@@ -413,10 +438,12 @@ struct WorkspaceRuntimeTests {
         #expect(imported.relativePath == "Imported.md")
         #expect(try Data(contentsOf: sourceURL) == source)
         #expect(try Data(contentsOf: fixture.topicsURL.appendingPathComponent("Imported.md")) == source)
-        #expect(try await handle.snapshot().document(id: VaultQualifiedNoteID(
-            vaultID: topicsID,
-            relativePath: "Imported.md"
-        ))?.fingerprint == imported.fingerprint)
+        #expect(
+            try await handle.snapshot().document(
+                id: VaultQualifiedNoteID(
+                    vaultID: topicsID,
+                    relativePath: "Imported.md"
+                ))?.fingerprint == imported.fingerprint)
         await runtime.shutdown()
     }
 
@@ -424,38 +451,47 @@ struct WorkspaceRuntimeTests {
     func discoveryAndFrozenMembership() async throws {
         let fixture = try await ApplicationFixture.make()
         defer { fixture.remove() }
-        let runtime = WorkspaceRuntime(configuration: .snapshot(.init(
-            applicationSupportURL: fixture.applicationSupportURL,
-            assignments: [fixture.assignment]
-        )))
+        let runtime = WorkspaceRuntime(
+            configuration: .snapshot(
+                .init(
+                    applicationSupportURL: fixture.applicationSupportURL,
+                    assignments: [fixture.assignment]
+                )))
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
 
-        let hits = try await handle.discovery.search(SearchRequest(
-            query: "freedom",
-            presentationScope: .triptych,
-            executionScope: .triptych,
-            limit: 20
-        ))
+        let hits = try await handle.discovery.search(
+            SearchRequest(
+                query: "freedom",
+                presentationScope: .triptych,
+                executionScope: .triptych,
+                limit: 20
+            ))
         let noteHits = hits.results.compactMap { result -> NoteSearchResult? in
             guard case .note(let note) = result else { return nil }
             return note
         }
-        #expect(noteHits.contains {
-            $0.vaultID == fixture.analysisNoteID.vaultID
-        })
-        let related = try await handle.discovery.relatedContent(.init(seed: .init(
-            noteID: fixture.analysisNoteID, source: "# Unsaved\n\nfreedom and agency",
-            focuses: [.init(kind: .selectedPassage, text: "agency")]
-        )))
+        #expect(
+            noteHits.contains {
+                $0.vaultID == fixture.analysisNoteID.vaultID
+            })
+        let related = try await handle.discovery.relatedContent(
+            .init(
+                seed: .init(
+                    noteID: fixture.analysisNoteID, source: "# Unsaved\n\nfreedom and agency",
+                    focuses: [.init(kind: .selectedPassage, text: "agency")]
+                )))
         #expect(related.state == .current)
         #expect(related.passages.count == 1)
         #expect(related.passages.first?.displayText == "A topic note about agency.")
-        #expect((related.identityCandidates + related.lexicalCandidates).allSatisfy {
-            $0.note != fixture.analysisNoteID
-        })
+        #expect(
+            (related.identityCandidates + related.lexicalCandidates).allSatisfy {
+                $0.note != fixture.analysisNoteID
+            })
         await #expect(throws: (any Error).self) {
-            try await handle.discovery.relatedContent(.init(seed: .init(
-                noteID: .init(vaultID: UUID(), relativePath: "Private.md"), source: "freedom")))
+            try await handle.discovery.relatedContent(
+                .init(
+                    seed: .init(
+                        noteID: .init(vaultID: UUID(), relativePath: "Private.md"), source: "freedom")))
         }
         #expect(try await runtime.availableWorkspaces().map(\.id) == [fixture.assignment.id])
 
@@ -475,10 +511,12 @@ struct WorkspaceRuntimeTests {
     func revisionGatedSave() async throws {
         let fixture = try await ApplicationFixture.make()
         defer { fixture.remove() }
-        let runtime = WorkspaceRuntime(configuration: .snapshot(.init(
-            applicationSupportURL: fixture.applicationSupportURL,
-            assignments: [fixture.assignment]
-        )))
+        let runtime = WorkspaceRuntime(
+            configuration: .snapshot(
+                .init(
+                    applicationSupportURL: fixture.applicationSupportURL,
+                    assignments: [fixture.assignment]
+                )))
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
         let original = try await handle.documents.load(fixture.analysisNoteID)
 
@@ -526,10 +564,12 @@ struct WorkspaceRuntimeTests {
     func subscriberCancellation() async throws {
         let fixture = try await ApplicationFixture.make()
         defer { fixture.remove() }
-        let runtime = WorkspaceRuntime(configuration: .snapshot(.init(
-            applicationSupportURL: fixture.applicationSupportURL,
-            assignments: [fixture.assignment]
-        )))
+        let runtime = WorkspaceRuntime(
+            configuration: .snapshot(
+                .init(
+                    applicationSupportURL: fixture.applicationSupportURL,
+                    assignments: [fixture.assignment]
+                )))
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
         let source = handle.events
         let stream = await source.events()
@@ -570,7 +610,7 @@ struct WorkspaceRuntimeTests {
         await source.publishVaultAccessInvalidated(
             snapshot: snapshot,
             unavailableVaultPaths: [
-                fixture.analysisNoteID.vaultID: fixture.analysesURL.path,
+                fixture.analysisNoteID.vaultID: fixture.analysesURL.path
             ]
         )
         await source.publishDerivedStateChanged(snapshot: snapshot)
@@ -582,15 +622,18 @@ struct WorkspaceRuntimeTests {
         }
         let lateStream = await source.events()
         var lateIterator = lateStream.makeAsyncIterator()
-        guard case .vaultAccessInvalidated(let late) = try #require(
-            await lateIterator.next()
-        ) else {
+        guard
+            case .vaultAccessInvalidated(let late) = try #require(
+                await lateIterator.next()
+            )
+        else {
             Issue.record("A late subscriber received a current snapshot after invalidation.")
             await runtime.shutdown()
             return
         }
-        #expect(late.unavailableVaultPaths[fixture.analysisNoteID.vaultID]
-            == fixture.analysesURL.path)
+        #expect(
+            late.unavailableVaultPaths[fixture.analysisNoteID.vaultID]
+                == fixture.analysesURL.path)
         await runtime.shutdown()
     }
 
@@ -598,10 +641,12 @@ struct WorkspaceRuntimeTests {
     func liveWatcherLifecycle() async throws {
         let fixture = try await ApplicationFixture.make(registerLiveAccess: true)
         defer { fixture.remove() }
-        let runtime = WorkspaceRuntime(configuration: .live(.init(
-            applicationSupportURL: fixture.applicationSupportURL,
-            workspaceRegistryStorageURL: fixture.registryStorageURL
-        )))
+        let runtime = WorkspaceRuntime(
+            configuration: .live(
+                .init(
+                    applicationSupportURL: fixture.applicationSupportURL,
+                    workspaceRegistryStorageURL: fixture.registryStorageURL
+                )))
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
         #expect(await handle.ownedBackgroundTaskCount > 0)
         let readiness = try #require(await handle.watcherReadinessEvidence)
@@ -654,9 +699,10 @@ struct WorkspaceRuntimeTests {
         for index in 0..<measurementDocumentCount {
             try Data(
                 "# Catalog Measurement \(index)\n\n\(measurementBody)".utf8
-            ).write(to: fixture.analysesURL.appendingPathComponent(
-                "Catalog Measurement \(index).md"
-            ))
+            ).write(
+                to: fixture.analysesURL.appendingPathComponent(
+                    "Catalog Measurement \(index).md"
+                ))
         }
         let baselineRuntime = try await WorkspaceRuntime.snapshot(
             applicationSupportURL: fixture.applicationSupportURL,
@@ -671,10 +717,11 @@ struct WorkspaceRuntimeTests {
         let changedOpeningURL = fixture.analysesURL.appendingPathComponent(
             fixture.analysisNoteID.relativePath
         )
-        let changedOpeningSource = try String(
-            contentsOf: changedOpeningURL,
-            encoding: .utf8
-        ) + "\nOpening source changed after the last complete index.\n"
+        let changedOpeningSource =
+            try String(
+                contentsOf: changedOpeningURL,
+                encoding: .utf8
+            ) + "\nOpening source changed after the last complete index.\n"
         try Data(changedOpeningSource.utf8).write(to: changedOpeningURL)
 
         let openingOnlyNoteID = VaultQualifiedNoteID(
@@ -683,13 +730,16 @@ struct WorkspaceRuntimeTests {
         )
         try Data(
             "# Opening Only\n\nopeninguniqueterm exists only after the last complete index.\n".utf8
-        ).write(to: fixture.analysesURL.appendingPathComponent(
-            openingOnlyNoteID.relativePath
-        ))
-        let runtime = WorkspaceRuntime(configuration: .live(.init(
-            applicationSupportURL: fixture.applicationSupportURL,
-            workspaceRegistryStorageURL: fixture.registryStorageURL
-        )))
+        ).write(
+            to: fixture.analysesURL.appendingPathComponent(
+                openingOnlyNoteID.relativePath
+            ))
+        let runtime = WorkspaceRuntime(
+            configuration: .live(
+                .init(
+                    applicationSupportURL: fixture.applicationSupportURL,
+                    workspaceRegistryStorageURL: fixture.registryStorageURL
+                )))
         let handle = try await runtime.openWorkspace(
             id: fixture.assignment.id,
             openingVault: .paperAnalysis
@@ -703,9 +753,11 @@ struct WorkspaceRuntimeTests {
         let openingEvent = try #require(await iterator.next())
         let openingMeasurement = await handle.latestRefreshMeasurement
 
-        #expect(openingEvent.snapshot.phase == .opening(
-            availableVault: .paperAnalysis
-        ))
+        #expect(
+            openingEvent.snapshot.phase
+                == .opening(
+                    availableVault: .paperAnalysis
+                ))
         #expect(openingMeasurement.readDuration <= openingMeasurement.totalDuration)
         #expect(openingEvent.snapshot.vaults.map(\.slot) == [.paperAnalysis])
         #expect(openingEvent.snapshot.discovery.searchGeneration == nil)
@@ -715,26 +767,29 @@ struct WorkspaceRuntimeTests {
         let openedDocument = try await handle.documents.load(fixture.analysisNoteID)
         #expect(openedDocument.rawContent.contains("Freedom enables action"))
         #expect(openedDocument.rawContent.contains("Opening source changed"))
-        let thisNoteResponse = try await handle.discovery.search(SearchRequest(
-            query: "freedom",
-            presentationScope: .thisNote,
-            executionScope: .currentNote(SearchSourceSnapshot(
-                noteID: fixture.analysisNoteID,
-                editorSessionID: UUID(),
-                source: openedDocument.rawContent,
-                editorRevision: 1
-            )),
-            limit: 20
-        ))
+        let thisNoteResponse = try await handle.discovery.search(
+            SearchRequest(
+                query: "freedom",
+                presentationScope: .thisNote,
+                executionScope: .currentNote(
+                    SearchSourceSnapshot(
+                        noteID: fixture.analysisNoteID,
+                        editorSessionID: UUID(),
+                        source: openedDocument.rawContent,
+                        editorRevision: 1
+                    )),
+                limit: 20
+            ))
         #expect(!thisNoteResponse.results.isEmpty)
         #expect(thisNoteResponse.freshnessToken.rawValue.hasPrefix("note:"))
 
-        let thisVaultResponse = try await handle.discovery.search(SearchRequest(
-            query: "freedom",
-            presentationScope: .currentVault,
-            executionScope: .currentVault(fixture.analysisNoteID.vaultID),
-            limit: 20
-        ))
+        let thisVaultResponse = try await handle.discovery.search(
+            SearchRequest(
+                query: "freedom",
+                presentationScope: .currentVault,
+                executionScope: .currentVault(fixture.analysisNoteID.vaultID),
+                limit: 20
+            ))
         guard case .limited = thisVaultResponse.availability else {
             Issue.record("Opening This Vault Search did not expose its limited state.")
             await runtime.shutdown()
@@ -743,12 +798,13 @@ struct WorkspaceRuntimeTests {
         #expect(thisVaultResponse.results.isEmpty)
         #expect(!thisVaultResponse.hasMore)
 
-        let trustedOpeningResponse = try await handle.discovery.search(SearchRequest(
-            query: "bounded",
-            presentationScope: .currentVault,
-            executionScope: .currentVault(fixture.analysisNoteID.vaultID),
-            limit: 20
-        ))
+        let trustedOpeningResponse = try await handle.discovery.search(
+            SearchRequest(
+                query: "bounded",
+                presentationScope: .currentVault,
+                executionScope: .currentVault(fixture.analysisNoteID.vaultID),
+                limit: 20
+            ))
         guard case .limited = trustedOpeningResponse.availability else {
             Issue.record("Trusted opening Search did not retain its limited state.")
             await runtime.shutdown()
@@ -772,12 +828,13 @@ struct WorkspaceRuntimeTests {
             }
         }
 
-        let notYetIndexed = try await handle.discovery.search(SearchRequest(
-            query: "openinguniqueterm",
-            presentationScope: .currentVault,
-            executionScope: .currentVault(fixture.analysisNoteID.vaultID),
-            limit: 20
-        ))
+        let notYetIndexed = try await handle.discovery.search(
+            SearchRequest(
+                query: "openinguniqueterm",
+                presentationScope: .currentVault,
+                executionScope: .currentVault(fixture.analysisNoteID.vaultID),
+                limit: 20
+            ))
         #expect(notYetIndexed.results.isEmpty)
         guard case .limited = notYetIndexed.availability else {
             Issue.record("Opening-only source was not reported as outside the limited index.")
@@ -785,22 +842,24 @@ struct WorkspaceRuntimeTests {
             return
         }
 
-        let structuredOpening = try await handle.discovery.search(SearchRequest(
-            query: "has:broken-link",
-            presentationScope: .currentVault,
-            executionScope: .currentVault(fixture.analysisNoteID.vaultID),
-            limit: 20
-        ))
+        let structuredOpening = try await handle.discovery.search(
+            SearchRequest(
+                query: "has:broken-link",
+                presentationScope: .currentVault,
+                executionScope: .currentVault(fixture.analysisNoteID.vaultID),
+                limit: 20
+            ))
         #expect(structuredOpening.results.isEmpty)
         #expect(structuredOpening.diagnostics.map(\.code) == [.notApplicable])
 
         do {
-            _ = try await handle.discovery.search(SearchRequest(
-                query: "freedom",
-                presentationScope: .triptych,
-                executionScope: .triptych,
-                limit: 20
-            ))
+            _ = try await handle.discovery.search(
+                SearchRequest(
+                    query: "freedom",
+                    presentationScope: .triptych,
+                    executionScope: .triptych,
+                    limit: 20
+                ))
             Issue.record("Opening Search presented an incomplete Triptych as complete.")
         } catch let error as ScholiumApplicationError {
             guard case .workspaceStillLoading(let id) = error else {
@@ -812,9 +871,11 @@ struct WorkspaceRuntimeTests {
         }
 
         try await Task.sleep(for: .milliseconds(500))
-        #expect(try await handle.snapshot().phase == .opening(
-            availableVault: .paperAnalysis
-        ))
+        #expect(
+            try await handle.snapshot().phase
+                == .opening(
+                    availableVault: .paperAnalysis
+                ))
         await handle.openingPresentationDidComplete()
         await activationGate.waitUntilArrived()
         let phaseWhileReconciling = try? await handle.snapshot().phase
@@ -842,23 +903,26 @@ struct WorkspaceRuntimeTests {
         #expect(completeEvent.snapshot.discovery.searchGeneration != nil)
         #expect(completeEvent.snapshot.discovery.catalog.graph != nil)
 
-        let response = try await handle.discovery.search(SearchRequest(
-            query: "freedom",
-            presentationScope: .triptych,
-            executionScope: .triptych,
-            limit: 20
-        ))
+        let response = try await handle.discovery.search(
+            SearchRequest(
+                query: "freedom",
+                presentationScope: .triptych,
+                executionScope: .triptych,
+                limit: 20
+            ))
         #expect(!response.results.isEmpty)
-        #expect(response.results.contains { result in
-            guard case .note(let note) = result else { return false }
-            return note.noteReference == fixture.analysisNoteID
-        })
-        let completedOpeningOnly = try await handle.discovery.search(SearchRequest(
-            query: "openinguniqueterm",
-            presentationScope: .triptych,
-            executionScope: .triptych,
-            limit: 20
-        ))
+        #expect(
+            response.results.contains { result in
+                guard case .note(let note) = result else { return false }
+                return note.noteReference == fixture.analysisNoteID
+            })
+        let completedOpeningOnly = try await handle.discovery.search(
+            SearchRequest(
+                query: "openinguniqueterm",
+                presentationScope: .triptych,
+                executionScope: .triptych,
+                limit: 20
+            ))
         #expect(!completedOpeningOnly.results.isEmpty)
         #expect(await handle.watcherReadinessEvidence != nil)
 
@@ -871,17 +935,21 @@ struct WorkspaceRuntimeTests {
     func progressiveLiveOpeningWithoutDocumentPresentation() async throws {
         let fixture = try await ApplicationFixture.make(registerLiveAccess: true)
         defer { fixture.remove() }
-        let runtime = WorkspaceRuntime(configuration: .live(.init(
-            applicationSupportURL: fixture.applicationSupportURL,
-            workspaceRegistryStorageURL: fixture.registryStorageURL
-        )))
+        let runtime = WorkspaceRuntime(
+            configuration: .live(
+                .init(
+                    applicationSupportURL: fixture.applicationSupportURL,
+                    workspaceRegistryStorageURL: fixture.registryStorageURL
+                )))
         let handle = try await runtime.openWorkspace(
             id: fixture.assignment.id,
             openingVault: .paperAnalysis
         )
-        #expect(try await handle.snapshot().phase == .opening(
-            availableVault: .paperAnalysis
-        ))
+        #expect(
+            try await handle.snapshot().phase
+                == .opening(
+                    availableVault: .paperAnalysis
+                ))
 
         var completed = false
         for _ in 0..<150 {
@@ -901,10 +969,12 @@ struct WorkspaceRuntimeTests {
     func liveRenamePublishesMoveToTwoWindows() async throws {
         let fixture = try await ApplicationFixture.make(registerLiveAccess: true)
         defer { fixture.remove() }
-        let runtime = WorkspaceRuntime(configuration: .live(.init(
-            applicationSupportURL: fixture.applicationSupportURL,
-            workspaceRegistryStorageURL: fixture.registryStorageURL
-        )))
+        let runtime = WorkspaceRuntime(
+            configuration: .live(
+                .init(
+                    applicationSupportURL: fixture.applicationSupportURL,
+                    workspaceRegistryStorageURL: fixture.registryStorageURL
+                )))
         let firstWindow = try await runtime.openWorkspace(id: fixture.assignment.id)
         let secondWindow = try await runtime.openWorkspace(id: fixture.assignment.id)
         #expect(firstWindow === secondWindow)
@@ -966,10 +1036,12 @@ struct WorkspaceRuntimeTests {
     func rootDiscontinuityRequiresRuntimeReplacement() async throws {
         let fixture = try await ApplicationFixture.make(registerLiveAccess: true)
         defer { fixture.remove() }
-        let runtime = WorkspaceRuntime(configuration: .live(.init(
-            applicationSupportURL: fixture.applicationSupportURL,
-            workspaceRegistryStorageURL: fixture.registryStorageURL
-        )))
+        let runtime = WorkspaceRuntime(
+            configuration: .live(
+                .init(
+                    applicationSupportURL: fixture.applicationSupportURL,
+                    workspaceRegistryStorageURL: fixture.registryStorageURL
+                )))
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
         let original = try await handle.documents.load(fixture.analysisNoteID)
         let stream = await handle.events.events()
@@ -990,14 +1062,16 @@ struct WorkspaceRuntimeTests {
             access.unavailableVaultPaths[fixture.analysisNoteID.vaultID]
                 == fixture.analysesURL.path
         )
-        for _ in 0..<100 where await runtime.pooledVaultOwnsNativeWatcher(
+        for _ in 0..<100
+        where await runtime.pooledVaultOwnsNativeWatcher(
             vaultID: fixture.analysisNoteID.vaultID
         ) != false {
             await Task.yield()
         }
-        #expect(await runtime.pooledVaultOwnsNativeWatcher(
-            vaultID: fixture.analysisNoteID.vaultID
-        ) == false)
+        #expect(
+            await runtime.pooledVaultOwnsNativeWatcher(
+                vaultID: fixture.analysisNoteID.vaultID
+            ) == false)
 
         let detached = fixture.rootURL.appendingPathComponent(
             "Detached Analyses",
@@ -1038,14 +1112,15 @@ struct WorkspaceRuntimeTests {
         #expect(try Data(contentsOf: replacementURL) == replacementBytes)
 
         let invalidGeneration = await handle.events.publishedGeneration
-        try await runtime.deliverPooledVaultEventForTesting(VaultWatchEvent(
-            added: ["Later.md"],
-            modified: [],
-            deleted: [],
-            sequence: 81,
-            requiresFullRescan: false,
-            rootChanged: false
-        ), vaultID: fixture.analysisNoteID.vaultID)
+        try await runtime.deliverPooledVaultEventForTesting(
+            VaultWatchEvent(
+                added: ["Later.md"],
+                modified: [],
+                deleted: [],
+                sequence: 81,
+                requiresFullRescan: false,
+                rootChanged: false
+            ), vaultID: fixture.analysisNoteID.vaultID)
         await Task.yield()
         #expect(await handle.events.publishedGeneration == invalidGeneration)
         await #expect {
@@ -1073,10 +1148,12 @@ struct WorkspaceRuntimeTests {
     func repositoryRootFailureForcesRuntimeReplacement() async throws {
         let fixture = try await ApplicationFixture.make(registerLiveAccess: true)
         defer { fixture.remove() }
-        let runtime = WorkspaceRuntime(configuration: .live(.init(
-            applicationSupportURL: fixture.applicationSupportURL,
-            workspaceRegistryStorageURL: fixture.registryStorageURL
-        )))
+        let runtime = WorkspaceRuntime(
+            configuration: .live(
+                .init(
+                    applicationSupportURL: fixture.applicationSupportURL,
+                    workspaceRegistryStorageURL: fixture.registryStorageURL
+                )))
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
         let original = try await handle.documents.load(fixture.analysisNoteID)
         let detached = fixture.rootURL.appendingPathComponent(
@@ -1096,11 +1173,13 @@ struct WorkspaceRuntimeTests {
             _ = try await handle.documents.load(fixture.analysisNoteID)
         } throws: { error in
             if let repositoryError = error as? VaultRepositoryError,
-               case .rootUnavailable(let path) = repositoryError {
+                case .rootUnavailable(let path) = repositoryError
+            {
                 return path == fixture.analysesURL.path
             }
             if let registryError = error as? WorkspaceRegistryError,
-               case .vaultAccessUnavailable(let path) = registryError {
+                case .vaultAccessUnavailable(let path) = registryError
+            {
                 return path == fixture.analysesURL.path
             }
             return false
@@ -1141,20 +1220,24 @@ struct WorkspaceRuntimeTests {
         let fixture = try await ApplicationFixture.make(registerLiveAccess: true)
         defer { fixture.remove() }
         let secondAssignment = try await fixture.makeSecondLiveAssignmentSharingAnalyses()
-        let runtime = WorkspaceRuntime(configuration: .live(.init(
-            applicationSupportURL: fixture.applicationSupportURL,
-            workspaceRegistryStorageURL: fixture.registryStorageURL
-        )))
+        let runtime = WorkspaceRuntime(
+            configuration: .live(
+                .init(
+                    applicationSupportURL: fixture.applicationSupportURL,
+                    workspaceRegistryStorageURL: fixture.registryStorageURL
+                )))
         async let firstOpen = runtime.openWorkspace(id: fixture.assignment.id)
         async let secondOpen = runtime.openWorkspace(id: secondAssignment.id)
         let (first, second) = try await (firstOpen, secondOpen)
         #expect(await runtime.pooledVaultRuntimeCount == 5)
-        #expect(await runtime.pooledVaultSubscriberCount(
-            vaultID: fixture.analysisNoteID.vaultID
-        ) == 2)
-        #expect(await runtime.pooledVaultOwnsNativeWatcher(
-            vaultID: fixture.analysisNoteID.vaultID
-        ) == true)
+        #expect(
+            await runtime.pooledVaultSubscriberCount(
+                vaultID: fixture.analysisNoteID.vaultID
+            ) == 2)
+        #expect(
+            await runtime.pooledVaultOwnsNativeWatcher(
+                vaultID: fixture.analysisNoteID.vaultID
+            ) == true)
 
         let firstStream = await first.events.events()
         let secondStream = await second.events.events()
@@ -1217,38 +1300,45 @@ struct WorkspaceRuntimeTests {
             options: .atomic
         )
 
-        let runtime = WorkspaceRuntime(configuration: .live(.init(
-            applicationSupportURL: fixture.applicationSupportURL,
-            workspaceRegistryStorageURL: fixture.registryStorageURL
-        )))
+        let runtime = WorkspaceRuntime(
+            configuration: .live(
+                .init(
+                    applicationSupportURL: fixture.applicationSupportURL,
+                    workspaceRegistryStorageURL: fixture.registryStorageURL
+                )))
         let first = try await runtime.openWorkspace(id: fixture.assignment.id)
         let second = try await runtime.openWorkspace(id: secondAssignment.id)
 
         func results(_ query: String, in handle: WorkspaceHandle) async throws
             -> [NoteSearchResult]
         {
-            let response = try await handle.discovery.search(SearchRequest(
-                query: query,
-                presentationScope: .triptych,
-                executionScope: .triptych,
-                limit: 50
-            ))
+            let response = try await handle.discovery.search(
+                SearchRequest(
+                    query: query,
+                    presentationScope: .triptych,
+                    executionScope: .triptych,
+                    limit: 50
+                ))
             return response.results.compactMap { result in
                 guard case .note(let note) = result else { return nil }
                 return note
             }
         }
 
-        #expect(try await results("FirstTriptychTerm", in: first).map(\.relativePath)
-            == ["Freedom.md"])
+        #expect(
+            try await results("FirstTriptychTerm", in: first).map(\.relativePath)
+                == ["Freedom.md"])
         #expect(try await results("FirstTriptychTerm", in: second).isEmpty)
         #expect(try await results("SecondTriptychTerm", in: first).isEmpty)
-        #expect(try await results("SecondTriptychTerm", in: second).map(\.relativePath)
-            == ["Other.md"])
-        #expect(try await results("has:broken-link", in: first).map(\.relativePath)
-            == ["Freedom.md"])
-        #expect(try await results("has:broken-link", in: second).map(\.relativePath)
-            == ["Other.md"])
+        #expect(
+            try await results("SecondTriptychTerm", in: second).map(\.relativePath)
+                == ["Other.md"])
+        #expect(
+            try await results("has:broken-link", in: first).map(\.relativePath)
+                == ["Freedom.md"])
+        #expect(
+            try await results("has:broken-link", in: second).map(\.relativePath)
+                == ["Other.md"])
         let firstIndex = fixture.applicationSupportURL
             .appendingPathComponent("Triptychs", isDirectory: true)
             .appendingPathComponent(
@@ -1280,21 +1370,23 @@ struct WorkspaceRuntimeTests {
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
 
         let forgedVault = UUID()
-        let vaultResponse = try await handle.discovery.search(SearchRequest(
-            query: "kind:unsupported",
-            presentationScope: .currentVault,
-            executionScope: .currentVault(forgedVault),
-            limit: 20
-        ))
+        let vaultResponse = try await handle.discovery.search(
+            SearchRequest(
+                query: "kind:unsupported",
+                presentationScope: .currentVault,
+                executionScope: .currentVault(forgedVault),
+                limit: 20
+            ))
         #expect(vaultResponse.results.isEmpty)
         #expect(vaultResponse.diagnostics.map(\.code) == [.notApplicable])
 
-        let mismatched = try await handle.discovery.search(SearchRequest(
-            query: "freedom",
-            presentationScope: .triptych,
-            executionScope: .currentVault(fixture.analysisNoteID.vaultID),
-            limit: 20
-        ))
+        let mismatched = try await handle.discovery.search(
+            SearchRequest(
+                query: "freedom",
+                presentationScope: .triptych,
+                executionScope: .currentVault(fixture.analysisNoteID.vaultID),
+                limit: 20
+            ))
         #expect(mismatched.results.isEmpty)
         #expect(mismatched.diagnostics.map(\.code) == [.notApplicable])
 
@@ -1307,29 +1399,32 @@ struct WorkspaceRuntimeTests {
             source: "# Forged",
             editorRevision: 1
         )
-        let noteResponse = try await handle.discovery.search(SearchRequest(
-            query: "property:language",
-            presentationScope: .thisNote,
-            executionScope: .currentNote(forgedNote),
-            limit: 20
-        ))
+        let noteResponse = try await handle.discovery.search(
+            SearchRequest(
+                query: "property:language",
+                presentationScope: .thisNote,
+                executionScope: .currentNote(forgedNote),
+                limit: 20
+            ))
         #expect(noteResponse.results.isEmpty)
         #expect(noteResponse.diagnostics.map(\.code) == [.notApplicable])
 
         let authorizedNote = try #require(
             await handle.snapshot().document(id: fixture.analysisNoteID)
         )
-        let structuredResponse = try await handle.discovery.search(SearchRequest(
-            query: "callout:state",
-            presentationScope: .thisNote,
-            executionScope: .currentNote(SearchSourceSnapshot(
-                noteID: authorizedNote.id,
-                editorSessionID: UUID(),
-                source: authorizedNote.document.rawContent,
-                editorRevision: 1
-            )),
-            limit: 20
-        ))
+        let structuredResponse = try await handle.discovery.search(
+            SearchRequest(
+                query: "callout:state",
+                presentationScope: .thisNote,
+                executionScope: .currentNote(
+                    SearchSourceSnapshot(
+                        noteID: authorizedNote.id,
+                        editorSessionID: UUID(),
+                        source: authorizedNote.document.rawContent,
+                        editorRevision: 1
+                    )),
+                limit: 20
+            ))
         #expect(structuredResponse.results.isEmpty)
         #expect(structuredResponse.diagnostics.map(\.code) == [.notApplicable])
         await runtime.shutdown()
@@ -1353,34 +1448,38 @@ struct WorkspaceRuntimeTests {
         )
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
 
-        let response = try await handle.discovery.search(SearchRequest(
-            query: "from-note:Anchor",
-            presentationScope: .triptych,
-            executionScope: .triptych,
-            limit: 20
-        ))
+        let response = try await handle.discovery.search(
+            SearchRequest(
+                query: "from-note:Anchor",
+                presentationScope: .triptych,
+                executionScope: .triptych,
+                limit: 20
+            ))
         #expect(response.diagnostics.isEmpty)
-        let target = try #require(response.results.compactMap { result -> NoteSearchResult? in
-            guard case .note(let note) = result else { return nil }
-            return note
-        }.first)
+        let target = try #require(
+            response.results.compactMap { result -> NoteSearchResult? in
+                guard case .note(let note) = result else { return nil }
+                return note
+            }.first)
         #expect(target.relativePath == "Target.md")
-        let link = try #require(target.matchReasons.compactMap {
-            reason -> SearchLinkMatch? in
-            guard case .link(let match) = reason else { return nil }
-            return match
-        }.first)
+        let link = try #require(
+            target.matchReasons.compactMap {
+                reason -> SearchLinkMatch? in
+                guard case .link(let match) = reason else { return nil }
+                return match
+            }.first)
         #expect(link.direction == .fromNote)
         #expect(link.occurrences.first?.sourceNote.relativePath == "Anchor.md")
         #expect(link.occurrences.first?.linkSpan.start.line == 3)
         #expect(link.occurrences.first?.annotationSpan != nil)
 
-        let narrowed = try await handle.discovery.search(SearchRequest(
-            query: "missing-term from-note:Anchor",
-            presentationScope: .triptych,
-            executionScope: .triptych,
-            limit: 20
-        ))
+        let narrowed = try await handle.discovery.search(
+            SearchRequest(
+                query: "missing-term from-note:Anchor",
+                presentationScope: .triptych,
+                executionScope: .triptych,
+                limit: 20
+            ))
         #expect(narrowed.results.isEmpty)
         await runtime.shutdown()
     }
@@ -1414,50 +1513,55 @@ struct WorkspaceRuntimeTests {
         #expect(saveProjection.measurement.readFiles == 1)
         #expect(saveProjection.measurement.parsedDocuments == 1)
 
-        try await catalog.apply(VaultWatchEvent(
-            added: [],
-            modified: [],
-            deleted: [fixture.analysisNoteID.relativePath],
-            sequence: 0,
-            requiresFullRescan: false,
-            rootChanged: false
-        ))
-        #expect(try await catalog.snapshot(refreshFolders: false).documents
-            .contains { $0.relativePath == fixture.analysisNoteID.relativePath })
+        try await catalog.apply(
+            VaultWatchEvent(
+                added: [],
+                modified: [],
+                deleted: [fixture.analysisNoteID.relativePath],
+                sequence: 0,
+                requiresFullRescan: false,
+                rootChanged: false
+            ))
+        #expect(
+            try await catalog.snapshot(refreshFolders: false).documents
+                .contains { $0.relativePath == fixture.analysisNoteID.relativePath })
 
         let addedURL = fixture.analysesURL.appendingPathComponent("Added.md")
         try Data("# Added\n\n[[Missing Added]]\n".utf8).write(to: addedURL)
-        try await catalog.apply(VaultWatchEvent(
-            added: ["Added.md"],
-            modified: [],
-            deleted: [],
-            sequence: 1,
-            requiresFullRescan: false,
-            rootChanged: false
-        ))
+        try await catalog.apply(
+            VaultWatchEvent(
+                added: ["Added.md"],
+                modified: [],
+                deleted: [],
+                sequence: 1,
+                requiresFullRescan: false,
+                rootChanged: false
+            ))
         let addedProjection = try await catalog.snapshot(refreshFolders: false)
         #expect(addedProjection.measurement.enumeratedFiles == 0)
         #expect(addedProjection.measurement.readFiles == 1)
         #expect(addedProjection.measurement.parsedDocuments == 1)
         let renamedURL = fixture.analysesURL.appendingPathComponent("Renamed.md")
         try FileManager.default.moveItem(at: addedURL, to: renamedURL)
-        try await catalog.apply(VaultWatchEvent(
-            added: ["Renamed.md"],
-            modified: [],
-            deleted: ["Added.md"],
-            sequence: 2,
-            requiresFullRescan: false,
-            rootChanged: false
-        ))
+        try await catalog.apply(
+            VaultWatchEvent(
+                added: ["Renamed.md"],
+                modified: [],
+                deleted: ["Added.md"],
+                sequence: 2,
+                requiresFullRescan: false,
+                rootChanged: false
+            ))
         try FileManager.default.removeItem(at: renamedURL)
-        try await catalog.apply(VaultWatchEvent(
-            added: [],
-            modified: [],
-            deleted: ["Renamed.md"],
-            sequence: 3,
-            requiresFullRescan: false,
-            rootChanged: false
-        ))
+        try await catalog.apply(
+            VaultWatchEvent(
+                added: [],
+                modified: [],
+                deleted: ["Renamed.md"],
+                sequence: 3,
+                requiresFullRescan: false,
+                rootChanged: false
+            ))
         try await catalog.apply(.reconciliationRequired(sequence: 4))
 
         let incremental = try await catalog.snapshot(refreshFolders: false)
@@ -1467,22 +1571,25 @@ struct WorkspaceRuntimeTests {
             ),
             vaultRole: .sourceCorpus
         ).snapshot(refreshFolders: false)
-        #expect(incremental.documents.map(\.relativePath)
-            == clean.documents.map(\.relativePath))
-        #expect(incremental.documents.map(\.fingerprint)
-            == clean.documents.map(\.fingerprint))
+        #expect(
+            incremental.documents.map(\.relativePath)
+                == clean.documents.map(\.relativePath))
+        #expect(
+            incremental.documents.map(\.fingerprint)
+                == clean.documents.map(\.fingerprint))
         #expect(incremental.sourceVersions == clean.sourceVersions)
         #expect(incremental.fileMetadata == clean.fileMetadata)
         #expect(Set(incremental.semantics.keys) == Set(clean.semantics.keys))
         #expect(incremental.folders == clean.folders)
 
         let incrementalWorkspace = try await handle.discovery.refresh()
-        let incrementalResults = try await handle.discovery.search(SearchRequest(
-            query: "precisely bounded",
-            presentationScope: .triptych,
-            executionScope: .triptych,
-            limit: 20
-        ))
+        let incrementalResults = try await handle.discovery.search(
+            SearchRequest(
+                query: "precisely bounded",
+                presentationScope: .triptych,
+                executionScope: .triptych,
+                limit: 20
+            ))
         await runtime.shutdown()
 
         let cleanRuntime = try await WorkspaceRuntime.snapshot(
@@ -1491,18 +1598,20 @@ struct WorkspaceRuntimeTests {
         )
         let cleanHandle = try await cleanRuntime.openWorkspace(id: fixture.assignment.id)
         let cleanWorkspace = try await cleanHandle.snapshot()
-        let cleanResults = try await cleanHandle.discovery.search(SearchRequest(
-            query: "precisely bounded",
-            presentationScope: .triptych,
-            executionScope: .triptych,
-            limit: 20
-        ))
+        let cleanResults = try await cleanHandle.discovery.search(
+            SearchRequest(
+                query: "precisely bounded",
+                presentationScope: .triptych,
+                executionScope: .triptych,
+                limit: 20
+            ))
         let incrementalDocuments = incrementalWorkspace.vaults.flatMap(\.documents)
         let cleanDocuments = cleanWorkspace.vaults.flatMap(\.documents)
         #expect(incrementalDocuments.map(\.id) == cleanDocuments.map(\.id))
         #expect(incrementalDocuments.map(\.fingerprint) == cleanDocuments.map(\.fingerprint))
-        #expect(incrementalWorkspace.discovery.catalog.graph?.diagnostics
-            == cleanWorkspace.discovery.catalog.graph?.diagnostics)
+        #expect(
+            incrementalWorkspace.discovery.catalog.graph?.diagnostics
+                == cleanWorkspace.discovery.catalog.graph?.diagnostics)
         let incrementalNoteResults = incrementalResults.results.compactMap {
             result -> NoteSearchResult? in
             guard case .note(let note) = result else { return nil }
@@ -1513,10 +1622,12 @@ struct WorkspaceRuntimeTests {
             guard case .note(let note) = result else { return nil }
             return note
         }
-        #expect(incrementalNoteResults.map(\.vaultID)
-            == cleanNoteResults.map(\.vaultID))
-        #expect(incrementalNoteResults.map(\.relativePath)
-            == cleanNoteResults.map(\.relativePath))
+        #expect(
+            incrementalNoteResults.map(\.vaultID)
+                == cleanNoteResults.map(\.vaultID))
+        #expect(
+            incrementalNoteResults.map(\.relativePath)
+                == cleanNoteResults.map(\.relativePath))
         await cleanRuntime.shutdown()
     }
 
@@ -1577,9 +1688,10 @@ struct WorkspaceRuntimeTests {
         )
         let initial = try await catalog.snapshot(refreshFolders: false)
         let initialGeneration = initial.generation
-        let initialTarget = try #require(initial.documents.first {
-            $0.relativePath == fixture.analysisNoteID.relativePath
-        })
+        let initialTarget = try #require(
+            initial.documents.first {
+                $0.relativePath == fixture.analysisNoteID.relativePath
+            })
         let targetURL = fixture.analysesURL.appendingPathComponent(
             fixture.analysisNoteID.relativePath
         )
@@ -1592,16 +1704,18 @@ struct WorkspaceRuntimeTests {
         try Data(failureSource.utf8).write(to: failureURL)
         let retained = try await catalog.snapshot(refreshFolders: false)
         #expect(retained.generation == initialGeneration)
-        #expect(retained.documents.first {
-            $0.relativePath == fixture.analysisNoteID.relativePath
-        }?.fingerprint == initialTarget.fingerprint)
+        #expect(
+            retained.documents.first {
+                $0.relativePath == fixture.analysisNoteID.relativePath
+            }?.fingerprint == initialTarget.fingerprint)
 
         try await catalog.reconcile()
         let repaired = try await catalog.snapshot(refreshFolders: false)
         #expect(repaired.generation > initialGeneration)
-        #expect(repaired.documents.first {
-            $0.relativePath == fixture.analysisNoteID.relativePath
-        }?.fingerprint != initialTarget.fingerprint)
+        #expect(
+            repaired.documents.first {
+                $0.relativePath == fixture.analysisNoteID.relativePath
+            }?.fingerprint != initialTarget.fingerprint)
         await runtime.shutdown()
     }
 
@@ -1609,10 +1723,12 @@ struct WorkspaceRuntimeTests {
     func selfEventIsNoOp() async throws {
         let fixture = try await ApplicationFixture.make(registerLiveAccess: true)
         defer { fixture.remove() }
-        let runtime = WorkspaceRuntime(configuration: .live(.init(
-            applicationSupportURL: fixture.applicationSupportURL,
-            workspaceRegistryStorageURL: fixture.registryStorageURL
-        )))
+        let runtime = WorkspaceRuntime(
+            configuration: .live(
+                .init(
+                    applicationSupportURL: fixture.applicationSupportURL,
+                    workspaceRegistryStorageURL: fixture.registryStorageURL
+                )))
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
         let original = try await handle.documents.load(fixture.analysisNoteID)
         _ = try await handle.documents.save(
@@ -1679,10 +1795,12 @@ struct ApplicationFixture: Sendable {
             .write(to: worksURL.appendingPathComponent("Chapter.md"))
 
         _ = registerLiveAccess
-        let runtime = WorkspaceRuntime(configuration: .live(.init(
-            applicationSupportURL: applicationSupportURL,
-            workspaceRegistryStorageURL: registryStorageURL
-        )))
+        let runtime = WorkspaceRuntime(
+            configuration: .live(
+                .init(
+                    applicationSupportURL: applicationSupportURL,
+                    workspaceRegistryStorageURL: registryStorageURL
+                )))
         let handle = try await runtime.configureTriptych(
             paperAnalysisURL: analysesURL,
             topicKnowledgeURL: topicsURL,
@@ -1721,10 +1839,12 @@ struct ApplicationFixture: Sendable {
         for url in [container, analyses, topics, works] {
             try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         }
-        let runtime = WorkspaceRuntime(configuration: .live(.init(
-            applicationSupportURL: applicationSupportURL,
-            workspaceRegistryStorageURL: registryStorageURL
-        )))
+        let runtime = WorkspaceRuntime(
+            configuration: .live(
+                .init(
+                    applicationSupportURL: applicationSupportURL,
+                    workspaceRegistryStorageURL: registryStorageURL
+                )))
         let handle = try await runtime.configureTriptych(
             paperAnalysisURL: analyses,
             topicKnowledgeURL: topics,
@@ -1752,10 +1872,12 @@ struct ApplicationFixture: Sendable {
         try Data("# Other Work\n".utf8).write(
             to: works.appendingPathComponent("Other.md")
         )
-        let runtime = WorkspaceRuntime(configuration: .live(.init(
-            applicationSupportURL: applicationSupportURL,
-            workspaceRegistryStorageURL: registryStorageURL
-        )))
+        let runtime = WorkspaceRuntime(
+            configuration: .live(
+                .init(
+                    applicationSupportURL: applicationSupportURL,
+                    workspaceRegistryStorageURL: registryStorageURL
+                )))
         let handle = try await runtime.configureTriptych(
             paperAnalysisURL: analysesURL,
             topicKnowledgeURL: topics,

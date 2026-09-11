@@ -1,6 +1,6 @@
-import ScholiumContracts
 import Foundation
 import ScholiumApplication
+import ScholiumContracts
 
 extension ScholiumCLI {
     static func runZotero(
@@ -32,8 +32,8 @@ extension ScholiumCLI {
                         "zotero": [
                             "command": descriptor.clientConfiguration.command,
                             "args": descriptor.clientConfiguration.arguments,
-                        ],
-                    ],
+                        ]
+                    ]
                 ]
                 let data = try JSONSerialization.data(
                     withJSONObject: configuration,
@@ -41,29 +41,31 @@ extension ScholiumCLI {
                 )
                 write(String(decoding: data, as: UTF8.self) + "\n")
             } else {
-                write("""
-                First-party Zotero MCP transport: \(descriptor.displayName)
-                Build: \(descriptor.installationCommand)
-                Optional PATH install: \(descriptor.setupCommand)
-                Command: \(descriptor.command)
-                Arguments: \(descriptor.clientConfiguration.arguments.joined(separator: " "))
-                Retrieval: Zotero localhost API (read-only)
-                Guarded imports: localhost Connector with target-bound dry run and read-back
-                The Skill file is not a live connection.
-                Configuration:
-                  {
-                    \"mcpServers\": {
-                      \"zotero\": {
-                        \"command\": \"\(descriptor.clientConfiguration.command)\",
-                        \"args\": [\"zotero\", \"mcp\", \"serve\"]
+                write(
+                    """
+                    First-party Zotero MCP transport: \(descriptor.displayName)
+                    Build: \(descriptor.installationCommand)
+                    Optional PATH install: \(descriptor.setupCommand)
+                    Command: \(descriptor.command)
+                    Arguments: \(descriptor.clientConfiguration.arguments.joined(separator: " "))
+                    Retrieval: Zotero localhost API (read-only)
+                    Guarded imports: localhost Connector with target-bound dry run and read-back
+                    The Skill file is not a live connection.
+                    Configuration:
+                      {
+                        \"mcpServers\": {
+                          \"zotero\": {
+                            \"command\": \"\(descriptor.clientConfiguration.command)\",
+                            \"args\": [\"zotero\", \"mcp\", \"serve\"]
+                          }
+                        }
                       }
-                    }
-                  }
-                """)
+                    """)
                 write("\n")
             }
         case "status":
-            let report = arguments.contains("--probe")
+            let report =
+                arguments.contains("--probe")
                 ? await operations.probe()
                 : operations.report()
             if format == "json" {

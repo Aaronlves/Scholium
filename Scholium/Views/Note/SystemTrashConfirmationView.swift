@@ -41,10 +41,12 @@ struct SystemTrashConfirmationView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
 
-                    Text("If portable cleanup fails after Finder accepts the items, Scholium keeps a recovery plan. External file deletion only refreshes the workspace.")
-                        .font(ScholiumTypography.interface(.small))
-                        .scholiumForeground(.secondaryText)
-                        .fixedSize(horizontal: false, vertical: true)
+                    Text(
+                        "If portable cleanup fails after Finder accepts the items, Scholium keeps a recovery plan. External file deletion only refreshes the workspace."
+                    )
+                    .font(ScholiumTypography.interface(.small))
+                    .scholiumForeground(.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }

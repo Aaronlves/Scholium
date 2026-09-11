@@ -139,7 +139,8 @@ public struct NoteDocument: Sendable {
             return validationWarnings.isEmpty ? .valid : .malformed
         }
         if Self.hasFrontmatterOpeningDelimiter(rawContent)
-            || !validationWarnings.isEmpty {
+            || !validationWarnings.isEmpty
+        {
             return .malformed
         }
         return .absent
@@ -335,8 +336,10 @@ public struct NoteDocument: Sendable {
                 refusal.localizedDescription
             )
         }
-        guard !planned.patchedFrontmatter
-            .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        guard
+            !planned.patchedFrontmatter
+                .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else {
             throw VaultRepositoryError.invalidFrontmatter(
                 "Add at least one authored YAML field before creating frontmatter."
             )
@@ -351,14 +354,16 @@ public struct NoteDocument: Sendable {
             bom = ""
         }
         let newline = newlineStyle.sequence
-        let candidate = bom
+        let candidate =
+            bom
             + "---" + newline
             + planned.patchedFrontmatter
             + "---" + newline
             + existingBody
         let validated = NoteDocument(relativePath: relativePath, rawContent: candidate)
         guard validated.rawFrontmatter != nil,
-              validated.validationWarnings.isEmpty else {
+            validated.validationWarnings.isEmpty
+        else {
             throw VaultRepositoryError.invalidFrontmatter(
                 validated.validationWarnings.first
                     ?? "The first YAML envelope could not be validated."
@@ -395,7 +400,8 @@ public struct NoteDocument: Sendable {
         let firstLineEnd = lineEnd(in: working, from: start)
         let firstLine = working[start..<firstLineEnd.contentEnd]
         guard isColumnZeroFrontmatterDelimiter(firstLine),
-              firstLineEnd.nextStart < working.endIndex else {
+            firstLineEnd.nextStart < working.endIndex
+        else {
             return ("", nil, "", content)
         }
 

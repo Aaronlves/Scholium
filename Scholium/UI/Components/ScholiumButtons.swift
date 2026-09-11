@@ -8,8 +8,9 @@ private struct ScholiumNeutralButtonStyle<NativeStyle: PrimitiveButtonStyle>: Pr
     func makeBody(configuration: Configuration) -> some View {
         Button(configuration)
             .buttonStyle(nativeStyle)
-            .tint((configuration.role == .destructive
-                ? ScholiumColorRole.destructive : .primaryText).color)
+            .tint(
+                (configuration.role == .destructive
+                    ? ScholiumColorRole.destructive : .primaryText).color)
     }
 }
 

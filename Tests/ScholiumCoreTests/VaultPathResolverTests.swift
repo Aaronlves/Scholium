@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+
 @testable import ScholiumContracts
 @testable import ScholiumCore
 
@@ -18,10 +19,12 @@ struct VaultPathResolverTests {
             normalizationSensitive: false
         )
 
-        #expect(resolver.comparisonPolicy == VaultPathComparisonPolicy(
-            caseSensitive: false,
-            normalizationSensitive: false
-        ))
+        #expect(
+            resolver.comparisonPolicy
+                == VaultPathComparisonPolicy(
+                    caseSensitive: false,
+                    normalizationSensitive: false
+                ))
 
         #expect(throws: VaultRepositoryError.self) {
             try resolver.validateNoCollision(for: MarkdownRelativePath("cafe\u{301}.md"))

@@ -53,7 +53,8 @@ struct SearchProtocolContractsTests {
         #expect(!ast.providerWasExplicit)
         #expect(ast.clauses.count == 4)
         guard case .lexical(let title) = ast.clauses[0],
-              case .phrase(let phrase) = title.value else {
+            case .phrase(let phrase) = title.value
+        else {
             Issue.record("Expected a title phrase")
             return
         }
@@ -66,7 +67,8 @@ struct SearchProtocolContractsTests {
         #expect(summary.field == .summary)
         #expect(summary.value == .term("autonomy"))
         guard case .lexical(let prefix) = ast.clauses[2],
-              case .prefix(let value) = prefix.value else {
+            case .prefix(let value) = prefix.value
+        else {
             Issue.record("Expected a prefix")
             return
         }
@@ -116,7 +118,8 @@ struct SearchProtocolContractsTests {
         #expect(ast.provider == .note)
         #expect(ast.clauses.count == 2)
         guard case .property(let presence) = ast.clauses[0],
-              case .property(let equality) = ast.clauses[1] else {
+            case .property(let equality) = ast.clauses[1]
+        else {
             Issue.record("Expected property clauses")
             return
         }
@@ -159,40 +162,45 @@ struct SearchProtocolContractsTests {
 
     @Test("Explanation and capabilities are deterministic products of the current contract")
     func explanationAndCapabilities() throws {
-        let ast = try #require(SearchQueryParser.parse(
-            #"kind:note property:author="Arendt" to-note:"Agency" title:freedom"#
-        ).ast)
+        let ast = try #require(
+            SearchQueryParser.parse(
+                #"kind:note property:author="Arendt" to-note:"Agency" title:freedom"#
+            ).ast)
         let explanation = ast.explanation(scope: .currentVault)
         #expect(explanation.provider == .note)
         #expect(explanation.scope == .currentVault)
         #expect(explanation.operator == .and)
         #expect(explanation.clauses.count == ast.clauses.count)
-        #expect(explanation.normalization == [
-            .canonicalUnicodeCaseWhitespace,
-            .lexicalUnicodeCaseDiacriticWhitespace,
-            .cjkCharacterAndOverlappingBigramProjection,
-            .caseSensitiveTopLevelPropertyKey,
-        ])
+        #expect(
+            explanation.normalization == [
+                .canonicalUnicodeCaseWhitespace,
+                .lexicalUnicodeCaseDiacriticWhitespace,
+                .cjkCharacterAndOverlappingBigramProjection,
+                .caseSensitiveTopLevelPropertyKey,
+            ])
         #expect(explanation.ordering == .noteExactIdentityThenBM25ThenTitleRolePath)
         #expect(explanation.limitations.contains(.noteLinksDirectOnly))
-        #expect(explanation.clauses.contains {
-            if case .property(let key, let value) = $0.kind {
-                return key == "author" && value == "arendt"
-            }
-            return false
-        })
-        #expect(explanation.clauses.contains {
-            if case .link(let direction, let identity) = $0.kind {
-                return direction == .toNote && identity == "agency"
-            }
-            return false
-        })
+        #expect(
+            explanation.clauses.contains {
+                if case .property(let key, let value) = $0.kind {
+                    return key == "author" && value == "arendt"
+                }
+                return false
+            })
+        #expect(
+            explanation.clauses.contains {
+                if case .link(let direction, let identity) = $0.kind {
+                    return direction == .toNote && identity == "agency"
+                }
+                return false
+            })
 
         #expect(SearchCapabilities.current.contractVersion == SearchContract.currentVersion)
         #expect(SearchCapabilities.current.providers.map(\.provider) == [.note])
-        #expect(SearchCapabilities.current.capability(for: .note)?.fields.contains {
-            $0.name == "property"
-        } == true)
+        #expect(
+            SearchCapabilities.current.capability(for: .note)?.fields.contains {
+                $0.name == "property"
+            } == true)
 
         let scoped = SearchCompletionContext(
             propertyKeys: ["language", "limitations"],
@@ -283,8 +291,8 @@ struct SearchProtocolContractsTests {
         #expect(old.needsEditingDiagnostic?.needsEditing == true)
 
         let legacy = """
-        {"id":"00000000-0000-0000-0000-000000000001","name":"Legacy","state":{"query":"autonomy","scope":"triptych"},"createdAt":0}
-        """.data(using: .utf8)!
+            {"id":"00000000-0000-0000-0000-000000000001","name":"Legacy","state":{"query":"autonomy","scope":"triptych"},"createdAt":0}
+            """.data(using: .utf8)!
         #expect(throws: DecodingError.self) {
             _ = try JSONDecoder().decode(SavedSearch.self, from: legacy)
         }
@@ -335,14 +343,16 @@ struct SearchProtocolContractsTests {
                 context: SearchCompletionContext(propertyKeys: ["language"])
             ).isEmpty
         )
-        #expect(SearchCapabilities.current.completions(
-            for: "call",
-            scope: .thisNote
-        ).isEmpty)
-        #expect(SearchCapabilities.current.completions(
-            for: "bod",
-            scope: .thisNote
-        ).first?.replacementText == "body:")
+        #expect(
+            SearchCapabilities.current.completions(
+                for: "call",
+                scope: .thisNote
+            ).isEmpty)
+        #expect(
+            SearchCapabilities.current.completions(
+                for: "bod",
+                scope: .thisNote
+            ).first?.replacementText == "body:")
     }
 
     @Test("Unsupported and malformed syntax returns stable diagnostics")
@@ -387,8 +397,9 @@ struct SearchProtocolContractsTests {
             #expect(parsed.diagnostics.isEmpty, "Unexpected diagnostic for \(query)")
             #expect(try #require(parsed.ast).clauses.count == 1)
         }
-        #expect(SearchQueryParser.parse("title:/agency/").diagnostics.first?.code
-            == .unsupportedSyntax)
+        #expect(
+            SearchQueryParser.parse("title:/agency/").diagnostics.first?.code
+                == .unsupportedSyntax)
     }
 
     @Test("CJK uses symmetric character and bigram rules without prefix syntax")
@@ -404,29 +415,29 @@ struct SearchProtocolContractsTests {
     @Test("Visible semantic projection separates weighted roles and excludes destinations")
     func semanticProjection() throws {
         let source = """
-        ---
-        summary: "A concise autonomy map"
-        keywords: [search]
-        ---
-        # Heading Text
+            ---
+            summary: "A concise autonomy map"
+            keywords: [search]
+            ---
+            # Heading Text
 
-        Body with [visible link](https://hidden.example/destination),
-        ![visible diagram](https://hidden.example/image.png "hidden image title"),
-        and `inline code`.
+            Body with [visible link](https://hidden.example/destination),
+            ![visible diagram](https://hidden.example/image.png "hidden image title"),
+            and `inline code`.
 
-        An [[Hidden Destination#claim|visible scholarly label]]{{First **annotated reason** with [[Hidden Evidence|visible evidence]].}} remains searchable prose.
+            An [[Hidden Destination#claim|visible scholarly label]]{{First **annotated reason** with [[Hidden Evidence|visible evidence]].}} remains searchable prose.
 
-        ```swift
-        fenced code
-        ```
+            ```swift
+            fenced code
+            ```
 
-        <!-- hidden comment -->
+            <!-- hidden comment -->
 
-        > [!state] Claim
-        > Callout **body**
+            > [!state] Claim
+            > Callout **body**
 
-        [^one]: Footnote *content*
-        """
+            [^one]: Footnote *content*
+            """
         let document = NoteDocument(relativePath: "Folder/Test Note.md", rawContent: source)
         let metadata = NoteMetadataSnapshot(
             record: NoteMetadataRecord(
@@ -446,8 +457,9 @@ struct SearchProtocolContractsTests {
         ).applyingNoteMetadata(metadata, profile: .analysis, source: source)
 
         #expect(projection.title == "Test Note")
-        #expect(projection.segments.filter { $0.field == .title }.map(\.text)
-            == ["Test Note", "Academic Work Title"])
+        #expect(
+            projection.segments.filter { $0.field == .title }.map(\.text)
+                == ["Test Note", "Academic Work Title"])
         #expect(projection.summary == "A concise autonomy map")
         #expect(projection.headings == ["Heading Text"])
         #expect(projection.body.contains("visible link"))
@@ -481,19 +493,22 @@ struct SearchProtocolContractsTests {
             (.body, "visible diagram"),
             (.body, "visible scholarly label"),
         ] {
-            let segment = try #require(projection.segments.first {
-                $0.field == field && $0.normalizedText.contains(needle.lowercased())
-            })
+            let segment = try #require(
+                projection.segments.first {
+                    $0.field == field && $0.normalizedText.contains(needle.lowercased())
+                })
             let normalizedRange = try #require(segment.normalizedText.range(of: needle.lowercased()))
-            let utf16Range = normalizedRange.lowerBound.utf16Offset(in: segment.normalizedText)
-                ..< normalizedRange.upperBound.utf16Offset(in: segment.normalizedText)
+            let utf16Range =
+                normalizedRange.lowerBound.utf16Offset(in: segment.normalizedText)..<normalizedRange.upperBound.utf16Offset(in: segment.normalizedText)
             let sourceRange = try #require(
                 segment.sourceUTF16Range(forNormalizedUTF16Range: utf16Range)
             )
-            #expect((source as NSString).substring(with: NSRange(
-                location: sourceRange.lowerBound,
-                length: sourceRange.count
-            )) == needle)
+            #expect(
+                (source as NSString).substring(
+                    with: NSRange(
+                        location: sourceRange.lowerBound,
+                        length: sourceRange.count
+                    )) == needle)
         }
     }
 
@@ -502,16 +517,16 @@ struct SearchProtocolContractsTests {
         let document = NoteDocument(
             relativePath: "Legacy.md",
             rawContent: """
-            ---
-            note_id: forged-yaml-identity
-            alias: Legacy Alias
-            author: Legacy Author
-            authors: [T. Scanlon]
-            publication_date: 1998
-            tags: [valid, true]
-            ---
-            Body
-            """
+                ---
+                note_id: forged-yaml-identity
+                alias: Legacy Alias
+                author: Legacy Author
+                authors: [T. Scanlon]
+                publication_date: 1998
+                tags: [valid, true]
+                ---
+                Body
+                """
         )
         let stableID = UUID().uuidString.lowercased()
         let indexed = SearchIndexDocument(
@@ -526,9 +541,10 @@ struct SearchProtocolContractsTests {
         #expect(indexed.authors.isEmpty)
         #expect(indexed.publicationDate == nil)
         #expect(indexed.tags.isEmpty)
-        #expect(!indexed.projection.segments.contains {
-            [.alias, .author, .publicationDate, .tag].contains($0.field)
-        })
+        #expect(
+            !indexed.projection.segments.contains {
+                [.alias, .author, .publicationDate, .tag].contains($0.field)
+            })
     }
 
     @Test("Managed CreatorList preserves order without claiming Markdown ranges")
@@ -537,10 +553,12 @@ struct SearchProtocolContractsTests {
         let metadata = NoteMetadataSnapshot(
             record: NoteMetadataRecord(
                 noteID: UUID(),
-                fields: ["authors": .array([
-                    .object(["family": .string("Scanlon"), "given": .string("T.")]),
-                    .object(["literal": .string("World Health Organization")]),
-                ])]
+                fields: [
+                    "authors": .array([
+                        .object(["family": .string("Scanlon"), "given": .string("T.")]),
+                        .object(["literal": .string("World Health Organization")]),
+                    ])
+                ]
             ),
             revision: DocumentFingerprint(content: "creators")
         )
@@ -565,14 +583,17 @@ struct SearchProtocolContractsTests {
                 document: block,
                 profile: .analysis
             )
-            #expect(blockProperties.entry(forExactKey: "summary")?.valueKind
-                == .string)
-            #expect(blockProperties.entry(forExactKey: "summary")?.stringMembers
-                .isEmpty == true)
+            #expect(
+                blockProperties.entry(forExactKey: "summary")?.valueKind
+                    == .string)
+            #expect(
+                blockProperties.entry(forExactKey: "summary")?.stringMembers
+                    .isEmpty == true)
             #expect(SearchDocumentProjection(document: block).summary == nil)
-            #expect(!SearchDocumentProjection(document: block).segments.contains {
-                $0.field == .summary
-            })
+            #expect(
+                !SearchDocumentProjection(document: block).segments.contains {
+                    $0.field == .summary
+                })
         }
 
         let duplicate = NoteDocument(
@@ -596,13 +617,14 @@ struct SearchProtocolContractsTests {
         let body = try #require(projection.segments.first { $0.field == .body })
         let needle = SearchTextNormalization.lexicalNormalize(decomposed)
         let range = try #require(body.normalizedText.range(of: needle))
-        let utf16 = range.lowerBound.utf16Offset(in: body.normalizedText)
-            ..< range.upperBound.utf16Offset(in: body.normalizedText)
+        let utf16 = range.lowerBound.utf16Offset(in: body.normalizedText)..<range.upperBound.utf16Offset(in: body.normalizedText)
         let sourceRange = try #require(body.sourceUTF16Range(forNormalizedUTF16Range: utf16))
-        #expect((source as NSString).substring(with: NSRange(
-            location: sourceRange.lowerBound,
-            length: sourceRange.count
-        )) == decomposed)
+        #expect(
+            (source as NSString).substring(
+                with: NSRange(
+                    location: sourceRange.lowerBound,
+                    length: sourceRange.count
+                )) == decomposed)
     }
 
     @Test("A cached source projection changes only dynamic broken-link state")
@@ -651,19 +673,21 @@ struct SearchProtocolContractsTests {
 
         func verify(_ needle: String, field: SearchMatchedField) throws {
             let normalizedNeedle = SearchTextNormalization.lexicalNormalize(needle)
-            let segment = try #require(projection.segments.first {
-                $0.field == field && $0.normalizedText.contains(normalizedNeedle)
-            })
+            let segment = try #require(
+                projection.segments.first {
+                    $0.field == field && $0.normalizedText.contains(normalizedNeedle)
+                })
             let match = try #require(segment.normalizedText.range(of: normalizedNeedle))
-            let normalizedRange = match.lowerBound.utf16Offset(in: segment.normalizedText)
-                ..< match.upperBound.utf16Offset(in: segment.normalizedText)
+            let normalizedRange = match.lowerBound.utf16Offset(in: segment.normalizedText)..<match.upperBound.utf16Offset(in: segment.normalizedText)
             let sourceRange = try #require(
                 segment.sourceUTF16Range(forNormalizedUTF16Range: normalizedRange)
             )
-            #expect((source as NSString).substring(with: NSRange(
-                location: sourceRange.lowerBound,
-                length: sourceRange.count
-            )) == needle)
+            #expect(
+                (source as NSString).substring(
+                    with: NSRange(
+                        location: sourceRange.lowerBound,
+                        length: sourceRange.count
+                    )) == needle)
         }
 
         try verify("😀 Heading", field: .heading)

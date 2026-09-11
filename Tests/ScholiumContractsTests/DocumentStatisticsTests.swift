@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+
 @testable import ScholiumContracts
 
 @Suite("Document statistics")
@@ -7,13 +8,13 @@ struct DocumentStatisticsTests {
     @Test("Statistics exclude YAML and Markdown syntax while retaining visible text")
     func visibleMarkdown() {
         let source = """
-        ---
-        title: Hidden Metadata
-        ---
-        # Hello-world 价值！
+            ---
+            title: Hidden Metadata
+            ---
+            # Hello-world 价值！
 
-        A [visible](https://hidden.example) and ![diagram](image.png), `code`.
-        """
+            A [visible](https://hidden.example) and ![diagram](image.png), `code`.
+            """
         let result = DocumentStatisticsCalculator.calculate(markdownSource: source)
         let visible = "Hello-world 价值！\nA visible and diagram, code."
         #expect(result.words == 8)
@@ -31,13 +32,15 @@ struct DocumentStatisticsTests {
             markdownSource: source,
             selectedUTF16Ranges: [range.location..<(range.location + range.length)]
         )
-        #expect(result == DocumentStatistics(
-            words: 1,
-            charactersWithSpaces: 7,
-            charactersWithoutSpaces: 7,
-            hanCharacters: 0,
-            scope: .selection
-        ))
+        #expect(
+            result
+                == DocumentStatistics(
+                    words: 1,
+                    charactersWithSpaces: 7,
+                    charactersWithoutSpaces: 7,
+                    hanCharacters: 0,
+                    scope: .selection
+                ))
     }
 
     @Test("Custom Wikilinks count their visible alias and comments remain absent")

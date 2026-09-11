@@ -65,11 +65,12 @@ actor DocumentReadProjectionCache {
             relativePath: key.relativePath,
             rawContent: source
         )
-        let html = if let semantic {
-            SafeMarkdownRenderer.render(document, semantic: semantic).htmlBody
-        } else {
-            SafeMarkdownRenderer.render(document).htmlBody
-        }
+        let html =
+            if let semantic {
+                SafeMarkdownRenderer.render(document, semantic: semantic).htmlBody
+            } else {
+                SafeMarkdownRenderer.render(document).htmlBody
+            }
         let byteCount = html.utf8.count
         guard byteCount <= maximumBytesPerWorkspace else { return html }
         entries[key] = Entry(html: html, byteCount: byteCount, access: nextAccess)
@@ -89,9 +90,10 @@ actor DocumentReadProjectionCache {
         while true {
             let workspaceEntries = entries.filter { $0.key.workspaceID == workspaceID }
             let byteCount = workspaceEntries.values.reduce(0) { $0 + $1.byteCount }
-            guard workspaceEntries.count > maximumEntriesPerWorkspace
+            guard
+                workspaceEntries.count > maximumEntriesPerWorkspace
                     || byteCount > maximumBytesPerWorkspace,
-                  let oldest = workspaceEntries.min(by: { $0.value.access < $1.value.access })
+                let oldest = workspaceEntries.min(by: { $0.value.access < $1.value.access })
             else { return }
             entries[oldest.key] = nil
         }

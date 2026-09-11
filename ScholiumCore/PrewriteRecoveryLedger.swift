@@ -98,10 +98,12 @@ final class PrewriteRecoveryLedger {
                 let candidateURL = directory.appendingPathComponent("candidate.md")
                 try expected.write(to: expectedURL, options: .atomic)
                 try candidate.write(to: candidateURL, options: .atomic)
-                guard DocumentFingerprint(data: try Data(contentsOf: expectedURL))
+                guard
+                    DocumentFingerprint(data: try Data(contentsOf: expectedURL))
                         == transaction.expected,
-                      DocumentFingerprint(data: try Data(contentsOf: candidateURL))
-                        == transaction.candidate else {
+                    DocumentFingerprint(data: try Data(contentsOf: candidateURL))
+                        == transaction.candidate
+                else {
                     throw VaultRepositoryError.recoveryLedgerUnavailable(
                         "An interrupted-save transaction failed exact-byte readback."
                     )
@@ -144,7 +146,8 @@ final class PrewriteRecoveryLedger {
     func retainedMutation(id: UUID) throws -> MutationTransaction {
         try locked {
             guard let transaction = try pendingMutationsLocked().first(where: { $0.id == id }),
-                  transaction.retainedReason != nil else {
+                transaction.retainedReason != nil
+            else {
                 throw VaultRepositoryError.recoveryEntryNotFound(id)
             }
             return try verifiedMutation(matching: transaction).transaction
@@ -216,23 +219,27 @@ final class PrewriteRecoveryLedger {
                         } catch VaultRepositoryError.notRegularFile {
                             try retainMutationLocked(
                                 transaction,
-                                reason: "The interrupted save target is no longer a regular file. The exact candidate remains available for inspection and copying."
+                                reason:
+                                    "The interrupted save target is no longer a regular file. The exact candidate remains available for inspection and copying."
                             )
                             continue
                         }
                         if observed == transaction.candidate
                             || (observed == transaction.expected
-                                && transaction.expected == transaction.candidate) {
+                                && transaction.expected == transaction.candidate)
+                        {
                             try fileManager.removeItem(at: transactionDirectory(transaction.id))
                         } else if observed == transaction.expected {
                             try retainMutationLocked(
                                 transaction,
-                                reason: "The previous process ended before the candidate revision became canonical. The canonical source remains at its expected revision and the candidate bytes remain in machine-local recovery."
+                                reason:
+                                    "The previous process ended before the candidate revision became canonical. The canonical source remains at its expected revision and the candidate bytes remain in machine-local recovery."
                             )
                         } else {
                             try retainMutationLocked(
                                 transaction,
-                                reason: "The canonical source changed after an interrupted save. The exact candidate remains available for inspection and copying."
+                                reason:
+                                    "The canonical source changed after an interrupted save. The exact candidate remains available for inspection and copying."
                             )
                         }
                     } catch {
@@ -264,7 +271,8 @@ final class PrewriteRecoveryLedger {
                 decoder.dateDecodingStrategy = .iso8601
                 let transaction = try decoder.decode(MutationTransaction.self, from: data)
                 guard transaction.schemaVersion == MutationTransaction.currentSchemaVersion,
-                      directory.lastPathComponent == transaction.id.uuidString.lowercased() else {
+                    directory.lastPathComponent == transaction.id.uuidString.lowercased()
+                else {
                     throw VaultRepositoryError.recoveryLedgerUnavailable(
                         "The interrupted-save store contains an unsupported transaction."
                     )
@@ -286,12 +294,13 @@ final class PrewriteRecoveryLedger {
             from: storage.read(directory: directoryName, fileName: "manifest.json")
         )
         guard manifest.schemaVersion == MutationTransaction.currentSchemaVersion,
-              manifest.id == reference.id,
-              manifest.relativePath == reference.relativePath,
-              manifest.expected == reference.expected,
-              manifest.candidate == reference.candidate,
-              manifest.createdAt == reference.createdAt,
-              (!requiresRetention || manifest.retainedReason != nil) else {
+            manifest.id == reference.id,
+            manifest.relativePath == reference.relativePath,
+            manifest.expected == reference.expected,
+            manifest.candidate == reference.candidate,
+            manifest.createdAt == reference.createdAt,
+            !requiresRetention || manifest.retainedReason != nil
+        else {
             throw VaultRepositoryError.recoveryLedgerUnavailable(
                 "The interrupted-save manifest changed after it was listed."
             )
@@ -304,7 +313,8 @@ final class PrewriteRecoveryLedger {
             MarkdownRelativePath("\(directoryName)/candidate.md")
         )
         guard DocumentFingerprint(data: expected) == manifest.expected,
-              DocumentFingerprint(data: candidate) == manifest.candidate else {
+            DocumentFingerprint(data: candidate) == manifest.candidate
+        else {
             throw VaultRepositoryError.recoveryLedgerUnavailable(
                 "The interrupted-save bytes no longer match their recorded fingerprints."
             )

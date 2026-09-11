@@ -3,6 +3,7 @@ import Foundation
 import ImageIO
 import ScholiumContracts
 import Testing
+
 @testable import ScholiumCore
 
 @Suite("Bounded attachment extraction")
@@ -19,9 +20,11 @@ struct AgentAttachmentContentReaderTests {
             }
         }
         let provider = try #require(CGDataProvider(data: pixels as CFData))
-        let image = try #require(CGImage(width: 1_024, height: 1_024, bitsPerComponent: 8, bitsPerPixel: 32,
-            bytesPerRow: 4_096, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.noneSkipLast.rawValue),
-            provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent))
+        let image = try #require(
+            CGImage(
+                width: 1_024, height: 1_024, bitsPerComponent: 8, bitsPerPixel: 32,
+                bytesPerRow: 4_096, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.noneSkipLast.rawValue),
+                provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent))
         let encoded = NSMutableData()
         let destination = try #require(CGImageDestinationCreateWithData(encoded, "public.png" as CFString, 1, nil))
         CGImageDestinationAddImage(destination, image, nil)
@@ -38,10 +41,17 @@ struct AgentAttachmentContentReaderTests {
         let bytes = Data("α研究".utf8)
         let fingerprint = DocumentFingerprint(data: bytes)
         #expect(throws: ScholiumMCPFailure.self) { try AgentAttachmentContentReader.read(Data([255]), filename: "Source.txt", request: .init(mode: .text)) }
-        #expect(throws: ScholiumMCPFailure.self) { try AgentAttachmentContentReader.read(bytes, filename: "Source.txt", request: .init(mode: .text, maximumUTF8: 1)) }
-        #expect(throws: ScholiumMCPFailure.self) { try AgentAttachmentContentReader.read(bytes, filename: "Source.txt", request: .init(mode: .text, startUTF8: 1, expectedFingerprint: fingerprint)) }
-        #expect(throws: ScholiumMCPFailure.self) { try AgentAttachmentContentReader.read(bytes, filename: "Source.txt", request: .init(mode: .text, startUTF8: 2)) }
-        let empty = try AgentAttachmentContentReader.read(bytes, filename: "Source.txt", request: .init(mode: .text, startUTF8: bytes.count, expectedFingerprint: fingerprint))
+        #expect(throws: ScholiumMCPFailure.self) {
+            try AgentAttachmentContentReader.read(bytes, filename: "Source.txt", request: .init(mode: .text, maximumUTF8: 1))
+        }
+        #expect(throws: ScholiumMCPFailure.self) {
+            try AgentAttachmentContentReader.read(bytes, filename: "Source.txt", request: .init(mode: .text, startUTF8: 1, expectedFingerprint: fingerprint))
+        }
+        #expect(throws: ScholiumMCPFailure.self) {
+            try AgentAttachmentContentReader.read(bytes, filename: "Source.txt", request: .init(mode: .text, startUTF8: 2))
+        }
+        let empty = try AgentAttachmentContentReader.read(
+            bytes, filename: "Source.txt", request: .init(mode: .text, startUTF8: bytes.count, expectedFingerprint: fingerprint))
         #expect(empty.text == "" && empty.endUTF8 == bytes.count && empty.totalUTF8 == bytes.count)
     }
 
@@ -50,7 +60,9 @@ struct AgentAttachmentContentReaderTests {
         let bytes = NSMutableData()
         let consumer = try #require(CGDataConsumer(data: bytes))
         let context = try #require(CGContext(consumer: consumer, mediaBox: nil, nil))
-        context.beginPDFPage(nil); context.endPDFPage(); context.closePDF()
+        context.beginPDFPage(nil)
+        context.endPDFPage()
+        context.closePDF()
         let data = bytes as Data
         let text = try AgentAttachmentContentReader.read(data, filename: "Blank.pdf", request: .init(mode: .text, page: 1))
         #expect(text.kind == "pdf_text" && text.text == "" && text.totalUTF8 == 0 && text.imagePNG == nil)

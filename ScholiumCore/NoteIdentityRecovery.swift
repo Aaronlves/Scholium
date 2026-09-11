@@ -1,5 +1,5 @@
-import ScholiumContracts
 import Foundation
+import ScholiumContracts
 
 public actor NoteIdentityRecoveryCoordinator {
     private let control: TriptychControlStore
@@ -90,10 +90,11 @@ public actor NoteIdentityRecoveryCoordinator {
                     repository: repository
                 )
             } catch {
-                failures.append(NoteIdentityMigrationFailure(
-                    rebinding: rebinding,
-                    message: error.localizedDescription
-                ))
+                failures.append(
+                    NoteIdentityMigrationFailure(
+                        rebinding: rebinding,
+                        message: error.localizedDescription
+                    ))
             }
         }
         return failures

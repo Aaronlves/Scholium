@@ -125,7 +125,8 @@ struct AttentionQueueView: View {
             if !hasVisibleNotifications, session.isLoadingInitialContent {
                 loadingState
             } else if !hasVisibleNotifications,
-                      let error = completeErrorMessage {
+                let error = completeErrorMessage
+            {
                 completeErrorState(error)
             } else if !hasVisibleNotifications {
                 emptyState
@@ -160,14 +161,20 @@ struct AttentionQueueView: View {
                 Spacer(minLength: 0)
             }
 
-            ContextSearchField(text: filterQuery, prompt: "Search", identifier: "scholium.attentionSearch",
+            ContextSearchField(
+                text: filterQuery, prompt: "Search", identifier: "scholium.attentionSearch",
                 options: [
                     .init(title: "All Notifications", selected: notificationFilter.wrappedValue == .all) { notificationFilter.wrappedValue = .all },
-                    .init(title: "Agent Changes", selected: notificationFilter.wrappedValue == .agentChanges) { notificationFilter.wrappedValue = .agentChanges },
-                    .init(title: "Settlement Reminders", selected: notificationFilter.wrappedValue == .settlements) { notificationFilter.wrappedValue = .settlements },
-                    .init(title: "All Issues", selected: notificationFilter.wrappedValue == .issues) { notificationFilter.wrappedValue = .issues }
-                ])
-                .focused($filterFocused)
+                    .init(title: "Agent Changes", selected: notificationFilter.wrappedValue == .agentChanges) {
+                        notificationFilter.wrappedValue = .agentChanges
+                    },
+                    .init(title: "Settlement Reminders", selected: notificationFilter.wrappedValue == .settlements) {
+                        notificationFilter.wrappedValue = .settlements
+                    },
+                    .init(title: "All Issues", selected: notificationFilter.wrappedValue == .issues) { notificationFilter.wrappedValue = .issues },
+                ]
+            )
+            .focused($filterFocused)
 
             if let status = refreshStatus {
                 HStack(alignment: .firstTextBaseline, spacing: ScholiumGrid.Spacing.inlineControlGap) {
@@ -216,7 +223,6 @@ struct AttentionQueueView: View {
             ScholiumL10n.dynamicString($0.displayName)
         }
     }
-
 
     private var queueList: some View {
         List(selection: selectedItem) {
@@ -267,8 +273,8 @@ struct AttentionQueueView: View {
 
     private var loadingState: some View {
         ProgressView("Loading Notifications…")
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .accessibilityIdentifier("scholium.attentionLoading")
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .accessibilityIdentifier("scholium.attentionLoading")
     }
 
     private func completeErrorState(_ message: String) -> some View {
@@ -292,8 +298,8 @@ struct AttentionQueueView: View {
 
     private var emptyState: some View {
         ContentUnavailableView(emptyTitle, systemImage: "checkmark.circle")
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .accessibilityIdentifier("scholium.attentionEmpty")
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .accessibilityIdentifier("scholium.attentionEmpty")
     }
 
     private var emptyTitle: LocalizedStringResource {
@@ -558,14 +564,17 @@ struct AgentChangeNotificationRow: View {
                             .font(ScholiumTypography.interface(.small))
                             .scholiumForeground(.secondaryText)
                     }
-                    Text(verbatim: ScholiumL10n.localized(
-                        AgentChangePresentation.operationTitle(for: change.operation), locale: locale
-                    ) + " · " + ScholiumL10n.localized(
-                        AgentChangePresentation.stateTitle(for: change, endingRevisionState: endingRevisionState), locale: locale
-                    ))
-                        .font(ScholiumTypography.interface(.small))
-                        .scholiumForeground(.secondaryText)
-                        .fixedSize(horizontal: false, vertical: true)
+                    Text(
+                        verbatim: ScholiumL10n.localized(
+                            AgentChangePresentation.operationTitle(for: change.operation), locale: locale
+                        ) + " · "
+                            + ScholiumL10n.localized(
+                                AgentChangePresentation.stateTitle(for: change, endingRevisionState: endingRevisionState), locale: locale
+                            )
+                    )
+                    .font(ScholiumTypography.interface(.small))
+                    .scholiumForeground(.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
                 }
 
                 Spacer(minLength: 0)

@@ -1,6 +1,6 @@
-@preconcurrency import XCTest
 import AppKit
 import CryptoKit
+@preconcurrency import XCTest
 import notify
 
 extension ScholiumUITests {
@@ -63,9 +63,10 @@ extension ScholiumUITests {
         let secondRow = editingWindow.descendants(matching: .any)["scholium.noteRow.QA Autosave B.md"]
         XCTAssertTrue(secondRow.waitForExistence(timeout: 5))
         secondRow.click()
-        XCTAssertTrue(waitUntil(timeout: 15) {
-            self.documentTitle(in: editingWindow) == "QA Autosave B"
-        })
+        XCTAssertTrue(
+            waitUntil(timeout: 15) {
+                self.documentTitle(in: editingWindow) == "QA Autosave B"
+            })
         XCTAssertTrue(waitUntil(timeout: 8) { (try? self.source(at: firstURL).contains(token)) == true })
 
         XCTAssertTrue(
@@ -77,9 +78,10 @@ extension ScholiumUITests {
             },
             "The observing window must retain its own selection after the peer window navigates."
         )
-        let observingWindow = try XCTUnwrap(app.windows.allElementsBoundByIndex.first { window in
-            documentTitle(in: window) == "QA Autosave A"
-        })
+        let observingWindow = try XCTUnwrap(
+            app.windows.allElementsBoundByIndex.first { window in
+                documentTitle(in: window) == "QA Autosave A"
+            })
 
         let committedToken = token.trimmingCharacters(in: .whitespaces)
         let peerProjection = observingWindow.descendants(matching: .any).matching(
@@ -183,12 +185,14 @@ extension ScholiumUITests {
         let peerSecondRow = peerWindow.descendants(matching: .any)["scholium.noteRow.QA Autosave B.md"]
         XCTAssertTrue(peerSecondRow.waitForExistence(timeout: 5))
         peerSecondRow.click()
-        XCTAssertTrue(waitUntil(timeout: 15) {
-            self.documentTitle(in: peerWindow) == "QA Autosave B"
-        })
-        XCTAssertTrue(waitUntil(timeout: 20) {
-            (try? self.source(at: noteURL).contains(peerToken)) == true
-        })
+        XCTAssertTrue(
+            waitUntil(timeout: 15) {
+                self.documentTitle(in: peerWindow) == "QA Autosave B"
+            })
+        XCTAssertTrue(
+            waitUntil(timeout: 20) {
+                (try? self.source(at: noteURL).contains(peerToken)) == true
+            })
         XCTAssertFalse(try source(at: noteURL).contains(localToken))
 
         let compare = dirtyWindow.buttons["Compare Changes"]
@@ -282,38 +286,45 @@ extension ScholiumUITests {
         selectDocumentMode("Edit", in: secondWindow)
         XCTAssertTrue(waitUntil(timeout: 8) { secondMode.value as? String == "Edit" })
 
-        let sessionsDirectory = homeDirectory
+        let sessionsDirectory =
+            homeDirectory
             .appendingPathComponent("ApplicationSupport/Window Sessions", isDirectory: true)
-        XCTAssertTrue(waitUntil(timeout: 8) {
-            guard let files = try? FileManager.default.contentsOfDirectory(
-                at: sessionsDirectory,
-                includingPropertiesForKeys: nil
-            ) else { return false }
-            let snapshots = files.compactMap { try? Data(contentsOf: $0) }
-            let sources = snapshots.compactMap { String(data: $0, encoding: .utf8) }
-            return sources.contains { $0.contains("QA Autosave A.md") }
-                && sources.contains { $0.contains("QA Autosave B.md") && $0.contains("livePreview") }
-        })
+        XCTAssertTrue(
+            waitUntil(timeout: 8) {
+                guard
+                    let files = try? FileManager.default.contentsOfDirectory(
+                        at: sessionsDirectory,
+                        includingPropertiesForKeys: nil
+                    )
+                else { return false }
+                let snapshots = files.compactMap { try? Data(contentsOf: $0) }
+                let sources = snapshots.compactMap { String(data: $0, encoding: .utf8) }
+                return sources.contains { $0.contains("QA Autosave A.md") }
+                    && sources.contains { $0.contains("QA Autosave B.md") && $0.contains("livePreview") }
+            })
 
         app.typeKey("q", modifierFlags: [.command])
         XCTAssertTrue(waitUntil(timeout: 10) { self.app.state == .notRunning })
 
         app.launch()
         XCTAssertTrue(waitUntil(timeout: 20) { self.app.windows.count == 2 })
-        XCTAssertTrue(waitUntil(timeout: 15) {
-            let titles = self.app.windows.allElementsBoundByIndex.compactMap { window -> String? in
-                self.documentTitle(in: window)
-            }
-            return Set(titles) == Set(["QA Autosave A", "QA Autosave B"])
-        })
+        XCTAssertTrue(
+            waitUntil(timeout: 15) {
+                let titles = self.app.windows.allElementsBoundByIndex.compactMap { window -> String? in
+                    self.documentTitle(in: window)
+                }
+                return Set(titles) == Set(["QA Autosave A", "QA Autosave B"])
+            })
 
         let restoredWindows = app.windows.allElementsBoundByIndex
-        let restoredA = try XCTUnwrap(restoredWindows.first { window in
-            documentTitle(in: window) == "QA Autosave A"
-        })
-        let restoredB = try XCTUnwrap(restoredWindows.first { window in
-            documentTitle(in: window) == "QA Autosave B"
-        })
+        let restoredA = try XCTUnwrap(
+            restoredWindows.first { window in
+                documentTitle(in: window) == "QA Autosave A"
+            })
+        let restoredB = try XCTUnwrap(
+            restoredWindows.first { window in
+                documentTitle(in: window) == "QA Autosave B"
+            })
         XCTAssertEqual(
             documentModeState(documentModeControl(in: restoredA)),
             "Edit"
@@ -335,11 +346,13 @@ extension ScholiumUITests {
 
         let sessionFile = homeDirectory.appendingPathComponent("ApplicationSupport/Window Sessions")
             .appendingPathComponent(sessionID.uuidString + ".json")
-        XCTAssertTrue(waitUntil(timeout: 5) {
-            guard let data = try? Data(contentsOf: sessionFile),
-                  let text = String(data: data, encoding: .utf8) else { return false }
-            return text.contains("livePreview")
-        })
+        XCTAssertTrue(
+            waitUntil(timeout: 5) {
+                guard let data = try? Data(contentsOf: sessionFile),
+                    let text = String(data: data, encoding: .utf8)
+                else { return false }
+                return text.contains("livePreview")
+            })
 
         app.terminate()
         XCTAssertTrue(
@@ -389,7 +402,6 @@ extension ScholiumUITests {
         XCTAssertTrue(waitUntil(timeout: 3) { inspector.exists == inspectorWasVisible })
         XCTAssertTrue(renderedDocument.exists)
     }
-
 
     @MainActor
     func testOverviewRoutesZoteroOnlyFromCurrentAnalysis() throws {

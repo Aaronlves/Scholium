@@ -164,12 +164,13 @@ public struct SearchRequest: Codable, Hashable, Sendable {
     public var hasConsistentScopes: Bool {
         switch (presentationScope, executionScope) {
         case (.thisNote, .currentNote),
-             (.currentVault, .currentVault),
-             (.triptych, .triptych):
-            includedVaultIDs == nil || {
-                if case .triptych = executionScope { return true }
-                return false
-            }()
+            (.currentVault, .currentVault),
+            (.triptych, .triptych):
+            includedVaultIDs == nil
+                || {
+                    if case .triptych = executionScope { return true }
+                    return false
+                }()
         default:
             false
         }

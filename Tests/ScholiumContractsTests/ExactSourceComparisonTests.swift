@@ -22,12 +22,14 @@ struct ExactSourceComparisonTests {
         #expect(comparison.endingRevision == endingRevision)
         #expect(comparison.startingHasUTF8BOM)
         #expect(!comparison.endingHasUTF8BOM)
-        #expect(comparison.lines.contains {
-            $0.kind == .startingOnly && $0.text == "old" && $0.lineEnding == .crlf
-        })
-        #expect(comparison.lines.contains {
-            $0.kind == .endingOnly && $0.text == "new" && $0.lineEnding == .lf
-        })
+        #expect(
+            comparison.lines.contains {
+                $0.kind == .startingOnly && $0.text == "old" && $0.lineEnding == .crlf
+            })
+        #expect(
+            comparison.lines.contains {
+                $0.kind == .endingOnly && $0.text == "new" && $0.lineEnding == .lf
+            })
         #expect(comparison.lines.last?.text == "last")
         #expect(comparison.lines.last?.lineEnding == ExactSourceComparisonLineEnding.none)
     }

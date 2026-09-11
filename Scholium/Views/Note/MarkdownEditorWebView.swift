@@ -1,5 +1,5 @@
-import ScholiumContracts
 import AppKit
+import ScholiumContracts
 import SwiftUI
 import WebKit
 
@@ -13,20 +13,22 @@ struct MarkdownEditorWebView: NSViewRepresentable {
     let presentationCSS: String
     let userCSS: String
     let requiresMathRuntime: Bool
-    let linkCompletionQuery: @MainActor (
-        EditorLinkCompletionKind,
-        String
-    ) async -> [EditorLinkCompletion]
+    let linkCompletionQuery:
+        @MainActor (
+            EditorLinkCompletionKind,
+            String
+        ) async -> [EditorLinkCompletion]
     let linkPreviews: [DocumentLinkPreview]
     let initialScrollFraction: Double
     let initialScrollAnchor: EditorScrollAnchor?
     let onDocumentActivity: () -> Void
     let onRequestSave: () -> Void
     let onRequestFind: (DocumentFindShortcut) -> Void
-    let onRequestDocumentTitleRename: @MainActor (
-        String,
-        String
-    ) async throws -> String
+    let onRequestDocumentTitleRename:
+        @MainActor (
+            String,
+            String
+        ) async throws -> String
     let onPasteImage: (EditorPastedImageSource) -> Bool
     let onLinkActivation: (String) -> Void
     let onScrollFractionChange: (Double) -> Void
@@ -38,10 +40,11 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         source: String,
         linkPreviews: [DocumentLinkPreview]
     ) -> Bool {
-        source.contains("$") || linkPreviews.contains {
-            $0.htmlBody.contains("data-math-source=\"")
-                && $0.htmlBody.contains("data-math-kind=\"")
-        }
+        source.contains("$")
+            || linkPreviews.contains {
+                $0.htmlBody.contains("data-math-source=\"")
+                    && $0.htmlBody.contains("data-math-kind=\"")
+            }
     }
 
     func makeCoordinator() -> Coordinator {
@@ -70,21 +73,23 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         let editorStartFailure = Self.jsonLiteral(
             interfaceLocalization.string("The Markdown editor could not start.")
         )
-        contentController.addUserScript(WKUserScript(
-            source: """
-            window.addEventListener('error', function(event) {
-                window.webkit.messageHandlers.scholium.postMessage({
-                    type: 'editorError',
-                    message: event.message || \(editorStartFailure)
-                });
-            });
-            """,
-            injectionTime: .atDocumentStart,
-            forMainFrameOnly: true
-        ))
+        contentController.addUserScript(
+            WKUserScript(
+                source: """
+                    window.addEventListener('error', function(event) {
+                        window.webkit.messageHandlers.scholium.postMessage({
+                            type: 'editorError',
+                            message: event.message || \(editorStartFailure)
+                        });
+                    });
+                    """,
+                injectionTime: .atDocumentStart,
+                forMainFrameOnly: true
+            ))
         if PerformanceProbe.shared.measuresEditorKeyToPaint
             || PerformanceProbe.shared.measuresEditorCachedPreview
-            || PerformanceProbe.shared.measuresEditorVisibleProjection {
+            || PerformanceProbe.shared.measuresEditorVisibleProjection
+        {
             let metric: String
             if PerformanceProbe.shared.measuresEditorCachedPreview {
                 metric = "editor_cached_preview"
@@ -93,36 +98,40 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             } else {
                 metric = "editor_key_to_paint"
             }
-            contentController.addUserScript(WKUserScript(
-                source: "window.scholiumPerformanceMetric = '\(metric)';",
-                injectionTime: .atDocumentStart,
-                forMainFrameOnly: true
-            ))
+            contentController.addUserScript(
+                WKUserScript(
+                    source: "window.scholiumPerformanceMetric = '\(metric)';",
+                    injectionTime: .atDocumentStart,
+                    forMainFrameOnly: true
+                ))
         }
         if requiresMathRuntime, !ScholiumMathAssets.runtimeJavaScript.isEmpty {
-            contentController.addUserScript(WKUserScript(
-                source: ScholiumMathAssets.runtimeJavaScript,
-                injectionTime: .atDocumentStart,
-                forMainFrameOnly: true
-            ))
+            contentController.addUserScript(
+                WKUserScript(
+                    source: ScholiumMathAssets.runtimeJavaScript,
+                    injectionTime: .atDocumentStart,
+                    forMainFrameOnly: true
+                ))
         }
         if let editorScript = Self.editorScript {
-            contentController.addUserScript(WKUserScript(
-                source: editorScript,
+            contentController.addUserScript(
+                WKUserScript(
+                    source: editorScript,
+                    injectionTime: .atDocumentEnd,
+                    forMainFrameOnly: true
+                ))
+        }
+        contentController.addUserScript(
+            WKUserScript(
+                source: """
+                    window.webkit.messageHandlers.scholium.postMessage({
+                        type: 'documentEnded',
+                        editorReady: typeof window.scholiumEditor === 'object'
+                    });
+                    """,
                 injectionTime: .atDocumentEnd,
                 forMainFrameOnly: true
             ))
-        }
-        contentController.addUserScript(WKUserScript(
-            source: """
-            window.webkit.messageHandlers.scholium.postMessage({
-                type: 'documentEnded',
-                editorReady: typeof window.scholiumEditor === 'object'
-            });
-            """,
-            injectionTime: .atDocumentEnd,
-            forMainFrameOnly: true
-        ))
 
         let configuration = WKWebViewConfiguration()
         configuration.userContentController = contentController
@@ -158,7 +167,8 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         session.loadDocument(attachmentSource, documentID: documentID, mode: mode)
 
         guard let editorHTML = Self.editorHTML(localization: interfaceLocalization),
-              Self.editorScript != nil else {
+            Self.editorScript != nil
+        else {
             session.reportError(String(localized: "The bundled Markdown editor resources could not be found.", table: "Localizable", bundle: .module))
             return DocumentWebViewContainer(webView: webView)
         }
@@ -249,31 +259,34 @@ struct MarkdownEditorWebView: NSViewRepresentable {
     static func editorHTML(
         localization: WebKitInterfaceLocalization
     ) -> String? {
-        guard let css = ScholiumDocumentWebResources.text(
+        guard
+            let css = ScholiumDocumentWebResources.text(
                 named: "editor",
                 extension: "css"
-              ),
-              !ScholiumCalloutStyles.css.isEmpty else { return nil }
+            ),
+            !ScholiumCalloutStyles.css.isEmpty
+        else { return nil }
         return """
-        <!doctype html>
-        <html lang="\(localization.languageTag)">
-          <head>
-            <meta charset="utf-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1">
-            <meta name="scholium-interface-localization" content="\(localization.base64JSON())">
-            <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'none'; img-src data:; font-src scholium-font: data:">
-            <style>\(ScholiumWebFonts.css)\n\(css)\n\(ScholiumCalloutStyles.css)\n\(ScholiumTableStyles.css)\n\(ScholiumFootnoteStyles.css)\n\(ScholiumMathAssets.css)\n\(ScholiumMermaidAssets.css)\n\(ScholiumPreviewStyles.css)\n\(ScholiumWebSymbolAssets.cssVariables)\n\(ScholiumWebDesignTokens.documentPresentationCSS)</style>
-            <style id="scholium-presentation-css"></style>
-            <style id="scholium-user-css"></style>
-          </head>
-          <body><main id="editor"></main></body>
-        </html>
-        """
+            <!doctype html>
+            <html lang="\(localization.languageTag)">
+              <head>
+                <meta charset="utf-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1">
+                <meta name="scholium-interface-localization" content="\(localization.base64JSON())">
+                <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'none'; img-src data:; font-src scholium-font: data:">
+                <style>\(ScholiumWebFonts.css)\n\(css)\n\(ScholiumCalloutStyles.css)\n\(ScholiumTableStyles.css)\n\(ScholiumFootnoteStyles.css)\n\(ScholiumMathAssets.css)\n\(ScholiumMermaidAssets.css)\n\(ScholiumPreviewStyles.css)\n\(ScholiumWebSymbolAssets.cssVariables)\n\(ScholiumWebDesignTokens.documentPresentationCSS)</style>
+                <style id="scholium-presentation-css"></style>
+                <style id="scholium-user-css"></style>
+              </head>
+              <body><main id="editor"></main></body>
+            </html>
+            """
     }
 
     private static func jsonLiteral(_ value: String) -> String {
         guard let data = try? JSONEncoder().encode(value),
-              let literal = String(data: data, encoding: .utf8) else { return "\"\"" }
+            let literal = String(data: data, encoding: .utf8)
+        else { return "\"\"" }
         return literal
     }
 
@@ -283,14 +296,16 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         var onDocumentActivity: () -> Void
         var onRequestSave: () -> Void
         var onRequestFind: (DocumentFindShortcut) -> Void
-        var onRequestDocumentTitleRename: @MainActor (
-            String,
-            String
-        ) async throws -> String
-        var linkCompletionQuery: @MainActor (
-            EditorLinkCompletionKind,
-            String
-        ) async -> [EditorLinkCompletion]
+        var onRequestDocumentTitleRename:
+            @MainActor (
+                String,
+                String
+            ) async throws -> String
+        var linkCompletionQuery:
+            @MainActor (
+                EditorLinkCompletionKind,
+                String
+            ) async -> [EditorLinkCompletion]
         var onLinkActivation: (String) -> Void
         var onScrollFractionChange: (Double) -> Void
         var onScrollAnchorChange: (EditorScrollAnchor) -> Void
@@ -325,14 +340,16 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             onDocumentActivity: @escaping () -> Void,
             onRequestSave: @escaping () -> Void,
             onRequestFind: @escaping (DocumentFindShortcut) -> Void,
-            onRequestDocumentTitleRename: @escaping @MainActor (
-                String,
-                String
-            ) async throws -> String,
-            linkCompletionQuery: @escaping @MainActor (
-                EditorLinkCompletionKind,
-                String
-            ) async -> [EditorLinkCompletion],
+            onRequestDocumentTitleRename:
+                @escaping @MainActor (
+                    String,
+                    String
+                ) async throws -> String,
+            linkCompletionQuery:
+                @escaping @MainActor (
+                    EditorLinkCompletionKind,
+                    String
+                ) async -> [EditorLinkCompletion],
             onLinkActivation: @escaping (String) -> Void,
             onScrollFractionChange: @escaping (Double) -> Void,
             onScrollAnchorChange: @escaping (EditorScrollAnchor) -> Void
@@ -371,21 +388,23 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             switch payload {
             case .floatingSurface(let request):
                 guard validEnvelope(request.envelope), let webView = message.webView,
-                      request.surface.kind != .selection || onAskAgent != nil else { return }
+                    request.surface.kind != .selection || onAskAgent != nil
+                else { return }
                 session.floatingSurfaces.present(request.surface, in: webView, inquire: onAskAgent) { [weak self, weak webView] id, action, index in
-                        // Autosave rebases the disk fingerprint, not the live buffer
-                        // revision. Validate that revision at event dispatch instead.
-                        guard let self, let webView,
-                              self.session.webView === webView,
-                              request.envelope.sessionID == self.session.sessionID.uuidString,
-                              request.envelope.documentID == self.documentID,
-                              request.envelope.documentVersion == self.session.generation else { return false }
-                        let accepted = try? await webView.callAsyncJavaScript(
-                            "return window.scholiumNativeFloatingEvent?.(id, action, index)",
-                            arguments: ["id": id, "action": action, "index": index],
-                            in: nil, contentWorld: .page
-                        )
-                        return accepted as? Bool == true
+                    // Autosave rebases the disk fingerprint, not the live buffer
+                    // revision. Validate that revision at event dispatch instead.
+                    guard let self, let webView,
+                        self.session.webView === webView,
+                        request.envelope.sessionID == self.session.sessionID.uuidString,
+                        request.envelope.documentID == self.documentID,
+                        request.envelope.documentVersion == self.session.generation
+                    else { return false }
+                    let accepted = try? await webView.callAsyncJavaScript(
+                        "return window.scholiumNativeFloatingEvent?.(id, action, index)",
+                        arguments: ["id": id, "action": action, "index": index],
+                        in: nil, contentWorld: .page
+                    )
+                    return accepted as? Bool == true
                 }
             case .ready:
                 signalReady()
@@ -423,7 +442,8 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                 )
             case .performanceSample(let performance):
                 guard validEnvelope(performance.envelope),
-                      performance.durationMilliseconds > 0 else { return }
+                    performance.durationMilliseconds > 0
+                else { return }
                 switch performance.metric {
                 case "editor_key_to_paint":
                     PerformanceProbe.shared.recordEditorKeyToPaint(
@@ -453,7 +473,8 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                 onRequestFind(request.action)
             case .requestDocumentTitleRename(let request):
                 guard validEnvelope(request.envelope),
-                      let webView = message.webView ?? activeWebView else { return }
+                    let webView = message.webView ?? activeWebView
+                else { return }
                 guard request.expectedTitle == documentTitle else {
                     rejectChangedDocumentTitleRename(request, in: webView)
                     return
@@ -461,14 +482,16 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                 beginDocumentTitleRename(request, in: webView)
             case .requestImagePaste(let envelope):
                 guard validEnvelope(envelope),
-                      let webView = message.webView as? WindowAttachedWebView else { return }
+                    let webView = message.webView as? WindowAttachedWebView
+                else { return }
                 _ = webView.consumePastedImage()
             case .requestMermaidRuntime(let envelope):
                 guard validEnvelope(envelope), let webView = message.webView else { return }
                 requestMermaidRuntime(in: webView)
             case .requestMathRuntime(let envelope):
                 guard validEnvelope(envelope),
-                      let webView = message.webView ?? activeWebView else { return }
+                    let webView = message.webView ?? activeWebView
+                else { return }
                 requestMathRuntime(in: webView)
             case .linkCompletionQuery(let request):
                 guard validEnvelope(request.envelope) else { return }
@@ -492,18 +515,20 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                         request.query
                     )
                     guard !Task.isCancelled,
-                          requestedDocumentID == documentID,
-                          requestedFingerprint == startingFingerprint,
-                          requestedVersion == session.generation,
-                          webView.navigationDelegate === self else { return }
+                        requestedDocumentID == documentID,
+                        requestedFingerprint == startingFingerprint,
+                        requestedVersion == session.generation,
+                        webView.navigationDelegate === self
+                    else { return }
                     let payload = candidates.prefix(100).map { candidate in
-                        var value = [
-                            "label": candidate.label,
-                            "insertion": candidate.insertion,
-                            "detail": candidate.detail,
-                            "path": candidate.path,
-                            "isAmbiguous": candidate.isAmbiguous,
-                        ] as [String: Any]
+                        var value =
+                            [
+                                "label": candidate.label,
+                                "insertion": candidate.insertion,
+                                "detail": candidate.detail,
+                                "path": candidate.path,
+                                "isAmbiguous": candidate.isAmbiguous,
+                            ] as [String: Any]
                         if let displayText = candidate.displayText {
                             value["displayText"] = displayText
                         }
@@ -524,12 +549,13 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                 onLinkActivation(activation.target)
             case .contextMenuRequested(let request):
                 guard validEnvelope(request.envelope),
-                      session.acceptsInteractionRanges(
-                          request.context.selections,
-                          documentVersion: request.envelope.documentVersion
-                      ),
-                      request.mode == lastModeInput,
-                      let webView = message.webView as? WindowAttachedWebView else { return }
+                    session.acceptsInteractionRanges(
+                        request.context.selections,
+                        documentVersion: request.envelope.documentVersion
+                    ),
+                    request.mode == lastModeInput,
+                    let webView = message.webView as? WindowAttachedWebView
+                else { return }
                 webView.presentEditorContextMenu(
                     clientX: request.clientX,
                     clientY: request.clientY,
@@ -538,7 +564,8 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                 )
             case .scrollChanged(let scroll):
                 guard validEnvelope(scroll.envelope),
-                      (0...1).contains(scroll.fraction) else { return }
+                    (0...1).contains(scroll.fraction)
+                else { return }
                 if let anchor = session.recordScrollPosition(
                     scroll.anchor,
                     fallbackFraction: scroll.fraction
@@ -596,8 +623,9 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                     }
                 }
                 guard let webView,
-                      webView.navigationDelegate === self,
-                      !Task.isCancelled else { return }
+                    webView.navigationDelegate === self,
+                    !Task.isCancelled
+                else { return }
                 await ScholiumMermaidRuntimeLoader.installAndNotify(in: webView)
             }
         }
@@ -608,8 +636,9 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                 guard let self else { return }
                 defer { self.mathRuntimeLoadTask = nil }
                 guard let webView,
-                      webView.navigationDelegate === self,
-                      !Task.isCancelled else { return }
+                    webView.navigationDelegate === self,
+                    !Task.isCancelled
+                else { return }
                 _ = await ScholiumMathRuntimeLoader.installAndRefresh(in: webView)
             }
         }
@@ -664,9 +693,10 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                     )
                 }
                 guard !Task.isCancelled,
-                      documentTitleRenameRequestID == request.requestID,
-                      let webView,
-                      webView.navigationDelegate === self else { return }
+                    documentTitleRenameRequestID == request.requestID,
+                    let webView,
+                    webView.navigationDelegate === self
+                else { return }
                 documentTitleRenameTask = nil
                 documentTitleRenameRequestID = nil
                 _ = try? await webView.callAsyncJavaScript(
@@ -694,7 +724,8 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             )
             Task { @MainActor [weak self, weak webView] in
                 guard let self, let webView,
-                      webView.navigationDelegate === self else { return }
+                    webView.navigationDelegate === self
+                else { return }
                 _ = try? await webView.callAsyncJavaScript(
                     "window.scholiumEditor.resolveDocumentTitleRename(requestID, accepted, title, error)",
                     arguments: [
@@ -714,10 +745,11 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             decidePolicyFor navigationAction: WKNavigationAction,
             decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void
         ) {
-            decisionHandler(Self.navigationPolicy(
-                url: navigationAction.request.url,
-                isMainFrame: navigationAction.targetFrame?.isMainFrame == true
-            ))
+            decisionHandler(
+                Self.navigationPolicy(
+                    url: navigationAction.request.url,
+                    isMainFrame: navigationAction.targetFrame?.isMainFrame == true
+                ))
         }
 
         static func navigationPolicy(
@@ -725,7 +757,8 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             isMainFrame: Bool
         ) -> WKNavigationActionPolicy {
             guard isMainFrame,
-                  url?.absoluteString == "about:blank" else { return .cancel }
+                url?.absoluteString == "about:blank"
+            else { return .cancel }
             return .allow
         }
 
@@ -749,9 +782,10 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             allowingFutureGeneration: Bool = false
         ) -> Bool {
             guard envelope.protocolVersion == markdownEditorProtocolVersion,
-                  envelope.sessionID == session.sessionID.uuidString,
-                  envelope.documentID == documentID,
-                  envelope.startingFingerprint == startingFingerprint else { return false }
+                envelope.sessionID == session.sessionID.uuidString,
+                envelope.documentID == documentID,
+                envelope.startingFingerprint == startingFingerprint
+            else { return false }
             return allowingFutureGeneration
                 ? envelope.documentVersion >= session.generation
                 : envelope.documentVersion == session.generation
@@ -761,13 +795,16 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             _ change: EditorDocumentChangeMessage,
             in webView: WKWebView?
         ) {
-            guard session.acceptEditorChanges(
-                change.changes,
-                baseGeneration: change.baseGeneration,
-                resultingGeneration: change.resultingGeneration
-            ) else {
+            guard
+                session.acceptEditorChanges(
+                    change.changes,
+                    baseGeneration: change.baseGeneration,
+                    resultingGeneration: change.resultingGeneration
+                )
+            else {
                 if let webView,
-                   change.resultingGeneration > session.generation {
+                    change.resultingGeneration > session.generation
+                {
                     session.reconcileAfterRejectedEditorChanges(
                         resultingGeneration: change.resultingGeneration,
                         in: webView
@@ -776,7 +813,8 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                 return
             }
             if change.changes.contains(where: { $0.insert.contains("$") }),
-               let webView {
+                let webView
+            {
                 requestMathRuntime(in: webView)
             }
         }

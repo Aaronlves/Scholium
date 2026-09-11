@@ -30,10 +30,14 @@ struct AgentSourceEditTests {
             [.init(startUTF8: -1, endUTF8: 0, expectedText: "", replacement: "")],
             [.init(startUTF8: 0, endUTF8: Int.max, expectedText: "", replacement: "")],
             [.init(startUTF8: 6, endUTF8: 3, expectedText: "", replacement: "")],
-            [.init(startUTF8: 3, endUTF8: 6, expectedText: "abc", replacement: ""),
-             .init(startUTF8: 4, endUTF8: 5, expectedText: "b", replacement: "")],
-            [.init(startUTF8: 3, endUTF8: 3, expectedText: "", replacement: "a"),
-             .init(startUTF8: 3, endUTF8: 3, expectedText: "", replacement: "b")],
+            [
+                .init(startUTF8: 3, endUTF8: 6, expectedText: "abc", replacement: ""),
+                .init(startUTF8: 4, endUTF8: 5, expectedText: "b", replacement: ""),
+            ],
+            [
+                .init(startUTF8: 3, endUTF8: 3, expectedText: "", replacement: "a"),
+                .init(startUTF8: 3, endUTF8: 3, expectedText: "", replacement: "b"),
+            ],
             [.init(startUTF8: 0, endUTF8: 0, expectedText: "", replacement: "\0")],
         ]
         for edits in invalid {

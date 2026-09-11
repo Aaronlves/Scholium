@@ -48,27 +48,31 @@ enum ExactStatePreserver {
             .fileResourceIdentifierKey,
         ])
         guard values.isSymbolicLink != true,
-              (kind == .regularFile ? values.isRegularFile == true : values.isDirectory == true),
-              let identifier = values.fileResourceIdentifier else {
+            kind == .regularFile ? values.isRegularFile == true : values.isDirectory == true,
+            let identifier = values.fileResourceIdentifier
+        else {
             throw ExactStatePreservationError.unsafe(
                 "The state at \(source.path) is linked, has the wrong type, or cannot be bound to one filesystem object."
             )
         }
         let sourceIdentity = String(describing: identifier)
-        let sourceData: Data? = switch kind {
-        case .regularFile:
-            try Data(contentsOf: source, options: [.mappedIfSafe])
-        case .directory:
-            nil
-        }
+        let sourceData: Data? =
+            switch kind {
+            case .regularFile:
+                try Data(contentsOf: source, options: [.mappedIfSafe])
+            case .directory:
+                nil
+            }
         if let sourceData, let fileEligibility,
-           try !fileEligibility(sourceData) {
+            try !fileEligibility(sourceData)
+        {
             throw ExactStatePreservationError.preservationFailed(
                 "The file changed and no longer qualifies for recovery. Reload its current state."
             )
         }
         if kind == .directory, let directoryEligibility,
-           try !directoryEligibility(source) {
+            try !directoryEligibility(source)
+        {
             throw ExactStatePreservationError.preservationFailed(
                 "The directory changed and no longer qualifies for recovery. Reload its current state."
             )
@@ -98,10 +102,11 @@ enum ExactStatePreserver {
             ])
             let movedIdentity = movedValues.fileResourceIdentifier.map(String.init(describing:))
             guard movedValues.isSymbolicLink != true,
-                  (kind == .regularFile
+                kind == .regularFile
                     ? movedValues.isRegularFile == true
-                    : movedValues.isDirectory == true),
-                  movedIdentity == sourceIdentity else {
+                    : movedValues.isDirectory == true,
+                movedIdentity == sourceIdentity
+            else {
                 throw ExactStatePreservationError.preservationFailed(
                     "The preserved state did not retain the source filesystem identity."
                 )
@@ -115,7 +120,8 @@ enum ExactStatePreserver {
                 }
             }
             if kind == .directory, let directoryEligibility,
-               try !directoryEligibility(destination) {
+                try !directoryEligibility(destination)
+            {
                 throw ExactStatePreservationError.preservationFailed(
                     "The directory changed while recovery was preserving it."
                 )

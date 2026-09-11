@@ -1,6 +1,7 @@
 import Foundation
-@testable import ScholiumCore
 import Testing
+
+@testable import ScholiumCore
 
 @Suite("Interrupted save transactions")
 struct PrewriteRecoveryLedgerTests {
@@ -15,9 +16,10 @@ struct PrewriteRecoveryLedgerTests {
         )
         try ledger.completeMutation(transaction)
         #expect(try ledger.retainedMutations().isEmpty)
-        #expect(!FileManager.default.fileExists(
-            atPath: fixture.transactionDirectory(transaction.id).path
-        ))
+        #expect(
+            !FileManager.default.fileExists(
+                atPath: fixture.transactionDirectory(transaction.id).path
+            ))
     }
 
     @Test("Only explicitly retained uncertainty is researcher-visible")
@@ -50,9 +52,10 @@ struct PrewriteRecoveryLedgerTests {
             storageURL: fixture.storage,
             vaultURL: fixture.vault
         )
-        #expect(!FileManager.default.fileExists(
-            atPath: fixture.transactionDirectory(transaction.id).path
-        ))
+        #expect(
+            !FileManager.default.fileExists(
+                atPath: fixture.transactionDirectory(transaction.id).path
+            ))
     }
 
     @Test("Startup retains a candidate when canonical source stayed expected")
@@ -88,8 +91,9 @@ struct PrewriteRecoveryLedgerTests {
             from: "Topics/Old.md",
             to: "Topics/New.md"
         )
-        #expect(try ledger.retainedMutation(id: transaction.id).relativePath
-            == "Topics/New.md")
+        #expect(
+            try ledger.retainedMutation(id: transaction.id).relativePath
+                == "Topics/New.md")
     }
 }
 

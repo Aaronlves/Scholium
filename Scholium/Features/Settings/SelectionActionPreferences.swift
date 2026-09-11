@@ -23,18 +23,23 @@ final class SelectionActionPreferences: ObservableObject {
         self.defaults = defaults
         if let data = defaults.data(forKey: Self.key) {
             if let decoded = try? JSONDecoder().decode([SelectionActionDefinition].self, from: data),
-               Self.validationError(decoded) == nil {
+                Self.validationError(decoded) == nil
+            {
                 actions = decoded
             } else {
                 actions = []
                 loadError = ScholiumL10n.string("Selection actions could not be loaded. Restore defaults to replace these settings.")
             }
-        } else { actions = Self.defaultActions }
+        } else {
+            actions = Self.defaultActions
+        }
     }
 
     static var defaultActions: [SelectionActionDefinition] {
-        zip(["Concepts", "Argument", "Evidence"],
-            [AgentChatSelectionInquiry.clarifyConcepts, .examineArgument, .checkEvidence]).map {
+        zip(
+            ["Concepts", "Argument", "Evidence"],
+            [AgentChatSelectionInquiry.clarifyConcepts, .examineArgument, .checkEvidence]
+        ).map {
             .init(name: ScholiumL10n.string($0.0), prompt: $0.1.question ?? "")
         }
     }
@@ -48,11 +53,13 @@ final class SelectionActionPreferences: ObservableObject {
             let font = NSFont.systemFont(ofSize: NSFont.systemFontSize)
             let limit = ("概念概念概念" as NSString).size(withAttributes: [.font: font]).width
             guard !name.isEmpty, name.count <= 32, !name.contains(where: \.isNewline),
-                  (name as NSString).size(withAttributes: [.font: font]).width <= limit else {
+                (name as NSString).size(withAttributes: [.font: font]).width <= limit
+            else {
                 return ScholiumL10n.string("Use a short name, up to six Chinese characters or a similar width.")
             }
             guard !action.prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                  action.prompt.utf8.count <= 16_384 else {
+                action.prompt.utf8.count <= 16_384
+            else {
                 return ScholiumL10n.string("Enter an instruction of up to 16 KB.")
             }
         }
@@ -61,11 +68,13 @@ final class SelectionActionPreferences: ObservableObject {
     func save(_ value: [SelectionActionDefinition]) throws {
         if let error = Self.validationError(value) { throw ValidationFailure(message: error) }
         defaults.set(try JSONEncoder().encode(value), forKey: Self.key)
-        actions = value; loadError = nil
+        actions = value
+        loadError = nil
     }
     func restoreDefaults() {
         defaults.removeObject(forKey: Self.key)
-        actions = Self.defaultActions; loadError = nil
+        actions = Self.defaultActions
+        loadError = nil
     }
     private struct ValidationFailure: LocalizedError {
         let message: String

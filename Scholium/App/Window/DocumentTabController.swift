@@ -85,9 +85,11 @@ final class DocumentTabController: ObservableObject {
         let key = DocumentTabKey(document)
         for candidate in WorkspaceVaultSlot.allCases {
             var candidateTabs = tabs(in: candidate)
-            guard let existingIndex = candidateTabs.firstIndex(where: {
-                DocumentTabKey($0.document) == key
-            }) else { continue }
+            guard
+                let existingIndex = candidateTabs.firstIndex(where: {
+                    DocumentTabKey($0.document) == key
+                })
+            else { continue }
             candidateTabs[existingIndex].document = document
             candidateTabs[existingIndex].title = title
             candidateTabs[existingIndex].toolTip = toolTip
@@ -98,8 +100,9 @@ final class DocumentTabController: ObservableObject {
 
         var workspaceTabs = tabs(in: workspace)
         if placement == .replaceSelected,
-           let selectedTabID = selectedTabID(in: workspace),
-           let selectedIndex = workspaceTabs.firstIndex(where: { $0.id == selectedTabID }) {
+            let selectedTabID = selectedTabID(in: workspace),
+            let selectedIndex = workspaceTabs.firstIndex(where: { $0.id == selectedTabID })
+        {
             workspaceTabs[selectedIndex].document = document
             workspaceTabs[selectedIndex].title = title
             workspaceTabs[selectedIndex].toolTip = toolTip
@@ -162,7 +165,8 @@ final class DocumentTabController: ObservableObject {
         workspaceTabs.removeAll { $0.id == plan.closingTabID }
         tabsByWorkspace[plan.workspace] = workspaceTabs
         if let selectedTabIDAfterClose = plan.selectedTabIDAfterClose,
-           workspaceTabs.contains(where: { $0.id == selectedTabIDAfterClose }) {
+            workspaceTabs.contains(where: { $0.id == selectedTabIDAfterClose })
+        {
             selectedTabIDsByWorkspace[plan.workspace] = selectedTabIDAfterClose
         } else {
             selectedTabIDsByWorkspace[plan.workspace] = nil

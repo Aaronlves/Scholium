@@ -99,7 +99,8 @@ public enum PropertyContractCatalog {
     /// coerces YAML scalars into names.
     public static func creatorNames(from value: YAMLValue) -> [CreatorNameProjection]? {
         guard validateCreatorList(value, key: "creators") == nil,
-              case .array(let entries) = value else { return nil }
+            case .array(let entries) = value
+        else { return nil }
         return entries.compactMap { entry in
             guard case .object(let members) = entry else { return nil }
             if case .string(let literal)? = members["literal"] {
@@ -184,11 +185,13 @@ public enum PropertyContractCatalog {
         profile: SchemaProfileID
     ) -> [PropertyValidationIssue] {
         guard document.validationWarnings.isEmpty else {
-            return [PropertyValidationIssue(
-                propertyKey: nil,
-                code: .malformedFrontmatter,
-                message: document.validationWarnings.joined(separator: "\n")
-            )]
+            return [
+                PropertyValidationIssue(
+                    propertyKey: nil,
+                    code: .malformedFrontmatter,
+                    message: document.validationWarnings.joined(separator: "\n")
+                )
+            ]
         }
         return validate(frontmatter: document.parsedFrontmatter, profile: profile)
     }
@@ -216,11 +219,12 @@ public enum PropertyContractCatalog {
                 continue
             }
             guard isCompatible(value, with: contract.valueKind) else {
-                issues.append(PropertyValidationIssue(
-                    propertyKey: contract.canonicalKey,
-                    code: .invalidValueKind,
-                    message: "\(contract.canonicalKey) must be \(description(of: contract.valueKind))."
-                ))
+                issues.append(
+                    PropertyValidationIssue(
+                        propertyKey: contract.canonicalKey,
+                        code: .invalidValueKind,
+                        message: "\(contract.canonicalKey) must be \(description(of: contract.valueKind))."
+                    ))
                 continue
             }
             guard let allowedValues = contract.allowedValues, !isEmpty(value) else { continue }
@@ -233,11 +237,12 @@ public enum PropertyContractCatalog {
                 suppliedValues = value.scalarString.map { [$0] } ?? []
             }
             if let invalid = suppliedValues.first(where: { !allowed.contains($0) }) {
-                issues.append(PropertyValidationIssue(
-                    propertyKey: contract.canonicalKey,
-                    code: .valueNotAllowed,
-                    message: "\(invalid) is not an allowed value for \(contract.canonicalKey)."
-                ))
+                issues.append(
+                    PropertyValidationIssue(
+                        propertyKey: contract.canonicalKey,
+                        code: .valueNotAllowed,
+                        message: "\(invalid) is not an allowed value for \(contract.canonicalKey)."
+                    ))
             }
         }
         return issues
@@ -308,10 +313,11 @@ public enum PropertyContractCatalog {
             if case .double = value { return true }
         case .tags, .textList:
             if case .array(let values) = value {
-                return !values.isEmpty && values.allSatisfy {
-                    guard case .string(let text) = $0 else { return false }
-                    return isSourceSafeText(text, allowsNewlines: false)
-                }
+                return !values.isEmpty
+                    && values.allSatisfy {
+                        guard case .string(let text) = $0 else { return false }
+                        return isSourceSafeText(text, allowsNewlines: false)
+                    }
             }
         case .mapping:
             if case .object = value { return true }
@@ -338,8 +344,9 @@ public enum PropertyContractCatalog {
             let keys = Set(members.keys)
             if let literal = members["literal"] {
                 guard keys == ["literal"],
-                      case .string(let text) = literal,
-                      isSourceSafeText(text, allowsNewlines: false) else {
+                    case .string(let text) = literal,
+                    isSourceSafeText(text, allowsNewlines: false)
+                else {
                     return creatorIssue(
                         key,
                         "Literal creator \(index + 1) in \(key) must contain only nonempty literal text."
@@ -348,10 +355,11 @@ public enum PropertyContractCatalog {
                 continue
             }
             guard keys.isSubset(of: personKeys), keys.contains("family"),
-                  members.values.allSatisfy({ value in
-                      guard case .string(let text) = value else { return false }
-                      return isSourceSafeText(text, allowsNewlines: false)
-                  }) else {
+                members.values.allSatisfy({ value in
+                    guard case .string(let text) = value else { return false }
+                    return isSourceSafeText(text, allowsNewlines: false)
+                })
+            else {
                 return creatorIssue(
                     key,
                     "Person creator \(index + 1) in \(key) requires family and supports only the canonical name members."
@@ -486,10 +494,11 @@ public enum BuiltInNoteMetadataCatalog {
                 message: "\($0) is not a managed field for this Note role."
             )
         }
-        issues.append(contentsOf: PropertyContractCatalog.validate(
-            values: fields,
-            against: contracts(for: profile)
-        ))
+        issues.append(
+            contentsOf: PropertyContractCatalog.validate(
+                values: fields,
+                against: contracts(for: profile)
+            ))
         return issues
     }
 
@@ -578,13 +587,15 @@ public enum BuiltInNoteMetadataCatalog {
     ]
 
     private static let topicContracts: [PropertyContract] = [
-        property("aliases", .textList),
+        property("aliases", .textList)
     ]
 
     private static let workContracts: [PropertyContract] = [
-        property("work_type", .choice, allowed: [
-            "paper", "chapter", "book", "talk", "review", "teaching", "other",
-        ]),
+        property(
+            "work_type", .choice,
+            allowed: [
+                "paper", "chapter", "book", "talk", "review", "teaching", "other",
+            ]),
         property("coauthors", .textList),
     ]
 
@@ -652,10 +663,11 @@ public struct NoteMetadataCatalog: Codable, Hashable, Sendable {
                 message: "\($0) is not a managed field for this Note role."
             )
         }
-        issues.append(contentsOf: PropertyContractCatalog.validate(
-            values: fields,
-            against: contracts
-        ))
+        issues.append(
+            contentsOf: PropertyContractCatalog.validate(
+                values: fields,
+                against: contracts
+            ))
         return issues
     }
 
@@ -670,7 +682,8 @@ public struct NoteMetadataCatalog: Codable, Hashable, Sendable {
         for sourceType: AnalysisSourceType
     ) -> [PropertyContract] {
         let builtInByKey = Dictionary(
-            uniqueKeysWithValues: BuiltInNoteMetadataCatalog
+            uniqueKeysWithValues:
+                BuiltInNoteMetadataCatalog
                 .contracts(for: .analysis).map { ($0.canonicalKey, $0) }
         )
         let orderedBuiltIns = AnalysisSourceTypeProfileCatalog.profile(for: sourceType)

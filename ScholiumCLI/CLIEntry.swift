@@ -1,7 +1,7 @@
-import ScholiumContracts
-import ScholiumCLIUpdate
 import Darwin
 import Foundation
+import ScholiumCLIUpdate
+import ScholiumContracts
 
 @main
 struct ScholiumCLI {

@@ -1,4 +1,5 @@
 import Foundation
+
 public struct SearchWorkspaceState: Codable, Hashable, Sendable {
     public var query: String
     public var scope: SearchPresentationScope
@@ -56,7 +57,8 @@ public struct SavedSearch: Codable, Hashable, Identifiable, Sendable {
         if !SearchContract.isSavedSearchContractCompatible(definition.contractVersion) {
             return SearchQueryDiagnostic(
                 code: .needsEditing,
-                message: "This Saved Search uses Search contract \(definition.contractVersion), which is not declared compatible with contract \(SearchContract.currentVersion); review it before running.",
+                message:
+                    "This Saved Search uses Search contract \(definition.contractVersion), which is not declared compatible with contract \(SearchContract.currentVersion); review it before running.",
                 utf16LowerBound: 0,
                 utf16UpperBound: definition.query.utf16.count,
                 needsEditing: true

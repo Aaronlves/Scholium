@@ -1,4 +1,5 @@
 import Testing
+
 @testable import ScholiumApp
 
 @Suite("Zotero binding panel mutation owner")

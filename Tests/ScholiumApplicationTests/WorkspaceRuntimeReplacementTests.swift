@@ -1,6 +1,7 @@
-import ScholiumContracts
 import Foundation
+import ScholiumContracts
 import Testing
+
 @testable import ScholiumApplication
 
 @Suite("Workspace runtime replacement", .serialized)
@@ -157,10 +158,12 @@ struct WorkspaceRuntimeReplacementTests {
     }
 
     private func liveRuntime(for fixture: ApplicationFixture) -> WorkspaceRuntime {
-        WorkspaceRuntime(configuration: .live(.init(
-            applicationSupportURL: fixture.applicationSupportURL,
-            workspaceRegistryStorageURL: fixture.registryStorageURL
-        )))
+        WorkspaceRuntime(
+            configuration: .live(
+                .init(
+                    applicationSupportURL: fixture.applicationSupportURL,
+                    workspaceRegistryStorageURL: fixture.registryStorageURL
+                )))
     }
 
     private func expectReplacement(

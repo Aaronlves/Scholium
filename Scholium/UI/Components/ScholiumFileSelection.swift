@@ -117,7 +117,8 @@ struct ScholiumFileSelectionRequest {
 
     func validatedURLs(_ selectedURLs: [URL]) throws -> [URL] {
         guard !selectedURLs.isEmpty,
-              allowsMultipleSelection || selectedURLs.count == 1 else {
+            allowsMultipleSelection || selectedURLs.count == 1
+        else {
             throw ScholiumFileSelectionError.unusableSelection
         }
         try selectedURLs.forEach(validateItemKind)

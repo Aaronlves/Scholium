@@ -1,7 +1,8 @@
-import Foundation
 import AppKit
+import Foundation
 import SwiftUI
 import Testing
+
 @testable import ScholiumApp
 
 @Suite("Document Find presentation")
@@ -14,16 +15,21 @@ struct DocumentFindPresentationTests {
         model.presentReplacement()
         model.setQuery("Synthetic 论证")
         model.setReplacement("Revised 理由")
-        model.fail(NSError(domain: "QA", code: 1, userInfo: [
-            NSLocalizedDescriptionKey: "Synthetic find failure. The document remains unchanged."
-        ]), for: try #require(model.request?.id))
-        let host = NSHostingView(rootView: DocumentFindPanel(model: model, allowsReplacement: true)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top))
+        model.fail(
+            NSError(
+                domain: "QA", code: 1,
+                userInfo: [
+                    NSLocalizedDescriptionKey: "Synthetic find failure. The document remains unchanged."
+                ]), for: try #require(model.request?.id))
+        let host = NSHostingView(
+            rootView: DocumentFindPanel(model: model, allowsReplacement: true)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top))
         // Match the real split host: the viewport, not intrinsic SwiftUI size,
         // owns the available width.
         host.sizingOptions = []
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 720, height: 240),
-                              styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 720, height: 240),
+            styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         window.contentView = host
         window.makeKeyAndOrderFront(nil)
@@ -53,8 +59,10 @@ struct DocumentFindPresentationTests {
             .deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent(".build/document-find-redesign")
         try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
-        for (name, appearance) in [("light", NSAppearance.Name.aqua),
-                                   ("contrast-dark", NSAppearance.Name.accessibilityHighContrastDarkAqua)] {
+        for (name, appearance) in [
+            ("light", NSAppearance.Name.aqua),
+            ("contrast-dark", NSAppearance.Name.accessibilityHighContrastDarkAqua),
+        ] {
             window.appearance = NSAppearance(named: appearance)
             host.layoutSubtreeIfNeeded()
             host.displayIfNeeded()
@@ -73,8 +81,9 @@ struct DocumentFindPresentationTests {
         model.setQuery("original")
         model.setReplacement("original")
         let host = NSHostingView(rootView: DocumentFindPanel(model: model, allowsReplacement: true))
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 560, height: 180),
-                              styleMask: [.titled, .closable], backing: .buffered, defer: false)
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 560, height: 180),
+            styleMask: [.titled, .closable], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         window.contentView = host
         window.makeKeyAndOrderFront(nil)
@@ -91,8 +100,9 @@ struct DocumentFindPresentationTests {
         let field = try #require(findField(host))
         window.makeFirstResponder(field)
         let editor = try #require(field.currentEditor() as? NSTextView)
-        editor.setMarkedText("zhong", selectedRange: NSRange(location: 5, length: 0),
-                             replacementRange: NSRange(location: 0, length: editor.string.utf16.count))
+        editor.setMarkedText(
+            "zhong", selectedRange: NSRange(location: 5, length: 0),
+            replacementRange: NSRange(location: 0, length: editor.string.utf16.count))
         let coordinator = try #require(field.delegate as? DocumentFindSearchField.Coordinator)
         coordinator.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: field))
         #expect(model.query == "original" && model.replacement == "original")

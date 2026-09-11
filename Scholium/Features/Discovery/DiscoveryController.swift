@@ -1,5 +1,5 @@
-import ScholiumContracts
 import Foundation
+import ScholiumContracts
 
 struct DiscoveryFilterState: Equatable, Sendable {
     var needsAttention = false
@@ -208,44 +208,47 @@ final class DiscoveryController: ObservableObject {
         }
 
         let scope = request.criteria.scope
-        let resolvedScope: SearchExecutionScope? = switch scope {
-        case .thisNote:
-            if let snapshot = context.currentNoteSnapshot {
-                .currentNote(snapshot)
-            } else {
-                nil
-            }
-        case .currentVault:
-            if let vaultID = context.currentVaultID {
-                .currentVault(vaultID)
-            } else {
-                nil
-            }
-        case .triptych:
-            .triptych
-        }
-        guard let applicationScope = resolvedScope else {
-            let error: DiscoverySearchExecutionError = switch scope {
+        let resolvedScope: SearchExecutionScope? =
+            switch scope {
             case .thisNote:
-                .currentNoteUnavailable
+                if let snapshot = context.currentNoteSnapshot {
+                    .currentNote(snapshot)
+                } else {
+                    nil
+                }
             case .currentVault:
-                .currentVaultUnavailable
+                if let vaultID = context.currentVaultID {
+                    .currentVault(vaultID)
+                } else {
+                    nil
+                }
             case .triptych:
-                .workspaceUnavailable
+                .triptych
             }
+        guard let applicationScope = resolvedScope else {
+            let error: DiscoverySearchExecutionError =
+                switch scope {
+                case .thisNote:
+                    .currentNoteUnavailable
+                case .currentVault:
+                    .currentVaultUnavailable
+                case .triptych:
+                    .workspaceUnavailable
+                }
             failSearch(error.searchIssue, for: request)
             throw error
         }
         let limit = SearchContract.maximumInterfaceResults
 
         do {
-            let response = try await search(SearchRequest(
-                id: request.id,
-                query: query,
-                presentationScope: scope,
-                executionScope: applicationScope,
-                limit: limit
-            ))
+            let response = try await search(
+                SearchRequest(
+                    id: request.id,
+                    query: query,
+                    presentationScope: scope,
+                    executionScope: applicationScope,
+                    limit: limit
+                ))
             guard isCurrentSearch(request) else { return }
             receiveSearchResponse(response, for: request)
         } catch is CancellationError {
@@ -453,12 +456,13 @@ final class DiscoveryController: ObservableObject {
     /// errors, and the active generation are deliberately transient.
     func dismissSearch() {
         activeSearchRequestID = nil
-        let ordinaryScope: SearchPresentationScope = switch search.invocation {
-        case .general:
-            search.ordinaryScope
-        case .findInNote(let previousScope):
-            previousScope
-        }
+        let ordinaryScope: SearchPresentationScope =
+            switch search.invocation {
+            case .general:
+                search.ordinaryScope
+            case .findInNote(let previousScope):
+                previousScope
+            }
         search = DiscoverySearchState(
             criteria: SearchWorkspaceState(
                 scope: ordinaryScope
@@ -639,11 +643,13 @@ final class DiscoveryController: ObservableObject {
         sourceLocator: SourceLocator? = nil,
         disposition: WindowOpenDisposition = .replaceCurrent
     ) {
-        intentHandler(.openDocument(WindowDocumentRoute(
-            reference: reference,
-            sourceLocator: sourceLocator,
-            disposition: disposition
-        )))
+        intentHandler(
+            .openDocument(
+                WindowDocumentRoute(
+                    reference: reference,
+                    sourceLocator: sourceLocator,
+                    disposition: disposition
+                )))
     }
 
     func requestOpen(

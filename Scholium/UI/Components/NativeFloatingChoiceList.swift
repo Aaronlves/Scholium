@@ -63,8 +63,9 @@ final class NativeFloatingChoiceList: NSScrollView, NSTableViewDataSource, NSTab
         }
         let selected = selected ?? (table.ownsKeyboard && table.selectedRow < 0 && !items.isEmpty ? 0 : nil)
         if let selected, table.selectedRow != selected {
-            table.selectRowIndexes(items.indices.contains(selected) ? IndexSet(integer: selected) : [],
-                                   byExtendingSelection: false)
+            table.selectRowIndexes(
+                items.indices.contains(selected) ? IndexSet(integer: selected) : [],
+                byExtendingSelection: false)
         }
         if table.selectedRow >= 0 { table.scrollRowToVisible(table.selectedRow) }
     }
@@ -78,13 +79,16 @@ final class NativeFloatingChoiceList: NSScrollView, NSTableViewDataSource, NSTab
     }
 
     var preferredSize: NSSize {
-        let width = items.map { item in
-            let label = (item.label as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: NSFont.systemFontSize)]).width
-            let detail = (item.detail as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)]).width
-            return max(label, detail) + item.indentation + 32
-        }.max() ?? 0
-        return NSSize(width: min(368, ceil(width)), height: items.prefix(ScholiumMetrics.Completion.maximumVisibleRows)
-            .reduce(CGFloat(12)) { $0 + rowHeight($1) })
+        let width =
+            items.map { item in
+                let label = (item.label as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: NSFont.systemFontSize)]).width
+                let detail = (item.detail as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)]).width
+                return max(label, detail) + item.indentation + 32
+            }.max() ?? 0
+        return NSSize(
+            width: min(368, ceil(width)),
+            height: items.prefix(ScholiumMetrics.Completion.maximumVisibleRows)
+                .reduce(CGFloat(12)) { $0 + rowHeight($1) })
     }
 
     func numberOfRows(in tableView: NSTableView) -> Int { items.count }
@@ -96,7 +100,8 @@ final class NativeFloatingChoiceList: NSScrollView, NSTableViewDataSource, NSTab
     }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
-        let cell = tableView.makeView(withIdentifier: .init("choiceCell"), owner: self) as? FloatingChoiceCell
+        let cell =
+            tableView.makeView(withIdentifier: .init("choiceCell"), owner: self) as? FloatingChoiceCell
             ?? FloatingChoiceCell()
         cell.configure(items[row])
         return cell
@@ -144,7 +149,8 @@ final class FloatingChoiceTable: NSTableView {
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         if let pointerTracking { removeTrackingArea(pointerTracking) }
-        let area = NSTrackingArea(rect: .zero,
+        let area = NSTrackingArea(
+            rect: .zero,
             options: [.mouseMoved, .mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect], owner: self)
         pointerTracking = area
         addTrackingArea(area)
@@ -207,8 +213,10 @@ private final class FloatingChoiceCell: NSTableCellView {
         addSubview(stack)
         textField = label
         leading = stack.leadingAnchor.constraint(equalTo: leadingAnchor)
-        NSLayoutConstraint.activate([leading, stack.trailingAnchor.constraint(equalTo: trailingAnchor),
-                                     stack.centerYAnchor.constraint(equalTo: centerYAnchor)])
+        NSLayoutConstraint.activate([
+            leading, stack.trailingAnchor.constraint(equalTo: trailingAnchor),
+            stack.centerYAnchor.constraint(equalTo: centerYAnchor),
+        ])
     }
     convenience init() { self.init(frame: .zero) }
     required init?(coder: NSCoder) { nil }

@@ -1,6 +1,7 @@
 import Foundation
-import Testing
 import ScholiumContracts
+import Testing
+
 @testable import ScholiumCore
 
 @Suite("Scholium workspace registration")
@@ -75,9 +76,10 @@ struct WorkspaceTests {
                 output: (urls.works, repeatedID)
             )
         }
-        #expect(!FileManager.default.fileExists(
-            atPath: WorkspaceRegistry.registryURL(storageURL: storage).path
-        ))
+        #expect(
+            !FileManager.default.fileExists(
+                atPath: WorkspaceRegistry.registryURL(storageURL: storage).path
+            ))
     }
 
     @Test("Three independent sibling vaults persist as one workspace")
@@ -149,8 +151,9 @@ struct WorkspaceTests {
         #expect(second.vault(for: .output)?.canonicalPath == secondURLs.works.path)
         #expect(try await registry.triptych(id: secondID)?.id == secondID)
         #expect(try await registry.triptych(id: firstID)?.id == firstID)
-        #expect(try await registry.resolve(first.vault(for: .paperAnalysis)!.id.uuidString).id
-            == first.vault(for: .paperAnalysis)!.id)
+        #expect(
+            try await registry.resolve(first.vault(for: .paperAnalysis)!.id.uuidString).id
+                == first.vault(for: .paperAnalysis)!.id)
         await #expect(throws: WorkspaceRegistryError.self) {
             try await registry.resolve("Analyses")
         }
@@ -500,17 +503,20 @@ struct WorkspaceTests {
             portableControlAccess: portable
         )
 
-        #expect(try await registry.identity(
-            forCanonicalPath: folders.topics.path
-        )?.bookmarkData == vaultBookmarks[.topicKnowledge])
-        #expect(try await registry.portableAccess(
-            forWorksURL: folders.works
-        ) == portable)
-        #expect(FileManager.default.fileExists(
-            atPath: base.appendingPathComponent(
-                "workspace-registration-v3.json"
-            ).path
-        ))
+        #expect(
+            try await registry.identity(
+                forCanonicalPath: folders.topics.path
+            )?.bookmarkData == vaultBookmarks[.topicKnowledge])
+        #expect(
+            try await registry.portableAccess(
+                forWorksURL: folders.works
+            ) == portable)
+        #expect(
+            FileManager.default.fileExists(
+                atPath: base.appendingPathComponent(
+                    "workspace-registration-v3.json"
+                ).path
+            ))
     }
 
 }

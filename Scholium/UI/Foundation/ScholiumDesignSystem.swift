@@ -520,11 +520,11 @@ enum ScholiumWebDesignTokens {
         let headingLevelDeclarations = headings.levels.enumerated().map { index, level in
             let levelNumber = index + 1
             return """
-            --scholium-document-h\(levelNumber)-size: \(number(level.scale * 100))%;
-            --scholium-appearance-h\(levelNumber)-before: \(number(level.spaceBeforeEm))em;
-            --scholium-appearance-h\(levelNumber)-after: \(number(level.spaceAfterEm))em;
-            --scholium-appearance-h\(levelNumber)-align: \(level.alignment.rawValue);
-            """
+                --scholium-document-h\(levelNumber)-size: \(number(level.scale * 100))%;
+                --scholium-appearance-h\(levelNumber)-before: \(number(level.spaceBeforeEm))em;
+                --scholium-appearance-h\(levelNumber)-after: \(number(level.spaceAfterEm))em;
+                --scholium-appearance-h\(levelNumber)-align: \(level.alignment.rawValue);
+                """
         }.joined(separator: "\n            ")
         return """
             --scholium-document-line-width: \(number(defaults.lineWidthCharacterUnits))ch;
@@ -1417,7 +1417,6 @@ enum ScholiumMetrics {
         static let pathHorizontalInset = ScholiumGrid.foundationUnit * 6
         static let trailingControlMinimumSpacing = ScholiumGrid.Spacing.nestedContentInset
     }
-
 
     enum DocumentWorkflow {
         static let sectionSpacing = ScholiumGrid.foundationUnit * 4.5
@@ -2495,13 +2494,15 @@ final class ScholiumPointerTrackingView: NSView {
     }
 
     private func synchronizePointerWithWindow() {
-        synchronizePointer(locationInWindow: window?.isKeyWindow == true
-            ? window?.mouseLocationOutsideOfEventStream : nil)
+        synchronizePointer(
+            locationInWindow: window?.isKeyWindow == true
+                ? window?.mouseLocationOutsideOfEventStream : nil)
     }
 
     /// Geometry is current truth; an old enter event is not durable hover state.
     func synchronizePointer(locationInWindow: NSPoint?) {
-        let inside = window != nil && !isHiddenOrHasHiddenAncestor
+        let inside =
+            window != nil && !isHiddenOrHasHiddenAncestor
             && locationInWindow.map { bounds.intersection(visibleRect).contains(convert($0, from: nil)) } == true
         setState(isHovering: inside, isPressed: inside && pointerIsPressed)
     }
@@ -2995,24 +2996,26 @@ enum ScholiumChatAppearance {
     }
     static var inlineCodeBackground: NSColor { .quaternaryLabelColor }
     static func inlineCodeCSS(dark: Bool, increasedContrast: Bool) -> String {
-        let name: NSAppearance.Name = increasedContrast
+        let name: NSAppearance.Name =
+            increasedContrast
             ? (dark ? .accessibilityHighContrastDarkAqua : .accessibilityHighContrastAqua)
             : (dark ? .darkAqua : .aqua)
         var background = "transparent"
         NSAppearance(named: name)?.performAsCurrentDrawingAppearance {
             if let color = inlineCodeBackground.usingColorSpace(.sRGB) {
-                background = String(format: "rgba(%.0f, %.0f, %.0f, %.4f)",
+                background = String(
+                    format: "rgba(%.0f, %.0f, %.0f, %.4f)",
                     color.redComponent * 255, color.greenComponent * 255,
                     color.blueComponent * 255, color.alphaComponent)
             }
         }
         return """
-        .scholium-document :not(pre) > code {
-            font-family: 'SFMono-Regular', ui-monospace, monospace;
-            font-size: 1em; line-height: inherit; color: inherit;
-            background: \(background); border: 0; border-radius: 0; padding: 0;
-        }
-        """
+            .scholium-document :not(pre) > code {
+                font-family: 'SFMono-Regular', ui-monospace, monospace;
+                font-size: 1em; line-height: inherit; color: inherit;
+                background: \(background); border: 0; border-radius: 0; padding: 0;
+            }
+            """
     }
 
     static var userMessageBackground: Color { ScholiumColorRole.accent.color.opacity(0.14) }

@@ -3,86 +3,91 @@ import SwiftUI
 
 /// A presentation of observed work, not an interpretation of private reasoning.
 struct AgentChatTurnPresentation: Equatable {
-  enum State: Equatable {
-    case working, responding, reading, searching, writing, organizing, executing
-    case waitingForInput, waitingForApproval, stopping, completed, interrupted, failed, uncertain
-  }
-  let state: State
-  var timing = AgentChatTurnTiming()
-  var pendingAnswers = 0
+    enum State: Equatable {
+        case working, responding, reading, searching, writing, organizing, executing
+        case waitingForInput, waitingForApproval, stopping, completed, interrupted, failed, uncertain
+    }
+    let state: State
+    var timing = AgentChatTurnTiming()
+    var pendingAnswers = 0
 
-  var isWorking: Bool {
-    switch state {
-    case .working, .responding, .reading, .searching, .writing, .organizing, .executing: true
-    default: false
+    var isWorking: Bool {
+        switch state {
+        case .working, .responding, .reading, .searching, .writing, .organizing, .executing: true
+        default: false
+        }
     }
-  }
-  var titleKey: String.LocalizationValue {
-    switch state {
-    case .working: "Considering your question…"
-    case .executing: "Executing a command…"
-    case .responding: "Composing a reply…"
-    case .reading: "Reading material…"
-    case .searching: "Looking through material…"
-    case .writing: "Revising notes…"
-    case .organizing: "Organizing the discussion…"
-    case .waitingForInput: "Waiting for your response"
-    case .waitingForApproval: "Waiting for your permission"
-    case .stopping: "Stopping…"
-    case .completed: "Turn complete"
-    case .interrupted: "Turn stopped"
-    case .failed: "Turn did not complete"
-    case .uncertain: "Turn status unconfirmed"
+    var titleKey: String.LocalizationValue {
+        switch state {
+        case .working: "Considering your question…"
+        case .executing: "Executing a command…"
+        case .responding: "Composing a reply…"
+        case .reading: "Reading material…"
+        case .searching: "Looking through material…"
+        case .writing: "Revising notes…"
+        case .organizing: "Organizing the discussion…"
+        case .waitingForInput: "Waiting for your response"
+        case .waitingForApproval: "Waiting for your permission"
+        case .stopping: "Stopping…"
+        case .completed: "Turn complete"
+        case .interrupted: "Turn stopped"
+        case .failed: "Turn did not complete"
+        case .uncertain: "Turn status unconfirmed"
+        }
     }
-  }
-  func seconds(at now: Date) -> Int? {
-    if isWorking {
-      guard let start = timing.startedAt, now >= start else { return nil }
-      return Int(exactly: now.timeIntervalSince(start).rounded(.down))
+    func seconds(at now: Date) -> Int? {
+        if isWorking {
+            guard let start = timing.startedAt, now >= start else { return nil }
+            return Int(exactly: now.timeIntervalSince(start).rounded(.down))
+        }
+        if state == .completed || state == .interrupted || state == .failed { return timing.completedSeconds }
+        return nil
     }
-    if state == .completed || state == .interrupted || state == .failed { return timing.completedSeconds }
-    return nil
-  }
 
-  func elapsedLabel(at now: Date, locale: Locale = .current) -> String? {
-    guard let seconds = seconds(at: now) else { return nil }
-    let key: String.LocalizationValue = isWorking ? "Working for %lld s" : "Worked for %lld s"
-    return String(format: ScholiumL10n.string(key, locale: locale), seconds)
-  }
+    func elapsedLabel(at now: Date, locale: Locale = .current) -> String? {
+        guard let seconds = seconds(at: now) else { return nil }
+        let key: String.LocalizationValue = isWorking ? "Working for %lld s" : "Worked for %lld s"
+        return String(format: ScholiumL10n.string(key, locale: locale), seconds)
+    }
 }
 
 struct AgentChatTurnStatus: View {
-  let presentation: AgentChatTurnPresentation
-  var animates = true
-  @Environment(\.locale) private var locale
-  @Environment(\.accessibilityReduceMotion) private var reduceMotion
-  @Environment(\.controlActiveState) private var activeState
+    let presentation: AgentChatTurnPresentation
+    var animates = true
+    @Environment(\.locale) private var locale
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.controlActiveState) private var activeState
 
-  var body: some View {
-    TimelineView(.animation(minimumInterval: 1, paused: !presentation.isWorking || !animates || activeState == .inactive)) { context in
-      VStack(alignment: .leading, spacing: 2) {
-      HStack(spacing: 6) {
-        if presentation.state == .completed, let elapsed = presentation.elapsedLabel(at: context.date, locale: locale) {
-          Text(elapsed)
-        } else {
-          Text(ScholiumL10n.string(presentation.titleKey, locale: locale))
-          if let elapsed = presentation.elapsedLabel(at: context.date, locale: locale) {
-            Text("· " + elapsed)
-              .accessibilityHidden(true)
-          }
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1, paused: !presentation.isWorking || !animates || activeState == .inactive)) { context in
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    if presentation.state == .completed, let elapsed = presentation.elapsedLabel(at: context.date, locale: locale) {
+                        Text(elapsed)
+                    } else {
+                        Text(ScholiumL10n.string(presentation.titleKey, locale: locale))
+                        if let elapsed = presentation.elapsedLabel(at: context.date, locale: locale) {
+                            Text("· " + elapsed)
+                                .accessibilityHidden(true)
+                        }
+                    }
+                }
+                if presentation.pendingAnswers > 0 {
+                    Text("\(presentation.pendingAnswers) answers pending", bundle: .module)
+                }
+            }
+            .font(.callout).monospacedDigit().foregroundStyle(.secondary)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(ScholiumL10n.string(presentation.titleKey, locale: locale))
+            .accessibilityValue(
+                [
+                    presentation.elapsedLabel(at: context.date, locale: locale),
+                    presentation.pendingAnswers > 0
+                        ? String(format: ScholiumL10n.string("%lld answers pending", locale: locale), presentation.pendingAnswers) : nil,
+                ]
+                .compactMap { $0 }.joined(separator: ", ")
+            )
+            .help("Elapsed time for this turn, including tools and waits.")
         }
-      }
-      if presentation.pendingAnswers > 0 {
-        Text("\(presentation.pendingAnswers) answers pending", bundle: .module)
-      }
-      }
-      .font(.callout).monospacedDigit().foregroundStyle(.secondary)
-      .accessibilityElement(children: .ignore)
-      .accessibilityLabel(ScholiumL10n.string(presentation.titleKey, locale: locale))
-      .accessibilityValue([presentation.elapsedLabel(at: context.date, locale: locale),
-        presentation.pendingAnswers > 0 ? String(format: ScholiumL10n.string("%lld answers pending", locale: locale), presentation.pendingAnswers) : nil]
-        .compactMap { $0 }.joined(separator: ", "))
-      .help("Elapsed time for this turn, including tools and waits.")
     }
-  }
 }

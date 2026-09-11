@@ -46,8 +46,9 @@ final class EditorExactSourceBuffer {
         var nextUTF8ByteCount = utf8ByteCount
         for delta in ordered {
             guard delta.fromUTF16 >= 0,
-                  delta.toUTF16 >= delta.fromUTF16,
-                  delta.toUTF16 <= sourceLength else {
+                delta.toUTF16 >= delta.fromUTF16,
+                delta.toUTF16 <= sourceLength
+            else {
                 throw MarkdownEditorDeltaError.invalidRange
             }
             guard delta.toUTF16 <= previousLowerBound else {
@@ -61,8 +62,9 @@ final class EditorExactSourceBuffer {
             let removedUTF8ByteCount = storage.substring(with: range).utf8.count
             let insertedUTF8ByteCount = delta.insertion.utf8.count
             guard nextUTF8ByteCount >= removedUTF8ByteCount,
-                  nextUTF8ByteCount - removedUTF8ByteCount
-                    <= Int.max - insertedUTF8ByteCount else {
+                nextUTF8ByteCount - removedUTF8ByteCount
+                    <= Int.max - insertedUTF8ByteCount
+            else {
                 throw MarkdownEditorDeltaError.oversizedResult
             }
             nextUTF8ByteCount += insertedUTF8ByteCount - removedUTF8ByteCount

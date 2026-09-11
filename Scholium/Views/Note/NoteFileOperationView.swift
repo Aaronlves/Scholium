@@ -61,12 +61,15 @@ struct NoteFileOperationView: View {
         }
         .frame(minWidth: 0, idealWidth: 540, minHeight: 0, idealHeight: 460)
         .onAppear { configureDefaults() }
-        .alert("Could Not \(actionTitle)", isPresented: Binding(
-            get: { errorMessage != nil },
-            set: { if !$0 { errorMessage = nil } }
-        )) {
+        .alert(
+            "Could Not \(actionTitle)",
+            isPresented: Binding(
+                get: { errorMessage != nil },
+                set: { if !$0 { errorMessage = nil } }
+            )
+        ) {
             Button("Dismiss", role: .cancel) { errorMessage = nil }
-            .scholiumActivationPointer()
+                .scholiumActivationPointer()
         } message: {
             Text(errorMessage ?? "")
         }
@@ -138,10 +141,12 @@ struct NoteFileOperationView: View {
     private var requestedDestinationPath: String? {
         switch request {
         case .rename(let target):
-            guard let renamed = noteRenameDestination(
-                sourceRelativePath: target.relativePath,
-                requestedName: destination
-            ), renamed != target.relativePath else { return nil }
+            guard
+                let renamed = noteRenameDestination(
+                    sourceRelativePath: target.relativePath,
+                    requestedName: destination
+                ), renamed != target.relativePath
+            else { return nil }
             return renamed
         case .duplicate, .move:
             let trimmed = destination.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -155,7 +160,8 @@ struct NoteFileOperationView: View {
             let base = (target.relativePath as NSString).deletingPathExtension
             destination = base + " Copy.md"
         case .rename(let target):
-            destination = URL(fileURLWithPath: target.relativePath)
+            destination =
+                URL(fileURLWithPath: target.relativePath)
                 .deletingPathExtension()
                 .lastPathComponent
         case .move(let target):
@@ -192,12 +198,14 @@ func noteRenameDestination(
 ) -> String? {
     let name = requestedName.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !name.isEmpty,
-          name != ".",
-          name != "..",
-          !name.contains("/"),
-          !name.contains(":") else { return nil }
-    let fileName = URL(fileURLWithPath: name).pathExtension
-        .caseInsensitiveCompare("md") == .orderedSame
+        name != ".",
+        name != "..",
+        !name.contains("/"),
+        !name.contains(":")
+    else { return nil }
+    let fileName =
+        URL(fileURLWithPath: name).pathExtension
+            .caseInsensitiveCompare("md") == .orderedSame
         ? name
         : name + ".md"
     let parent = (sourceRelativePath as NSString).deletingLastPathComponent

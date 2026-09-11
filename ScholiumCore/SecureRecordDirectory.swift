@@ -13,8 +13,9 @@ final class AdvisoryFileLock: @unchecked Sendable {
         descriptor = try directory.openLockFile(fileName)
         var status = stat()
         guard fstat(descriptor, &status) == 0,
-              (status.st_mode & S_IFMT) == S_IFREG,
-              status.st_nlink == 1 else {
+            (status.st_mode & S_IFMT) == S_IFREG,
+            status.st_nlink == 1
+        else {
             Darwin.close(descriptor)
             throw SecureRecordDirectoryError.unsafe(
                 "The coordination lock is linked or is not a regular file."
@@ -338,9 +339,10 @@ struct SecureRecordDirectory: Sendable {
             }
         } catch let error as SecureRecordDirectoryError {
             var deletingStatus = stat()
-            let stillExists = deletingName.withCString {
-                fstatat(parent, $0, &deletingStatus, AT_SYMLINK_NOFOLLOW)
-            } == 0
+            let stillExists =
+                deletingName.withCString {
+                    fstatat(parent, $0, &deletingStatus, AT_SYMLINK_NOFOLLOW)
+                } == 0
             guard stillExists else { throw error }
             let rollback = deletingName.withCString { source in
                 fileName.withCString { destination in
@@ -367,7 +369,7 @@ struct SecureRecordDirectory: Sendable {
         defer { Darwin.close(parent) }
         let prefix = ".scholium-deleting-"
         for deletingName in try fileNames(parent: parent, includingStaging: true)
-            where deletingName.hasPrefix(prefix) {
+        where deletingName.hasPrefix(prefix) {
             let fileName = String(deletingName.dropFirst(prefix.count))
             try validateFileName(fileName)
             let result = deletingName.withCString { source in
@@ -432,7 +434,8 @@ struct SecureRecordDirectory: Sendable {
         }
         if existingResult == 0 {
             guard (existing.st_mode & S_IFMT) == S_IFREG,
-                  existing.st_nlink == 1 else {
+                existing.st_nlink == 1
+            else {
                 throw SecureRecordDirectoryError.unsafe(
                     "Destination \(fileName) is linked or is not a regular file."
                 )
@@ -460,7 +463,8 @@ struct SecureRecordDirectory: Sendable {
         }
         try Self.writeAll(data, descriptor: temporary)
         guard fchmod(temporary, fileMode) == 0,
-              fsync(temporary) == 0 else {
+            fsync(temporary) == 0
+        else {
             throw unsafe("flush staging file")
         }
         try preCommitFault?(fileName)
@@ -559,14 +563,16 @@ struct SecureRecordDirectory: Sendable {
             }
             var status = stat()
             guard fstat(current, &status) == 0,
-                  (status.st_mode & S_IFMT) == S_IFDIR else {
+                (status.st_mode & S_IFMT) == S_IFDIR
+            else {
                 throw SecureRecordDirectoryError.unsafe(
                     "The storage root is not a directory."
                 )
             }
             if status.st_mode & 0o777 != directoryMode {
                 guard fchmod(current, directoryMode) == 0,
-                      fsync(current) == 0 else {
+                    fsync(current) == 0
+                else {
                     throw unsafe("restrict storage root")
                 }
             }
@@ -616,10 +622,11 @@ struct SecureRecordDirectory: Sendable {
         defer { Darwin.close(descriptor) }
         var before = stat()
         guard fstat(descriptor, &before) == 0,
-              (before.st_mode & S_IFMT) == S_IFREG,
-              before.st_nlink == 1,
-              before.st_size >= 0,
-              before.st_size <= maximumByteCount else {
+            (before.st_mode & S_IFMT) == S_IFREG,
+            before.st_nlink == 1,
+            before.st_size >= 0,
+            before.st_size <= maximumByteCount
+        else {
             throw SecureRecordDirectoryError.unsafe(
                 "Stored JSON \(fileName) is linked, malformed, or too large."
             )
@@ -641,8 +648,9 @@ struct SecureRecordDirectory: Sendable {
         let overflowCount = Darwin.read(descriptor, &overflow, 1)
         var after = stat()
         guard overflowCount == 0,
-              fstat(descriptor, &after) == 0,
-              Self.sameFile(before, after) else {
+            fstat(descriptor, &after) == 0,
+            Self.sameFile(before, after)
+        else {
             throw SecureRecordDirectoryError.unsafe(
                 "Stored JSON \(fileName) changed while it was read."
             )

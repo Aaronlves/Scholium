@@ -9,7 +9,9 @@ public enum AgentMCPService {
         var parser = ZoteroMCPFrameParser()
         func write(_ frame: ZoteroMCPFrame) async {
             guard let data = await handler(frame.body) else { return }
-            let output = frame.mode == .line ? data + Data([10])
+            let output =
+                frame.mode == .line
+                ? data + Data([10])
                 : Data("Content-Length: \(data.count)\r\n\r\n".utf8) + data
             FileHandle.standardOutput.write(output)
         }
@@ -26,11 +28,14 @@ public enum AgentMCPService {
             return { await zotero.handle(requestData: $0, access: .readOnly) }
         }
         guard arguments.count == 4, Array(arguments.prefix(3)) == ["mcp", "serve", "--conversation-token"],
-              let token = UUID(uuidString: arguments[3]) else { throw HelperFailure.unsupportedCommand }
+            let token = UUID(uuidString: arguments[3])
+        else { throw HelperFailure.unsupportedCommand }
         let bridge = try MCPBridgeOperations(applicationSupportURL: ScholiumPaths.appBridgeContainerURL(environment: environment))
         let server = ScholiumMCPServer(conversationToken: token) { request in
-            try await bridge.call(.init(requestID: request.requestID, tool: request.tool,
-                arguments: request.arguments, conversationToken: token, runtimeContext: request.runtimeContext))
+            try await bridge.call(
+                .init(
+                    requestID: request.requestID, tool: request.tool,
+                    arguments: request.arguments, conversationToken: token, runtimeContext: request.runtimeContext))
         }
         return { await server.handle(requestData: $0) }
     }

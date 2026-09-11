@@ -1,6 +1,7 @@
 import Foundation
 import ScholiumContracts
 import Testing
+
 @testable import ScholiumApp
 
 @Suite("Document navigation history controller")
@@ -63,15 +64,16 @@ struct DocumentNavigationHistoryControllerTests {
     private func fixtureDocument(path: String) -> WindowSelectedDocument {
         let vaultID = UUID()
         let noteID = UUID()
-        return .workspace(WindowDocumentDescriptor(
-            sessionKey: DocumentSessionKey(vaultID: vaultID, noteID: noteID),
-            reference: VaultNoteReference(
-                vaultID: vaultID,
-                vaultName: "Fixture Topics",
-                vaultRole: .topicKnowledge,
-                relativePath: path,
-                stableNoteID: noteID.uuidString.lowercased()
-            )
-        ))
+        return .workspace(
+            WindowDocumentDescriptor(
+                sessionKey: DocumentSessionKey(vaultID: vaultID, noteID: noteID),
+                reference: VaultNoteReference(
+                    vaultID: vaultID,
+                    vaultName: "Fixture Topics",
+                    vaultRole: .topicKnowledge,
+                    relativePath: path,
+                    stableNoteID: noteID.uuidString.lowercased()
+                )
+            ))
     }
 }

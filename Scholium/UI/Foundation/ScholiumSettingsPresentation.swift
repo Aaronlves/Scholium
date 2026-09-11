@@ -137,7 +137,7 @@ func settingsPairedGrid<Content: View>(
             GridItem(
                 .flexible(minimum: columnMinimumWidth),
                 spacing: 0
-            )
+            ),
         ],
         alignment: .leading,
         spacing: ScholiumMetrics.Settings.sectionSpacing

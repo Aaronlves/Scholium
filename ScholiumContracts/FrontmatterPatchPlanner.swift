@@ -136,7 +136,8 @@ public enum FrontmatterPatchPlanner {
     ) throws -> String? {
         let analysis = try analyze(frontmatter, newline: newline)
         guard let entry = analysis.entries[key],
-              isOrdinaryScalar(analysis.mapping[key]) else { return nil }
+            isOrdinaryScalar(analysis.mapping[key])
+        else { return nil }
         let range = try scalarTokenRange(
             in: frontmatter,
             key: key,
@@ -157,22 +158,24 @@ public enum FrontmatterPatchPlanner {
         _ entries: [(key: String, value: FrontmatterEditValue)]
     ) throws -> String {
         guard !entries.isEmpty,
-              Set(entries.map(\.key)).count == entries.count,
-              entries.allSatisfy({ entry in
-                  !entry.key.isEmpty
-                      && !entry.key.contains(":")
-                      && !entry.key.contains("#")
-                      && !entry.key.unicodeScalars.contains(where: {
-                          CharacterSet.controlCharacters.contains($0)
-                      })
-              }) else {
+            Set(entries.map(\.key)).count == entries.count,
+            entries.allSatisfy({ entry in
+                !entry.key.isEmpty
+                    && !entry.key.contains(":")
+                    && !entry.key.contains("#")
+                    && !entry.key.unicodeScalars.contains(where: {
+                        CharacterSet.controlCharacters.contains($0)
+                    })
+            })
+        else {
             throw FrontmatterPatchRefusal.ambiguousStructure(
                 "Managed creation requires unique plain top-level YAML keys."
             )
         }
-        let source = entries.flatMap {
-            serialize(key: $0.key, value: $0.value, indent: "")
-        }.joined(separator: "\n") + "\n"
+        let source =
+            entries.flatMap {
+                serialize(key: $0.key, value: $0.value, indent: "")
+            }.joined(separator: "\n") + "\n"
         _ = try analyze(source, newline: "\n")
         return source
     }
@@ -192,10 +195,12 @@ public enum FrontmatterPatchPlanner {
         }
         let mapping = loaded as? [String: Any] ?? [:]
         let lines = splitLines(frontmatter, newline: newline)
-        guard let firstSignificant = lines.first(where: { line in
-            let trimmed = line.content.trimmingCharacters(in: .whitespaces)
-            return !trimmed.isEmpty && !trimmed.hasPrefix("#")
-        }) else {
+        guard
+            let firstSignificant = lines.first(where: { line in
+                let trimmed = line.content.trimmingCharacters(in: .whitespaces)
+                return !trimmed.isEmpty && !trimmed.hasPrefix("#")
+            })
+        else {
             return Analysis(mapping: mapping, entries: [:])
         }
         let rootPrefix = firstSignificant.content.trimmingCharacters(in: .whitespaces)
@@ -229,7 +234,8 @@ public enum FrontmatterPatchPlanner {
             }
             guard text.first?.isWhitespace != true else { continue }
             guard !trimmed.hasPrefix("?"), !trimmed.hasPrefix("---"),
-                  !trimmed.hasPrefix("...") else {
+                !trimmed.hasPrefix("...")
+            else {
                 throw FrontmatterPatchRefusal.ambiguousStructure(
                     "complex keys and nested YAML documents are not patchable",
                     position: FrontmatterSourcePosition(line: lineIndex + 1, column: 1)
@@ -277,20 +283,22 @@ public enum FrontmatterPatchPlanner {
                 line.contentRange.lowerBound,
                 offsetBy: colonOffset
             )
-            candidates.append(Candidate(
-                key: rawKey,
-                lineIndex: lineIndex,
-                colon: absoluteColon
-            ))
+            candidates.append(
+                Candidate(
+                    key: rawKey,
+                    lineIndex: lineIndex,
+                    colon: absoluteColon
+                ))
         }
 
         var entries: [String: Entry] = [:]
         for candidate in candidates {
             let line = lines[candidate.lineIndex]
-            let end = lines[(candidate.lineIndex + 1)...].first(where: { next in
-                let trimmed = next.content.trimmingCharacters(in: .whitespaces)
-                return !trimmed.isEmpty && next.content.first?.isWhitespace != true
-            })?.fullRange.lowerBound ?? frontmatter.endIndex
+            let end =
+                lines[(candidate.lineIndex + 1)...].first(where: { next in
+                    let trimmed = next.content.trimmingCharacters(in: .whitespaces)
+                    return !trimmed.isEmpty && next.content.first?.isWhitespace != true
+                })?.fullRange.lowerBound ?? frontmatter.endIndex
             entries[candidate.key] = Entry(
                 key: candidate.key,
                 line: line,
@@ -309,8 +317,8 @@ public enum FrontmatterPatchPlanner {
         guard let yamlError = error as? YamlError else { return nil }
         switch yamlError {
         case .scanner(_, _, let mark, _),
-             .parser(_, _, let mark, _),
-             .composer(_, _, let mark, _):
+            .parser(_, _, let mark, _),
+            .composer(_, _, let mark, _):
             return FrontmatterSourcePosition(line: mark.line, column: mark.column)
         case .duplicatedKeysInMapping(_, let context):
             return FrontmatterSourcePosition(
@@ -319,24 +327,26 @@ public enum FrontmatterPatchPlanner {
             )
         case .reader(_, let offset, _, _):
             guard let offset,
-                  let index = source.index(
+                let index = source.index(
                     source.startIndex,
                     offsetBy: offset,
                     limitedBy: source.endIndex
-                  ) else { return nil }
+                )
+            else { return nil }
             let prefix = source[..<index]
             let line = prefix.reduce(into: 1) { count, character in
                 if character == "\n" { count += 1 }
             }
-            let lineStart = prefix.lastIndex(of: "\n").map {
-                source.index(after: $0)
-            } ?? source.startIndex
+            let lineStart =
+                prefix.lastIndex(of: "\n").map {
+                    source.index(after: $0)
+                } ?? source.startIndex
             return FrontmatterSourcePosition(
                 line: line,
                 column: source[lineStart..<index].unicodeScalars.count + 1
             )
         case .no, .memory, .writer, .emitter, .representer,
-             .dataCouldNotBeDecoded:
+            .dataCouldNotBeDecoded:
             return nil
         }
     }
@@ -351,7 +361,8 @@ public enum FrontmatterPatchPlanner {
     ) throws -> String {
         if case .remove = edit {
             if isOrdinaryScalar(semanticValue),
-               hasStructuredContinuation(in: frontmatter, entry: entry) {
+                hasStructuredContinuation(in: frontmatter, entry: entry)
+            {
                 throw FrontmatterPatchRefusal.unsupportedExistingValue(key)
             }
             var result = frontmatter
@@ -370,7 +381,8 @@ public enum FrontmatterPatchPlanner {
             )
         }
         if let mapping = semanticValue as? [String: Any],
-           case .mapping(let desired) = edit {
+            case .mapping(let desired) = edit
+        {
             return try patchBlockMapping(
                 frontmatter,
                 key: key,
@@ -381,11 +393,12 @@ public enum FrontmatterPatchPlanner {
             )
         }
         if semanticValue is [Any], edit.isSequenceEdit {
-            let replacement = serialize(
-                key: key,
-                value: edit,
-                indent: entry.indentation
-            ).joined(separator: newline)
+            let replacement =
+                serialize(
+                    key: key,
+                    value: edit,
+                    indent: entry.indentation
+                ).joined(separator: newline)
                 + (String(frontmatter[entry.fullRange]).hasSuffix(newline) ? newline : "")
             var result = frontmatter
             result.replaceSubrange(entry.fullRange, with: replacement)
@@ -485,37 +498,41 @@ public enum FrontmatterPatchPlanner {
 
         for (childKey, childEntry) in children {
             guard let requested = desired[childKey], requested != .remove else {
-                operations.append(PatchOperation(
-                    range: childEntry.fullRange,
-                    replacement: ""
-                ))
+                operations.append(
+                    PatchOperation(
+                        range: childEntry.fullRange,
+                        replacement: ""
+                    ))
                 continue
             }
             let existing = semanticMapping[childKey]
             if semanticMatches(existing, requested) { continue }
 
             if isOrdinaryScalar(existing), let replacement = scalar(requested) {
-                operations.append(PatchOperation(
-                    range: try scalarTokenRange(
-                        in: frontmatter,
-                        key: "\(key).\(childKey)",
-                        entry: childEntry
-                    ),
-                    replacement: replacement
-                ))
+                operations.append(
+                    PatchOperation(
+                        range: try scalarTokenRange(
+                            in: frontmatter,
+                            key: "\(key).\(childKey)",
+                            entry: childEntry
+                        ),
+                        replacement: replacement
+                    ))
                 continue
             }
             if existing is [Any], requested.isSequenceEdit {
-                let serialized = serialize(
-                    key: childKey,
-                    value: requested,
-                    indent: childEntry.indentation
-                ).joined(separator: newline)
+                let serialized =
+                    serialize(
+                        key: childKey,
+                        value: requested,
+                        indent: childEntry.indentation
+                    ).joined(separator: newline)
                     + (String(frontmatter[childEntry.fullRange]).hasSuffix(newline) ? newline : "")
-                operations.append(PatchOperation(
-                    range: childEntry.fullRange,
-                    replacement: serialized
-                ))
+                operations.append(
+                    PatchOperation(
+                        range: childEntry.fullRange,
+                        replacement: serialized
+                    ))
                 continue
             }
             throw FrontmatterPatchRefusal.unsupportedExistingValue(
@@ -535,12 +552,13 @@ public enum FrontmatterPatchPlanner {
                 throw FrontmatterPatchRefusal.unsupportedExistingValue(key)
             }
             let parentText = String(frontmatter[entry.fullRange])
-            operations.append(PatchOperation(
-                range: entry.fullRange.upperBound..<entry.fullRange.upperBound,
-                replacement: (parentText.hasSuffix(newline) ? "" : newline)
-                    + serialized
-                    + (parentText.hasSuffix(newline) ? newline : "")
-            ))
+            operations.append(
+                PatchOperation(
+                    range: entry.fullRange.upperBound..<entry.fullRange.upperBound,
+                    replacement: (parentText.hasSuffix(newline) ? "" : newline)
+                        + serialized
+                        + (parentText.hasSuffix(newline) ? newline : "")
+                ))
         }
 
         return applying(operations, to: frontmatter)
@@ -553,9 +571,11 @@ public enum FrontmatterPatchPlanner {
         newline: String
     ) throws -> [String: Entry] {
         let lines = splitLines(frontmatter, newline: newline)
-        guard let parentLineIndex = lines.firstIndex(where: {
-            $0.fullRange.lowerBound == parent.line.fullRange.lowerBound
-        }) else {
+        guard
+            let parentLineIndex = lines.firstIndex(where: {
+                $0.fullRange.lowerBound == parent.line.fullRange.lowerBound
+            })
+        else {
             throw FrontmatterPatchRefusal.ambiguousStructure(
                 "the target mapping boundary could not be recovered"
             )
@@ -578,9 +598,10 @@ public enum FrontmatterPatchPlanner {
             return [:]
         }
 
-        let indentCount = structuralIndices.map {
-            leadingSpaceCount(lines[$0].content)
-        }.min() ?? 0
+        let indentCount =
+            structuralIndices.map {
+                leadingSpaceCount(lines[$0].content)
+            }.min() ?? 0
         guard indentCount > 0 else {
             throw FrontmatterPatchRefusal.ambiguousStructure(
                 "the target mapping indentation cannot be bounded"
@@ -612,8 +633,9 @@ public enum FrontmatterPatchPlanner {
 
             let text = String(line.content.dropFirst(indentCount))
             guard !containsAliasOrAnchorSyntax(text),
-                  !text.hasPrefix("?"),
-                  let colonOffset = firstMappingColon(in: text) else {
+                !text.hasPrefix("?"),
+                let colonOffset = firstMappingColon(in: text)
+            else {
                 throw FrontmatterPatchRefusal.ambiguousStructure(
                     "a target member is not an ordinary bounded key"
                 )
@@ -621,9 +643,10 @@ public enum FrontmatterPatchPlanner {
             let colon = text.index(text.startIndex, offsetBy: colonOffset)
             let rawKey = text[..<colon].trimmingCharacters(in: .whitespaces)
             guard !rawKey.isEmpty,
-                  rawKey.first != "\"", rawKey.first != "'",
-                  rawKey != "<<", isPlainBoundedKey(rawKey),
-                  seenKeys.insert(rawKey).inserted else {
+                rawKey.first != "\"", rawKey.first != "'",
+                rawKey != "<<", isPlainBoundedKey(rawKey),
+                seenKeys.insert(rawKey).inserted
+            else {
                 throw FrontmatterPatchRefusal.ambiguousStructure(
                     "a target member key is duplicated or semantically ambiguous"
                 )
@@ -632,11 +655,12 @@ public enum FrontmatterPatchPlanner {
                 line.contentRange.lowerBound,
                 offsetBy: indentCount + colonOffset
             )
-            candidates.append(ChildCandidate(
-                key: rawKey,
-                lineIndex: index,
-                colon: absoluteColon
-            ))
+            candidates.append(
+                ChildCandidate(
+                    key: rawKey,
+                    lineIndex: index,
+                    colon: absoluteColon
+                ))
         }
 
         guard Set(candidates.map(\.key)) == semanticKeys else {
@@ -648,14 +672,15 @@ public enum FrontmatterPatchPlanner {
         var entries: [String: Entry] = [:]
         for candidate in candidates {
             let line = lines[candidate.lineIndex]
-            let end = lines[(candidate.lineIndex + 1)...].first(where: { next in
-                guard next.fullRange.lowerBound < parent.fullRange.upperBound else {
-                    return true
-                }
-                let trimmed = next.content.trimmingCharacters(in: .whitespaces)
-                guard !trimmed.isEmpty else { return false }
-                return leadingSpaceCount(next.content) <= indentCount
-            })?.fullRange.lowerBound ?? parent.fullRange.upperBound
+            let end =
+                lines[(candidate.lineIndex + 1)...].first(where: { next in
+                    guard next.fullRange.lowerBound < parent.fullRange.upperBound else {
+                        return true
+                    }
+                    let trimmed = next.content.trimmingCharacters(in: .whitespaces)
+                    guard !trimmed.isEmpty else { return false }
+                    return leadingSpaceCount(next.content) <= indentCount
+                })?.fullRange.lowerBound ?? parent.fullRange.upperBound
             entries[candidate.key] = Entry(
                 key: candidate.key,
                 line: line,
@@ -737,18 +762,20 @@ public enum FrontmatterPatchPlanner {
         var start = text.startIndex
         while start < text.endIndex {
             if let delimiter = text.range(of: newline, range: start..<text.endIndex) {
-                result.append(Line(
-                    content: String(text[start..<delimiter.lowerBound]),
-                    contentRange: start..<delimiter.lowerBound,
-                    fullRange: start..<delimiter.upperBound
-                ))
+                result.append(
+                    Line(
+                        content: String(text[start..<delimiter.lowerBound]),
+                        contentRange: start..<delimiter.lowerBound,
+                        fullRange: start..<delimiter.upperBound
+                    ))
                 start = delimiter.upperBound
             } else {
-                result.append(Line(
-                    content: String(text[start..<text.endIndex]),
-                    contentRange: start..<text.endIndex,
-                    fullRange: start..<text.endIndex
-                ))
+                result.append(
+                    Line(
+                        content: String(text[start..<text.endIndex]),
+                        contentRange: start..<text.endIndex,
+                        fullRange: start..<text.endIndex
+                    ))
                 break
             }
         }
@@ -760,10 +787,22 @@ public enum FrontmatterPatchPlanner {
         var doubleQuoted = false
         var escaped = false
         for (offset, character) in line.enumerated() {
-            if escaped { escaped = false; continue }
-            if character == "\\", doubleQuoted { escaped = true; continue }
-            if character == "'", !doubleQuoted { singleQuoted.toggle(); continue }
-            if character == "\"", !singleQuoted { doubleQuoted.toggle(); continue }
+            if escaped {
+                escaped = false
+                continue
+            }
+            if character == "\\", doubleQuoted {
+                escaped = true
+                continue
+            }
+            if character == "'", !doubleQuoted {
+                singleQuoted.toggle()
+                continue
+            }
+            if character == "\"", !singleQuoted {
+                doubleQuoted.toggle()
+                continue
+            }
             if character == ":", !singleQuoted, !doubleQuoted { return offset }
         }
         return nil
@@ -775,8 +814,15 @@ public enum FrontmatterPatchPlanner {
         var escaped = false
         var previousWasWhitespace = true
         for (offset, character) in value.enumerated() {
-            if escaped { escaped = false; previousWasWhitespace = character.isWhitespace; continue }
-            if character == "\\", doubleQuoted { escaped = true; continue }
+            if escaped {
+                escaped = false
+                previousWasWhitespace = character.isWhitespace
+                continue
+            }
+            if character == "\\", doubleQuoted {
+                escaped = true
+                continue
+            }
             if character == "'", !doubleQuoted { singleQuoted.toggle() }
             if character == "\"", !singleQuoted { doubleQuoted.toggle() }
             if character == "#", !singleQuoted, !doubleQuoted, previousWasWhitespace {
@@ -793,13 +839,27 @@ public enum FrontmatterPatchPlanner {
         var escaped = false
         var previousWasBoundary = true
         for character in line {
-            if escaped { escaped = false; previousWasBoundary = character.isWhitespace; continue }
-            if character == "\\", doubleQuoted { escaped = true; continue }
-            if character == "'", !doubleQuoted { singleQuoted.toggle(); continue }
-            if character == "\"", !singleQuoted { doubleQuoted.toggle(); continue }
+            if escaped {
+                escaped = false
+                previousWasBoundary = character.isWhitespace
+                continue
+            }
+            if character == "\\", doubleQuoted {
+                escaped = true
+                continue
+            }
+            if character == "'", !doubleQuoted {
+                singleQuoted.toggle()
+                continue
+            }
+            if character == "\"", !singleQuoted {
+                doubleQuoted.toggle()
+                continue
+            }
             if character == "#", !singleQuoted, !doubleQuoted { return false }
-            if (character == "&" || character == "*"),
-               !singleQuoted, !doubleQuoted, previousWasBoundary {
+            if character == "&" || character == "*",
+                !singleQuoted, !doubleQuoted, previousWasBoundary
+            {
                 return true
             }
             previousWasBoundary = character.isWhitespace || character == ":" || character == "["
@@ -851,17 +911,19 @@ public enum FrontmatterPatchPlanner {
                 : ["\(prefix):"] + values.map { "\(indent)  - \(quote($0))" }
         case .sequence(let values):
             guard !values.isEmpty else { return ["\(prefix): []"] }
-            return ["\(prefix):"] + values.flatMap {
-                serializeSequenceItem($0, indent: indent + "  ")
-            }
+            return ["\(prefix):"]
+                + values.flatMap {
+                    serializeSequenceItem($0, indent: indent + "  ")
+                }
         case .mapping(let values):
             if values.isEmpty { return ["\(prefix): {}"] }
-            return ["\(prefix):"] + orderedMappingKeys(values).flatMap {
-                nestedKey -> [String] in
-                guard let nestedValue = values[nestedKey] else { return [] }
-                if case .remove = nestedValue { return [] }
-                return serialize(key: nestedKey, value: nestedValue, indent: indent + "  ")
-            }
+            return ["\(prefix):"]
+                + orderedMappingKeys(values).flatMap {
+                    nestedKey -> [String] in
+                    guard let nestedValue = values[nestedKey] else { return [] }
+                    if case .remove = nestedValue { return [] }
+                    return serialize(key: nestedKey, value: nestedValue, indent: indent + "  ")
+                }
         case .remove:
             return []
         }
@@ -889,9 +951,10 @@ public enum FrontmatterPatchPlanner {
         case .array(let values):
             return ["\(indent)-"] + values.map { "\(indent)  - \(quote($0))" }
         case .sequence(let values):
-            return ["\(indent)-"] + values.flatMap {
-                serializeSequenceItem($0, indent: indent + "  ")
-            }
+            return ["\(indent)-"]
+                + values.flatMap {
+                    serializeSequenceItem($0, indent: indent + "  ")
+                }
         case .remove:
             return []
         case .string, .integer, .double, .boolean:
@@ -906,7 +969,8 @@ public enum FrontmatterPatchPlanner {
         let containsControl = value.unicodeScalars.contains {
             CharacterSet.controlCharacters.contains($0)
         }
-        let ambiguous = matchesImplicitNonString(value)
+        let ambiguous =
+            matchesImplicitNonString(value)
             || ["true", "false", "null", "~", ".nan", ".inf", "-.inf", "+.inf"].contains(lower)
             || Int(value) != nil || Double(value) != nil
             || value.contains(":") || value.contains("#") || value.contains("[")
@@ -934,9 +998,11 @@ public enum FrontmatterPatchPlanner {
 
     private static func matches(_ value: String, rule: Resolver.Rule) -> Bool {
         let range = NSRange(value.startIndex..., in: value)
-        guard let expression = try? NSRegularExpression(
-            pattern: rule.pattern
-        ) else { return false }
+        guard
+            let expression = try? NSRegularExpression(
+                pattern: rule.pattern
+            )
+        else { return false }
         return expression.firstMatch(in: value, range: range) != nil
     }
 
@@ -951,11 +1017,12 @@ public enum FrontmatterPatchPlanner {
         case .array(let values): .array(values.map(YAMLValue.string))
         case .sequence(let values): .array(values.compactMap(semanticValue))
         case .mapping(let values):
-            .object(values.reduce(into: [:]) { result, entry in
-                if let value = semanticValue(for: entry.value) {
-                    result[entry.key] = value
-                }
-            })
+            .object(
+                values.reduce(into: [:]) { result, entry in
+                    if let value = semanticValue(for: entry.value) {
+                        result[entry.key] = value
+                    }
+                })
         case .remove: nil
         }
     }
@@ -968,11 +1035,12 @@ public enum FrontmatterPatchPlanner {
         case let value as Double: .double(value)
         case let values as [Any]: .array(values.compactMap(projectedYAMLValue))
         case let values as [String: Any]:
-            .object(values.reduce(into: [:]) { result, entry in
-                if let value = projectedYAMLValue(entry.value) {
-                    result[entry.key] = value
-                }
-            })
+            .object(
+                values.reduce(into: [:]) { result, entry in
+                    if let value = projectedYAMLValue(entry.value) {
+                        result[entry.key] = value
+                    }
+                })
         default: nil
         }
     }

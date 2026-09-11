@@ -1,7 +1,7 @@
-import ScholiumContracts
 import Foundation
-import ScholiumCore
 import OSLog
+import ScholiumContracts
+import ScholiumCore
 
 /// Application-facing bridge for the machine-local registry recovery actions.
 /// It does not inspect or mutate any vault source files.
@@ -37,9 +37,7 @@ public actor WorkspaceRuntime {
             workspaceRegistryStorageURL: URL? = nil
         ) {
             self.applicationSupportURL = applicationSupportURL.standardizedFileURL
-            self.workspaceRegistryStorageURL = (
-                workspaceRegistryStorageURL ?? applicationSupportURL
-            ).standardizedFileURL
+            self.workspaceRegistryStorageURL = (workspaceRegistryStorageURL ?? applicationSupportURL).standardizedFileURL
         }
     }
 
@@ -56,9 +54,7 @@ public actor WorkspaceRuntime {
             defaultWorkspaceID: UUID? = nil
         ) {
             self.applicationSupportURL = applicationSupportURL.standardizedFileURL
-            self.workspaceRegistryStorageURL = (
-                workspaceRegistryStorageURL ?? applicationSupportURL
-            ).standardizedFileURL
+            self.workspaceRegistryStorageURL = (workspaceRegistryStorageURL ?? applicationSupportURL).standardizedFileURL
             self.assignments = assignments
             self.defaultWorkspaceID = defaultWorkspaceID
         }
@@ -165,12 +161,14 @@ public actor WorkspaceRuntime {
         let registry = WorkspaceRegistry(storageURL: workspaceRegistryStorageURL)
         let assignments = try await registry.allTriptychs()
         let defaultWorkspaceID = try await registry.defaultTriptych()?.id
-        return WorkspaceRuntime(configuration: .snapshot(.init(
-            applicationSupportURL: applicationSupportURL,
-            workspaceRegistryStorageURL: workspaceRegistryStorageURL,
-            assignments: assignments,
-            defaultWorkspaceID: defaultWorkspaceID
-        )))
+        return WorkspaceRuntime(
+            configuration: .snapshot(
+                .init(
+                    applicationSupportURL: applicationSupportURL,
+                    workspaceRegistryStorageURL: workspaceRegistryStorageURL,
+                    assignments: assignments,
+                    defaultWorkspaceID: defaultWorkspaceID
+                )))
     }
 
     public func availableWorkspaces() async throws -> [TriptychAssignment] {
@@ -198,8 +196,9 @@ public actor WorkspaceRuntime {
             throw ScholiumApplicationError.runtimeConfigurationUnavailable
         }
         guard handles[id] == nil,
-              openings[id] == nil,
-              !retainedHandles.values.contains(where: { $0.assignment.id == id }) else {
+            openings[id] == nil,
+            !retainedHandles.values.contains(where: { $0.assignment.id == id })
+        else {
             throw ScholiumApplicationError.workspaceRegistrationInUse(id)
         }
         try await registry.removeTriptychRegistration(id: id)
@@ -219,8 +218,9 @@ public actor WorkspaceRuntime {
             throw ScholiumApplicationError.runtimeConfigurationUnavailable
         }
         if let triptychID,
-           handles[triptychID] != nil || openings[triptychID] != nil
-                || retainedHandles.values.contains(where: { $0.assignment.id == triptychID }) {
+            handles[triptychID] != nil || openings[triptychID] != nil
+                || retainedHandles.values.contains(where: { $0.assignment.id == triptychID })
+        {
             throw ScholiumApplicationError.workspaceRegistrationInUse(triptychID)
         }
         let container = portableContainerURL.resolvingSymlinksInPath().standardizedFileURL
@@ -253,8 +253,9 @@ public actor WorkspaceRuntime {
             throw ScholiumApplicationError.runtimeConfigurationUnavailable
         }
         guard handles[triptychID] == nil,
-              openings[triptychID] == nil,
-              !retainedHandles.values.contains(where: { $0.assignment.id == triptychID }) else {
+            openings[triptychID] == nil,
+            !retainedHandles.values.contains(where: { $0.assignment.id == triptychID })
+        else {
             throw ScholiumApplicationError.workspaceRegistrationInUse(triptychID)
         }
         let container = portableContainerURL.resolvingSymlinksInPath().standardizedFileURL
@@ -268,7 +269,8 @@ public actor WorkspaceRuntime {
         }
         let scopeStarted = portableContainerURL.startAccessingSecurityScopedResource()
         defer { if scopeStarted { portableContainerURL.stopAccessingSecurityScopedResource() } }
-        let coordinationURL = applicationSupportURL
+        let coordinationURL =
+            applicationSupportURL
             .appendingPathComponent("Triptychs", isDirectory: true)
             .appendingPathComponent(triptychID.uuidString, isDirectory: true)
         let store = try TriptychControlStore(
@@ -309,7 +311,8 @@ public actor WorkspaceRuntime {
         case .snapshot:
             let vaults = try await registeredVaults()
             if let id = UUID(uuidString: selector),
-               let match = vaults.first(where: { $0.id == id }) {
+                let match = vaults.first(where: { $0.id == id })
+            {
                 return match
             }
             let standardizedPath = URL(
@@ -386,7 +389,8 @@ public actor WorkspaceRuntime {
         let replacements = await detachReplacements(
             affectedIDs.map { (cacheID: $0, workspaceID: $0) }
         )
-        let detachedVaults = replacements.isEmpty
+        let detachedVaults =
+            replacements.isEmpty
             ? [:]
             : await detachVaultAuthorities([updated.id])
         _ = try await completeReplacements(
@@ -506,8 +510,9 @@ public actor WorkspaceRuntime {
             )
         }
         guard let analysesID = plannedIdentityIDs[.paperAnalysis],
-              let topicsID = plannedIdentityIDs[.topicKnowledge],
-              let worksID = plannedIdentityIDs[.output] else {
+            let topicsID = plannedIdentityIDs[.topicKnowledge],
+            let worksID = plannedIdentityIDs[.output]
+        else {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
         let requestedPortableID = portableManifest?.id ?? triptychID ?? worksID
@@ -542,9 +547,10 @@ public actor WorkspaceRuntime {
         let portableID = portableManifest?.id
         var remappedWorkspaceIDs: [UUID: UUID] = [:]
         if let triptychID,
-           let portableID,
-           triptychID != portableID,
-           try await registry.triptych(id: triptychID) != nil {
+            let portableID,
+            triptychID != portableID,
+            try await registry.triptych(id: triptychID) != nil
+        {
             _ = try await registry.reidentifyTriptych(id: triptychID, as: portableID)
             remappedWorkspaceIDs[triptychID] = portableID
         }
@@ -613,20 +619,24 @@ public actor WorkspaceRuntime {
 
     public func portableContainerURL(forWorksURL worksURL: URL) async -> URL? {
         guard !isShutDown,
-              case .live(let registry, _) = membership,
-              let access = try? await registry.portableAccess(forWorksURL: worksURL) else {
+            case .live(let registry, _) = membership,
+            let access = try? await registry.portableAccess(forWorksURL: worksURL)
+        else {
             return nil
         }
         var stale = false
-        guard let resolved = try? URL(
-            resolvingBookmarkData: access.bookmarkData,
-            options: [.withSecurityScope],
-            relativeTo: nil,
-            bookmarkDataIsStale: &stale
-        ), !stale else { return nil }
+        guard
+            let resolved = try? URL(
+                resolvingBookmarkData: access.bookmarkData,
+                options: [.withSecurityScope],
+                relativeTo: nil,
+                bookmarkDataIsStale: &stale
+            ), !stale
+        else { return nil }
         let canonical = resolved.resolvingSymlinksInPath().standardizedFileURL
         guard canonical.path == access.canonicalContainerPath,
-              resolved.startAccessingSecurityScopedResource() else { return nil }
+            resolved.startAccessingSecurityScopedResource()
+        else { return nil }
         resolved.stopAccessingSecurityScopedResource()
         return canonical
     }
@@ -659,8 +669,9 @@ public actor WorkspaceRuntime {
             throw error
         }
         guard manifest.schemaVersion == TriptychManifest.currentSchemaVersion,
-              Set(manifest.vaultIDs.keys) == Set(WorkspaceVaultSlot.allCases),
-              Set(manifest.vaultIDs.values).count == WorkspaceVaultSlot.allCases.count else {
+            Set(manifest.vaultIDs.keys) == Set(WorkspaceVaultSlot.allCases),
+            Set(manifest.vaultIDs.values).count == WorkspaceVaultSlot.allCases.count
+        else {
             throw ScholiumApplicationError.portableControlRecoveryRequired(
                 controlPath: manifestURL.deletingLastPathComponent().path,
                 reason: TriptychControlError.invalidManifest.localizedDescription
@@ -708,10 +719,12 @@ public actor WorkspaceRuntime {
                 .isDirectoryKey,
                 .isSymbolicLinkKey,
             ])
-        } catch let error as CocoaError where [
-            .fileReadNoSuchFile,
-            .fileNoSuchFile,
-        ].contains(error.code) {
+        } catch let error as CocoaError
+            where [
+                .fileReadNoSuchFile,
+                .fileNoSuchFile,
+            ].contains(error.code)
+        {
             return
         }
         guard values.isDirectory == true, values.isSymbolicLink != true else {
@@ -873,11 +886,12 @@ public actor WorkspaceRuntime {
             guard let previous = handles.removeValue(forKey: mapping.cacheID) else {
                 continue
             }
-            replacements.append(Replacement(
-                previousCacheID: mapping.cacheID,
-                previous: previous,
-                workspaceID: mapping.workspaceID
-            ))
+            replacements.append(
+                Replacement(
+                    previousCacheID: mapping.cacheID,
+                    previous: previous,
+                    workspaceID: mapping.workspaceID
+                ))
         }
         return replacements
     }
@@ -902,7 +916,8 @@ public actor WorkspaceRuntime {
             // has opened. Peers cannot observe a half-completed handoff.
             for replacement in replacements {
                 guard let successor = successors[replacement.workspaceID],
-                      let snapshot = successorSnapshots[replacement.workspaceID] else {
+                    let snapshot = successorSnapshots[replacement.workspaceID]
+                else {
                     continue
                 }
                 await replacement.previous.announceRuntimeReplacement(
@@ -933,7 +948,8 @@ public actor WorkspaceRuntime {
                 // after reidentification it is retained solely for consumers
                 // that already borrowed it and for deterministic shutdown.
                 if replacement.previousCacheID == replacement.workspaceID,
-                   handles[replacement.previousCacheID] == nil {
+                    handles[replacement.previousCacheID] == nil
+                {
                     handles[replacement.previousCacheID] = replacement.previous
                 } else {
                     retainedHandles[replacement.previous.runtimeIdentity.activationID] =
@@ -986,9 +1002,11 @@ public actor WorkspaceRuntime {
             }
             let handleVaultIDs = Set(handle.assignment.vaults.values.map(\.id))
             let invalidRootsInHandle = handleVaultIDs.intersection(forcingVaultIDs)
-            guard forcedIDs.contains(cacheID)
+            guard
+                forcedIDs.contains(cacheID)
                     || !invalidRootsInHandle.isEmpty
-                    || handle.assignment != current else {
+                    || handle.assignment != current
+            else {
                 continue
             }
             mappings.append((cacheID, workspaceID))

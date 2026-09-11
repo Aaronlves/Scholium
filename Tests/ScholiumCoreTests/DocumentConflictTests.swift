@@ -1,5 +1,6 @@
-import Testing
 import ScholiumContracts
+import Testing
+
 @testable import ScholiumCore
 
 @Suite("Document conflict comparison")

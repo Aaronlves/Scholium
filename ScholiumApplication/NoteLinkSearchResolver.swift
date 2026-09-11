@@ -26,11 +26,13 @@ enum NoteLinkSearchResolver {
                 searchGeneration: searchGeneration
             )
         }
-        return Resolution(matches: [:], diagnostic: diagnostic(
-            .notApplicable,
-            "Direct link clauses are not applicable to This Note occurrence Search.",
-            range: query.sourceRange
-        ))
+        return Resolution(
+            matches: [:],
+            diagnostic: diagnostic(
+                .notApplicable,
+                "Direct link clauses are not applicable to This Note occurrence Search.",
+                range: query.sourceRange
+            ))
     }
 
     private static func resolveAuthorized(
@@ -48,51 +50,61 @@ enum NoteLinkSearchResolver {
         }
         guard anchors.count == 1, let anchor = anchors.first else {
             if anchors.isEmpty {
-                return Resolution(matches: [:], diagnostic: diagnostic(
-                    .notApplicable,
-                    "No authorized Note has the exact link identity ‘\(query.noteIdentity)’.",
-                    range: query.sourceRange
-                ))
+                return Resolution(
+                    matches: [:],
+                    diagnostic: diagnostic(
+                        .notApplicable,
+                        "No authorized Note has the exact link identity ‘\(query.noteIdentity)’.",
+                        range: query.sourceRange
+                    ))
             }
             let candidates = anchors.map {
                 "\($0.reference.vaultName)/\($0.reference.relativePath)"
             }.sorted().joined(separator: ", ")
-            return Resolution(matches: [:], diagnostic: diagnostic(
-                .ambiguousIdentity,
-                "The link identity ‘\(query.noteIdentity)’ is ambiguous: \(candidates).",
-                range: query.sourceRange
-            ))
+            return Resolution(
+                matches: [:],
+                diagnostic: diagnostic(
+                    .ambiguousIdentity,
+                    "The link identity ‘\(query.noteIdentity)’ is ambiguous: \(candidates).",
+                    range: query.sourceRange
+                ))
         }
         guard let graph = catalog.graph,
-              let searchGeneration,
-              graph.sourceManifestHash == searchGeneration.sourceManifestHash else {
-            return Resolution(matches: [:], diagnostic: diagnostic(
-                .notApplicable,
-                "Direct link Search is unavailable until Graph and Note Search share one complete source manifest.",
-                range: query.sourceRange
-            ))
+            let searchGeneration,
+            graph.sourceManifestHash == searchGeneration.sourceManifestHash
+        else {
+            return Resolution(
+                matches: [:],
+                diagnostic: diagnostic(
+                    .notApplicable,
+                    "Direct link Search is unavailable until Graph and Note Search share one complete source manifest.",
+                    range: query.sourceRange
+                ))
         }
 
         let anchorID = VaultQualifiedNoteID(
             vaultID: anchor.reference.vaultID,
             relativePath: anchor.reference.relativePath
         )
-        let authorizedIDs = Set(authorizedNotes.map {
-            VaultQualifiedNoteID(
-                vaultID: $0.reference.vaultID,
-                relativePath: $0.reference.relativePath
-            )
-        })
+        let authorizedIDs = Set(
+            authorizedNotes.map {
+                VaultQualifiedNoteID(
+                    vaultID: $0.reference.vaultID,
+                    relativePath: $0.reference.relativePath
+                )
+            })
         var matches: [VaultQualifiedNoteID: SearchLinkMatch] = [:]
-        let edges: [LinkGraphEdge] = switch query.direction {
-        case .fromNote: graph.outgoing[anchorID] ?? []
-        case .toNote: graph.incoming[anchorID] ?? []
-        }
-        for edge in edges {
-            let target: VaultQualifiedNoteID? = switch query.direction {
-            case .fromNote: edge.destination?.note
-            case .toNote: edge.source
+        let edges: [LinkGraphEdge] =
+            switch query.direction {
+            case .fromNote: graph.outgoing[anchorID] ?? []
+            case .toNote: graph.incoming[anchorID] ?? []
             }
+        for edge in edges {
+            let target: VaultQualifiedNoteID? =
+                switch query.direction {
+                case .fromNote: edge.destination?.note
+                case .toNote: edge.source
+                }
             guard let target, target != anchorID, authorizedIDs.contains(target) else { continue }
             let occurrence = SearchLinkOccurrence(sourceNote: edge.source, occurrence: edge.occurrence)
             let occurrences = Array(Set((matches[target]?.occurrences ?? []) + [occurrence])).sorted {

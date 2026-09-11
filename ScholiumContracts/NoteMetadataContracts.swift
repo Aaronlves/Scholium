@@ -41,12 +41,13 @@ public struct NoteMetadataRecord: Codable, Hashable, Sendable {
         let noteID = try container.decode(UUID.self, forKey: .noteID)
         let fields = try container.decode([String: YAMLValue].self, forKey: .fields)
         guard fields.count <= 128,
-              fields.keys.allSatisfy({ key in
-                  !key.isEmpty && key.utf8.count <= 128
-                      && !key.unicodeScalars.contains(where: {
-                          CharacterSet.controlCharacters.contains($0)
-                      })
-              }) else {
+            fields.keys.allSatisfy({ key in
+                !key.isEmpty && key.utf8.count <= 128
+                    && !key.unicodeScalars.contains(where: {
+                        CharacterSet.controlCharacters.contains($0)
+                    })
+            })
+        else {
             throw DecodingError.dataCorruptedError(
                 forKey: .fields,
                 in: container,

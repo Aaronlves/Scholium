@@ -16,10 +16,11 @@ struct RefreshRequestID: Hashable, Comparable, Sendable {
 /// covered by that cycle; requests arriving while it runs are coalesced into
 /// the next cycle. Cancelling one caller removes only that caller's wait.
 actor WorkspaceRefreshCoordinator<Payload: Sendable, Output: Sendable> {
-    typealias Cycle = @Sendable (
-        _ coveringRequestID: RefreshRequestID,
-        _ payloads: [Payload]
-    ) async throws -> Output
+    typealias Cycle =
+        @Sendable (
+            _ coveringRequestID: RefreshRequestID,
+            _ payloads: [Payload]
+        ) async throws -> Output
 
     private struct Request: Sendable {
         let id: RefreshRequestID
@@ -30,9 +31,7 @@ actor WorkspaceRefreshCoordinator<Payload: Sendable, Output: Sendable> {
     private let cycle: Cycle
     private var nextRequestValue: UInt64
     private var pending: [Request] = []
-    private var waiters: [
-        UUID: CheckedContinuation<Result<Output, any Error>, Never>
-    ] = [:]
+    private var waiters: [UUID: CheckedContinuation<Result<Output, any Error>, Never>] = [:]
     private var liveTokens: Set<UUID> = []
     private var cancelledTokens: Set<UUID> = []
     private var worker: Task<Void, Never>?
@@ -59,9 +58,11 @@ actor WorkspaceRefreshCoordinator<Payload: Sendable, Output: Sendable> {
         }
         let result = await withTaskCancellationHandler {
             await withCheckedContinuation {
-                (continuation: CheckedContinuation<
-                    Result<Output, any Error>, Never
-                >) in
+                (
+                    continuation: CheckedContinuation<
+                        Result<Output, any Error>, Never
+                    >
+                ) in
                 enqueue(
                     Request(id: requestID, token: token, payload: payload),
                     continuation: continuation
@@ -116,10 +117,11 @@ actor WorkspaceRefreshCoordinator<Payload: Sendable, Output: Sendable> {
             guard let coveringID = requests.map(\.id).max() else { continue }
             let result: Result<Output, any Error>
             do {
-                result = .success(try await cycle(
-                    coveringID,
-                    requests.map(\.payload)
-                ))
+                result = .success(
+                    try await cycle(
+                        coveringID,
+                        requests.map(\.payload)
+                    ))
             } catch {
                 result = .failure(error)
             }

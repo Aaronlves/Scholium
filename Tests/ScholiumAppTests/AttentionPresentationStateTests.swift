@@ -1,6 +1,7 @@
-import ScholiumContracts
 import Foundation
+import ScholiumContracts
 import Testing
+
 @testable import ScholiumApp
 
 @Suite("Attention presentation state")
@@ -33,30 +34,34 @@ struct AttentionPresentationStateTests {
         )
         let assignment = makeAssignment()
 
-        #expect(AttentionPreferences.visibleTotalCount(
-            catalog: catalog,
-            assignment: assignment,
-            dismissalLedgerData: Data()
-        ) == 2)
+        #expect(
+            AttentionPreferences.visibleTotalCount(
+                catalog: catalog,
+                assignment: assignment,
+                dismissalLedgerData: Data()
+            ) == 2)
 
         let dismissalLedger = AttentionDismissalLedger(
             dismissedUntilByItemID: [first.id: .distantFuture]
         )
-        #expect(AttentionPreferences.visibleTotalCount(
-            catalog: catalog,
-            assignment: assignment,
-            dismissalLedgerData: AttentionPreferences.encodeLedger(dismissalLedger)
-        ) == 1)
-        #expect(AttentionPreferences.visibleTotalCount(
-            catalog: nil,
-            assignment: assignment,
-            dismissalLedgerData: Data()
-        ) == nil)
-        #expect(AttentionPreferences.visibleTotalCount(
-            catalog: catalog,
-            assignment: nil,
-            dismissalLedgerData: Data()
-        ) == nil)
+        #expect(
+            AttentionPreferences.visibleTotalCount(
+                catalog: catalog,
+                assignment: assignment,
+                dismissalLedgerData: AttentionPreferences.encodeLedger(dismissalLedger)
+            ) == 1)
+        #expect(
+            AttentionPreferences.visibleTotalCount(
+                catalog: nil,
+                assignment: assignment,
+                dismissalLedgerData: Data()
+            ) == nil)
+        #expect(
+            AttentionPreferences.visibleTotalCount(
+                catalog: catalog,
+                assignment: nil,
+                dismissalLedgerData: Data()
+            ) == nil)
     }
 
     @Test("Workspace Note totals preserve zero and distinguish unavailable")
@@ -77,12 +82,16 @@ struct AttentionPresentationStateTests {
 
         #expect(grouped.count == AttentionQueueKind.allCases.count)
         #expect(Set(grouped) == Set(AttentionQueueKind.allCases))
-        #expect(Set(AttentionIssueGroup.identityAndMetadata.kinds) == Set([
-            .malformedMetadata, .unresolvedIdentity,
-        ]))
-        #expect(Set(AttentionIssueGroup.structureAndConnections.kinds) == Set([
-            .possibleOrphan, .brokenConnection, .ambiguousConnection,
-        ]))
+        #expect(
+            Set(AttentionIssueGroup.identityAndMetadata.kinds)
+                == Set([
+                    .malformedMetadata, .unresolvedIdentity,
+                ]))
+        #expect(
+            Set(AttentionIssueGroup.structureAndConnections.kinds)
+                == Set([
+                    .possibleOrphan, .brokenConnection, .ambiguousConnection,
+                ]))
     }
 
     @Test("Workspace changes clear an Inspector-applied This Note subset")

@@ -1,6 +1,6 @@
-import ScholiumContracts
 import Foundation
 import ScholiumApplication
+import ScholiumContracts
 
 /// One immutable-membership Application runtime for a CLI invocation.
 ///
@@ -67,7 +67,8 @@ struct CLIContext: Sendable {
     func triptych(selector: String) async throws -> TriptychAssignment {
         let assignments = try await assignments()
         if let id = UUID(uuidString: selector),
-           let assignment = assignments.first(where: { $0.id == id }) {
+            let assignment = assignments.first(where: { $0.id == id })
+        {
             return assignment
         }
         let matches = assignments.filter {
@@ -103,7 +104,8 @@ struct CLIContext: Sendable {
     func resolveVault(_ selector: String) async throws -> RegisteredVault {
         let vaults = uniqueVaults(in: try await assignments())
         if let id = UUID(uuidString: selector),
-           let match = vaults.first(where: { $0.id == id }) {
+            let match = vaults.first(where: { $0.id == id })
+        {
             return match
         }
         let standardizedPath = URL(

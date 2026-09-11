@@ -12,16 +12,21 @@ public actor AgentCollaborationOperations: AgentCollaborationUseCases {
         self.reference = reference
     }
 
-    public func displayTarget(noteID: UUID, expectedFingerprint: DocumentFingerprint,
-                              startUTF8: Int?, endUTF8: Int?, expectedText: String?) async throws -> AgentNoteDisplayTarget {
+    public func displayTarget(
+        noteID: UUID, expectedFingerprint: DocumentFingerprint,
+        startUTF8: Int?, endUTF8: Int?, expectedText: String?
+    ) async throws -> AgentNoteDisplayTarget {
         let handle = try await reference.requireHandle()
         let note = try await handle.currentAgentNote(noteID: noteID)
         let document = try await handle.loadDocument(note.id)
-        guard document.fingerprint == expectedFingerprint else { throw AgentCollaborationError.staleRevision(expected: expectedFingerprint, current: document.fingerprint) }
+        guard document.fingerprint == expectedFingerprint else {
+            throw AgentCollaborationError.staleRevision(expected: expectedFingerprint, current: document.fingerprint)
+        }
         guard try await handle.resolvedIdentity(for: note.id, expectedRevision: document.fingerprint).id == noteID else {
             throw AgentCollaborationError.noteAmbiguous(noteID)
         }
-        return try .init(triptychID: handle.id, noteID: noteID, note: note.id, fingerprint: expectedFingerprint,
+        return try .init(
+            triptychID: handle.id, noteID: noteID, note: note.id, fingerprint: expectedFingerprint,
             source: document.sourceBytes, startUTF8: startUTF8, endUTF8: endUTF8, expectedText: expectedText)
     }
 
@@ -32,10 +37,12 @@ public actor AgentCollaborationOperations: AgentCollaborationUseCases {
         let handle = try await reference.requireHandle()
         let note = try await handle.currentAgentNote(noteID: noteID)
         let document = try await handle.loadDocument(note.id)
-        guard let identity = try? await handle.resolvedIdentity(
-            for: note.id,
-            expectedRevision: document.fingerprint
-        ), identity.id == noteID else {
+        guard
+            let identity = try? await handle.resolvedIdentity(
+                for: note.id,
+                expectedRevision: document.fingerprint
+            ), identity.id == noteID
+        else {
             throw AgentCollaborationError.noteAmbiguous(noteID)
         }
         return AgentNoteSource(
@@ -53,17 +60,23 @@ public actor AgentCollaborationOperations: AgentCollaborationUseCases {
         return try await handle.createAgentNote(request)
     }
 
-    public func moveNote(noteID: UUID, expectedFingerprint: DocumentFingerprint, to path: String,
-                         expectedPlanFingerprint: DocumentFingerprint) async throws -> AgentNoteMoveResult {
+    public func moveNote(
+        noteID: UUID, expectedFingerprint: DocumentFingerprint, to path: String,
+        expectedPlanFingerprint: DocumentFingerprint
+    ) async throws -> AgentNoteMoveResult {
         let handle = try await reference.requireHandle()
-        return try await handle.moveAgentNote(noteID: noteID, expectedFingerprint: expectedFingerprint,
+        return try await handle.moveAgentNote(
+            noteID: noteID, expectedFingerprint: expectedFingerprint,
             to: path, expectedPlanFingerprint: expectedPlanFingerprint)
     }
 
-    public func previewMoveMutation(noteID: UUID, expectedFingerprint: DocumentFingerprint, to path: String,
-                                    expectedPlanFingerprint: DocumentFingerprint) async throws -> AgentNoteUpdatePreview {
+    public func previewMoveMutation(
+        noteID: UUID, expectedFingerprint: DocumentFingerprint, to path: String,
+        expectedPlanFingerprint: DocumentFingerprint
+    ) async throws -> AgentNoteUpdatePreview {
         let handle = try await reference.requireHandle()
-        return try await handle.previewAgentMoveMutation(noteID: noteID, expectedFingerprint: expectedFingerprint,
+        return try await handle.previewAgentMoveMutation(
+            noteID: noteID, expectedFingerprint: expectedFingerprint,
             to: path, expectedPlanFingerprint: expectedPlanFingerprint)
     }
 
@@ -172,10 +185,11 @@ extension WorkspaceHandle {
             let outcome = try await createManagedNote(request)
             let commit = outcome.committedValue
             guard commit.id.relativePath == relativePath,
-                  commit.id.vaultID == request.vaultID,
-                  commit.stableIdentity.resolvedID == reservedIdentity,
-                  commit.document.sourceBytes == intendedData,
-                  outcome.identityRecoveryWarning == nil else {
+                commit.id.vaultID == request.vaultID,
+                commit.stableIdentity.resolvedID == reservedIdentity,
+                commit.document.sourceBytes == intendedData,
+                outcome.identityRecoveryWarning == nil
+            else {
                 _ = try? await services.agentChangeStore.markOutcomeUncertain(
                     id: prepared.id
                 )
@@ -206,7 +220,8 @@ extension WorkspaceHandle {
                 )
             }
             if let creationError = error as? DocumentCreationError,
-               case .portableIdentityAlreadyExists = creationError {
+                case .portableIdentityAlreadyExists = creationError
+            {
                 throw AgentCollaborationError.pathOccupied(relativePath)
             }
             throw Self.agentCollaborationError(error)
@@ -363,7 +378,8 @@ extension WorkspaceHandle {
             let outcome = try await moveToSystemTrash(preview)
             let commit = outcome.committedValue
             guard commit.noteIDs == [noteID],
-                  commit.originalRelativePaths == [target.id.relativePath] else {
+                commit.originalRelativePaths == [target.id.relativePath]
+            else {
                 _ = try? await services.agentChangeStore.markOutcomeUncertain(
                     id: prepared.id
                 )
@@ -406,7 +422,8 @@ extension WorkspaceHandle {
         let change = evidence.change
         if change.operation.isRecordMutation { return try await reviewAgentRecord(evidence) }
         if change.operation == .move { return try await reviewAgentMove(evidence) }
-        let comparison = change.operation == .update
+        let comparison =
+            change.operation == .update
             ? try evidence.exactUpdateComparison()
             : nil
 
@@ -450,7 +467,8 @@ extension WorkspaceHandle {
         try Task.checkCancellation()
         let change = try await services.agentChangeStore.change(id: id)
         guard change.operation == .update, change.state == .confirmed,
-              change.afterFingerprint == expectedAfterFingerprint else {
+            change.afterFingerprint == expectedAfterFingerprint
+        else {
             throw AgentChangeError.undoUnavailable(id)
         }
         let target = try await currentAgentNote(noteID: change.noteID)
@@ -534,7 +552,8 @@ extension WorkspaceHandle {
 
     private static func validateAgentContent(_ content: String) throws {
         guard content.utf8.count <= ScholiumMCPContract.maximumDocumentUTF8ByteCount,
-              !content.unicodeScalars.contains(where: { $0.value == 0 }) else {
+            !content.unicodeScalars.contains(where: { $0.value == 0 })
+        else {
             throw AgentCollaborationError.invalidRequest(
                 "The proposed content is invalid or exceeds the supported UTF-8 size."
             )
@@ -556,7 +575,8 @@ extension WorkspaceHandle {
             return true
         }
         if error is ManagedCreationFinalVerificationError
-            || error is CreatedDocumentIdentityRollbackError {
+            || error is CreatedDocumentIdentityRollbackError
+        {
             return true
         }
         if let error = error as? VaultRepositoryError {
@@ -576,11 +596,13 @@ extension WorkspaceHandle {
             }
         }
         if let error = error as? ScholiumApplicationError,
-           case .operationCommitUncertain = error {
+            case .operationCommitUncertain = error
+        {
             return true
         }
         if let error = error as? AgentCollaborationError,
-           case .changeConfirmationUncertain = error {
+            case .changeConfirmationUncertain = error
+        {
             return true
         }
         return false
@@ -596,7 +618,7 @@ extension WorkspaceHandle {
                     current: current
                 )
             case .fileAlreadyExists(let path),
-                 .pathCollision(_, let path):
+                .pathCollision(_, let path):
                 return AgentCollaborationError.pathOccupied(path)
             default:
                 return error

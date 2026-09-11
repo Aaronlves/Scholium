@@ -88,10 +88,12 @@ enum PropertyPresentationCatalog {
         in profile: SchemaProfileID,
         catalog: NoteMetadataCatalog
     ) -> PropertyContract? {
-        guard let contract = catalog.contract(
-            for: presentation.key,
-            profile: profile
-        ), contract.canonicalKey == presentation.key else { return nil }
+        guard
+            let contract = catalog.contract(
+                for: presentation.key,
+                profile: profile
+            ), contract.canonicalKey == presentation.key
+        else { return nil }
         return contract
     }
 
@@ -249,17 +251,18 @@ enum PropertyPresentationCatalog {
         profile: SchemaProfileID,
         catalog: NoteMetadataCatalog
     ) -> String? {
-        let text: String? = switch key {
-        case "title": "Title of the analyzed source."
-        case "type": "Broad source type used to select applicable bibliographic fields."
-        case "publication_date": "Publication date as authored text; publication status belongs in Publication Status."
-        case "publication_status": "Publication state such as forthcoming, in press, retracted, or withdrawn."
-        case "authors": "Ordered structured names of the analyzed source's authors."
-        case "summary": "Short navigation description of this Note; open the current Note and sources before relying on it."
-        case "aliases": "Alternative names used for finding and linking this Topic."
-        case "keywords": "Short researcher-defined retrieval terms stored in authored YAML."
-        default: nil
-        }
+        let text: String? =
+            switch key {
+            case "title": "Title of the analyzed source."
+            case "type": "Broad source type used to select applicable bibliographic fields."
+            case "publication_date": "Publication date as authored text; publication status belongs in Publication Status."
+            case "publication_status": "Publication state such as forthcoming, in press, retracted, or withdrawn."
+            case "authors": "Ordered structured names of the analyzed source's authors."
+            case "summary": "Short navigation description of this Note; open the current Note and sources before relying on it."
+            case "aliases": "Alternative names used for finding and linking this Topic."
+            case "keywords": "Short researcher-defined retrieval terms stored in authored YAML."
+            default: nil
+            }
         return (text ?? catalog.customField(for: key, profile: profile)?.description)
             .map(ScholiumL10n.dynamicString)
     }

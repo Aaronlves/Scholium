@@ -142,10 +142,12 @@ extension WorkspaceSourceOperationGateOwner {
         let waiterID = UUID()
         let result = await withTaskCancellationHandler {
             await withCheckedContinuation {
-                (continuation: CheckedContinuation<
-                    Result<Void, any Error>,
-                    Never
-                >) in
+                (
+                    continuation: CheckedContinuation<
+                        Result<Void, any Error>,
+                        Never
+                    >
+                ) in
                 // `onCancel` may run before this actor regains execution.
                 // Inspecting the current task closes that enqueue race.
                 if Task.isCancelled {

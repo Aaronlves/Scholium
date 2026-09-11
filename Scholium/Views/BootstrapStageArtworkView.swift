@@ -140,10 +140,12 @@ struct BootstrapStageArtwork: View {
     }
 
     private var handImage: NSImage? {
-        guard let url = Bundle.module.url(
-            forResource: configuration.handAssetName,
-            withExtension: "png"
-        ) else { return nil }
+        guard
+            let url = Bundle.module.url(
+                forResource: configuration.handAssetName,
+                withExtension: "png"
+            )
+        else { return nil }
         return NSImage(contentsOf: url)
     }
 

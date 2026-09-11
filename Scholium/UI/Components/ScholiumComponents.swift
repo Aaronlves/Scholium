@@ -373,13 +373,13 @@ struct ScholiumPropertyGroup<Content: View>: View {
 
             content
         }
-            .padding(
-                .top,
-                separatesFromPrevious
-                    ? ScholiumMetrics.Properties.semanticGroupSeparation
-                    : 0
-            )
-            .accessibilityElement(children: .contain)
+        .padding(
+            .top,
+            separatesFromPrevious
+                ? ScholiumMetrics.Properties.semanticGroupSeparation
+                : 0
+        )
+        .accessibilityElement(children: .contain)
     }
 }
 
@@ -400,9 +400,10 @@ struct ScholiumEditorialIconControl<NativeControl: View>: View {
         isVisuallyRevealed: Bool = true,
         @ViewBuilder nativeControl: (ScholiumEditorialIconControlLabel) -> NativeControl
     ) {
-        self.nativeControl = nativeControl(ScholiumEditorialIconControlLabel(
-            systemImage: systemImage
-        ))
+        self.nativeControl = nativeControl(
+            ScholiumEditorialIconControlLabel(
+                systemImage: systemImage
+            ))
         self.isActive = isActive
         self.isVisuallyRevealed = isVisuallyRevealed
     }

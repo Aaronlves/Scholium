@@ -13,6 +13,7 @@ export TMPDIR="${TEST_TEMP}"
 
 python3 "${ROOT}/Tools/Scripts/validate-documentation-authority.py"
 "${ROOT}/Tools/Scripts/validate-interface-localization.sh"
+"${ROOT}/Tools/Scripts/lint.sh" --swift-only
 
 # The Core resource tree is the sole repository authority for release-shipped
 # product Skills. Every shipped SKILL.md must have the local reference files
@@ -288,6 +289,7 @@ for shell_script in \
   "${ROOT}/Tools/Scripts/package-app.sh" \
   "${ROOT}/Tools/Scripts/run-debug-app.sh" \
   "${ROOT}/Tools/Scripts/run-editor-toolchain.sh" \
+  "${ROOT}/Tools/Scripts/lint.sh" \
   "${ROOT}/Tools/Scripts/run-performance-benchmarks.sh" \
   "${ROOT}/Tools/Scripts/run-ui-tests.sh" \
   "${ROOT}/Tools/Scripts/sync-interface-localization.sh" \

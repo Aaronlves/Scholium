@@ -36,8 +36,9 @@ struct ContextSearchField: NSViewRepresentable {
     }
 
     func sizeThatFits(_ proposal: ProposedViewSize, nsView: Field, context: Context) -> CGSize? {
-        CGSize(width: proposal.width ?? nsView.intrinsicContentSize.width,
-               height: nsView.intrinsicContentSize.height)
+        CGSize(
+            width: proposal.width ?? nsView.intrinsicContentSize.width,
+            height: nsView.intrinsicContentSize.height)
     }
 
     func updateNSView(_ searchField: Field, context: Context) {
@@ -57,8 +58,9 @@ struct ContextSearchField: NSViewRepresentable {
         }
         private func applyFocus() {
             guard let focusRequest, focusRequest != appliedFocus,
-                  (currentEditor() as? NSTextView)?.hasMarkedText() != true,
-                  let window, window.makeFirstResponder(self) else { return }
+                (currentEditor() as? NSTextView)?.hasMarkedText() != true,
+                let window, window.makeFirstResponder(self)
+            else { return }
             appliedFocus = focusRequest
             currentEditor()?.selectAll(nil)
         }
@@ -75,7 +77,8 @@ struct ContextSearchField: NSViewRepresentable {
         func scopeMenu() -> NSMenu {
             let menu = NSMenu()
             for (index, option) in parent.options.enumerated() {
-                let item = NSMenuItem(title: ScholiumL10n.dynamicString(option.title),
+                let item = NSMenuItem(
+                    title: ScholiumL10n.dynamicString(option.title),
                     action: #selector(selectScope(_:)), keyEquivalent: "")
                 item.target = self
                 item.tag = index

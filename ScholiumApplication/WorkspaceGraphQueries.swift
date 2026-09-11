@@ -9,12 +9,13 @@ struct WorkspaceGraphQueries: Sendable {
     let graph: GraphSnapshot?
 
     init(catalog: WorkspaceCatalogSnapshot) {
-        noteIDs = Set(catalog.notes.map {
-            VaultQualifiedNoteID(
-                vaultID: $0.reference.vaultID,
-                relativePath: $0.reference.relativePath
-            )
-        })
+        noteIDs = Set(
+            catalog.notes.map {
+                VaultQualifiedNoteID(
+                    vaultID: $0.reference.vaultID,
+                    relativePath: $0.reference.relativePath
+                )
+            })
         graph = catalog.graph
     }
 

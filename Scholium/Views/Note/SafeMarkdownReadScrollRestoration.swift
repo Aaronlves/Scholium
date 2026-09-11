@@ -73,8 +73,9 @@ struct SafeMarkdownReadScrollRestoration {
         reason: ScrollRestoreReason
     ) {
         if let request,
-           request.fingerprint == fingerprint,
-           !hasConsumed(request) {
+            request.fingerprint == fingerprint,
+            !hasConsumed(request)
+        {
             return
         }
         let matchingAnchor = observedPosition.anchor.flatMap { anchor in
@@ -98,11 +99,12 @@ struct SafeMarkdownReadScrollRestoration {
         fingerprint: String
     ) -> Claim? {
         guard pageIsReady,
-              let request,
-              let ownership,
-              request.fingerprint == fingerprint,
-              !hasConsumed(request),
-              !sameIdentity(inFlightClaim?.request, request) else { return nil }
+            let request,
+            let ownership,
+            request.fingerprint == fingerprint,
+            !hasConsumed(request),
+            !sameIdentity(inFlightClaim?.request, request)
+        else { return nil }
         nextClaimToken &+= 1
         let claim = Claim(
             token: nextClaimToken,

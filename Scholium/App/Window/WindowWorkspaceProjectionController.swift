@@ -276,9 +276,10 @@ final class WindowWorkspaceProjectionController: ObservableObject {
         var next = state
         var documents = vaultSnapshot.documents
         if let noteID = note.stableIdentity.resolvedID,
-           let index = documents.firstIndex(where: {
-               $0.stableIdentity.resolvedID == noteID
-           }) {
+            let index = documents.firstIndex(where: {
+                $0.stableIdentity.resolvedID == noteID
+            })
+        {
             documents[index] = note
         } else if let index = documents.firstIndex(where: { $0.id == note.id }) {
             documents[index] = note
@@ -294,7 +295,8 @@ final class WindowWorkspaceProjectionController: ObservableObject {
             identityRecovery: vaultSnapshot.identityRecovery
         )
         if visibleVaultID == note.id.vaultID,
-           visibleSourceScope != nil {
+            visibleSourceScope != nil
+        {
             let visible = WindowDocumentLocation.workspace(note)
             var notes = next.notes
             if let index = notes.firstIndex(where: {
@@ -375,11 +377,13 @@ final class WindowWorkspaceProjectionController: ObservableObject {
                 projectedNotes.append(current)
                 continue
             }
-            guard let sourceIndex = documents.firstIndex(where: {
-                $0.id == move.source
-                    && $0.fingerprint == move.previousRevision
-                    && $0.stableIdentity.resolvedID == move.stableNoteID
-            }) else { return nil }
+            guard
+                let sourceIndex = documents.firstIndex(where: {
+                    $0.id == move.source
+                        && $0.fingerprint == move.previousRevision
+                        && $0.stableIdentity.resolvedID == move.stableNoteID
+                })
+            else { return nil }
             let source = documents[sourceIndex]
             let document = NoteDocument(
                 relativePath: move.destination.relativePath,
@@ -433,7 +437,8 @@ final class WindowWorkspaceProjectionController: ObservableObject {
             identityRecovery: vaultSnapshot.identityRecovery
         )
         if visibleVaultID == commit.vaultID,
-           visibleSourceScope != nil {
+            visibleSourceScope != nil
+        {
             installVisibleNotes(
                 documents
                     .map(WindowDocumentLocation.workspace),
@@ -475,9 +480,11 @@ final class WindowWorkspaceProjectionController: ObservableObject {
             )
         }
 
-        guard let sourceIndex = vaultSnapshot.documents.firstIndex(where: {
-            $0.id == commit.movedNote
-        }) else { return nil }
+        guard
+            let sourceIndex = vaultSnapshot.documents.firstIndex(where: {
+                $0.id == commit.movedNote
+            })
+        else { return nil }
         let source = vaultSnapshot.documents[sourceIndex]
         guard source.fingerprint == commit.previousRevision else { return nil }
 
@@ -515,7 +522,8 @@ final class WindowWorkspaceProjectionController: ObservableObject {
         )
 
         if visibleVaultID == commit.movedNote.vaultID,
-           visibleSourceScope != nil {
+            visibleSourceScope != nil
+        {
             installVisibleNotes(
                 documents
                     .map(WindowDocumentLocation.workspace),
@@ -618,32 +626,36 @@ final class WindowWorkspaceProjectionController: ObservableObject {
         next.searchGeneration = snapshot.discovery.searchGeneration
         next.snapshotPhase = snapshot.phase
         next.derivedRefreshStatus = status
-        next.catalogError = switch status {
-        case .opening, .current: nil
-        case .stale(let issue), .failed(let issue): issue.reason
-        }
+        next.catalogError =
+            switch status {
+            case .opening, .current: nil
+            case .stale(let issue), .failed(let issue): issue.reason
+            }
         next.isRefreshingCatalog = false
 
         var retainedDeletedDocumentPath: String?
         if let vaultID = context.selectedVaultID,
-           let vault = snapshot.vault(id: vaultID) {
+            let vault = snapshot.vault(id: vaultID)
+        {
             var notes = vault.documents
                 .map(WindowDocumentLocation.workspace)
             if context.sourceScope == .library,
-               context.currentDocumentVaultID == vaultID,
-               let selectedPath = context.selectedDocumentPath,
-               context.retainedDeletedDocumentPath == selectedPath,
-               !notes.contains(where: { $0.relativePath == selectedPath }),
-               let retained = state.notes.first(where: {
-                   $0.relativePath == selectedPath
-                }) {
+                context.currentDocumentVaultID == vaultID,
+                let selectedPath = context.selectedDocumentPath,
+                context.retainedDeletedDocumentPath == selectedPath,
+                !notes.contains(where: { $0.relativePath == selectedPath }),
+                let retained = state.notes.first(where: {
+                    $0.relativePath == selectedPath
+                })
+            {
                 notes.append(retained)
                 retainedDeletedDocumentPath = selectedPath
             }
             installVisibleNotes(notes, in: &next)
         }
         state = next
-        let noteSearchGenerationChanged = previousSearchGeneration != nil
+        let noteSearchGenerationChanged =
+            previousSearchGeneration != nil
             && previousSearchGeneration != snapshot.discovery.searchGeneration
         return WindowWorkspaceProjectionCommit(
             searchGenerationChanged: noteSearchGenerationChanged,
@@ -660,9 +672,10 @@ final class WindowWorkspaceProjectionController: ObservableObject {
         state.notes = notes
         state.tags = notes.orderedTags
         state.authors = Set(notes.flatMap(\.authors)).sorted()
-        state.documentRevisions = Dictionary(uniqueKeysWithValues: notes.map {
-            ($0.relativePath, $0.document.fingerprint)
-        })
+        state.documentRevisions = Dictionary(
+            uniqueKeysWithValues: notes.map {
+                ($0.relativePath, $0.document.fingerprint)
+            })
         state.propertyFilterOptions = WindowPropertyFilterOptions(
             notes: notes,
             catalog: state.metadataCatalog
@@ -674,17 +687,19 @@ final class WindowWorkspaceProjectionController: ObservableObject {
         affectedVaultIDs: Set<UUID>,
         state: inout State
     ) {
-        let lastKnownGood: WorkspaceDerivedRefreshEvidence? = switch state.derivedRefreshStatus {
-        case .opening(let evidence), .current(let evidence): evidence
-        case .stale(let issue), .failed(let issue): issue.lastKnownGood
-        case nil: nil
-        }
+        let lastKnownGood: WorkspaceDerivedRefreshEvidence? =
+            switch state.derivedRefreshStatus {
+            case .opening(let evidence), .current(let evidence): evidence
+            case .stale(let issue), .failed(let issue): issue.lastKnownGood
+            case nil: nil
+            }
         guard let lastKnownGood else { return }
-        state.derivedRefreshStatus = .stale(WorkspaceDerivedRefreshIssue(
-            reason: reason,
-            affectedVaultIDs: affectedVaultIDs,
-            lastKnownGood: lastKnownGood
-        ))
+        state.derivedRefreshStatus = .stale(
+            WorkspaceDerivedRefreshIssue(
+                reason: reason,
+                affectedVaultIDs: affectedVaultIDs,
+                lastKnownGood: lastKnownGood
+            ))
     }
 
     private func invalidateCatalogLoad() {

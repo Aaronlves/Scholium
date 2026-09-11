@@ -333,7 +333,7 @@ public struct DocumentAppearanceSettings: Codable, Hashable, Sendable {
             titleWeight: 650,
             paddingBlockEm: 0.72,
             paddingInlineEm: 0.88
-        )
+        ),
     ]
 
     public func callout(_ role: DocumentCalloutAppearanceRole) -> DocumentCalloutAppearance {

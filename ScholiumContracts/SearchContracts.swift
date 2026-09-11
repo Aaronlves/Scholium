@@ -157,7 +157,8 @@ public struct NoteSearchResult: Codable, Hashable, Sendable {
         evidentialLayer: EvidentialLayer,
         classification: SearchResultClassification
     ) {
-        self.resultID = resultID
+        self.resultID =
+            resultID
             ?? "\(vaultID.uuidString.lowercased()):\(relativePath):\(sourceLine):\(matchedField.rawValue)"
         self.vaultID = vaultID
         self.vaultName = vaultName
@@ -196,7 +197,9 @@ public enum SearchResult: Codable, Hashable, Identifiable, Sendable {
     case note(NoteSearchResult)
 
     public var id: String {
-        switch self { case .note(let result): result.resultID }
+        switch self {
+        case .note(let result): result.resultID
+        }
     }
 
     public var provider: SearchProvider {
@@ -204,11 +207,15 @@ public enum SearchResult: Codable, Hashable, Identifiable, Sendable {
     }
 
     public var freshnessToken: SearchFreshnessToken {
-        switch self { case .note(let result): result.freshnessToken }
+        switch self {
+        case .note(let result): result.freshnessToken
+        }
     }
 
     public var fingerprint: DocumentFingerprint {
-        switch self { case .note(let result): result.fingerprint }
+        switch self {
+        case .note(let result): result.fingerprint
+        }
     }
 }
 
@@ -249,9 +256,10 @@ public struct SearchIndexDocument: Sendable {
             stableNoteID: stableNoteID,
             metadata: metadata,
             metadataCatalog: metadataCatalog,
-            resolvedSemantic: semantic ?? MarkdownSemanticDocument(
-                parsing: document
-            ),
+            resolvedSemantic: semantic
+                ?? MarkdownSemanticDocument(
+                    parsing: document
+                ),
             sourceProjection: nil,
             hasBrokenLink: hasBrokenLink
         )
@@ -304,30 +312,36 @@ public struct SearchIndexDocument: Sendable {
         self.stableNoteID = stableNoteID
         let profile = WorkflowProfileResolver.resolve(vaultRole: vaultRole)
         title = ResearchNoteTitleResolver.resolve(document: document)
-        aliases = profile == .topicMarkdown
+        aliases =
+            profile == .topicMarkdown
             ? metadata?.record.fields["aliases"]?.canonicalStringList ?? []
             : []
-        authors = profile == .analysis
+        authors =
+            profile == .analysis
             ? metadata?.record.fields["authors"]
                 .flatMap(PropertyContractCatalog.creatorNames(from:))?
                 .map(\.displayName) ?? []
             : []
-        publicationDate = profile == .analysis
+        publicationDate =
+            profile == .analysis
             ? metadata?.record.fields["publication_date"]?.canonicalSearchText
             : nil
-        tags = PropertyContractCatalog.contract(for: "keywords", profile: profile) == nil
+        tags =
+            PropertyContractCatalog.contract(for: "keywords", profile: profile) == nil
             ? []
             : document.parsedFrontmatter["keywords"]?.canonicalStringList ?? []
         self.hasBrokenLink = hasBrokenLink
-        let sourceProjection = (cachedSourceProjection ?? SearchDocumentProjection(
-            document: document,
-            profile: profile,
-            semantic: self.semantic
-        )).applyingNoteMetadata(
-            metadata,
-            profile: profile,
-            source: document.rawContent
-        )
+        let sourceProjection =
+            (cachedSourceProjection
+            ?? SearchDocumentProjection(
+                document: document,
+                profile: profile,
+                semantic: self.semantic
+            )).applyingNoteMetadata(
+                metadata,
+                profile: profile,
+                source: document.rawContent
+            )
         projection = sourceProjection.applyingDynamicState(
             hasBrokenLink: hasBrokenLink
         )
@@ -337,12 +351,13 @@ public struct SearchIndexDocument: Sendable {
             metadata: metadata,
             metadataCatalog: metadataCatalog
         )
-        evidentialLayer = switch vaultRole {
-        case .sourceCorpus: .paperAnalysis
-        case .topicKnowledge: .topicNote
-        case .draftProject: .draftProse
-        case .other: .topicNote
-        }
+        evidentialLayer =
+            switch vaultRole {
+            case .sourceCorpus: .paperAnalysis
+            case .topicKnowledge: .topicNote
+            case .draftProject: .draftProse
+            case .other: .topicNote
+            }
     }
 }
 
@@ -369,7 +384,6 @@ public enum SearchIndexError: LocalizedError, Sendable {
     }
 }
 
-
 public extension YAMLValue {
     var searchStrings: [String] {
         switch self {
@@ -387,10 +401,11 @@ public extension YAMLValue {
         guard case .array(let values) = self, !values.isEmpty else { return nil }
         let strings = values.compactMap { value -> String? in
             guard case .string(let string) = value,
-                  !string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                  string.unicodeScalars.allSatisfy({
-                      !CharacterSet.controlCharacters.contains($0)
-                  }) else { return nil }
+                !string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                string.unicodeScalars.allSatisfy({
+                    !CharacterSet.controlCharacters.contains($0)
+                })
+            else { return nil }
             return string
         }
         return strings.count == values.count ? strings : nil
@@ -398,11 +413,12 @@ public extension YAMLValue {
 
     var canonicalSearchText: String? {
         guard case .string(let value) = self,
-              !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-              value.unicodeScalars.allSatisfy({ scalar in
-                  scalar != "\n" && scalar != "\r"
-                      && !CharacterSet.controlCharacters.contains(scalar)
-              }) else { return nil }
+            !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+            value.unicodeScalars.allSatisfy({ scalar in
+                scalar != "\n" && scalar != "\r"
+                    && !CharacterSet.controlCharacters.contains(scalar)
+            })
+        else { return nil }
         return value
     }
 }

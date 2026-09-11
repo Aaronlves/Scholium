@@ -34,8 +34,9 @@ final class SafeMarkdownReadFindCoordinator {
         isCurrent: @escaping @MainActor () -> Bool
     ) {
         guard pageIsReady,
-              let request,
-              request.id != appliedRequestID else { return }
+            let request,
+            request.id != appliedRequestID
+        else { return }
         appliedRequestID = request.id
         let arguments: [String: Any]
         switch request.operation {
@@ -62,14 +63,15 @@ final class SafeMarkdownReadFindCoordinator {
                     contentWorld: SafeMarkdownReadWebView.bridgeContentWorld
                 )
                 guard !Task.isCancelled,
-                      isCurrent(),
-                      self.request?.id == request.id,
-                      let payload = raw as? [String: Any],
-                      let current = (payload["current"] as? NSNumber)?.intValue,
-                      let total = (payload["total"] as? NSNumber)?.intValue,
-                      current >= 0,
-                      total >= 0,
-                      current <= total else { return }
+                    isCurrent(),
+                    self.request?.id == request.id,
+                    let payload = raw as? [String: Any],
+                    let current = (payload["current"] as? NSNumber)?.intValue,
+                    let total = (payload["total"] as? NSNumber)?.intValue,
+                    current >= 0,
+                    total >= 0,
+                    current <= total
+                else { return }
                 if case .clear = request.operation {
                     webView.window?.makeFirstResponder(webView)
                 }
@@ -79,8 +81,9 @@ final class SafeMarkdownReadFindCoordinator {
                 )
             } catch {
                 guard !Task.isCancelled,
-                      isCurrent(),
-                      self.request?.id == request.id else { return }
+                    isCurrent(),
+                    self.request?.id == request.id
+                else { return }
                 self.report?(request.id, .failure(error))
             }
         }

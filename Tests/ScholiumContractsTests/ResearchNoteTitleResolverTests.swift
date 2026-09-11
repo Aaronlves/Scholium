@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+
 @testable import ScholiumContracts
 
 @Suite("Filename-authoritative research note titles")

@@ -2,6 +2,7 @@ import AppKit
 import Foundation
 import ScholiumContracts
 import Testing
+
 @testable import ScholiumApp
 
 extension MarkdownEditorWebViewIntegrationTests {
@@ -109,11 +110,13 @@ extension MarkdownEditorWebViewIntegrationTests {
         let semantic = MarkdownSemanticDocument(parsing: document)
 
         let probeArguments = try contract.comparisonProbes.map { probe -> [String: Any] in
-            guard let anchorRange = sourceRange(
-                of: probe.sourceToken,
-                occurrence: probe.sourceOccurrence ?? 1,
-                in: source
-            ) else {
+            guard
+                let anchorRange = sourceRange(
+                    of: probe.sourceToken,
+                    occurrence: probe.sourceOccurrence ?? 1,
+                    in: source
+                )
+            else {
                 throw MarkdownEditorSession.SessionError.invalidResult
             }
             let sourceRange = try semanticSourceRange(
@@ -144,9 +147,10 @@ extension MarkdownEditorWebViewIntegrationTests {
             return argument
         }
 
-        let scenario = try #require(Self.testingPresentationScenarios.first {
-            $0.name == "workspace-900"
-        })
+        let scenario = try #require(
+            Self.testingPresentationScenarios.first {
+                $0.name == "workspace-900"
+            })
         let readHarness = ReadHarness(
             source: source,
             htmlBody: SafeMarkdownRenderer.render(document).htmlBody,
@@ -166,17 +170,18 @@ extension MarkdownEditorWebViewIntegrationTests {
             probes: probeArguments,
             evaluate: readHarness.callPageJavaScript
         )
-        let readTaskControls = try #require(try await readHarness.callPageJavaScript(
-            """
-            return {
-              count: document.querySelectorAll('.scholium-task-checkbox').length,
-              checked: document.querySelectorAll('.scholium-task-checkbox:checked').length,
-              disabled: document.querySelectorAll('.scholium-task-checkbox:disabled').length,
-              labels: Array.from(document.querySelectorAll('.scholium-task-checkbox'))
-                .map(control => control.getAttribute('aria-label'))
-            };
-            """
-        ) as? [String: Any])
+        let readTaskControls = try #require(
+            try await readHarness.callPageJavaScript(
+                """
+                return {
+                  count: document.querySelectorAll('.scholium-task-checkbox').length,
+                  checked: document.querySelectorAll('.scholium-task-checkbox:checked').length,
+                  disabled: document.querySelectorAll('.scholium-task-checkbox:disabled').length,
+                  labels: Array.from(document.querySelectorAll('.scholium-task-checkbox'))
+                    .map(control => control.getAttribute('aria-label'))
+                };
+                """
+            ) as? [String: Any])
         await readHarness.closeAndDrain()
 
         let editHarness = EditorHarness(
@@ -203,14 +208,15 @@ extension MarkdownEditorWebViewIntegrationTests {
             probes: probeArguments,
             evaluate: editHarness.callPageJavaScript
         )
-        let editTaskControls = try #require(try await editHarness.callPageJavaScript(
-            """
-            return {
-              count: document.querySelectorAll('.cm-live-task-checkbox').length,
-              checked: document.querySelectorAll('.cm-live-task-checkbox:checked').length
-            };
-            """
-        ) as? [String: Any])
+        let editTaskControls = try #require(
+            try await editHarness.callPageJavaScript(
+                """
+                return {
+                  count: document.querySelectorAll('.cm-live-task-checkbox').length,
+                  checked: document.querySelectorAll('.cm-live-task-checkbox:checked').length
+                };
+                """
+            ) as? [String: Any])
         #expect(try await editHarness.session.currentText(for: editHarness.documentID) == source)
         await editHarness.closeAndDrain()
 
@@ -242,12 +248,13 @@ extension MarkdownEditorWebViewIntegrationTests {
         #expect(report.probes.count == contract.comparisonProbes.count)
         #expect(report.readBlockOrder == report.editBlockOrder)
         #expect(report.mustMatchDifferenceCount == 0)
-        #expect(report.probes.allSatisfy {
-            $0.sourceUTF16LowerBound >= 0
-                && $0.sourceUTF16UpperBound > $0.sourceUTF16LowerBound
-                && $0.read.height > 0
-                && $0.edit.height > 0
-        })
+        #expect(
+            report.probes.allSatisfy {
+                $0.sourceUTF16LowerBound >= 0
+                    && $0.sourceUTF16UpperBound > $0.sourceUTF16LowerBound
+                    && $0.read.height > 0
+                    && $0.edit.height > 0
+            })
         #expect(readTaskControls["count"] as? Int == 2)
         #expect(readTaskControls["checked"] as? Int == 1)
         #expect(readTaskControls["disabled"] as? Int == 2)
@@ -312,12 +319,14 @@ extension MarkdownEditorWebViewIntegrationTests {
         let deadline = clock.now.advanced(by: .seconds(8))
         var latest: GeometrySnapshot?
         while clock.now < deadline {
-            let result = try await evaluate(Self.geometrySnapshotJavaScript, [
-                "surface": surface,
-                "rootSelector": rootSelector,
-                "selectorKey": selectorKey,
-                "probes": probes,
-            ])
+            let result = try await evaluate(
+                Self.geometrySnapshotJavaScript,
+                [
+                    "surface": surface,
+                    "rootSelector": rootSelector,
+                    "selectorKey": selectorKey,
+                    "probes": probes,
+                ])
             if JSONSerialization.isValidJSONObject(result as Any) {
                 let data = try JSONSerialization.data(withJSONObject: result as Any)
                 latest = try JSONDecoder().decode(GeometrySnapshot.self, from: data)
@@ -334,7 +343,8 @@ extension MarkdownEditorWebViewIntegrationTests {
             }
             try await Task.sleep(for: .milliseconds(25))
         }
-        let missing = latest?.probes.filter { !$0.found }
+        let missing =
+            latest?.probes.filter { !$0.found }
             .map { "\($0.id) [\($0.text)]" }
             .joined(separator: ", ")
             ?? "all probes"
@@ -349,12 +359,14 @@ extension MarkdownEditorWebViewIntegrationTests {
         probes: [[String: Any]],
         evaluate: (String, [String: Any]) async throws -> Any?
     ) async throws -> GeometrySnapshot {
-        let result = try await evaluate(Self.geometrySnapshotJavaScript, [
-            "surface": surface,
-            "rootSelector": rootSelector,
-            "selectorKey": selectorKey,
-            "probes": probes,
-        ])
+        let result = try await evaluate(
+            Self.geometrySnapshotJavaScript,
+            [
+                "surface": surface,
+                "rootSelector": rootSelector,
+                "selectorKey": selectorKey,
+                "probes": probes,
+            ])
         guard JSONSerialization.isValidJSONObject(result as Any) else {
             throw MarkdownEditorSession.SessionError.invalidResult
         }
@@ -373,9 +385,10 @@ extension MarkdownEditorWebViewIntegrationTests {
     ) throws -> GeometryComparisonReport {
         let readByID = Dictionary(uniqueKeysWithValues: read.probes.map { ($0.id, $0) })
         let editByID = Dictionary(uniqueKeysWithValues: edit.probes.map { ($0.id, $0) })
-        let argumentsByID = Dictionary(uniqueKeysWithValues: probeArguments.compactMap { value in
-            (value["id"] as? String).map { ($0, value) }
-        })
+        let argumentsByID = Dictionary(
+            uniqueKeysWithValues: probeArguments.compactMap { value in
+                (value["id"] as? String).map { ($0, value) }
+            })
         var differences: [GeometryComparisonReport.Difference] = []
         var mustMatchDifferenceCount = 0
         var flowPositionComparable = true
@@ -383,9 +396,10 @@ extension MarkdownEditorWebViewIntegrationTests {
         let authoredBlankLineHeight = body.fontSizePoints * (96 / 72) * body.lineHeight
         let paragraphSpacing = body.fontSizePoints * (96 / 72) * body.paragraphSpacingEm
 
-        let blockIDs = Set(contract.comparisonProbes.lazy
-            .filter { $0.level == "block" && $0.expectation == "mustMatchReview" }
-            .map(\.id))
+        let blockIDs = Set(
+            contract.comparisonProbes.lazy
+                .filter { $0.level == "block" && $0.expectation == "mustMatchReview" }
+                .map(\.id))
         let readBlockOrder = read.probes
             .filter { blockIDs.contains($0.id) }
             .sorted { $0.top < $1.top }
@@ -394,14 +408,16 @@ extension MarkdownEditorWebViewIntegrationTests {
             .filter { blockIDs.contains($0.id) }
             .sorted { $0.top < $1.top }
             .map(\.id)
-        let readPredecessors = Dictionary(uniqueKeysWithValues: zip(
-            readBlockOrder.dropFirst(),
-            readBlockOrder.dropLast()
-        ))
-        let editPredecessors = Dictionary(uniqueKeysWithValues: zip(
-            editBlockOrder.dropFirst(),
-            editBlockOrder.dropLast()
-        ))
+        let readPredecessors = Dictionary(
+            uniqueKeysWithValues: zip(
+                readBlockOrder.dropFirst(),
+                readBlockOrder.dropLast()
+            ))
+        let editPredecessors = Dictionary(
+            uniqueKeysWithValues: zip(
+                editBlockOrder.dropFirst(),
+                editBlockOrder.dropLast()
+            ))
 
         let ordered = contract.comparisonProbes.sorted { left, right in
             let leftFrom = argumentsByID[left.id]?["sourceFrom"] as? Int ?? 0
@@ -419,14 +435,16 @@ extension MarkdownEditorWebViewIntegrationTests {
             let editProbe = try #require(editByID[probe.id])
             let argument = try #require(argumentsByID[probe.id])
             let styleKeys = Set(readProbe.styles.keys).union(editProbe.styles.keys)
-            let observedStyleDifferences = Dictionary(uniqueKeysWithValues: styleKeys.compactMap { key in
-                let readValue = readProbe.styles[key] ?? ""
-                let editValue = editProbe.styles[key] ?? ""
-                return readValue == editValue ? nil : (key, [readValue, editValue])
-            })
+            let observedStyleDifferences = Dictionary(
+                uniqueKeysWithValues: styleKeys.compactMap { key in
+                    let readValue = readProbe.styles[key] ?? ""
+                    let editValue = editProbe.styles[key] ?? ""
+                    return readValue == editValue ? nil : (key, [readValue, editValue])
+                })
             let readPaddingEnd = cssPixelValue(readProbe.styles["padding-block-end"])
             let editPaddingEnd = cssPixelValue(editProbe.styles["padding-block-end"])
-            let paragraphSpacingIsExpectedAdapter = abs(readPaddingEnd - paragraphSpacing) <= 0.5
+            let paragraphSpacingIsExpectedAdapter =
+                abs(readPaddingEnd - paragraphSpacing) <= 0.5
                 && abs(editPaddingEnd) <= 0.5
             // CodeMirror must preserve exact whitespace in its contenteditable
             // source DOM. It also uses authored blank source rows rather than
@@ -443,25 +461,32 @@ extension MarkdownEditorWebViewIntegrationTests {
             let adapterStyleDifferences = observedStyleDifferences.filter {
                 adapterStyleKeys.contains($0.key)
             }
-            let precedingReadBlockID = probe.level == "block"
+            let precedingReadBlockID =
+                probe.level == "block"
                 ? readPredecessors[probe.id]
                 : nil
-            let precedingEditBlockID = probe.level == "block"
+            let precedingEditBlockID =
+                probe.level == "block"
                 ? editPredecessors[probe.id]
                 : nil
-            let precedingBlockOrderMatches = probe.level == "block"
+            let precedingBlockOrderMatches =
+                probe.level == "block"
                 ? precedingReadBlockID == precedingEditBlockID
                 : nil
             let precedingGapDelta: Double?
             if precedingBlockOrderMatches == true,
-               let precedingID = precedingReadBlockID,
-               let precedingReadProbe = readByID[precedingID],
-               let precedingEditProbe = editByID[precedingID] {
-                let precedingReadVisibleBottom = precedingReadProbe.bottom
+                let precedingID = precedingReadBlockID,
+                let precedingReadProbe = readByID[precedingID],
+                let precedingEditProbe = editByID[precedingID]
+            {
+                let precedingReadVisibleBottom =
+                    precedingReadProbe.bottom
                     - cssPixelValue(precedingReadProbe.styles["padding-block-end"])
-                let precedingEditVisibleBottom = precedingEditProbe.bottom
+                let precedingEditVisibleBottom =
+                    precedingEditProbe.bottom
                     - cssPixelValue(precedingEditProbe.styles["padding-block-end"])
-                precedingGapDelta = (editProbe.top - precedingEditVisibleBottom)
+                precedingGapDelta =
+                    (editProbe.top - precedingEditVisibleBottom)
                     - (readProbe.top - precedingReadVisibleBottom)
             } else {
                 precedingGapDelta = nil
@@ -469,24 +494,30 @@ extension MarkdownEditorWebViewIntegrationTests {
             let topDelta = editProbe.top - readProbe.top
             let heightDelta = editProbe.height - readProbe.height
             let lineCountDelta = editProbe.lineCount - readProbe.lineCount
-            let readContentHeight = readProbe.height
+            let readContentHeight =
+                readProbe.height
                 - cssPixelValue(readProbe.styles["padding-block-start"])
                 - readPaddingEnd
-            let editContentHeight = editProbe.height
+            let editContentHeight =
+                editProbe.height
                 - cssPixelValue(editProbe.styles["padding-block-start"])
                 - editPaddingEnd
-            let quotationParagraphEndIsExpectedAdapter = probe.semanticRole == "blockQuote"
+            let quotationParagraphEndIsExpectedAdapter =
+                probe.semanticRole == "blockQuote"
                 && abs(abs(heightDelta) - paragraphSpacing) <= 0.5
-            let blockHeightMatches = abs(heightDelta) <= 0.5
+            let blockHeightMatches =
+                abs(heightDelta) <= 0.5
                 || abs(readContentHeight - editContentHeight) <= 0.5
                 || quotationParagraphEndIsExpectedAdapter
-            let localLineGeometryMatches = readProbe.lineTops.count == editProbe.lineTops.count
+            let localLineGeometryMatches =
+                readProbe.lineTops.count == editProbe.lineTops.count
                 && zip(readProbe.lineTops, editProbe.lineTops).allSatisfy { readTop, editTop in
                     abs((readTop - readProbe.top) - (editTop - editProbe.top)) <= 0.5
                 }
             let visibleStartDelta: Double?
             if let readStart = readProbe.visibleStart,
-               let editStart = editProbe.visibleStart {
+                let editStart = editProbe.visibleStart
+            {
                 visibleStartDelta = editStart - readStart
             } else {
                 visibleStartDelta = nil
@@ -496,57 +527,64 @@ extension MarkdownEditorWebViewIntegrationTests {
                 in: 0..<sourceFrom,
                 source: source
             )
-            let maximumTopDelta = Double(cumulativeBlankLineCount)
+            let maximumTopDelta =
+                Double(cumulativeBlankLineCount)
                 * authoredBlankLineHeight + 0.5
             let maximumPrecedingGapDelta: Double
             if let precedingID = precedingReadBlockID,
-               let precedingArgument = argumentsByID[precedingID],
-               let precedingSourceTo = precedingArgument["sourceTo"] as? Int,
-               precedingSourceTo <= sourceFrom {
-                maximumPrecedingGapDelta = Double(authoredBlankLineCount(
-                    in: precedingSourceTo..<sourceFrom,
-                    source: source
-                )) * authoredBlankLineHeight + 0.5
+                let precedingArgument = argumentsByID[precedingID],
+                let precedingSourceTo = precedingArgument["sourceTo"] as? Int,
+                precedingSourceTo <= sourceFrom
+            {
+                maximumPrecedingGapDelta =
+                    Double(
+                        authoredBlankLineCount(
+                            in: precedingSourceTo..<sourceFrom,
+                            source: source
+                        )) * authoredBlankLineHeight + 0.5
             } else {
                 maximumPrecedingGapDelta = 0.5
             }
             if probe.expectation == "mustMatchReview",
-               !styleDifferences.isEmpty
-                || lineCountDelta != 0
-                || !blockHeightMatches
-                || !localLineGeometryMatches
-                || probe.compareVisibleStart == true
-                    && abs(visibleStartDelta ?? .infinity) > 1
-                || precedingBlockOrderMatches == false
-                || flowPositionComparable && probe.level == "block"
-                    && abs(topDelta) > maximumTopDelta
-                || flowPositionComparable && probe.level == "block"
-                    && abs(precedingGapDelta ?? 0) > maximumPrecedingGapDelta
+                !styleDifferences.isEmpty
+                    || lineCountDelta != 0
+                    || !blockHeightMatches
+                    || !localLineGeometryMatches
+                    || probe.compareVisibleStart == true
+                        && abs(visibleStartDelta ?? .infinity) > 1
+                    || precedingBlockOrderMatches == false
+                    || flowPositionComparable && probe.level == "block"
+                        && abs(topDelta) > maximumTopDelta
+                    || flowPositionComparable && probe.level == "block"
+                        && abs(precedingGapDelta ?? 0) > maximumPrecedingGapDelta
             {
                 mustMatchDifferenceCount += 1
-                print("Presentation mismatch: \(probe.id), geometry=\(localLineGeometryMatches), height=\(blockHeightMatches), top=\(topDelta)/\(maximumTopDelta), gap=\(precedingGapDelta ?? 0)/\(maximumPrecedingGapDelta)")
+                print(
+                    "Presentation mismatch: \(probe.id), geometry=\(localLineGeometryMatches), height=\(blockHeightMatches), top=\(topDelta)/\(maximumTopDelta), gap=\(precedingGapDelta ?? 0)/\(maximumPrecedingGapDelta)"
+                )
             }
-            differences.append(.init(
-                id: probe.id,
-                sourceUTF16LowerBound: sourceFrom,
-                sourceUTF16UpperBound: try #require(argument["sourceTo"] as? Int),
-                semanticRole: probe.semanticRole,
-                level: probe.level,
-                expectation: probe.expectation,
-                read: readProbe,
-                edit: editProbe,
-                styleDifferences: styleDifferences,
-                adapterStyleDifferences: adapterStyleDifferences,
-                topDelta: topDelta,
-                heightDelta: heightDelta,
-                lineCountDelta: lineCountDelta,
-                localLineGeometryMatches: localLineGeometryMatches,
-                visibleStartDelta: visibleStartDelta,
-                precedingReadBlockID: precedingReadBlockID,
-                precedingEditBlockID: precedingEditBlockID,
-                precedingBlockOrderMatches: precedingBlockOrderMatches,
-                precedingBlockGapDelta: precedingGapDelta
-            ))
+            differences.append(
+                .init(
+                    id: probe.id,
+                    sourceUTF16LowerBound: sourceFrom,
+                    sourceUTF16UpperBound: try #require(argument["sourceTo"] as? Int),
+                    semanticRole: probe.semanticRole,
+                    level: probe.level,
+                    expectation: probe.expectation,
+                    read: readProbe,
+                    edit: editProbe,
+                    styleDifferences: styleDifferences,
+                    adapterStyleDifferences: adapterStyleDifferences,
+                    topDelta: topDelta,
+                    heightDelta: heightDelta,
+                    lineCountDelta: lineCountDelta,
+                    localLineGeometryMatches: localLineGeometryMatches,
+                    visibleStartDelta: visibleStartDelta,
+                    precedingReadBlockID: precedingReadBlockID,
+                    precedingEditBlockID: precedingEditBlockID,
+                    precedingBlockOrderMatches: precedingBlockOrderMatches,
+                    precedingBlockGapDelta: precedingGapDelta
+                ))
         }
 
         return GeometryComparisonReport(
@@ -587,9 +625,10 @@ extension MarkdownEditorWebViewIntegrationTests {
                 contentEnd -= 1
             }
             if lineStart >= lowerBound,
-               lineStart < upperBound,
-               contentEnd <= upperBound,
-               units[lineStart..<contentEnd].allSatisfy({ $0 == 0x20 || $0 == 0x09 }) {
+                lineStart < upperBound,
+                contentEnd <= upperBound,
+                units[lineStart..<contentEnd].allSatisfy({ $0 == 0x20 || $0 == 0x09 })
+            {
                 count += 1
             }
             guard lineEnd < units.count else { break }
@@ -605,7 +644,7 @@ extension MarkdownEditorWebViewIntegrationTests {
     ) -> Range<String.Index>? {
         guard occurrence > 0 else { return nil }
         var lowerBound = source.startIndex
-        for index in 1 ... occurrence {
+        for index in 1...occurrence {
             guard let range = source.range(of: token, range: lowerBound..<source.endIndex) else {
                 return nil
             }
@@ -621,8 +660,7 @@ extension MarkdownEditorWebViewIntegrationTests {
         in source: String,
         semantic: MarkdownSemanticDocument
     ) throws -> Range<Int> {
-        let anchorRange = anchor.lowerBound.utf16Offset(in: source)
-            ..< anchor.upperBound.utf16Offset(in: source)
+        let anchorRange = anchor.lowerBound.utf16Offset(in: source)..<anchor.upperBound.utf16Offset(in: source)
         let ranges: [Range<Int>]
         switch role {
         case "heading":
@@ -665,9 +703,12 @@ extension MarkdownEditorWebViewIntegrationTests {
         default:
             throw MarkdownEditorSession.SessionError.invalidResult
         }
-        guard let range = ranges
-            .filter({ $0.lowerBound <= anchorRange.lowerBound && $0.upperBound >= anchorRange.upperBound })
-            .min(by: { $0.count < $1.count }) else {
+        guard
+            let range =
+                ranges
+                .filter({ $0.lowerBound <= anchorRange.lowerBound && $0.upperBound >= anchorRange.upperBound })
+                .min(by: { $0.count < $1.count })
+        else {
             Issue.record("No \(role) semantic range contains source anchor \(anchorRange).")
             throw MarkdownEditorSession.SessionError.invalidResult
         }
@@ -675,152 +716,152 @@ extension MarkdownEditorWebViewIntegrationTests {
     }
 
     private static let geometrySnapshotJavaScript = """
-    const root = document.querySelector(rootSelector);
-    if (!root) return null;
-    const rootRect = root.getBoundingClientRect();
-    // Compare body flow from the shared app-title boundary. Review and Edit
-    // project the same YAML envelope; only authored source rows remain an
-    // adapter-level geometry difference in Edit.
-    const bodyOriginTop = root.querySelector('.scholium-note-title')?.getBoundingClientRect().bottom ?? rootRect.top;
-    const rounded = value => Math.round(value * 1000) / 1000;
-    const styleKeys = [
-      'font-family', 'font-size', 'font-weight', 'font-style', 'line-height',
-      'letter-spacing', 'text-align', 'color', 'background-color', 'direction',
-      'white-space', 'overflow-wrap', 'margin-block-start', 'margin-block-end',
-      'margin-inline-start', 'margin-inline-end',
-      'padding-block-start', 'padding-block-end', 'padding-inline-start',
-      'padding-inline-end', 'border-inline-start-width', 'border-inline-start-color',
-      'border-radius', 'box-sizing', 'display', 'text-decoration-line',
-      'text-decoration-color', 'text-underline-offset'
-    ];
-    const measure = probe => {
-      const selector = probe[selectorKey];
-      const candidates = Array.from(document.querySelectorAll(selector));
-      const contains = (element, token) => !token || (element.textContent || '').includes(token);
-      const startIndex = candidates.findIndex(element => contains(element, probe.visibleToken));
-      if (startIndex < 0) {
-        const globalMatches = probe.visibleToken
-          ? Array.from(document.querySelectorAll('*')).filter(element =>
-              (element.textContent || '').includes(probe.visibleToken)
-            ).slice(-5)
-          : [];
-        return {
-          id: probe.id,
-          found: false,
-          text: [
-            ...candidates.slice(0, 5).map(element => element.textContent || ''),
-            ...globalMatches.map(element =>
-              `${element.tagName}.${element.className || ''}: ${(element.textContent || '').slice(0, 120)}`
-            )
-          ].join(' | '),
-          top: 0, bottom: 0, left: 0,
-          right: 0, width: 0, height: 0, lineCount: 0, lineTops: [],
-          lineWidths: [], widgetBufferCount: 0, widgetBufferHeight: 0,
-          widgetBufferFontSize: '', styles: {}
+        const root = document.querySelector(rootSelector);
+        if (!root) return null;
+        const rootRect = root.getBoundingClientRect();
+        // Compare body flow from the shared app-title boundary. Review and Edit
+        // project the same YAML envelope; only authored source rows remain an
+        // adapter-level geometry difference in Edit.
+        const bodyOriginTop = root.querySelector('.scholium-note-title')?.getBoundingClientRect().bottom ?? rootRect.top;
+        const rounded = value => Math.round(value * 1000) / 1000;
+        const styleKeys = [
+          'font-family', 'font-size', 'font-weight', 'font-style', 'line-height',
+          'letter-spacing', 'text-align', 'color', 'background-color', 'direction',
+          'white-space', 'overflow-wrap', 'margin-block-start', 'margin-block-end',
+          'margin-inline-start', 'margin-inline-end',
+          'padding-block-start', 'padding-block-end', 'padding-inline-start',
+          'padding-inline-end', 'border-inline-start-width', 'border-inline-start-color',
+          'border-radius', 'box-sizing', 'display', 'text-decoration-line',
+          'text-decoration-color', 'text-underline-offset'
+        ];
+        const measure = probe => {
+          const selector = probe[selectorKey];
+          const candidates = Array.from(document.querySelectorAll(selector));
+          const contains = (element, token) => !token || (element.textContent || '').includes(token);
+          const startIndex = candidates.findIndex(element => contains(element, probe.visibleToken));
+          if (startIndex < 0) {
+            const globalMatches = probe.visibleToken
+              ? Array.from(document.querySelectorAll('*')).filter(element =>
+                  (element.textContent || '').includes(probe.visibleToken)
+                ).slice(-5)
+              : [];
+            return {
+              id: probe.id,
+              found: false,
+              text: [
+                ...candidates.slice(0, 5).map(element => element.textContent || ''),
+                ...globalMatches.map(element =>
+                  `${element.tagName}.${element.className || ''}: ${(element.textContent || '').slice(0, 120)}`
+                )
+              ].join(' | '),
+              top: 0, bottom: 0, left: 0,
+              right: 0, width: 0, height: 0, lineCount: 0, lineTops: [],
+              lineWidths: [], widgetBufferCount: 0, widgetBufferHeight: 0,
+              widgetBufferFontSize: '', styles: {}
+            };
+          }
+          let endIndex = startIndex;
+          if (probe.visibleEndToken) {
+            const relativeEnd = candidates.slice(startIndex).findIndex(element =>
+              contains(element, probe.visibleEndToken)
+            );
+            if (relativeEnd >= 0) endIndex = startIndex + relativeEnd;
+          }
+          const selected = candidates.slice(startIndex, endIndex + 1);
+          const bounds = selected.map(element => element.getBoundingClientRect());
+          const left = Math.min(...bounds.map(rect => rect.left));
+          const right = Math.max(...bounds.map(rect => rect.right));
+          const top = Math.min(...bounds.map(rect => rect.top));
+          const bottom = Math.max(...bounds.map(rect => rect.bottom));
+          const textRects = [];
+          for (const element of selected) {
+            const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+            let node;
+            while ((node = walker.nextNode())) {
+              if (!node.textContent || !node.textContent.trim()) continue;
+              const parent = node.parentElement;
+              if (!parent || getComputedStyle(parent).display === 'none'
+                  || parent.closest('[data-syntax-open="false"]')) continue;
+              const range = document.createRange();
+              range.selectNodeContents(node);
+              for (const rect of Array.from(range.getClientRects())) {
+                if (rect.width <= 0 || rect.height <= 0) continue;
+                textRects.push({
+                  top: rect.top,
+                  bottom: rect.bottom,
+                  left: rect.left,
+                  right: rect.right
+                });
+              }
+            }
+          }
+          textRects.sort((a, b) => a.top - b.top || a.left - b.left);
+          const orderedLines = [];
+          for (const rect of textRects) {
+            const existing = orderedLines.find(line =>
+              rect.bottom > line.top + 0.5 && rect.top < line.bottom - 0.5
+            );
+            if (existing) {
+              existing.top = Math.min(existing.top, rect.top);
+              existing.bottom = Math.max(existing.bottom, rect.bottom);
+              existing.left = Math.min(existing.left, rect.left);
+              existing.right = Math.max(existing.right, rect.right);
+            } else {
+              orderedLines.push({...rect});
+            }
+          }
+          orderedLines.sort((a, b) => a.top - b.top);
+          const computed = getComputedStyle(selected[0]);
+          const visibleStart = (() => {
+            if (!probe.visibleToken) return null;
+            for (const element of selected) {
+              const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+              let node;
+              while ((node = walker.nextNode())) {
+                const offset = (node.textContent || '').indexOf(probe.visibleToken);
+                if (offset < 0) continue;
+                const range = document.createRange();
+                range.setStart(node, offset);
+                range.setEnd(node, offset + 1);
+                return rounded(range.getBoundingClientRect().left - rootRect.left);
+              }
+            }
+            return null;
+          })();
+          const widgetBuffer = selected[0].querySelector('.cm-widgetBuffer');
+          const styles = Object.fromEntries(styleKeys.map(key => [
+            key,
+            computed.getPropertyValue(key).trim()
+          ]));
+          return {
+            id: probe.id,
+            found: true,
+            text: selected.map(element => element.textContent || '').join('\\n'),
+            top: rounded(top - bodyOriginTop),
+            bottom: rounded(bottom - bodyOriginTop),
+            left: rounded(left - rootRect.left),
+            right: rounded(right - rootRect.left),
+            width: rounded(right - left),
+            height: rounded(bottom - top),
+            lineCount: orderedLines.length,
+            lineTops: orderedLines.map(line => rounded(line.top - bodyOriginTop)),
+            lineWidths: orderedLines.map(line => rounded(line.right - line.left)),
+            visibleStart,
+            widgetBufferCount: selected.reduce(
+              (count, element) => count + element.querySelectorAll('.cm-widgetBuffer').length,
+              0
+            ),
+            widgetBufferHeight: rounded(widgetBuffer?.getBoundingClientRect().height || 0),
+            widgetBufferFontSize: widgetBuffer ? getComputedStyle(widgetBuffer).fontSize : '',
+            styles
+          };
         };
-      }
-      let endIndex = startIndex;
-      if (probe.visibleEndToken) {
-        const relativeEnd = candidates.slice(startIndex).findIndex(element =>
-          contains(element, probe.visibleEndToken)
-        );
-        if (relativeEnd >= 0) endIndex = startIndex + relativeEnd;
-      }
-      const selected = candidates.slice(startIndex, endIndex + 1);
-      const bounds = selected.map(element => element.getBoundingClientRect());
-      const left = Math.min(...bounds.map(rect => rect.left));
-      const right = Math.max(...bounds.map(rect => rect.right));
-      const top = Math.min(...bounds.map(rect => rect.top));
-      const bottom = Math.max(...bounds.map(rect => rect.bottom));
-      const textRects = [];
-      for (const element of selected) {
-        const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
-        let node;
-        while ((node = walker.nextNode())) {
-          if (!node.textContent || !node.textContent.trim()) continue;
-          const parent = node.parentElement;
-          if (!parent || getComputedStyle(parent).display === 'none'
-              || parent.closest('[data-syntax-open="false"]')) continue;
-          const range = document.createRange();
-          range.selectNodeContents(node);
-          for (const rect of Array.from(range.getClientRects())) {
-            if (rect.width <= 0 || rect.height <= 0) continue;
-            textRects.push({
-              top: rect.top,
-              bottom: rect.bottom,
-              left: rect.left,
-              right: rect.right
-            });
-          }
-        }
-      }
-      textRects.sort((a, b) => a.top - b.top || a.left - b.left);
-      const orderedLines = [];
-      for (const rect of textRects) {
-        const existing = orderedLines.find(line =>
-          rect.bottom > line.top + 0.5 && rect.top < line.bottom - 0.5
-        );
-        if (existing) {
-          existing.top = Math.min(existing.top, rect.top);
-          existing.bottom = Math.max(existing.bottom, rect.bottom);
-          existing.left = Math.min(existing.left, rect.left);
-          existing.right = Math.max(existing.right, rect.right);
-        } else {
-          orderedLines.push({...rect});
-        }
-      }
-      orderedLines.sort((a, b) => a.top - b.top);
-      const computed = getComputedStyle(selected[0]);
-      const visibleStart = (() => {
-        if (!probe.visibleToken) return null;
-        for (const element of selected) {
-          const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
-          let node;
-          while ((node = walker.nextNode())) {
-            const offset = (node.textContent || '').indexOf(probe.visibleToken);
-            if (offset < 0) continue;
-            const range = document.createRange();
-            range.setStart(node, offset);
-            range.setEnd(node, offset + 1);
-            return rounded(range.getBoundingClientRect().left - rootRect.left);
-          }
-        }
-        return null;
-      })();
-      const widgetBuffer = selected[0].querySelector('.cm-widgetBuffer');
-      const styles = Object.fromEntries(styleKeys.map(key => [
-        key,
-        computed.getPropertyValue(key).trim()
-      ]));
-      return {
-        id: probe.id,
-        found: true,
-        text: selected.map(element => element.textContent || '').join('\\n'),
-        top: rounded(top - bodyOriginTop),
-        bottom: rounded(bottom - bodyOriginTop),
-        left: rounded(left - rootRect.left),
-        right: rounded(right - rootRect.left),
-        width: rounded(right - left),
-        height: rounded(bottom - top),
-        lineCount: orderedLines.length,
-        lineTops: orderedLines.map(line => rounded(line.top - bodyOriginTop)),
-        lineWidths: orderedLines.map(line => rounded(line.right - line.left)),
-        visibleStart,
-        widgetBufferCount: selected.reduce(
-          (count, element) => count + element.querySelectorAll('.cm-widgetBuffer').length,
-          0
-        ),
-        widgetBufferHeight: rounded(widgetBuffer?.getBoundingClientRect().height || 0),
-        widgetBufferFontSize: widgetBuffer ? getComputedStyle(widgetBuffer).fontSize : '',
-        styles
-      };
-    };
-    return {
-      surface,
-      viewportWidth: rounded(window.innerWidth),
-      contentHeight: rounded(Math.max(root.scrollHeight, rootRect.height)),
-      probes: probes.map(measure)
-    };
-    """
+        return {
+          surface,
+          viewportWidth: rounded(window.innerWidth),
+          contentHeight: rounded(Math.max(root.scrollHeight, rootRect.height)),
+          probes: probes.map(measure)
+        };
+        """
 
 }

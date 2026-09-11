@@ -1,6 +1,7 @@
 import Foundation
 import ScholiumContracts
 import Testing
+
 @testable import ScholiumApp
 
 @Suite("Editor exact-source buffer")
@@ -52,13 +53,14 @@ struct EditorExactSourceBufferTests {
         var legacyOffset = (legacySource as NSString).length
         let legacyStarted = DispatchTime.now().uptimeNanoseconds
         for _ in 0..<200 {
-            legacySource = try MarkdownEditorDeltaApplier.apply([
-                MarkdownEditorDelta(
-                    fromUTF16: legacyOffset,
-                    toUTF16: legacyOffset,
-                    insertion: "x"
-                ),
-            ], to: legacySource)
+            legacySource = try MarkdownEditorDeltaApplier.apply(
+                [
+                    MarkdownEditorDelta(
+                        fromUTF16: legacyOffset,
+                        toUTF16: legacyOffset,
+                        insertion: "x"
+                    )
+                ], to: legacySource)
             legacyOffset += 1
         }
         let legacyNanoseconds = DispatchTime.now().uptimeNanoseconds - legacyStarted
@@ -72,7 +74,7 @@ struct EditorExactSourceBufferTests {
                     fromUTF16: insertionOffset,
                     toUTF16: insertionOffset,
                     insertion: "x"
-                ),
+                )
             ])
             insertionOffset += 1
         }

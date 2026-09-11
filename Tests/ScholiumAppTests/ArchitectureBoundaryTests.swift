@@ -8,7 +8,9 @@ struct ArchitectureBoundaryTests {
         let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         for path in ["Scholium/Services/AgentChatController.swift", "Scholium/Services/AgentChatChildController.swift"] {
             let source = try String(contentsOf: root.appendingPathComponent(path), encoding: .utf8)
-            for token in ["CodexChatActivity.parse", "CodexChatCapabilities.plan(", "CodexChatCapabilities.contextUsage(", "Phase.init(rawValue:", "item[\"type\"]"] {
+            for token in [
+                "CodexChatActivity.parse", "CodexChatCapabilities.plan(", "CodexChatCapabilities.contextUsage(", "Phase.init(rawValue:", "item[\"type\"]",
+            ] {
                 #expect(!source.contains(token), "Public transcript interpretation escaped Application: \(path)")
             }
         }
@@ -69,12 +71,14 @@ struct ArchitectureBoundaryTests {
                     of: repositoryRoot.path + "/",
                     with: ""
                 )
-                let imports = source
+                let imports =
+                    source
                     .split(whereSeparator: \.isNewline)
                     .map { $0.trimmingCharacters(in: .whitespaces) }
                 if imports.contains("import ScholiumCore") { coreImports.append(relativePath) }
                 if imports.contains("import ScholiumApplication"),
-                   !allowedApplicationImports.contains(relativePath) {
+                    !allowedApplicationImports.contains(relativePath)
+                {
                     applicationImports.append(relativePath)
                 }
             }
@@ -82,14 +86,16 @@ struct ArchitectureBoundaryTests {
         for relativeRoot in ["Tests/ScholiumAppTests", "Tests/ScholiumApplicationTests"] {
             for file in try swiftFiles(beneath: repositoryRoot.appendingPathComponent(relativeRoot)) {
                 let source = try String(contentsOf: file, encoding: .utf8)
-                let imports = source
+                let imports =
+                    source
                     .split(whereSeparator: \.isNewline)
                     .map { $0.trimmingCharacters(in: .whitespaces) }
                 if imports.contains("import ScholiumCore") {
-                    coreImports.append(file.path.replacingOccurrences(
-                        of: repositoryRoot.path + "/",
-                        with: ""
-                    ))
+                    coreImports.append(
+                        file.path.replacingOccurrences(
+                            of: repositoryRoot.path + "/",
+                            with: ""
+                        ))
                 }
             }
         }
@@ -117,20 +123,23 @@ struct ArchitectureBoundaryTests {
         #expect(!source.contains("func reloadTriptychCapabilities("))
 
         let installStart = try #require(source.range(of: "private func install("))
-        let installEnd = try #require(source.range(
-            of: "private func capabilities(from handle:",
-            range: installStart.upperBound..<source.endIndex
-        ))
+        let installEnd = try #require(
+            source.range(
+                of: "private func capabilities(from handle:",
+                range: installStart.upperBound..<source.endIndex
+            ))
         let install = String(source[installStart.lowerBound..<installEnd.lowerBound])
         let subscription = try #require(install.range(of: "let stream = await handle.events.events()"))
-        let retainedTask = try #require(install.range(
-            of: "eventTasks[handle.id] = Task",
-            range: subscription.upperBound..<install.endIndex
-        ))
-        let publication = try #require(install.range(
-            of: "workspaceActivations[handle.id] = activation",
-            range: retainedTask.upperBound..<install.endIndex
-        ))
+        let retainedTask = try #require(
+            install.range(
+                of: "eventTasks[handle.id] = Task",
+                range: subscription.upperBound..<install.endIndex
+            ))
+        let publication = try #require(
+            install.range(
+                of: "workspaceActivations[handle.id] = activation",
+                range: retainedTask.upperBound..<install.endIndex
+            ))
         #expect(publication.lowerBound > retainedTask.lowerBound)
     }
 
@@ -235,7 +244,8 @@ struct ArchitectureBoundaryTests {
                     let expression = try NSRegularExpression(pattern: construction.pattern)
                     let range = NSRange(source.startIndex..<source.endIndex, in: source)
                     guard let match = expression.firstMatch(in: source, range: range),
-                          let matchRange = Range(match.range, in: source) else {
+                        let matchRange = Range(match.range, in: source)
+                    else {
                         continue
                     }
                     let line = source[..<matchRange.lowerBound].reduce(into: 1) { count, character in
@@ -251,7 +261,8 @@ struct ArchitectureBoundaryTests {
                     let expression = try NSRegularExpression(pattern: reference.pattern)
                     let range = NSRange(source.startIndex..<source.endIndex, in: source)
                     guard let match = expression.firstMatch(in: source, range: range),
-                          let matchRange = Range(match.range, in: source) else {
+                        let matchRange = Range(match.range, in: source)
+                    else {
                         continue
                     }
                     let line = source[..<matchRange.lowerBound].reduce(into: 1) { count, character in
@@ -309,12 +320,14 @@ struct ArchitectureBoundaryTests {
             encoding: .utf8
         )
 
-        #expect(handle.contains(
-            "var sourceOperationGate = WorkspaceSourceOperationGate()"
-        ))
-        #expect(handle.contains(
-            "public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner"
-        ))
+        #expect(
+            handle.contains(
+                "var sourceOperationGate = WorkspaceSourceOperationGate()"
+            ))
+        #expect(
+            handle.contains(
+                "public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner"
+            ))
         for retiredOwner in [
             "private var activeSourceMutationID",
             "private var refreshCycleIsActive",
@@ -462,17 +475,20 @@ struct ArchitectureBoundaryTests {
     }
 
     private func swiftFiles(beneath root: URL) throws -> [URL] {
-        guard let enumerator = FileManager.default.enumerator(
-            at: root,
-            includingPropertiesForKeys: [.isRegularFileKey],
-            options: [.skipsHiddenFiles, .skipsPackageDescendants]
-        ) else {
+        guard
+            let enumerator = FileManager.default.enumerator(
+                at: root,
+                includingPropertiesForKeys: [.isRegularFileKey],
+                options: [.skipsHiddenFiles, .skipsPackageDescendants]
+            )
+        else {
             return []
         }
         return try enumerator.compactMap { value -> URL? in
             guard let url = value as? URL,
-                  url.pathExtension == "swift",
-                  try url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile == true else {
+                url.pathExtension == "swift",
+                try url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile == true
+            else {
                 return nil
             }
             return url

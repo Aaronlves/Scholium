@@ -108,27 +108,31 @@ enum ExactSourceComparisonPresentation {
             let run = Array(lines[runStart..<index])
             let hasChangeBefore = runStart > 0
             let hasChangeAfter = index < lines.count
-            let prefixCount = hasChangeBefore
+            let prefixCount =
+                hasChangeBefore
                 ? min(contextLineCount, run.count)
                 : 0
-            let suffixCount = hasChangeAfter
+            let suffixCount =
+                hasChangeAfter
                 ? min(contextLineCount, run.count - prefixCount)
                 : 0
             let foldedCount = run.count - prefixCount - suffixCount
 
             if prefixCount > 0 {
-                result.append(contentsOf: run.prefix(prefixCount).map {
-                    .line($0)
-                })
+                result.append(
+                    contentsOf: run.prefix(prefixCount).map {
+                        .line($0)
+                    })
             }
             if foldedCount > 0 {
                 let folded = Array(run.dropFirst(prefixCount).prefix(foldedCount))
                 result.append(.folded(id: folded[0].id, lines: folded))
             }
             if suffixCount > 0 {
-                result.append(contentsOf: run.suffix(suffixCount).map {
-                    .line($0)
-                })
+                result.append(
+                    contentsOf: run.suffix(suffixCount).map {
+                        .line($0)
+                    })
             }
         }
         return result
@@ -171,10 +175,12 @@ struct ExactSourceComparisonView: View {
             .padding(.vertical, ScholiumGrid.Spacing.inlineControlGap)
         }
         .background(ScholiumNativeColorRole.textBackground.color)
-        .clipShape(RoundedRectangle(
-            cornerRadius: ScholiumShape.editorialControlCornerRadius,
-            style: .continuous
-        ))
+        .clipShape(
+            RoundedRectangle(
+                cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                style: .continuous
+            )
+        )
         .overlay {
             RoundedRectangle(
                 cornerRadius: ScholiumShape.editorialControlCornerRadius,
@@ -236,7 +242,9 @@ struct ExactSourceComparisonView: View {
                     }
                 }
                 .padding(.top, ScholiumGrid.Spacing.inlineControlGap)
-            } label: { Text("Revision Details", bundle: .module) }
+            } label: {
+                Text("Revision Details", bundle: .module)
+            }
             .scholiumActivationPointer()
             .font(ScholiumTypography.interface(.compact))
         }
@@ -255,11 +263,13 @@ struct ExactSourceComparisonView: View {
             Text(short(fingerprint))
                 .font(ScholiumTypography.exact(.small))
                 .textSelection(.enabled)
-            Text(hasBOM
-                ? LocalizedStringResource("UTF-8 BOM present", locale: locale, bundle: .module)
-                : LocalizedStringResource("No UTF-8 BOM", locale: locale, bundle: .module))
-                .font(ScholiumTypography.interface(.small))
-                .scholiumForeground(.secondaryText)
+            Text(
+                hasBOM
+                    ? LocalizedStringResource("UTF-8 BOM present", locale: locale, bundle: .module)
+                    : LocalizedStringResource("No UTF-8 BOM", locale: locale, bundle: .module)
+            )
+            .font(ScholiumTypography.interface(.small))
+            .scholiumForeground(.secondaryText)
             ForEach(lineEndings, id: \.self) { ending in
                 Text(lineEndingLabel(ending))
                     .font(ScholiumTypography.interface(.small))
@@ -325,7 +335,11 @@ struct ExactSourceComparisonView: View {
         Button {
             expandedFoldIDs.insert(id)
         } label: {
-            Label { Text("\(count) unchanged lines", bundle: .module) } icon: { Image(systemName: "ellipsis") }
+            Label {
+                Text("\(count) unchanged lines", bundle: .module)
+            } icon: {
+                Image(systemName: "ellipsis")
+            }
             .font(ScholiumTypography.interface(.small, emphasis: .strong))
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, ScholiumGrid.Spacing.nestedContentInset)
@@ -363,7 +377,8 @@ struct ExactSourceComparisonView: View {
         let lineNumbers = [line.startingLineNumber, line.endingLineNumber]
             .compactMap { $0.map(String.init) }
             .joined(separator: " ")
-        let content = line.text.isEmpty
+        let content =
+            line.text.isEmpty
             ? ScholiumL10n.string("Blank line", locale: locale)
             : line.text
         return "\(lineNumbers) \(content)"
@@ -392,12 +407,14 @@ struct ExactSourceComparisonView: View {
     private func revisionLineEndings(
         starting: Bool
     ) -> [ExactSourceComparisonLineEnding] {
-        let present = Set(comparison.lines.compactMap { line in
-            let existsInRevision = starting
-                ? line.startingLineNumber != nil
-                : line.endingLineNumber != nil
-            return existsInRevision ? line.lineEnding : nil
-        })
+        let present = Set(
+            comparison.lines.compactMap { line in
+                let existsInRevision =
+                    starting
+                    ? line.startingLineNumber != nil
+                    : line.endingLineNumber != nil
+                return existsInRevision ? line.lineEnding : nil
+            })
         return [.lf, .crlf, .none].filter(present.contains)
     }
 

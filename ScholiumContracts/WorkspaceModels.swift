@@ -106,12 +106,13 @@ public struct WorkspaceNoteSnapshot: Hashable, Sendable {
     public var fingerprint: DocumentFingerprint { document.fingerprint }
     public var validationWarnings: [String] { document.validationWarnings }
     public var capabilities: DocumentCapabilities {
-        let identity: DocumentIdentityResolution = switch stableIdentity {
-        case .resolved: .resolved
-        case .ambiguous: .ambiguous
-        case .pending: .pending
-        case .unresolved: .unresolved
-        }
+        let identity: DocumentIdentityResolution =
+            switch stableIdentity {
+            case .resolved: .resolved
+            case .ambiguous: .ambiguous
+            case .pending: .pending
+            case .unresolved: .unresolved
+            }
         return DocumentCapabilities(
             role: vaultRole,
             identity: identity
@@ -169,10 +170,12 @@ public struct WorkspaceNoteSnapshot: Hashable, Sendable {
         self.metadata = metadata
         self.headings = headings
         self.derivedProjectionState = derivedProjectionState
-        self.cachedSemanticDocument = cachedSemanticDocument?.fingerprint == document.fingerprint
+        self.cachedSemanticDocument =
+            cachedSemanticDocument?.fingerprint == document.fingerprint
             ? cachedSemanticDocument
             : nil
-        self.cachedTitleProjection = cachedTitleProjection?.sourceFingerprint == document.fingerprint
+        self.cachedTitleProjection =
+            cachedTitleProjection?.sourceFingerprint == document.fingerprint
             ? cachedTitleProjection
             : nil
     }
@@ -381,7 +384,6 @@ public struct WorkspaceResearchSnapshot: Sendable {
         self.healthIssues = healthIssues
     }
 }
-
 
 /// The completeness boundary carried by every immutable Triptych projection.
 /// An opening snapshot contains one trustworthy, usable vault while the
@@ -708,17 +710,18 @@ public enum WorkspaceEvent: Sendable {
         case .derivedStateChanged(let event):
             event.status
         case .vaultAccessInvalidated(let event):
-            .stale(WorkspaceDerivedRefreshIssue(
-                reason: "A vault root changed identity. Restore access before Scholium reads, refreshes, or changes that vault again.",
-                affectedVaultIDs: Set(event.unavailableVaultPaths.keys),
-                lastKnownGood: WorkspaceDerivedRefreshEvidence(snapshot: event.snapshot)
-            ))
+            .stale(
+                WorkspaceDerivedRefreshIssue(
+                    reason: "A vault root changed identity. Restore access before Scholium reads, refreshes, or changes that vault again.",
+                    affectedVaultIDs: Set(event.unavailableVaultPaths.keys),
+                    lastKnownGood: WorkspaceDerivedRefreshEvidence(snapshot: event.snapshot)
+                ))
         case .snapshot,
-             .sourceCommitted,
-             .inventoryChanged,
-             .researchStateChanged,
-             .researchConfigurationInvalidated,
-             .runtimeReloaded:
+            .sourceCommitted,
+            .inventoryChanged,
+            .researchStateChanged,
+            .researchConfigurationInvalidated,
+            .runtimeReloaded:
             snapshot.phase.isComplete
                 ? .current(WorkspaceDerivedRefreshEvidence(snapshot: snapshot))
                 : .opening(WorkspaceDerivedRefreshEvidence(snapshot: snapshot))

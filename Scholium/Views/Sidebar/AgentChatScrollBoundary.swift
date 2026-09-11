@@ -31,12 +31,17 @@ struct AgentChatScrollBoundary: NSViewRepresentable {
         }
         private func routeEvent(_ event: NSEvent) -> NSEvent? {
             guard let window, event.window === window, !isHiddenOrHasHiddenAncestor,
-                  let scroll = enclosingScrollView, let content = window.contentView else { route.reset(); return event }
+                let scroll = enclosingScrollView, let content = window.contentView
+            else {
+                route.reset()
+                return event
+            }
             if event.type == .leftMouseDown {
                 // The platform content group can also mask the overlay scroller.
                 // Delegate its real hit region to AppKit's own tracking loop.
                 if let bar = scroll.verticalScroller, bar.isEnabled, !bar.isHidden,
-                   bar.bounds.contains(bar.convert(event.locationInWindow, from: nil)) {
+                    bar.bounds.contains(bar.convert(event.locationInWindow, from: nil))
+                {
                     bar.mouseDown(with: event)
                     return nil
                 }
@@ -52,20 +57,25 @@ struct AgentChatScrollBoundary: NSViewRepresentable {
             viewport.size.height = max(0, viewport.height - insets.top - insets.bottom)
             let point = scroll.contentView.convert(event.locationInWindow, from: nil)
             let nested = (hit as? NSScrollView) ?? hit?.enclosingScrollView
-            let ownsLocalVerticalScroll = nested.map {
-                $0 !== scroll && ($0.documentView?.frame.height ?? 0) > $0.contentView.bounds.height + 1
-            } ?? false
+            let ownsLocalVerticalScroll =
+                nested.map {
+                    $0 !== scroll && ($0.documentView?.frame.height ?? 0) > $0.contentView.bounds.height + 1
+                } ?? false
             let eligible = viewport.contains(point) && !(hit is NSScroller) && !ownsLocalVerticalScroll
             let reply = eligible ? Self.inlineReply(in: scroll.documentView, at: event.locationInWindow) : nil
-            let target = reply.flatMap { view in
-                view.hitTest(view.superview?.convert(event.locationInWindow, from: nil) ?? event.locationInWindow)
-            } ?? reply ?? hit ?? scroll
+            let target =
+                reply.flatMap { view in
+                    view.hitTest(view.superview?.convert(event.locationInWindow, from: nil) ?? event.locationInWindow)
+                } ?? reply ?? hit ?? scroll
             return route.dispatch(event, inlineTarget: eligible ? target : nil, conversation: scroll) ? nil : event
         }
         static func inlineReply(in root: NSView?, at windowPoint: NSPoint) -> AgentChatReadWebView? {
             guard let root, !root.isHiddenOrHasHiddenAncestor else { return nil }
             if let reply = root as? AgentChatReadWebView,
-               reply.bounds.contains(reply.convert(windowPoint, from: nil)) { return reply }
+                reply.bounds.contains(reply.convert(windowPoint, from: nil))
+            {
+                return reply
+            }
             for child in root.subviews.reversed() {
                 if let found = inlineReply(in: child, at: windowPoint) { return found }
             }
@@ -81,7 +91,11 @@ final class AgentChatWheelRoute {
     private weak var target: NSView?
     private weak var initialTarget: NSView?
     private var pending: [NSEvent] = []
-    func reset() { target = nil; initialTarget = nil; pending = [] }
+    func reset() {
+        target = nil
+        initialTarget = nil
+        pending = []
+    }
 
     @discardableResult
     func dispatch(_ event: NSEvent, inlineTarget: NSView?, conversation: NSScrollView) -> Bool {
@@ -96,10 +110,14 @@ final class AgentChatWheelRoute {
             return true
         }
         if target == nil {
-            target = !event.modifierFlags.contains(.shift) && abs(event.scrollingDeltaY) >= abs(event.scrollingDeltaX)
+            target =
+                !event.modifierFlags.contains(.shift) && abs(event.scrollingDeltaY) >= abs(event.scrollingDeltaX)
                 ? conversation : initialTarget
         }
-        guard let target else { reset(); return false }
+        guard let target else {
+            reset()
+            return false
+        }
         for start in pending { target.scrollWheel(with: start) }
         pending = []
         target.scrollWheel(with: event)

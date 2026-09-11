@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+
 @testable import ScholiumApp
 
 @Suite("Window editor flush coordinator")
@@ -104,21 +105,24 @@ struct WindowEditorFlushCoordinatorTests {
         )
         coordinator.activateTriptych(firstTriptychID, flushOwnedSessions: {})
         #expect(registry.registrations.count == 2)
-        #expect(registry.registrations.values.allSatisfy {
-            $0.triptychID == firstTriptychID && $0.windowID == firstWindowID
-        })
+        #expect(
+            registry.registrations.values.allSatisfy {
+                $0.triptychID == firstTriptychID && $0.windowID == firstWindowID
+            })
 
         coordinator.updateWindowID(secondWindowID)
         #expect(registry.registrations.count == 2)
-        #expect(registry.registrations.values.allSatisfy {
-            $0.triptychID == firstTriptychID && $0.windowID == secondWindowID
-        })
+        #expect(
+            registry.registrations.values.allSatisfy {
+                $0.triptychID == firstTriptychID && $0.windowID == secondWindowID
+            })
 
         coordinator.activateTriptych(secondTriptychID, flushOwnedSessions: {})
         #expect(registry.registrations.count == 2)
-        #expect(registry.registrations.values.allSatisfy {
-            $0.triptychID == secondTriptychID && $0.windowID == secondWindowID
-        })
+        #expect(
+            registry.registrations.values.allSatisfy {
+                $0.triptychID == secondTriptychID && $0.windowID == secondWindowID
+            })
 
         coordinator.shutdown()
         #expect(registry.registrations.isEmpty)

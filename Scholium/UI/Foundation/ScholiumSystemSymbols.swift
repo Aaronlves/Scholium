@@ -60,23 +60,25 @@ enum ScholiumWebSymbolAssets {
     }()
 
     private static func renderDataURI(for symbol: ScholiumSystemSymbol) -> String {
-        guard let image = NSImage(
-            systemSymbolName: symbol.systemName,
-            accessibilityDescription: nil
-        )?.withSymbolConfiguration(symbolConfiguration),
-        let bitmap = NSBitmapImageRep(
-            bitmapDataPlanes: nil,
-            pixelsWide: Int(ceil(image.size.width * rasterScale)),
-            pixelsHigh: Int(ceil(image.size.height * rasterScale)),
-            bitsPerSample: 8,
-            samplesPerPixel: 4,
-            hasAlpha: true,
-            isPlanar: false,
-            colorSpaceName: .deviceRGB,
-            bytesPerRow: 0,
-            bitsPerPixel: 0
-        ),
-        let context = NSGraphicsContext(bitmapImageRep: bitmap) else {
+        guard
+            let image = NSImage(
+                systemSymbolName: symbol.systemName,
+                accessibilityDescription: nil
+            )?.withSymbolConfiguration(symbolConfiguration),
+            let bitmap = NSBitmapImageRep(
+                bitmapDataPlanes: nil,
+                pixelsWide: Int(ceil(image.size.width * rasterScale)),
+                pixelsHigh: Int(ceil(image.size.height * rasterScale)),
+                bitsPerSample: 8,
+                samplesPerPixel: 4,
+                hasAlpha: true,
+                isPlanar: false,
+                colorSpaceName: .deviceRGB,
+                bytesPerRow: 0,
+                bitsPerPixel: 0
+            ),
+            let context = NSGraphicsContext(bitmapImageRep: bitmap)
+        else {
             return ""
         }
 
@@ -98,7 +100,8 @@ enum ScholiumWebSymbolAssets {
         NSGraphicsContext.restoreGraphicsState()
 
         guard
-        let data = bitmap.representation(using: .png, properties: [:]) else {
+            let data = bitmap.representation(using: .png, properties: [:])
+        else {
             return ""
         }
         return "data:image/png;base64,\(data.base64EncodedString())"

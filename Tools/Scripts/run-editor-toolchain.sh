@@ -2,8 +2,10 @@
 set -euo pipefail
 
 repo_root="${0:A:h:h:h}"
+script_name="${0:t}"
 source_dir="$repo_root/WebEditor"
 run_tests=false
+check_only=false
 output=""
 reader_output=""
 math_output=""
@@ -12,7 +14,8 @@ mermaid_notices_output=""
 math_assets=""
 
 usage() {
-  print -u2 "Usage: $0 --output <absolute-path> --reader-output <absolute-path> --math-output <absolute-path> --mermaid-output <absolute-path> --mermaid-notices-output <absolute-path> --math-assets <absolute-directory> [--test]"
+  print -u2 "Usage: ${script_name} --output <absolute-path> --reader-output <absolute-path> --math-output <absolute-path> --mermaid-output <absolute-path> --mermaid-notices-output <absolute-path> --math-assets <absolute-directory> [--test]"
+  print -u2 "       ${script_name} --check-only"
   exit 64
 }
 
@@ -52,42 +55,53 @@ while (( $# > 0 )); do
       run_tests=true
       shift
       ;;
+    --check-only)
+      check_only=true
+      shift
+      ;;
     *)
       usage
       ;;
   esac
 done
 
-[[ -n "$output" && "$output" == /* ]] || usage
-[[ -n "$reader_output" && "$reader_output" == /* ]] || usage
-[[ -n "$math_output" && "$math_output" == /* ]] || usage
-[[ -n "$mermaid_output" && "$mermaid_output" == /* ]] || usage
-[[ -n "$mermaid_notices_output" && "$mermaid_notices_output" == /* ]] || usage
-[[ -n "$math_assets" && "$math_assets" == /* ]] || usage
-[[ -d "${output:h}" ]] || {
-  print -u2 "The editor bundle output directory does not exist: ${output:h}"
-  exit 66
-}
-[[ -d "${reader_output:h}" ]] || {
-  print -u2 "The reader bundle output directory does not exist: ${reader_output:h}"
-  exit 66
-}
-[[ -d "${math_output:h}" ]] || {
-  print -u2 "The mathematics bundle output directory does not exist: ${math_output:h}"
-  exit 66
-}
-[[ -d "${mermaid_output:h}" ]] || {
-  print -u2 "The Mermaid bundle output directory does not exist: ${mermaid_output:h}"
-  exit 66
-}
-[[ -d "${mermaid_notices_output:h}" ]] || {
-  print -u2 "The Mermaid notice output directory does not exist: ${mermaid_notices_output:h}"
-  exit 66
-}
-[[ -d "$math_assets" ]] || {
-  print -u2 "The mathematics asset output directory does not exist: $math_assets"
-  exit 66
-}
+if $check_only; then
+  if [[ -n "$output" || -n "$reader_output" || -n "$math_output" || -n "$mermaid_output" \
+    || -n "$mermaid_notices_output" || -n "$math_assets" ]] || $run_tests; then
+    usage
+  fi
+else
+  [[ -n "$output" && "$output" == /* ]] || usage
+  [[ -n "$reader_output" && "$reader_output" == /* ]] || usage
+  [[ -n "$math_output" && "$math_output" == /* ]] || usage
+  [[ -n "$mermaid_output" && "$mermaid_output" == /* ]] || usage
+  [[ -n "$mermaid_notices_output" && "$mermaid_notices_output" == /* ]] || usage
+  [[ -n "$math_assets" && "$math_assets" == /* ]] || usage
+  [[ -d "${output:h}" ]] || {
+    print -u2 "The editor bundle output directory does not exist: ${output:h}"
+    exit 66
+  }
+  [[ -d "${reader_output:h}" ]] || {
+    print -u2 "The reader bundle output directory does not exist: ${reader_output:h}"
+    exit 66
+  }
+  [[ -d "${math_output:h}" ]] || {
+    print -u2 "The mathematics bundle output directory does not exist: ${math_output:h}"
+    exit 66
+  }
+  [[ -d "${mermaid_output:h}" ]] || {
+    print -u2 "The Mermaid bundle output directory does not exist: ${mermaid_output:h}"
+    exit 66
+  }
+  [[ -d "${mermaid_notices_output:h}" ]] || {
+    print -u2 "The Mermaid notice output directory does not exist: ${mermaid_notices_output:h}"
+    exit 66
+  }
+  [[ -d "$math_assets" ]] || {
+    print -u2 "The mathematics asset output directory does not exist: $math_assets"
+    exit 66
+  }
+fi
 
 if [[ -e "$source_dir/node_modules" ]]; then
   print -u2 "Refusing to use in-worktree WebEditor/node_modules. Remove it and rerun the repository editor script; dependencies are installed in temporary storage."
@@ -116,6 +130,10 @@ fi
 cd "$stage"
 npm ci --ignore-scripts
 npm run typecheck
+if $check_only; then
+  print "WebEditor typecheck: passed"
+  exit 0
+fi
 if $run_tests; then
   npm test
 fi

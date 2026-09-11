@@ -1,5 +1,6 @@
-import Testing
 import ScholiumContracts
+import Testing
+
 @testable import ScholiumCore
 
 @Suite("Vault watch event reconciliation")
@@ -42,14 +43,15 @@ struct VaultWatchEventTests {
     @Test("Root changes survive coalescing and require recovery")
     func rootChangeSurvivesCoalescing() {
         var journal = VaultWatchEventJournal()
-        journal.append(VaultWatchEvent(
-            added: [],
-            modified: [],
-            deleted: [],
-            sequence: 42,
-            requiresFullRescan: true,
-            rootChanged: true
-        ))
+        journal.append(
+            VaultWatchEvent(
+                added: [],
+                modified: [],
+                deleted: [],
+                sequence: 42,
+                requiresFullRescan: true,
+                rootChanged: true
+            ))
 
         let drained = journal.drain()
         #expect(drained?.rootChanged == true)

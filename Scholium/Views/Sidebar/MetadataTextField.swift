@@ -27,8 +27,11 @@ import AppKit
         cell.owner = self
         self.cell = cell
         delegate = self
-        isEditable = true; isSelectable = true
-        isBordered = false; isBezeled = false; drawsBackground = false
+        isEditable = true
+        isSelectable = true
+        isBordered = false
+        isBezeled = false
+        drawsBackground = false
         bezelStyle = .roundedBezel
         font = .systemFont(ofSize: NSFont.systemFontSize)
         textColor = ScholiumNativeColorRole.label.nsColor
@@ -56,7 +59,10 @@ import AppKit
 
     override func becomeFirstResponder() -> Bool {
         let accepted = super.becomeFirstResponder()
-        if accepted { hasInputFocus = true; updateSurface() }
+        if accepted {
+            hasInputFocus = true
+            updateSurface()
+        }
         return accepted
     }
     private func updateSurface() {
@@ -66,15 +72,20 @@ import AppKit
 
     func controlTextDidChange(_ notification: Notification) {
         let composing = (currentEditor() as? NSTextView)?.hasMarkedText() ?? false
-        if composing { host?.session.composing.insert(identity) }
-        else { host?.session.composing.remove(identity); changed?(stringValue) }
+        if composing {
+            host?.session.composing.insert(identity)
+        } else {
+            host?.session.composing.remove(identity)
+            changed?(stringValue)
+        }
         invalidateIntrinsicContentSize()
     }
     func controlTextDidEndEditing(_ notification: Notification) {
         guard (currentEditor() as? NSTextView)?.hasMarkedText() != true else { return }
         changed?(stringValue)
         host?.session.composing.remove(identity)
-        hasInputFocus = false; updateSurface()
+        hasInputFocus = false
+        updateSurface()
         host?.session.requestCommit()
     }
     func control(_ control: NSControl, textView: NSTextView, doCommandBy command: Selector) -> Bool {
@@ -130,12 +141,10 @@ import AppKit
     override var undoManager: UndoManager? { typingUndo }
 
     @objc func undo(_ sender: Any?) {
-        if typingUndo.canUndo { typingUndo.undo() }
-        else { owner?.host?.undo(sender) }
+        if typingUndo.canUndo { typingUndo.undo() } else { owner?.host?.undo(sender) }
     }
     @objc func redo(_ sender: Any?) {
-        if typingUndo.canRedo { typingUndo.redo() }
-        else { owner?.host?.redo(sender) }
+        if typingUndo.canRedo { typingUndo.redo() } else { owner?.host?.redo(sender) }
     }
     override func validateUserInterfaceItem(_ item: NSValidatedUserInterfaceItem) -> Bool {
         if item.action == #selector(undo(_:)) { return typingUndo.canUndo || owner?.host?.session.undoManager.canUndo == true }

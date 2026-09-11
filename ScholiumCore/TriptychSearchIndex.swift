@@ -1,8 +1,8 @@
 import CryptoKit
 import Darwin
 import Foundation
-import ScholiumContracts
 import SQLite3
+import ScholiumContracts
 
 public struct TriptychSearchIndexOpenResult: Sendable {
     public let index: TriptychSearchIndex
@@ -96,7 +96,8 @@ public actor TriptychSearchIndex {
             in: database
         )
         if let generation = try Self.readGeneration(in: database, triptychID: triptychID),
-           generation.sequence > 0 {
+            generation.sequence > 0
+        {
             currentAvailability = .current(generation)
         } else {
             currentAvailability = .unavailable
@@ -278,7 +279,8 @@ public actor TriptychSearchIndex {
             }
         )
         if previous?.sourceManifestHash == manifestHash, stored == desiredState,
-           let previous {
+            let previous
+        {
             try writerDatabase.transaction {
                 try Self.requireNewerWorkspaceGeneration(
                     workspaceGeneration,
@@ -299,10 +301,11 @@ public actor TriptychSearchIndex {
         if let previous, previous.sequence > 0 {
             currentAvailability = .refreshing(lastGood: previous)
         } else {
-            currentAvailability = .building(SearchBuildProgress(
-                completed: 0,
-                total: desired.count
-            ))
+            currentAvailability = .building(
+                SearchBuildProgress(
+                    completed: 0,
+                    total: desired.count
+                ))
         }
 
         let identifier = UUID()
@@ -357,11 +360,13 @@ public actor TriptychSearchIndex {
         total: Int
     ) {
         guard activeSynchronization?.id == synchronizationID,
-              case .building = currentAvailability else { return }
-        currentAvailability = .building(SearchBuildProgress(
-            completed: completed,
-            total: total
-        ))
+            case .building = currentAvailability
+        else { return }
+        currentAvailability = .building(
+            SearchBuildProgress(
+                completed: completed,
+                total: total
+            ))
     }
 
     private func finishSynchronization(
@@ -382,7 +387,8 @@ public actor TriptychSearchIndex {
         } catch is CancellationError {
             if activeSynchronization?.id == synchronization.id {
                 activeSynchronization = nil
-                currentAvailability = synchronization.previous.map(SearchAvailability.current)
+                currentAvailability =
+                    synchronization.previous.map(SearchAvailability.current)
                     ?? .unavailable
             }
             throw CancellationError()
@@ -508,14 +514,15 @@ public actor TriptychSearchIndex {
             try Task.checkCancellation()
             let readGeneration = try generation()
             let availability = responseAvailability(for: readGeneration)
-            let freshness: SearchFreshnessToken = switch request.executionScope {
-            case .currentNote(let source): .currentNote(source)
-            case .currentVault, .triptych:
-                readGeneration.map(SearchFreshnessToken.triptych)
-                    ?? SearchFreshnessToken(
-                        "triptych:\(triptychID.uuidString.lowercased()):unavailable"
-                    )
-            }
+            let freshness: SearchFreshnessToken =
+                switch request.executionScope {
+                case .currentNote(let source): .currentNote(source)
+                case .currentVault, .triptych:
+                    readGeneration.map(SearchFreshnessToken.triptych)
+                        ?? SearchFreshnessToken(
+                            "triptych:\(triptychID.uuidString.lowercased()):unavailable"
+                        )
+                }
             guard request.hasConsistentScopes else {
                 return SearchResponse(
                     requestID: request.id,
@@ -525,12 +532,14 @@ public actor TriptychSearchIndex {
                     availability: availability,
                     results: [],
                     hasMore: false,
-                    diagnostics: [SearchQueryDiagnostic(
-                        code: .notApplicable,
-                        message: "Search presentation and execution scopes do not match.",
-                        utf16LowerBound: 0,
-                        utf16UpperBound: 0
-                    )]
+                    diagnostics: [
+                        SearchQueryDiagnostic(
+                            code: .notApplicable,
+                            message: "Search presentation and execution scopes do not match.",
+                            utf16LowerBound: 0,
+                            utf16UpperBound: 0
+                        )
+                    ]
                 )
             }
             guard request.limit > 0 else {
@@ -595,13 +604,15 @@ public actor TriptychSearchIndex {
             try Task.checkCancellation()
             let readGeneration = try generation()
             let availability = responseAvailability(for: readGeneration)
-            let freshness = readGeneration.map(SearchFreshnessToken.triptych)
+            let freshness =
+                readGeneration.map(SearchFreshnessToken.triptych)
                 ?? SearchFreshnessToken(
                     "triptych:\(triptychID.uuidString.lowercased()):unavailable"
                 )
 
             guard case .current(let currentGeneration) = availability,
-                  currentGeneration.sequence > 0 else {
+                currentGeneration.sequence > 0
+            else {
                 return RelatedContentResponse(
                     requestID: request.id,
                     seedFingerprint: request.seed.fingerprint,
@@ -617,25 +628,26 @@ public actor TriptychSearchIndex {
                 )
             }
             guard request.identityLimit > 0 || request.lexicalLimit > 0,
-                  !request.candidateRoles.isEmpty,
-                  !request.seed.source.trimmingCharacters(
+                !request.candidateRoles.isEmpty,
+                !request.seed.source.trimmingCharacters(
                     in: .whitespacesAndNewlines
-                  ).isEmpty,
-                  request.seed.source.utf16.count
+                ).isEmpty,
+                request.seed.source.utf16.count
                     <= RelatedContentContract.maximumSeedUTF16Count,
-                  request.seed.focuses.allSatisfy({ focus in
+                request.seed.focuses.allSatisfy({ focus in
                     focus.kind != .sourceNote
                         && !focus.text.trimmingCharacters(
                             in: .whitespacesAndNewlines
                         ).isEmpty
                         && focus.text.utf16.count
                             <= RelatedContentContract.maximumFocusUTF16Count
-                  }),
-                  let descriptor = try vaultDescriptor(
+                }),
+                let descriptor = try vaultDescriptor(
                     request.seed.noteID.vaultID
-                  ),
-                  [.sourceCorpus, .topicKnowledge, .draftProject]
-                    .contains(descriptor.role) else {
+                ),
+                [.sourceCorpus, .topicKnowledge, .draftProject]
+                    .contains(descriptor.role)
+            else {
                 return RelatedContentResponse(
                     requestID: request.id,
                     seedFingerprint: request.seed.fingerprint,
@@ -712,7 +724,8 @@ public actor TriptychSearchIndex {
                     reason: .lexicalOverlap(item.reason)
                 )
             }
-            let hasCandidates = !identity.candidates.isEmpty
+            let hasCandidates =
+                !identity.candidates.isEmpty
                 || !lexicalResults.isEmpty
             return RelatedContentResponse(
                 requestID: request.id,
@@ -773,17 +786,19 @@ public actor TriptychSearchIndex {
                 exactOffset += exact.count
                 for candidate in exact {
                     try Task.checkCancellation()
-                    guard Self.isIncluded(
+                    guard
+                        Self.isIncluded(
                             candidate.document,
                             in: request.includedVaultIDs
-                          ),
-                          Self.isEligible(candidate.document, in: eligibleDocuments),
-                          seen.insert(candidate.document.rowID).inserted,
-                          SearchMatcher.satisfies(
+                        ),
+                        Self.isEligible(candidate.document, in: eligibleDocuments),
+                        seen.insert(candidate.document.rowID).inserted,
+                        SearchMatcher.satisfies(
                             ast,
                             document: candidate.document,
                             linkMatches: linkMatches
-                          ) else { continue }
+                        )
+                    else { continue }
                     accepted.append(candidate)
                     if accepted.count >= requiredAcceptedCount { break }
                 }
@@ -820,17 +835,19 @@ public actor TriptychSearchIndex {
                 offset += page.count
                 for candidate in page {
                     try Task.checkCancellation()
-                    guard Self.isIncluded(
+                    guard
+                        Self.isIncluded(
                             candidate.document,
                             in: request.includedVaultIDs
-                          ),
-                          Self.isEligible(candidate.document, in: eligibleDocuments),
-                          seen.insert(candidate.document.rowID).inserted,
-                          SearchMatcher.satisfies(
+                        ),
+                        Self.isEligible(candidate.document, in: eligibleDocuments),
+                        seen.insert(candidate.document.rowID).inserted,
+                        SearchMatcher.satisfies(
                             ast,
                             document: candidate.document,
                             linkMatches: linkMatches
-                          ) else { continue }
+                        )
+                    else { continue }
                     accepted.append(candidate)
                     if accepted.count >= requiredAcceptedCount { break }
                 }
@@ -866,7 +883,8 @@ public actor TriptychSearchIndex {
     ) -> Bool {
         guard let eligibleDocuments else { return true }
         guard let eligibility = eligibleDocuments[document.noteID],
-              eligibility.fingerprint == document.fingerprint else {
+            eligibility.fingerprint == document.fingerprint
+        else {
             return false
         }
         guard let storedStableNoteID = document.stableNoteID else { return true }
@@ -924,12 +942,13 @@ public actor TriptychSearchIndex {
         ) { row in
             try Task.checkCancellation()
             guard let document = try self.loadDocument(rowID: row.int(at: 0)),
-                  let reason = material.identityMentionReason(for: document)
+                let reason = material.identityMentionReason(for: document)
             else { return }
-            matches.append(RelatedIdentityCandidate(
-                document: document,
-                reason: reason
-            ))
+            matches.append(
+                RelatedIdentityCandidate(
+                    document: document,
+                    reason: reason
+                ))
         }
         matches.sort(by: RelatedIdentityCandidate.precedes)
         return (
@@ -973,23 +992,25 @@ public actor TriptychSearchIndex {
             LIMIT ?;
             """,
             bindings: [
-                .text(expression),
-            ] + candidateRoles.map {
-                .text($0.vaultRole.rawValue)
-            } + [
-                .text(seed.vaultID.uuidString.lowercased()),
-                .text(seed.relativePath),
-                .int(limit),
+                .text(expression)
             ]
+                + candidateRoles.map {
+                    .text($0.vaultRole.rawValue)
+                } + [
+                    .text(seed.vaultID.uuidString.lowercased()),
+                    .text(seed.relativePath),
+                    .int(limit),
+                ]
         ) { row in
             try Task.checkCancellation()
             guard let document = try self.loadDocument(rowID: row.int(at: 0))
             else { return }
-            result.append(SearchCandidate(
-                document: document,
-                identityPriority: 10,
-                lexicalRank: row.double(at: 1)
-            ))
+            result.append(
+                SearchCandidate(
+                    document: document,
+                    identityPriority: 10,
+                    lexicalRank: row.double(at: 1)
+                ))
         }
         return result
     }
@@ -1051,11 +1072,13 @@ public actor TriptychSearchIndex {
                 metadataCatalog: source.metadataCatalog
             ).entries
         )
-        guard SearchMatcher.satisfies(
-            ast,
-            document: document,
-            linkMatches: linkMatches
-        ) else {
+        guard
+            SearchMatcher.satisfies(
+                ast,
+                document: document,
+                linkMatches: linkMatches
+            )
+        else {
             return SearchResponse(
                 requestID: request.id,
                 scope: request.presentationScope,
@@ -1091,12 +1114,14 @@ public actor TriptychSearchIndex {
                 linkMatch: linkMatches[document.noteID]
             )
         } else {
-            candidates = [NoteSearchResultBuilder.hit(
-                candidate: candidate,
-                ast: ast,
-                freshness: freshness,
-                linkMatch: linkMatches[document.noteID]
-            )]
+            candidates = [
+                NoteSearchResultBuilder.hit(
+                    candidate: candidate,
+                    ast: ast,
+                    freshness: freshness,
+                    linkMatch: linkMatches[document.noteID]
+                )
+            ]
         }
         let page = candidates.dropFirst(min(resultOffset, candidates.count))
         return SearchResponse(
@@ -1114,8 +1139,9 @@ public actor TriptychSearchIndex {
         for generation: SearchGenerationID?
     ) -> SearchAvailability {
         if let generation,
-           case .refreshing(let lastGood) = currentAvailability,
-           generation != lastGood {
+            case .refreshing(let lastGood) = currentAvailability,
+            generation != lastGood
+        {
             // The writer committed before its awaiting continuation resumed.
             // This read transaction has already captured the complete new
             // generation, so expose it as current rather than mislabelling it.
@@ -1131,39 +1157,40 @@ public actor TriptychSearchIndex {
         limit: Int,
         offset: Int
     ) throws -> [SearchCandidate] {
-        let lexicalExpression = ast.positiveLexicalClauses.isEmpty
+        let lexicalExpression =
+            ast.positiveLexicalClauses.isEmpty
             ? nil
             : SearchMatcher.ftsExpression(for: ast.positiveLexicalClauses)
         var sql = """
-        SELECT d.id,
-               CASE
-                 WHEN d.title_key = ? THEN 0
-                 WHEN EXISTS(SELECT 1 FROM search_aliases a WHERE a.document_id = d.id AND a.exact_key = ?) THEN 1
-                 WHEN d.filename_key = ? THEN 2
-                 WHEN d.path_key = ? THEN 3
-                 ELSE 10
-               END AS identity_priority,
-        """
+            SELECT d.id,
+                   CASE
+                     WHEN d.title_key = ? THEN 0
+                     WHEN EXISTS(SELECT 1 FROM search_aliases a WHERE a.document_id = d.id AND a.exact_key = ?) THEN 1
+                     WHEN d.filename_key = ? THEN 2
+                     WHEN d.path_key = ? THEN 3
+                     ELSE 10
+                   END AS identity_priority,
+            """
         if lexicalExpression != nil {
             sql += "\n"
             sql += """
-               bm25(search_fts, 0.0, 3.0, 8.0, 7.0, 6.0, 5.0, 6.0, 4.0, 5.0, 2.0, 2.0, 3.0, 1.0) AS lexical_rank
-            FROM search_fts
-            JOIN search_documents d ON d.id = search_fts.document_id
-            """
+                   bm25(search_fts, 0.0, 3.0, 8.0, 7.0, 6.0, 5.0, 6.0, 4.0, 5.0, 2.0, 2.0, 3.0, 1.0) AS lexical_rank
+                FROM search_fts
+                JOIN search_documents d ON d.id = search_fts.document_id
+                """
         } else {
             sql += "\n"
             sql += """
-               0.0 AS lexical_rank
-            FROM search_documents d
-            """
+                   0.0 AS lexical_rank
+                FROM search_documents d
+                """
         }
         sql += "\n"
         sql += """
-        WHERE (d.title_key = ?
-           OR EXISTS(SELECT 1 FROM search_aliases a WHERE a.document_id = d.id AND a.exact_key = ?)
-           OR d.filename_key = ? OR d.path_key = ?)
-        """
+            WHERE (d.title_key = ?
+               OR EXISTS(SELECT 1 FROM search_aliases a WHERE a.document_id = d.id AND a.exact_key = ?)
+               OR d.filename_key = ? OR d.path_key = ?)
+            """
         var bindings = Array(repeating: SearchSQLiteBinding.text(identityKey), count: 8)
         if let lexicalExpression {
             sql += " AND search_fts MATCH ?"
@@ -1181,15 +1208,18 @@ public actor TriptychSearchIndex {
         bindings.append(.int(offset))
         var result: [SearchCandidate] = []
         try database.query(sql, bindings: bindings) { row in
-            guard let document = try self.loadDocument(
-                rowID: row.int(at: 0),
-                includingProperties: ast.hasPropertyClause
-            ) else { return }
-            result.append(SearchCandidate(
-                document: document,
-                identityPriority: row.int(at: 1),
-                lexicalRank: row.double(at: 2)
-            ))
+            guard
+                let document = try self.loadDocument(
+                    rowID: row.int(at: 0),
+                    includingProperties: ast.hasPropertyClause
+                )
+            else { return }
+            result.append(
+                SearchCandidate(
+                    document: document,
+                    identityPriority: row.int(at: 1),
+                    lexicalRank: row.double(at: 2)
+                ))
         }
         return result
     }
@@ -1202,12 +1232,12 @@ public actor TriptychSearchIndex {
     ) throws -> [SearchCandidate] {
         let expression = SearchMatcher.ftsExpression(for: ast.positiveLexicalClauses)
         var sql = """
-        SELECT d.id,
-               bm25(search_fts, 0.0, 3.0, 8.0, 7.0, 6.0, 5.0, 6.0, 4.0, 5.0, 2.0, 2.0, 3.0, 1.0) AS lexical_rank
-        FROM search_fts
-        JOIN search_documents d ON d.id = search_fts.document_id
-        WHERE search_fts MATCH ?
-        """
+            SELECT d.id,
+                   bm25(search_fts, 0.0, 3.0, 8.0, 7.0, 6.0, 5.0, 6.0, 4.0, 5.0, 2.0, 2.0, 3.0, 1.0) AS lexical_rank
+            FROM search_fts
+            JOIN search_documents d ON d.id = search_fts.document_id
+            WHERE search_fts MATCH ?
+            """
         var bindings: [SearchSQLiteBinding] = [.text(expression)]
         let filters = Self.candidateFilters(for: ast)
         sql += filters.sql
@@ -1221,15 +1251,18 @@ public actor TriptychSearchIndex {
         bindings.append(.int(offset))
         var result: [SearchCandidate] = []
         try database.query(sql, bindings: bindings) { row in
-            guard let document = try self.loadDocument(
-                rowID: row.int(at: 0),
-                includingProperties: ast.hasPropertyClause
-            ) else { return }
-            result.append(SearchCandidate(
-                document: document,
-                identityPriority: 10,
-                lexicalRank: row.double(at: 1)
-            ))
+            guard
+                let document = try self.loadDocument(
+                    rowID: row.int(at: 0),
+                    includingProperties: ast.hasPropertyClause
+                )
+            else { return }
+            result.append(
+                SearchCandidate(
+                    document: document,
+                    identityPriority: 10,
+                    lexicalRank: row.double(at: 1)
+                ))
         }
         return result
     }
@@ -1253,15 +1286,18 @@ public actor TriptychSearchIndex {
         bindings.append(.int(offset))
         var result: [SearchCandidate] = []
         try database.query(sql, bindings: bindings) { row in
-            guard let document = try self.loadDocument(
-                rowID: row.int(at: 0),
-                includingProperties: ast.hasPropertyClause
-            ) else { return }
-            result.append(SearchCandidate(
-                document: document,
-                identityPriority: 10,
-                lexicalRank: 0
-            ))
+            guard
+                let document = try self.loadDocument(
+                    rowID: row.int(at: 0),
+                    includingProperties: ast.hasPropertyClause
+                )
+            else { return }
+            result.append(
+                SearchCandidate(
+                    document: document,
+                    identityPriority: 10,
+                    lexicalRank: 0
+                ))
         }
         return result
     }
@@ -1291,7 +1327,8 @@ public actor TriptychSearchIndex {
                     guard structured.value == "broken-link" else { continue }
                     condition = "d.has_broken_link = 1"
                 }
-                sql += structured.excluded
+                sql +=
+                    structured.excluded
                     ? " AND NOT (\(condition))"
                     : " AND \(condition)"
             case .lexical, .link:
@@ -1317,24 +1354,26 @@ public actor TriptychSearchIndex {
             bindings: [.int(rowID)]
         ) { row in
             guard let vaultText = row.text(at: 0), let vaultID = UUID(uuidString: vaultText),
-                  let vaultName = row.text(at: 1), let roleText = row.text(at: 2),
-                  let role = VaultRole(rawValue: roleText), let path = row.text(at: 3),
-                  let title = row.text(at: 5), let normalizedTitle = row.text(at: 6),
-                  row.text(at: 7) != nil, let filenameKey = row.text(at: 8),
-                  let pathKey = row.text(at: 9), let sha = row.text(at: 12),
-                  let layerText = row.text(at: 14),
-                  let layer = EvidentialLayer(rawValue: layerText) else { return }
+                let vaultName = row.text(at: 1), let roleText = row.text(at: 2),
+                let role = VaultRole(rawValue: roleText), let path = row.text(at: 3),
+                let title = row.text(at: 5), let normalizedTitle = row.text(at: 6),
+                row.text(at: 7) != nil, let filenameKey = row.text(at: 8),
+                let pathKey = row.text(at: 9), let sha = row.text(at: 12),
+                let layerText = row.text(at: 14),
+                let layer = EvidentialLayer(rawValue: layerText)
+            else { return }
             let sourceUTF16Count = row.int(at: 17)
             let lineStarts = try Self.decodeGeneratedJSON(
                 [Int].self,
                 from: row.text(at: 16)
             )
             guard sourceUTF16Count >= 0,
-                  lineStarts.first == 0,
-                  lineStarts.last.map({ $0 <= sourceUTF16Count }) == true,
-                  zip(lineStarts, lineStarts.dropFirst()).allSatisfy({ previous, next in
-                      previous < next
-                  }) else {
+                lineStarts.first == 0,
+                lineStarts.last.map({ $0 <= sourceUTF16Count }) == true,
+                zip(lineStarts, lineStarts.dropFirst()).allSatisfy({ previous, next in
+                    previous < next
+                })
+            else {
                 throw SearchIndexError.corruptDatabase
             }
             let aliases = try self.aliases(documentID: rowID)
@@ -1342,7 +1381,8 @@ public actor TriptychSearchIndex {
                 documentID: rowID,
                 sourceUTF16Count: sourceUTF16Count
             )
-            let properties = includingProperties
+            let properties =
+                includingProperties
                 ? try self.properties(documentID: rowID)
                 : []
             document = StoredSearchDocument(
@@ -1396,8 +1436,9 @@ public actor TriptychSearchIndex {
             bindings: [.int(documentID)]
         ) { row in
             guard let fieldText = row.text(at: 0),
-                  let field = SearchMatchedField(rawValue: fieldText),
-                  let text = row.text(at: 2), let normalized = row.text(at: 3) else { return }
+                let field = SearchMatchedField(rawValue: fieldText),
+                let text = row.text(at: 2), let normalized = row.text(at: 3)
+            else { return }
             let sourceRange: SearchSourceRange?
             if row.isNull(at: 4) {
                 sourceRange = nil
@@ -1412,24 +1453,27 @@ public actor TriptychSearchIndex {
                 )
             }
             let offsets = try SearchOffsetMapCodec.decode(row.data(at: 10))
-            guard Self.valid(
-                offsets: offsets,
-                normalizedUTF16Count: normalized.utf16.count,
-                sourceUTF16Bounds: sourceRange.map {
-                    (lower: $0.utf16LowerBound, upper: $0.utf16UpperBound)
-                },
-                sourceUTF16Count: sourceUTF16Count
-            ) else {
+            guard
+                Self.valid(
+                    offsets: offsets,
+                    normalizedUTF16Count: normalized.utf16.count,
+                    sourceUTF16Bounds: sourceRange.map {
+                        (lower: $0.utf16LowerBound, upper: $0.utf16UpperBound)
+                    },
+                    sourceUTF16Count: sourceUTF16Count
+                )
+            else {
                 throw SearchIndexError.corruptDatabase
             }
-            result.append(SearchTextSegment(
-                field: field,
-                ordinal: row.int(at: 1),
-                text: text,
-                normalizedText: normalized,
-                sourceRange: sourceRange,
-                offsetMap: offsets
-            ))
+            result.append(
+                SearchTextSegment(
+                    field: field,
+                    ordinal: row.int(at: 1),
+                    text: text,
+                    normalizedText: normalized,
+                    sourceRange: sourceRange,
+                    offsetMap: offsets
+                ))
         }
         return result
     }
@@ -1458,38 +1502,47 @@ public actor TriptychSearchIndex {
             bindings: [.int(documentID)]
         ) { row in
             guard let key = row.text(at: 0),
-                  let kindText = row.text(at: 1),
-                  let kind = SearchPropertyProjection.ValueKind(rawValue: kindText)
+                let kindText = row.text(at: 1),
+                let kind = SearchPropertyProjection.ValueKind(rawValue: kindText)
             else { return }
-            let keyRange = row.isNull(at: 6) ? nil : SearchSourceRange(
-                utf16LowerBound: row.int(at: 6),
-                utf16UpperBound: row.int(at: 7),
-                line: row.int(at: 8),
-                column: row.int(at: 9),
-                endLine: row.int(at: 10),
-                endColumn: row.int(at: 11)
-            )
-            var accumulator = values[key] ?? Accumulator(
-                key: key,
-                keyRange: keyRange,
-                valueKind: kind,
-                isEmpty: row.int(at: 2) == 1,
-                members: []
-            )
+            let keyRange =
+                row.isNull(at: 6)
+                ? nil
+                : SearchSourceRange(
+                    utf16LowerBound: row.int(at: 6),
+                    utf16UpperBound: row.int(at: 7),
+                    line: row.int(at: 8),
+                    column: row.int(at: 9),
+                    endLine: row.int(at: 10),
+                    endColumn: row.int(at: 11)
+                )
+            var accumulator =
+                values[key]
+                ?? Accumulator(
+                    key: key,
+                    keyRange: keyRange,
+                    valueKind: kind,
+                    isEmpty: row.int(at: 2) == 1,
+                    members: []
+                )
             if let rawValue = row.text(at: 4),
-               let normalizedValue = row.text(at: 5) {
-                accumulator.members.append(SearchPropertyProjection.StringMember(
-                    value: rawValue,
-                    normalizedValue: normalizedValue,
-                    sourceRange: row.isNull(at: 12) ? nil : SearchSourceRange(
-                        utf16LowerBound: row.int(at: 12),
-                        utf16UpperBound: row.int(at: 13),
-                        line: row.int(at: 14),
-                        column: row.int(at: 15),
-                        endLine: row.int(at: 16),
-                        endColumn: row.int(at: 17)
-                    )
-                ))
+                let normalizedValue = row.text(at: 5)
+            {
+                accumulator.members.append(
+                    SearchPropertyProjection.StringMember(
+                        value: rawValue,
+                        normalizedValue: normalizedValue,
+                        sourceRange: row.isNull(at: 12)
+                            ? nil
+                            : SearchSourceRange(
+                                utf16LowerBound: row.int(at: 12),
+                                utf16UpperBound: row.int(at: 13),
+                                line: row.int(at: 14),
+                                column: row.int(at: 15),
+                                endLine: row.int(at: 16),
+                                endColumn: row.int(at: 17)
+                            )
+                    ))
             }
             values[key] = accumulator
         }
@@ -1542,7 +1595,8 @@ public actor TriptychSearchIndex {
             bindings: [.text(id.uuidString.lowercased())]
         ) { row in
             if let name = row.text(at: 0), let roleText = row.text(at: 1),
-               let role = VaultRole(rawValue: roleText) {
+                let role = VaultRole(rawValue: roleText)
+            {
                 result = (name, role)
             }
         }
@@ -1587,11 +1641,12 @@ public actor TriptychSearchIndex {
             """
         ) { row in
             guard let vault = row.text(at: 0), let path = row.text(at: 1),
-                  let sha = row.text(at: 2), let hash = row.text(at: 4),
-                  let vaultName = row.text(at: 5), let roleText = row.text(at: 6),
-                  let vaultRole = VaultRole(rawValue: roleText),
-                  let layerText = row.text(at: 8),
-                  let evidentialLayer = EvidentialLayer(rawValue: layerText) else { return }
+                let sha = row.text(at: 2), let hash = row.text(at: 4),
+                let vaultName = row.text(at: 5), let roleText = row.text(at: 6),
+                let vaultRole = VaultRole(rawValue: roleText),
+                let layerText = row.text(at: 8),
+                let evidentialLayer = EvidentialLayer(rawValue: layerText)
+            else { return }
             result["\(vault)/\(path)"] = IndexedProjectionState(
                 fingerprint: DocumentFingerprint(sha256: sha, byteCount: row.int(at: 3)),
                 projectionHash: hash,
@@ -1620,13 +1675,14 @@ public actor TriptychSearchIndex {
     }
 
     private static func manifestHash(for documents: [SearchIndexDocument]) -> String {
-        SearchSourceManifest.hash(documents.map {
-            SearchSourceManifestEntry(
-                vaultID: $0.vaultID,
-                relativePath: $0.relativePath,
-                fingerprint: $0.document.fingerprint
-            )
-        })
+        SearchSourceManifest.hash(
+            documents.map {
+                SearchSourceManifestEntry(
+                    vaultID: $0.vaultID,
+                    relativePath: $0.relativePath,
+                    fingerprint: $0.document.fingerprint
+                )
+            })
     }
 
     private static func insert(
@@ -1634,10 +1690,11 @@ public actor TriptychSearchIndex {
         into database: SearchSQLiteDatabase
     ) throws {
         let projection = item.projection
-        let lineStarts = String(
-            data: try JSONEncoder.searchIndex.encode(projection.sourceLineStartsUTF16),
-            encoding: .utf8
-        ) ?? "[0]"
+        let lineStarts =
+            String(
+                data: try JSONEncoder.searchIndex.encode(projection.sourceLineStartsUTF16),
+                encoding: .utf8
+            ) ?? "[0]"
         try database.execute(
             """
             INSERT INTO search_documents(
@@ -1655,9 +1712,10 @@ public actor TriptychSearchIndex {
                 .text(item.relativePath), .optionalText(item.stableNoteID), .text(projection.title),
                 .text(SearchTextNormalization.normalize(projection.title)),
                 .text(SearchTextNormalization.normalize(projection.title)),
-                .text(SearchTextNormalization.normalize(
-                    ((item.relativePath as NSString).lastPathComponent as NSString).deletingPathExtension
-                )),
+                .text(
+                    SearchTextNormalization.normalize(
+                        ((item.relativePath as NSString).lastPathComponent as NSString).deletingPathExtension
+                    )),
                 .text(SearchTextNormalization.normalize(item.relativePath)),
                 .text(item.document.fingerprint.sha256), .int(item.document.fingerprint.byteCount),
                 .text(item.evidentialLayer.rawValue),
@@ -1679,14 +1737,16 @@ public actor TriptychSearchIndex {
             )
         }
         for segment in projection.segments {
-            guard valid(
-                offsets: segment.offsetMap,
-                normalizedUTF16Count: segment.normalizedText.utf16.count,
-                sourceUTF16Bounds: segment.sourceRange.map {
-                    (lower: $0.utf16LowerBound, upper: $0.utf16UpperBound)
-                },
-                sourceUTF16Count: item.document.rawContent.utf16.count
-            ) else {
+            guard
+                valid(
+                    offsets: segment.offsetMap,
+                    normalizedUTF16Count: segment.normalizedText.utf16.count,
+                    sourceUTF16Bounds: segment.sourceRange.map {
+                        (lower: $0.utf16LowerBound, upper: $0.utf16UpperBound)
+                    },
+                    sourceUTF16Count: item.document.rawContent.utf16.count
+                )
+            else {
                 throw SearchIndexError.invalidDocuments(
                     "Search projection contains an invalid generated offset map."
                 )
@@ -1716,8 +1776,8 @@ public actor TriptychSearchIndex {
         for property in item.propertyProjection.entries {
             let members: [SearchPropertyProjection.StringMember?] =
                 property.stringMembers.isEmpty
-                    ? [nil]
-                    : property.stringMembers.map(Optional.some)
+                ? [nil]
+                : property.stringMembers.map(Optional.some)
             for (ordinal, member) in members.enumerated() {
                 try database.execute(
                     """
@@ -1760,12 +1820,13 @@ public actor TriptychSearchIndex {
             """,
             bindings: [
                 .int(documentID), .text(SearchTokenization.indexText(projection.path)),
-                .text(SearchTokenization.indexText(
-                    projection.segments
-                        .filter { $0.field == .title }
-                        .map(\.text)
-                        .joined(separator: " ")
-                )),
+                .text(
+                    SearchTokenization.indexText(
+                        projection.segments
+                            .filter { $0.field == .title }
+                            .map(\.text)
+                            .joined(separator: " ")
+                    )),
                 .text(SearchTokenization.indexText(projection.aliases.joined(separator: " "))),
                 .text(SearchTokenization.indexText(projection.headings.joined(separator: " "))),
                 .text(SearchTokenization.indexText(projection.summary ?? "")),
@@ -1801,111 +1862,112 @@ public actor TriptychSearchIndex {
         in database: SearchSQLiteDatabase,
         triptychID: UUID
     ) throws {
-        try database.execute("""
-        CREATE TABLE search_index_state(
-            singleton INTEGER PRIMARY KEY CHECK(singleton = 1),
-            triptych_id TEXT NOT NULL,
-            sequence INTEGER NOT NULL,
-            workspace_generation INTEGER NOT NULL,
-            schema_version INTEGER NOT NULL,
-            query_contract_version INTEGER NOT NULL,
-            tokenizer_policy_version INTEGER NOT NULL,
-            ranking_policy_version INTEGER NOT NULL,
-            source_manifest_hash TEXT NOT NULL
-        );
-        INSERT INTO search_index_state VALUES(
-            1, '\(triptychID.uuidString.lowercased())', 0, 0,
-            \(SearchContract.schemaVersion), \(SearchContract.currentVersion),
-            \(SearchContract.tokenizerPolicyVersion), \(SearchContract.rankingPolicyVersion), ''
-        );
-        CREATE TABLE search_vaults(
-            vault_id TEXT PRIMARY KEY,
-            vault_name TEXT NOT NULL,
-            role TEXT NOT NULL
-        );
-        CREATE TABLE search_documents(
-            id INTEGER PRIMARY KEY,
-            document_key TEXT NOT NULL UNIQUE,
-            vault_id TEXT NOT NULL,
-            vault_name TEXT NOT NULL,
-            role TEXT NOT NULL,
-            role_order INTEGER NOT NULL,
-            relative_path TEXT NOT NULL,
-            stable_note_id TEXT,
-            title TEXT NOT NULL,
-            normalized_title TEXT NOT NULL,
-            title_key TEXT NOT NULL,
-            filename_key TEXT NOT NULL,
-            path_key TEXT NOT NULL,
-            fingerprint_sha256 TEXT NOT NULL,
-            fingerprint_byte_count INTEGER NOT NULL,
-            evidential_layer TEXT NOT NULL,
-            callout_roles TEXT NOT NULL,
-            has_broken_link INTEGER NOT NULL,
-            projection_hash TEXT NOT NULL,
-            line_starts TEXT NOT NULL,
-            source_utf16_count INTEGER NOT NULL
-        );
-        CREATE INDEX search_documents_vault ON search_documents(vault_id);
-        CREATE INDEX search_documents_title_key ON search_documents(title_key);
-        CREATE INDEX search_documents_filename_key ON search_documents(filename_key);
-        CREATE INDEX search_documents_path_key ON search_documents(path_key);
-        CREATE TABLE search_aliases(
-            document_id INTEGER NOT NULL,
-            ordinal INTEGER NOT NULL,
-            alias TEXT NOT NULL,
-            exact_key TEXT NOT NULL,
-            PRIMARY KEY(document_id, ordinal),
-            FOREIGN KEY(document_id) REFERENCES search_documents(id) ON DELETE CASCADE
-        );
-        CREATE INDEX search_aliases_exact_key ON search_aliases(exact_key);
-        CREATE TABLE search_properties(
-            document_id INTEGER NOT NULL,
-            property_key TEXT NOT NULL,
-            value_kind TEXT NOT NULL,
-            is_empty INTEGER NOT NULL,
-            ordinal INTEGER NOT NULL,
-            raw_value TEXT,
-            normalized_value TEXT,
-            key_lower INTEGER,
-            key_upper INTEGER,
-            key_line INTEGER,
-            key_column INTEGER,
-            key_end_line INTEGER,
-            key_end_column INTEGER,
-            value_lower INTEGER,
-            value_upper INTEGER,
-            value_line INTEGER,
-            value_column INTEGER,
-            value_end_line INTEGER,
-            value_end_column INTEGER,
-            PRIMARY KEY(document_id, property_key, ordinal),
-            FOREIGN KEY(document_id) REFERENCES search_documents(id) ON DELETE CASCADE
-        );
-        CREATE INDEX search_properties_key_value
-            ON search_properties(property_key, normalized_value);
-        CREATE TABLE search_segments(
-            document_id INTEGER NOT NULL,
-            field TEXT NOT NULL,
-            ordinal INTEGER NOT NULL,
-            text TEXT NOT NULL,
-            normalized_text TEXT NOT NULL,
-            source_lower INTEGER,
-            source_upper INTEGER,
-            source_line INTEGER,
-            source_column INTEGER,
-            source_end_line INTEGER,
-            source_end_column INTEGER,
-            offset_map BLOB NOT NULL,
-            PRIMARY KEY(document_id, ordinal),
-            FOREIGN KEY(document_id) REFERENCES search_documents(id) ON DELETE CASCADE
-        );
-        CREATE VIRTUAL TABLE search_fts USING fts5(
-            document_id UNINDEXED, path, title, aliases, headings, summary, authors, publication_date,
-            tags, callouts, footnotes, link_annotations, body,
-            tokenize = 'unicode61 remove_diacritics 2', prefix = '2 3'
-        );
-        """)
+        try database.execute(
+            """
+            CREATE TABLE search_index_state(
+                singleton INTEGER PRIMARY KEY CHECK(singleton = 1),
+                triptych_id TEXT NOT NULL,
+                sequence INTEGER NOT NULL,
+                workspace_generation INTEGER NOT NULL,
+                schema_version INTEGER NOT NULL,
+                query_contract_version INTEGER NOT NULL,
+                tokenizer_policy_version INTEGER NOT NULL,
+                ranking_policy_version INTEGER NOT NULL,
+                source_manifest_hash TEXT NOT NULL
+            );
+            INSERT INTO search_index_state VALUES(
+                1, '\(triptychID.uuidString.lowercased())', 0, 0,
+                \(SearchContract.schemaVersion), \(SearchContract.currentVersion),
+                \(SearchContract.tokenizerPolicyVersion), \(SearchContract.rankingPolicyVersion), ''
+            );
+            CREATE TABLE search_vaults(
+                vault_id TEXT PRIMARY KEY,
+                vault_name TEXT NOT NULL,
+                role TEXT NOT NULL
+            );
+            CREATE TABLE search_documents(
+                id INTEGER PRIMARY KEY,
+                document_key TEXT NOT NULL UNIQUE,
+                vault_id TEXT NOT NULL,
+                vault_name TEXT NOT NULL,
+                role TEXT NOT NULL,
+                role_order INTEGER NOT NULL,
+                relative_path TEXT NOT NULL,
+                stable_note_id TEXT,
+                title TEXT NOT NULL,
+                normalized_title TEXT NOT NULL,
+                title_key TEXT NOT NULL,
+                filename_key TEXT NOT NULL,
+                path_key TEXT NOT NULL,
+                fingerprint_sha256 TEXT NOT NULL,
+                fingerprint_byte_count INTEGER NOT NULL,
+                evidential_layer TEXT NOT NULL,
+                callout_roles TEXT NOT NULL,
+                has_broken_link INTEGER NOT NULL,
+                projection_hash TEXT NOT NULL,
+                line_starts TEXT NOT NULL,
+                source_utf16_count INTEGER NOT NULL
+            );
+            CREATE INDEX search_documents_vault ON search_documents(vault_id);
+            CREATE INDEX search_documents_title_key ON search_documents(title_key);
+            CREATE INDEX search_documents_filename_key ON search_documents(filename_key);
+            CREATE INDEX search_documents_path_key ON search_documents(path_key);
+            CREATE TABLE search_aliases(
+                document_id INTEGER NOT NULL,
+                ordinal INTEGER NOT NULL,
+                alias TEXT NOT NULL,
+                exact_key TEXT NOT NULL,
+                PRIMARY KEY(document_id, ordinal),
+                FOREIGN KEY(document_id) REFERENCES search_documents(id) ON DELETE CASCADE
+            );
+            CREATE INDEX search_aliases_exact_key ON search_aliases(exact_key);
+            CREATE TABLE search_properties(
+                document_id INTEGER NOT NULL,
+                property_key TEXT NOT NULL,
+                value_kind TEXT NOT NULL,
+                is_empty INTEGER NOT NULL,
+                ordinal INTEGER NOT NULL,
+                raw_value TEXT,
+                normalized_value TEXT,
+                key_lower INTEGER,
+                key_upper INTEGER,
+                key_line INTEGER,
+                key_column INTEGER,
+                key_end_line INTEGER,
+                key_end_column INTEGER,
+                value_lower INTEGER,
+                value_upper INTEGER,
+                value_line INTEGER,
+                value_column INTEGER,
+                value_end_line INTEGER,
+                value_end_column INTEGER,
+                PRIMARY KEY(document_id, property_key, ordinal),
+                FOREIGN KEY(document_id) REFERENCES search_documents(id) ON DELETE CASCADE
+            );
+            CREATE INDEX search_properties_key_value
+                ON search_properties(property_key, normalized_value);
+            CREATE TABLE search_segments(
+                document_id INTEGER NOT NULL,
+                field TEXT NOT NULL,
+                ordinal INTEGER NOT NULL,
+                text TEXT NOT NULL,
+                normalized_text TEXT NOT NULL,
+                source_lower INTEGER,
+                source_upper INTEGER,
+                source_line INTEGER,
+                source_column INTEGER,
+                source_end_line INTEGER,
+                source_end_column INTEGER,
+                offset_map BLOB NOT NULL,
+                PRIMARY KEY(document_id, ordinal),
+                FOREIGN KEY(document_id) REFERENCES search_documents(id) ON DELETE CASCADE
+            );
+            CREATE VIRTUAL TABLE search_fts USING fts5(
+                document_id UNINDEXED, path, title, aliases, headings, summary, authors, publication_date,
+                tags, callouts, footnotes, link_annotations, body,
+                tokenize = 'unicode61 remove_diacritics 2', prefix = '2 3'
+            );
+            """)
     }
 
     private static func validateSchema(
@@ -1934,18 +1996,20 @@ public actor TriptychSearchIndex {
             throw SearchIndexError.incompatibleSchema
         }
         guard let values,
-              values.0 == triptychID.uuidString.lowercased(),
-              values.1 == SearchContract.schemaVersion,
-              values.2 == SearchContract.currentVersion,
-              values.3 == SearchContract.tokenizerPolicyVersion,
-              values.4 == SearchContract.rankingPolicyVersion else {
+            values.0 == triptychID.uuidString.lowercased(),
+            values.1 == SearchContract.schemaVersion,
+            values.2 == SearchContract.currentVersion,
+            values.3 == SearchContract.tokenizerPolicyVersion,
+            values.4 == SearchContract.rankingPolicyVersion
+        else {
             throw SearchIndexError.incompatibleSchema
         }
         let definition = try database.scalarText(
             "SELECT sql FROM sqlite_master WHERE name = 'search_fts';"
         )?.uppercased()
         guard definition?.contains("USING FTS5") == true,
-              definition?.contains("CONTENT=") == false else {
+            definition?.contains("CONTENT=") == false
+        else {
             throw SearchIndexError.incompatibleSchema
         }
         do {
@@ -1978,11 +2042,12 @@ public actor TriptychSearchIndex {
             )
             let sourceUTF16Count = row.int(at: 1)
             guard sourceUTF16Count >= 0,
-                  lineStarts.first == 0,
-                  lineStarts.last.map({ $0 <= sourceUTF16Count }) == true,
-                  zip(lineStarts, lineStarts.dropFirst()).allSatisfy({ previous, next in
-                      previous < next
-                  }) else {
+                lineStarts.first == 0,
+                lineStarts.last.map({ $0 <= sourceUTF16Count }) == true,
+                zip(lineStarts, lineStarts.dropFirst()).allSatisfy({ previous, next in
+                    previous < next
+                })
+            else {
                 throw SearchIndexError.corruptDatabase
             }
         }
@@ -2009,12 +2074,14 @@ public actor TriptychSearchIndex {
                 sourceBounds = (lower: row.int(at: 1), upper: row.int(at: 2))
             }
             let offsets = try SearchOffsetMapCodec.decode(row.data(at: 3))
-            guard valid(
-                offsets: offsets,
-                normalizedUTF16Count: normalized.utf16.count,
-                sourceUTF16Bounds: sourceBounds,
-                sourceUTF16Count: row.int(at: 4)
-            ) else {
+            guard
+                valid(
+                    offsets: offsets,
+                    normalizedUTF16Count: normalized.utf16.count,
+                    sourceUTF16Bounds: sourceBounds,
+                    sourceUTF16Count: row.int(at: 4)
+                )
+            else {
                 throw SearchIndexError.corruptDatabase
             }
         }
@@ -2043,19 +2110,22 @@ public actor TriptychSearchIndex {
         guard normalizedUTF16Count >= 0 else { return false }
         guard let sourceUTF16Bounds else { return offsets.isEmpty }
         guard sourceUTF16Bounds.lower >= 0,
-              sourceUTF16Bounds.upper >= sourceUTF16Bounds.lower,
-              sourceUTF16Count.map({ sourceUTF16Bounds.upper <= $0 }) ?? true else {
+            sourceUTF16Bounds.upper >= sourceUTF16Bounds.lower,
+            sourceUTF16Count.map({ sourceUTF16Bounds.upper <= $0 }) ?? true
+        else {
             return false
         }
-        guard offsets.allSatisfy({ offset in
-            offset.normalizedUTF16LowerBound >= 0
-                && offset.normalizedUTF16UpperBound >= offset.normalizedUTF16LowerBound
-                && offset.normalizedUTF16UpperBound <= normalizedUTF16Count
-                && offset.sourceUTF16LowerBound >= 0
-                && offset.sourceUTF16UpperBound >= offset.sourceUTF16LowerBound
-                && offset.sourceUTF16LowerBound >= sourceUTF16Bounds.lower
-                && offset.sourceUTF16UpperBound <= sourceUTF16Bounds.upper
-        }) else { return false }
+        guard
+            offsets.allSatisfy({ offset in
+                offset.normalizedUTF16LowerBound >= 0
+                    && offset.normalizedUTF16UpperBound >= offset.normalizedUTF16LowerBound
+                    && offset.normalizedUTF16UpperBound <= normalizedUTF16Count
+                    && offset.sourceUTF16LowerBound >= 0
+                    && offset.sourceUTF16UpperBound >= offset.sourceUTF16LowerBound
+                    && offset.sourceUTF16LowerBound >= sourceUTF16Bounds.lower
+                    && offset.sourceUTF16UpperBound <= sourceUTF16Bounds.upper
+            })
+        else { return false }
         return zip(offsets, offsets.dropFirst()).allSatisfy { previous, next in
             previous.normalizedUTF16LowerBound <= next.normalizedUTF16LowerBound
                 && previous.sourceUTF16LowerBound <= next.sourceUTF16LowerBound
@@ -2122,7 +2192,8 @@ public actor TriptychSearchIndex {
         documentKey: String
     ) throws -> VaultQualifiedNoteID {
         guard let separator = documentKey.firstIndex(of: "/"),
-              let vaultID = UUID(uuidString: String(documentKey[..<separator])) else {
+            let vaultID = UUID(uuidString: String(documentKey[..<separator]))
+        else {
             throw SearchIndexError.invalidDocuments(
                 "Stored Search document key is malformed."
             )
@@ -2305,14 +2376,15 @@ private struct RelatedContentSeedMaterial {
                 normalizedText: SearchTextNormalization.normalize($0.text)
             )
         }
-        segments.append(contentsOf: projection.segments.compactMap { segment in
-            guard sourceFields.contains(segment.field) else { return nil }
-            return RelatedContentSeedSegment(
-                kind: .sourceNote,
-                field: segment.field,
-                normalizedText: segment.normalizedText
-            )
-        })
+        segments.append(
+            contentsOf: projection.segments.compactMap { segment in
+                guard sourceFields.contains(segment.field) else { return nil }
+                return RelatedContentSeedSegment(
+                    kind: .sourceNote,
+                    field: segment.field,
+                    normalizedText: segment.normalizedText
+                )
+            })
         self.segments = segments
 
         var groups: [RelatedContentSeedTermGroup] = focuses.map {
@@ -2324,21 +2396,23 @@ private struct RelatedContentSeedMaterial {
                 )
             )
         }
-        groups.append(RelatedContentSeedTermGroup(
-            kind: .sourceNote,
-            terms: RelatedContentSeedTermExtractor.terms(
-                in: projection,
-                limit: RelatedContentContract.maximumSourceSeedTerms
-            )
-        ))
+        groups.append(
+            RelatedContentSeedTermGroup(
+                kind: .sourceNote,
+                terms: RelatedContentSeedTermExtractor.terms(
+                    in: projection,
+                    limit: RelatedContentContract.maximumSourceSeedTerms
+                )
+            ))
         termGroups = groups
 
         var terms: [String] = []
         var seen = Set<String>()
         for kind in RelatedContentSeedKind.rankingOrder {
             for term in groups.first(where: { $0.kind == kind })?.terms ?? []
-                where terms.count
-                    < RelatedContentContract.maximumCombinedSeedTerms {
+            where terms.count
+                < RelatedContentContract.maximumCombinedSeedTerms
+            {
                 if seen.insert(term).inserted { terms.append(term) }
             }
         }
@@ -2355,7 +2429,8 @@ private struct RelatedContentSeedMaterial {
         var seen = Set<RelatedContentIdentityMention>()
         for (identityKind, identity) in identities {
             let value = SearchLexicalValue.phrase(identity)
-            for segment in segments where !SearchMatcher.occurrences(
+            for segment in segments
+            where !SearchMatcher.occurrences(
                 of: value,
                 in: segment.normalizedText
             ).isEmpty {
@@ -2369,12 +2444,14 @@ private struct RelatedContentSeedMaterial {
             }
         }
         mentions.sort { lhs, rhs in
-            let leftKind = RelatedContentSeedKind.rankingOrder.firstIndex(
-                of: lhs.seedKind
-            ) ?? Int.max
-            let rightKind = RelatedContentSeedKind.rankingOrder.firstIndex(
-                of: rhs.seedKind
-            ) ?? Int.max
+            let leftKind =
+                RelatedContentSeedKind.rankingOrder.firstIndex(
+                    of: lhs.seedKind
+                ) ?? Int.max
+            let rightKind =
+                RelatedContentSeedKind.rankingOrder.firstIndex(
+                    of: rhs.seedKind
+                ) ?? Int.max
             if leftKind != rightKind { return leftKind < rightKind }
             if lhs.identityKind != rhs.identityKind {
                 return lhs.identityKind == .title
@@ -2409,10 +2486,11 @@ private struct RelatedContentSeedMaterial {
                 }
             }
             if !matches.isEmpty {
-                seedMatches.append(RelatedContentSeedTermMatch(
-                    seedKind: group.kind,
-                    terms: matches
-                ))
+                seedMatches.append(
+                    RelatedContentSeedTermMatch(
+                        seedKind: group.kind,
+                        terms: matches
+                    ))
             }
         }
         return RelatedContentLexicalReason(
@@ -2497,16 +2575,18 @@ private enum RelatedContentSeedTermExtractor {
 
         func finish() {
             guard !current.isEmpty else { return }
-            let candidates = currentIsCJK == true
+            let candidates =
+                currentIsCJK == true
                 ? SearchTokenization.queryTokens(for: current)
                 : [current]
             for candidate in candidates {
                 let token = SearchTextNormalization.normalize(candidate)
                 let containsCJK = SearchTokenization.containsCJK(token)
                 guard !token.isEmpty,
-                      token.utf8.count <= 128,
-                      containsCJK || token.count > 1,
-                      containsCJK || !ignoredLatinTerms.contains(token) else {
+                    token.utf8.count <= 128,
+                    containsCJK || token.count > 1,
+                    containsCJK || !ignoredLatinTerms.contains(token)
+                else {
                     continue
                 }
                 result.append(token)
@@ -2545,10 +2625,11 @@ private enum SearchMatcher {
                 }
                 return lexical.excluded ? !matched : matched
             case .structured(let structured):
-                let matched: Bool = switch structured.field {
-                case .callout: document.calloutRoles.contains(structured.value)
-                case .has: structured.value == "broken-link" && document.hasBrokenLink
-                }
+                let matched: Bool =
+                    switch structured.field {
+                    case .callout: document.calloutRoles.contains(structured.value)
+                    case .has: structured.value == "broken-link" && document.hasBrokenLink
+                    }
                 return structured.excluded ? !matched : matched
             case .property(let property):
                 return propertyMatch(property, in: document) != nil
@@ -2562,9 +2643,11 @@ private enum SearchMatcher {
         _ clause: SearchPropertyClause,
         in document: StoredSearchDocument
     ) -> SearchPropertyMatch? {
-        guard let entry = document.properties.first(where: {
-            $0.key == clause.key
-        }) else { return nil }
+        guard
+            let entry = document.properties.first(where: {
+                $0.key == clause.key
+            })
+        else { return nil }
         guard let value = clause.value else {
             return SearchPropertyMatch(
                 key: entry.key,
@@ -2599,7 +2682,9 @@ private enum SearchMatcher {
         if document.normalizedTitle == identityNeedle { return 0 }
         if document.aliases.contains(where: {
             SearchTextNormalization.normalize($0) == identityNeedle
-        }) { return 1 }
+        }) {
+            return 1
+        }
         if document.filenameKey == identityNeedle { return 2 }
         if document.pathKey == identityNeedle { return 3 }
         return 10
@@ -2612,7 +2697,7 @@ private enum SearchMatcher {
         var fields: [SearchMatchedField] = []
         for clause in ast.positiveLexicalClauses {
             for segment in matchingSegments(for: clause, in: document)
-                where !occurrences(of: clause.value, in: segment.normalizedText).isEmpty {
+            where !occurrences(of: clause.value, in: segment.normalizedText).isEmpty {
                 if !fields.contains(segment.field) { fields.append(segment.field) }
             }
         }
@@ -2621,10 +2706,11 @@ private enum SearchMatcher {
                 let field: SearchMatchedField?
                 switch clause {
                 case .structured(let structured):
-                    field = switch structured.field {
-                    case .callout: .callout
-                    case .has: .brokenLink
-                    }
+                    field =
+                        switch structured.field {
+                        case .callout: .callout
+                        case .has: .brokenLink
+                        }
                 case .property, .link:
                     field = .title
                 case .lexical:
@@ -2643,19 +2729,20 @@ private enum SearchMatcher {
         guard let field = clause.field else {
             return document.segments
         }
-        let matched: SearchMatchedField = switch field {
-        case .title: .title
-        case .alias: .alias
-        case .heading: .heading
-        case .summary: .summary
-        case .body: .body
-        case .author: .author
-        case .publicationDate: .publicationDate
-        case .tag: .tag
-        case .footnote: .footnote
-        case .linkAnnotation: .linkAnnotation
-        case .path: .path
-        }
+        let matched: SearchMatchedField =
+            switch field {
+            case .title: .title
+            case .alias: .alias
+            case .heading: .heading
+            case .summary: .summary
+            case .body: .body
+            case .author: .author
+            case .publicationDate: .publicationDate
+            case .tag: .tag
+            case .footnote: .footnote
+            case .linkAnnotation: .linkAnnotation
+            case .path: .path
+            }
         return document.segments.filter { $0.field == matched }
     }
 
@@ -2668,14 +2755,17 @@ private enum SearchMatcher {
         var result: [Range<Int>] = []
         var cursor = normalizedText.startIndex
         while cursor < normalizedText.endIndex,
-              let range = normalizedText.range(of: needle, range: cursor..<normalizedText.endIndex) {
-            let leadingBoundary = beginsWithCJK(value.text)
+            let range = normalizedText.range(of: needle, range: cursor..<normalizedText.endIndex)
+        {
+            let leadingBoundary =
+                beginsWithCJK(value.text)
                 || isTokenBoundary(before: range.lowerBound, in: normalizedText)
             let trailingBoundary: Bool
             switch value {
             case .prefix: trailingBoundary = true
             case .phrase, .term:
-                trailingBoundary = endsWithCJK(value.text)
+                trailingBoundary =
+                    endsWithCJK(value.text)
                     || isTokenBoundary(after: range.upperBound, in: normalizedText)
             }
             if leadingBoundary && trailingBoundary {
@@ -2703,19 +2793,20 @@ private enum SearchMatcher {
             }.joined(separator: " AND ")
             let grouped = terms.count > 1 ? "(\(expression))" : expression
             guard let field = clause.field else { return grouped }
-            let column: String = switch field {
-            case .title: "title"
-            case .alias: "aliases"
-            case .heading: "headings"
-            case .summary: "summary"
-            case .body: "body"
-            case .author: "authors"
-            case .publicationDate: "publication_date"
-            case .tag: "tags"
-            case .footnote: "footnotes"
-            case .linkAnnotation: "link_annotations"
-            case .path: "path"
-            }
+            let column: String =
+                switch field {
+                case .title: "title"
+                case .alias: "aliases"
+                case .heading: "headings"
+                case .summary: "summary"
+                case .body: "body"
+                case .author: "authors"
+                case .publicationDate: "publication_date"
+                case .tag: "tags"
+                case .footnote: "footnotes"
+                case .linkAnnotation: "link_annotations"
+                case .path: "path"
+                }
             return "\(column):\(grouped)"
         }.joined(separator: " AND ")
     }
@@ -2773,7 +2864,8 @@ private enum NoteSearchResultBuilder {
                 positiveClauses: ast.positiveLexicalClauses
             )
         } else if let property,
-                  let entry = document.properties.first(where: { $0.key == property.key }) {
+            let entry = document.properties.first(where: { $0.key == property.key })
+        {
             let value = entry.stringMembers.first(where: {
                 $0.normalizedValue == property.normalizedValue
             })?.value
@@ -2788,7 +2880,8 @@ private enum NoteSearchResultBuilder {
         let lexicalSourceRange = matched.flatMap {
             sourceRange(for: $0.range, segment: $0.segment, lineStarts: document.sourceLineStarts)
         }
-        let sourceRange = lexicalSourceRange
+        let sourceRange =
+            lexicalSourceRange
             ?? property?.valueSourceRanges.first
             ?? property?.keySourceRange
         let reason = rankReason(candidate.identityPriority, filterOnly: ast.isFilterOnly)
@@ -2846,29 +2939,30 @@ private enum NoteSearchResultBuilder {
                     normalizedRange: range,
                     positiveClauses: ast.positiveLexicalClauses
                 )
-                hits.append(NoteSearchResult(
-                    resultID: "\(document.vaultID.uuidString.lowercased()):\(document.relativePath):\(sourceRange?.utf16LowerBound ?? segment.ordinal)",
-                    vaultID: document.vaultID,
-                    vaultName: document.vaultName,
-                    vaultRole: document.vaultRole,
-                    relativePath: document.relativePath,
-                    stableNoteID: document.stableNoteID,
-                    title: document.title,
-                    matchedField: segment.field,
-                    context: context(for: segment.field),
-                    sourceLine: sourceRange?.line ?? 1,
-                    snippet: presentation.text,
-                    highlights: presentation.highlights,
-                    matchedFields: matchedFields,
-                    rankReason: rankReason(candidate.identityPriority, filterOnly: ast.isFilterOnly),
-                    primaryMatchReason: reasons.first ?? .lexical,
-                    additionalMatchReasons: Array(reasons.dropFirst()),
-                    sourceRange: sourceRange,
-                    freshnessToken: freshness,
-                    fingerprint: document.fingerprint,
-                    evidentialLayer: document.evidentialLayer,
-                    classification: .retrievalLead
-                ))
+                hits.append(
+                    NoteSearchResult(
+                        resultID: "\(document.vaultID.uuidString.lowercased()):\(document.relativePath):\(sourceRange?.utf16LowerBound ?? segment.ordinal)",
+                        vaultID: document.vaultID,
+                        vaultName: document.vaultName,
+                        vaultRole: document.vaultRole,
+                        relativePath: document.relativePath,
+                        stableNoteID: document.stableNoteID,
+                        title: document.title,
+                        matchedField: segment.field,
+                        context: context(for: segment.field),
+                        sourceLine: sourceRange?.line ?? 1,
+                        snippet: presentation.text,
+                        highlights: presentation.highlights,
+                        matchedFields: matchedFields,
+                        rankReason: rankReason(candidate.identityPriority, filterOnly: ast.isFilterOnly),
+                        primaryMatchReason: reasons.first ?? .lexical,
+                        additionalMatchReasons: Array(reasons.dropFirst()),
+                        sourceRange: sourceRange,
+                        freshnessToken: freshness,
+                        fingerprint: document.fingerprint,
+                        evidentialLayer: document.evidentialLayer,
+                        classification: .retrievalLead
+                    ))
             }
         }
         return hits
@@ -2884,11 +2978,13 @@ private enum NoteSearchResultBuilder {
         for clause in ast.clauses {
             switch clause {
             case .structured(let value):
-                reasons.append(.structured(SearchStructuredMatch(
-                    field: value.field,
-                    value: value.value,
-                    excluded: value.excluded
-                )))
+                reasons.append(
+                    .structured(
+                        SearchStructuredMatch(
+                            field: value.field,
+                            value: value.value,
+                            excluded: value.excluded
+                        )))
             case .property(let value):
                 if let match = SearchMatcher.propertyMatch(value, in: document) {
                     reasons.append(.property(match))
@@ -2966,12 +3062,13 @@ private enum NoteSearchResultBuilder {
     ) -> (text: String, highlights: [SearchHighlight]) {
         guard let segment else { return ("", []) }
         let source = segment.text
-        let targetUTF16 = normalizedRange.flatMap {
-            SearchTextNormalization.originalUTF16RangeForLexicalNormalization(
-                in: source,
-                requestedRange: $0
-            )
-        } ?? 0..<0
+        let targetUTF16 =
+            normalizedRange.flatMap {
+                SearchTextNormalization.originalUTF16RangeForLexicalNormalization(
+                    in: source,
+                    requestedRange: $0
+                )
+            } ?? 0..<0
         let boundedLower = min(max(0, targetUTF16.lowerBound), source.utf16.count)
         let boundedUpper = min(max(boundedLower, targetUTF16.upperBound), source.utf16.count)
         let boundedTarget = boundedLower..<boundedUpper
@@ -2983,7 +3080,8 @@ private enum NoteSearchResultBuilder {
         var lowerPosition = max(0, targetStart - 80)
         var upperPosition = min(totalCharacters, max(targetEnd, targetStart) + 160)
         for _ in 0..<3 {
-            let decorations = (lowerPosition > 0 ? 1 : 0)
+            let decorations =
+                (lowerPosition > 0 ? 1 : 0)
                 + (upperPosition < totalCharacters ? 1 : 0)
             let allowed = max(1, 240 - decorations)
             guard upperPosition - lowerPosition > allowed else { break }
@@ -3007,10 +3105,11 @@ private enum NoteSearchResultBuilder {
             let displayed = character.isWhitespace ? " " : String(character)
             let displayedLower = core.utf16.count
             core += displayed
-            displayOffsets.append((
-                originalCursor..<(originalCursor + originalLength),
-                displayedLower..<core.utf16.count
-            ))
+            displayOffsets.append(
+                (
+                    originalCursor..<(originalCursor + originalLength),
+                    displayedLower..<core.utf16.count
+                ))
             originalCursor += originalLength
         }
         let text = prefix + core + suffix
@@ -3019,18 +3118,21 @@ private enum NoteSearchResultBuilder {
         let prefixUTF16 = prefix.utf16.count
         var highlights: [SearchHighlight] = []
         for (clauseIndex, clause) in positiveClauses.enumerated() {
-            let occurrences = clauseIndex == 0 && normalizedRange != nil
+            let occurrences =
+                clauseIndex == 0 && normalizedRange != nil
                 ? [normalizedRange!]
                 : SearchMatcher.occurrences(
                     of: clause.value,
                     in: segment.normalizedText
                 )
             for normalizedOccurrence in occurrences {
-                guard let original = SearchTextNormalization.originalUTF16RangeForLexicalNormalization(
-                    in: source,
-                    requestedRange: normalizedOccurrence
-                ), original.lowerBound >= contextLowerUTF16,
-                   original.upperBound <= contextUpperUTF16 else { continue }
+                guard
+                    let original = SearchTextNormalization.originalUTF16RangeForLexicalNormalization(
+                        in: source,
+                        requestedRange: normalizedOccurrence
+                    ), original.lowerBound >= contextLowerUTF16,
+                    original.upperBound <= contextUpperUTF16
+                else { continue }
                 let relativeLower = original.lowerBound - contextLowerUTF16
                 let relativeUpper = original.upperBound - contextLowerUTF16
                 let relative = relativeLower..<relativeUpper
@@ -3039,10 +3141,11 @@ private enum NoteSearchResultBuilder {
                         && $0.original.upperBound > relative.lowerBound
                 }
                 guard let first = overlapping.first, let last = overlapping.last else { continue }
-                highlights.append(SearchHighlight(
-                    utf16LowerBound: prefixUTF16 + first.displayed.lowerBound,
-                    utf16UpperBound: prefixUTF16 + last.displayed.upperBound
-                ))
+                highlights.append(
+                    SearchHighlight(
+                        utf16LowerBound: prefixUTF16 + first.displayed.lowerBound,
+                        utf16UpperBound: prefixUTF16 + last.displayed.upperBound
+                    ))
             }
         }
         let uniqueHighlights = Array(Set(highlights)).sorted {
@@ -3098,18 +3201,19 @@ private extension JSONEncoder {
 /// spans. Search schema changes rebuild this disposable state instead of
 /// retaining a second decoder for older encodings.
 private enum SearchOffsetMapCodec {
-    private static let magic = Data([0x53, 0x4f, 0x4d, 0x31]) // SOM1
+    private static let magic = Data([0x53, 0x4f, 0x4d, 0x31])  // SOM1
     private static let headerByteCount = 8
     private static let entryByteCount = 32
 
     static func encode(_ offsets: [SearchSegmentOffset]) throws -> Data {
         guard let count = UInt32(exactly: offsets.count),
-              offsets.allSatisfy({ offset in
-                  offset.normalizedUTF16LowerBound >= 0
-                      && offset.normalizedUTF16UpperBound >= 0
-                      && offset.sourceUTF16LowerBound >= 0
-                      && offset.sourceUTF16UpperBound >= 0
-              }) else {
+            offsets.allSatisfy({ offset in
+                offset.normalizedUTF16LowerBound >= 0
+                    && offset.normalizedUTF16UpperBound >= 0
+                    && offset.sourceUTF16LowerBound >= 0
+                    && offset.sourceUTF16UpperBound >= 0
+            })
+        else {
             throw SearchIndexError.invalidDocuments(
                 "Search offset map contains an invalid generated range."
             )
@@ -3128,17 +3232,21 @@ private enum SearchOffsetMapCodec {
 
     static func decode(_ data: Data?) throws -> [SearchSegmentOffset] {
         guard let data,
-              data.count >= headerByteCount,
-              data.prefix(magic.count) == magic else {
+            data.count >= headerByteCount,
+            data.prefix(magic.count) == magic
+        else {
             throw SearchIndexError.corruptDatabase
         }
         return try data.withUnsafeBytes { bytes in
-            let count = Int(UInt32(littleEndian: bytes.loadUnaligned(
-                fromByteOffset: 4,
-                as: UInt32.self
-            )))
+            let count = Int(
+                UInt32(
+                    littleEndian: bytes.loadUnaligned(
+                        fromByteOffset: 4,
+                        as: UInt32.self
+                    )))
             guard count <= (data.count - headerByteCount) / entryByteCount,
-                  data.count == headerByteCount + count * entryByteCount else {
+                data.count == headerByteCount + count * entryByteCount
+            else {
                 throw SearchIndexError.corruptDatabase
             }
             var offsets: [SearchSegmentOffset] = []
@@ -3146,10 +3254,11 @@ private enum SearchOffsetMapCodec {
             var cursor = headerByteCount
             for _ in 0..<count {
                 func value(_ component: Int) -> UInt64 {
-                    UInt64(littleEndian: bytes.loadUnaligned(
-                        fromByteOffset: cursor + component * 8,
-                        as: UInt64.self
-                    ))
+                    UInt64(
+                        littleEndian: bytes.loadUnaligned(
+                            fromByteOffset: cursor + component * 8,
+                            as: UInt64.self
+                        ))
                 }
                 let normalizedLower = value(0)
                 let normalizedUpper = value(1)
@@ -3162,12 +3271,13 @@ private enum SearchOffsetMapCodec {
                 guard maximum <= UInt64(Int.max) else {
                     throw SearchIndexError.corruptDatabase
                 }
-                offsets.append(SearchSegmentOffset(
-                    normalizedUTF16LowerBound: Int(normalizedLower),
-                    normalizedUTF16UpperBound: Int(normalizedUpper),
-                    sourceUTF16LowerBound: Int(sourceLower),
-                    sourceUTF16UpperBound: Int(sourceUpper)
-                ))
+                offsets.append(
+                    SearchSegmentOffset(
+                        normalizedUTF16LowerBound: Int(normalizedLower),
+                        normalizedUTF16UpperBound: Int(normalizedUpper),
+                        sourceUTF16LowerBound: Int(sourceLower),
+                        sourceUTF16UpperBound: Int(sourceUpper)
+                    ))
                 cursor += entryByteCount
             }
             return offsets
@@ -3203,7 +3313,8 @@ private final class SearchSQLiteDatabase: @unchecked Sendable {
             SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX,
             nil
         ) != SQLITE_OK {
-            let message = handle.map { String(cString: sqlite3_errmsg($0)) }
+            let message =
+                handle.map { String(cString: sqlite3_errmsg($0)) }
                 ?? "could not open Search v10 database"
             let code = handle.map { sqlite3_extended_errcode($0) }
             if let handle { sqlite3_close(handle) }
@@ -3327,34 +3438,35 @@ private struct SearchSQLiteStatement {
     func bind(_ values: [SearchSQLiteBinding]) throws {
         for (offset, value) in values.enumerated() {
             let index = Int32(offset + 1)
-            let result: Int32 = switch value {
-            case .text(let text):
-                text.withCString { sqlite3_bind_text(handle, index, $0, -1, searchSQLiteTransient) }
-            case .optionalText(let text):
-                if let text {
+            let result: Int32 =
+                switch value {
+                case .text(let text):
                     text.withCString { sqlite3_bind_text(handle, index, $0, -1, searchSQLiteTransient) }
-                } else {
-                    sqlite3_bind_null(handle, index)
-                }
-            case .int(let value):
-                sqlite3_bind_int64(handle, index, sqlite3_int64(value))
-            case .optionalInt(let value):
-                if let value {
+                case .optionalText(let text):
+                    if let text {
+                        text.withCString { sqlite3_bind_text(handle, index, $0, -1, searchSQLiteTransient) }
+                    } else {
+                        sqlite3_bind_null(handle, index)
+                    }
+                case .int(let value):
                     sqlite3_bind_int64(handle, index, sqlite3_int64(value))
-                } else {
-                    sqlite3_bind_null(handle, index)
+                case .optionalInt(let value):
+                    if let value {
+                        sqlite3_bind_int64(handle, index, sqlite3_int64(value))
+                    } else {
+                        sqlite3_bind_null(handle, index)
+                    }
+                case .blob(let data):
+                    data.withUnsafeBytes { bytes in
+                        sqlite3_bind_blob64(
+                            handle,
+                            index,
+                            bytes.baseAddress,
+                            sqlite3_uint64(data.count),
+                            searchSQLiteTransient
+                        )
+                    }
                 }
-            case .blob(let data):
-                data.withUnsafeBytes { bytes in
-                    sqlite3_bind_blob64(
-                        handle,
-                        index,
-                        bytes.baseAddress,
-                        sqlite3_uint64(data.count),
-                        searchSQLiteTransient
-                    )
-                }
-            }
             guard result == SQLITE_OK else {
                 throw SearchIndexError.sqlite("could not bind a Search v10 parameter")
             }
@@ -3381,7 +3493,6 @@ private struct SearchSQLiteStatement {
 
 private let searchSQLiteTransient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
-
 extension TriptychSearchIndex {
     /// The Note index narrows the corpus; this second, Search-owned stage ranks
     /// actual paragraphs. Neither presentation nor an Agent invents this ranking.
@@ -3396,12 +3507,14 @@ extension TriptychSearchIndex {
         for (noteRank, source) in sources.enumerated() {
             try Task.checkCancellation()
             guard source.document.fingerprint == source.candidate.fingerprint,
-                  source.candidate.note != request.seed.noteID else { continue }
+                source.candidate.note != request.seed.noteID
+            else { continue }
             let semantic = MarkdownSemanticDocument(parsing: source.document)
             for block in semantic.blocks where block.kind == .paragraph {
                 try Task.checkCancellation()
                 guard block.span.utf16UpperBound - block.span.utf16LowerBound <= RelatedContentContract.maximumPassageUTF16Count,
-                      let range = Range(block.span.nsRange, in: source.document.rawContent) else { continue }
+                    let range = Range(block.span.nsRange, in: source.document.rawContent)
+                else { continue }
                 let exact = String(source.document.rawContent[range])
                 let visible = ResearchExcerptPresentation.readableText(exact)
                 let normalized = SearchTextNormalization.lexicalNormalize(visible)
@@ -3416,8 +3529,10 @@ extension TriptychSearchIndex {
                 let focusedMatches = Set(matches.filter { $0.seedKind != .sourceNote }.flatMap(\.terms)).count
                 guard !focused || focusedMatches >= requiredFocusMatches else { continue }
                 let span = block.span
-                let passage = RelatedContentPassage(candidate: source.candidate,
-                    range: .init(utf16LowerBound: span.utf16LowerBound, utf16UpperBound: span.utf16UpperBound,
+                let passage = RelatedContentPassage(
+                    candidate: source.candidate,
+                    range: .init(
+                        utf16LowerBound: span.utf16LowerBound, utf16UpperBound: span.utf16UpperBound,
                         line: span.start.line, column: span.start.utf16Column, endLine: span.end.line, endColumn: span.end.utf16Column),
                     source: exact, displayText: visible, matches: matches)
                 let counts = RelatedContentSeedKind.rankingOrder.map { kind in
@@ -3437,7 +3552,8 @@ extension TriptychSearchIndex {
         for item in ranked {
             let note = item.passage.candidate.note
             guard perNote[note, default: 0] < RelatedContentContract.maximumPassagesPerNote,
-                  seenParagraphs[note, default: []].insert(SearchTextNormalization.lexicalNormalize(item.passage.displayText)).inserted else { continue }
+                seenParagraphs[note, default: []].insert(SearchTextNormalization.lexicalNormalize(item.passage.displayText)).inserted
+            else { continue }
             perNote[note, default: 0] += 1
             result.append(item.passage)
             if result.count == RelatedContentContract.maximumPassages { break }

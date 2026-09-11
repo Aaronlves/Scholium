@@ -1,5 +1,6 @@
 import ScholiumContracts
 import Testing
+
 @testable import ScholiumCore
 
 extension TriptychSearchIndex {

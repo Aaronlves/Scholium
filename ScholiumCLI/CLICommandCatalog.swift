@@ -17,7 +17,7 @@ extension ScholiumCLI {
 
         init(
             pathLength: Int,
-            positionalCount: ClosedRange<Int> = 0 ... 0,
+            positionalCount: ClosedRange<Int> = 0...0,
             options: [String: CLIOptionRule] = [:]
         ) {
             self.pathLength = pathLength
@@ -93,7 +93,8 @@ extension ScholiumCLI {
         return [
             "mcp serve": .init(
                 rule: .init(pathLength: 2, options: ["--conversation-token": .value]),
-                help: "Usage: scholium mcp serve [--conversation-token <uuid>]\n\nRuns the local stdio MCP adapter for the currently running Scholium App. The adapter does not open a Triptych or read its filesystem directly."
+                help:
+                    "Usage: scholium mcp serve [--conversation-token <uuid>]\n\nRuns the local stdio MCP adapter for the currently running Scholium App. The adapter does not open a Triptych or read its filesystem directly."
             ),
             "doctor": .init(
                 rule: .init(pathLength: 1, options: format),
@@ -101,7 +102,8 @@ extension ScholiumCLI {
             ),
             "update": .init(
                 rule: .init(pathLength: 1, options: ["--check": .flag, "--format": .value]),
-                help: "Usage: scholium update [--check] [--format text|json]\n\nChecks the official release checksum, provenance, code signature, and architecture. Without --check, an explicit newer release is installed into ~/.local/bin without changing PATH or shell configuration."
+                help:
+                    "Usage: scholium update [--check] [--format text|json]\n\nChecks the official release checksum, provenance, code signature, and architecture. Without --check, an explicit newer release is installed into ~/.local/bin without changing PATH or shell configuration."
             ),
             "vault list": .init(
                 rule: .init(pathLength: 2, options: format),
@@ -110,7 +112,7 @@ extension ScholiumCLI {
             "search": .init(
                 rule: .init(
                     pathLength: 1,
-                    positionalCount: 1 ... 1,
+                    positionalCount: 1...1,
                     options: [
                         "--vault": .value, "--triptych": .value,
                         "--limit": .value, "--format": .value,
@@ -119,11 +121,11 @@ extension ScholiumCLI {
                 help: searchHelp
             ),
             "links incoming": .init(
-                rule: .init(pathLength: 2, positionalCount: 1 ... 1, options: format),
+                rule: .init(pathLength: 2, positionalCount: 1...1, options: format),
                 help: "Usage: scholium links incoming <vault>:<path> --format json"
             ),
             "links outgoing": .init(
-                rule: .init(pathLength: 2, positionalCount: 1 ... 1, options: format),
+                rule: .init(pathLength: 2, positionalCount: 1...1, options: format),
                 help: "Usage: scholium links outgoing <vault>:<path> --format json"
             ),
             "links diagnostics": .init(
@@ -145,48 +147,53 @@ extension ScholiumCLI {
                 help: "Usage: scholium workspace attention [--triptych <selector>] [--kind <queue>] --format json"
             ),
             "read": .init(
-                rule: .init(pathLength: 1, positionalCount: 1 ... 1, options: format),
+                rule: .init(pathLength: 1, positionalCount: 1...1, options: format),
                 help: "Usage: scholium read <vault>:<relative-path> [--format text|json]"
             ),
             "note create": .init(
                 rule: .init(
                     pathLength: 2,
-                    positionalCount: 1 ... 1,
+                    positionalCount: 1...1,
                     options: [
                         "--body-from": .value, "--authored-yaml-from": .value,
                         "--analysis-from": .value,
                     ]
                 ),
-                help: "Usage: scholium note create <vault>:<path> [--body-from <text-file>] [--authored-yaml-from <json-file>] [--analysis-from <json-file>]\n\nAlways creates fixed YAML with summary and keywords. Authored YAML JSON may supply {\"summary\":\"...\",\"keywords\":[\"...\"]}; omission keeps summary:null and keywords:[]. Body input is UTF-8 LF text without a top-level YAML envelope. Analysis JSON is {\"source_type\":\"journal_article\",\"fields\":[{\"key\":\"title\",\"value\":\"Example\"}]}; every managed field is optional."
+                help:
+                    "Usage: scholium note create <vault>:<path> [--body-from <text-file>] [--authored-yaml-from <json-file>] [--analysis-from <json-file>]\n\nAlways creates fixed YAML with summary and keywords. Authored YAML JSON may supply {\"summary\":\"...\",\"keywords\":[\"...\"]}; omission keeps summary:null and keywords:[]. Body input is UTF-8 LF text without a top-level YAML envelope. Analysis JSON is {\"source_type\":\"journal_article\",\"fields\":[{\"key\":\"title\",\"value\":\"Example\"}]}; every managed field is optional."
             ),
             "note metadata-read": .init(
-                rule: .init(pathLength: 2, positionalCount: 1 ... 1, options: format),
-                help: "Usage: scholium note metadata-read <vault>:<path> [--format json]\n\nReads only the Note's validated portable Scholium Metadata record and its independent metadata_sha256 revision. Markdown source remains separate."
+                rule: .init(pathLength: 2, positionalCount: 1...1, options: format),
+                help:
+                    "Usage: scholium note metadata-read <vault>:<path> [--format json]\n\nReads only the Note's validated portable Scholium Metadata record and its independent metadata_sha256 revision. Markdown source remains separate."
             ),
             "note metadata-set": .init(
                 rule: .init(
                     pathLength: 2,
-                    positionalCount: 2 ... 2,
+                    positionalCount: 2...2,
                     options: ["--value-from": .value, "--expected": .value]
                 ),
-                help: "Usage: scholium note metadata-set <vault>:<path> <key> --value-from <json-file> --expected <metadata-sha256|absent>\n\nSets one role-valid managed field through the same complete-record CAS used by the app. The value file contains one JSON scalar, array, or object matching the field contract. Use absent only when metadata-read reports no record."
+                help:
+                    "Usage: scholium note metadata-set <vault>:<path> <key> --value-from <json-file> --expected <metadata-sha256|absent>\n\nSets one role-valid managed field through the same complete-record CAS used by the app. The value file contains one JSON scalar, array, or object matching the field contract. Use absent only when metadata-read reports no record."
             ),
             "note metadata-remove": .init(
                 rule: .init(
                     pathLength: 2,
-                    positionalCount: 2 ... 2,
+                    positionalCount: 2...2,
                     options: ["--expected": .value]
                 ),
-                help: "Usage: scholium note metadata-remove <vault>:<path> <key> --expected <metadata-sha256>\n\nRemoves one present managed field through the same complete-record CAS used by the app. It never changes YAML or Markdown."
+                help:
+                    "Usage: scholium note metadata-remove <vault>:<path> <key> --expected <metadata-sha256>\n\nRemoves one present managed field through the same complete-record CAS used by the app. It never changes YAML or Markdown."
             ),
             "note import": .init(
-                rule: .init(pathLength: 2, positionalCount: 1 ... 1, options: ["--from": .value]),
-                help: "Usage: scholium note import <vault>:<path> --from <markdown-file>\n\nImports complete authored Markdown source without applying managed New Note YAML."
+                rule: .init(pathLength: 2, positionalCount: 1...1, options: ["--from": .value]),
+                help:
+                    "Usage: scholium note import <vault>:<path> --from <markdown-file>\n\nImports complete authored Markdown source without applying managed New Note YAML."
             ),
             "note replace": .init(
                 rule: .init(
                     pathLength: 2,
-                    positionalCount: 1 ... 1,
+                    positionalCount: 1...1,
                     options: ["--from": .value, "--expected": .value]
                 ),
                 help: "Usage: scholium note replace <vault>:<path> --from <markdown-file> --expected <sha256>"
@@ -194,7 +201,7 @@ extension ScholiumCLI {
             "note move": .init(
                 rule: .init(
                     pathLength: 2,
-                    positionalCount: 2 ... 2,
+                    positionalCount: 2...2,
                     options: ["--expected": .value]
                 ),
                 help: "Usage: scholium note move <vault>:<path> <new-relative-path> --expected <sha256>"
@@ -202,10 +209,11 @@ extension ScholiumCLI {
             "note move-to-trash": .init(
                 rule: .init(
                     pathLength: 2,
-                    positionalCount: 1 ... 1,
+                    positionalCount: 1...1,
                     options: ["--expected": .value]
                 ),
-                help: "Usage: scholium note move-to-trash <vault>:<path> --expected <sha256>\n\nMoves the exact Note to the macOS system Trash. Finder owns file restoration."
+                help:
+                    "Usage: scholium note move-to-trash <vault>:<path> --expected <sha256>\n\nMoves the exact Note to the macOS system Trash. Finder owns file restoration."
             ),
             "zotero mcp": .init(
                 rule: .init(pathLength: 2, options: ["--probe": .flag, "--format": .value]),

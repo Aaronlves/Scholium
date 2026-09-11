@@ -1,6 +1,6 @@
-import ScholiumContracts
 import Darwin
 import Foundation
+import ScholiumContracts
 
 public enum ScholiumPaths {
     public static let applicationSupportDirectoryName = "Scholium"
@@ -51,7 +51,8 @@ public enum ScholiumPaths {
             throw CocoaError(.fileNoSuchFile)
         }
 
-        let current = base
+        let current =
+            base
             .appendingPathComponent(applicationSupportDirectoryName, isDirectory: true)
             .appendingPathComponent(machineStateDirectoryName, isDirectory: true)
         try ensurePrivateDirectory(at: current, fileManager: fileManager)
@@ -82,9 +83,11 @@ public enum ScholiumPaths {
         if let baseURL {
             return try applicationSupportURL(baseURL: baseURL, fileManager: fileManager)
         }
-        guard let loginHome = loginAccountHomeURL(
-            accountHomePath: currentLoginAccountHomePath()
-        ) else {
+        guard
+            let loginHome = loginAccountHomeURL(
+                accountHomePath: currentLoginAccountHomePath()
+            )
+        else {
             throw CocoaError(.fileNoSuchFile)
         }
         return try applicationSupportURL(
@@ -107,7 +110,8 @@ public enum ScholiumPaths {
         debugFallbackURL: URL? = nil
     ) throws -> URL {
         if let explicit = environment["SCHOLIUM_APP_BRIDGE_CONTAINER"],
-           !explicit.isEmpty {
+            !explicit.isEmpty
+        {
             return URL(
                 fileURLWithPath: (explicit as NSString).expandingTildeInPath,
                 isDirectory: true
@@ -118,15 +122,17 @@ public enum ScholiumPaths {
                 .appendingPathComponent("ApplicationSupport", isDirectory: true)
                 .appendingPathComponent(appBridgeDirectoryName, isDirectory: true)
         }
-#if DEBUG
-        if let debugFallbackURL {
-            return debugFallbackURL
-                .appendingPathComponent(appBridgeDirectoryName, isDirectory: true)
-        }
-#endif
+        #if DEBUG
+            if let debugFallbackURL {
+                return
+                    debugFallbackURL
+                    .appendingPathComponent(appBridgeDirectoryName, isDirectory: true)
+            }
+        #endif
         let stateRoot: URL
         if let homeURL {
-            stateRoot = homeURL
+            stateRoot =
+                homeURL
                 .appendingPathComponent("Library/Application Support", isDirectory: true)
                 .appendingPathComponent(applicationSupportDirectoryName, isDirectory: true)
                 .appendingPathComponent(machineStateDirectoryName, isDirectory: true)
@@ -138,7 +144,8 @@ public enum ScholiumPaths {
 
     public static func loginAccountHomeURL(accountHomePath: String?) -> URL? {
         guard let accountHomePath,
-              accountHomePath.hasPrefix("/") else {
+            accountHomePath.hasPrefix("/")
+        else {
             return nil
         }
         return URL(
@@ -161,8 +168,9 @@ public enum ScholiumPaths {
             &result
         )
         guard status == 0,
-              result != nil,
-              account.pw_dir != nil else {
+            result != nil,
+            account.pw_dir != nil
+        else {
             return nil
         }
         return String(cString: account.pw_dir)

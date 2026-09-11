@@ -69,7 +69,8 @@ public struct SearchCapabilities: Codable, Hashable, Sendable {
         scope: SearchPresentationScope
     ) -> [SearchFieldCapability] {
         guard let capability = capability(for: provider),
-              capability.scopes.contains(scope) else { return [] }
+            capability.scopes.contains(scope)
+        else { return [] }
         guard scope == .thisNote else { return capability.fields }
         return capability.fields.filter {
             $0.name == "kind" || SearchLexicalField(rawValue: $0.name) != nil
@@ -88,65 +89,67 @@ public struct SearchCapabilities: Codable, Hashable, Sendable {
                     #"property:language="Greek""#,
                     #"from-note:"Groundwork" duty"#,
                 ]
-            ),
+            )
         ]
     )
 
-    private static let noteFields: [SearchFieldCapability] = [
-        SearchFieldCapability(
-            name: "kind",
-            valueKind: .canonical,
-            allowedValues: SearchProvider.allCases.map(\.rawValue),
-            allowsPhrase: false,
-            allowsPrefix: false,
-            allowsExclusion: false
-        ),
-    ] + SearchLexicalField.allCases.map {
-        SearchFieldCapability(
-            name: $0.rawValue,
-            valueKind: .lexical,
-            allowsPhrase: true,
-            allowsPrefix: true,
-            allowsExclusion: true
-        )
-    } + [
-        SearchFieldCapability(
-            name: "callout",
-            valueKind: .canonical,
-            allowedValues: CalloutSemanticRole.allCases.map(\.rawValue),
-            allowsPhrase: false,
-            allowsPrefix: false,
-            allowsExclusion: true
-        ),
-        SearchFieldCapability(
-            name: "has",
-            valueKind: .canonical,
-            allowedValues: ["broken-link"],
-            allowsPhrase: false,
-            allowsPrefix: false,
-            allowsExclusion: true
-        ),
-        SearchFieldCapability(
-            name: "property",
-            valueKind: .property,
-            allowsPhrase: true,
-            allowsPrefix: false,
-            allowsExclusion: false
-        ),
-        SearchFieldCapability(
-            name: SearchLinkDirection.fromNote.rawValue,
-            valueKind: .noteIdentity,
-            allowsPhrase: true,
-            allowsPrefix: false,
-            allowsExclusion: false
-        ),
-        SearchFieldCapability(
-            name: SearchLinkDirection.toNote.rawValue,
-            valueKind: .noteIdentity,
-            allowsPhrase: true,
-            allowsPrefix: false,
-            allowsExclusion: false
-        ),
-    ]
+    private static let noteFields: [SearchFieldCapability] =
+        [
+            SearchFieldCapability(
+                name: "kind",
+                valueKind: .canonical,
+                allowedValues: SearchProvider.allCases.map(\.rawValue),
+                allowsPhrase: false,
+                allowsPrefix: false,
+                allowsExclusion: false
+            )
+        ]
+        + SearchLexicalField.allCases.map {
+            SearchFieldCapability(
+                name: $0.rawValue,
+                valueKind: .lexical,
+                allowsPhrase: true,
+                allowsPrefix: true,
+                allowsExclusion: true
+            )
+        } + [
+            SearchFieldCapability(
+                name: "callout",
+                valueKind: .canonical,
+                allowedValues: CalloutSemanticRole.allCases.map(\.rawValue),
+                allowsPhrase: false,
+                allowsPrefix: false,
+                allowsExclusion: true
+            ),
+            SearchFieldCapability(
+                name: "has",
+                valueKind: .canonical,
+                allowedValues: ["broken-link"],
+                allowsPhrase: false,
+                allowsPrefix: false,
+                allowsExclusion: true
+            ),
+            SearchFieldCapability(
+                name: "property",
+                valueKind: .property,
+                allowsPhrase: true,
+                allowsPrefix: false,
+                allowsExclusion: false
+            ),
+            SearchFieldCapability(
+                name: SearchLinkDirection.fromNote.rawValue,
+                valueKind: .noteIdentity,
+                allowsPhrase: true,
+                allowsPrefix: false,
+                allowsExclusion: false
+            ),
+            SearchFieldCapability(
+                name: SearchLinkDirection.toNote.rawValue,
+                valueKind: .noteIdentity,
+                allowsPhrase: true,
+                allowsPrefix: false,
+                allowsExclusion: false
+            ),
+        ]
 
 }

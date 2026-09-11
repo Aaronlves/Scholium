@@ -55,7 +55,8 @@ final class SidebarSourceListSelectionPresentation {
         let isEmphasized = selectionIsEmphasized(in: tableView)
         tableView.enumerateAvailableRowViews { rowView, _ in
             guard rowView.isSelected,
-                  rowView.isEmphasized != isEmphasized else { return }
+                rowView.isEmphasized != isEmphasized
+            else { return }
             rowView.isEmphasized = isEmphasized
         }
         let changed = lastAppliedEmphasis != isEmphasized
@@ -96,11 +97,12 @@ func sidebarOutlineStructure(
     result.reserveCapacity(roots.count)
 
     func append(_ node: TreeNode) {
-        result.append(SidebarOutlineStructureEntry(
-            id: node.id,
-            childIDs: node.children.map(\.id),
-            isFolder: node.isFolder
-        ))
+        result.append(
+            SidebarOutlineStructureEntry(
+                id: node.id,
+                childIDs: node.children.map(\.id),
+                isFolder: node.isFolder
+            ))
         node.children.forEach(append)
     }
     roots.forEach(append)
@@ -224,7 +226,8 @@ final class SidebarOutlineRowView: SidebarSourceListRowView {
         isExpanded: Bool,
         nativeStrings: SidebarNativeStrings
     ) {
-        let label = item.node.note?.title
+        let label =
+            item.node.note?.title
             ?? item.node.note?.displayName
             ?? item.node.name
         setAccessibilityLabel(label)

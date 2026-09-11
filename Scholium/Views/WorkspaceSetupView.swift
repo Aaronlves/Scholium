@@ -85,29 +85,29 @@ private struct BootstrapFlowView: View {
                 .frame(width: artRailWidth)
 
             ZStack(alignment: .bottom) {
-                    stepContent
-                        .id(step)
-                        .transition(stepTransition)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .background(ScholiumColorRole.documentBackground.color)
-                        .clipped()
+                stepContent
+                    .id(step)
+                    .transition(stepTransition)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(ScholiumColorRole.documentBackground.color)
+                    .clipped()
 
-                    if let message = errorMessage ?? context.recoveryMessage {
-                        BootstrapSetupStatus(
-                            message: message,
-                            isError: errorMessage != nil
-                        )
-                        .padding(.horizontal, ScholiumMetrics.Onboarding.statusHorizontalInset)
-                        .padding(.bottom, ScholiumMetrics.Onboarding.statusBottomInset)
-                    }
-
-                    BootstrapFooter(
-                        showsBack: canGoBack,
-                        primaryTitle: primaryTitle,
-                        primaryDisabled: primaryDisabled || isSaving,
-                        onBack: moveBack,
-                        onPrimary: performPrimary
+                if let message = errorMessage ?? context.recoveryMessage {
+                    BootstrapSetupStatus(
+                        message: message,
+                        isError: errorMessage != nil
                     )
+                    .padding(.horizontal, ScholiumMetrics.Onboarding.statusHorizontalInset)
+                    .padding(.bottom, ScholiumMetrics.Onboarding.statusBottomInset)
+                }
+
+                BootstrapFooter(
+                    showsBack: canGoBack,
+                    primaryTitle: primaryTitle,
+                    primaryDisabled: primaryDisabled || isSaving,
+                    onBack: moveBack,
+                    onPrimary: performPrimary
+                )
             }
         }
         .scholiumForeground(.primaryText)
@@ -149,7 +149,9 @@ private struct BootstrapFlowView: View {
             }
             .scholiumActivationPointer()
         } message: {
-            Text("Scholium will move the entire existing .scholium folder to a uniquely named sibling recovery folder, preserving its exact files without interpreting the old schema. Analyses, Topics, and Works will not be changed. Scholium will then create current portable control state.")
+            Text(
+                "Scholium will move the entire existing .scholium folder to a uniquely named sibling recovery folder, preserving its exact files without interpreting the old schema. Analyses, Topics, and Works will not be changed. Scholium will then create current portable control state."
+            )
         }
         .accessibilityIdentifier("scholium.bootstrap")
     }
@@ -159,8 +161,8 @@ private struct BootstrapFlowView: View {
         case .welcome:
             .welcome
         case .choosePath, .createStructure, .existingAnalyses,
-             .existingTopics, .existingWorks, .authorizeParent,
-             .reviewTriptych:
+            .existingTopics, .existingWorks, .authorizeParent,
+            .reviewTriptych:
             .triptych
         case .ready:
             .ready
@@ -258,10 +260,11 @@ private struct BootstrapFlowView: View {
 
     private var existingSelectionIsReady: Bool {
         guard paperAnalysisURL != nil,
-              topicKnowledgeURL != nil,
-              outputURL != nil,
-              let portableContainerURL,
-              let detectedParentURL else { return false }
+            topicKnowledgeURL != nil,
+            outputURL != nil,
+            let portableContainerURL,
+            let detectedParentURL
+        else { return false }
         return portableContainerURL.resolvingSymlinksInPath().standardizedFileURL.path
             == detectedParentURL.path
     }
@@ -402,9 +405,12 @@ private struct BootstrapFlowView: View {
         )
         Task { @MainActor in
             do {
-                guard let url = try await fileSelectionPresenter
-                    .requiredForFileSelection()
-                    .selectURL(request) else { return }
+                guard
+                    let url =
+                        try await fileSelectionPresenter
+                        .requiredForFileSelection()
+                        .selectURL(request)
+                else { return }
                 errorMessage = nil
                 receive(url)
             } catch is CancellationError {
@@ -434,9 +440,12 @@ private struct BootstrapFlowView: View {
         )
         Task { @MainActor in
             do {
-                guard let selected = try await fileSelectionPresenter
-                    .requiredForFileSelection()
-                    .selectURL(request) else { return }
+                guard
+                    let selected =
+                        try await fileSelectionPresenter
+                        .requiredForFileSelection()
+                        .selectURL(request)
+                else { return }
                 errorMessage = nil
                 portableContainerURL = selected
                 move(to: .reviewTriptych)
@@ -472,9 +481,10 @@ private struct BootstrapFlowView: View {
                     portableContainerURL = selection.portableContainerURL
                 case .existingFolders:
                     guard let paperAnalysisURL,
-                          let topicKnowledgeURL,
-                          let outputURL,
-                          let portableContainerURL else {
+                        let topicKnowledgeURL,
+                        let outputURL,
+                        let portableContainerURL
+                    else {
                         isSaving = false
                         return
                     }
@@ -495,9 +505,10 @@ private struct BootstrapFlowView: View {
             } catch {
                 isSaving = false
                 if setupPath == .existingFolders,
-                   let attemptedSelection,
-                   let applicationError = error as? ScholiumApplicationError,
-                   case .portableControlRecoveryRequired = applicationError {
+                    let attemptedSelection,
+                    let applicationError = error as? ScholiumApplicationError,
+                    case .portableControlRecoveryRequired = applicationError
+                {
                     pendingPortableControlRecovery = attemptedSelection
                     errorMessage = nil
                 } else {
@@ -792,12 +803,12 @@ private struct BootstrapSetupPathChoice: View {
                     cornerRadius: ScholiumShape.editorialPanelCornerRadius,
                     style: .continuous
                 )
-                    .stroke(
-                        isSelected
-                            ? ScholiumColorRole.accent.color
-                            : ScholiumColorRole.separator.color,
-                        lineWidth: isSelected ? 2 : 1
-                    )
+                .stroke(
+                    isSelected
+                        ? ScholiumColorRole.accent.color
+                        : ScholiumColorRole.separator.color,
+                    lineWidth: isSelected ? 2 : 1
+                )
             }
         }
         .scholiumActivationPointer()
@@ -985,7 +996,7 @@ private struct BootstrapExplanationBlock: View {
                 cornerRadius: ScholiumShape.editorialPanelCornerRadius,
                 style: .continuous
             )
-                .stroke(ScholiumColorRole.separator.color, lineWidth: 1)
+            .stroke(ScholiumColorRole.separator.color, lineWidth: 1)
         }
     }
 }

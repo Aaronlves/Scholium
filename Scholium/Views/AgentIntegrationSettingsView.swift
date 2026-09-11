@@ -11,20 +11,20 @@ struct AgentIntegrationSettingsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.sectionSeparation) {
             if let chatController {
-        AgentChatConnectionSettingsView(
-            controller: chatController,
-            onShowExternalAgentHosts: { showsExternalAgentHosts = true }
-        )
-        .id(chatController.triptychID)
-      } else {
-        settingsEditorSection("Chat in Scholium") {
-            Text("Open a Triptych to manage its Chat connection.")
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        settingsEditorSection("Advanced") {
-            Button("External Agent Hosts…") {
-                showsExternalAgentHosts = true
+                AgentChatConnectionSettingsView(
+                    controller: chatController,
+                    onShowExternalAgentHosts: { showsExternalAgentHosts = true }
+                )
+                .id(chatController.triptychID)
+            } else {
+                settingsEditorSection("Chat in Scholium") {
+                    Text("Open a Triptych to manage its Chat connection.")
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                settingsEditorSection("Advanced") {
+                    Button("External Agent Hosts…") {
+                        showsExternalAgentHosts = true
                     }
                 }
             }
@@ -46,7 +46,8 @@ private struct ExternalAgentHostsSettingsView: View {
     @State private var copyStatus: String?
 
     private let cliURL = ScholiumAgentIntegrationResources.scholiumCLIURL()
-    private let coreProtocolURL = try? ScholiumAgentIntegrationResources
+    private let coreProtocolURL =
+        try? ScholiumAgentIntegrationResources
         .coreProtocolSkillDirectoryURL()
 
     var body: some View {
@@ -140,7 +141,9 @@ private struct ExternalAgentHostsSettingsView: View {
         guard let cliURL else { return }
         let command = host.command(cliURL: cliURL)
         let copied = ScholiumPasteboardWriter.general.writeText(command)
-        copyStatus = copied ? "\(host.title) setup command copied"
+        copyStatus =
+            copied
+            ? "\(host.title) setup command copied"
             : "\(host.title) setup command could not be copied."
 
     }

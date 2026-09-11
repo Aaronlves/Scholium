@@ -10,10 +10,12 @@ struct PropertyContractTests {
         let keys = contracts.map(\.canonicalKey)
 
         #expect(keys == ["summary", "keywords"])
-        #expect(PropertyContractCatalog.contracts(for: .topicMarkdown).map(\.canonicalKey)
-            == keys)
-        #expect(PropertyContractCatalog.contracts(for: .draftProject).map(\.canonicalKey)
-            == keys)
+        #expect(
+            PropertyContractCatalog.contracts(for: .topicMarkdown).map(\.canonicalKey)
+                == keys)
+        #expect(
+            PropertyContractCatalog.contracts(for: .draftProject).map(\.canonicalKey)
+                == keys)
     }
 
     @Test("Managed metadata retains role-specific structured vocabularies")
@@ -26,42 +28,47 @@ struct PropertyContractTests {
         #expect(!analysis.contains("source_basis"))
         #expect(!analysis.contains("limitations"))
         #expect(!analysis.contains("summary"))
-        #expect(BuiltInNoteMetadataCatalog.contracts(for: .topicMarkdown).map(\.canonicalKey) == [
-            "aliases",
-        ])
-        #expect(BuiltInNoteMetadataCatalog.contracts(for: .draftProject).map(\.canonicalKey) == [
-            "work_type", "coauthors",
-        ])
+        #expect(
+            BuiltInNoteMetadataCatalog.contracts(for: .topicMarkdown).map(\.canonicalKey) == [
+                "aliases"
+            ])
+        #expect(
+            BuiltInNoteMetadataCatalog.contracts(for: .draftProject).map(\.canonicalKey) == [
+                "work_type", "coauthors",
+            ])
     }
 
     @Test("Resolved custom Metadata is role-scoped and optional")
     func resolvedCustomCatalog() {
         let catalog = NoteMetadataCatalog(customFieldsByRole: [
             .paperAnalysis: [
-                MetadataFieldDefinition(key: "argument_stage", valueKind: .text),
+                MetadataFieldDefinition(key: "argument_stage", valueKind: .text)
             ],
             .topicKnowledge: [
-                MetadataFieldDefinition(key: "open_questions", valueKind: .textList),
+                MetadataFieldDefinition(key: "open_questions", valueKind: .textList)
             ],
             .output: [
-                MetadataFieldDefinition(key: "word_budget", valueKind: .number),
+                MetadataFieldDefinition(key: "word_budget", valueKind: .number)
             ],
         ])
 
         #expect(catalog.contract(for: "argument_stage", profile: .analysis)?.valueKind == .text)
         #expect(catalog.contract(for: "argument_stage", profile: .topicMarkdown) == nil)
         #expect(catalog.validate(fields: [:], profile: .analysis).isEmpty)
-        #expect(catalog.validate(
-            fields: ["argument_stage": .string("reconstruction")],
-            profile: .analysis
-        ).isEmpty)
-        #expect(catalog.validate(
-            fields: ["argument_stage": .string("wrong role")],
-            profile: .topicMarkdown
-        ).map(\.propertyKey) == ["argument_stage"])
-        #expect(AnalysisSourceType.allCases.allSatisfy {
-            catalog.isAnalysisFieldApplicable("argument_stage", sourceType: $0)
-        })
+        #expect(
+            catalog.validate(
+                fields: ["argument_stage": .string("reconstruction")],
+                profile: .analysis
+            ).isEmpty)
+        #expect(
+            catalog.validate(
+                fields: ["argument_stage": .string("wrong role")],
+                profile: .topicMarkdown
+            ).map(\.propertyKey) == ["argument_stage"])
+        #expect(
+            AnalysisSourceType.allCases.allSatisfy {
+                catalog.isAnalysisFieldApplicable("argument_stage", sourceType: $0)
+            })
     }
 
     @Test("Custom definitions cannot shadow authored YAML or built-in Metadata")
@@ -69,7 +76,7 @@ struct PropertyContractTests {
         for key in ["summary", "keywords", "title"] {
             var settings = TriptychSettings()
             settings.metadataFields[.paperAnalysis] = [
-                MetadataFieldDefinition(key: key, valueKind: .text),
+                MetadataFieldDefinition(key: key, valueKind: .text)
             ]
             #expect(throws: TriptychSettingsValidationError.self) {
                 try TriptychSettingsValidator.validate(settings)
@@ -105,19 +112,22 @@ struct PropertyContractTests {
         ]
         try TriptychSettingsValidator.validate(evolved)
         try TriptychSettingsValidator.validateTransition(from: current, to: evolved)
-        #expect(evolved.metadataFields[.output]?.map(\.key) == [
-            "target_words", "draft_stage", "audience",
-        ])
+        #expect(
+            evolved.metadataFields[.output]?.map(\.key) == [
+                "target_words", "draft_stage", "audience",
+            ])
 
         let catalog = NoteMetadataCatalog(settings: evolved)
         #expect(catalog.contract(for: "draft_stage", profile: .draftProject) != nil)
-        #expect(catalog.activeContracts(for: .draftProject).contains {
-            $0.canonicalKey == "draft_stage"
-        } == false)
-        #expect(catalog.validate(
-            fields: ["draft_stage": .string("review")],
-            profile: .draftProject
-        ).isEmpty)
+        #expect(
+            catalog.activeContracts(for: .draftProject).contains {
+                $0.canonicalKey == "draft_stage"
+            } == false)
+        #expect(
+            catalog.validate(
+                fields: ["draft_stage": .string("review")],
+                profile: .draftProject
+            ).isEmpty)
 
         var renamed = current
         renamed.metadataFields[.output] = [
@@ -125,7 +135,7 @@ struct PropertyContractTests {
                 key: "writing_stage",
                 valueKind: .choice,
                 allowedValues: ["draft", "review"]
-            ),
+            )
         ]
         #expect(throws: TriptychSettingsValidationError.self) {
             try TriptychSettingsValidator.validateTransition(from: current, to: renamed)
@@ -165,7 +175,7 @@ struct PropertyContractTests {
             "authors": .array([
                 .object(["family": .string("Tappolet"), "given": .string("Christine")]),
                 .object(["literal": .string("World Health Organization")]),
-            ]),
+            ])
         ]
 
         #expect(NoteMetadataCatalog.builtIn.validate(fields: valid, profile: .analysis).isEmpty)
@@ -193,52 +203,61 @@ struct PropertyContractTests {
 
     @Test("Text lists and tags reject scalar coercion")
     func textCollectionsRequireStrings() {
-        #expect(PropertyContractCatalog.validate(
-            frontmatter: ["keywords": .array([.boolean(true), .integer(1)])],
-            profile: .analysis
-        ).map(\.code) == [.invalidValueKind])
-        #expect(NoteMetadataCatalog.builtIn.validate(
-            fields: ["aliases": .array([.boolean(true), .integer(1)])],
-            profile: .topicMarkdown
-        ).map(\.code) == [.invalidValueKind])
+        #expect(
+            PropertyContractCatalog.validate(
+                frontmatter: ["keywords": .array([.boolean(true), .integer(1)])],
+                profile: .analysis
+            ).map(\.code) == [.invalidValueKind])
+        #expect(
+            NoteMetadataCatalog.builtIn.validate(
+                fields: ["aliases": .array([.boolean(true), .integer(1)])],
+                profile: .topicMarkdown
+            ).map(\.code) == [.invalidValueKind])
     }
 
     @Test("Structured editing accepts repairable empty shapes but rejects shape guessing")
     func targetedStructuredEditingShapes() {
-        #expect(PropertyContractCatalog.supportsTargetedStructuredEditing(
-            .string(""),
-            as: .date
-        ))
-        #expect(PropertyContractCatalog.supportsTargetedStructuredEditing(
-            .array([]),
-            as: .textList
-        ))
-        #expect(PropertyContractCatalog.supportsTargetedStructuredEditing(
-            .array([.object(["family": .string("")])]),
-            as: .creatorList
-        ))
-        #expect(!PropertyContractCatalog.supportsTargetedStructuredEditing(
-            .array([.string("Legacy Author")]),
-            as: .creatorList
-        ))
-        #expect(!PropertyContractCatalog.supportsTargetedStructuredEditing(
-            .object(["nested": .string("exact")]),
-            as: .text
-        ))
+        #expect(
+            PropertyContractCatalog.supportsTargetedStructuredEditing(
+                .string(""),
+                as: .date
+            ))
+        #expect(
+            PropertyContractCatalog.supportsTargetedStructuredEditing(
+                .array([]),
+                as: .textList
+            ))
+        #expect(
+            PropertyContractCatalog.supportsTargetedStructuredEditing(
+                .array([.object(["family": .string("")])]),
+                as: .creatorList
+            ))
+        #expect(
+            !PropertyContractCatalog.supportsTargetedStructuredEditing(
+                .array([.string("Legacy Author")]),
+                as: .creatorList
+            ))
+        #expect(
+            !PropertyContractCatalog.supportsTargetedStructuredEditing(
+                .object(["nested": .string("exact")]),
+                as: .text
+            ))
     }
 
     @Test("Dates remain source-safe strings and are not parsed or normalized")
     func dateShape() {
         for value in ["2026", "circa 1920", "forthcoming?", "1990/1992"] {
-            #expect(NoteMetadataCatalog.builtIn.validate(
-                fields: ["publication_date": .string(value)],
-                profile: .analysis
-            ).isEmpty)
+            #expect(
+                NoteMetadataCatalog.builtIn.validate(
+                    fields: ["publication_date": .string(value)],
+                    profile: .analysis
+                ).isEmpty)
         }
-        #expect(NoteMetadataCatalog.builtIn.validate(
-            fields: ["publication_date": .integer(2026)],
-            profile: .analysis
-        ).map(\.code) == [.invalidValueKind])
+        #expect(
+            NoteMetadataCatalog.builtIn.validate(
+                fields: ["publication_date": .integer(2026)],
+                profile: .analysis
+            ).map(\.code) == [.invalidValueKind])
     }
 
     @Test("Source types have one CSL mapping and valid profile partitions")

@@ -1,6 +1,6 @@
-import ScholiumContracts
 import Accessibility
 import AppKit
+import ScholiumContracts
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -52,18 +52,30 @@ private enum ScholiumSettingsDestination: String, CaseIterable, Identifiable, Eq
         case .workspace:
             ["Workspace", "Triptych", "Triptychs", "folders", "locations", "registration", "portable data"]
         case .document:
-            ["Appearance", "Document", "Document Appearance", "Typography", "Body Typography", "Text Styles", "Heading Typography", "Heading Hierarchy", "body", "heading", "headings", "bold", "italic", "font", "line width", "line spacing", "paragraph spacing", "first-line indent", "letter spacing", "word spacing", "hyphenation", "kerning", "ligatures", "heading font", "heading style", "heading weight", "heading hierarchy", "heading levels", "heading level", "scale", "space before", "space after", "Advanced CSS", "CSS snippets", "Open CSS Folder", "H1", "H2", "H3", "H4", "H5", "H6", "段间距", "首行缩进", "字距", "词距", "对齐", "断词", "字偶距", "连字", "标题字体", "标题层级", "标题级别", "比例", "前间距", "后间距", "正文字体", "粗体", "斜体", "高级排版"]
+            [
+                "Appearance", "Document", "Document Appearance", "Typography", "Body Typography", "Text Styles", "Heading Typography", "Heading Hierarchy",
+                "body", "heading", "headings", "bold", "italic", "font", "line width", "line spacing", "paragraph spacing", "first-line indent",
+                "letter spacing", "word spacing", "hyphenation", "kerning", "ligatures", "heading font", "heading style", "heading weight", "heading hierarchy",
+                "heading levels", "heading level", "scale", "space before", "space after", "Advanced CSS", "CSS snippets", "Open CSS Folder", "H1", "H2", "H3",
+                "H4", "H5", "H6", "段间距", "首行缩进", "字距", "词距", "对齐", "断词", "字偶距", "连字", "标题字体", "标题层级", "标题级别", "比例", "前间距", "后间距", "正文字体", "粗体", "斜体", "高级排版",
+            ]
         case .metadata:
             ["Metadata", "fields", "About", "optional fields", "Analysis", "Topic", "Work"]
         case .notifications:
             ["Notifications", "activities", "reminders", "dismissed items", "timing", "This Mac", "This Triptych"]
         case .interaction:
-            ["Interaction", "Keyboard Shortcuts", "Selection Actions", "Chat", "queue", "steer", "return", "聊天", "回车", "排队", "shortcuts", "commands", "prompt", "instruction", "选段操作"]
+            [
+                "Interaction", "Keyboard Shortcuts", "Selection Actions", "Chat", "queue", "steer", "return", "聊天", "回车", "排队", "shortcuts", "commands",
+                "prompt", "instruction", "选段操作",
+            ]
                 + ScholiumHotkeyCommand.allCases.flatMap {
                     [String(localized: $0.title), String(localized: $0.menuPath)]
                 }
         case .integrations:
-            ["Integrations", "Agents & Chat", "Chat", "MCP", "Codex", "Claude", "Core Protocol", "CLI", "bridge", "skills", "tools", "Zotero", "citation", "local API"]
+            [
+                "Integrations", "Agents & Chat", "Chat", "MCP", "Codex", "Claude", "Core Protocol", "CLI", "bridge", "skills", "tools", "Zotero", "citation",
+                "local API",
+            ]
         }
     }
 
@@ -131,7 +143,8 @@ struct ScholiumSettingsView: View {
         .onChange(of: persistedPane) { _, _ in restoreRequestedDestination() }
         .onChange(of: destination) { _, destination in
             if !searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-               !destination.matches(searchQuery) {
+                !destination.matches(searchQuery)
+            {
                 destinationBeforeSearch = nil
                 searchQuery = ""
             }
@@ -244,7 +257,8 @@ private struct SettingsToolbarAttachment: NSViewRepresentable {
             }
             let destination = parent.destination
             guard presented != destination else { return }
-            let animate = presented != nil && window.isVisible
+            let animate =
+                presented != nil && window.isVisible
                 && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
             presented = destination
             toolbar.selectedItemIdentifier = NSToolbarItem.Identifier(destination.rawValue)
@@ -272,8 +286,9 @@ private struct SettingsToolbarAttachment: NSViewRepresentable {
             case .integrations: size = NSSize(width: 720, height: 440)
             }
             var frame = window.frameRect(forContentRect: NSRect(origin: .zero, size: size))
-            frame.origin = NSPoint(x: window.frame.minX,
-                                   y: window.frame.maxY - frame.height)
+            frame.origin = NSPoint(
+                x: window.frame.minX,
+                y: window.frame.maxY - frame.height)
             if let screen = window.screen {
                 let visible = screen.visibleFrame
                 frame.size.width = min(frame.width, visible.width)
@@ -292,9 +307,10 @@ private struct SettingsToolbarAttachment: NSViewRepresentable {
         }
 
         func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-            [.flexibleSpace] + ScholiumSettingsDestination.allCases.map {
-                NSToolbarItem.Identifier($0.rawValue)
-            } + [.flexibleSpace]
+            [.flexibleSpace]
+                + ScholiumSettingsDestination.allCases.map {
+                    NSToolbarItem.Identifier($0.rawValue)
+                } + [.flexibleSpace]
         }
 
         func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
@@ -305,8 +321,10 @@ private struct SettingsToolbarAttachment: NSViewRepresentable {
             ScholiumSettingsDestination.allCases.map { NSToolbarItem.Identifier($0.rawValue) }
         }
 
-        func toolbar(_ toolbar: NSToolbar, itemForItemIdentifier identifier: NSToolbarItem.Identifier,
-                     willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
+        func toolbar(
+            _ toolbar: NSToolbar, itemForItemIdentifier identifier: NSToolbarItem.Identifier,
+            willBeInsertedIntoToolbar flag: Bool
+        ) -> NSToolbarItem? {
             guard let destination = ScholiumSettingsDestination(rawValue: identifier.rawValue) else { return nil }
             let item = NSToolbarItem(itemIdentifier: identifier)
             item.label = String(localized: destination.title)
@@ -365,7 +383,8 @@ private struct AttentionSettingsView: View {
         .task {
             await settingsModel.refresh()
             let stored = settingsModel.triptychSettings.attentionDismissalDays
-            dismissalDays = durations.contains(stored)
+            dismissalDays =
+                durations.contains(stored)
                 ? stored
                 : TriptychSettings().attentionDismissalDays
         }
@@ -452,27 +471,30 @@ private struct MetadataSettingsView: View {
             for: selectedProfile,
             catalog: candidateCatalog
         )
-            .map(\.key)
-            .filter {
-                AboutProfileCatalog.allowsOptionalField(
-                    $0,
-                    profile: selectedProfile,
-                    catalog: candidateCatalog
-                )
-            }
+        .map(\.key)
+        .filter {
+            AboutProfileCatalog.allowsOptionalField(
+                $0,
+                profile: selectedProfile,
+                catalog: candidateCatalog
+            )
+        }
     }
 
     private var availableKeys: [String] {
         let configuration = selectedConfiguration
-        return Array(Set(
-            configuration.visibleFields
-                + recommendedKeys
-        ))
-            .sorted { displayName(for: $0).localizedStandardCompare(displayName(for: $1)) == .orderedAscending }
+        return Array(
+            Set(
+                configuration.visibleFields
+                    + recommendedKeys
+            )
+        )
+        .sorted { displayName(for: $0).localizedStandardCompare(displayName(for: $1)) == .orderedAscending }
     }
 
     private var selectedConfiguration: VaultAboutConfiguration {
-        var configuration = aboutConfigurations[selectedSlot]
+        var configuration =
+            aboutConfigurations[selectedSlot]
             ?? TriptychSettings.defaultAbout[selectedSlot]
             ?? VaultAboutConfiguration()
         configuration.visibleFields.removeAll {
@@ -576,7 +598,8 @@ private struct MetadataSettingsView: View {
             if isDirty {
                 if snapshot.activeTriptychID != savedTriptychID
                     || snapshot.portableSettingsState.editableRevision
-                        != savedSettingsRevision {
+                        != savedSettingsRevision
+                {
                     revisionConflict = true
                 }
                 return
@@ -606,16 +629,16 @@ private struct MetadataSettingsView: View {
                 .fixedSize(horizontal: false, vertical: true)
             }
             settingsEditorSection("Metadata role") {
-            Picker("Metadata role", selection: $selectedSlot) {
-                Text("Analysis").tag(WorkspaceVaultSlot.paperAnalysis)
-                Text("Topic").tag(WorkspaceVaultSlot.topicKnowledge)
-                Text("Work").tag(WorkspaceVaultSlot.output)
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .fixedSize()
-            .accessibilityIdentifier("scholium.metadataSettings.role")
-            .disabled(isAddingField)
+                Picker("Metadata role", selection: $selectedSlot) {
+                    Text("Analysis").tag(WorkspaceVaultSlot.paperAnalysis)
+                    Text("Topic").tag(WorkspaceVaultSlot.topicKnowledge)
+                    Text("Work").tag(WorkspaceVaultSlot.output)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .fixedSize()
+                .accessibilityIdentifier("scholium.metadataSettings.role")
+                .disabled(isAddingField)
 
                 Text("This Triptych").font(.callout).foregroundStyle(.secondary)
             }
@@ -907,14 +930,15 @@ private struct MetadataSettingsView: View {
             )
         }
         var candidate = metadataFields
-        candidate[selectedSlot, default: []].append(MetadataFieldDefinition(
-            key: newFieldKey,
-            valueKind: newFieldKind,
-            label: newFieldLabel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                ? nil : newFieldLabel,
-            description: normalizedOptionalText(newFieldDescription),
-            allowedValues: newFieldKind == .choice ? parsedNewFieldChoices : nil
-        ))
+        candidate[selectedSlot, default: []].append(
+            MetadataFieldDefinition(
+                key: newFieldKey,
+                valueKind: newFieldKind,
+                label: newFieldLabel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    ? nil : newFieldLabel,
+                description: normalizedOptionalText(newFieldDescription),
+                allowedValues: newFieldKind == .choice ? parsedNewFieldChoices : nil
+            ))
         do {
             try TriptychSettingsValidator.validateMetadataFieldDefinitions(candidate)
             return nil
@@ -931,14 +955,15 @@ private struct MetadataSettingsView: View {
 
     private func addFieldDefinition() {
         guard newFieldValidationMessage == nil else { return }
-        metadataFields[selectedSlot, default: []].append(MetadataFieldDefinition(
-            key: newFieldKey,
-            valueKind: newFieldKind,
-            label: newFieldLabel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                ? nil : newFieldLabel,
-            description: normalizedOptionalText(newFieldDescription),
-            allowedValues: newFieldKind == .choice ? parsedNewFieldChoices : nil
-        ))
+        metadataFields[selectedSlot, default: []].append(
+            MetadataFieldDefinition(
+                key: newFieldKey,
+                valueKind: newFieldKind,
+                label: newFieldLabel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    ? nil : newFieldLabel,
+                description: normalizedOptionalText(newFieldDescription),
+                allowedValues: newFieldKind == .choice ? parsedNewFieldChoices : nil
+            ))
         cancelAddingField()
     }
 
@@ -992,21 +1017,24 @@ private struct MetadataSettingsView: View {
         _ update: (inout MetadataFieldDefinition) -> Void
     ) {
         guard var definitions = metadataFields[selectedSlot],
-              let index = definitions.firstIndex(where: { $0.key == key }) else { return }
+            let index = definitions.firstIndex(where: { $0.key == key })
+        else { return }
         update(&definitions[index])
         metadataFields[selectedSlot] = definitions
     }
 
     private func canMoveField(_ key: String, by offset: Int) -> Bool {
         guard let definitions = metadataFields[selectedSlot],
-              let index = definitions.firstIndex(where: { $0.key == key }) else { return false }
+            let index = definitions.firstIndex(where: { $0.key == key })
+        else { return false }
         return definitions.indices.contains(index + offset)
     }
 
     private func moveField(_ key: String, by offset: Int) {
         guard var definitions = metadataFields[selectedSlot],
-              let source = definitions.firstIndex(where: { $0.key == key }),
-              definitions.indices.contains(source + offset) else { return }
+            let source = definitions.firstIndex(where: { $0.key == key }),
+            definitions.indices.contains(source + offset)
+        else { return }
         let definition = definitions.remove(at: source)
         definitions.insert(definition, at: source + offset)
         metadataFields[selectedSlot] = definitions
@@ -1014,15 +1042,17 @@ private struct MetadataSettingsView: View {
 
     private func canMoveChoice(_ choice: String, in key: String, by offset: Int) -> Bool {
         guard let choices = definition(for: key)?.allowedValues,
-              let index = choices.firstIndex(of: choice) else { return false }
+            let index = choices.firstIndex(of: choice)
+        else { return false }
         return choices.indices.contains(index + offset)
     }
 
     private func moveChoice(_ choice: String, in key: String, by offset: Int) {
         updateDefinition(key) { definition in
             guard var choices = definition.allowedValues,
-                  let source = choices.firstIndex(of: choice),
-                  choices.indices.contains(source + offset) else { return }
+                let source = choices.firstIndex(of: choice),
+                choices.indices.contains(source + offset)
+            else { return }
             let moved = choices.remove(at: source)
             choices.insert(moved, at: source + offset)
             definition.allowedValues = choices
@@ -1088,23 +1118,23 @@ private struct MetadataSettingsView: View {
             .tableStyle(.inset)
             .frame(height: min(280, max(100, CGFloat(visibleFieldRows.count) * 28 + 30)))
             visibleFieldActions
-                Menu("Always Show Field") {
-                    if hiddenAboutConfigurationGroups.isEmpty {
-                        Text("All available fields are always shown")
-                    } else {
-                        ForEach(hiddenAboutConfigurationGroups, id: \.group) { group in
-                            Section(group.group.label) {
-                                ForEach(group.keys, id: \.self) { key in
-                                    Button(displayName(for: key)) {
-                                        updateSelectedConfiguration {
-                                            $0.setVisible(true, field: key)
-                                        }
+            Menu("Always Show Field") {
+                if hiddenAboutConfigurationGroups.isEmpty {
+                    Text("All available fields are always shown")
+                } else {
+                    ForEach(hiddenAboutConfigurationGroups, id: \.group) { group in
+                        Section(group.group.label) {
+                            ForEach(group.keys, id: \.self) { key in
+                                Button(displayName(for: key)) {
+                                    updateSelectedConfiguration {
+                                        $0.setVisible(true, field: key)
                                     }
                                 }
                             }
                         }
                     }
                 }
+            }
         }
     }
 
@@ -1114,17 +1144,23 @@ private struct MetadataSettingsView: View {
             Button {
                 guard let row else { return }
                 moveVisibleField(row.key, within: row.peers, to: row.position - 1)
-            } label: { Label("Move Up", systemImage: "chevron.up") }
+            } label: {
+                Label("Move Up", systemImage: "chevron.up")
+            }
             .disabled(row == nil || row?.position == 0)
             Button {
                 guard let row else { return }
                 moveVisibleField(row.key, within: row.peers, to: row.position + 1)
-            } label: { Label("Move Down", systemImage: "chevron.down") }
+            } label: {
+                Label("Move Down", systemImage: "chevron.down")
+            }
             .disabled(row == nil || row?.position == (row?.peers.count ?? 0) - 1)
             Button {
                 guard let row else { return }
                 updateSelectedConfiguration { $0.setVisible(false, field: row.key) }
-            } label: { Label("Show Only When Populated", systemImage: "minus") }
+            } label: {
+                Label("Show Only When Populated", systemImage: "minus")
+            }
             .disabled(row == nil)
         }
         .labelStyle(.iconOnly)
@@ -1150,13 +1186,13 @@ private struct MetadataSettingsView: View {
                 .disabled(!isDirty)
             Button("Save Metadata Settings") { save() }
                 .buttonStyle(.bordered)
-                    .disabled(
-                        isSaving || !isDirty || validationMessage != nil
-                            || revisionConflict
-                            || settingsModel.requiresSettingsReconciliation(
-                                for: savedTriptychID
-                            )
-                    )
+                .disabled(
+                    isSaving || !isDirty || validationMessage != nil
+                        || revisionConflict
+                        || settingsModel.requiresSettingsReconciliation(
+                            for: savedTriptychID
+                        )
+                )
         }
     }
 
@@ -1216,7 +1252,7 @@ private struct MetadataSettingsView: View {
         let destinationKey = group[index]
         updateSelectedConfiguration { configuration in
             guard let sourceIndex = configuration.visibleFields.firstIndex(of: field),
-                  let destinationIndex = configuration.visibleFields.firstIndex(of: destinationKey)
+                let destinationIndex = configuration.visibleFields.firstIndex(of: destinationKey)
             else { return }
             configuration.visibleFields.swapAt(sourceIndex, destinationIndex)
         }
@@ -1253,10 +1289,11 @@ private struct MetadataSettingsView: View {
 
     private func save() {
         guard validationMessage == nil,
-              let triptychID = savedTriptychID,
-              let revision = savedSettingsRevision,
-              settingsModel.snapshot.activeTriptychID == triptychID,
-              settingsModel.settingsRevision == revision else {
+            let triptychID = savedTriptychID,
+            let revision = savedSettingsRevision,
+            settingsModel.snapshot.activeTriptychID == triptychID,
+            settingsModel.settingsRevision == revision
+        else {
             revisionConflict = true
             return
         }
@@ -1284,10 +1321,13 @@ private struct MetadataSettingsView: View {
                 revisionConflict = true
             } catch WorkspaceSettingsMutationError.commitRequiresReview {
                 revisionConflict = true
-                errorMessage = String(localized: "Scholium reread the portable settings after an uncertain save. Review the current saved version before trying again.", table: "Localizable", bundle: .module)
+                errorMessage = String(
+                    localized: "Scholium reread the portable settings after an uncertain save. Review the current saved version before trying again.",
+                    table: "Localizable", bundle: .module)
             } catch WorkspaceSettingsMutationError.reconciliationRequired {
                 revisionConflict = true
-                errorMessage = String(localized: "Portable settings must be reread successfully before another save can be attempted.", table: "Localizable", bundle: .module)
+                errorMessage = String(
+                    localized: "Portable settings must be reread successfully before another save can be attempted.", table: "Localizable", bundle: .module)
             } catch {
                 errorMessage = error.localizedDescription
             }
@@ -1310,7 +1350,8 @@ private struct MetadataSettingsView: View {
         savedTriptychSettings = settings
         savedTriptychID = snapshot.activeTriptychID
         savedSettingsRevision = snapshot.portableSettingsState.editableRevision
-        revisionConflict = settingsModel.snapshot.activeTriptychID != savedTriptychID
+        revisionConflict =
+            settingsModel.snapshot.activeTriptychID != savedTriptychID
             || settingsModel.settingsRevision != savedSettingsRevision
         errorMessage = nil
     }
@@ -1319,7 +1360,8 @@ private struct MetadataSettingsView: View {
         metadataFields = savedMetadataFields
         aboutConfigurations = savedAboutConfigurations
         cancelAddingField()
-        revisionConflict = settingsModel.snapshot.activeTriptychID != savedTriptychID
+        revisionConflict =
+            settingsModel.snapshot.activeTriptychID != savedTriptychID
             || settingsModel.settingsRevision != savedSettingsRevision
         errorMessage = nil
     }
@@ -1343,57 +1385,81 @@ private struct MetadataSettingsView: View {
         let repair: String
         switch error {
         case .incompleteRoleConfiguration:
-            role = nil; sourceType = nil; key = nil
+            role = nil
+            sourceType = nil
+            key = nil
             section = .configuration
             diagnosticReason = String(localized: "The Metadata settings candidate is missing a Triptych role.", table: "Localizable", bundle: .module)
             repair = String(localized: "Restore the missing role configuration.", table: "Localizable", bundle: .module)
         case .invalidMetadataFieldDefinition(let value, let field):
-            role = value; sourceType = nil; key = field
+            role = value
+            sourceType = nil
+            key = field
             section = .fieldDefinitions
             diagnosticReason = String(localized: "This custom Metadata key is invalid or duplicated.", table: "Localizable", bundle: .module)
             repair = String(localized: "Use a unique lowercase snake_case key.", table: "Localizable", bundle: .module)
         case .metadataFieldShadowsReservedKey(let value, let field):
-            role = value; sourceType = nil; key = field
+            role = value
+            sourceType = nil
+            key = field
             section = .fieldDefinitions
-            diagnosticReason = String(localized: "This custom Metadata key is already owned by Scholium or authored YAML.", table: "Localizable", bundle: .module)
+            diagnosticReason = String(
+                localized: "This custom Metadata key is already owned by Scholium or authored YAML.", table: "Localizable", bundle: .module)
             repair = String(localized: "Choose a different key.", table: "Localizable", bundle: .module)
         case .metadataFieldKindUnsupported(let value, let field, _):
-            role = value; sourceType = nil; key = field
+            role = value
+            sourceType = nil
+            key = field
             section = .fieldDefinitions
             diagnosticReason = String(localized: "This custom Metadata value type is unsupported.", table: "Localizable", bundle: .module)
             repair = String(localized: "Choose one of the available simple value types.", table: "Localizable", bundle: .module)
         case .invalidMetadataFieldLabel(let value, let field):
-            role = value; sourceType = nil; key = field
+            role = value
+            sourceType = nil
+            key = field
             section = .fieldDefinitions
             diagnosticReason = String(localized: "This custom Metadata display name is invalid.", table: "Localizable", bundle: .module)
             repair = String(localized: "Use a nonempty display name of at most 80 UTF-8 bytes.", table: "Localizable", bundle: .module)
         case .invalidMetadataFieldDescription(let value, let field):
-            role = value; sourceType = nil; key = field
+            role = value
+            sourceType = nil
+            key = field
             section = .fieldDefinitions
             diagnosticReason = String(localized: "This custom Metadata description is invalid.", table: "Localizable", bundle: .module)
             repair = String(localized: "Use one line of at most 240 UTF-8 bytes, or leave it blank.", table: "Localizable", bundle: .module)
         case .invalidMetadataFieldChoices(let value, let field):
-            role = value; sourceType = nil; key = field
+            role = value
+            sourceType = nil
+            key = field
             section = .fieldDefinitions
             diagnosticReason = String(localized: "This custom Metadata field has invalid controlled choices.", table: "Localizable", bundle: .module)
             repair = String(localized: "Provide unique nonempty choices. Existing choices must remain available.", table: "Localizable", bundle: .module)
         case .metadataFieldIdentityChanged(let value, let field):
-            role = value; sourceType = nil; key = field
+            role = value
+            sourceType = nil
+            key = field
             section = .fieldDefinitions
-            diagnosticReason = String(localized: "This custom Metadata field's stable key or value type changed, or the field was removed.", table: "Localizable", bundle: .module)
+            diagnosticReason = String(
+                localized: "This custom Metadata field's stable key or value type changed, or the field was removed.", table: "Localizable", bundle: .module)
             repair = String(localized: "Restore its identity and use Archive Field to stop offering it.", table: "Localizable", bundle: .module)
         case .metadataFieldChoicesRemoved(let value, let field):
-            role = value; sourceType = nil; key = field
+            role = value
+            sourceType = nil
+            key = field
             section = .fieldDefinitions
             diagnosticReason = String(localized: "An existing controlled choice was removed.", table: "Localizable", bundle: .module)
             repair = String(localized: "Restore every existing controlled choice. Their order may change.", table: "Localizable", bundle: .module)
         case .noncanonicalConfigurationField(let value, let field):
-            role = value; sourceType = nil; key = field
+            role = value
+            sourceType = nil
+            key = field
             section = .configuration
             diagnosticReason = String(localized: "This configuration field is blank, duplicated, or unnormalized.", table: "Localizable", bundle: .module)
             repair = String(localized: "Remove the blank or duplicate field entry.", table: "Localizable", bundle: .module)
         case .invalidAttentionDismissalDays:
-            role = nil; sourceType = nil; key = nil
+            role = nil
+            sourceType = nil
+            key = nil
             section = .other
             diagnosticReason = String(localized: "Attention dismissal days must be positive.", table: "Localizable", bundle: .module)
             repair = String(localized: "Repair Attention settings before saving Metadata settings.", table: "Localizable", bundle: .module)
@@ -1554,7 +1620,8 @@ struct WorkspaceSettingsView: View {
         .task {
             await settingsModel.refreshRegisteredVaults()
             if selectedTriptychID == nil {
-                selectedTriptychID = settingsModel.workspaceAssignment?.id
+                selectedTriptychID =
+                    settingsModel.workspaceAssignment?.id
                     ?? settingsModel.registeredTriptychs.first?.id
             }
         }
@@ -1577,10 +1644,12 @@ struct WorkspaceSettingsView: View {
     private var triptychPicker: some View {
         Picker("Triptych", selection: selectedTriptychBinding) {
             ForEach(settingsModel.registeredTriptychs) { assignment in
-                Text(settingsTriptychLabel(
-                    assignment,
-                    among: settingsModel.registeredTriptychs
-                ))
+                Text(
+                    settingsTriptychLabel(
+                        assignment,
+                        among: settingsModel.registeredTriptychs
+                    )
+                )
                 .tag(Optional(assignment.id))
             }
         }
@@ -1621,7 +1690,8 @@ private func settingsTriptychLabel(
         $0.triptych.name.caseInsensitiveCompare(assignment.triptych.name) == .orderedSame
     }
     guard duplicates.count > 1,
-          let works = assignment.vault(for: .output) else {
+        let works = assignment.vault(for: .output)
+    else {
         return assignment.triptych.name
     }
     let parent = URL(fileURLWithPath: works.canonicalPath, isDirectory: true)
@@ -1675,10 +1745,13 @@ private struct AppearanceSettingsView: View {
                         .font(.body)
                         .foregroundStyle(.red)
                 }
-                HStack { Spacer(); Button("Done") { showsCSSSnippets = false }.keyboardShortcut(.cancelAction) }
+                HStack {
+                    Spacer()
+                    Button("Done") { showsCSSSnippets = false }.keyboardShortcut(.cancelAction)
+                }
             }
             .padding(.horizontal, 24)
-                .padding(.vertical, 16)
+            .padding(.vertical, 16)
             .frame(width: 600, height: 360)
         }
         .confirmationDialog("Reload Appearance Configuration?", isPresented: $confirmsConfigurationReload, titleVisibility: .visible) {
@@ -1767,8 +1840,7 @@ private struct AppearanceSettingsView: View {
             HStack {
                 Button("Show in Finder…") { store.revealAppearanceConfiguration() }
                 Button("Reload") {
-                    if hasUnsavedChanges { confirmsConfigurationReload = true }
-                    else { store.reloadAppearanceConfiguration() }
+                    if hasUnsavedChanges { confirmsConfigurationReload = true } else { store.reloadAppearanceConfiguration() }
                 }
                 Button("Configuration Guide…") {
                     if let url = Bundle.module.url(forResource: "AppearanceConfiguration", withExtension: "md") {
@@ -1854,10 +1926,12 @@ private struct AppearanceSettingsView: View {
 
     private var cssSnippetsContent: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Add .css files to the managed folder, or import one. Changes are detected automatically and apply to Review and Edit after validation; Source remains exact.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+            Text(
+                "Add .css files to the managed folder, or import one. Changes are detected automatically and apply to Review and Edit after validation; Source remains exact."
+            )
+            .font(.callout)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
 
             Text("Callouts: .callout, .callout-title, .callout-body, and .callout-<role>.")
                 .font(.caption)
@@ -1984,9 +2058,12 @@ private struct AppearanceSettingsView: View {
         )
         Task { @MainActor in
             do {
-                guard let url = try await fileSelectionPresenter
-                    .requiredForFileSelection()
-                    .selectURL(request) else { return }
+                guard
+                    let url =
+                        try await fileSelectionPresenter
+                        .requiredForFileSelection()
+                        .selectURL(request)
+                else { return }
                 let secured = url.startAccessingSecurityScopedResource()
                 defer { if secured { url.stopAccessingSecurityScopedResource() } }
                 try await store.importSnippet(from: url)
@@ -2018,7 +2095,9 @@ private struct AppearanceReadingEditor: View {
                 }
             }
             settingsAdaptiveGrid {
-                AppearanceDoubleControl("Line width", value: $profile.settings.lineWidthCharacterUnits, range: DocumentAppearanceSettings.lineWidthCharacterUnitsRange, step: 1, suffix: "ch", precision: 0, accessibilityUnit: "character-width units")
+                AppearanceDoubleControl(
+                    "Line width", value: $profile.settings.lineWidthCharacterUnits, range: DocumentAppearanceSettings.lineWidthCharacterUnitsRange, step: 1,
+                    suffix: "ch", precision: 0, accessibilityUnit: "character-width units")
                 AppearanceDoubleControl("Line spacing", value: $profile.settings.body.lineHeight, range: 1.2...2.4, step: 0.05, suffix: "×")
             }
             settingsEditorSection("Alignment") {
@@ -2038,7 +2117,7 @@ private struct AppearanceReadingEditor: View {
                             Text(verbatim: $0).tag($0)
                         }
                     }.labelsHidden().frame(width: 210, alignment: .leading)
-                    .accessibilityIdentifier("scholium.appearance.sourceFont")
+                        .accessibilityIdentifier("scholium.appearance.sourceFont")
                     AppearanceNumberControl(value: $profile.settings.source.fontSizePoints, range: 6...72, step: 0.25, title: "Source font size")
                     Text("pt")
                 }
@@ -2060,17 +2139,17 @@ private struct TypographySettingsView: View {
             pairedContent
             advancedCSSPrompt
         }
-            .frame(
-                minWidth: ScholiumMetrics.Settings.typographyPairedMinimumWidth,
-                maxWidth: .infinity,
-                alignment: .topLeading
+        .frame(
+            minWidth: ScholiumMetrics.Settings.typographyPairedMinimumWidth,
+            maxWidth: .infinity,
+            alignment: .topLeading
+        )
+        .accessibilityIdentifier("scholium.settings.appearance.typography")
+        .sheet(isPresented: $showsHeadingLevelDetails) {
+            AppearanceHeadingLevelDetailsView(
+                headings: $profile.settings.headings
             )
-            .accessibilityIdentifier("scholium.settings.appearance.typography")
-            .sheet(isPresented: $showsHeadingLevelDetails) {
-                AppearanceHeadingLevelDetailsView(
-                    headings: $profile.settings.headings
-                )
-            }
+        }
     }
 
     private var pairedContent: some View {
@@ -2223,7 +2302,7 @@ private struct AppearanceBodyTypographyMatrix: View {
         LazyVGrid(
             columns: [
                 GridItem(.flexible(), alignment: .leading),
-                GridItem(.flexible(), alignment: .leading)
+                GridItem(.flexible(), alignment: .leading),
             ],
             alignment: .leading,
             spacing: ScholiumGrid.Spacing.inlineControlGap
@@ -2336,7 +2415,7 @@ private struct AppearanceHeadingTypographyMatrix: View {
         LazyVGrid(
             columns: [
                 GridItem(.flexible(), alignment: .leading),
-                GridItem(.flexible(), alignment: .leading)
+                GridItem(.flexible(), alignment: .leading),
             ],
             alignment: .leading,
             spacing: ScholiumGrid.Spacing.inlineControlGap
@@ -2627,9 +2706,9 @@ private struct AppearanceHeadingLevelMatrix: View {
 
     private var summaryRows: some View {
         VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
-                HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
-                    compactMatrixHeader("Level")
-                        .frame(width: 32, alignment: .leading)
+            HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                compactMatrixHeader("Level")
+                    .frame(width: 32, alignment: .leading)
                 compactMatrixHeader("Scale")
                     .frame(width: 100, alignment: .leading)
                 Spacer(minLength: 0)
@@ -2868,10 +2947,12 @@ private struct AppearanceNumberControl: View {
     let title: LocalizedStringResource
 
     private var boundedValue: Binding<Double> {
-        Binding(get: { value }, set: { candidate in
-            guard candidate.isFinite else { return }
-            value = min(max(candidate, range.lowerBound), range.upperBound)
-        })
+        Binding(
+            get: { value },
+            set: { candidate in
+                guard candidate.isFinite else { return }
+                value = min(max(candidate, range.lowerBound), range.upperBound)
+            })
     }
 
     var body: some View {
@@ -2894,9 +2975,11 @@ private struct AppearanceIntegerControl: View {
     let step: Int
 
     private var boundedValue: Binding<Int> {
-        Binding(get: { value }, set: { candidate in
-            value = min(max(candidate, range.lowerBound), range.upperBound)
-        })
+        Binding(
+            get: { value },
+            set: { candidate in
+                value = min(max(candidate, range.lowerBound), range.upperBound)
+            })
     }
 
     var body: some View {
@@ -2921,9 +3004,11 @@ private struct AppearanceDoubleControl: View {
     let precision: Int
     let accessibilityUnit: LocalizedStringResource?
 
-    init(_ title: LocalizedStringResource, value: Binding<Double>, range: ClosedRange<Double>,
-         step: Double, suffix: String, precision: Int = 2,
-         accessibilityUnit: LocalizedStringResource? = nil) {
+    init(
+        _ title: LocalizedStringResource, value: Binding<Double>, range: ClosedRange<Double>,
+        step: Double, suffix: String, precision: Int = 2,
+        accessibilityUnit: LocalizedStringResource? = nil
+    ) {
         self.title = title
         _value = value
         self.range = range
@@ -2958,10 +3043,12 @@ private struct AppearanceDoubleValueControl: View {
     let accessibilityUnit: LocalizedStringResource?
 
     private var boundedValue: Binding<Double> {
-        Binding(get: { value }, set: { candidate in
-            guard candidate.isFinite else { return }
-            value = min(max(candidate, range.lowerBound), range.upperBound)
-        })
+        Binding(
+            get: { value },
+            set: { candidate in
+                guard candidate.isFinite else { return }
+                value = min(max(candidate, range.lowerBound), range.upperBound)
+            })
     }
 
     var body: some View {
@@ -3116,13 +3203,17 @@ private struct CSSSnippetRow: View {
 
             Spacer(minLength: ScholiumMetrics.Settings.rowActionMinimumSpacing)
 
-            Button { store.move(snippet.id, by: -1) } label: {
+            Button {
+                store.move(snippet.id, by: -1)
+            } label: {
                 Label("Move Earlier", systemImage: "chevron.up")
             }
             .labelStyle(.iconOnly)
             .help("Move Earlier")
 
-            Button { store.move(snippet.id, by: 1) } label: {
+            Button {
+                store.move(snippet.id, by: 1)
+            } label: {
                 Label("Move Later", systemImage: "chevron.down")
             }
             .labelStyle(.iconOnly)
@@ -3201,17 +3292,17 @@ private struct WorkspacePathEditor: View {
                         worksURL: outputURL,
                         containerURL: $portableContainerURL
                     )
-                    Text("Scholium stores the small portable .scholium folder beside Works. macOS therefore asks once for access to the folder containing Works; it is not added as a fourth vault.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .frame(
-                            maxWidth: ScholiumMetrics.Settings.formExplanationMaximumWidth,
-                            alignment: .leading
-                        )
-                        .fixedSize(horizontal: false, vertical: true)
+                    Text(
+                        "Scholium stores the small portable .scholium folder beside Works. macOS therefore asks once for access to the folder containing Works; it is not added as a fourth vault."
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(
+                        maxWidth: ScholiumMetrics.Settings.formExplanationMaximumWidth,
+                        alignment: .leading
+                    )
+                    .fixedSize(horizontal: false, vertical: true)
                 }
-
-
 
             }
             .scholiumSettingsForm()
@@ -3272,8 +3363,9 @@ private struct WorkspacePathEditor: View {
 
     private var canSave: Bool {
         guard allFoldersSelected,
-              let outputURL,
-              let portableContainerURL else { return false }
+            let outputURL,
+            let portableContainerURL
+        else { return false }
         return outputURL.deletingLastPathComponent().resolvingSymlinksInPath().standardizedFileURL.path
             == portableContainerURL.resolvingSymlinksInPath().standardizedFileURL.path
     }
@@ -3388,10 +3480,12 @@ struct PortableControlFolderRow: View {
     }
 
     private func authorizeFolder() {
-        guard let expected = worksURL?
-            .deletingLastPathComponent()
-            .resolvingSymlinksInPath()
-            .standardizedFileURL else { return }
+        guard
+            let expected = worksURL?
+                .deletingLastPathComponent()
+                .resolvingSymlinksInPath()
+                .standardizedFileURL
+        else { return }
         let request = ScholiumFileSelectionRequest(
             title: ScholiumL10n.string("Authorize the Folder Containing Works"),
             message: String(
@@ -3413,9 +3507,12 @@ struct PortableControlFolderRow: View {
         )
         Task { @MainActor in
             do {
-                guard let selected = try await fileSelectionPresenter
-                    .requiredForFileSelection()
-                    .selectURL(request) else { return }
+                guard
+                    let selected =
+                        try await fileSelectionPresenter
+                        .requiredForFileSelection()
+                        .selectURL(request)
+                else { return }
                 selectionError = nil
                 containerURL = selected
             } catch is CancellationError {
@@ -3467,15 +3564,16 @@ struct WorkspaceFolderRow: View {
 
     private func chooseFolder() {
         var initialDirectoryURL = url?.deletingLastPathComponent()
-#if DEBUG
-        if initialDirectoryURL == nil,
-           let testDirectory = ProcessInfo.processInfo.environment[
-               "SCHOLIUM_UI_TEST_OPEN_PANEL_DIRECTORY"
-           ],
-           !testDirectory.isEmpty {
-            initialDirectoryURL = URL(fileURLWithPath: testDirectory, isDirectory: true)
-        }
-#endif
+        #if DEBUG
+            if initialDirectoryURL == nil,
+                let testDirectory = ProcessInfo.processInfo.environment[
+                    "SCHOLIUM_UI_TEST_OPEN_PANEL_DIRECTORY"
+                ],
+                !testDirectory.isEmpty
+            {
+                initialDirectoryURL = URL(fileURLWithPath: testDirectory, isDirectory: true)
+            }
+        #endif
         let request = ScholiumFileSelectionRequest(
             title: String(
                 format: ScholiumL10n.string("Choose %@ Folder"),
@@ -3488,9 +3586,12 @@ struct WorkspaceFolderRow: View {
         )
         Task { @MainActor in
             do {
-                guard let selected = try await fileSelectionPresenter
-                    .requiredForFileSelection()
-                    .selectURL(request) else { return }
+                guard
+                    let selected =
+                        try await fileSelectionPresenter
+                        .requiredForFileSelection()
+                        .selectURL(request)
+                else { return }
                 selectionError = nil
                 url = selected
             } catch is CancellationError {

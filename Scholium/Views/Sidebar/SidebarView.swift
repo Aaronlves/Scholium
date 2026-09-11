@@ -92,8 +92,8 @@ struct SidebarView: View {
                 usesAccessibilitySize: dynamicTypeSize.isAccessibilitySize,
                 select: context.selectTriptychWorkspace
             )
-                .padding(.horizontal, ScholiumSidebarLayout.edgeInset)
-                .padding(.top, ScholiumSidebarLayout.edgeInset)
+            .padding(.horizontal, ScholiumSidebarLayout.edgeInset)
+            .padding(.top, ScholiumSidebarLayout.edgeInset)
 
             libraryHeader
                 .padding(.top, ScholiumSidebarLayout.sectionSpacing)
@@ -104,8 +104,9 @@ struct SidebarView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .overlay(alignment: .topLeading) {
             if PerformanceProbe.shared.measuresWarmLibraryLaunch,
-               sourceListUsesOutlineView,
-               !context.allNotes.isEmpty {
+                sourceListUsesOutlineView,
+                !context.allNotes.isEmpty
+            {
                 PerformanceReadyBoundary(
                     generation: "\(treeProjection.revision):\(context.allNotes.count)"
                 ) {
@@ -263,11 +264,13 @@ struct SidebarView: View {
 
     private var activeFilterStatus: some View {
         HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
-            Text(activeLibraryMenuFilterCount == 1
-                ? "1 filter applied"
-                : "\(activeLibraryMenuFilterCount) filters applied")
-                .font(ScholiumTypography.interface(.small, emphasis: .medium))
-                .scholiumForeground(.secondaryText)
+            Text(
+                activeLibraryMenuFilterCount == 1
+                    ? "1 filter applied"
+                    : "\(activeLibraryMenuFilterCount) filters applied"
+            )
+            .font(ScholiumTypography.interface(.small, emphasis: .medium))
+            .scholiumForeground(.secondaryText)
             Spacer(minLength: 0)
             Button("Clear", action: clearAllFilters)
                 .scholiumButtonStyle(.borderless)
@@ -367,11 +370,13 @@ struct SidebarView: View {
             context.showError("Move one note at a time.")
             return
         }
-        guard let destination = sidebarValidatedNoteDropDestination(
-            item: item,
-            folderRelativePath: folderRelativePath,
-            inventory: dropInventory
-        ) else { return }
+        guard
+            let destination = sidebarValidatedNoteDropDestination(
+                item: item,
+                folderRelativePath: folderRelativePath,
+                inventory: dropInventory
+            )
+        else { return }
         let target = item.mutationTarget
         noteDragMovesInProgress.insert(item.id)
         Task { @MainActor in
@@ -392,11 +397,13 @@ struct SidebarView: View {
             context.showError("Move one folder at a time.")
             return
         }
-        guard let destination = sidebarValidatedFolderDropDestination(
-            item: item,
-            folderRelativePath: folderRelativePath,
-            inventory: dropInventory
-        ) else { return }
+        guard
+            let destination = sidebarValidatedFolderDropDestination(
+                item: item,
+                folderRelativePath: folderRelativePath,
+                inventory: dropInventory
+            )
+        else { return }
         let target = item.mutationTarget
         folderDragMovesInProgress.insert(item.id)
         Task { @MainActor in

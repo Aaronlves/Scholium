@@ -82,7 +82,8 @@ public enum DocumentPreviewCatalogBuilder {
             .prefix(maximumLinkCount)
             .compactMap { edge -> DocumentLinkPreview? in
                 guard let destination = edge.destination,
-                      let target = documents[destination.note] else { return nil }
+                    let target = documents[destination.note]
+                else { return nil }
                 let sourceForPresentation = presentedSource(
                     for: edge.occurrence,
                     destination: destination,

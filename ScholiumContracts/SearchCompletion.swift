@@ -46,7 +46,8 @@ public extension SearchCapabilities {
         limit: Int = 8
     ) -> [SearchCompletion] {
         guard limit > 0,
-              let tokenRange = Self.trailingTokenRange(in: rawQuery) else {
+            let tokenRange = Self.trailingTokenRange(in: rawQuery)
+        else {
             return []
         }
         let token = String(rawQuery[tokenRange])
@@ -59,11 +60,14 @@ public extension SearchCapabilities {
         if let colon = token.firstIndex(of: ":") {
             let rawField = String(token[..<colon]).lowercased()
             let partialValue = String(token[token.index(after: colon)...]).lowercased()
-            guard let field = fields.first(where: {
-                $0.name == rawField
-            }) else { return [] }
+            guard
+                let field = fields.first(where: {
+                    $0.name == rawField
+                })
+            else { return [] }
             if field.valueKind == .property,
-               let separator = partialValue.firstIndex(of: "=") {
+                let separator = partialValue.firstIndex(of: "=")
+            {
                 let key = String(partialValue[..<separator])
                 let valuePrefix = String(partialValue[partialValue.index(after: separator)...])
                 let matches = Self.uniqueSorted(context.propertyValues[key] ?? [])
@@ -87,12 +91,13 @@ public extension SearchCapabilities {
                 $0.lowercased().hasPrefix(partialValue)
             }.map {
                 let value = Self.queryValue($0)
-                let detail = switch field.valueKind {
-                case .property: "Canonical Metadata or authored YAML key in the authorized scope"
-                case .noteIdentity: "Exact Note identity in the authorized scope"
-                case .canonical: "Canonical \(field.name) value"
-                case .lexical: "\(field.name) value"
-                }
+                let detail =
+                    switch field.valueKind {
+                    case .property: "Canonical Metadata or authored YAML key in the authorized scope"
+                    case .noteIdentity: "Exact Note identity in the authorized scope"
+                    case .canonical: "Canonical \(field.name) value"
+                    case .lexical: "\(field.name) value"
+                    }
                 return ("\(field.name):\(value)", "\(field.name):\(value)", detail)
             }
         } else {
@@ -133,7 +138,8 @@ public extension SearchCapabilities {
     private static func queryValue(_ value: String) -> String {
         guard value.contains(where: { $0.isWhitespace || $0 == "\"" || $0 == "\\" })
         else { return value }
-        let escaped = value
+        let escaped =
+            value
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "\"", with: "\\\"")
         return "\"\(escaped)\""
@@ -152,9 +158,7 @@ public extension SearchCapabilities {
         while cursor < value.endIndex {
             let character = value[cursor]
             if quoted {
-                if escaped { escaped = false }
-                else if character == "\\" { escaped = true }
-                else if character == "\"" { quoted = false }
+                if escaped { escaped = false } else if character == "\\" { escaped = true } else if character == "\"" { quoted = false }
             } else if character == "\"" {
                 quoted = true
             } else if character.isWhitespace {

@@ -1,5 +1,5 @@
-import ScholiumContracts
 import AppKit
+import ScholiumContracts
 import SwiftUI
 
 /// Immutable window projection and actions used by the Search presentation.
@@ -71,7 +71,8 @@ enum SearchStatePresentation {
         guard !state.criteria.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
         if let issue = state.executionIssue { return executionIssue(issue) }
         guard !state.isRunning, state.responseRequestID != nil,
-              state.criteria.scope != .thisNote else { return nil }
+            state.criteria.scope != .thisNote
+        else { return nil }
         return note(state.availability)
     }
 
@@ -126,7 +127,10 @@ enum SearchStatePresentation {
             SearchStateBannerPresentation(
                 meaning: .unavailable,
                 title: String(localized: "Search Limited to This Vault"),
-                message: String(localized: "Showing indexed matches whose source is unchanged in this vault. New or externally changed notes appear after the Triptych finishes opening."),
+                message: String(
+                    localized:
+                        "Showing indexed matches whose source is unchanged in this vault. New or externally changed notes appear after the Triptych finishes opening."
+                ),
                 systemImage: "magnifyingglass.circle",
                 action: nil
             )
@@ -152,7 +156,8 @@ enum SearchStatePresentation {
                 title: String(localized: "Search Index Failed"),
                 message: lastGood == nil
                     ? String(localized: "Scholium could not build a usable Search index. Details: \(reason)")
-                    : String(localized: "Scholium could not publish a replacement Search index. The last complete results remain available. Details: \(reason)"),
+                    : String(
+                        localized: "Scholium could not publish a replacement Search index. The last complete results remain available. Details: \(reason)"),
                 systemImage: "exclamationmark.triangle",
                 action: .retry
             )
@@ -170,7 +175,7 @@ enum SearchStatePresentation {
         case .unavailable, .building, .failed(lastGood: nil, reason: _):
             true
         case .current, .limited, .refreshing, .stale,
-             .failed(lastGood: .some, reason: _):
+            .failed(lastGood: .some, reason: _):
             false
         }
     }
@@ -189,8 +194,7 @@ struct ResearchSearchView<Library: View>: View {
         nonmutating set {
             guard controller.search.criteria.query != newValue else { return }
             if !isActive {
-                if isAdvanced { searchController.beginAdvanced() }
-                else { searchController.begin(.general) }
+                if isAdvanced { searchController.beginAdvanced() } else { searchController.begin(.general) }
             }
             suppressedCompletionQuery = nil
             controller.updateSearchQuery(newValue)
@@ -263,7 +267,8 @@ struct ResearchSearchView<Library: View>: View {
         }
         .background {
             if !controller.search.isRunning,
-               !controller.search.criteria.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                !controller.search.criteria.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            {
                 PerformanceReadyBoundary(
                     generation: [
                         controller.search.criteria.query,
@@ -300,19 +305,22 @@ struct ResearchSearchView<Library: View>: View {
         .alert("Save Search", isPresented: $showSaveSearch) {
             TextField("Search name", text: $savedSearchName)
             Button("Cancel", role: .cancel) {}
-            .scholiumActivationPointer()
+                .scholiumActivationPointer()
             Button("Save") { context.save(savedSearchName) }
-            .scholiumActivationPointer()
+                .scholiumActivationPointer()
         } message: {
             Text("Saved searches remain in Scholium’s Application Support folder and never modify a vault.")
         }
-        .alert("Rename Saved Search", isPresented: Binding(
-            get: { renamingSearch != nil },
-            set: { if !$0 { renamingSearch = nil } }
-        )) {
+        .alert(
+            "Rename Saved Search",
+            isPresented: Binding(
+                get: { renamingSearch != nil },
+                set: { if !$0 { renamingSearch = nil } }
+            )
+        ) {
             TextField("Search name", text: $renamedSearchName)
             Button("Cancel", role: .cancel) { renamingSearch = nil }
-            .scholiumActivationPointer()
+                .scholiumActivationPointer()
             Button("Rename") {
                 if let renamingSearch {
                     context.rename(renamingSearch.id, renamedSearchName)
@@ -332,9 +340,11 @@ struct ResearchSearchView<Library: View>: View {
             }
             .scholiumActivationPointer()
             Button("Cancel", role: .cancel) {}
-            .scholiumActivationPointer()
+                .scholiumActivationPointer()
         } message: {
-            Text("Scholium will preserve the unreadable Saved Search file under a unique recovery name, then start with an empty Saved Searches list. No vault files will be changed.")
+            Text(
+                "Scholium will preserve the unreadable Saved Search file under a unique recovery name, then start with an empty Saved Searches list. No vault files will be changed."
+            )
         }
     }
 
@@ -379,12 +389,16 @@ struct ResearchSearchView<Library: View>: View {
             if acceptCompletion(preferFirst: false) { return true }
             if controller.search.isRunning || controller.search.selectedResultID == nil {
                 scheduleSearch()
-            } else { openSelectedResult() }
+            } else {
+                openSelectedResult()
+            }
         case .cancel:
             if !visibleCompletions.isEmpty {
                 suppressedCompletionQuery = queryDraft
                 completionSelection = nil
-            } else { context.dismiss() }
+            } else {
+                context.dismiss()
+            }
         }
         return true
     }
@@ -397,7 +411,9 @@ struct ResearchSearchView<Library: View>: View {
             Spacer(minLength: 0)
             if isAdvanced {
                 savedSearchesMenu
-                Button { showsQueryExplanation = true } label: {
+                Button {
+                    showsQueryExplanation = true
+                } label: {
                     Image(systemName: "info.circle")
                 }
                 .buttonStyle(.borderless)
@@ -432,8 +448,9 @@ struct ResearchSearchView<Library: View>: View {
 
     private var visibleCompletions: [SearchCompletion] {
         guard isAdvanced, searchFocused,
-              suppressedCompletionQuery != queryDraft,
-              !searchFieldHasMarkedText else { return [] }
+            suppressedCompletionQuery != queryDraft,
+            !searchFieldHasMarkedText
+        else { return [] }
         return SearchCapabilities.current.completions(
             for: queryDraft,
             scope: controller.search.criteria.scope,
@@ -481,9 +498,11 @@ struct ResearchSearchView<Library: View>: View {
     private func moveCompletion(_ direction: MoveCommandDirection) -> Bool {
         let completions = visibleCompletions
         guard !completions.isEmpty else { return false }
-        let current = completionSelection
+        let current =
+            completionSelection
             ?? (direction == .down ? -1 : completions.count)
-        completionSelection = direction == .down
+        completionSelection =
+            direction == .down
             ? min(current + 1, completions.count - 1)
             : max(current - 1, 0)
         controller.selectSearchResult(nil)
@@ -493,8 +512,9 @@ struct ResearchSearchView<Library: View>: View {
     private func acceptCompletion(preferFirst: Bool) -> Bool {
         let completions = visibleCompletions
         guard !completions.isEmpty,
-              let index = completionSelection ?? (preferFirst ? 0 : nil),
-              completions.indices.contains(index) else { return false }
+            let index = completionSelection ?? (preferFirst ? 0 : nil),
+            completions.indices.contains(index)
+        else { return false }
         apply(completions[index])
         return true
     }
@@ -521,7 +541,8 @@ struct ResearchSearchView<Library: View>: View {
     @ViewBuilder
     private var searchAvailabilityBanner: some View {
         if let presentation = SearchStatePresentation.status(for: controller.search),
-           !blocksResults || !controller.search.results.isEmpty {
+            !blocksResults || !controller.search.results.isEmpty
+        {
             operationalBanner(presentation)
         }
     }
@@ -564,10 +585,12 @@ struct ResearchSearchView<Library: View>: View {
     @ViewBuilder
     private var searchContent: some View {
         if !isExpanded {
-            ContentUnavailableView("Search Notes", systemImage: "magnifyingglass",
-                                   description: Text("Enter a search term to begin."))
-                .accessibilityIdentifier("scholium.searchReady")
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            ContentUnavailableView(
+                "Search Notes", systemImage: "magnifyingglass",
+                description: Text("Enter a search term to begin.")
+            )
+            .accessibilityIdentifier("scholium.searchReady")
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if controller.search.isRunning {
             ProgressView("Searching…")
                 .controlSize(.small)
@@ -576,7 +599,8 @@ struct ResearchSearchView<Library: View>: View {
             Color.clear
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if blocksResults,
-                  let presentation = SearchStatePresentation.status(for: controller.search) {
+            let presentation = SearchStatePresentation.status(for: controller.search)
+        {
             ContentUnavailableView {
                 Label(presentation.title, systemImage: presentation.systemImage)
             } description: {
@@ -586,11 +610,13 @@ struct ResearchSearchView<Library: View>: View {
                     Button(action.title) { Task { await context.refresh() } }
                 }
             }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if controller.search.results.isEmpty {
-            ContentUnavailableView("No Search Results", systemImage: "magnifyingglass",
-                                   description: Text("No results match the current query and scope."))
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            ContentUnavailableView(
+                "No Search Results", systemImage: "magnifyingglass",
+                description: Text("No results match the current query and scope.")
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             results
         }
@@ -622,7 +648,7 @@ struct ResearchSearchView<Library: View>: View {
                 ForEach(Array(context.savedSearches.enumerated()), id: \.element.id) { index, search in
                     Menu {
                         Button("Run Search") { context.run(search) }
-                        .scholiumActivationPointer()
+                            .scholiumActivationPointer()
                         Button("Rename…") {
                             renamedSearchName = search.name
                             renamingSearch = search
@@ -688,8 +714,11 @@ struct ResearchSearchView<Library: View>: View {
 
     private var results: some View {
         ScrollViewReader { proxy in
-            List(selection: Binding(get: { controller.search.selectedResultID },
-                                    set: { controller.selectSearchResult($0) })) {
+            List(
+                selection: Binding(
+                    get: { controller.search.selectedResultID },
+                    set: { controller.selectSearchResult($0) })
+            ) {
                 ForEach(controller.search.results) { result in
                     searchResultButton(result)
                 }
@@ -711,12 +740,13 @@ struct ResearchSearchView<Library: View>: View {
 
     private func searchResultButton(_ result: SearchResult) -> some View {
         let resultID = SearchResultIdentity.result(result)
-        let accessibilityLabel: String = switch result {
-        case .note(let note):
-            "\(note.title), \(note.context ?? localizedMatchedField(note.matchedField)), \(note.vaultName), "
-                + String(localized: "Line \(note.sourceLine)")
-                + (note.searchStructuredReasonDescription.map { ", \($0)" } ?? "")
-        }
+        let accessibilityLabel: String =
+            switch result {
+            case .note(let note):
+                "\(note.title), \(note.context ?? localizedMatchedField(note.matchedField)), \(note.vaultName), "
+                    + String(localized: "Line \(note.sourceLine)")
+                    + (note.searchStructuredReasonDescription.map { ", \($0)" } ?? "")
+            }
         return WorkspaceSearchResultRow(
             result: result,
             compact: !isAdvanced
@@ -738,7 +768,6 @@ struct ResearchSearchView<Library: View>: View {
         .accessibilityIdentifier("scholium.searchResult." + result.id)
     }
 
-
     private var searchResultSummary: String {
         let searchCount = controller.search.results.count
         if controller.search.hasMore {
@@ -751,7 +780,8 @@ struct ResearchSearchView<Library: View>: View {
 
     private var explanationText: String? {
         guard controller.search.diagnostics.isEmpty,
-              let explanation = controller.search.explanation else { return nil }
+            let explanation = controller.search.explanation
+        else { return nil }
         let scope = localizedScopeTitle(explanation.scope)
         let heading = scope
         let clauses = explanation.clauses.map(explanationClause)
@@ -788,7 +818,8 @@ struct ResearchSearchView<Library: View>: View {
 
     private var searchFieldHasMarkedText: Bool {
         guard searchFocused,
-              let editor = NSApp.keyWindow?.firstResponder as? NSTextView else {
+            let editor = NSApp.keyWindow?.firstResponder as? NSTextView
+        else {
             return false
         }
         return editor.hasMarkedText()
@@ -797,7 +828,8 @@ struct ResearchSearchView<Library: View>: View {
     private func normalizeSelection() {
         let resultIDs = allResultIDs
         if let selected = controller.search.selectedResultID,
-           resultIDs.contains(selected) {
+            resultIDs.contains(selected)
+        {
             return
         }
         controller.selectSearchResult(nil)
@@ -806,10 +838,12 @@ struct ResearchSearchView<Library: View>: View {
     private func moveSelection(_ direction: MoveCommandDirection) {
         let resultIDs = allResultIDs
         guard !resultIDs.isEmpty, direction == .up || direction == .down else { return }
-        let currentIndex = controller.search.selectedResultID
+        let currentIndex =
+            controller.search.selectedResultID
             .flatMap { resultIDs.firstIndex(of: $0) }
             ?? (direction == .down ? -1 : resultIDs.count)
-        let nextIndex = direction == .down
+        let nextIndex =
+            direction == .down
             ? min(currentIndex + 1, resultIDs.count - 1)
             : max(currentIndex - 1, 0)
         controller.selectSearchResult(resultIDs[nextIndex])
@@ -928,9 +962,10 @@ private extension NoteSearchResult {
                     ? "property:\(property.key) (present-empty)"
                     : "property:\(property.key) (\(property.valueKind.rawValue))"
             case .link(let link):
-                let source = link.occurrences.first.map {
-                    " @ \($0.sourceNote.relativePath):\($0.linkSpan.start.line)"
-                } ?? ""
+                let source =
+                    link.occurrences.first.map {
+                        " @ \($0.sourceNote.relativePath):\($0.linkSpan.start.line)"
+                    } ?? ""
                 return "\(link.direction.rawValue):\(link.anchorIdentity)" + source
             }
         }
@@ -996,11 +1031,13 @@ private struct NoteSearchResultRow: View {
         for highlight in note.highlights
         where highlight.utf16LowerBound >= 0
             && highlight.utf16UpperBound >= highlight.utf16LowerBound
-            && highlight.utf16UpperBound <= utf16Count {
+            && highlight.utf16UpperBound <= utf16Count
+        {
             let lower = String.Index(utf16Offset: highlight.utf16LowerBound, in: note.snippet)
             let upper = String.Index(utf16Offset: highlight.utf16UpperBound, in: note.snippet)
             guard let lower = AttributedString.Index(lower, within: result),
-                  let upper = AttributedString.Index(upper, within: result) else { continue }
+                let upper = AttributedString.Index(upper, within: result)
+            else { continue }
             result[lower..<upper].font = ScholiumTypography.interface(.small, emphasis: .strong)
         }
         return result

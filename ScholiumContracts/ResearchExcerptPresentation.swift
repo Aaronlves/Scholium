@@ -11,7 +11,10 @@ public enum ResearchExcerptPresentation {
         var visibleLinks: [LinkOccurrence] = []
         for link in links where link.syntax == .wikilink {
             if let previous = visibleLinks.last,
-               link.span.utf16LowerBound < previous.span.utf16UpperBound { continue }
+                link.span.utf16LowerBound < previous.span.utf16UpperBound
+            {
+                continue
+            }
             visibleLinks.append(link)
         }
         let text = NSMutableString(string: source)

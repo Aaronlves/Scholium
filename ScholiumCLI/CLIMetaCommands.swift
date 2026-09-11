@@ -1,7 +1,7 @@
 import Darwin
 import Foundation
-import ScholiumContracts
 import ScholiumCLIUpdate
+import ScholiumContracts
 
 extension ScholiumCLI {
     static let productVersion = ScholiumProductIdentity.marketingVersion
@@ -28,7 +28,8 @@ extension ScholiumCLI {
         if let helpIndex = arguments.firstIndex(where: { $0 == "--help" || $0 == "-h" }) {
             let format = try metaFormat(in: Array(arguments[(helpIndex + 1)...]))
             let commandArguments = Array(arguments[..<helpIndex])
-            let path = commandSpecificationKey(matching: commandArguments)?
+            let path =
+                commandSpecificationKey(matching: commandArguments)?
                 .split(separator: " ").map(String.init)
                 ?? commandArguments
             try printHelp(path: path, format: format)
@@ -118,18 +119,19 @@ extension ScholiumCLI {
     static func currentBuildIdentity() -> BuildIdentity {
         for candidate in buildProvenanceCandidates() {
             guard let data = try? Data(contentsOf: candidate),
-                  let values = try? PropertyListSerialization.propertyList(
-                      from: data,
-                      options: [],
-                      format: nil
-                  ) as? [String: Any],
-                  values["schema"] as? String == "scholium-build-provenance-v1",
-                  let marketingVersion = values["marketing_version"] as? String,
-                  !marketingVersion.isEmpty,
-                  let releaseLabel = values["release_label"] as? String,
-                  !releaseLabel.isEmpty,
-                  let buildNumber = values["build_number"] as? String,
-                  !buildNumber.isEmpty else {
+                let values = try? PropertyListSerialization.propertyList(
+                    from: data,
+                    options: [],
+                    format: nil
+                ) as? [String: Any],
+                values["schema"] as? String == "scholium-build-provenance-v1",
+                let marketingVersion = values["marketing_version"] as? String,
+                !marketingVersion.isEmpty,
+                let releaseLabel = values["release_label"] as? String,
+                !releaseLabel.isEmpty,
+                let buildNumber = values["build_number"] as? String,
+                !buildNumber.isEmpty
+            else {
                 continue
             }
             return BuildIdentity(
@@ -157,7 +159,7 @@ extension ScholiumCLI {
                     "Scholium_ScholiumCore.bundle/Contents/Resources",
                     isDirectory: true
                 )
-                .appendingPathComponent("ScholiumBuildProvenance.plist"),
+                .appendingPathComponent("ScholiumBuildProvenance.plist")
         ]
         if directory.lastPathComponent == "Helpers" {
             candidates.append(
@@ -204,7 +206,8 @@ extension ScholiumCLI {
     static func runDoctor(_ arguments: [String], context: CLIContext) async throws {
         let formatValue = option("--format", in: arguments) ?? "text"
         guard let format = CLIOutputFormat(rawValue: formatValue),
-              format == .text || format == .json else {
+            format == .text || format == .json
+        else {
             throw CLIError.usage("Doctor supports --format text or json.")
         }
         let assignments = try await context.assignments()
@@ -271,7 +274,8 @@ extension ScholiumCLI {
             writeError("scholium: \(error.localizedDescription)\n")
             return
         }
-        let commandPath = arguments.first == "update"
+        let commandPath =
+            arguments.first == "update"
             ? arguments.prefix(1)
             : arguments.prefix(2)
         let report = CLIErrorReport(
@@ -283,7 +287,8 @@ extension ScholiumCLI {
         )
         let encoder = JSONEncoder()
         encoder.keyEncodingStrategy = .convertToSnakeCase
-        encoder.outputFormatting = requestedFormat == "jsonl"
+        encoder.outputFormatting =
+            requestedFormat == "jsonl"
             ? [.sortedKeys, .withoutEscapingSlashes]
             : [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
         if let data = try? encoder.encode(report) {
@@ -310,7 +315,8 @@ extension ScholiumCLI {
 
     private static func searchDiagnostic(for error: Error) -> SearchQueryDiagnostic? {
         guard let cli = error as? CLIError,
-              case .searchDiagnostic(let diagnostic) = cli else { return nil }
+            case .searchDiagnostic(let diagnostic) = cli
+        else { return nil }
         return diagnostic
     }
 }

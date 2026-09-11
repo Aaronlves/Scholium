@@ -20,13 +20,13 @@ enum ScholiumWebFonts {
         style: String
     ) -> String {
         return """
-        @font-face {
-          font-family: "\(family)";
-          src: url("\(ScholiumWebFontResources.url(for: resource + ".ttf"))") format("truetype");
-          font-weight: \(weight);
-          font-style: \(style);
-          font-display: swap;
-        }
-        """
+            @font-face {
+              font-family: "\(family)";
+              src: url("\(ScholiumWebFontResources.url(for: resource + ".ttf"))") format("truetype");
+              font-weight: \(weight);
+              font-style: \(style);
+              font-display: swap;
+            }
+            """
     }
 }

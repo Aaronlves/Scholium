@@ -17,7 +17,8 @@ struct RelatedMaterialCard: Identifiable, Sendable {
 
     var attachment: AgentChatAttachment? {
         guard let stableID = reference.stableNoteID.flatMap(UUID.init(uuidString:)) else { return nil }
-        return AgentChatAttachment(noteID: stableID, vaultID: reference.vaultID,
+        return AgentChatAttachment(
+            noteID: stableID, vaultID: reference.vaultID,
             relativePath: reference.relativePath, text: passage.source,
             fingerprint: candidate.fingerprint, sourceLine: line, sourceRange: passage.range,
             source: .savedSource, vaultRole: reference.vaultRole)
@@ -60,13 +61,20 @@ enum RelatedMaterialsError: LocalizedError, Equatable {
 
     func reset() {
         cancel()
-        seed = nil; cards = []; didSearch = false; omittedCount = 0; issue = nil; needsRefresh = false
+        seed = nil
+        cards = []
+        didSearch = false
+        omittedCount = 0
+        issue = nil
+        needsRefresh = false
     }
 
     func cancel() {
         if isLoading { issue = String(localized: "Search cancelled. You can find material again when ready.", bundle: .module) }
         generation = UUID()
-        task?.cancel(); task = nil; isLoading = false
+        task?.cancel()
+        task = nil
+        isLoading = false
     }
 
     @discardableResult
@@ -77,19 +85,25 @@ enum RelatedMaterialsError: LocalizedError, Equatable {
     ) -> Task<Void, Never> {
         cancel()
         let ticket = generation
-        isLoading = true; issue = nil; needsRefresh = false
+        isLoading = true
+        issue = nil
+        needsRefresh = false
         let operation = Task { [weak self] in
             guard let self else { return }
             do {
                 let seed = try await capture()
                 try Task.checkCancellation()
                 guard ticket == generation else { return }
-                self.seed = seed; cards = []; didSearch = false; omittedCount = 0
+                self.seed = seed
+                cards = []
+                didSearch = false
+                omittedCount = 0
                 let response = try await retrieve(seed.request)
                 try Task.checkCancellation()
                 guard ticket == generation else { return }
                 guard response.requestID == seed.request.id,
-                      response.seedFingerprint == seed.request.seed.fingerprint else { throw RelatedMaterialsError.unavailable }
+                    response.seedFingerprint == seed.request.seed.fingerprint
+                else { throw RelatedMaterialsError.unavailable }
                 switch response.state {
                 case .current, .empty: break
                 case .partial: issue = String(localized: "Some related material is temporarily unavailable.", bundle: .module)
@@ -101,14 +115,22 @@ enum RelatedMaterialsError: LocalizedError, Equatable {
                 var omitted = response.omittedSourceCount
                 for passage in response.passages {
                     let candidate = passage.candidate
-                    guard let reference = references.first(where: {
-                        $0.vaultID == candidate.note.vaultID && $0.relativePath == candidate.note.relativePath
-                    }) else { omitted += 1; continue }
+                    guard
+                        let reference = references.first(where: {
+                            $0.vaultID == candidate.note.vaultID && $0.relativePath == candidate.note.relativePath
+                        })
+                    else {
+                        omitted += 1
+                        continue
+                    }
                     loaded.append(.init(passage: passage, reference: reference))
                 }
                 try Task.checkCancellation()
                 guard ticket == generation else { return }
-                cards = loaded; omittedCount = omitted; didSearch = true; isLoading = false
+                cards = loaded
+                omittedCount = omitted
+                didSearch = true
+                isLoading = false
             } catch {
                 guard ticket == generation else { return }
                 isLoading = false

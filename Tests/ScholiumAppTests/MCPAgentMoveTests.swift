@@ -1,8 +1,9 @@
 import Foundation
 import ScholiumContracts
 import Testing
-@testable import ScholiumApplication
+
 @testable import ScholiumApp
+@testable import ScholiumApplication
 
 extension MCPAppBridgeRequestRouterTests {
     @Test("Chat Ask compares every moved source, rechecks approval and records the exact inverse")
@@ -11,7 +12,8 @@ extension MCPAppBridgeRequestRouterTests {
         defer { fixture.dispose() }
         let handle = try await fixture.runtime.openWorkspace(id: fixture.assignment.id)
         let router = MCPAppBridgeRequestRouter(runtime: fixture.runtime, flushEditors: { _ in }, openTriptychs: { [fixture.assignment] })
-        let controller = AgentChatController(triptychID: fixture.assignment.id,
+        let controller = AgentChatController(
+            triptychID: fixture.assignment.id,
             root: fixture.root.appendingPathComponent("Chat"), previewUpdate: { try await router.previewUpdate($0) },
             toolHandler: { await router.handle($0) })
         func wait(_ predicate: () -> Bool) async throws {
@@ -26,16 +28,19 @@ extension MCPAppBridgeRequestRouterTests {
         try await wait { controller.isLoaded }
         controller.connect(executable: executable, home: controller.runtimeHome, cli: executable)
         try await wait { controller.state == .ready && controller.account != nil }
-        controller.editDraft("hold"); controller.send()
+        controller.editDraft("hold")
+        controller.send()
         try await wait { controller.state == .working && controller.selected?.pendingMessageID == nil }
         let token = try #require(controller.token)
         let context = try #require(controller.runtimeContext(for: token))
         let topicURL = fixture.topicsURL.appendingPathComponent("Topic.md")
         let linkedURL = fixture.topicsURL.deletingLastPathComponent().appendingPathComponent("Analyses/Alpha.md")
         let topicBytes = try Data(contentsOf: topicURL)
-        var arguments: [String: MCPJSONValue] = ["triptych_id": .string(fixture.assignment.id.uuidString),
+        var arguments: [String: MCPJSONValue] = [
+            "triptych_id": .string(fixture.assignment.id.uuidString),
             "note_id": .string(fixture.topicNoteID.uuidString), "relative_path": .string("Moved.md"),
-            "expected_fingerprint": .object(["sha256": .string(DocumentFingerprint(data: topicBytes).sha256), "byte_count": .integer(topicBytes.count)])]
+            "expected_fingerprint": .object(["sha256": .string(DocumentFingerprint(data: topicBytes).sha256), "byte_count": .integer(topicBytes.count)]),
+        ]
         arguments["expected_plan_fingerprint"] = try result(await router.handle(.init(tool: .previewMove, arguments: arguments)))["plan_fingerprint"]
         func request(_ tool: ScholiumMCPToolName, _ args: [String: MCPJSONValue]) -> ScholiumMCPBridgeRequest {
             .init(tool: tool, arguments: args, conversationToken: token, runtimeContext: context)
@@ -69,9 +74,11 @@ extension MCPAppBridgeRequestRouterTests {
         let files = try #require(controller.selected?.messages.last?.activity?.files)
         #expect(files.count == 2 && files.contains { $0.path == "Moved.md" && $0.effect == .moved })
         #expect(files.contains { $0.noteID == fixture.analysisNoteID && $0.effect == .edited })
-        let undoArgs: [String: MCPJSONValue] = ["triptych_id": .string(fixture.assignment.id.uuidString),
+        let undoArgs: [String: MCPJSONValue] = [
+            "triptych_id": .string(fixture.assignment.id.uuidString),
             "note_id": .string(fixture.topicNoteID.uuidString), "change_id": try #require(moved["change_id"]),
-            "expected_fingerprint": try #require(moved["after_fingerprint"])]
+            "expected_fingerprint": try #require(moved["after_fingerprint"]),
+        ]
         let undo = Task { await controller.handle(request(.undoChange, undoArgs)) }
         try await wait { controller.approvals.count == 1 }
         let inverse = try #require(controller.approvals.first?.updatePreview)
@@ -83,8 +90,10 @@ extension MCPAppBridgeRequestRouterTests {
         #expect(controller.selected?.messages.last?.activity?.files.contains { $0.path == "Topic.md" && $0.effect == .moved } == true)
         #expect(try await handle.agentCollaboration.agentChanges().first?.state == .undone)
 
-        controller.stop(); try await wait { !controller.isBusy }
-        controller.editDraft("hold new turn"); controller.send()
+        controller.stop()
+        try await wait { !controller.isBusy }
+        controller.editDraft("hold new turn")
+        controller.send()
         try await wait { controller.state == .working && controller.selected?.pendingMessageID == nil }
         #expect(await controller.handle(request(.moveNote, arguments)).error != nil)
         #expect(controller.approvals.isEmpty && FileManager.default.fileExists(atPath: topicURL.path))
@@ -101,7 +110,8 @@ extension MCPAppBridgeRequestRouterTests {
         let workURL = fixture.topicsURL.deletingLastPathComponent().appendingPathComponent("Works/Draft.md")
         let topicBytes = Data("# Topic\r\n[[Topic]]{{Self connection only.}}\r\n".utf8)
         let workBytes = Data("---\nsummary: 'keep this'\n---\n[[Topic|议题]]{{研究者评论。}}\n".utf8)
-        try topicBytes.write(to: topicURL); try workBytes.write(to: workURL)
+        try topicBytes.write(to: topicURL)
+        try workBytes.write(to: workURL)
         try FileManager.default.createDirectory(at: fixture.topicsURL.appendingPathComponent("Nested"), withIntermediateDirectories: true)
         let originalAnalysis = try Data(contentsOf: analysisURL)
         let snapshot = try await handle.discovery.refresh()
@@ -111,8 +121,10 @@ extension MCPAppBridgeRequestRouterTests {
         func call(_ tool: ScholiumMCPToolName, _ args: [String: MCPJSONValue]) async -> ScholiumMCPBridgeResponse {
             await router.handle(.init(tool: tool, arguments: ["triptych_id": .string(fixture.assignment.id.uuidString)].merging(args) { _, value in value }))
         }
-        var args: [String: MCPJSONValue] = ["note_id": .string(fixture.topicNoteID.uuidString), "relative_path": .string("Nested/Renamed.md"),
-            "expected_fingerprint": .object(["sha256": .string(topic.fingerprint.sha256), "byte_count": .integer(topic.fingerprint.byteCount)])]
+        var args: [String: MCPJSONValue] = [
+            "note_id": .string(fixture.topicNoteID.uuidString), "relative_path": .string("Nested/Renamed.md"),
+            "expected_fingerprint": .object(["sha256": .string(topic.fingerprint.sha256), "byte_count": .integer(topic.fingerprint.byteCount)]),
+        ]
         let preview = try result(await call(.previewMove, args))
         args["expected_plan_fingerprint"] = preview["plan_fingerprint"]
         let moved = try result(await call(.moveNote, args))
@@ -129,8 +141,10 @@ extension MCPAppBridgeRequestRouterTests {
         let linkedReview = try result(await call(.readChange, ["change_id": changeID, "note_id": .string(fixture.analysisNoteID.uuidString)]))
         #expect(try decodedFingerprint(linkedReview["comparison"]?.objectValue?["before_fingerprint"]) == DocumentFingerprint(data: originalAnalysis))
         #expect(try result(await call(.listChanges, ["note_id": .string(fixture.analysisNoteID.uuidString)]))["total"]?.intValue == 1)
-        let undo: [String: MCPJSONValue] = ["note_id": .string(fixture.topicNoteID.uuidString), "change_id": changeID,
-            "expected_fingerprint": try #require(moved["after_fingerprint"])]
+        let undo: [String: MCPJSONValue] = [
+            "note_id": .string(fixture.topicNoteID.uuidString), "change_id": changeID,
+            "expected_fingerprint": try #require(moved["after_fingerprint"]),
+        ]
         let undone = try result(await call(.undoChange, undo))
         #expect(undone["relative_path"]?.stringValue == "Topic.md" && undone["effects"]?.arrayValue?.count == 3)
         #expect(try Data(contentsOf: topicURL) == topicBytes)
@@ -159,8 +173,10 @@ extension MCPAppBridgeRequestRouterTests {
         func call(_ tool: ScholiumMCPToolName, _ args: [String: MCPJSONValue]) async -> ScholiumMCPBridgeResponse {
             await router.handle(.init(tool: tool, arguments: ["triptych_id": .string(fixture.assignment.id.uuidString)].merging(args) { _, value in value }))
         }
-        var args: [String: MCPJSONValue] = ["note_id": .string(fixture.topicNoteID.uuidString), "relative_path": .string("Moved.md"),
-            "expected_fingerprint": .object(["sha256": .string(topic.fingerprint.sha256), "byte_count": .integer(topic.fingerprint.byteCount)])]
+        var args: [String: MCPJSONValue] = [
+            "note_id": .string(fixture.topicNoteID.uuidString), "relative_path": .string("Moved.md"),
+            "expected_fingerprint": .object(["sha256": .string(topic.fingerprint.sha256), "byte_count": .integer(topic.fingerprint.byteCount)]),
+        ]
         let preview = try result(await call(.previewMove, args))
         args["expected_plan_fingerprint"] = preview["plan_fingerprint"]
         let revised = Data("[[Topic Alias]]{{Revised researcher comment.}}\n".utf8)
@@ -172,8 +188,10 @@ extension MCPAppBridgeRequestRouterTests {
         args["expected_plan_fingerprint"] = try result(await call(.previewMove, args))["plan_fingerprint"]
         let moved = try result(await call(.moveNote, args))
         let ending = try Data(contentsOf: analysis)
-        let undo: [String: MCPJSONValue] = ["note_id": .string(fixture.topicNoteID.uuidString), "change_id": try #require(moved["change_id"]),
-            "expected_fingerprint": try #require(moved["after_fingerprint"])]
+        let undo: [String: MCPJSONValue] = [
+            "note_id": .string(fixture.topicNoteID.uuidString), "change_id": try #require(moved["change_id"]),
+            "expected_fingerprint": try #require(moved["after_fingerprint"]),
+        ]
         let newLink = fixture.topicsURL.appendingPathComponent("New Incoming.md")
         try Data("[[Moved]]\n".utf8).write(to: newLink)
         #expect(await call(.undoChange, undo).error?.code == .invalidRequest)

@@ -1,6 +1,7 @@
 import Foundation
 import ScholiumContracts
 import Testing
+
 @testable import ScholiumApp
 
 @Suite("Workspace Settings architecture")
@@ -20,11 +21,12 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(model.snapshot.triptychSettings.metadataFields.values.allSatisfy { $0.isEmpty })
         #expect(!model.hasWritableTriptychSettings)
 
-        model.replaceSnapshot(WorkspaceSettingsSnapshot(
-            settingsRevision: SettingsRevision(
-                fingerprint: DocumentFingerprint(content: "settings")
-            )
-        ))
+        model.replaceSnapshot(
+            WorkspaceSettingsSnapshot(
+                settingsRevision: SettingsRevision(
+                    fingerprint: DocumentFingerprint(content: "settings")
+                )
+            ))
         #expect(model.hasWritableTriptychSettings)
     }
 
@@ -81,9 +83,10 @@ struct WorkspaceSettingsArchitectureTests {
         let indices = try orderedDestinations.map { destination in
             try #require(destinationSource.range(of: destination)).lowerBound
         }
-        #expect(zip(indices, indices.dropFirst()).allSatisfy { pair in
-            pair.0 < pair.1
-        })
+        #expect(
+            zip(indices, indices.dropFirst()).allSatisfy { pair in
+                pair.0 < pair.1
+            })
 
         let interactionsAndIntegrations = try String(
             contentsOf: repositoryRoot.appendingPathComponent(
@@ -151,9 +154,10 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(source.contains("Restore All Dismissed Items on This Mac"))
         #expect(source.contains("case integrations"))
         #expect(source.contains("settingsTriptychLabel("))
-        #expect(source.contains(
-            ".onChange(of: settingsModel.snapshot.activeTriptychID)"
-        ))
+        #expect(
+            source.contains(
+                ".onChange(of: settingsModel.snapshot.activeTriptychID)"
+            ))
 
         let integration = try String(
             contentsOf: repositoryRoot.appendingPathComponent(
@@ -214,10 +218,11 @@ struct WorkspaceSettingsArchitectureTests {
                 )
             }
         )
-        model.replaceSnapshot(WorkspaceSettingsSnapshot(
-            activeTriptychID: triptychID,
-            settingsRevision: second
-        ))
+        model.replaceSnapshot(
+            WorkspaceSettingsSnapshot(
+                activeTriptychID: triptychID,
+                settingsRevision: second
+            ))
 
         var candidate = TriptychSettings()
         candidate.attentionDismissalDays = 14
@@ -257,10 +262,11 @@ struct WorkspaceSettingsArchitectureTests {
                 )
             }
         )
-        model.replaceSnapshot(WorkspaceSettingsSnapshot(
-            activeTriptychID: secondID,
-            settingsRevision: sharedRevision
-        ))
+        model.replaceSnapshot(
+            WorkspaceSettingsSnapshot(
+                activeTriptychID: secondID,
+                settingsRevision: sharedRevision
+            ))
 
         await #expect(throws: WorkspaceSettingsMutationError.self) {
             try await model.saveTriptychSettings(
@@ -397,10 +403,11 @@ struct WorkspaceSettingsArchitectureTests {
             )
         }
         await entered.wait()
-        model.replaceSnapshot(WorkspaceSettingsSnapshot(
-            activeTriptychID: secondID,
-            settingsRevision: revision
-        ))
+        model.replaceSnapshot(
+            WorkspaceSettingsSnapshot(
+                activeTriptychID: secondID,
+                settingsRevision: revision
+            ))
         await release.signal()
         let result = try await save.value
 
@@ -494,7 +501,7 @@ struct WorkspaceSettingsArchitectureTests {
     func archivedFieldPrunesDiscoverySelections() throws {
         var saved = TriptychSettings()
         saved.metadataFields[.paperAnalysis] = [
-            MetadataFieldDefinition(key: "argument_stage", valueKind: .text),
+            MetadataFieldDefinition(key: "argument_stage", valueKind: .text)
         ]
         saved.about[.paperAnalysis]?.visibleFields.append("argument_stage")
         var archivedFields = saved.metadataFields
@@ -507,9 +514,10 @@ struct WorkspaceSettingsArchitectureTests {
         )
 
         #expect(candidate.metadataFields[.paperAnalysis]?[0].lifecycle == .archived)
-        #expect(candidate.about[.paperAnalysis]?.visibleFields.contains(
-            "argument_stage"
-        ) == false)
+        #expect(
+            candidate.about[.paperAnalysis]?.visibleFields.contains(
+                "argument_stage"
+            ) == false)
         try TriptychSettingsValidator.validate(candidate)
         try TriptychSettingsValidator.validateTransition(from: saved, to: candidate)
     }
@@ -527,10 +535,11 @@ struct WorkspaceSettingsArchitectureTests {
             encoding: .utf8
         )
         let start = try #require(source.range(of: "private struct MetadataSettingsView"))
-        let end = try #require(source.range(
-            of: "struct WorkspaceSettingsView: View",
-            range: start.upperBound..<source.endIndex
-        ))
+        let end = try #require(
+            source.range(
+                of: "struct WorkspaceSettingsView: View",
+                range: start.upperBound..<source.endIndex
+            ))
         let properties = String(source[start.lowerBound..<end.lowerBound])
 
         for section in [
@@ -619,9 +628,10 @@ struct WorkspaceSettingsArchitectureTests {
             $0.contains("@EnvironmentObject")
         }
         #expect(!declarations.isEmpty)
-        #expect(declarations.allSatisfy {
-            $0.contains("WorkspaceSettingsModel")
-        })
+        #expect(
+            declarations.allSatisfy {
+                $0.contains("WorkspaceSettingsModel")
+            })
     }
 
     @Test("Appearance exposes basic controls and a reloadable advanced configuration file")
@@ -705,9 +715,10 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(appearanceSource.contains("Restore Default Appearance…"))
         #expect(appearanceSource.contains("appearanceManagementMenu"))
         #expect(appearanceSource.contains("scholium.appearance.manage"))
-        #expect(appearanceSource.contains(
-            "Stepper(\"\", value: boundedValue"
-        ))
+        #expect(
+            appearanceSource.contains(
+                "Stepper(\"\", value: boundedValue"
+            ))
         #expect(!appearanceSource.contains("AppearanceDoubleControl(\"Block spacing\""))
         #expect(!appearanceSource.contains("SafeMarkdownReadWebView"))
     }
@@ -824,12 +835,14 @@ struct WorkspaceSettingsArchitectureTests {
             ),
             encoding: .utf8
         )
-        let settingsRootSource = appSource
+        let settingsRootSource =
+            appSource
             .components(separatedBy: "private struct ScholiumSettingsRoot: View")
             .last?
             .components(separatedBy: "struct ScholiumSearchActions")
             .first ?? ""
-        let settingsSceneSource = appSource
+        let settingsSceneSource =
+            appSource
             .components(separatedBy: "\n        Settings {")
             .last?
             .components(separatedBy: "\n        #if DEBUG")
@@ -876,20 +889,23 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(!source.contains("WorkspaceStore"))
         #expect(!source.contains("import ScholiumApplication"))
 
-        let boundaryStart = try #require(source.range(
-            of: "struct WorkspaceSettingsCapabilities {"
-        ))
-        let boundaryEnd = try #require(source.range(
-            of: "/// Application-lifetime Settings boundary",
-            range: boundaryStart.upperBound..<source.endIndex
-        ))
+        let boundaryStart = try #require(
+            source.range(
+                of: "struct WorkspaceSettingsCapabilities {"
+            ))
+        let boundaryEnd = try #require(
+            source.range(
+                of: "/// Application-lifetime Settings boundary",
+                range: boundaryStart.upperBound..<source.endIndex
+            ))
         let boundary = String(source[boundaryStart.lowerBound..<boundaryEnd.lowerBound])
         #expect(boundary.contains("let workspace: WorkspaceSettingsWorkspaceCapabilities"))
         #expect(boundary.contains("let machine: WorkspaceSettingsMachineCapabilities"))
         #expect(boundary.contains("let zotero: WorkspaceSettingsZoteroCapabilities"))
-        #expect(boundary.components(separatedBy: "\n").filter {
-            $0.trimmingCharacters(in: .whitespaces).hasPrefix("let ")
-        }.count == 3)
+        #expect(
+            boundary.components(separatedBy: "\n").filter {
+                $0.trimmingCharacters(in: .whitespaces).hasPrefix("let ")
+            }.count == 3)
     }
 
     @Test("Concurrent Settings restoration does not drop the visible Triptychs refresh")

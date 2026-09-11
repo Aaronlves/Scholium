@@ -1,7 +1,7 @@
-import ScholiumContracts
 import AppKit
-import notify
+import ScholiumContracts
 import SwiftUI
+import notify
 
 enum ScholiumWindowLifecycleError: LocalizedError, Equatable, Sendable {
     case failed(String)
@@ -158,9 +158,7 @@ final class ScholiumWindowLifecycleRegistry: ObservableObject {
         var triptychID: UUID?
         var readiness: Readiness = .pending
         var flusher: Flusher?
-        var waiters: [
-            UUID: CheckedContinuation<Result<Void, ScholiumWindowLifecycleError>, Never>
-        ] = [:]
+        var waiters: [UUID: CheckedContinuation<Result<Void, ScholiumWindowLifecycleError>, Never>] = [:]
     }
 
     private var entries: [UUID: Entry] = [:]
@@ -181,9 +179,10 @@ final class ScholiumWindowLifecycleRegistry: ObservableObject {
     /// Triptychs; multiple windows over one Triptych remain unambiguous.
     func showsTriptychSubtitle(in windowID: UUID) -> Bool {
         guard entries[windowID]?.triptychID != nil else { return false }
-        let openTriptychIDs = Set(entries.values.compactMap { entry in
-            entry.isRegistered ? entry.triptychID : nil
-        })
+        let openTriptychIDs = Set(
+            entries.values.compactMap { entry in
+                entry.isRegistered ? entry.triptychID : nil
+            })
         return openTriptychIDs.count > 1
     }
 
@@ -208,7 +207,8 @@ final class ScholiumWindowLifecycleRegistry: ObservableObject {
         let publishesExistingWorkspaceContext =
             !entry.isRegistered && entry.triptychID != nil
         if !entry.isRegistered,
-           case .failed(.unregisteredBeforeReady) = entry.readiness {
+            case .failed(.unregisteredBeforeReady) = entry.readiness
+        {
             entry.readiness = .pending
         }
         entry.isRegistered = true
@@ -248,10 +248,12 @@ final class ScholiumWindowLifecycleRegistry: ObservableObject {
         let waiterID = UUID()
         let result = await withTaskCancellationHandler {
             await withCheckedContinuation {
-                (continuation: CheckedContinuation<
-                    Result<Void, ScholiumWindowLifecycleError>,
-                    Never
-                >) in
+                (
+                    continuation: CheckedContinuation<
+                        Result<Void, ScholiumWindowLifecycleError>,
+                        Never
+                    >
+                ) in
                 let entry = entry(for: id)
                 if Task.isCancelled {
                     continuation.resume(returning: .failure(.cancelled))
@@ -301,7 +303,8 @@ final class ScholiumWindowLifecycleRegistry: ObservableObject {
     }
 
     private func advanceWorkspaceContextRevision() {
-        workspaceContextRevision = workspaceContextRevision == .max
+        workspaceContextRevision =
+            workspaceContextRevision == .max
             ? 0
             : workspaceContextRevision + 1
     }
@@ -348,11 +351,12 @@ final class ScholiumWindowLifecycleRegistry: ObservableObject {
 
     private func cancelWaiter(_ waiterID: UUID, for id: UUID) {
         guard let entry = entries[id],
-              let continuation = entry.waiters.removeValue(forKey: waiterID)
+            let continuation = entry.waiters.removeValue(forKey: waiterID)
         else { return }
         continuation.resume(returning: .failure(.cancelled))
         if !entry.isRegistered, entry.waiters.isEmpty,
-           case .pending = entry.readiness {
+            case .pending = entry.readiness
+        {
             entries.removeValue(forKey: id)
         }
     }
@@ -389,11 +393,12 @@ struct WorkspaceWindowActions {
 @MainActor
 enum ScholiumWindowAppearance {
     static func apply(_ choice: WindowColorSchemeChoice, to window: NSWindow) {
-        window.appearance = switch choice {
-        case .dark: NSAppearance(named: .darkAqua)
-        case .light: NSAppearance(named: .aqua)
-        case .system: nil
-        }
+        window.appearance =
+            switch choice {
+            case .dark: NSAppearance(named: .darkAqua)
+            case .light: NSAppearance(named: .aqua)
+            case .system: nil
+            }
     }
 }
 
@@ -435,10 +440,9 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
     private var didFinalizeWindowAttachments = false
     private var pendingLibraryVisibility: Bool?
     private var pendingInspectorVisibility: Bool?
-    private var attentionPresenter:
-        @MainActor (AttentionPresentationRequest) -> Void = { _ in }
+    private var attentionPresenter: @MainActor (AttentionPresentationRequest) -> Void = { _ in }
     #if DEBUG
-    private var qaFocusNotificationToken: Int32?
+        private var qaFocusNotificationToken: Int32?
     #endif
 
     init(
@@ -464,9 +468,9 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
 
     deinit {
         #if DEBUG
-        if let qaFocusNotificationToken {
-            notify_cancel(qaFocusNotificationToken)
-        }
+            if let qaFocusNotificationToken {
+                notify_cancel(qaFocusNotificationToken)
+            }
         #endif
     }
 
@@ -674,19 +678,19 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
 
     private func registerQAFocusRequest() {
         #if DEBUG
-        guard Bundle.main.bundleIdentifier == "com.scholium.qa" else { return }
-        var token: Int32 = 0
-        let name = "com.scholium.qa.focus-workspace.\(windowID.uuidString)"
-        let status = notify_register_dispatch(name, &token, .main) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                guard let window = self?.window else { return }
-                NSApp.activate(ignoringOtherApps: true)
-                window.makeKeyAndOrderFront(nil)
+            guard Bundle.main.bundleIdentifier == "com.scholium.qa" else { return }
+            var token: Int32 = 0
+            let name = "com.scholium.qa.focus-workspace.\(windowID.uuidString)"
+            let status = notify_register_dispatch(name, &token, .main) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    guard let window = self?.window else { return }
+                    NSApp.activate(ignoringOtherApps: true)
+                    window.makeKeyAndOrderFront(nil)
+                }
             }
-        }
-        if status == NOTIFY_STATUS_OK {
-            qaFocusNotificationToken = token
-        }
+            if status == NOTIFY_STATUS_OK {
+                qaFocusNotificationToken = token
+            }
         #endif
     }
 
@@ -718,10 +722,10 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
 
     private func markReadyIfPossible() {
         guard !readinessWasMarked,
-              let window,
-              let splitController,
-              splitController.nativeSplitViewController.view.window === window,
-              toolbarController != nil
+            let window,
+            let splitController,
+            splitController.nativeSplitViewController.view.window === window,
+            toolbarController != nil
         else { return }
         readinessWasMarked = true
         lifecycleRegistry.markReady(id: windowID)
@@ -737,11 +741,12 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
 
     private func installToolbarIfPossible() {
         guard let window,
-              let splitController,
-              splitController.nativeSplitViewController.view.window === window
+            let splitController,
+            splitController.nativeSplitViewController.view.window === window
         else { return }
         if let toolbarController,
-           toolbarController.controls(splitController.nativeSplitViewController) {
+            toolbarController.controls(splitController.nativeSplitViewController)
+        {
             toolbarController.install(in: window)
             return
         }
@@ -777,7 +782,8 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
             toolbarController = nil
             return
         }
-        let isConfiguredToolbar = window.toolbar?.identifier
+        let isConfiguredToolbar =
+            window.toolbar?.identifier
             == ScholiumWorkspaceToolbarController.toolbarIdentifier
         if window.toolbar === loadingToolbar || isConfiguredToolbar {
             window.toolbar = nil
@@ -788,8 +794,9 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
 
     private func detachWindow(restoringPreviousDelegate: Bool = true) {
         if restoringPreviousDelegate,
-           let window,
-           window.delegate === self {
+            let window,
+            window.delegate === self
+        {
             window.delegate = previousDelegate
         }
         window = nil
@@ -810,7 +817,8 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
             do {
                 let outcome = try await appState.windowCloseCoordinator.prepare()
                 guard attempt == closeAttemptGeneration,
-                      self.window === sender else { return }
+                    self.window === sender
+                else { return }
                 if let warning = outcome.presentationWarning {
                     appState.reportOperationIssue(
                         String(
@@ -824,7 +832,8 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
                 scheduleAuthorizedClose(sender, attempt: attempt)
             } catch {
                 guard attempt == closeAttemptGeneration,
-                      self.window === sender else { return }
+                    self.window === sender
+                else { return }
                 flushInFlight = false
                 appState.lastSaveError = error.localizedDescription
                 appState.reportOperationIssue(
@@ -850,8 +859,9 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         // stale executor context.
         DispatchQueue.main.async { @MainActor [weak self, weak sender] in
             guard let self, let sender,
-                  attempt == self.closeAttemptGeneration,
-                  self.window === sender else { return }
+                attempt == self.closeAttemptGeneration,
+                self.window === sender
+            else { return }
             self.closeIsAuthorized = true
             self.flushInFlight = false
             sender.performClose(nil)

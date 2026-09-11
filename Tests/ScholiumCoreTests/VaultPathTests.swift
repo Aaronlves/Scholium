@@ -1,6 +1,7 @@
 import Foundation
-import Testing
 import ScholiumContracts
+import Testing
+
 @testable import ScholiumCore
 
 @Suite("Vault-relative path normalization")
@@ -11,7 +12,8 @@ struct VaultPathTests {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let base = repositoryRoot
+        let base =
+            repositoryRoot
             .appendingPathComponent(".build/vault-path-tests", isDirectory: true)
             .appendingPathComponent(UUID().uuidString.lowercased(), isDirectory: true)
         defer { try? FileManager.default.removeItem(at: base) }
@@ -29,13 +31,15 @@ struct VaultPathTests {
         let file = critiques.appendingPathComponent("QA Critique.md")
         try Data("# Critique\n".utf8).write(to: file)
 
-        let enumerator = try #require(FileManager.default.enumerator(
-            at: root,
-            includingPropertiesForKeys: nil
-        ))
-        let enumeratedFile = try #require(enumerator.allObjects
-            .compactMap { $0 as? URL }
-            .first { $0.lastPathComponent == file.lastPathComponent })
+        let enumerator = try #require(
+            FileManager.default.enumerator(
+                at: root,
+                includingPropertiesForKeys: nil
+            ))
+        let enumeratedFile = try #require(
+            enumerator.allObjects
+                .compactMap { $0 as? URL }
+                .first { $0.lastPathComponent == file.lastPathComponent })
 
         #expect(
             VaultPath.relativePath(for: enumeratedFile, in: root)

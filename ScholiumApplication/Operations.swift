@@ -1,5 +1,5 @@
-import ScholiumContracts
 import Foundation
+import ScholiumContracts
 import ScholiumCore
 
 actor WorkspaceHandleReference {

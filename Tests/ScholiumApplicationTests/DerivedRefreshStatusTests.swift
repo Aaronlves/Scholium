@@ -1,6 +1,7 @@
-import ScholiumContracts
 import Foundation
+import ScholiumContracts
 import Testing
+
 @testable import ScholiumApplication
 
 @Suite("Derived refresh status")
@@ -18,28 +19,33 @@ struct DerivedRefreshStatusTests {
             encoding: .utf8
         )
 
-        #expect(!source.contains(
-            "try? await repository.removeCreatedFileForRollback"
-        ))
+        #expect(
+            !source.contains(
+                "try? await repository.removeCreatedFileForRollback"
+            ))
         // Four source-producing operations (import, explicit creation,
         // untitled creation, and duplication) plus the helper declaration
         // must retain the same revision-checked rollback boundary.
-        #expect(source.components(
-            separatedBy: "retainedCreatedDocumentAfterIdentityFailure("
-        ).count == 6)
-        #expect(source.contains(
-            "CreatedDocumentIdentityRollbackError.sourcePresenceUncertain("
-        ))
+        #expect(
+            source.components(
+                separatedBy: "retainedCreatedDocumentAfterIdentityFailure("
+            ).count == 6)
+        #expect(
+            source.contains(
+                "CreatedDocumentIdentityRollbackError.sourcePresenceUncertain("
+            ))
     }
 
     @Test("Live rebuild failure is typed and a successful retry clears it")
     func liveFailureThenCurrent() async throws {
         let fixture = try await ApplicationFixture.make(registerLiveAccess: true)
         defer { fixture.remove() }
-        let runtime = WorkspaceRuntime(configuration: .live(.init(
-            applicationSupportURL: fixture.applicationSupportURL,
-            workspaceRegistryStorageURL: fixture.registryStorageURL
-        )))
+        let runtime = WorkspaceRuntime(
+            configuration: .live(
+                .init(
+                    applicationSupportURL: fixture.applicationSupportURL,
+                    workspaceRegistryStorageURL: fixture.registryStorageURL
+                )))
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
         let stream = await handle.events.events()
         var iterator = stream.makeAsyncIterator()
@@ -60,7 +66,8 @@ struct DerivedRefreshStatusTests {
         }
         let failed = try #require(await iterator.next())
         guard case .derivedStateChanged(let event) = failed,
-              case .failed(let issue) = event.status else {
+            case .failed(let issue) = event.status
+        else {
             Issue.record("A live rebuild failure was published as current state.")
             await runtime.shutdown()
             return
@@ -84,10 +91,12 @@ struct DerivedRefreshStatusTests {
     func failedRebuildThenCurrent() async throws {
         let fixture = try await ApplicationFixture.make()
         defer { fixture.remove() }
-        let runtime = WorkspaceRuntime(configuration: .snapshot(.init(
-            applicationSupportURL: fixture.applicationSupportURL,
-            assignments: [fixture.assignment]
-        )))
+        let runtime = WorkspaceRuntime(
+            configuration: .snapshot(
+                .init(
+                    applicationSupportURL: fixture.applicationSupportURL,
+                    assignments: [fixture.assignment]
+                )))
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
         let stream = await handle.events.events()
         var iterator = stream.makeAsyncIterator()
@@ -106,7 +115,8 @@ struct DerivedRefreshStatusTests {
         let failed = try #require(await iterator.next())
         #expect(failed.generation == initial.generation + 1)
         guard case .derivedStateChanged(let event) = failed,
-              case .failed(let issue) = event.status else {
+            case .failed(let issue) = event.status
+        else {
             Issue.record("A failed rebuild was not published as failed derived state.")
             await runtime.shutdown()
             return
@@ -121,7 +131,8 @@ struct DerivedRefreshStatusTests {
         let current = try #require(await iterator.next())
         #expect(current.generation == failed.generation + 1)
         guard case .derivedStateChanged(let event) = current,
-              case .current(let evidence) = event.status else {
+            case .current(let evidence) = event.status
+        else {
             Issue.record("A successful retry did not clear the failed derived status.")
             await runtime.shutdown()
             return
@@ -135,10 +146,12 @@ struct DerivedRefreshStatusTests {
     func committedMutationReturnsBeforeDerivedFailure() async throws {
         let fixture = try await ApplicationFixture.make()
         defer { fixture.remove() }
-        let runtime = WorkspaceRuntime(configuration: .snapshot(.init(
-            applicationSupportURL: fixture.applicationSupportURL,
-            assignments: [fixture.assignment]
-        )))
+        let runtime = WorkspaceRuntime(
+            configuration: .snapshot(
+                .init(
+                    applicationSupportURL: fixture.applicationSupportURL,
+                    assignments: [fixture.assignment]
+                )))
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
         let original = try await handle.documents.load(fixture.analysisNoteID)
         let stream = await handle.events.events()
@@ -160,7 +173,8 @@ struct DerivedRefreshStatusTests {
         let stale = try #require(await iterator.next())
         #expect(stale.generation == initial.generation + 1)
         guard case .derivedStateChanged(let event) = stale,
-              case .stale(let issue) = event.status else {
+            case .stale(let issue) = event.status
+        else {
             Issue.record("A committed mutation with a failed refresh was not marked stale.")
             await runtime.shutdown()
             return
@@ -194,10 +208,12 @@ struct DerivedRefreshStatusTests {
     func committedFolderReturnsBeforeDerivedFailure() async throws {
         let fixture = try await ApplicationFixture.make()
         defer { fixture.remove() }
-        let runtime = WorkspaceRuntime(configuration: .snapshot(.init(
-            applicationSupportURL: fixture.applicationSupportURL,
-            assignments: [fixture.assignment]
-        )))
+        let runtime = WorkspaceRuntime(
+            configuration: .snapshot(
+                .init(
+                    applicationSupportURL: fixture.applicationSupportURL,
+                    assignments: [fixture.assignment]
+                )))
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
         let stream = await handle.events.events()
         var iterator = stream.makeAsyncIterator()
@@ -213,8 +229,10 @@ struct DerivedRefreshStatusTests {
 
         #expect(outcome.committedValue.rawValue == "Untitled Folder")
         #expect(outcome.derivedRefreshWarning == nil)
-        #expect(FileManager.default.fileExists(atPath: fixture.analysesURL
-            .appendingPathComponent("Untitled Folder").path))
+        #expect(
+            FileManager.default.fileExists(
+                atPath: fixture.analysesURL
+                    .appendingPathComponent("Untitled Folder").path))
         let stale = try #require(await iterator.next())
         guard case .stale(let issue) = stale.derivedRefreshStatus else {
             Issue.record("A failed background Folder refresh was not marked stale.")
@@ -222,15 +240,18 @@ struct DerivedRefreshStatusTests {
             return
         }
         #expect(issue.affectedVaultIDs == [fixture.analysisNoteID.vaultID])
-        #expect(issue.lastKnownGood == WorkspaceDerivedRefreshEvidence(
-            snapshot: initial.snapshot
-        ))
+        #expect(
+            issue.lastKnownGood
+                == WorkspaceDerivedRefreshEvidence(
+                    snapshot: initial.snapshot
+                ))
 
         try FileManager.default.removeItem(at: invalidURL)
         let refreshed = try await handle.discovery.refresh()
-        #expect(refreshed.vault(id: fixture.analysisNoteID.vaultID)?.folders.contains {
-            $0.rawValue == "Untitled Folder"
-        } == true)
+        #expect(
+            refreshed.vault(id: fixture.analysisNoteID.vaultID)?.folders.contains {
+                $0.rawValue == "Untitled Folder"
+            } == true)
         _ = try #require(await iterator.next())
         await runtime.shutdown()
     }
@@ -239,10 +260,12 @@ struct DerivedRefreshStatusTests {
     func staleProjectionCannotAuthorizeMoveFastPath() async throws {
         let fixture = try await ApplicationFixture.make()
         defer { fixture.remove() }
-        let runtime = WorkspaceRuntime(configuration: .snapshot(.init(
-            applicationSupportURL: fixture.applicationSupportURL,
-            assignments: [fixture.assignment]
-        )))
+        let runtime = WorkspaceRuntime(
+            configuration: .snapshot(
+                .init(
+                    applicationSupportURL: fixture.applicationSupportURL,
+                    assignments: [fixture.assignment]
+                )))
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
         let stream = await handle.events.events()
         var iterator = stream.makeAsyncIterator()
@@ -274,10 +297,14 @@ struct DerivedRefreshStatusTests {
             // The complete planner observes the invalid authoritative source
             // and fails before the Note rename can commit.
         }
-        #expect(FileManager.default.fileExists(atPath: fixture.analysesURL
-            .appendingPathComponent("Agency.md").path))
-        #expect(!FileManager.default.fileExists(atPath: fixture.analysesURL
-            .appendingPathComponent("Moved/Agency.md").path))
+        #expect(
+            FileManager.default.fileExists(
+                atPath: fixture.analysesURL
+                    .appendingPathComponent("Agency.md").path))
+        #expect(
+            !FileManager.default.fileExists(
+                atPath: fixture.analysesURL
+                    .appendingPathComponent("Moved/Agency.md").path))
         await runtime.shutdown()
     }
 
@@ -285,10 +312,12 @@ struct DerivedRefreshStatusTests {
     func documentMutationOutcomesPreserveCommittedAuthority() async throws {
         let fixture = try await ApplicationFixture.make()
         defer { fixture.remove() }
-        let runtime = WorkspaceRuntime(configuration: .snapshot(.init(
-            applicationSupportURL: fixture.applicationSupportURL,
-            assignments: [fixture.assignment]
-        )))
+        let runtime = WorkspaceRuntime(
+            configuration: .snapshot(
+                .init(
+                    applicationSupportURL: fixture.applicationSupportURL,
+                    assignments: [fixture.assignment]
+                )))
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
         let invalidURL = fixture.topicsURL.appendingPathComponent("Invalid UTF-8.md")
         defer { try? FileManager.default.removeItem(at: invalidURL) }
@@ -326,8 +355,9 @@ struct DerivedRefreshStatusTests {
         )
         #expect(saved.derivedRefreshWarning?.isEmpty == false)
         #expect(saved.identityRecoveryWarning == nil)
-        #expect(try await handle.documents.load(fixture.analysisNoteID).fingerprint
-            == saved.committedValue.document.fingerprint)
+        #expect(
+            try await handle.documents.load(fixture.analysisNoteID).fingerprint
+                == saved.committedValue.document.fingerprint)
 
         try await recoverDerivedProjection()
         let current = try #require(

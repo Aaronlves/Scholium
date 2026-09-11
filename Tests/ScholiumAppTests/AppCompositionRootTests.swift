@@ -1,10 +1,11 @@
-import ScholiumContracts
 import Combine
 import Darwin
 import Foundation
-@testable import ScholiumApplication
+import ScholiumContracts
 import Testing
+
 @testable import ScholiumApp
+@testable import ScholiumApplication
 
 @Suite("App composition root", .serialized)
 @MainActor
@@ -62,10 +63,12 @@ struct AppCompositionRootTests {
             ObjectIdentifier(second.zoteroCoordinator.bridge)
                 == ObjectIdentifier(workspaceStore.zoteroBridge)
         )
-        #expect(workspaceStore.applicationSupportURL == isolatedHome.appendingPathComponent(
-            "ApplicationSupport",
-            isDirectory: true
-        ))
+        #expect(
+            workspaceStore.applicationSupportURL
+                == isolatedHome.appendingPathComponent(
+                    "ApplicationSupport",
+                    isDirectory: true
+                ))
 
         #expect(first.windowSessionID != second.windowSessionID)
         #expect(first.presentationRouter !== second.presentationRouter)
@@ -115,14 +118,16 @@ struct AppCompositionRootTests {
         #expect(firstControllerSession !== secondControllerSession)
         #expect(secondControllerSession.editingSource.isEmpty)
 
-        let firstSearch = first.discoveryController.beginSearch(SearchWorkspaceState(
-            query: "agency",
-            scope: .triptych
-        ))
-        let secondSearch = second.discoveryController.beginSearch(SearchWorkspaceState(
-            query: "reasons",
-            scope: .thisNote
-        ))
+        let firstSearch = first.discoveryController.beginSearch(
+            SearchWorkspaceState(
+                query: "agency",
+                scope: .triptych
+            ))
+        let secondSearch = second.discoveryController.beginSearch(
+            SearchWorkspaceState(
+                query: "reasons",
+                scope: .thisNote
+            ))
         #expect(firstSearch.id != secondSearch.id)
         first.discoveryController.cancelSearch()
         first.discoveryController.failSearch(.failed("stale completion"), for: firstSearch)
@@ -131,9 +136,11 @@ struct AppCompositionRootTests {
         #expect(second.discoveryController.search.isRunning)
         #expect(second.discoveryController.search.criteria.query == "reasons")
         second.discoveryController.failSearch(.failed("current completion"), for: secondSearch)
-        #expect(second.discoveryController.search.executionIssue == .failed(
-            "current completion"
-        ))
+        #expect(
+            second.discoveryController.search.executionIssue
+                == .failed(
+                    "current completion"
+                ))
 
         first.discoveryController.synchronizeLibrarySelection(
             workspaceSlot: .paperAnalysis,
@@ -316,9 +323,10 @@ struct AppCompositionRootTests {
                 .documentPresentations[path]
         )
         #expect(savedOpenPresentation.focusTarget == .editor)
-        #expect(savedOpenPresentation.selections == [
-            WindowDocumentSelectionRange(anchor: 5, head: 5),
-        ])
+        #expect(
+            savedOpenPresentation.selections == [
+                WindowDocumentSelectionRange(anchor: 5, head: 5)
+            ])
 
         let closedWindow = WindowModel(workspaceStore: store)
         let closedSessionID = UUID()
@@ -341,8 +349,9 @@ struct AppCompositionRootTests {
         closedWindow.closeDocumentTab(withID: tabID)
         try await waitUntil("the explicit tab close was persisted") {
             guard closedWindow.documentTabController.tabs(in: .paperAnalysis).isEmpty,
-                  let persisted = try await store.windowSession(id: closedSessionID)?
-                    .workspaceSession(for: .paperAnalysis) else { return false }
+                let persisted = try await store.windowSession(id: closedSessionID)?
+                    .workspaceSession(for: .paperAnalysis)
+            else { return false }
             return persisted.openDocuments.isEmpty
                 && persisted.documentPresentations[path] == nil
         }
@@ -623,7 +632,8 @@ struct AppCompositionRootTests {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let root = repositoryRoot
+        let root =
+            repositoryRoot
             .appendingPathComponent(".build/bridge-startup", isDirectory: true)
             .appendingPathComponent(UUID().uuidString.lowercased(), isDirectory: true)
         let support = root.appendingPathComponent("state", isDirectory: true)
@@ -703,14 +713,16 @@ struct AppCompositionRootTests {
         #expect(await initialHandle.events.subscriberCount == 1)
 
         first.presentationRouter.present(.transactionRecovery)
-        first.discoveryController.beginSearch(SearchWorkspaceState(
-            query: "first-window",
-            scope: .triptych
-        ))
-        second.discoveryController.beginSearch(SearchWorkspaceState(
-            query: "second-window",
-            scope: .thisNote
-        ))
+        first.discoveryController.beginSearch(
+            SearchWorkspaceState(
+                query: "first-window",
+                scope: .triptych
+            ))
+        second.discoveryController.beginSearch(
+            SearchWorkspaceState(
+                query: "second-window",
+                scope: .thisNote
+            ))
         let sessionKey = DocumentSessionKey(vaultID: UUID(), noteID: UUID())
         first.documentController.session(for: sessionKey).editingSource = "first exact buffer"
         second.documentController.session(for: sessionKey).editingSource = "second exact buffer"
@@ -866,12 +878,14 @@ struct AppCompositionRootTests {
         )
         #expect(await configuredHandle.events.subscriberCount == 1)
         #expect(await configuredHandle.ownedBackgroundTaskCount > 0)
-        #expect(await store.applicationRuntime.pooledVaultSubscriberCount(
-            vaultID: analysesVault.id
-        ) == 1)
-        #expect(await store.applicationRuntime.pooledVaultOwnsNativeWatcher(
-            vaultID: analysesVault.id
-        ) == true)
+        #expect(
+            await store.applicationRuntime.pooledVaultSubscriberCount(
+                vaultID: analysesVault.id
+            ) == 1)
+        #expect(
+            await store.applicationRuntime.pooledVaultOwnsNativeWatcher(
+                vaultID: analysesVault.id
+            ) == true)
 
         // These are the exact command-facing WindowModel properties used by
         // `ScholiumCommands` after SwiftUI resolves its focused scene value.
@@ -885,14 +899,16 @@ struct AppCompositionRootTests {
         firstWindow!.presentationRouter.dismissAll()
         secondWindow.presentationRouter.dismissAll()
 
-        let firstSearch = firstWindow!.discoveryController.beginSearch(SearchWorkspaceState(
-            query: "first-window cancellation",
-            scope: .triptych
-        ))
-        let secondSearch = secondWindow.discoveryController.beginSearch(SearchWorkspaceState(
-            query: "second-window survives",
-            scope: .triptych
-        ))
+        let firstSearch = firstWindow!.discoveryController.beginSearch(
+            SearchWorkspaceState(
+                query: "first-window cancellation",
+                scope: .triptych
+            ))
+        let secondSearch = secondWindow.discoveryController.beginSearch(
+            SearchWorkspaceState(
+                query: "second-window survives",
+                scope: .triptych
+            ))
         firstWindow!.discoveryController.cancelSearch()
         firstWindow!.discoveryController.failSearch(.failed("late result"), for: firstSearch)
         #expect(firstSearch.id != secondSearch.id)
@@ -912,7 +928,8 @@ struct AppCompositionRootTests {
             noteID: stableNoteID
         )
 
-        let revealGenerationBeforeOpen = firstWindow!.discoveryController
+        let revealGenerationBeforeOpen =
+            firstWindow!.discoveryController
             .libraryRevealRequest?.generation ?? 0
         firstWindow!.openNote("Shared.md")
         secondWindow.openNote("Shared.md")
@@ -1093,9 +1110,10 @@ struct AppCompositionRootTests {
         }
         #expect(await configuredHandle.events.subscriberCount == 1)
         #expect(await configuredHandle.ownedBackgroundTaskCount > 0)
-        #expect(await store.applicationRuntime.pooledVaultOwnsNativeWatcher(
-            vaultID: analysesVault.id
-        ) == true)
+        #expect(
+            await store.applicationRuntime.pooledVaultOwnsNativeWatcher(
+                vaultID: analysesVault.id
+            ) == true)
         #expect(secondWindow.discoveryController.search.isRunning)
 
         let survivingSource = "# Shared\n\nThe surviving window still owns live work.\n"
@@ -1230,7 +1248,8 @@ struct AppCompositionRootTests {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let fixtureRoot = repositoryRoot
+        let fixtureRoot =
+            repositoryRoot
             .appendingPathComponent(".build/app-unit-state", isDirectory: true)
             .appendingPathComponent(UUID().uuidString.lowercased(), isDirectory: true)
         defer { try? FileManager.default.removeItem(at: fixtureRoot) }
@@ -1249,10 +1268,12 @@ struct AppCompositionRootTests {
         let retainedSource = topics.appendingPathComponent("Retained.md")
         let retainedBytes = Data("research source remains unchanged".utf8)
         try retainedBytes.write(to: retainedSource)
-        let seedingRuntime = WorkspaceRuntime(configuration: .live(.init(
-            applicationSupportURL: support,
-            workspaceRegistryStorageURL: registry
-        )))
+        let seedingRuntime = WorkspaceRuntime(
+            configuration: .live(
+                .init(
+                    applicationSupportURL: support,
+                    workspaceRegistryStorageURL: registry
+                )))
         let assignment = try await seedingRuntime.configureTriptych(
             paperAnalysisURL: analyses,
             topicKnowledgeURL: topics,
@@ -1306,8 +1327,7 @@ struct AppCompositionRootTests {
         let previousHome = ProcessInfo.processInfo.environment["SCHOLIUM_HOME"]
         setenv("SCHOLIUM_HOME", root.appendingPathComponent("home").path, 1)
         defer {
-            if let previousHome { setenv("SCHOLIUM_HOME", previousHome, 1) }
-            else { unsetenv("SCHOLIUM_HOME") }
+            if let previousHome { setenv("SCHOLIUM_HOME", previousHome, 1) } else { unsetenv("SCHOLIUM_HOME") }
             try? fm.removeItem(at: root)
         }
         let store = makeTestWorkspaceStore()
@@ -1319,15 +1339,17 @@ struct AppCompositionRootTests {
         await window.refreshWorkspaceAssignment(preferredTriptychID: configured.id)
         try await window.openWorkspaceVault(.paperAnalysis)
         let vault = try #require(configured.assignment.vault(for: .paperAnalysis))
-        let snapshot = try #require(try await window.documentController.noteSnapshot(
-            VaultQualifiedNoteID(vaultID: vault.id, relativePath: "Source.md")
-        ))
+        let snapshot = try #require(
+            try await window.documentController.noteSnapshot(
+                VaultQualifiedNoteID(vaultID: vault.id, relativePath: "Source.md")
+            ))
         window.documentController.installOpenedDocument(
             snapshot, vaultName: vault.name, vaultRole: vault.role
         )
-        let target = try #require(try await window.documentController.noteSnapshot(
-            VaultQualifiedNoteID(vaultID: vault.id, relativePath: "Target.md")
-        ))
+        let target = try #require(
+            try await window.documentController.noteSnapshot(
+                VaultQualifiedNoteID(vaultID: vault.id, relativePath: "Target.md")
+            ))
         let reference = VaultNoteReference(
             vaultID: vault.id, vaultName: vault.name, vaultRole: vault.role,
             relativePath: "Target.md",
@@ -1384,9 +1406,10 @@ struct AppCompositionRootTests {
         #expect(reloaded.revision == nil)
         #expect(reloaded.note.managedMetadataValue(named: "title") == nil)
         let workVault = try #require(configured.assignment.vault(for: .output))
-        let work = try #require(try await window.documentController.noteSnapshot(
-            VaultQualifiedNoteID(vaultID: workVault.id, relativePath: "Work.md")
-        ))
+        let work = try #require(
+            try await window.documentController.noteSnapshot(
+                VaultQualifiedNoteID(vaultID: workVault.id, relativePath: "Work.md")
+            ))
         let workReference = VaultNoteReference(
             vaultID: workVault.id, vaultName: workVault.name, vaultRole: workVault.role,
             relativePath: "Work.md",
@@ -1427,9 +1450,11 @@ struct AppCompositionRootTests {
         named name: String,
         in owner: Any
     ) throws -> T {
-        guard let value = Mirror(reflecting: owner).children.first(where: {
-            $0.label == name
-        })?.value as? T else {
+        guard
+            let value = Mirror(reflecting: owner).children.first(where: {
+                $0.label == name
+            })?.value as? T
+        else {
             throw CompositionRootTestError.missingStoredReference(name)
         }
         return value

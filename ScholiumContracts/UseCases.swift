@@ -48,10 +48,11 @@ public extension LibraryMutationUseCases {
         inVault vaultID: UUID,
         folderRelativePath: String?
     ) async throws -> WorkspaceMutationOutcome<WorkspaceManagedNoteCommit> {
-        try await createManagedNote(try ManagedNoteCreationRequest(
-            vaultID: vaultID,
-            destination: .untitled(folderRelativePath: folderRelativePath)
-        ))
+        try await createManagedNote(
+            try ManagedNoteCreationRequest(
+                vaultID: vaultID,
+                destination: .untitled(folderRelativePath: folderRelativePath)
+            ))
     }
 }
 

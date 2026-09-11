@@ -2,6 +2,7 @@ import Foundation
 import SQLite3
 import ScholiumContracts
 import Testing
+
 @testable import ScholiumCore
 
 /// The original 17 lexical baselines are retained here, but execute against
@@ -11,31 +12,37 @@ import Testing
 struct SearchIndexTests {
     @Test("Phrases, prefixes, fields, CJK, and retrieval classification share one contract")
     func queryContract() async throws {
-        let fixture = try Fixture(); defer { fixture.remove() }
+        let fixture = try Fixture()
+        defer { fixture.remove() }
         let index = try fixture.index()
         _ = try await index.synchronize([
-            fixture.item(fixture.analyses, "Papers/Reasons.md", """
-            ---
-            keywords: [reasons, normativity]
-            status: reviewed
-            ---
-            # Deliberative Control
-            A reason can guide deliberation. 哲学研究需要概念精确。
+            fixture.item(
+                fixture.analyses, "Papers/Reasons.md",
+                """
+                ---
+                keywords: [reasons, normativity]
+                status: reviewed
+                ---
+                # Deliberative Control
+                A reason can guide deliberation. 哲学研究需要概念精确。
 
-            > [!state] Guidance
-            > This is an argument about control.
+                > [!state] Guidance
+                > This is an argument about control.
 
-            A claim.[^note]
-            [^note]: A source-sensitive footnote.
-            """, metadataFields: [
-                "type": .string("journal_article"),
-                "title": .string("Normative Reasons"),
-                "authors": .array([.object([
-                    "family": .string("Scanlon"),
-                    "given": .string("T."),
-                ])]),
-                "publication_date": .string("1998"),
-            ]),
+                A claim.[^note]
+                [^note]: A source-sensitive footnote.
+                """,
+                metadataFields: [
+                    "type": .string("journal_article"),
+                    "title": .string("Normative Reasons"),
+                    "authors": .array([
+                        .object([
+                            "family": .string("Scanlon"),
+                            "given": .string("T."),
+                        ])
+                    ]),
+                    "publication_date": .string("1998"),
+                ]),
             fixture.item(fixture.analyses, "Papers/Other.md", "---\ntitle: Other Work\n---\nA reason appears without deliberative control."),
         ])
 
@@ -52,7 +59,8 @@ struct SearchIndexTests {
 
     @Test("Multi-term conceptual queries retain AND semantics, including zero hits")
     func multiTermConceptualQueries() async throws {
-        let fixture = try Fixture(); defer { fixture.remove() }
+        let fixture = try Fixture()
+        defer { fixture.remove() }
         let index = try fixture.index()
         _ = try await index.synchronize([
             fixture.item(
@@ -87,7 +95,8 @@ struct SearchIndexTests {
 
     @Test("Large Note result sets page once through the canonical order")
     func largeResultPagination() async throws {
-        let fixture = try Fixture(); defer { fixture.remove() }
+        let fixture = try Fixture()
+        defer { fixture.remove() }
         let index = try fixture.index()
         let noteCount = 433
         let pageSize = 100
@@ -103,13 +112,14 @@ struct SearchIndexTests {
         for query in ["lexical corpus", "\"shared pagination\""] {
             var paths: [String] = []
             for offset in stride(from: 0, to: noteCount, by: pageSize) {
-                let response = try await index.testSearch(SearchRequest(
-                    query: query,
-                    presentationScope: .triptych,
-                    executionScope: .triptych,
-                    limit: pageSize,
-                    offset: offset
-                ))
+                let response = try await index.testSearch(
+                    SearchRequest(
+                        query: query,
+                        presentationScope: .triptych,
+                        executionScope: .triptych,
+                        limit: pageSize,
+                        offset: offset
+                    ))
                 let page = response.noteResults.map(\.relativePath)
                 #expect(page.count == min(pageSize, noteCount - offset))
                 #expect(Set(paths).isDisjoint(with: page))
@@ -123,17 +133,19 @@ struct SearchIndexTests {
 
     @Test("Canonical Unicode equivalence is searchable")
     func canonicalUnicodeEquivalence() async throws {
-        let fixture = try Fixture(); defer { fixture.remove() }
+        let fixture = try Fixture()
+        defer { fixture.remove() }
         let index = try fixture.index()
         _ = try await index.synchronize([
-            fixture.item(fixture.analyses, "Papers/Cafe.md", "A Cafe\u{301} argument remains searchable."),
+            fixture.item(fixture.analyses, "Papers/Cafe.md", "A Cafe\u{301} argument remains searchable.")
         ])
         #expect(try await index.testSearch(fixture.request("Café")).noteResults.map(\.relativePath) == ["Papers/Cafe.md"])
     }
 
     @Test("FTS diacritic folding preserves exact ranking and source ranges")
     func diacriticInsensitiveLexicalVerification() async throws {
-        let fixture = try Fixture(); defer { fixture.remove() }
+        let fixture = try Fixture()
+        defer { fixture.remove() }
         let index = try fixture.index()
         let source = "A naïve argument."
         _ = try await index.synchronize([
@@ -145,7 +157,7 @@ struct SearchIndexTests {
                     "type": .string("journal_article"),
                     "title": .string("Café Ethics"),
                 ]
-            ),
+            )
         ])
 
         let foldedTitle = try #require(
@@ -164,24 +176,26 @@ struct SearchIndexTests {
             await index.testSearch(fixture.request("naive")).noteResults.first
         )
         let bodyRange = try #require(foldedBody.sourceRange)
-        #expect((source as NSString).substring(
-            with: NSRange(
-                location: bodyRange.utf16LowerBound,
-                length: bodyRange.utf16UpperBound - bodyRange.utf16LowerBound
-            )
-        ) == "naïve")
+        #expect(
+            (source as NSString).substring(
+                with: NSRange(
+                    location: bodyRange.utf16LowerBound,
+                    length: bodyRange.utf16UpperBound - bodyRange.utf16LowerBound
+                )
+            ) == "naïve")
     }
 
     @Test("Cancellation rolls back a complete generation")
     func cancelledRebuildRollsBack() async throws {
-        let fixture = try Fixture(); defer { fixture.remove() }
+        let fixture = try Fixture()
+        defer { fixture.remove() }
         let index = try fixture.index()
         let original = fixture.item(fixture.analyses, "Original.md", "original-search-term")
         let first = try await index.synchronize([original])
         let cancelled = Task {
             withUnsafeCurrentTask { $0?.cancel() }
             return try await index.synchronize([
-                fixture.item(fixture.analyses, "Replacement.md", "replacement-search-term"),
+                fixture.item(fixture.analyses, "Replacement.md", "replacement-search-term")
             ])
         }
         await #expect(throws: CancellationError.self) { _ = try await cancelled.value }
@@ -192,7 +206,8 @@ struct SearchIndexTests {
 
     @Test("Cancellation rolls back an empty generation")
     func cancelledEmptyRebuildRollsBack() async throws {
-        let fixture = try Fixture(); defer { fixture.remove() }
+        let fixture = try Fixture()
+        defer { fixture.remove() }
         let index = try fixture.index()
         let original = fixture.item(fixture.analyses, "Original.md", "original-search-term")
         let first = try await index.synchronize([original])
@@ -206,7 +221,8 @@ struct SearchIndexTests {
 
     @Test("Parser diagnostics do not change current index availability")
     func parserDiagnosticsDoNotChangeAvailability() async throws {
-        let fixture = try Fixture(); defer { fixture.remove() }
+        let fixture = try Fixture()
+        defer { fixture.remove() }
         let index = try fixture.index()
         _ = try await index.synchronize([fixture.item(fixture.analyses, "A.md", "searchable text")])
         #expect(SearchQueryParser.parse("\"missing close").diagnostics.first?.code == .unclosedPhrase)
@@ -219,20 +235,26 @@ struct SearchIndexTests {
 
     @Test("Result snippets expose semantic fields without YAML syntax")
     func cleanSearchPresentation() async throws {
-        let fixture = try Fixture(); defer { fixture.remove() }
+        let fixture = try Fixture()
+        defer { fixture.remove() }
         let index = try fixture.index()
         _ = try await index.synchronize([
-            fixture.item(fixture.analyses, "Papers/Reasons.md", """
-            # Deliberative Control
-            A reason can guide **deliberation**.
-            """, metadataFields: [
-                "type": .string("journal_article"),
-                "title": .string("Normative Reasons"),
-                "authors": .array([.object([
-                    "family": .string("Scanlon"),
-                    "given": .string("T."),
-                ])]),
-            ]),
+            fixture.item(
+                fixture.analyses, "Papers/Reasons.md",
+                """
+                # Deliberative Control
+                A reason can guide **deliberation**.
+                """,
+                metadataFields: [
+                    "type": .string("journal_article"),
+                    "title": .string("Normative Reasons"),
+                    "authors": .array([
+                        .object([
+                            "family": .string("Scanlon"),
+                            "given": .string("T."),
+                        ])
+                    ]),
+                ]),
             fixture.item(
                 fixture.analyses,
                 "Papers/CJK.md",
@@ -266,7 +288,8 @@ struct SearchIndexTests {
 
     @Test("Current Vault scope cannot be displaced by another vault")
     func exactVaultScope() async throws {
-        let fixture = try Fixture(); defer { fixture.remove() }
+        let fixture = try Fixture()
+        defer { fixture.remove() }
         let index = try fixture.index()
         _ = try await index.synchronize([
             fixture.item(fixture.analyses, "A.md", "target concept appears once"),
@@ -278,39 +301,47 @@ struct SearchIndexTests {
 
     @Test("A 512-note fixture ranks identity aliases, academic titles, headings, then body")
     func explainableScholarlyRanking() async throws {
-        let fixture = try Fixture(); defer { fixture.remove() }
+        let fixture = try Fixture()
+        defer { fixture.remove() }
         let index = try fixture.index()
         var documents = (0..<508).map { number in
-            fixture.item(fixture.analyses, "Background/Note-\(number).md", "---\ntitle: Background \(number)\n---\nA bounded note about evidence and inference.")
+            fixture.item(
+                fixture.analyses, "Background/Note-\(number).md", "---\ntitle: Background \(number)\n---\nA bounded note about evidence and inference.")
         }
         documents += [
-            fixture.item(fixture.analyses, "Title.md", "A concise account.", metadataFields: [
-                "type": .string("journal_article"),
-                "title": .string("Deliberative Autonomy"),
-            ]),
-            fixture.item(fixture.topics, "Alias.md", "# Agency Structure\nA concise account.", metadataFields: [
-                "aliases": .array([.string("Deliberative Autonomy")]),
-            ]),
+            fixture.item(
+                fixture.analyses, "Title.md", "A concise account.",
+                metadataFields: [
+                    "type": .string("journal_article"),
+                    "title": .string("Deliberative Autonomy"),
+                ]),
+            fixture.item(
+                fixture.topics, "Alias.md", "# Agency Structure\nA concise account.",
+                metadataFields: [
+                    "aliases": .array([.string("Deliberative Autonomy")])
+                ]),
             fixture.item(fixture.analyses, "Heading.md", "---\ntitle: Normative Architecture\n---\n# Deliberative Autonomy\nA concise account."),
             fixture.item(fixture.analyses, "Body.md", "---\ntitle: Practical Reason\n---\nThis develops deliberative autonomy."),
         ]
         _ = try await index.synchronize(documents)
         let hits = try await index.testSearch(fixture.request("\"deliberative autonomy\"", limit: 10))
-        #expect(hits.noteResults.map(\.relativePath)
-            == ["Alias.md", "Title.md", "Heading.md", "Body.md"])
+        #expect(
+            hits.noteResults.map(\.relativePath)
+                == ["Alias.md", "Title.md", "Heading.md", "Body.md"])
         #expect(hits.noteResults.map(\.matchedField) == [.alias, .title, .heading, .body])
     }
 
     @Test("Topic filename is the title while its first H1 remains a searchable heading")
     func topicFilenameOwnsTitleIdentity() async throws {
-        let fixture = try Fixture(); defer { fixture.remove() }
+        let fixture = try Fixture()
+        defer { fixture.remove() }
         let index = try fixture.index()
         _ = try await index.synchronize([
             fixture.item(
                 fixture.topics,
                 "Emotion/Basic Emotions.md",
                 "# 1. Why the Question Matters\n\nEmotion concepts remain contested."
-            ),
+            )
         ])
 
         let title = try #require(
@@ -334,11 +365,14 @@ struct SearchIndexTests {
 
     @Test("Large collisions preserve deterministic field precedence")
     func largerExplainableRankingCollisionFixture() async throws {
-        let fixture = try Fixture(); defer { fixture.remove() }
+        let fixture = try Fixture()
+        defer { fixture.remove() }
         let index = try fixture.index()
         let leading = [
-            fixture.item(fixture.analyses, "00-title.md", "Short.", metadataFields: ["type": .string("journal_article"), "title": .string("Practical Identity")]),
-            fixture.item(fixture.analyses, "01-title.md", "Short.", metadataFields: ["type": .string("journal_article"), "title": .string("Practical Identity")]),
+            fixture.item(
+                fixture.analyses, "00-title.md", "Short.", metadataFields: ["type": .string("journal_article"), "title": .string("Practical Identity")]),
+            fixture.item(
+                fixture.analyses, "01-title.md", "Short.", metadataFields: ["type": .string("journal_article"), "title": .string("Practical Identity")]),
             fixture.item(fixture.topics, "10-alias.md", "# Alpha\nShort.", metadataFields: ["aliases": .array([.string("Practical Identity")])]),
             fixture.item(fixture.topics, "11-alias.md", "# Beta\nShort.", metadataFields: ["aliases": .array([.string("Practical Identity")])]),
             fixture.item(fixture.analyses, "20-heading.md", "---\ntitle: Gamma\n---\n# Practical Identity\nShort."),
@@ -349,17 +383,19 @@ struct SearchIndexTests {
         }
         _ = try await index.synchronize(leading + background)
         let first = try await index.testSearch(fixture.request("\"practical identity\"", limit: 20))
-        #expect(first.noteResults.prefix(6).map(\.relativePath) == [
-            "10-alias.md", "11-alias.md", "00-title.md", "01-title.md",
-            "20-heading.md", "21-heading.md",
-        ])
+        #expect(
+            first.noteResults.prefix(6).map(\.relativePath) == [
+                "10-alias.md", "11-alias.md", "00-title.md", "01-title.md",
+                "20-heading.md", "21-heading.md",
+            ])
         let repeated = try await index.testSearch(fixture.request("\"practical identity\"", limit: 20))
         #expect(repeated.noteResults.map(\.relativePath) == first.noteResults.map(\.relativePath))
     }
 
     @Test("Filename-owned title and exact path rank before body occurrences")
     func exactNoteIdentityPrecedesBodyMatches() async throws {
-        let fixture = try Fixture(); defer { fixture.remove() }
+        let fixture = try Fixture()
+        defer { fixture.remove() }
         let index = try fixture.index()
         _ = try await index.synchronize([
             fixture.item(fixture.analyses, "Archive/Known Note.md", "---\ntitle: Archival Entry\n---\nNo matching prose."),
@@ -371,7 +407,8 @@ struct SearchIndexTests {
 
     @Test("Incremental inventory synchronization converges with a clean rebuild")
     func incrementalParity() async throws {
-        let fixture = try Fixture(); defer { fixture.remove() }
+        let fixture = try Fixture()
+        defer { fixture.remove() }
         let incremental = try fixture.index()
         let first = fixture.item(fixture.analyses, "A.md", "---\ntitle: Alpha\n---\nfirst concept")
         let second = fixture.item(fixture.analyses, "B.md", "---\ntitle: Beta\n---\nsecond concept")
@@ -382,14 +419,16 @@ struct SearchIndexTests {
 
         let clean = try fixture.index(at: fixture.root.appendingPathComponent("clean.sqlite"))
         _ = try await clean.synchronize([edited, renamed])
-        #expect(try await incremental.testSearch(fixture.request("second")).noteResults.map(\.relativePath)
-            == clean.testSearch(fixture.request("second")).noteResults.map(\.relativePath))
+        #expect(
+            try await incremental.testSearch(fixture.request("second")).noteResults.map(\.relativePath)
+                == clean.testSearch(fixture.request("second")).noteResults.map(\.relativePath))
         #expect(try await incremental.generation()?.sourceManifestHash == clean.generation()?.sourceManifestHash)
     }
 
     @Test("Synchronization tracks derived broken-link state")
     func synchronizationTracksDerivedState() async throws {
-        let fixture = try Fixture(); defer { fixture.remove() }
+        let fixture = try Fixture()
+        defer { fixture.remove() }
         let index = try fixture.index()
         let source = NoteDocument(relativePath: "A.md", rawContent: "[[Missing]]")
         let metadata: [String: YAMLValue] = ["type": .string("journal_article"), "title": .string("Alpha")]
@@ -400,9 +439,11 @@ struct SearchIndexTests {
         let brokenOnly = try await index.testSearch(fixture.request("has:broken-link"))
         #expect(brokenOnly.noteResults.first?.matchedFields == [.brokenLink])
         #expect(brokenOnly.noteResults.first?.rankReason == .structuredFilter)
-        guard case .structured(let structuredMatch) = try #require(
-            brokenOnly.noteResults.first?.primaryMatchReason
-        ) else {
+        guard
+            case .structured(let structuredMatch) = try #require(
+                brokenOnly.noteResults.first?.primaryMatchReason
+            )
+        else {
             Issue.record("Structured filter-only Search did not retain its typed reason.")
             return
         }
@@ -416,7 +457,8 @@ struct SearchIndexTests {
 
     @Test("An unchanged inventory retains its generation")
     func unchangedInventoryMatchesPersistedDescriptor() async throws {
-        let fixture = try Fixture(); defer { fixture.remove() }
+        let fixture = try Fixture()
+        defer { fixture.remove() }
         let index = try fixture.index()
         let item = fixture.item(fixture.analyses, "A.md", "---\ntitle: Alpha\n---\nunchanged")
         let first = try await index.synchronize([item])
@@ -427,12 +469,13 @@ struct SearchIndexTests {
 
     @Test("A corrupt generated database is staged and rebuilt")
     func corruptDatabaseRecoveryIsVisibleAndComplete() async throws {
-        let fixture = try Fixture(); defer { fixture.remove() }
+        let fixture = try Fixture()
+        defer { fixture.remove() }
         try Data("not a sqlite database".utf8).write(to: fixture.databaseURL)
         let opened = try TriptychSearchIndex.openRecovering(databaseURL: fixture.databaseURL, triptychID: fixture.triptychID)
         #expect(opened.recoveredCorruption)
         let result = try await opened.index.synchronize([
-            fixture.item(fixture.analyses, "Recovered.md", "---\ntitle: Recovered\n---\nrecoverable concept"),
+            fixture.item(fixture.analyses, "Recovered.md", "---\ntitle: Recovered\n---\nrecoverable concept")
         ])
         #expect(result.disposition == .recoveredAndRebuilt)
         #expect(try await opened.index.testSearch(fixture.request("recoverable")).noteResults.map(\.relativePath) == ["Recovered.md"])
@@ -440,7 +483,8 @@ struct SearchIndexTests {
 
     @Test("An incompatible prior schema is replaced without touching source")
     func incompatibleContractRecoveryIsVisibleAndComplete() async throws {
-        let fixture = try Fixture(); defer { fixture.remove() }
+        let fixture = try Fixture()
+        defer { fixture.remove() }
         var index: TriptychSearchIndex? = try fixture.index()
         let source = fixture.item(fixture.analyses, "Preserved.md", "---\ntitle: Preserved\n---\nexact source remains external")
         _ = try await index?.synchronize([source])
@@ -455,7 +499,8 @@ struct SearchIndexTests {
 
     @Test("Malformed generated offset state is staged and rebuilt")
     func malformedGeneratedJSONRecoveryIsVisibleAndComplete() async throws {
-        let fixture = try Fixture(); defer { fixture.remove() }
+        let fixture = try Fixture()
+        defer { fixture.remove() }
         var index: TriptychSearchIndex? = try fixture.index()
         let source = fixture.item(
             fixture.analyses,
@@ -476,9 +521,10 @@ struct SearchIndexTests {
         #expect(opened.recoveredCorruption)
         let result = try await opened.index.synchronize([source])
         #expect(result.disposition == .recoveredAndRebuilt)
-        #expect(try await opened.index.testSearch(
-            fixture.request("preserved")
-        ).noteResults.first?.sourceLine == 1)
+        #expect(
+            try await opened.index.testSearch(
+                fixture.request("preserved")
+            ).noteResults.first?.sourceLine == 1)
         #expect(source.document.rawContent.contains("exact source remains external"))
     }
 
@@ -513,16 +559,18 @@ struct SearchIndexTests {
             #expect(opened.recoveredCorruption, Comment(rawValue: mutation))
             let result = try await opened.index.synchronize([source])
             #expect(result.disposition == .recoveredAndRebuilt)
-            #expect(try await opened.index.testSearch(
-                fixture.request("preserved")
-            ).noteResults.map(\.relativePath) == ["Preserved.md"])
+            #expect(
+                try await opened.index.testSearch(
+                    fixture.request("preserved")
+                ).noteResults.map(\.relativePath) == ["Preserved.md"])
             #expect(source.document.rawContent.contains("exact source remains external"))
         }
     }
 
     @Test("An open index rejects source bounds corrupted after validation")
     func liveSourceBoundCorruptionFailsClosed() async throws {
-        let fixture = try Fixture(); defer { fixture.remove() }
+        let fixture = try Fixture()
+        defer { fixture.remove() }
         let index = try fixture.index()
         let source = fixture.item(
             fixture.analyses,
@@ -570,14 +618,16 @@ struct SearchIndexTests {
         )
         #expect(!reopened.recoveredCorruption)
         #expect(try await reopened.index.generation() == generation)
-        #expect(try await reopened.index.testSearch(
-            fixture.request("last good")
-        ).noteResults.map(\.relativePath) == ["Preserved.md"])
+        #expect(
+            try await reopened.index.testSearch(
+                fixture.request("last good")
+            ).noteResults.map(\.relativePath) == ["Preserved.md"])
     }
 
     @Test("Identical paths in different vaults remain scope-isolated")
     func vaultIdentityIsolation() async throws {
-        let fixture = try Fixture(); defer { fixture.remove() }
+        let fixture = try Fixture()
+        defer { fixture.remove() }
         let index = try fixture.index()
         _ = try await index.synchronize([
             fixture.item(fixture.analyses, "Shared.md", "first-domain-only"),
@@ -590,7 +640,8 @@ struct SearchIndexTests {
 
     @Test("Triptych search includes every configured vault")
     func completeTriptychSearch() async throws {
-        let fixture = try Fixture(); defer { fixture.remove() }
+        let fixture = try Fixture()
+        defer { fixture.remove() }
         let index = try fixture.index()
         _ = try await index.synchronize([
             fixture.item(fixture.analyses, "Paper.md", "Shared private phrase"),
@@ -614,8 +665,8 @@ struct SearchIndexTests {
                 fileURLWithPath: FileManager.default.currentDirectoryPath,
                 isDirectory: true
             )
-                .appendingPathComponent(".build/search-v10-retained-tests", isDirectory: true)
-                .appendingPathComponent(UUID().uuidString, isDirectory: true)
+            .appendingPathComponent(".build/search-v10-retained-tests", isDirectory: true)
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
             try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
             databaseURL = root.appendingPathComponent("search-v10.sqlite")
         }
@@ -689,13 +740,15 @@ struct SearchIndexTests {
             throw FixtureError.couldNotOpenDatabase
         }
         defer { sqlite3_close(database) }
-        guard sqlite3_exec(
-            database,
-            sql,
-            nil,
-            nil,
-            nil
-        ) == SQLITE_OK else {
+        guard
+            sqlite3_exec(
+                database,
+                sql,
+                nil,
+                nil,
+                nil
+            ) == SQLITE_OK
+        else {
             throw FixtureError.couldNotExecuteSQL
         }
     }

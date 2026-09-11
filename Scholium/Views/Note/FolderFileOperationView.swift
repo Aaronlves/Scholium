@@ -66,12 +66,15 @@ struct FolderFileOperationView: View {
         .padding(ScholiumMetrics.DocumentWorkflow.sheetContentInset)
         .frame(minWidth: 0, idealWidth: 520, minHeight: 0, idealHeight: 260)
         .onAppear { configureDefaults() }
-        .alert("Could Not \(actionTitle) Folder", isPresented: Binding(
-            get: { errorMessage != nil },
-            set: { if !$0 { errorMessage = nil } }
-        )) {
+        .alert(
+            "Could Not \(actionTitle) Folder",
+            isPresented: Binding(
+                get: { errorMessage != nil },
+                set: { if !$0 { errorMessage = nil } }
+            )
+        ) {
             Button("Dismiss", role: .cancel) { errorMessage = nil }
-            .scholiumActivationPointer()
+                .scholiumActivationPointer()
         } message: {
             Text(errorMessage ?? "")
         }
@@ -106,7 +109,8 @@ struct FolderFileOperationView: View {
 
     private var helpText: String {
         String(
-            localized: "The folder is only a path-based classification. Scholium preserves each descendant note’s stable identity and moves non-Markdown contents without changing their bytes.",
+            localized:
+                "The folder is only a path-based classification. Scholium preserves each descendant note’s stable identity and moves non-Markdown contents without changing their bytes.",
             table: "Localizable",
             bundle: .module
         )
@@ -139,7 +143,8 @@ struct FolderFileOperationView: View {
             proposed = selectedParent.map { $0 + "/" + target.name } ?? target.name
         }
         guard proposed != target.relativePath,
-              (try? VaultRelativeFolderPath(proposed)) != nil else { return nil }
+            (try? VaultRelativeFolderPath(proposed)) != nil
+        else { return nil }
         return proposed
     }
 

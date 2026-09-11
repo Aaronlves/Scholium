@@ -31,7 +31,8 @@ final class ZoteroBindingPanelMutationOwner: ObservableObject {
                 return
             } catch {
                 guard !Task.isCancelled,
-                      self?.generation == operationGeneration else { return }
+                    self?.generation == operationGeneration
+                else { return }
                 didFail(error)
                 await recover()
             }
@@ -82,36 +83,36 @@ struct ZoteroBindingPanelView: View {
 
     var body: some View {
         routedPanel
-        .interactiveDismissDisabled(mutationOwner.isSaving)
-        .onDisappear {
-            mutationOwner.cancelAll()
-        }
-        .confirmationDialog(
-            "Clear Zotero Link?",
-            isPresented: $confirmsClear,
-            titleVisibility: .visible
-        ) {
-            Button("Clear Link", role: .destructive) {
-                performClear()
+            .interactiveDismissDisabled(mutationOwner.isSaving)
+            .onDisappear {
+                mutationOwner.cancelAll()
             }
-            .scholiumActivationPointer()
-            Button("Cancel", role: .cancel) {}
-            .scholiumActivationPointer()
-        } message: {
-            Text("This removes only Scholium’s portable relationship. It does not remove Metadata already filled in Scholium or change the Zotero item.")
-        }
-        .alert(
-            errorTitle,
-            isPresented: Binding(
-                get: { errorMessage != nil },
-                set: { if !$0 { errorMessage = nil } }
-            )
-        ) {
-            Button("Dismiss") { errorMessage = nil }
-            .scholiumActivationPointer()
-        } message: {
-            Text(errorMessage ?? "")
-        }
+            .confirmationDialog(
+                "Clear Zotero Link?",
+                isPresented: $confirmsClear,
+                titleVisibility: .visible
+            ) {
+                Button("Clear Link", role: .destructive) {
+                    performClear()
+                }
+                .scholiumActivationPointer()
+                Button("Cancel", role: .cancel) {}
+                    .scholiumActivationPointer()
+            } message: {
+                Text("This removes only Scholium’s portable relationship. It does not remove Metadata already filled in Scholium or change the Zotero item.")
+            }
+            .alert(
+                errorTitle,
+                isPresented: Binding(
+                    get: { errorMessage != nil },
+                    set: { if !$0 { errorMessage = nil } }
+                )
+            ) {
+                Button("Dismiss") { errorMessage = nil }
+                    .scholiumActivationPointer()
+            } message: {
+                Text(errorMessage ?? "")
+            }
     }
 
     private var panel: some View {
@@ -262,14 +263,16 @@ struct ZoteroBindingPanelView: View {
         if route.mode == .manage, selectedHit == nil {
             ScholiumApparatusStateView(
                 "Select an Exact Item",
-                detail: "The selected library and item key define the Zotero identity. Scholium will show every proposed Metadata change before enabling Link and Fill.",
+                detail:
+                    "The selected library and item key define the Zotero identity. Scholium will show every proposed Metadata change before enabling Link and Fill.",
                 systemImage: "checkmark.circle",
                 density: .block
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding(ScholiumGrid.Spacing.regionContentInset)
         } else if isPreparingFill
-            || (route.mode == .refresh && fillPlan == nil && errorMessage == nil) {
+            || (route.mode == .refresh && fillPlan == nil && errorMessage == nil)
+        {
             ProgressView("Reading exact Zotero item and current Metadata…")
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if let fillPlan {
@@ -329,10 +332,12 @@ struct ZoteroBindingPanelView: View {
 
     private func refreshIdentity(plan: ZoteroMetadataPlan) -> some View {
         VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
-            Text(plan.source.item.title.isEmpty
-                ? String(localized: "Untitled Zotero Item")
-                : plan.source.item.title)
-                .font(ScholiumTypography.scholarly(.emphasis))
+            Text(
+                plan.source.item.title.isEmpty
+                    ? String(localized: "Untitled Zotero Item")
+                    : plan.source.item.title
+            )
+            .font(ScholiumTypography.scholarly(.emphasis))
             HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
                 Text(libraryLabel(plan.source.library))
                 Text(plan.source.item.key)
@@ -373,7 +378,8 @@ struct ZoteroBindingPanelView: View {
                     Text(fieldLabel(field.key))
                         .font(ScholiumTypography.interface(.small, emphasis: .strong))
                     if let conflictPlan,
-                       let retained = conflictPlan.originalFields[field.key] {
+                        let retained = conflictPlan.originalFields[field.key]
+                    {
                         Text("Current: \(displayValue(retained, key: field.key))")
                         Text("Zotero: \(displayValue(field.value, key: field.key))")
                             .foregroundStyle(ScholiumNativeColorRole.secondaryLabel.color)
@@ -503,7 +509,8 @@ struct ZoteroBindingPanelView: View {
             defer { isSearching = false }
             let results = try await search(normalized)
             guard !Task.isCancelled,
-                  normalized == query.trimmingCharacters(in: .whitespacesAndNewlines) else {
+                normalized == query.trimmingCharacters(in: .whitespacesAndNewlines)
+            else {
                 return
             }
             hits = results

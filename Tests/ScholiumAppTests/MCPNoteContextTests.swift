@@ -1,8 +1,9 @@
 import Foundation
 import ScholiumContracts
 import Testing
-@testable import ScholiumApplication
+
 @testable import ScholiumApp
+@testable import ScholiumApplication
 
 extension MCPAppBridgeRequestRouterTests {
     @Test("Note context pages material pointers and refuses oversized saved fields without losing source access")
@@ -25,7 +26,9 @@ extension MCPAppBridgeRequestRouterTests {
         let first = try #require(read["context"]?.objectValue?["attachments"]?.objectValue)
         #expect(first["total"]?.intValue == 21 && first["has_more"]?.boolValue == true)
         #expect(first["attachments"]?.arrayValue?.count == 20)
-        let continuation = scope.merging(["offset": MCPJSONValue.integer(20), "expected_listing_fingerprint": try #require(first["listing_fingerprint"])]) { _, new in new }
+        let continuation = scope.merging(["offset": MCPJSONValue.integer(20), "expected_listing_fingerprint": try #require(first["listing_fingerprint"])]) {
+            _, new in new
+        }
         let last = try result(await router.handle(.init(tool: .listAttachments, arguments: continuation)))
         #expect(last["attachments"]?.arrayValue?.count == 1 && last["has_more"]?.boolValue == false)
         #expect(first["attachments"]?.arrayValue?.contains(try #require(last["attachments"]?.arrayValue?.first)) == false)
@@ -44,8 +47,10 @@ extension MCPAppBridgeRequestRouterTests {
         let handle = try await fixture.runtime.openWorkspace(id: fixture.assignment.id)
         let snapshot = try await handle.discovery.refresh()
         let note = try #require(snapshot.vaults.flatMap(\.documents).first { $0.stableIdentity.resolvedID == fixture.analysisNoteID })
-        let fields: [String: YAMLValue] = ["title": .string("Saved academic title"),
-            "authors": .array([.object(["family": .string("王"), "given": .string("小明")]), .object(["literal": .string("Research Group")])])]
+        let fields: [String: YAMLValue] = [
+            "title": .string("Saved academic title"),
+            "authors": .array([.object(["family": .string("王"), "given": .string("小明")]), .object(["literal": .string("Research Group")])]),
+        ]
         _ = try await handle.documents.saveMetadata(note.id, fields: fields, expectedRevision: nil)
         let bindings = try await handle.services.controlStore.zoteroBindings()
         _ = try await handle.services.controlStore.setZoteroBinding(
@@ -53,7 +58,8 @@ extension MCPAppBridgeRequestRouterTests {
         let material = fixture.root.appendingPathComponent("原文.txt")
         let unread = Data("Private-to-this-fixture attachment text must not enter a listing.".utf8)
         try unread.write(to: material)
-        let attachment = try await handle.documents.attachDocument(at: material,
+        let attachment = try await handle.documents.attachDocument(
+            at: material,
             to: .init(noteID: fixture.analysisNoteID, vaultID: note.id.vaultID, relativePath: note.id.relativePath), management: .copyIntoTriptych)
         let router = MCPAppBridgeRequestRouter(runtime: fixture.runtime, flushEditors: { _ in }, openTriptychs: { [fixture.assignment] })
         var args: [String: MCPJSONValue] = ["triptych_id": .string(fixture.assignment.id.uuidString), "note_id": .string(fixture.analysisNoteID.uuidString)]
@@ -89,7 +95,9 @@ extension MCPAppBridgeRequestRouterTests {
         defer { fixture.dispose() }
         let handle = try await fixture.runtime.openWorkspace(id: fixture.assignment.id)
         let router = MCPAppBridgeRequestRouter(runtime: fixture.runtime, flushEditors: { _ in }, openTriptychs: { [fixture.assignment] })
-        var args: [String: MCPJSONValue] = ["triptych_id": .string(fixture.assignment.id.uuidString), "note_id": .string(fixture.topicNoteID.uuidString), "include_context": .bool(true)]
+        var args: [String: MCPJSONValue] = [
+            "triptych_id": .string(fixture.assignment.id.uuidString), "note_id": .string(fixture.topicNoteID.uuidString), "include_context": .bool(true),
+        ]
         let read = try result(await router.handle(.init(tool: .readNote, arguments: args)))
         let context = try #require(read["context"]?.objectValue)
         #expect(context["metadata"] == .null && context["zotero_binding"] == .null && context["zotero_bindings_fingerprint"] == .null)

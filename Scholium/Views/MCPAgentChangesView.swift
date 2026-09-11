@@ -120,8 +120,10 @@ struct AgentChangesView: View {
 
     private var sheetSize: NSSize {
         presentsCollection
-            ? NSSize(width: 620, height: isLoading || errorMessage != nil || changes.isEmpty
-                     ? 240 : min(480, 100 + CGFloat(changes.count) * 76))
+            ? NSSize(
+                width: 620,
+                height: isLoading || errorMessage != nil || changes.isEmpty
+                    ? 240 : min(480, 100 + CGFloat(changes.count) * 76))
             : NSSize(width: 760, height: 720)
     }
 
@@ -131,7 +133,10 @@ struct AgentChangesView: View {
                 collectionLayout
             } else {
                 ExactSourceComparisonSheetLayout(
-                    title: { if case .conversation = scope { return "Conversation Changes" }; return "Agent Changes" }(),
+                    title: {
+                        if case .conversation = scope { return "Conversation Changes" }
+                        return "Agent Changes"
+                    }(),
                     detail: nil,
                     identifier: "scholium.agentChanges"
                 ) {
@@ -147,7 +152,10 @@ struct AgentChangesView: View {
         }
         .frame(width: sheetSize.width, height: sheetSize.height)
         .background(AgentChangesSheetSize(size: sheetSize))
-        .task { showsCollection = initialChangeID == nil; await reload(preserving: initialChangeID) }
+        .task {
+            showsCollection = initialChangeID == nil
+            await reload(preserving: initialChangeID)
+        }
         .confirmationDialog(
             "Undo Agent Change?",
             isPresented: Binding(
@@ -162,7 +170,7 @@ struct AgentChangesView: View {
             }
             .scholiumActivationPointer()
             Button("Cancel", role: .cancel) { pendingUndo = nil }
-            .scholiumActivationPointer()
+                .scholiumActivationPointer()
         } message: { _ in
             Text("Undo restores the exact Before version only if the Note still matches this change's After version.")
         }
@@ -171,9 +179,13 @@ struct AgentChangesView: View {
     private var collectionLayout: some View {
         VStack(alignment: .leading, spacing: 20) {
             HStack(alignment: .firstTextBaseline) {
-                Text({ if case .conversation = scope { return String(localized: "Conversation Changes") }
-                       return String(localized: "Agent Changes") }())
-                    .font(ScholiumTypography.interface(.sectionTitle)).accessibilityHeading(.h1)
+                Text(
+                    {
+                        if case .conversation = scope { return String(localized: "Conversation Changes") }
+                        return String(localized: "Agent Changes")
+                    }()
+                )
+                .font(ScholiumTypography.interface(.sectionTitle)).accessibilityHeading(.h1)
                 Spacer()
                 Button("Close", action: dismiss.callAsFunction).keyboardShortcut(.cancelAction)
             }
@@ -297,8 +309,9 @@ struct AgentChangesView: View {
                     .accessibilityIdentifier("scholium.agentChanges.markViewed")
                 }
 
-                if let review, (review.change.operation == .update || review.change.operation.isRecordMutation),
-                   review.change.state == .confirmed {
+                if let review, review.change.operation == .update || review.change.operation.isRecordMutation,
+                    review.change.state == .confirmed
+                {
                     VStack(alignment: .trailing, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
                         Button(undoingID == review.change.id ? "Undoing…" : "Undo") {
                             pendingUndo = review.change
@@ -376,7 +389,8 @@ struct AgentChangesView: View {
         do {
             let loaded = try await loadReview(selected.id)
             guard loaded.change.id == selected.id,
-                  loaded.change.noteID == selected.noteID else {
+                loaded.change.noteID == selected.noteID
+            else {
                 throw AgentChangeError.mismatchedBinding(selected.id)
             }
             guard self.selectedIndex == selectedIndex else { return }
@@ -469,7 +483,8 @@ private struct AgentChangeReviewContent: View {
             if let reason = review.undoUnavailableReason { Text(reason).textSelection(.enabled) }
             ForEach(review.linkedComparisons, id: \.effect.noteID) { linked in
                 DisclosureGroup(linked.effect.destination.relativePath) {
-                    ExactSourceComparisonView(comparison: linked.comparison, startingLabel: "Before", endingLabel: "After",
+                    ExactSourceComparisonView(
+                        comparison: linked.comparison, startingLabel: "Before", endingLabel: "After",
                         startingOnlyLabel: "Removed", endingOnlyLabel: "Inserted", identifierPrefix: "scholium.agentChanges.linked")
                 }
             }
@@ -500,10 +515,11 @@ private struct AgentChangeReviewContent: View {
                         .textSelection(.enabled)
                         .padding(ScholiumGrid.Spacing.nestedContentInset)
                         .background(ScholiumNativeColorRole.textBackground.color)
-                        .clipShape(RoundedRectangle(
-                            cornerRadius: ScholiumShape.editorialControlCornerRadius,
-                            style: .continuous
-                        ))
+                        .clipShape(
+                            RoundedRectangle(
+                                cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                                style: .continuous
+                            ))
                 }
             } else {
                 ScholiumContentStateView(
@@ -569,20 +585,22 @@ private struct AgentChangeReviewContent: View {
             ),
         ]
         if let fingerprint = review.change.beforeFingerprint {
-            facts.append(ScholiumApparatusFact(
-                id: "before-revision",
-                label: String(localized: "Before Revision"),
-                value: revisionDescription(fingerprint),
-                valueStyle: .revisionIdentity
-            ))
+            facts.append(
+                ScholiumApparatusFact(
+                    id: "before-revision",
+                    label: String(localized: "Before Revision"),
+                    value: revisionDescription(fingerprint),
+                    valueStyle: .revisionIdentity
+                ))
         }
         if let fingerprint = review.change.afterFingerprint {
-            facts.append(ScholiumApparatusFact(
-                id: "after-revision",
-                label: String(localized: "After Revision"),
-                value: revisionDescription(fingerprint),
-                valueStyle: .revisionIdentity
-            ))
+            facts.append(
+                ScholiumApparatusFact(
+                    id: "after-revision",
+                    label: String(localized: "After Revision"),
+                    value: revisionDescription(fingerprint),
+                    valueStyle: .revisionIdentity
+                ))
         }
         return facts
     }
@@ -636,7 +654,8 @@ private struct AgentChangesSheetSize: NSViewRepresentable {
     }
     private func resize(_ window: NSWindow) {
         guard window.sheetParent != nil,
-              window.contentRect(forFrameRect: window.frame).size != size else { return }
+            window.contentRect(forFrameRect: window.frame).size != size
+        else { return }
         window.setContentSize(size)
     }
 }

@@ -1,6 +1,7 @@
 import Foundation
 import ScholiumContracts
 import Testing
+
 @testable import ScholiumApp
 
 @MainActor
@@ -47,16 +48,18 @@ struct WindowWorkspaceProjectionControllerTests {
             context: fixture.context(sourceScope: .library)
         )
 
-        #expect(Set(controller.notes.map(\.relativePath)) == [
-            "Active.md",
-            "Archive/Aside.md",
-            "Old/Removed.md",
-        ])
-        #expect(Set(controller.documentRevisions.keys) == [
-            "Active.md",
-            "Archive/Aside.md",
-            "Old/Removed.md",
-        ])
+        #expect(
+            Set(controller.notes.map(\.relativePath)) == [
+                "Active.md",
+                "Archive/Aside.md",
+                "Old/Removed.md",
+            ])
+        #expect(
+            Set(controller.documentRevisions.keys) == [
+                "Active.md",
+                "Archive/Aside.md",
+                "Old/Removed.md",
+            ])
         #expect(controller.vaultSnapshotsByID[fixture.vault.id]?.documents.count == 3)
         #expect(controller.catalog?.notes.count == 3)
         #expect(
@@ -86,13 +89,16 @@ struct WindowWorkspaceProjectionControllerTests {
             runtimeIdentity: fixture.runtimeIdentity,
             context: fixture.context(sourceScope: .library)
         )
-        #expect(openingCommit.snapshotPhase == .opening(
-            availableVault: .paperAnalysis
-        ))
+        #expect(
+            openingCommit.snapshotPhase
+                == .opening(
+                    availableVault: .paperAnalysis
+                ))
         #expect(controller.snapshotPhase == openingCommit.snapshotPhase)
-        #expect(Set(controller.notes.map(\.relativePath)) == [
-            "Active.md", "Archive/Aside.md", "Old/Removed.md",
-        ])
+        #expect(
+            Set(controller.notes.map(\.relativePath)) == [
+                "Active.md", "Archive/Aside.md", "Old/Removed.md",
+            ])
         guard case .opening? = controller.derivedRefreshStatus else {
             Issue.record("The usable-vault projection was presented as complete.")
             return
@@ -130,19 +136,22 @@ struct WindowWorkspaceProjectionControllerTests {
         )
 
         let stale = fixture.snapshot(activeSource: "# Stale\n", searchSequence: 4)
-        let staleEvent = WorkspaceEvent.snapshot(WorkspaceSnapshotEvent(
-            generation: 4,
-            snapshot: stale
-        ))
-        #expect(!controller.canReceive(
-            staleEvent,
-            runtimeIdentity: fixture.runtimeIdentity
-        ))
-        #expect(controller.receive(
-            staleEvent,
-            runtimeIdentity: fixture.runtimeIdentity,
-            context: fixture.context(sourceScope: .library)
-        ) == nil)
+        let staleEvent = WorkspaceEvent.snapshot(
+            WorkspaceSnapshotEvent(
+                generation: 4,
+                snapshot: stale
+            ))
+        #expect(
+            !controller.canReceive(
+                staleEvent,
+                runtimeIdentity: fixture.runtimeIdentity
+            ))
+        #expect(
+            controller.receive(
+                staleEvent,
+                runtimeIdentity: fixture.runtimeIdentity,
+                context: fixture.context(sourceScope: .library)
+            ) == nil)
         #expect(controller.notes.first?.rawContent == "# Generation 5\n")
 
         let foreign = TriptychRuntimeIdentity(
@@ -150,37 +159,41 @@ struct WindowWorkspaceProjectionControllerTests {
             activationID: UUID()
         )
         let newer = fixture.snapshot(activeSource: "# Foreign\n", searchSequence: 6)
-        #expect(!controller.canReceive(
-            .snapshot(WorkspaceSnapshotEvent(generation: 6, snapshot: newer)),
-            runtimeIdentity: foreign
-        ))
-        #expect(controller.receive(
-            .snapshot(WorkspaceSnapshotEvent(generation: 6, snapshot: newer)),
-            runtimeIdentity: foreign,
-            context: fixture.context(sourceScope: .library)
-        ) == nil)
+        #expect(
+            !controller.canReceive(
+                .snapshot(WorkspaceSnapshotEvent(generation: 6, snapshot: newer)),
+                runtimeIdentity: foreign
+            ))
+        #expect(
+            controller.receive(
+                .snapshot(WorkspaceSnapshotEvent(generation: 6, snapshot: newer)),
+                runtimeIdentity: foreign,
+                context: fixture.context(sourceScope: .library)
+            ) == nil)
         #expect(controller.notes.first?.rawContent == "# Generation 5\n")
 
         let configurationOnly = WorkspaceResearchConfigurationInvalidatedEvent(
             generation: 6,
             snapshot: newer
         )
-        #expect(controller.receive(
-            .researchConfigurationInvalidated(configurationOnly),
-            runtimeIdentity: fixture.runtimeIdentity,
-            context: fixture.context(sourceScope: .library)
-        ) == nil)
+        #expect(
+            controller.receive(
+                .researchConfigurationInvalidated(configurationOnly),
+                runtimeIdentity: fixture.runtimeIdentity,
+                context: fixture.context(sourceScope: .library)
+            ) == nil)
         #expect(controller.notes.first?.rawContent == "# Generation 5\n")
 
         let sameGeneration = fixture.snapshot(
             activeSource: "# Same Generation\n",
             searchSequence: 6
         )
-        #expect(controller.receive(
-            .snapshot(WorkspaceSnapshotEvent(generation: 6, snapshot: sameGeneration)),
-            runtimeIdentity: fixture.runtimeIdentity,
-            context: fixture.context(sourceScope: .library)
-        ) == nil)
+        #expect(
+            controller.receive(
+                .snapshot(WorkspaceSnapshotEvent(generation: 6, snapshot: sameGeneration)),
+                runtimeIdentity: fixture.runtimeIdentity,
+                context: fixture.context(sourceScope: .library)
+            ) == nil)
 
         let accepted = fixture.snapshot(activeSource: "# Generation 7\n", searchSequence: 7)
         let commit = controller.receive(
@@ -224,9 +237,10 @@ struct WindowWorkspaceProjectionControllerTests {
         )
 
         #expect(commit?.retainedDeletedDocumentPath == "Active.md")
-        #expect(Set(controller.notes.map(\.relativePath)) == [
-            "Active.md", "Archive/Aside.md", "Old/Removed.md",
-        ])
+        #expect(
+            Set(controller.notes.map(\.relativePath)) == [
+                "Active.md", "Archive/Aside.md", "Old/Removed.md",
+            ])
         #expect(controller.documentRevisions["Active.md"] != nil)
 
         _ = controller.receive(
@@ -238,12 +252,14 @@ struct WindowWorkspaceProjectionControllerTests {
                 retainedDeletedDocumentPath: nil
             )
         )
-        #expect(Set(controller.notes.map(\.relativePath)) == [
-            "Archive/Aside.md", "Old/Removed.md",
-        ])
-        #expect(Set(controller.documentRevisions.keys) == [
-            "Archive/Aside.md", "Old/Removed.md",
-        ])
+        #expect(
+            Set(controller.notes.map(\.relativePath)) == [
+                "Archive/Aside.md", "Old/Removed.md",
+            ])
+        #expect(
+            Set(controller.documentRevisions.keys) == [
+                "Archive/Aside.md", "Old/Removed.md",
+            ])
     }
 
     @Test("A committed note updates cache and Library filter projections atomically")
@@ -263,9 +279,11 @@ struct WindowWorkspaceProjectionControllerTests {
             source: "---\nkeywords: [updated]\ntags: [ignored]\nauthors:\n  - family: Ignored\n---\n# After\n",
             stableID: fixture.activeNoteID,
             metadataFields: [
-                "authors": .array([.object([
-                    "family": .string("Arendt"),
-                ])]),
+                "authors": .array([
+                    .object([
+                        "family": .string("Arendt")
+                    ])
+                ])
             ]
         )
 
@@ -280,12 +298,14 @@ struct WindowWorkspaceProjectionControllerTests {
         #expect(controller.tags == ["updated"])
         #expect(controller.authors == ["Arendt"])
         #expect(controller.documentRevisions["Active.md"] == replacement.fingerprint)
-        #expect(controller.vaultSnapshot(
-            id: fixture.vault.id
-        )?.pathComparisonPolicy == fixture.pathComparisonPolicy)
-        #expect(controller.vaultSnapshotsByID[fixture.vault.id]?.documents.first {
-            $0.id.relativePath == "Active.md"
-        }?.fingerprint == replacement.fingerprint)
+        #expect(
+            controller.vaultSnapshot(
+                id: fixture.vault.id
+            )?.pathComparisonPolicy == fixture.pathComparisonPolicy)
+        #expect(
+            controller.vaultSnapshotsByID[fixture.vault.id]?.documents.first {
+                $0.id.relativePath == "Active.md"
+            }?.fingerprint == replacement.fingerprint)
     }
 
     @Test("Stable identity lookup never falls back to a reused path")
@@ -306,18 +326,20 @@ struct WindowWorkspaceProjectionControllerTests {
             source: "# Original\n",
             stableID: fixture.activeNoteID
         )
-        controller.replaceVaultSnapshots([WorkspaceVaultSnapshot(
-            slot: .paperAnalysis,
-            vault: fixture.vault,
-            pathComparisonPolicy: fixture.pathComparisonPolicy,
-            documents: [replacementAtOldPath, movedOriginal],
-            identityRecovery: NoteIdentityRecoveryState(
-                identities: [:],
-                ambiguities: [],
-                pendingRebindings: [],
-                failures: []
+        controller.replaceVaultSnapshots([
+            WorkspaceVaultSnapshot(
+                slot: .paperAnalysis,
+                vault: fixture.vault,
+                pathComparisonPolicy: fixture.pathComparisonPolicy,
+                documents: [replacementAtOldPath, movedOriginal],
+                identityRecovery: NoteIdentityRecoveryState(
+                    identities: [:],
+                    ambiguities: [],
+                    pendingRebindings: [],
+                    failures: []
+                )
             )
-        )])
+        ])
 
         let resolved = controller.cachedNote(
             vaultID: fixture.vault.id,
@@ -326,15 +348,17 @@ struct WindowWorkspaceProjectionControllerTests {
         )
         #expect(resolved?.id.relativePath == "Archive/Active.md")
         #expect(resolved?.stableIdentity.resolvedID == fixture.activeNoteID)
-        #expect(controller.cachedNote(
-            vaultID: fixture.vault.id,
-            stableNoteID: UUID(),
-            relativePath: "Active.md"
-        ) == nil)
-        #expect(controller.cachedNote(
-            vaultID: fixture.vault.id,
-            relativePath: "Active.md"
-        )?.stableIdentity.resolvedID == replacementID)
+        #expect(
+            controller.cachedNote(
+                vaultID: fixture.vault.id,
+                stableNoteID: UUID(),
+                relativePath: "Active.md"
+            ) == nil)
+        #expect(
+            controller.cachedNote(
+                vaultID: fixture.vault.id,
+                relativePath: "Active.md"
+            )?.stableIdentity.resolvedID == replacementID)
     }
 
     @Test("A committed untitled source is visible while derived state remains explicitly stale")
@@ -367,9 +391,10 @@ struct WindowWorkspaceProjectionControllerTests {
             visibleSourceScope: .library
         )
 
-        let visible = try #require(controller.notes.first {
-            $0.relativePath == "Untitled.md"
-        })
+        let visible = try #require(
+            controller.notes.first {
+                $0.relativePath == "Untitled.md"
+            })
         #expect(visible.rawContent.isEmpty)
         #expect(visible.workspaceSnapshot?.derivedProjectionState == .sourceAhead)
         guard case .stale(let issue)? = controller.derivedRefreshStatus else {
@@ -398,12 +423,14 @@ struct WindowWorkspaceProjectionControllerTests {
 
         #expect(vault?.id == fixture.vault.id)
         #expect(controller.vaultSnapshot(id: fixture.vault.id)?.folders == [folder])
-        #expect(controller.vaultSnapshot(
-            id: fixture.vault.id
-        )?.pathComparisonPolicy == fixture.pathComparisonPolicy)
-        #expect(Set(controller.notes.map(\.relativePath)) == [
-            "Active.md", "Archive/Aside.md", "Old/Removed.md",
-        ])
+        #expect(
+            controller.vaultSnapshot(
+                id: fixture.vault.id
+            )?.pathComparisonPolicy == fixture.pathComparisonPolicy)
+        #expect(
+            Set(controller.notes.map(\.relativePath)) == [
+                "Active.md", "Archive/Aside.md", "Old/Removed.md",
+            ])
         guard case .stale(let issue)? = controller.derivedRefreshStatus else {
             Issue.record("The source-ahead Folder claim was not marked stale.")
             return
@@ -430,10 +457,11 @@ struct WindowWorkspaceProjectionControllerTests {
             runtimeIdentity: fixture.runtimeIdentity,
             context: fixture.context(sourceScope: .library)
         )
-        let source = try #require(controller.cachedNote(
-            vaultID: fixture.vault.id,
-            relativePath: "Source/Active.md"
-        ))
+        let source = try #require(
+            controller.cachedNote(
+                vaultID: fixture.vault.id,
+                relativePath: "Source/Active.md"
+            ))
         let destinationID = VaultQualifiedNoteID(
             vaultID: fixture.vault.id,
             relativePath: "Target/Source/Active.md"
@@ -447,14 +475,16 @@ struct WindowWorkspaceProjectionControllerTests {
             sourceFolder: sourceFolder,
             destinationFolder: try VaultRelativeFolderPath("Target/Source"),
             graphGeneration: 1,
-            noteMoves: [FolderNoteMoveCommit(
-                stableNoteID: fixture.activeNoteID,
-                source: source.id,
-                destination: destinationID,
-                previousRevision: source.fingerprint,
-                committedRevision: destinationDocument.fingerprint,
-                committedRawContent: destinationDocument.rawContent
-            )],
+            noteMoves: [
+                FolderNoteMoveCommit(
+                    stableNoteID: fixture.activeNoteID,
+                    source: source.id,
+                    destination: destinationID,
+                    previousRevision: source.fingerprint,
+                    committedRevision: destinationDocument.fingerprint,
+                    committedRawContent: destinationDocument.rawContent
+                )
+            ],
             rewrites: []
         )
 
@@ -465,22 +495,27 @@ struct WindowWorkspaceProjectionControllerTests {
         )
 
         #expect(projection?.notes.map(\.id).contains(destinationID) == true)
-        #expect(controller.cachedNote(
-            vaultID: fixture.vault.id,
-            relativePath: source.id.relativePath
-        ) == nil)
-        #expect(controller.cachedNote(
-            vaultID: fixture.vault.id,
-            relativePath: destinationID.relativePath
-        )?.derivedProjectionState == .sourceAhead)
-        #expect(Set(controller.notes.map(\.relativePath)) == [
-            destinationID.relativePath, "Archive/Aside.md", "Old/Removed.md",
-        ])
-        #expect(controller.vaultSnapshot(id: fixture.vault.id)?.folders.map(\.rawValue)
-            == ["Target", "Target/Source"])
-        #expect(controller.vaultSnapshot(
-            id: fixture.vault.id
-        )?.pathComparisonPolicy == fixture.pathComparisonPolicy)
+        #expect(
+            controller.cachedNote(
+                vaultID: fixture.vault.id,
+                relativePath: source.id.relativePath
+            ) == nil)
+        #expect(
+            controller.cachedNote(
+                vaultID: fixture.vault.id,
+                relativePath: destinationID.relativePath
+            )?.derivedProjectionState == .sourceAhead)
+        #expect(
+            Set(controller.notes.map(\.relativePath)) == [
+                destinationID.relativePath, "Archive/Aside.md", "Old/Removed.md",
+            ])
+        #expect(
+            controller.vaultSnapshot(id: fixture.vault.id)?.folders.map(\.rawValue)
+                == ["Target", "Target/Source"])
+        #expect(
+            controller.vaultSnapshot(
+                id: fixture.vault.id
+            )?.pathComparisonPolicy == fixture.pathComparisonPolicy)
         guard case .stale(let issue)? = controller.derivedRefreshStatus else {
             Issue.record("The source-ahead Folder move claimed current derived state.")
             return
@@ -525,17 +560,20 @@ struct WindowWorkspaceProjectionControllerTests {
 
         #expect(projection?.note.id == destination)
         #expect(projection?.note.derivedProjectionState == .sourceAhead)
-        #expect(Set(controller.notes.map(\.relativePath)) == [
-            destination.relativePath, "Archive/Aside.md", "Old/Removed.md",
-        ])
-        #expect(controller.cachedNote(
-            vaultID: fixture.vault.id,
-            relativePath: "Active.md"
-        ) == nil)
-        #expect(controller.cachedNote(
-            vaultID: fixture.vault.id,
-            relativePath: destination.relativePath
-        )?.stableIdentity == source.stableIdentity)
+        #expect(
+            Set(controller.notes.map(\.relativePath)) == [
+                destination.relativePath, "Archive/Aside.md", "Old/Removed.md",
+            ])
+        #expect(
+            controller.cachedNote(
+                vaultID: fixture.vault.id,
+                relativePath: "Active.md"
+            ) == nil)
+        #expect(
+            controller.cachedNote(
+                vaultID: fixture.vault.id,
+                relativePath: destination.relativePath
+            )?.stableIdentity == source.stableIdentity)
         guard case .stale(let issue)? = controller.derivedRefreshStatus else {
             Issue.record("The ordinary source-ahead move claimed current derived state.")
             return
@@ -606,10 +644,11 @@ struct WindowWorkspaceProjectionControllerTests {
         #expect(controller.isRefreshingCatalog)
 
         _ = controller.receive(
-            .snapshot(WorkspaceSnapshotEvent(
-                generation: 1,
-                snapshot: eventSnapshot
-            )),
+            .snapshot(
+                WorkspaceSnapshotEvent(
+                    generation: 1,
+                    snapshot: eventSnapshot
+                )),
             runtimeIdentity: fixture.runtimeIdentity,
             context: fixture.context(sourceScope: .library)
         )
@@ -692,22 +731,25 @@ struct WindowWorkspaceProjectionControllerTests {
         ) -> WorkspaceSnapshot {
             var documents: [WorkspaceNoteSnapshot] = []
             if let activeSource {
-                documents.append(note(
-                    path: activePath,
-                    source: activeSource,
-                    stableID: activeNoteID
-                ))
+                documents.append(
+                    note(
+                        path: activePath,
+                        source: activeSource,
+                        stableID: activeNoteID
+                    ))
             }
-            documents.append(note(
-                path: "Archive/Aside.md",
-                source: "# Aside\n",
-                stableID: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!
-            ))
-            documents.append(note(
-                path: "Old/Removed.md",
-                source: "# Removed\n",
-                stableID: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!
-            ))
+            documents.append(
+                note(
+                    path: "Archive/Aside.md",
+                    source: "# Aside\n",
+                    stableID: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!
+                ))
+            documents.append(
+                note(
+                    path: "Old/Removed.md",
+                    source: "# Removed\n",
+                    stableID: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!
+                ))
             let vaultSnapshot = WorkspaceVaultSnapshot(
                 slot: .paperAnalysis,
                 vault: vault,

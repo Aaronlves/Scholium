@@ -1,25 +1,29 @@
 import Foundation
-import Testing
 import ScholiumContracts
+import Testing
+
 @testable import ScholiumCore
 
 @Suite("Workflow schema profiles")
 struct WorkflowSchemaTests {
     @Test("Registered vault role overrides folder spelling")
     func registeredRoleWins() {
-        #expect(WorkflowProfileResolver.resolve(
-            vaultRole: .sourceCorpus
-        ) == .analysis)
-        #expect(WorkflowProfileResolver.resolve(
-            vaultRole: .topicKnowledge
-        ) == .topicMarkdown)
+        #expect(
+            WorkflowProfileResolver.resolve(
+                vaultRole: .sourceCorpus
+            ) == .analysis)
+        #expect(
+            WorkflowProfileResolver.resolve(
+                vaultRole: .topicKnowledge
+            ) == .topicMarkdown)
     }
 
     @Test("Unregistered files remain generic regardless of old metadata or folders")
     func unregisteredFilesRemainGeneric() {
-        #expect(WorkflowProfileResolver.resolve(
-            vaultRole: .other
-        ) == .genericMarkdown)
+        #expect(
+            WorkflowProfileResolver.resolve(
+                vaultRole: .other
+            ) == .genericMarkdown)
     }
 
     @Test("Default optional machine fields exclude authored YAML and machine state")

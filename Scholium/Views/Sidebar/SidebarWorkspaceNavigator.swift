@@ -40,9 +40,10 @@ struct ScholiumTriptychWorkspaceNavigator: NSViewRepresentable {
             control.setEnabled(noteCounts.count(for: slot) != nil, forSegment: index)
             control.setToolTip(control.titles[index], forSegment: index)
         }
-        control.selectedSegment = selectedSlot.flatMap {
-            WorkspaceVaultSlot.allCases.firstIndex(of: $0)
-        } ?? -1
+        control.selectedSegment =
+            selectedSlot.flatMap {
+                WorkspaceVaultSlot.allCases.firstIndex(of: $0)
+            } ?? -1
         control.updateLabels()
     }
 
@@ -56,7 +57,8 @@ struct ScholiumTriptychWorkspaceNavigator: NSViewRepresentable {
         init(select: @escaping (WorkspaceVaultSlot) -> Void) { self.select = select }
         @objc func selectWorkspace(_ sender: NSSegmentedControl) {
             guard WorkspaceVaultSlot.allCases.indices.contains(sender.selectedSegment),
-                  sender.isEnabled(forSegment: sender.selectedSegment) else { return }
+                sender.isEnabled(forSegment: sender.selectedSegment)
+            else { return }
             select(WorkspaceVaultSlot.allCases[sender.selectedSegment])
         }
     }
@@ -76,9 +78,10 @@ final class WorkspaceSegmentedControl: NSSegmentedControl {
     func updateLabels() {
         guard titles.count == segmentCount, segmentCount > 0 else { return }
         let font = font ?? NSFont.systemFont(ofSize: NSFont.systemFontSize)
-        let requiredWidth = titles.map {
-            ($0 as NSString).size(withAttributes: [.font: font]).width + 16
-        }.max()! * CGFloat(segmentCount)
+        let requiredWidth =
+            titles.map {
+                ($0 as NSString).size(withAttributes: [.font: font]).width + 16
+            }.max()! * CGFloat(segmentCount)
         usesSymbols = bounds.width > 0 && bounds.width < requiredWidth
         for index in titles.indices {
             let title = titles[index]

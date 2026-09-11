@@ -1,5 +1,5 @@
-import ScholiumContracts
 import Foundation
+import ScholiumContracts
 
 /// Narrow delivery-neutral capability for researcher-facing Zotero binding,
 /// guarded empty-field fill, and clear. Agent binding writes retain their
@@ -125,7 +125,8 @@ extension WorkspaceHandle {
             expectedServerID: plan.source.serverID
         )
         guard source.item == plan.source.item,
-              source.library.identity == plan.source.library.identity else {
+            source.library.identity == plan.source.library.identity
+        else {
             throw ZoteroMetadataOperationError.zoteroItemChanged
         }
 
@@ -140,7 +141,8 @@ extension WorkspaceHandle {
         }
         let currentBindings = try await services.controlStore.zoteroBindings()
         guard currentBindings.revision == plan.expectedBindingsRevision,
-              currentBindings.binding(for: plan.noteID) == plan.currentBinding else {
+            currentBindings.binding(for: plan.noteID) == plan.currentBinding
+        else {
             throw TriptychControlError.zoteroBindingsRevisionConflict
         }
         let currentMetadata = try await services.controlStore.noteMetadata(
@@ -206,7 +208,8 @@ extension WorkspaceHandle {
             )
             warning = nil
         } catch let error as ScholiumApplicationError
-            where error.durableMutationWasCommitted {
+            where error.durableMutationWasCommitted
+        {
             warning = error.refreshFailureReason ?? error.localizedDescription
         }
         return ZoteroMetadataCommitResult(
@@ -245,7 +248,8 @@ extension WorkspaceHandle {
 
     private func requireAnalysisIdentity(_ noteID: UUID) async throws {
         guard let identity = try await services.controlStore.identityRecord(id: noteID),
-              services.manifest.vaultIDs[.paperAnalysis] == identity.vaultID else {
+            services.manifest.vaultIDs[.paperAnalysis] == identity.vaultID
+        else {
             throw ZoteroUseCaseError.invalidAnalysisReference
         }
     }
@@ -254,7 +258,8 @@ extension WorkspaceHandle {
         _ noteID: UUID
     ) async throws -> (NoteIdentityRecord, NoteDocument) {
         guard let identity = try await services.controlStore.identityRecord(id: noteID),
-              services.manifest.vaultIDs[.paperAnalysis] == identity.vaultID else {
+            services.manifest.vaultIDs[.paperAnalysis] == identity.vaultID
+        else {
             throw ZoteroUseCaseError.invalidAnalysisReference
         }
         let document = try await repository(vaultID: identity.vaultID).load(
@@ -297,7 +302,8 @@ extension WorkspaceHandle {
             )
             return AnalysisZoteroBindingMutationResult(snapshot: snapshot)
         } catch let error as ScholiumApplicationError
-            where error.durableMutationWasCommitted {
+            where error.durableMutationWasCommitted
+        {
             return AnalysisZoteroBindingMutationResult(
                 snapshot: snapshot,
                 derivedRefreshWarning: error.refreshFailureReason

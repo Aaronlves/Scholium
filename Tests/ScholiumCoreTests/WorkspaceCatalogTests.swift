@@ -1,6 +1,7 @@
 import Foundation
-import Testing
 import ScholiumContracts
+import Testing
+
 @testable import ScholiumCore
 
 @Suite("Triptych workspace catalog")
@@ -50,10 +51,11 @@ struct WorkspaceCatalogTests {
     func incompleteCatalogNoteIsRejected() throws {
         let topics = vault("Topics", .topicKnowledge)
         let document = note("Topic.md", "---\ntitle: Topic\n---\nBody")
-        let note = try #require(WorkspaceCatalogBuilder.build(
-            vaults: [topics],
-            documents: [topics.id: [document]]
-        ).notes.first)
+        let note = try #require(
+            WorkspaceCatalogBuilder.build(
+                vaults: [topics],
+                documents: [topics.id: [document]]
+            ).notes.first)
         let encoded = try JSONEncoder().encode(note)
         var object = try #require(
             JSONSerialization.jsonObject(with: encoded) as? [String: Any]
@@ -75,10 +77,12 @@ struct WorkspaceCatalogTests {
             noteID: noteID,
             fields: [
                 "title": .string("What We Owe to Each Other"),
-                "authors": .array([.object([
-                    "family": .string("Scanlon"),
-                    "given": .string("T. M."),
-                ])]),
+                "authors": .array([
+                    .object([
+                        "family": .string("Scanlon"),
+                        "given": .string("T. M."),
+                    ])
+                ]),
                 "publication_date": .string("1998-01-01T00:00:00.000Z"),
             ]
         )
@@ -94,7 +98,7 @@ struct WorkspaceCatalogTests {
                 noteID: NoteMetadataSnapshot(
                     record: record,
                     revision: DocumentFingerprint(data: try record.encodedPortableData())
-                ),
+                )
             ]
         )
         let result = try #require(catalog.notes.first)
@@ -159,12 +163,14 @@ struct WorkspaceCatalogTests {
             documents: [topics.id: [document]]
         )
 
-        #expect(snapshot.attention.contains {
-            $0.kind == .possibleOrphan && $0.note.relativePath == document.relativePath
-        })
-        #expect(snapshot.attention.contains {
-            $0.kind == .brokenConnection && $0.note.relativePath == document.relativePath
-        })
+        #expect(
+            snapshot.attention.contains {
+                $0.kind == .possibleOrphan && $0.note.relativePath == document.relativePath
+            })
+        #expect(
+            snapshot.attention.contains {
+                $0.kind == .brokenConnection && $0.note.relativePath == document.relativePath
+            })
     }
 
     @Test("Ambiguous Connections remain unresolved and source anchored")
@@ -210,8 +216,9 @@ struct WorkspaceCatalogTests {
             message: "Possible orphan."
         )
 
-        #expect(AttentionQueueFilter(query: "line 12")
-            .apply(to: [item, other]) == [item])
+        #expect(
+            AttentionQueueFilter(query: "line 12")
+                .apply(to: [item, other]) == [item])
 
         let now = Date(timeIntervalSince1970: 1_000_000)
         var ledger = AttentionDismissalLedger()
@@ -232,12 +239,14 @@ struct WorkspaceCatalogTests {
             documents: [topics.id: [archived, removed]]
         )
 
-        #expect(snapshot.attention.contains {
-            $0.note.relativePath == archived.relativePath
-        })
-        #expect(snapshot.attention.contains {
-            $0.note.relativePath == removed.relativePath
-        })
+        #expect(
+            snapshot.attention.contains {
+                $0.note.relativePath == archived.relativePath
+            })
+        #expect(
+            snapshot.attention.contains {
+                $0.note.relativePath == removed.relativePath
+            })
     }
 
     @Test("Unresolved stable identity appears as dismissible derived Attention")
@@ -272,7 +281,6 @@ struct WorkspaceCatalogTests {
         #expect(item?.message == "Multiple candidates")
         #expect(item?.severity == .warning)
     }
-
 
     @Test("Only a stable-ID Analysis binding enters the catalog")
     func portableAnalysisZoteroBindingOnly() throws {
@@ -323,16 +331,16 @@ struct WorkspaceCatalogTests {
                 topicID: topicBinding,
             ]
         )
-        let notesByPath = Dictionary(uniqueKeysWithValues: snapshot.notes.map {
-            ($0.reference.relativePath, $0)
-        })
+        let notesByPath = Dictionary(
+            uniqueKeysWithValues: snapshot.notes.map {
+                ($0.reference.relativePath, $0)
+            })
 
         #expect(notesByPath["Canonical.md"]?.zoteroBinding == analysisBinding)
         #expect(notesByPath["Unbound.md"]?.zoteroBinding == nil)
         #expect(notesByPath["Topic.md"]?.zoteroBinding == nil)
         #expect(notesByPath["Work.md"]?.zoteroBinding == nil)
     }
-
 
     private func vault(_ name: String, _ role: VaultRole) -> RegisteredVault {
         RegisteredVault(name: name, role: role, canonicalPath: "/fixtures/\(name)")

@@ -1,7 +1,8 @@
 import Foundation
-import ScholiumContracts
 import SQLite3
+import ScholiumContracts
 import Testing
+
 @testable import ScholiumCore
 
 @Suite("Triptych Search index")
@@ -69,54 +70,64 @@ struct TriptychSearchIndexTests {
             vaultID: fixture.works.id,
             relativePath: "Live Draft.md"
         )
-        let first = try await index.relatedContent(RelatedContentRequest(
-            seed: RelatedContentSeedSnapshot(
-                noteID: workID,
-                source: "# Draft on fittingness\n\nFittingness and Normative Reasons shape value.",
-                focuses: [
-                    RelatedContentSeedFocus(
-                        kind: .selectedPassage,
-                        text: "Particularism changes the dispute."
-                    ),
-                    RelatedContentSeedFocus(
-                        kind: .researchRequest,
-                        text: "Compare Consequentialism with outcomes."
-                    ),
-                ]
-            )
-        ))
+        let first = try await index.relatedContent(
+            RelatedContentRequest(
+                seed: RelatedContentSeedSnapshot(
+                    noteID: workID,
+                    source: "# Draft on fittingness\n\nFittingness and Normative Reasons shape value.",
+                    focuses: [
+                        RelatedContentSeedFocus(
+                            kind: .selectedPassage,
+                            text: "Particularism changes the dispute."
+                        ),
+                        RelatedContentSeedFocus(
+                            kind: .researchRequest,
+                            text: "Compare Consequentialism with outcomes."
+                        ),
+                    ]
+                )
+            ))
         #expect(first.state == .current)
-        #expect(Set(first.identityCandidates.map(\.note.relativePath)) == [
-            "Fittingness.md", "Particularism.md", "Outcome Theory.md",
-        ])
-        #expect((first.identityCandidates + first.lexicalCandidates).allSatisfy {
-            $0.vaultRole == .sourceCorpus || $0.vaultRole == .topicKnowledge
-        })
-        let fittingnessIdentity = try #require(first.identityCandidates.first {
-            $0.note.relativePath == "Fittingness.md"
-        })
+        #expect(
+            Set(first.identityCandidates.map(\.note.relativePath)) == [
+                "Fittingness.md", "Particularism.md", "Outcome Theory.md",
+            ])
+        #expect(
+            (first.identityCandidates + first.lexicalCandidates).allSatisfy {
+                $0.vaultRole == .sourceCorpus || $0.vaultRole == .topicKnowledge
+            })
+        let fittingnessIdentity = try #require(
+            first.identityCandidates.first {
+                $0.note.relativePath == "Fittingness.md"
+            })
         guard case .identityMention(let fittingnessMention) = fittingnessIdentity.reason else {
             Issue.record("Expected an independent title mention reason")
             return
         }
-        #expect(fittingnessMention.mentions.contains {
-            $0.identityKind == .title && $0.seedKind == .sourceNote
-        })
-        let outcomeIdentity = try #require(first.identityCandidates.first {
-            $0.note.relativePath == "Outcome Theory.md"
-        })
+        #expect(
+            fittingnessMention.mentions.contains {
+                $0.identityKind == .title && $0.seedKind == .sourceNote
+            })
+        let outcomeIdentity = try #require(
+            first.identityCandidates.first {
+                $0.note.relativePath == "Outcome Theory.md"
+            })
         guard case .identityMention(let outcomeMention) = outcomeIdentity.reason else {
             Issue.record("Expected an independent alias mention reason")
             return
         }
-        #expect(outcomeMention.mentions.contains {
-            $0.identityKind == .alias && $0.seedKind == .researchRequest
-        })
-        #expect(Array(first.lexicalCandidates.map(\.note.relativePath).prefix(2)) == [
-            "Particularism.md", "Outcome Theory.md",
-        ])
-        guard case .lexicalOverlap(let selectedReason) =
-            first.lexicalCandidates[0].reason else {
+        #expect(
+            outcomeMention.mentions.contains {
+                $0.identityKind == .alias && $0.seedKind == .researchRequest
+            })
+        #expect(
+            Array(first.lexicalCandidates.map(\.note.relativePath).prefix(2)) == [
+                "Particularism.md", "Outcome Theory.md",
+            ])
+        guard
+            case .lexicalOverlap(let selectedReason) =
+                first.lexicalCandidates[0].reason
+        else {
             Issue.record("Expected weighted lexical overlap")
             return
         }
@@ -135,21 +146,24 @@ struct TriptychSearchIndexTests {
             )
         )
         #expect(analysisOnly.state == .current)
-        #expect((analysisOnly.identityCandidates
-            + analysisOnly.lexicalCandidates).allSatisfy {
-                $0.vaultRole == .sourceCorpus
-            })
+        #expect(
+            (analysisOnly.identityCandidates
+                + analysisOnly.lexicalCandidates).allSatisfy {
+                    $0.vaultRole == .sourceCorpus
+                })
 
-        let revised = try await index.relatedContent(RelatedContentRequest(
-            seed: RelatedContentSeedSnapshot(
-                noteID: workID,
-                source: "# Outcome Theory\n\nConsequentialism and outcomes."
-            )
-        ))
+        let revised = try await index.relatedContent(
+            RelatedContentRequest(
+                seed: RelatedContentSeedSnapshot(
+                    noteID: workID,
+                    source: "# Outcome Theory\n\nConsequentialism and outcomes."
+                )
+            ))
         #expect(revised.state == .current)
-        #expect(revised.identityCandidates.map(\.note.relativePath) == [
-            "Outcome Theory.md",
-        ])
+        #expect(
+            revised.identityCandidates.map(\.note.relativePath) == [
+                "Outcome Theory.md"
+            ])
         #expect(revised.seedFingerprint != first.seedFingerprint)
 
         var updatedDocuments = documents
@@ -159,30 +173,33 @@ struct TriptychSearchIndexTests {
             source: "# Revised Analysis\n\nA different subject."
         )
         _ = try await index.synchronize(updatedDocuments)
-        let incremental = try await index.relatedContent(RelatedContentRequest(
-            seed: RelatedContentSeedSnapshot(
-                noteID: workID,
-                source: "# Draft on fittingness\n\nFittingness and normative reasons shape value."
-            )
-        ))
+        let incremental = try await index.relatedContent(
+            RelatedContentRequest(
+                seed: RelatedContentSeedSnapshot(
+                    noteID: workID,
+                    source: "# Draft on fittingness\n\nFittingness and normative reasons shape value."
+                )
+            ))
         let cleanIndex = try TriptychSearchIndex(
             databaseURL: fixture.root.appendingPathComponent("clean-related.sqlite"),
             triptychID: fixture.triptychID,
             vaults: [fixture.analyses, fixture.topics, fixture.works, other]
         )
         _ = try await cleanIndex.synchronize(updatedDocuments)
-        let clean = try await cleanIndex.relatedContent(RelatedContentRequest(
-            seed: RelatedContentSeedSnapshot(
-                noteID: workID,
-                source: "# Draft on fittingness\n\nFittingness and normative reasons shape value."
-            )
-        ))
+        let clean = try await cleanIndex.relatedContent(
+            RelatedContentRequest(
+                seed: RelatedContentSeedSnapshot(
+                    noteID: workID,
+                    source: "# Draft on fittingness\n\nFittingness and normative reasons shape value."
+                )
+            ))
         #expect(incremental.identityCandidates == clean.identityCandidates)
         #expect(incremental.lexicalCandidates == clean.lexicalCandidates)
 
-        let invalid = try await index.relatedContent(RelatedContentRequest(
-            seed: RelatedContentSeedSnapshot(noteID: workID, source: " \n")
-        ))
+        let invalid = try await index.relatedContent(
+            RelatedContentRequest(
+                seed: RelatedContentSeedSnapshot(noteID: workID, source: " \n")
+            ))
         #expect(invalid.state == .invalidSeed)
         #expect(invalid.identityCandidates.isEmpty)
         #expect(invalid.lexicalCandidates.isEmpty)
@@ -227,10 +244,11 @@ struct TriptychSearchIndexTests {
         #expect(triptych.noteResults.contains { $0.vaultRole == .sourceCorpus })
         #expect(triptych.noteResults.contains { $0.vaultRole == .draftProject })
 
-        let vault = try await index.testSearch(fixture.request(
-            "autonomy",
-            scope: .currentVault(fixture.works.id)
-        ))
+        let vault = try await index.testSearch(
+            fixture.request(
+                "autonomy",
+                scope: .currentVault(fixture.works.id)
+            ))
         #expect(vault.explanation.scope == .currentVault)
         #expect(vault.noteResults.map(\.relativePath) == ["Chapter.md"])
         #expect(vault.noteResults.allSatisfy { $0.vaultID == fixture.works.id })
@@ -255,18 +273,19 @@ struct TriptychSearchIndexTests {
             )
         }
         _ = try await index.synchronize(documents)
-        let eligible = Dictionary(uniqueKeysWithValues: documents.dropFirst(2).map {
-            (
-                VaultQualifiedNoteID(
-                    vaultID: $0.vaultID,
-                    relativePath: $0.relativePath
-                ),
-                SearchIndexDocumentEligibility(
-                    fingerprint: $0.document.fingerprint,
-                    resolvedStableNoteID: UUID(uuidString: $0.stableNoteID ?? "")
+        let eligible = Dictionary(
+            uniqueKeysWithValues: documents.dropFirst(2).map {
+                (
+                    VaultQualifiedNoteID(
+                        vaultID: $0.vaultID,
+                        relativePath: $0.relativePath
+                    ),
+                    SearchIndexDocumentEligibility(
+                        fingerprint: $0.document.fingerprint,
+                        resolvedStableNoteID: UUID(uuidString: $0.stableNoteID ?? "")
+                    )
                 )
-            )
-        })
+            })
 
         let limited = try await index.testSearch(
             fixture.request(
@@ -326,17 +345,19 @@ struct TriptychSearchIndexTests {
             ),
         ])
 
-        let exact = try await index.testSearch(fixture.request(
-            "autonomy",
-            scope: .triptych
-        ))
+        let exact = try await index.testSearch(
+            fixture.request(
+                "autonomy",
+                scope: .triptych
+            ))
         #expect(Array(exact.noteResults.map(\.relativePath).prefix(2)) == ["Z-strong.md", "A-weak.md"])
         #expect(exact.noteResults.prefix(2).allSatisfy { $0.rankReason == .lexicalRelevance })
 
-        let fielded = try await index.testSearch(fixture.request(
-            "title:Autonomy",
-            scope: .triptych
-        ))
+        let fielded = try await index.testSearch(
+            fixture.request(
+                "title:Autonomy",
+                scope: .triptych
+            ))
         #expect(fielded.noteResults.isEmpty)
 
         let fallback = try await index.testSearch(fixture.request("Fallback", scope: .triptych))
@@ -353,14 +374,14 @@ struct TriptychSearchIndexTests {
             triptychID: fixture.triptychID
         )
         let source = """
-        ---
-        summary: "Maps the inheritance tension without settling it"
-        custom: keep exactly
-        ---
-        # Neutral title
+            ---
+            summary: "Maps the inheritance tension without settling it"
+            custom: keep exactly
+            ---
+            # Neutral title
 
-        Open this current Note before treating its summary as evidence.
-        """
+            Open this current Note before treating its summary as evidence.
+            """
         _ = try await index.synchronize([
             fixture.item(vault: fixture.topics, path: "Summary.md", source: source),
             fixture.item(
@@ -370,24 +391,28 @@ struct TriptychSearchIndexTests {
             ),
         ])
 
-        let fielded = try await index.testSearch(fixture.request(
-            "summary:inheritance",
-            scope: .triptych
-        ))
+        let fielded = try await index.testSearch(
+            fixture.request(
+                "summary:inheritance",
+                scope: .triptych
+            ))
         let result = try #require(fielded.noteResults.first)
         #expect(fielded.noteResults.map(\.relativePath) == ["Summary.md"])
         #expect(result.matchedField == .summary)
         #expect(result.matchedFields == [.summary])
         let range = try #require(result.sourceRange)
-        #expect((source as NSString).substring(with: NSRange(
-            location: range.utf16LowerBound,
-            length: range.utf16UpperBound - range.utf16LowerBound
-        )) == "inheritance")
+        #expect(
+            (source as NSString).substring(
+                with: NSRange(
+                    location: range.utf16LowerBound,
+                    length: range.utf16UpperBound - range.utf16LowerBound
+                )) == "inheritance")
 
-        let unfielded = try await index.testSearch(fixture.request(
-            "inheritance",
-            scope: .triptych
-        ))
+        let unfielded = try await index.testSearch(
+            fixture.request(
+                "inheritance",
+                scope: .triptych
+            ))
         #expect(Set(unfielded.noteResults.map(\.relativePath)) == ["Summary.md", "Body.md"])
         #expect(unfielded.noteResults.first { $0.relativePath == "Summary.md" }?.matchedField == .summary)
     }
@@ -402,7 +427,7 @@ struct TriptychSearchIndexTests {
         )
         let source = "---\ntitle: Stable Source\n---\nmetadata-refresh-term"
         let first = try await index.synchronize([
-            fixture.item(vault: fixture.analyses, path: "Stable.md", source: source),
+            fixture.item(vault: fixture.analyses, path: "Stable.md", source: source)
         ])
         let replacementVault = RegisteredVault(
             id: fixture.analyses.id,
@@ -411,15 +436,16 @@ struct TriptychSearchIndexTests {
             canonicalPath: fixture.analyses.canonicalPath
         )
         let second = try await index.synchronize([
-            fixture.item(vault: replacementVault, path: "Stable.md", source: source),
+            fixture.item(vault: replacementVault, path: "Stable.md", source: source)
         ])
         #expect(second.disposition == .incrementallyUpdated)
         #expect(second.generation.sequence == first.generation.sequence + 1)
 
-        let response = try await index.testSearch(fixture.request(
-            "metadata-refresh-term",
-            scope: .triptych
-        ))
+        let response = try await index.testSearch(
+            fixture.request(
+                "metadata-refresh-term",
+                scope: .triptych
+            ))
         #expect(response.noteResults.first?.vaultName == "Renamed Topics")
         #expect(response.noteResults.first?.vaultRole == .topicKnowledge)
         #expect(response.noteResults.first?.evidentialLayer == .topicNote)
@@ -466,12 +492,14 @@ struct TriptychSearchIndexTests {
             )
         }
         #expect(try await index.generation() == published.generation)
-        #expect(try await index.testSearch(
-            fixture.request("current-generation-term", scope: .triptych)
-        ).noteResults.map(\.relativePath) == ["Current.md"])
-        #expect(try await index.testSearch(
-            fixture.request("stale-generation-term", scope: .triptych)
-        ).noteResults.isEmpty)
+        #expect(
+            try await index.testSearch(
+                fixture.request("current-generation-term", scope: .triptych)
+            ).noteResults.map(\.relativePath) == ["Current.md"])
+        #expect(
+            try await index.testSearch(
+                fixture.request("stale-generation-term", scope: .triptych)
+            ).noteResults.isEmpty)
 
         let unchanged = try await index.synchronize(
             [current],
@@ -508,19 +536,21 @@ struct TriptychSearchIndexTests {
                 source: "---\ntitle: Autonomy\n---\n> [!orientation] Collision\n> Collision \(number)."
             )
         }
-        documents.append(fixture.item(
-            vault: fixture.works,
-            path: "Autonomy.md",
-            source: "# Intended\n\n> [!state] Intended\n> The intended exact result."
-        ))
+        documents.append(
+            fixture.item(
+                vault: fixture.works,
+                path: "Autonomy.md",
+                source: "# Intended\n\n> [!state] Intended\n> The intended exact result."
+            ))
         _ = try await index.synchronize(documents)
 
-        let response = try await index.testSearch(SearchRequest(
-            query: "autonomy callout:state",
-            presentationScope: .triptych,
-            executionScope: .triptych,
-            limit: 1
-        ))
+        let response = try await index.testSearch(
+            SearchRequest(
+                query: "autonomy callout:state",
+                presentationScope: .triptych,
+                executionScope: .triptych,
+                limit: 1
+            ))
         #expect(response.noteResults.map(\.relativePath) == ["Autonomy.md"])
         #expect(response.noteResults.first?.rankReason == .exactTitle)
     }
@@ -562,12 +592,12 @@ struct TriptychSearchIndexTests {
         )
         _ = try await index.synchronize([])
         let editorSource = """
-        # Current
-        > [!state] In progress
+            # Current
+            > [!state] In progress
 
-        autonomy appears here.
-        A second autonomy appears here.
-        """
+            autonomy appears here.
+            A second autonomy appears here.
+            """
         let snapshot = SearchSourceSnapshot(
             noteID: VaultQualifiedNoteID(
                 vaultID: fixture.topics.id,
@@ -590,19 +620,21 @@ struct TriptychSearchIndexTests {
         #expect(response.noteResults.map(\.sourceLine) == [4, 5])
         #expect(response.freshnessToken.rawValue.contains(snapshot.editorSessionID.uuidString.lowercased()))
 
-        let firstPage = try await index.testSearch(SearchRequest(
-            query: "autonomy callout:state",
-            presentationScope: .thisNote,
-            executionScope: .currentNote(snapshot),
-            limit: 1
-        ))
-        let secondPage = try await index.testSearch(SearchRequest(
-            query: "autonomy callout:state",
-            presentationScope: .thisNote,
-            executionScope: .currentNote(snapshot),
-            limit: 1,
-            offset: 1
-        ))
+        let firstPage = try await index.testSearch(
+            SearchRequest(
+                query: "autonomy callout:state",
+                presentationScope: .thisNote,
+                executionScope: .currentNote(snapshot),
+                limit: 1
+            ))
+        let secondPage = try await index.testSearch(
+            SearchRequest(
+                query: "autonomy callout:state",
+                presentationScope: .thisNote,
+                executionScope: .currentNote(snapshot),
+                limit: 1,
+                offset: 1
+            ))
         #expect(firstPage.noteResults.map(\.sourceLine) == [4])
         #expect(firstPage.hasMore)
         #expect(secondPage.noteResults.map(\.sourceLine) == [5])
@@ -610,18 +642,20 @@ struct TriptychSearchIndexTests {
 
         let indexed = try await index.testSearch(fixture.request("autonomy", scope: .triptych))
         #expect(indexed.noteResults.isEmpty)
-        let filterOnly = try await index.testSearch(SearchRequest(
-            query: "callout:state",
-            presentationScope: .thisNote,
-            executionScope: .currentNote(snapshot),
-            limit: 100
-        ))
+        let filterOnly = try await index.testSearch(
+            SearchRequest(
+                query: "callout:state",
+                presentationScope: .thisNote,
+                executionScope: .currentNote(snapshot),
+                limit: 100
+            ))
         #expect(filterOnly.noteResults.count == 1)
     }
 
     @Test("This Note reports only portable stable identity and ignores forged YAML identity")
     func currentNotePortableIdentity() async throws {
-        let fixture = try Fixture(); defer { fixture.remove() }
+        let fixture = try Fixture()
+        defer { fixture.remove() }
         let index = try TriptychSearchIndex(
             databaseURL: fixture.databaseURL,
             triptychID: fixture.triptychID,
@@ -639,12 +673,13 @@ struct TriptychSearchIndexTests {
             source: "---\nnote_id: forged\n---\nportable identity result",
             editorRevision: 1
         )
-        let response = try await index.testSearch(SearchRequest(
-            query: "portable",
-            presentationScope: .thisNote,
-            executionScope: .currentNote(snapshot),
-            limit: 20
-        ))
+        let response = try await index.testSearch(
+            SearchRequest(
+                query: "portable",
+                presentationScope: .thisNote,
+                executionScope: .currentNote(snapshot),
+                limit: 20
+            ))
         #expect(response.noteResults.map(\.stableNoteID) == [stableID.uuidString.lowercased()])
     }
 
@@ -658,7 +693,8 @@ struct TriptychSearchIndexTests {
             vaults: [fixture.analyses]
         )
         _ = try await index.synchronize([])
-        let source = "autonomy " + String(repeating: "context ", count: 45)
+        let source =
+            "autonomy " + String(repeating: "context ", count: 45)
             + "autonomy article XA认识论BY A认识论B"
         let snapshot = SearchSourceSnapshot(
             noteID: VaultQualifiedNoteID(vaultID: fixture.analyses.id, relativePath: "Current.md"),
@@ -685,10 +721,12 @@ struct TriptychSearchIndexTests {
         let mixed = try await index.testSearch(request("A认识论B"))
         #expect(mixed.noteResults.count == 1)
         let selected = try #require(mixed.noteResults.first?.sourceRange)
-        #expect((source as NSString).substring(with: NSRange(
-            location: selected.utf16LowerBound,
-            length: selected.utf16UpperBound - selected.utf16LowerBound
-        )) == "A认识论B")
+        #expect(
+            (source as NSString).substring(
+                with: NSRange(
+                    location: selected.utf16LowerBound,
+                    length: selected.utf16UpperBound - selected.utf16LowerBound
+                )) == "A认识论B")
     }
 
     @Test("Cancellation preserves the complete last-good generation")
@@ -712,21 +750,27 @@ struct TriptychSearchIndexTests {
                     vault: fixture.works,
                     path: "Replacement.md",
                     source: "replacement-search-term"
-                ),
+                )
             ])
         }
         await #expect(throws: CancellationError.self) {
             _ = try await cancelled.value
         }
         #expect(try await index.generation() == first.generation)
-        #expect(try await index.testSearch(fixture.request(
-            "original-search-term",
-            scope: .triptych
-        )).noteResults.map(\.relativePath) == ["Original.md"])
-        #expect(try await index.testSearch(fixture.request(
-            "replacement-search-term",
-            scope: .triptych
-        )).noteResults.isEmpty)
+        #expect(
+            try await index.testSearch(
+                fixture.request(
+                    "original-search-term",
+                    scope: .triptych
+                )
+            ).noteResults.map(\.relativePath) == ["Original.md"])
+        #expect(
+            try await index.testSearch(
+                fixture.request(
+                    "replacement-search-term",
+                    scope: .triptych
+                )
+            ).noteResults.isEmpty)
     }
 
     @Test("A cancelled first build reports progress and publishes no generation")
@@ -749,8 +793,9 @@ struct TriptychSearchIndexTests {
         var observedProgress = false
         while ContinuousClock.now < deadline {
             if case .building(let progress) = await index.availability(),
-               progress.completed > 0,
-               progress.total == documents.count {
+                progress.completed > 0,
+                progress.total == documents.count
+            {
                 observedProgress = true
                 break
             }
@@ -763,11 +808,12 @@ struct TriptychSearchIndexTests {
         }
         #expect(try await index.generation() == nil)
         #expect(await index.availability() == .unavailable)
-        let response = try await index.testSearch(fixture.request(
-            "first-build-term",
-            scope: .triptych,
-            limit: 1
-        ))
+        let response = try await index.testSearch(
+            fixture.request(
+                "first-build-term",
+                scope: .triptych,
+                limit: 1
+            ))
         #expect(response.noteResults.isEmpty)
         #expect(response.availability == .unavailable)
     }
@@ -809,11 +855,12 @@ struct TriptychSearchIndexTests {
         }
         #expect(observedRefreshing)
 
-        let duringRefresh = try await index.testSearch(fixture.request(
-            "last-good-term",
-            scope: .triptych,
-            limit: 1
-        ))
+        let duringRefresh = try await index.testSearch(
+            fixture.request(
+                "last-good-term",
+                scope: .triptych,
+                limit: 1
+            ))
         #expect(duringRefresh.noteResults.count == 1)
         #expect(duringRefresh.freshnessToken == .triptych(first.generation))
         guard case .refreshing(let readGeneration) = duringRefresh.availability else {
@@ -829,19 +876,23 @@ struct TriptychSearchIndexTests {
             _ = try await refresh.value
         }
         #expect(try await index.generation() == first.generation)
-        #expect(try await index.testSearch(fixture.request(
-            "published-term",
-            scope: .triptych,
-            limit: 1
-        )).noteResults.isEmpty)
+        #expect(
+            try await index.testSearch(
+                fixture.request(
+                    "published-term",
+                    scope: .triptych,
+                    limit: 1
+                )
+            ).noteResults.isEmpty)
 
         let published = try await index.synchronize(replacement)
         #expect(published.generation.sequence == first.generation.sequence + 1)
-        let final = try await index.testSearch(fixture.request(
-            "published-term",
-            scope: .triptych,
-            limit: 1
-        ))
+        let final = try await index.testSearch(
+            fixture.request(
+                "published-term",
+                scope: .triptych,
+                limit: 1
+            ))
         #expect(final.noteResults.count == 1)
         #expect(final.freshnessToken == .triptych(published.generation))
     }
@@ -855,14 +906,15 @@ struct TriptychSearchIndexTests {
             triptychID: fixture.triptychID
         )
         _ = try await index.synchronize([
-            fixture.item(vault: fixture.analyses, path: "A.md", source: "autonomy"),
+            fixture.item(vault: fixture.analyses, path: "A.md", source: "autonomy")
         ])
-        let response = try await index.testSearch(SearchRequest(
-            query: "autonomy",
-            presentationScope: .currentVault,
-            executionScope: .triptych,
-            limit: 20
-        ))
+        let response = try await index.testSearch(
+            SearchRequest(
+                query: "autonomy",
+                presentationScope: .currentVault,
+                executionScope: .triptych,
+                limit: 20
+            ))
         #expect(response.noteResults.isEmpty)
         #expect(response.diagnostics.first?.code == .notApplicable)
     }
@@ -882,14 +934,17 @@ struct TriptychSearchIndexTests {
         )
         #expect(opened.recoveredCorruption)
         let result = try await opened.index.synchronize([
-            fixture.item(vault: fixture.analyses, path: "Preserved.md", source: source),
+            fixture.item(vault: fixture.analyses, path: "Preserved.md", source: source)
         ])
         #expect(result.disposition == .recoveredAndRebuilt)
         #expect(try Data(contentsOf: legacyURL) == legacyBytes)
-        #expect(try await opened.index.testSearch(fixture.request(
-            "recoverable",
-            scope: .triptych
-        )).noteResults.map(\.relativePath) == ["Preserved.md"])
+        #expect(
+            try await opened.index.testSearch(
+                fixture.request(
+                    "recoverable",
+                    scope: .triptych
+                )
+            ).noteResults.map(\.relativePath) == ["Preserved.md"])
         #expect(source == "---\ntitle: Preserved\n---\nrecoverable text")
     }
 
@@ -906,19 +961,20 @@ struct TriptychSearchIndexTests {
                 vault: fixture.analyses,
                 path: "A.md",
                 source: "---\nsecret_yaml_key: do-not-copy\ntitle: Visible\n---\n[Shown](https://secret.example/path)"
-            ),
+            )
         ])
         var database: OpaquePointer?
         #expect(sqlite3_open_v2(fixture.databaseURL.path, &database, SQLITE_OPEN_READONLY, nil) == SQLITE_OK)
         defer { sqlite3_close(database) }
         var statement: OpaquePointer?
-        #expect(sqlite3_prepare_v2(
-            database,
-            "SELECT sql FROM sqlite_master WHERE name IN ('search_documents', 'search_fts', 'search_segments') ORDER BY name;",
-            -1,
-            &statement,
-            nil
-        ) == SQLITE_OK)
+        #expect(
+            sqlite3_prepare_v2(
+                database,
+                "SELECT sql FROM sqlite_master WHERE name IN ('search_documents', 'search_fts', 'search_segments') ORDER BY name;",
+                -1,
+                &statement,
+                nil
+            ) == SQLITE_OK)
         defer { sqlite3_finalize(statement) }
         var schema = ""
         while sqlite3_step(statement) == SQLITE_ROW {

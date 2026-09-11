@@ -20,15 +20,18 @@ extension AgentCollaborationOperations {
             throw AgentCollaborationError.staleRevision(expected: expectedFingerprint, current: currentSource.fingerprint)
         }
         guard currentSource.note == source.note, metadata == currentMetadata,
-              bindings == currentBindings,
-              attachments.noteFingerprint == expectedFingerprint,
-              currentAttachments.noteFingerprint == expectedFingerprint,
-              attachments.attachments == currentAttachments.attachments else {
-            throw ScholiumMCPFailure(code: .conflict,
+            bindings == currentBindings,
+            attachments.noteFingerprint == expectedFingerprint,
+            currentAttachments.noteFingerprint == expectedFingerprint,
+            attachments.attachments == currentAttachments.attachments
+        else {
+            throw ScholiumMCPFailure(
+                code: .conflict,
                 message: "This Note's saved details or material relationships changed while being read.",
                 recovery: "Read the Note and its context again before using those relationships.")
         }
-        return .init(note: source.note, metadata: metadata, zoteroBinding: bindings?.binding(for: noteID),
-                     zoteroBindingsRevision: bindings?.revision, attachments: attachments)
+        return .init(
+            note: source.note, metadata: metadata, zoteroBinding: bindings?.binding(for: noteID),
+            zoteroBindingsRevision: bindings?.revision, attachments: attachments)
     }
 }

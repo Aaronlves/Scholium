@@ -31,14 +31,16 @@ enum MetadataSettingsCandidateBuilder {
         let catalog = NoteMetadataCatalog(settings: settings)
         var candidates = aboutConfigurations
         for slot in WorkspaceVaultSlot.allCases {
-            var configuration = candidates[slot]
+            var configuration =
+                candidates[slot]
                 ?? TriptychSettings.defaultAbout[slot]
                 ?? VaultAboutConfiguration()
-            let profile: SchemaProfileID = switch slot {
-            case .paperAnalysis: .analysis
-            case .topicKnowledge: .topicMarkdown
-            case .output: .draftProject
-            }
+            let profile: SchemaProfileID =
+                switch slot {
+                case .paperAnalysis: .analysis
+                case .topicKnowledge: .topicMarkdown
+                case .output: .draftProject
+                }
             configuration.visibleFields.removeAll {
                 !AboutProfileCatalog.allowsOptionalField(
                     $0,
@@ -105,11 +107,13 @@ enum AboutProfileCatalog {
         profile: SchemaProfileID,
         catalog: NoteMetadataCatalog
     ) -> Bool {
-        guard PropertyPresentationCatalog.presentation(
+        guard
+            PropertyPresentationCatalog.presentation(
                 for: key,
                 in: profile,
                 catalog: catalog
-              ) != nil else {
+            ) != nil
+        else {
             return false
         }
         return catalog.activeContracts(for: profile).contains {
@@ -124,23 +128,26 @@ enum AboutProfileCatalog {
         profile: SchemaProfileID,
         catalog: NoteMetadataCatalog
     ) -> Bool {
-        guard PropertyPresentationCatalog.presentation(
+        guard
+            PropertyPresentationCatalog.presentation(
                 for: key,
                 in: profile,
                 catalog: catalog
-              ) != nil else {
+            ) != nil
+        else {
             return false
         }
         return catalog.contract(for: key, profile: profile) != nil
     }
 
     private static func defaultVisibleFields(for profile: SchemaProfileID) -> [String] {
-        let slot: WorkspaceVaultSlot? = switch profile {
-        case .analysis: .paperAnalysis
-        case .topicMarkdown: .topicKnowledge
-        case .draftProject: .output
-        case .genericMarkdown: nil
-        }
+        let slot: WorkspaceVaultSlot? =
+            switch profile {
+            case .analysis: .paperAnalysis
+            case .topicMarkdown: .topicKnowledge
+            case .draftProject: .output
+            case .genericMarkdown: nil
+            }
         return slot.flatMap { TriptychSettings.defaultAbout[$0]?.visibleFields } ?? []
     }
 }

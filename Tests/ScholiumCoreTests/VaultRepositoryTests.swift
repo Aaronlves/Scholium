@@ -1,7 +1,8 @@
 import Darwin
 import Foundation
-import Testing
 import ScholiumContracts
+import Testing
+
 @testable import ScholiumCore
 
 @Suite("Transactional vault repository")
@@ -17,7 +18,8 @@ struct VaultRepositoryTests {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
         let fixtureID = String(UUID().uuidString.prefix(12)).lowercased()
-        let base = repositoryRoot
+        let base =
+            repositoryRoot
             .appendingPathComponent(".build/vt", isDirectory: true)
             .appendingPathComponent(fixtureID, isDirectory: true)
         let root = base.appendingPathComponent("vault", isDirectory: true)
@@ -174,8 +176,9 @@ struct VaultRepositoryTests {
             expectedRevision: loaded.fingerprint
         )
 
-        #expect(saved.document.rawContent
-            == "---\ntags: [\n---\nReplacement body\n")
+        #expect(
+            saved.document.rawContent
+                == "---\ntags: [\n---\nReplacement body\n")
         #expect(saved.document.rawFrontmatter == loaded.rawFrontmatter)
         #expect(saved.document.frontmatterState == .malformed)
     }
@@ -427,9 +430,11 @@ struct VaultRepositoryTests {
             identity: identity,
             applicationSupportURL: f.support
         )
-        let source = Data([0xEF, 0xBB, 0xBF]) + Data(
-            "---\r\nunknown: [source material\r\n---\r\n# Imported\r\n".utf8
-        )
+        let source =
+            Data([0xEF, 0xBB, 0xBF])
+            + Data(
+                "---\r\nunknown: [source material\r\n---\r\n# Imported\r\n".utf8
+            )
 
         let first = try await repository.importMarkdown(
             preferredFilename: "Imported.md",
@@ -444,9 +449,10 @@ struct VaultRepositoryTests {
         #expect(second.relativePath == "Imported 2.md")
         #expect(try Data(contentsOf: f.root.appendingPathComponent(first.relativePath)) == source)
         #expect(try Data(contentsOf: f.root.appendingPathComponent(second.relativePath)) == source)
-        #expect(!FileManager.default.fileExists(
-            atPath: f.root.appendingPathComponent(".scholium/unclassified").path
-        ))
+        #expect(
+            !FileManager.default.fileExists(
+                atPath: f.root.appendingPathComponent(".scholium/unclassified").path
+            ))
     }
 
     @Test("Import rejects non-Markdown and non-UTF-8 source material")
@@ -732,11 +738,13 @@ struct VaultRepositoryTests {
             )
         }
 
-        #expect(FileManager.default.fileExists(
-            atPath: originalFolder.appendingPathComponent("external.txt").path
-        ))
-        #expect(try Data(contentsOf: displacedOriginal.appendingPathComponent("note.md"))
-            == Data(original.rawContent.utf8))
+        #expect(
+            FileManager.default.fileExists(
+                atPath: originalFolder.appendingPathComponent("external.txt").path
+            ))
+        #expect(
+            try Data(contentsOf: displacedOriginal.appendingPathComponent("note.md"))
+                == Data(original.rawContent.utf8))
     }
 
     @Test("A bound Note resumes native Trash after process interruption")

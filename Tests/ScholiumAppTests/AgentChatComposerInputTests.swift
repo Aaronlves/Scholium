@@ -1,6 +1,7 @@
 import AppKit
 import ScholiumContracts
 import Testing
+
 @testable import ScholiumApp
 
 @Suite("Native chat input") @MainActor
@@ -12,7 +13,8 @@ struct AgentChatComposerInputTests {
         host.editor.string = String(repeating: "中文 selection 😀 ", count: 8)
         host.layoutSubtreeIfNeeded()
         host.editor.setSelectedRange(NSRange(location: 3, length: 9))
-        let frame = host.editor.frame, container = host.editor.textContainer?.containerSize
+        let frame = host.editor.frame
+        let container = host.editor.textContainer?.containerSize
         let selection = host.editor.selectedRange()
         let wide = host.fittingHeight(width: 10_000)
         #expect(host.editor.frame == frame && host.editor.textContainer?.containerSize == container)
@@ -41,10 +43,13 @@ struct AgentChatComposerInputTests {
     func completionReplacement() throws {
         let host = AgentChatComposerHost()
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 300, height: 80), styleMask: [.titled], backing: .buffered, defer: false)
-        window.isReleasedWhenClosed = false; window.contentView = host
+        window.isReleasedWhenClosed = false
+        window.contentView = host
         defer { window.close() }
-        let id = UUID(), completion = AgentChatComposerCompletion()
-        host.conversationID = id; host.editor.completionConversationID = id
+        let id = UUID()
+        let completion = AgentChatComposerCompletion()
+        host.conversationID = id
+        host.editor.completionConversationID = id
         host.completion = completion
         host.editor.string = "中文 😀 @论证 后文"
         host.editor.setSelectedRange(NSRange(location: 9, length: 0))
@@ -77,8 +82,10 @@ struct AgentChatComposerInputTests {
     }
 
     private func event(_ modifiers: NSEvent.ModifierFlags = []) throws -> NSEvent {
-        try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: modifiers,
-            timestamp: 0, windowNumber: 0, context: nil, characters: "\r", charactersIgnoringModifiers: "\r", isARepeat: false, keyCode: 36))
+        try #require(
+            NSEvent.keyEvent(
+                with: .keyDown, location: .zero, modifierFlags: modifiers,
+                timestamp: 0, windowNumber: 0, context: nil, characters: "\r", charactersIgnoringModifiers: "\r", isARepeat: false, keyCode: 36))
     }
 
     @Test("Image paste captures material without editing text; file references outrank icon data")
@@ -97,14 +104,20 @@ struct AgentChatComposerInputTests {
         #expect(host.editor.captureMaterials(from: pasteboard, origin: .clipboard))
         #expect(host.editor.string == "Keep 中文 😀" && host.editor.selectedRange() == selection)
         pasteboard.clearContents()
-        guard case .image(let captured) = received.first else { Issue.record("Clipboard image was not captured"); return }
+        guard case .image(let captured) = received.first else {
+            Issue.record("Clipboard image was not captured")
+            return
+        }
         #expect(captured == Data([1, 2, 3]))
         let file = NSPasteboardItem()
         file.setString("file:///fixture/paper.pdf", forType: .fileURL)
         file.setData(Data([4, 5, 6]), forType: .png)
         #expect(pasteboard.writeObjects([file]))
         #expect(host.editor.captureMaterials(from: pasteboard, origin: .clipboard))
-        guard case .file(let url) = received.first else { Issue.record("File icon replaced the file reference"); return }
+        guard case .file(let url) = received.first else {
+            Issue.record("File icon replaced the file reference")
+            return
+        }
         #expect(url.path == "/fixture/paper.pdf" && received.count == 1)
         pasteboard.clearContents()
         #expect(pasteboard.setString("ordinary paste", forType: .string))
@@ -132,13 +145,17 @@ struct AgentChatComposerInputTests {
         host.editor.string = "Keep 中文"
         host.editor.insertText(" 😀", replacementRange: NSRange(location: 7, length: 0))
         host.editor.setSelectedRange(NSRange(location: 5, length: 2))
-        let text = host.editor.string, selection = host.editor.selectedRange()
+        let text = host.editor.string
+        let selection = host.editor.selectedRange()
         let undo = try #require(host.editor.undoManager)
         let undoName = undo.undoActionName
         #expect(undo.canUndo)
         var received: [AgentChatTransferredMaterial] = []
         var origins: [AgentChatLocalMaterial.CaptureOrigin] = []
-        host.editor.onTransferMaterials = { values, origin in received = values; origins.append(origin) }
+        host.editor.onTransferMaterials = { values, origin in
+            received = values
+            origins.append(origin)
+        }
         host.editor.isEditable = false
         host.editor.isEditable = true
         #expect(host.editor.registeredDraggedTypes.contains(.png))
@@ -154,7 +171,10 @@ struct AgentChatComposerInputTests {
         undo.undo()
         #expect(host.editor.string == "Keep 中文")
         pasteboard.clearContents()
-        guard case .image(let bytes) = received.first else { Issue.record("Dropped image was not captured"); return }
+        guard case .image(let bytes) = received.first else {
+            Issue.record("Dropped image was not captured")
+            return
+        }
         #expect(bytes == Data([1, 2, 3]))
         #expect(pasteboard.setData(Data([4]), forType: .png))
         drag.draggingSourceOperationMask = .move
@@ -241,6 +261,8 @@ private final class DragImageProvider: NSObject, NSPasteboardItemDataProvider {
     func slideDraggedImage(to screenPoint: NSPoint) {}
     nonisolated override func namesOfPromisedFilesDropped(atDestination dropDestination: URL) -> [String]? { nil }
     func resetSpringLoading() {}
-    func enumerateDraggingItems(options: NSDraggingItemEnumerationOptions, for view: NSView?, classes classArray: [AnyClass],
-        searchOptions: [NSPasteboard.ReadingOptionKey: Any], using block: (NSDraggingItem, Int, UnsafeMutablePointer<ObjCBool>) -> Void) {}
+    func enumerateDraggingItems(
+        options: NSDraggingItemEnumerationOptions, for view: NSView?, classes classArray: [AnyClass],
+        searchOptions: [NSPasteboard.ReadingOptionKey: Any], using block: (NSDraggingItem, Int, UnsafeMutablePointer<ObjCBool>) -> Void
+    ) {}
 }

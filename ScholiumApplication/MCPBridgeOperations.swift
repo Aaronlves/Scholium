@@ -13,11 +13,13 @@ public actor MCPBridgeOperations {
     }
 
     public func call(_ request: ScholiumMCPBridgeRequest) throws -> MCPJSONValue {
-        let response = try client.send(ScholiumAppBridgeRequest(
-            mcpRequest: request
-        ))
+        let response = try client.send(
+            ScholiumAppBridgeRequest(
+                mcpRequest: request
+            ))
         guard let bridgeResponse = response.mcpResponse,
-              bridgeResponse.requestID == request.requestID else {
+            bridgeResponse.requestID == request.requestID
+        else {
             throw ScholiumMCPFailure(
                 code: .internalError,
                 message: "The running App returned an invalid MCP response.",

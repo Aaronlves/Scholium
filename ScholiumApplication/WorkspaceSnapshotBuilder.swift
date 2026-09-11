@@ -1,5 +1,5 @@
-import ScholiumContracts
 import Foundation
+import ScholiumContracts
 import ScholiumCore
 
 struct WorkspaceRefreshMeasurement: Sendable {
@@ -106,19 +106,22 @@ enum WorkspaceSnapshotBuilder {
                 .noteMetadataRecords(catalog: metadataCatalog).map { ($0.record.noteID, $0) }
         )
         guard mode == .live,
-              let vault = assignment.vault(for: slot),
-              let repository = dependencies.repositories[vault.id],
-              let sourceCatalog = dependencies.sourceCatalogs[vault.id] else {
+            let vault = assignment.vault(for: slot),
+            let repository = dependencies.repositories[vault.id],
+            let sourceCatalog = dependencies.sourceCatalogs[vault.id]
+        else {
             throw ScholiumApplicationError.incompleteTriptych(assignment.id)
         }
 
         let rootURL = await repository.vaultURL
         let pathComparisonPolicy = await repository.pathComparisonPolicy()
         var isDirectory: ObjCBool = false
-        guard FileManager.default.fileExists(
-            atPath: rootURL.path,
-            isDirectory: &isDirectory
-        ), isDirectory.boolValue else {
+        guard
+            FileManager.default.fileExists(
+                atPath: rootURL.path,
+                isDirectory: &isDirectory
+            ), isDirectory.boolValue
+        else {
             throw WorkspaceFileEventWatcherError.rootUnavailable(rootURL.path)
         }
 
@@ -220,9 +223,11 @@ enum WorkspaceSnapshotBuilder {
             vault: vault,
             pathComparisonPolicy: pathComparisonPolicy,
             documents: try allDocuments.map { document in
-                guard let fileMetadata = sourceSnapshot.fileMetadata[
-                    document.relativePath
-                ] else {
+                guard
+                    let fileMetadata = sourceSnapshot.fileMetadata[
+                        document.relativePath
+                    ]
+                else {
                     throw ScholiumApplicationError.incompleteTriptych(assignment.id)
                 }
                 return WorkspaceNoteSnapshot(
@@ -318,7 +323,8 @@ enum WorkspaceSnapshotBuilder {
         let noteMetadataByID = Dictionary(
             uniqueKeysWithValues: loadedMetadata.map { ($0.record.noteID, $0) }
         )
-        let metadataRecordsRead = preloadedNoteMetadataByID == nil
+        let metadataRecordsRead =
+            preloadedNoteMetadataByID == nil
             ? loadedMetadata.count
             : 0
 
@@ -332,27 +338,31 @@ enum WorkspaceSnapshotBuilder {
         for (order, slot) in WorkspaceVaultSlot.allCases.enumerated() {
             try Task.checkCancellation()
             guard let vault = assignment.vault(for: slot),
-                  let repository = dependencies.repositories[vault.id],
-                  let sourceCatalog = dependencies.sourceCatalogs[vault.id] else {
+                let repository = dependencies.repositories[vault.id],
+                let sourceCatalog = dependencies.sourceCatalogs[vault.id]
+            else {
                 throw ScholiumApplicationError.incompleteTriptych(assignment.id)
             }
             let rootURL = await repository.vaultURL
             let pathComparisonPolicy = await repository.pathComparisonPolicy()
             var isDirectory: ObjCBool = false
-            guard FileManager.default.fileExists(
-                atPath: rootURL.path,
-                isDirectory: &isDirectory
-            ), isDirectory.boolValue else {
+            guard
+                FileManager.default.fileExists(
+                    atPath: rootURL.path,
+                    isDirectory: &isDirectory
+                ), isDirectory.boolValue
+            else {
                 throw WorkspaceFileEventWatcherError.rootUnavailable(rootURL.path)
             }
-            sourceInputs.append(SourceInput(
-                order: order,
-                slot: slot,
-                vault: vault,
-                pathComparisonPolicy: pathComparisonPolicy,
-                repository: repository,
-                catalog: sourceCatalog
-            ))
+            sourceInputs.append(
+                SourceInput(
+                    order: order,
+                    slot: slot,
+                    vault: vault,
+                    pathComparisonPolicy: pathComparisonPolicy,
+                    repository: repository,
+                    catalog: sourceCatalog
+                ))
         }
 
         let loadedSources = try await withThrowingTaskGroup(
@@ -447,13 +457,14 @@ enum WorkspaceSnapshotBuilder {
             for document in activeDocuments {
                 let metadata = identityStates[document.relativePath]?.resolvedID
                     .flatMap { noteMetadataByID[$0] }
-                linkCatalog.append(LinkCatalogNote(
-                    vaultID: vault.id,
-                    document: document,
-                    profile: WorkflowProfileResolver.resolve(vaultRole: vault.role),
-                    metadata: metadata,
-                    semantic: semantics[document.relativePath]
-                ))
+                linkCatalog.append(
+                    LinkCatalogNote(
+                        vaultID: vault.id,
+                        document: document,
+                        profile: WorkflowProfileResolver.resolve(vaultRole: vault.role),
+                        metadata: metadata,
+                        semantic: semantics[document.relativePath]
+                    ))
             }
             loadedVaults.append(
                 LoadedVault(
@@ -509,9 +520,10 @@ enum WorkspaceSnapshotBuilder {
             graphBuildIssue = "Link graph: \(error.localizedDescription)"
         }
         let graphDuration = graphStart.duration(to: clock.now)
-        let brokenNoteIDs = Set((graph?.diagnostics ?? []).compactMap { diagnostic in
-            diagnostic.code == .broken ? diagnostic.source : nil
-        })
+        let brokenNoteIDs = Set(
+            (graph?.diagnostics ?? []).compactMap { diagnostic in
+                diagnostic.code == .broken ? diagnostic.source : nil
+            })
 
         let researchStateStart = clock.now
         let settlementListing = try await dependencies.settlementStore.listing()
@@ -522,39 +534,41 @@ enum WorkspaceSnapshotBuilder {
 
         for loaded in loadedVaults {
             try Task.checkCancellation()
-            searchDocuments.append(contentsOf: try loaded.activeDocuments.map { document in
-                let id = VaultQualifiedNoteID(
-                    vaultID: loaded.vault.id,
-                    relativePath: document.relativePath
-                )
-                guard let semantic = loaded.semantics[document.relativePath],
-                      let cachedSourceProjection = loaded.searchProjections[
-                          document.relativePath
-                      ] else {
-                    throw ScholiumApplicationError.incompleteTriptych(
-                        assignment.id
+            searchDocuments.append(
+                contentsOf: try loaded.activeDocuments.map { document in
+                    let id = VaultQualifiedNoteID(
+                        vaultID: loaded.vault.id,
+                        relativePath: document.relativePath
                     )
-                }
-                let stableNoteID: String?
-                if case .resolved(let noteID) = loaded.identityStates[document.relativePath] {
-                    stableNoteID = noteID.uuidString.lowercased()
-                } else {
-                    stableNoteID = nil
-                }
-                return SearchIndexDocument(
-                    vaultID: loaded.vault.id,
-                    vaultName: loaded.vault.name,
-                    vaultRole: loaded.vault.role,
-                    document: document,
-                    stableNoteID: stableNoteID,
-                    metadata: stableNoteID.flatMap(UUID.init(uuidString:))
-                        .flatMap { noteMetadataByID[$0] },
-                    metadataCatalog: metadataCatalog,
-                    semantic: semantic,
-                    cachedSourceProjection: cachedSourceProjection,
-                    hasBrokenLink: brokenNoteIDs.contains(id)
-                )
-            })
+                    guard let semantic = loaded.semantics[document.relativePath],
+                        let cachedSourceProjection = loaded.searchProjections[
+                            document.relativePath
+                        ]
+                    else {
+                        throw ScholiumApplicationError.incompleteTriptych(
+                            assignment.id
+                        )
+                    }
+                    let stableNoteID: String?
+                    if case .resolved(let noteID) = loaded.identityStates[document.relativePath] {
+                        stableNoteID = noteID.uuidString.lowercased()
+                    } else {
+                        stableNoteID = nil
+                    }
+                    return SearchIndexDocument(
+                        vaultID: loaded.vault.id,
+                        vaultName: loaded.vault.name,
+                        vaultRole: loaded.vault.role,
+                        document: document,
+                        stableNoteID: stableNoteID,
+                        metadata: stableNoteID.flatMap(UUID.init(uuidString:))
+                            .flatMap { noteMetadataByID[$0] },
+                        metadataCatalog: metadataCatalog,
+                        semantic: semantic,
+                        cachedSourceProjection: cachedSourceProjection,
+                        hasBrokenLink: brokenNoteIDs.contains(id)
+                    )
+                })
         }
         let searchDocumentProjectionDuration = searchDocumentProjectionStart.duration(
             to: clock.now
@@ -607,9 +621,10 @@ enum WorkspaceSnapshotBuilder {
         var healthIssues: [String] = []
         healthIssues.append(contentsOf: loadedVaults.flatMap(\.identityHealthIssues))
         if let graphBuildIssue { healthIssues.append(graphBuildIssue) }
-        healthIssues.append(contentsOf: settlementListing.issues.map {
-            "Settlement \($0.fileName): \($0.reason)"
-        })
+        healthIssues.append(
+            contentsOf: settlementListing.issues.map {
+                "Settlement \($0.fileName): \($0.reason)"
+            })
         let recoveryRecords: [TriptychMutationRecoveryRecord]
         do {
             recoveryRecords = try await dependencies.transactionRecoveryStore.pending()
@@ -621,7 +636,8 @@ enum WorkspaceSnapshotBuilder {
         }
         for loaded in loadedVaults {
             if let repository = dependencies.repositories[loaded.vault.id],
-               let issue = await repository.recoveryLedgerHealthDiagnostic() {
+                let issue = await repository.recoveryLedgerHealthDiagnostic()
+            {
                 healthIssues.append("\(loaded.vault.name): \(issue)")
             }
         }
@@ -636,9 +652,11 @@ enum WorkspaceSnapshotBuilder {
                         vaultID: loaded.vault.id,
                         relativePath: document.relativePath
                     )
-                    guard let fileMetadata = loaded.fileMetadata[
-                        document.relativePath
-                    ] else {
+                    guard
+                        let fileMetadata = loaded.fileMetadata[
+                            document.relativePath
+                        ]
+                    else {
                         throw ScholiumApplicationError.incompleteTriptych(
                             assignment.id
                         )
@@ -751,11 +769,13 @@ enum WorkspaceSnapshotBuilder {
         )
         return catalog.notes.compactMap { note -> WorkspaceSettlementRequirement? in
             guard let stableNoteID = note.reference.stableNoteID,
-                  let noteID = UUID(uuidString: stableNoteID) else { return nil }
+                let noteID = UUID(uuidString: stableNoteID)
+            else { return nil }
             let settlement = settlementByNoteID[noteID]
             let reason: WorkspaceSettlementRequirementReason
             if let settlement,
-               settlement.fingerprint != note.fingerprint {
+                settlement.fingerprint != note.fingerprint
+            {
                 reason = .changedSinceSettlement
             } else {
                 return nil

@@ -44,9 +44,11 @@ public enum VaultRepositoryError: LocalizedError, Sendable {
         case .writeFailed(let reason):
             return "Scholium could not save the note. The source remains unchanged and you can retry. \(reason)"
         case .commitUncertain(let reason):
-            return "Scholium could not prove which bytes are canonical after the commit. It preserved recovery evidence and did not report the note as saved. \(reason)"
+            return
+                "Scholium could not prove which bytes are canonical after the commit. It preserved recovery evidence and did not report the note as saved. \(reason)"
         case .recoveryRequired(let recovery):
-            return "The note save remains unresolved. Recovery transaction \(recovery.id.transactionID.uuidString) requires exact source reconciliation before the write can be finalized."
+            return
+                "The note save remains unresolved. Recovery transaction \(recovery.id.transactionID.uuidString) requires exact source reconciliation before the write can be finalized."
         case .atomicCommitUnsupported(let reason):
             return "This volume cannot provide the coordinated atomic commit required for this operation. The note remains open and unchanged. \(reason)"
         }

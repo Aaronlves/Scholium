@@ -20,8 +20,10 @@ enum NativeSettingsSourceScope {
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         for path in paths {
             let source = try String(contentsOf: root.appendingPathComponent(path), encoding: .utf8)
-            for productStyle in ["ScholiumTypography", ".scholiumForeground(",
-                                 ".scholiumButtonStyle(", ".scholiumMenuStyle("] {
+            for productStyle in [
+                "ScholiumTypography", ".scholiumForeground(",
+                ".scholiumButtonStyle(", ".scholiumMenuStyle(",
+            ] {
                 #expect(!source.contains(productStyle), "\(path) overrides native Settings presentation")
             }
         }

@@ -86,11 +86,12 @@ public enum IncomingLinkRewriter {
             )
         }
         guard graph.contractVersion == GraphSnapshot.currentContractVersion,
-              noteMoves.allSatisfy({
-                  $0.source.vaultID == vaultID
+            noteMoves.allSatisfy({
+                $0.source.vaultID == vaultID
                     && $0.destination.vaultID == vaultID
                     && $0.source != $0.destination
-              }) else { return empty() }
+            })
+        else { return empty() }
 
         var destinations: [VaultQualifiedNoteID: VaultQualifiedNoteID] = [:]
         for move in noteMoves {
@@ -111,18 +112,20 @@ public enum IncomingLinkRewriter {
 
         let suppliedKeys: Set<EligibleOccurrenceKey> = Set(
             graph.outgoing.values.flatMap { $0 }.compactMap { edge in
-            guard case .resolved(let target) = edge.occurrence.resolution,
-                  destinations[target] != nil else { return nil }
-            return EligibleOccurrenceKey(
-                source: edge.source,
-                syntax: edge.occurrence.syntax,
-                target: edge.occurrence.target,
-                span: edge.occurrence.linkSpan
-            )
-        })
+                guard case .resolved(let target) = edge.occurrence.resolution,
+                    destinations[target] != nil
+                else { return nil }
+                return EligibleOccurrenceKey(
+                    source: edge.source,
+                    syntax: edge.occurrence.syntax,
+                    target: edge.occurrence.target,
+                    span: edge.occurrence.linkSpan
+                )
+            })
         let incoming = currentGraph.outgoing.values.flatMap { $0 }.filter { edge in
             guard case .resolved(let target) = edge.occurrence.resolution,
-                  destinations[target] != nil else { return false }
+                destinations[target] != nil
+            else { return false }
             let key = EligibleOccurrenceKey(
                 source: edge.source,
                 syntax: edge.occurrence.syntax,
@@ -150,8 +153,9 @@ public enum IncomingLinkRewriter {
         var replacementsBySource: [VaultQualifiedNoteID: [Replacement]] = [:]
         for edge in incoming {
             guard case .resolved(let currentTarget) = edge.occurrence.resolution,
-                  let destination = destinations[currentTarget],
-                  let document = documents[edge.source] else { continue }
+                let destination = destinations[currentTarget],
+                let document = documents[edge.source]
+            else { continue }
             let futureSource = destinations[edge.source] ?? edge.source
             let resolution = futureResolutionIndex.resolve(
                 destination.relativePath,
@@ -159,24 +163,28 @@ public enum IncomingLinkRewriter {
                 scope: .workspace
             )
             guard resolution == .resolved(destination) else {
-                blocked.append(IncomingLinkRewriteBlock(
-                    source: edge.source,
-                    sourceFingerprint: document.fingerprint,
-                    span: edge.occurrence.linkSpan,
-                    reason: "The destination path would resolve this incoming link to another note or remain ambiguous."
-                ))
+                blocked.append(
+                    IncomingLinkRewriteBlock(
+                        source: edge.source,
+                        sourceFingerprint: document.fingerprint,
+                        span: edge.occurrence.linkSpan,
+                        reason: "The destination path would resolve this incoming link to another note or remain ambiguous."
+                    ))
                 continue
             }
-            guard let planned = replacement(
-                for: edge.occurrence,
-                in: document.rawContent,
-                newRelativePath: destination.relativePath
-            ) else { continue }
+            guard
+                let planned = replacement(
+                    for: edge.occurrence,
+                    in: document.rawContent,
+                    newRelativePath: destination.relativePath
+                )
+            else { continue }
             replacementsBySource[edge.source, default: []].append(planned)
         }
 
-        let rewrites = replacementsBySource.compactMap { sourceID, replacements
-            -> IncomingLinkRewrite? in
+        let rewrites = replacementsBySource.compactMap {
+            sourceID, replacements
+                -> IncomingLinkRewrite? in
             guard let document = documents[sourceID] else { return nil }
             let sorted = replacements.sorted { $0.range.location > $1.range.location }
             let mutable = NSMutableString(string: document.rawContent)
@@ -188,7 +196,8 @@ public enum IncomingLinkRewriter {
                     length: planned.range.length
                 )
                 guard appliedRanges.insert(key).inserted,
-                      NSMaxRange(planned.range) <= mutable.length else { continue }
+                    NSMaxRange(planned.range) <= mutable.length
+                else { continue }
                 mutable.replaceCharacters(in: planned.range, with: planned.text)
                 applied += 1
             }
@@ -229,48 +238,53 @@ public enum IncomingLinkRewriter {
         destinationFolder: VaultRelativeFolderPath,
         noteMoves: [FolderNoteMovePlan]
     ) -> FolderIncomingLinkRewritePlan? {
-        let sourceManifestHash = SearchSourceManifest.hash(documents.map {
-            id, document in
-            SearchSourceManifestEntry(
-                vaultID: id.vaultID,
-                relativePath: id.relativePath,
-                fingerprint: document.fingerprint
-            )
-        })
+        let sourceManifestHash = SearchSourceManifest.hash(
+            documents.map {
+                id, document in
+                SearchSourceManifestEntry(
+                    vaultID: id.vaultID,
+                    relativePath: id.relativePath,
+                    fingerprint: document.fingerprint
+                )
+            })
         let sourcePrefix = sourceFolder.rawValue + "/"
         let destinationPrefix = destinationFolder.rawValue + "/"
         guard graph.contractVersion == GraphSnapshot.currentContractVersion,
-              graph.sourceManifestHash == sourceManifestHash,
-              catalog.count == documents.count,
-              Set(catalog.map(\.id)) == Set(documents.keys),
-              noteMoves.allSatisfy({ move in
-                  move.source.vaultID == vaultID
+            graph.sourceManifestHash == sourceManifestHash,
+            catalog.count == documents.count,
+            Set(catalog.map(\.id)) == Set(documents.keys),
+            noteMoves.allSatisfy({ move in
+                move.source.vaultID == vaultID
                     && move.destination.vaultID == vaultID
                     && move.source.relativePath.hasPrefix(sourcePrefix)
                     && move.destination.relativePath
                         == destinationPrefix
-                            + move.source.relativePath.dropFirst(sourcePrefix.count)
+                        + move.source.relativePath.dropFirst(sourcePrefix.count)
                     && documents[move.source]?.fingerprint == move.expectedRevision
-              }),
-              Set(noteMoves.map(\.source)).count == noteMoves.count,
-              Set(noteMoves.map(\.destination)).count == noteMoves.count else {
+            }),
+            Set(noteMoves.map(\.source)).count == noteMoves.count,
+            Set(noteMoves.map(\.destination)).count == noteMoves.count
+        else {
             return nil
         }
 
-        let destinations = Dictionary(uniqueKeysWithValues: noteMoves.map {
-            ($0.source, $0.destination)
-        })
-        let suppliedKeys = Set(graph.outgoing.values.flatMap { $0 }.compactMap {
-            edge -> EligibleOccurrenceKey? in
-            guard case .resolved(let target) = edge.occurrence.resolution,
-                  destinations[target] != nil else { return nil }
-            return EligibleOccurrenceKey(
-                source: edge.source,
-                syntax: edge.occurrence.syntax,
-                target: edge.occurrence.target,
-                span: edge.occurrence.linkSpan
-            )
-        })
+        let destinations = Dictionary(
+            uniqueKeysWithValues: noteMoves.map {
+                ($0.source, $0.destination)
+            })
+        let suppliedKeys = Set(
+            graph.outgoing.values.flatMap { $0 }.compactMap {
+                edge -> EligibleOccurrenceKey? in
+                guard case .resolved(let target) = edge.occurrence.resolution,
+                    destinations[target] != nil
+                else { return nil }
+                return EligibleOccurrenceKey(
+                    source: edge.source,
+                    syntax: edge.occurrence.syntax,
+                    target: edge.occurrence.target,
+                    span: edge.occurrence.linkSpan
+                )
+            })
         guard !suppliedKeys.isEmpty else {
             return FolderIncomingLinkRewritePlan(
                 vaultID: vaultID,
@@ -290,11 +304,13 @@ public enum IncomingLinkRewriter {
             guard let document = documents[sourceID] else { return nil }
             let semantic = MarkdownSemanticDocument(parsing: document)
             for occurrence in semantic.links where !occurrence.isExternal {
-                guard case .resolved(let currentTarget) = currentResolutionIndex.resolve(
-                    occurrence.target,
-                    from: sourceID,
-                    scope: .workspace
-                ), destinations[currentTarget] != nil else { continue }
+                guard
+                    case .resolved(let currentTarget) = currentResolutionIndex.resolve(
+                        occurrence.target,
+                        from: sourceID,
+                        scope: .workspace
+                    ), destinations[currentTarget] != nil
+                else { continue }
                 let key = EligibleOccurrenceKey(
                     source: sourceID,
                     syntax: occurrence.syntax,
@@ -302,10 +318,11 @@ public enum IncomingLinkRewriter {
                     span: occurrence.linkSpan
                 )
                 guard suppliedKeys.contains(key) else { continue }
-                verifiedOccurrences[sourceID, default: []].append((
-                    occurrence,
-                    currentTarget
-                ))
+                verifiedOccurrences[sourceID, default: []].append(
+                    (
+                        occurrence,
+                        currentTarget
+                    ))
             }
         }
 
@@ -326,7 +343,8 @@ public enum IncomingLinkRewriter {
         var rewrites: [IncomingLinkRewrite] = []
         for sourceID in verifiedOccurrences.keys.sorted() {
             guard let document = documents[sourceID],
-                  let occurrences = verifiedOccurrences[sourceID] else {
+                let occurrences = verifiedOccurrences[sourceID]
+            else {
                 return nil
             }
             let futureSource = destinations[sourceID] ?? sourceID
@@ -335,17 +353,20 @@ public enum IncomingLinkRewriter {
                 guard let destination = destinations[currentTarget] else {
                     return nil
                 }
-                guard futureResolutionIndex.resolve(
-                    destination.relativePath,
-                    from: futureSource,
-                    scope: .workspace
-                ) == .resolved(destination) else {
-                    blocked.append(IncomingLinkRewriteBlock(
-                        source: sourceID,
-                        sourceFingerprint: document.fingerprint,
-                        span: occurrence.linkSpan,
-                        reason: "The destination path would resolve this incoming link to another note or remain ambiguous."
-                    ))
+                guard
+                    futureResolutionIndex.resolve(
+                        destination.relativePath,
+                        from: futureSource,
+                        scope: .workspace
+                    ) == .resolved(destination)
+                else {
+                    blocked.append(
+                        IncomingLinkRewriteBlock(
+                            source: sourceID,
+                            sourceFingerprint: document.fingerprint,
+                            span: occurrence.linkSpan,
+                            reason: "The destination path would resolve this incoming link to another note or remain ambiguous."
+                        ))
                     continue
                 }
                 if let planned = replacement(
@@ -368,17 +389,19 @@ public enum IncomingLinkRewriter {
                     length: replacement.range.length
                 )
                 guard appliedRanges.insert(key).inserted,
-                      NSMaxRange(replacement.range) <= mutable.length else { continue }
+                    NSMaxRange(replacement.range) <= mutable.length
+                else { continue }
                 mutable.replaceCharacters(in: replacement.range, with: replacement.text)
                 applied += 1
             }
             guard applied > 0 else { continue }
-            rewrites.append(IncomingLinkRewrite(
-                source: sourceID,
-                expectedRevision: document.fingerprint,
-                updatedSource: mutable as String,
-                rewrittenOccurrences: applied
-            ))
+            rewrites.append(
+                IncomingLinkRewrite(
+                    source: sourceID,
+                    expectedRevision: document.fingerprint,
+                    updatedSource: mutable as String,
+                    rewrittenOccurrences: applied
+                ))
         }
 
         return FolderIncomingLinkRewritePlan(
@@ -436,9 +459,10 @@ public enum IncomingLinkRewriter {
             documents: currentSemantics,
             resolutionScope: .workspace
         )
-        let suppliedKeys = Set(graph.outgoing.values.flatMap { $0 }.compactMap { edge in
-            eligibleKey(for: edge, resolvedTo: source)
-        })
+        let suppliedKeys = Set(
+            graph.outgoing.values.flatMap { $0 }.compactMap { edge in
+                eligibleKey(for: edge, resolvedTo: source)
+            })
 
         // Use resolved occurrences rather than only the graph's `incoming`
         // destination index. A link can resolve to this note while carrying a
@@ -472,12 +496,13 @@ public enum IncomingLinkRewriter {
                 scope: .workspace
             )
             guard resolution == .resolved(destination) else {
-                blocked.append(IncomingLinkRewriteBlock(
-                    source: edge.source,
-                    sourceFingerprint: document.fingerprint,
-                    span: edge.occurrence.linkSpan,
-                    reason: "The destination path would resolve this incoming link to another note or remain ambiguous."
-                ))
+                blocked.append(
+                    IncomingLinkRewriteBlock(
+                        source: edge.source,
+                        sourceFingerprint: document.fingerprint,
+                        span: edge.occurrence.linkSpan,
+                        reason: "The destination path would resolve this incoming link to another note or remain ambiguous."
+                    ))
                 return false
             }
             return true
@@ -537,23 +562,26 @@ public enum IncomingLinkRewriter {
         moving source: VaultQualifiedNoteID,
         to destination: VaultQualifiedNoteID
     ) -> IncomingLinkRewritePlan? {
-        let sourceManifestHash = SearchSourceManifest.hash(documents.map { id, document in
-            SearchSourceManifestEntry(
-                vaultID: id.vaultID,
-                relativePath: id.relativePath,
-                fingerprint: document.fingerprint
-            )
-        })
+        let sourceManifestHash = SearchSourceManifest.hash(
+            documents.map { id, document in
+                SearchSourceManifestEntry(
+                    vaultID: id.vaultID,
+                    relativePath: id.relativePath,
+                    fingerprint: document.fingerprint
+                )
+            })
         guard source.vaultID == destination.vaultID,
-              graph.contractVersion == GraphSnapshot.currentContractVersion,
-              graph.sourceManifestHash == sourceManifestHash,
-              documents[source] != nil,
-              catalog.count == documents.count,
-              Set(catalog.map(\.id)) == Set(documents.keys) else { return nil }
+            graph.contractVersion == GraphSnapshot.currentContractVersion,
+            graph.sourceManifestHash == sourceManifestHash,
+            documents[source] != nil,
+            catalog.count == documents.count,
+            Set(catalog.map(\.id)) == Set(documents.keys)
+        else { return nil }
 
-        let suppliedKeys = Set(graph.outgoing.values.flatMap { $0 }.compactMap { edge in
-            eligibleKey(for: edge, resolvedTo: source)
-        })
+        let suppliedKeys = Set(
+            graph.outgoing.values.flatMap { $0 }.compactMap { edge in
+                eligibleKey(for: edge, resolvedTo: source)
+            })
         guard !suppliedKeys.isEmpty else {
             return IncomingLinkRewritePlan(
                 movedNote: source,
@@ -572,11 +600,13 @@ public enum IncomingLinkRewriter {
             guard let document = documents[sourceID] else { return nil }
             let semantic = MarkdownSemanticDocument(parsing: document)
             for occurrence in semantic.links where !occurrence.isExternal {
-                guard currentResolutionIndex.resolve(
-                    occurrence.target,
-                    from: sourceID,
-                    scope: .workspace
-                ) == .resolved(source) else { continue }
+                guard
+                    currentResolutionIndex.resolve(
+                        occurrence.target,
+                        from: sourceID,
+                        scope: .workspace
+                    ) == .resolved(source)
+                else { continue }
                 let key = EligibleOccurrenceKey(
                     source: sourceID,
                     syntax: occurrence.syntax,
@@ -605,23 +635,27 @@ public enum IncomingLinkRewriter {
         var rewrites: [IncomingLinkRewrite] = []
         for sourceID in verifiedOccurrences.keys.sorted() {
             guard let document = documents[sourceID],
-                  let occurrences = verifiedOccurrences[sourceID] else {
+                let occurrences = verifiedOccurrences[sourceID]
+            else {
                 return nil
             }
             let futureSource = sourceID == source ? destination : sourceID
             var replacements: [Replacement] = []
             for occurrence in occurrences {
-                guard futureResolutionIndex.resolve(
-                    destination.relativePath,
-                    from: futureSource,
-                    scope: .workspace
-                ) == .resolved(destination) else {
-                    blocked.append(IncomingLinkRewriteBlock(
-                        source: sourceID,
-                        sourceFingerprint: document.fingerprint,
-                        span: occurrence.linkSpan,
-                        reason: "The destination path would resolve this incoming link to another note or remain ambiguous."
-                    ))
+                guard
+                    futureResolutionIndex.resolve(
+                        destination.relativePath,
+                        from: futureSource,
+                        scope: .workspace
+                    ) == .resolved(destination)
+                else {
+                    blocked.append(
+                        IncomingLinkRewriteBlock(
+                            source: sourceID,
+                            sourceFingerprint: document.fingerprint,
+                            span: occurrence.linkSpan,
+                            reason: "The destination path would resolve this incoming link to another note or remain ambiguous."
+                        ))
                     continue
                 }
                 if let planned = replacement(
@@ -643,12 +677,13 @@ public enum IncomingLinkRewriter {
                 applied += 1
             }
             guard applied > 0 else { continue }
-            rewrites.append(IncomingLinkRewrite(
-                source: sourceID,
-                expectedRevision: document.fingerprint,
-                updatedSource: mutable as String,
-                rewrittenOccurrences: applied
-            ))
+            rewrites.append(
+                IncomingLinkRewrite(
+                    source: sourceID,
+                    expectedRevision: document.fingerprint,
+                    updatedSource: mutable as String,
+                    rewrittenOccurrences: applied
+                ))
         }
 
         return IncomingLinkRewritePlan(
@@ -685,7 +720,8 @@ public enum IncomingLinkRewriter {
         resolvedTo destination: VaultQualifiedNoteID
     ) -> EligibleOccurrenceKey? {
         guard case .resolved(let resolved) = edge.occurrence.resolution,
-              resolved == destination else { return nil }
+            resolved == destination
+        else { return nil }
         return EligibleOccurrenceKey(
             source: edge.source,
             syntax: edge.occurrence.syntax,
@@ -752,9 +788,10 @@ public enum IncomingLinkRewriter {
         guard marker.location != NSNotFound else { return nil }
         var targetStart = NSMaxRange(marker)
         while targetStart < rawOccurrence.length,
-              UnicodeScalar(rawOccurrence.character(at: targetStart)).map(
+            UnicodeScalar(rawOccurrence.character(at: targetStart)).map(
                 CharacterSet.whitespacesAndNewlines.contains
-              ) == true {
+            ) == true
+        {
             targetStart += 1
         }
         let tail = NSRange(location: targetStart, length: rawOccurrence.length - targetStart)
@@ -771,7 +808,8 @@ public enum IncomingLinkRewriter {
         let originalTarget = rawOccurrence.substring(
             with: NSRange(location: targetStart, length: targetEnd - targetStart)
         )
-        let encoded = originalTarget.contains("%")
+        let encoded =
+            originalTarget.contains("%")
             ? percentEncodedMarkdownPath(newRelativePath)
             : newRelativePath
         return Replacement(

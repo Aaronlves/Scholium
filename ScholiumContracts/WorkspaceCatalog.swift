@@ -111,7 +111,8 @@ public struct AttentionQueueFilter: Codable, Hashable, Sendable {
     }
 
     public func apply(to items: [AttentionQueueItem]) -> [AttentionQueueItem] {
-        let normalizedQuery = query
+        let normalizedQuery =
+            query
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
         return items.filter { item in
@@ -123,8 +124,8 @@ public struct AttentionQueueFilter: Codable, Hashable, Sendable {
                 item.note.relativePath,
                 item.locator.map { "line \($0.line)" } ?? "",
             ]
-                .joined(separator: " ")
-                .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+            .joined(separator: " ")
+            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
             return searchable.contains(normalizedQuery)
         }
     }
@@ -157,7 +158,8 @@ public struct AttentionDismissalLedger: Codable, Hashable, Sendable {
         calendar: Calendar = .current
     ) {
         let clampedDays = min(max(days, 1), 365)
-        dismissedUntilByItemID[item.id] = calendar.date(byAdding: .day, value: clampedDays, to: date)
+        dismissedUntilByItemID[item.id] =
+            calendar.date(byAdding: .day, value: clampedDays, to: date)
             ?? date.addingTimeInterval(TimeInterval(clampedDays * 86_400))
     }
 
@@ -268,67 +270,72 @@ public enum WorkspaceCatalogBuilder {
                     stableNoteID: stableNoteID?.uuidString.lowercased()
                 )
                 references[reference.id] = reference
-                notes.append(WorkspaceCatalogNote(
-                    reference: reference,
-                    title: ResearchNoteTitleResolver.resolve(document: document),
-                    aliases: (vault.role == .topicKnowledge
-                        ? metadata?.record.fields["aliases"]?.canonicalStringList ?? []
-                        : [])
-                    .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-                    .filter { !$0.isEmpty },
-                    authors: vault.role == .sourceCorpus
-                        ? metadata?.record.fields["authors"]
-                            .flatMap { PropertyContractCatalog.creatorNames(from: $0) }?
-                            .map(\.displayName) ?? []
-                        : [],
-                    publicationDate: vault.role == .sourceCorpus
-                        ? metadata?.record.fields["publication_date"]?.canonicalSearchText
-                        : nil,
-                    zoteroBinding: vault.role == .sourceCorpus
-                        ? stableNoteID.flatMap { zoteroBindingsByNoteID[$0] }
-                        : nil,
-                    fingerprint: document.fingerprint,
-                    validationWarnings: document.validationWarnings
-                ))
+                notes.append(
+                    WorkspaceCatalogNote(
+                        reference: reference,
+                        title: ResearchNoteTitleResolver.resolve(document: document),
+                        aliases: (vault.role == .topicKnowledge
+                            ? metadata?.record.fields["aliases"]?.canonicalStringList ?? []
+                            : [])
+                            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                            .filter { !$0.isEmpty },
+                        authors: vault.role == .sourceCorpus
+                            ? metadata?.record.fields["authors"]
+                                .flatMap { PropertyContractCatalog.creatorNames(from: $0) }?
+                                .map(\.displayName) ?? []
+                            : [],
+                        publicationDate: vault.role == .sourceCorpus
+                            ? metadata?.record.fields["publication_date"]?.canonicalSearchText
+                            : nil,
+                        zoteroBinding: vault.role == .sourceCorpus
+                            ? stableNoteID.flatMap { zoteroBindingsByNoteID[$0] }
+                            : nil,
+                        fingerprint: document.fingerprint,
+                        validationWarnings: document.validationWarnings
+                    ))
 
                 if !document.validationWarnings.isEmpty {
-                    attention.append(AttentionQueueItem(
-                        kind: .malformedMetadata,
-                        severity: .warning,
-                        note: reference,
-                        message: "Invalid YAML",
-                        locator: SourceLocator(file: document.relativePath, line: 1, column: 1)
-                    ))
+                    attention.append(
+                        AttentionQueueItem(
+                            kind: .malformedMetadata,
+                            severity: .warning,
+                            note: reference,
+                            message: "Invalid YAML",
+                            locator: SourceLocator(file: document.relativePath, line: 1, column: 1)
+                        ))
                 }
             }
         }
 
-        let relianceGraph = graph ?? LinkGraphBuilder.build(
-            generation: 1,
-            catalog: vaults.flatMap { vault in
-                (documents[vault.id] ?? []).map { document in
-                    let id = VaultQualifiedNoteID(vaultID: vault.id, relativePath: document.relativePath)
-                    return LinkCatalogNote(
-                        vaultID: vault.id,
-                        document: document,
-                        profile: WorkflowProfileResolver.resolve(vaultRole: vault.role),
-                        metadata: stableNoteIDs[id].flatMap { noteMetadataByID[$0] },
-                        semantic: resolvedSemanticDocuments[id]
-                    )
-                }
-            },
-            documents: resolvedSemanticDocuments,
-            resolutionScope: .workspace
-        )
-        let notesByQualifiedID = Dictionary(uniqueKeysWithValues: notes.map { note in
-            (
-                VaultQualifiedNoteID(
-                    vaultID: note.reference.vaultID,
-                    relativePath: note.reference.relativePath
-                ),
-                note
+        let relianceGraph =
+            graph
+            ?? LinkGraphBuilder.build(
+                generation: 1,
+                catalog: vaults.flatMap { vault in
+                    (documents[vault.id] ?? []).map { document in
+                        let id = VaultQualifiedNoteID(vaultID: vault.id, relativePath: document.relativePath)
+                        return LinkCatalogNote(
+                            vaultID: vault.id,
+                            document: document,
+                            profile: WorkflowProfileResolver.resolve(vaultRole: vault.role),
+                            metadata: stableNoteIDs[id].flatMap { noteMetadataByID[$0] },
+                            semantic: resolvedSemanticDocuments[id]
+                        )
+                    }
+                },
+                documents: resolvedSemanticDocuments,
+                resolutionScope: .workspace
             )
-        })
+        let notesByQualifiedID = Dictionary(
+            uniqueKeysWithValues: notes.map { note in
+                (
+                    VaultQualifiedNoteID(
+                        vaultID: note.reference.vaultID,
+                        relativePath: note.reference.relativePath
+                    ),
+                    note
+                )
+            })
 
         // Possible Orphan reports only complete observable disconnection. A
         // same-vault or unresolved authored link still integrates
@@ -343,28 +350,31 @@ public enum WorkspaceCatalogBuilder {
             }
             let incoming = relianceGraph.incoming[noteID] ?? []
             if outgoing.isEmpty && incoming.isEmpty {
-                attention.append(AttentionQueueItem(
-                    kind: .possibleOrphan,
-                    severity: .information,
-                    note: note.reference,
-                    message: "No incoming or outgoing links"
-                ))
+                attention.append(
+                    AttentionQueueItem(
+                        kind: .possibleOrphan,
+                        severity: .information,
+                        note: note.reference,
+                        message: "No incoming or outgoing links"
+                    ))
             }
         }
 
         for vaultID in identityAmbiguitiesByVault.keys.sorted(by: { $0.uuidString < $1.uuidString }) {
             for ambiguity in identityAmbiguitiesByVault[vaultID, default: []]
-                .sorted(by: { $0.relativePath < $1.relativePath }) {
+                .sorted(by: { $0.relativePath < $1.relativePath })
+            {
                 let noteID = VaultQualifiedNoteID(vaultID: vaultID, relativePath: ambiguity.relativePath)
                 guard let note = notesByQualifiedID[noteID] else { continue }
-                attention.append(AttentionQueueItem(
-                    kind: .unresolvedIdentity,
-                    severity: .warning,
-                    note: note.reference,
-                    message: ambiguity.candidates.isEmpty
-                        ? "Identity not confirmed"
-                        : "Multiple candidates"
-                ))
+                attention.append(
+                    AttentionQueueItem(
+                        kind: .unresolvedIdentity,
+                        severity: .warning,
+                        note: note.reference,
+                        message: ambiguity.candidates.isEmpty
+                            ? "Identity not confirmed"
+                            : "Multiple candidates"
+                    ))
             }
         }
 
@@ -379,17 +389,18 @@ public enum WorkspaceCatalogBuilder {
                 case .broken, .missingHeading, .missingBlock:
                     queueKind = .brokenConnection
                 }
-                attention.append(AttentionQueueItem(
-                    kind: queueKind,
-                    severity: .warning,
-                    note: note,
-                    message: attentionReason(for: diagnostic),
-                    locator: SourceLocator(
-                        file: note.relativePath,
-                        line: diagnostic.span.start.line,
-                        column: diagnostic.span.start.utf16Column
-                    )
-                ))
+                attention.append(
+                    AttentionQueueItem(
+                        kind: queueKind,
+                        severity: .warning,
+                        note: note,
+                        message: attentionReason(for: diagnostic),
+                        locator: SourceLocator(
+                            file: note.relativePath,
+                            line: diagnostic.span.start.line,
+                            column: diagnostic.span.start.utf16Column
+                        )
+                    ))
             }
         }
 
@@ -406,7 +417,10 @@ public enum WorkspaceCatalogBuilder {
     }
 
     private static func severityRank(_ severity: AttentionSeverity) -> Int {
-        switch severity { case .information: 0; case .warning: 1 }
+        switch severity {
+        case .information: 0
+        case .warning: 1
+        }
     }
 
     private static func attentionReason(for diagnostic: LinkGraphDiagnostic) -> String {

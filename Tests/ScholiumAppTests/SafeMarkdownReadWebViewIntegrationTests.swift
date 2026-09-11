@@ -3,6 +3,7 @@ import ScholiumContracts
 import SwiftUI
 import Testing
 import WebKit
+
 @testable import ScholiumApp
 
 extension MarkdownEditorWebViewIntegrationTests {
@@ -10,24 +11,33 @@ extension MarkdownEditorWebViewIntegrationTests {
     func chatReplyCrossObjectSelection() async throws {
         let source = "Reason 😀.\n\n| Claim | Evidence |\n|---|---|\n| A | B |\n\n```text\nlast line\n```"
         let document = NoteDocument(relativePath: "Reply.md", rawContent: source)
-        let harness = ReadHarness(source: source, htmlBody: SafeMarkdownRenderer.render(document).htmlBody,
+        let harness = ReadHarness(
+            source: source, htmlBody: SafeMarkdownRenderer.render(document).htmlBody,
             fingerprint: document.fingerprint.sha256, initialAnchor: nil, initialScrollFraction: 0, laysOutForNativePreview: true, chatReply: true)
         defer { harness.close() }
         try await harness.waitUntilReady()
-        let selected = try #require(try await harness.callBridgeJavaScript("""
-          const root = document.getElementById('scholium-document');
-          const first = root.querySelector('p').firstChild;
-          const last = root.querySelector('pre code').firstChild;
-          const range = document.createRange(); range.setStart(first, 0); range.setEnd(last, last.length);
-          const selection = window.getSelection(); selection.removeAllRanges(); selection.addRange(range);
-          window.scholiumQuoteReplySelection(); return selection.toString();
-          """) as? String)
+        let selected = try #require(
+            try await harness.callBridgeJavaScript(
+                """
+                const root = document.getElementById('scholium-document');
+                const first = root.querySelector('p').firstChild;
+                const last = root.querySelector('pre code').firstChild;
+                const range = document.createRange(); range.setStart(first, 0); range.setEnd(last, last.length);
+                const selection = window.getSelection(); selection.removeAllRanges(); selection.addRange(range);
+                window.scholiumQuoteReplySelection(); return selection.toString();
+                """) as? String)
         let deadline = ContinuousClock.now.advanced(by: .seconds(3))
-        while !harness.replyEvents.contains(where: { if case .quote = $0 { return true }; return false }) {
+        while !harness.replyEvents.contains(where: {
+            if case .quote = $0 { return true }
+            return false
+        }) {
             try #require(ContinuousClock.now < deadline)
             try await Task.sleep(for: .milliseconds(20))
         }
-        let excerpts = harness.replyEvents.compactMap { event -> String? in if case .quote(let text) = event { return text }; return nil }
+        let excerpts = harness.replyEvents.compactMap { event -> String? in
+            if case .quote(let text) = event { return text }
+            return nil
+        }
         #expect(excerpts == [selected])
         #expect(selected.contains("Reason 😀.") && selected.contains("Evidence") && selected.contains("last line"))
         #expect(AgentChatReplyQuotation.passage(.reader(source: source, excerpt: selected), in: source) == selected)
@@ -40,17 +50,22 @@ extension MarkdownEditorWebViewIntegrationTests {
     func reviewChatSourceRange() async throws {
         let source = "重复 😀 same same.\r\n\r\nFormatted **word**.\r\n"
         let document = NoteDocument(relativePath: "ChatRange.md", rawContent: source)
-        let harness = ReadHarness(source: source, htmlBody: SafeMarkdownRenderer.render(document).htmlBody,
+        let harness = ReadHarness(
+            source: source, htmlBody: SafeMarkdownRenderer.render(document).htmlBody,
             fingerprint: document.fingerprint.sha256, initialAnchor: nil, initialScrollFraction: 0)
         defer { harness.close() }
         try await harness.waitUntilReady()
         let last = (source as NSString).range(of: "same", options: .backwards)
-        harness.requestSourceRange(.init(utf16LowerBound: last.location, utf16UpperBound: NSMaxRange(last),
-            line: 1, column: 1, endLine: 1, endColumn: 1))
+        harness.requestSourceRange(
+            .init(
+                utf16LowerBound: last.location, utf16UpperBound: NSMaxRange(last),
+                line: 1, column: 1, endLine: 1, endColumn: 1))
         try await harness.waitUntilSourceLineReached(1)
         #expect(try await harness.callBridgeJavaScript("return window.getSelection().toString();") as? String == "same")
-        harness.requestSourceRange(.init(utf16LowerBound: last.location, utf16UpperBound: NSMaxRange(last),
-            line: 1, column: 1, endLine: 1, endColumn: 1), fingerprint: DocumentFingerprint(content: "Older revision").sha256)
+        harness.requestSourceRange(
+            .init(
+                utf16LowerBound: last.location, utf16UpperBound: NSMaxRange(last),
+                line: 1, column: 1, endLine: 1, endColumn: 1), fingerprint: DocumentFingerprint(content: "Older revision").sha256)
         let revisionDeadline = ContinuousClock.now.advanced(by: .seconds(5))
         while !harness.sourceRevisionChanged {
             try #require(ContinuousClock.now < revisionDeadline)
@@ -58,11 +73,16 @@ extension MarkdownEditorWebViewIntegrationTests {
         }
         #expect(!harness.sourceRangeUnavailable)
         #expect(try await harness.callBridgeJavaScript("return window.getSelection().toString();") as? String == "same")
-        let offset = try await harness.callBridgeJavaScript("const s=window.getSelection(); const r=document.createRange(); r.selectNodeContents(s.anchorNode.parentElement); r.setEnd(s.anchorNode,s.anchorOffset); return r.toString().length;") as? Int
+        let offset =
+            try await harness.callBridgeJavaScript(
+                "const s=window.getSelection(); const r=document.createRange(); r.selectNodeContents(s.anchorNode.parentElement); r.setEnd(s.anchorNode,s.anchorOffset); return r.toString().length;"
+            ) as? Int
         #expect(offset == last.location)
         let syntax = (source as NSString).range(of: "**word**")
-        harness.requestSourceRange(.init(utf16LowerBound: syntax.location, utf16UpperBound: NSMaxRange(syntax),
-            line: 3, column: 1, endLine: 3, endColumn: 1))
+        harness.requestSourceRange(
+            .init(
+                utf16LowerBound: syntax.location, utf16UpperBound: NSMaxRange(syntax),
+                line: 3, column: 1, endLine: 3, endColumn: 1))
         let deadline = ContinuousClock.now.advanced(by: .seconds(5))
         while !harness.sourceRangeUnavailable {
             try #require(ContinuousClock.now < deadline)
@@ -75,17 +95,22 @@ extension MarkdownEditorWebViewIntegrationTests {
     func reviewArrivalFeedback() async throws {
         let source = "First paragraph.\n\nSecond paragraph. " + String(repeating: "Long wrapped context remains readable. ", count: 35) + "\n"
         let document = NoteDocument(relativePath: "Arrival.md", rawContent: source)
-        let harness = ReadHarness(source: source,
+        let harness = ReadHarness(
+            source: source,
             htmlBody: SafeMarkdownRenderer.render(document).htmlBody,
             fingerprint: document.fingerprint.sha256, initialAnchor: nil, initialScrollFraction: 0)
         defer { harness.close() }
         try await harness.waitUntilReady()
-        let paragraphsHaveNoBackground = "return [...document.querySelectorAll('#scholium-document p')].every(p => getComputedStyle(p).backgroundColor === 'rgba(0, 0, 0, 0)');"
+        let paragraphsHaveNoBackground =
+            "return [...document.querySelectorAll('#scholium-document p')].every(p => getComputedStyle(p).backgroundColor === 'rgba(0, 0, 0, 0)');"
         #expect(try await harness.callBridgeJavaScript(paragraphsHaveNoBackground) as? Bool == true)
         _ = try await harness.callBridgeJavaScript("window.getSelection().selectAllChildren(document.querySelector('[data-source-line=\"1\"]'));")
         harness.requestSourceLine(3)
         try await harness.waitUntilSourceLineReached(3)
-        let snapshot = try #require(try await harness.callBridgeJavaScript("return {target:document.querySelector('.scholium-arrival-target')?.dataset.arrivalLine, selection:window.getSelection().toString(), markerHeight:document.querySelector('.scholium-arrival-target').getBoundingClientRect().height, paragraphHeight:document.querySelector('[data-source-line=\"3\"]').getBoundingClientRect().height};") as? [String: Any])
+        let snapshot = try #require(
+            try await harness.callBridgeJavaScript(
+                "return {target:document.querySelector('.scholium-arrival-target')?.dataset.arrivalLine, selection:window.getSelection().toString(), markerHeight:document.querySelector('.scholium-arrival-target').getBoundingClientRect().height, paragraphHeight:document.querySelector('[data-source-line=\"3\"]').getBoundingClientRect().height};"
+            ) as? [String: Any])
         #expect(snapshot["target"] as? String == "3")
         #expect(snapshot["selection"] as? String == "First paragraph.")
         let markerHeight = try #require(snapshot["markerHeight"] as? Double)
@@ -115,27 +140,29 @@ extension MarkdownEditorWebViewIntegrationTests {
         )
         defer { harness.close() }
         try await harness.waitUntilReady()
-        let snapshot = try #require(try await harness.callBridgeJavaScript("""
-            const content = document.getElementById('scholium-document');
-            const before = content.innerHTML;
-            const geometry = () => JSON.stringify([getComputedStyle(content).paddingTop,
-              getComputedStyle(content).paddingBottom, content.offsetWidth, content.offsetHeight]);
-            const beforeGeometry = geometry();
-            window.scrollTo(0, 300);
-            const scrollBefore = window.scrollY;
-            window.scholiumReviewFind.perform({
-              query: 'findtarget', caseSensitive: false, wholeWord: false, action: 'present'
-            });
-            const preservesScroll = window.scrollY === scrollBefore;
-            const result = window.scholiumReviewFind.perform({
-              query: 'findtarget', caseSensitive: false, wholeWord: false,
-              action: 'update'
-            });
-            const duringGeometry = geometry();
-            window.scholiumReviewFind.perform({operation: 'clear'});
-            return {total: result.total, unchanged: before === content.innerHTML, preservesScroll,
-              stable: beforeGeometry === duringGeometry && beforeGeometry === geometry()};
-            """) as? [String: Any])
+        let snapshot = try #require(
+            try await harness.callBridgeJavaScript(
+                """
+                const content = document.getElementById('scholium-document');
+                const before = content.innerHTML;
+                const geometry = () => JSON.stringify([getComputedStyle(content).paddingTop,
+                  getComputedStyle(content).paddingBottom, content.offsetWidth, content.offsetHeight]);
+                const beforeGeometry = geometry();
+                window.scrollTo(0, 300);
+                const scrollBefore = window.scrollY;
+                window.scholiumReviewFind.perform({
+                  query: 'findtarget', caseSensitive: false, wholeWord: false, action: 'present'
+                });
+                const preservesScroll = window.scrollY === scrollBefore;
+                const result = window.scholiumReviewFind.perform({
+                  query: 'findtarget', caseSensitive: false, wholeWord: false,
+                  action: 'update'
+                });
+                const duringGeometry = geometry();
+                window.scholiumReviewFind.perform({operation: 'clear'});
+                return {total: result.total, unchanged: before === content.innerHTML, preservesScroll,
+                  stable: beforeGeometry === duringGeometry && beforeGeometry === geometry()};
+                """) as? [String: Any])
         #expect(snapshot["total"] as? Int == 1)
         #expect(snapshot["unchanged"] as? Bool == true)
         #expect(snapshot["preservesScroll"] as? Bool == true)
@@ -186,26 +213,26 @@ extension MarkdownEditorWebViewIntegrationTests {
     @Test("Review renders inert Mermaid and keeps unsupported source visible")
     func reviewMermaidProjectionFailsClosed() async throws {
         let source = """
-        ```MERMAID
-        flowchart LR
-        accTitle: Argument structure
-        accDescr: A reason supports a conclusion.
-        A --> B
-        ```
+            ```MERMAID
+            flowchart LR
+            accTitle: Argument structure
+            accDescr: A reason supports a conclusion.
+            A --> B
+            ```
 
-        ```mermaid
-        not-a-diagram
-        ```
-        """
+            ```mermaid
+            not-a-diagram
+            ```
+            """
         let htmlBody = #"""
-        <pre dir="ltr" data-source-utf16-start="0" data-source-utf16-end="117"><code dir="ltr" class="language-MERMAID">flowchart LR
-        accTitle: Argument structure
-        accDescr: A reason supports a conclusion.
-        A --&gt; B
-        </code></pre>
-        <pre dir="ltr" data-source-utf16-start="119" data-source-utf16-end="155"><code dir="ltr" class="language-mermaid">not-a-diagram
-        </code></pre>
-        """#
+            <pre dir="ltr" data-source-utf16-start="0" data-source-utf16-end="117"><code dir="ltr" class="language-MERMAID">flowchart LR
+            accTitle: Argument structure
+            accDescr: A reason supports a conclusion.
+            A --&gt; B
+            </code></pre>
+            <pre dir="ltr" data-source-utf16-start="119" data-source-utf16-end="155"><code dir="ltr" class="language-mermaid">not-a-diagram
+            </code></pre>
+            """#
         let harness = ReadHarness(
             source: source,
             htmlBody: htmlBody,
@@ -217,51 +244,52 @@ extension MarkdownEditorWebViewIntegrationTests {
         try await harness.waitUntilReady()
         let diagramSize = try #require(harness.diagramSize)
         #expect(diagramSize.width > 0 && diagramSize.height > 0)
-        let result = try #require(try await harness.callBridgeJavaScript(
-            """
-            const familySources = [
-              'sequenceDiagram\\nA->>B: Reason',
-              'stateDiagram-v2\\n[*] --> Draft',
-              'classDiagram\\nClaim <|-- Objection',
-              'erDiagram\\nCLAIM ||--o{ REASON : has',
-              'mindmap\\n  root((Argument))\\n    Reason\\n    Objection'
-            ];
-            let staticFamilyCount = 0;
-            for (const source of familySources) {
-              const rendered = await window.scholiumMermaid.render({source});
-              if (rendered.ok) staticFamilyCount += 1;
-            }
-            const architectureSecurityResult = await window.scholiumMermaid.render({
-              source: [
-                'architecture-beta',
-                '  group mermaidPrototypePollutionMarker(cloud)[Marker]',
-                '  service a(server)[A] in __proto__',
-                '  service b(server)[B] in mermaidPrototypePollutionMarker',
-                '  a:R -- L:b'
-              ].join('\\n')
-            });
-            const prototypePolluted = Object.prototype.hasOwnProperty.call(
-              Object.prototype,
-              'mermaidPrototypePollutionMarker'
-            );
-            delete Object.prototype.mermaidPrototypePollutionMarker;
-            const outputs = [...document.querySelectorAll('.scholium-mermaid-output')];
-            const shadowRoots = outputs.map(output => output.shadowRoot).filter(Boolean);
-            return {
-              runtime: window.scholiumMermaid?.version || 0,
-              staticFamilyCount,
-              architectureSecuritySettled: typeof architectureSecurityResult?.ok === 'boolean',
-              prototypePolluted,
-              rendered: shadowRoots.filter(root => root.querySelector('svg')).length,
-              errors: document.querySelectorAll('.scholium-mermaid-error').length,
-              links: shadowRoots.reduce((count, root) => count + root.querySelectorAll('a').length, 0),
-              scripts: shadowRoots.reduce((count, root) => count + root.querySelectorAll('script').length, 0),
-              visibleFallbacks: [...document.querySelectorAll('.scholium-mermaid-source')]
-                .filter(element => getComputedStyle(element).display !== 'none').length,
-              mapped: document.querySelector('.scholium-mermaid-rendered')?.dataset.sourceUtf16Start || ''
-            };
-            """
-        ) as? [String: Any])
+        let result = try #require(
+            try await harness.callBridgeJavaScript(
+                """
+                const familySources = [
+                  'sequenceDiagram\\nA->>B: Reason',
+                  'stateDiagram-v2\\n[*] --> Draft',
+                  'classDiagram\\nClaim <|-- Objection',
+                  'erDiagram\\nCLAIM ||--o{ REASON : has',
+                  'mindmap\\n  root((Argument))\\n    Reason\\n    Objection'
+                ];
+                let staticFamilyCount = 0;
+                for (const source of familySources) {
+                  const rendered = await window.scholiumMermaid.render({source});
+                  if (rendered.ok) staticFamilyCount += 1;
+                }
+                const architectureSecurityResult = await window.scholiumMermaid.render({
+                  source: [
+                    'architecture-beta',
+                    '  group mermaidPrototypePollutionMarker(cloud)[Marker]',
+                    '  service a(server)[A] in __proto__',
+                    '  service b(server)[B] in mermaidPrototypePollutionMarker',
+                    '  a:R -- L:b'
+                  ].join('\\n')
+                });
+                const prototypePolluted = Object.prototype.hasOwnProperty.call(
+                  Object.prototype,
+                  'mermaidPrototypePollutionMarker'
+                );
+                delete Object.prototype.mermaidPrototypePollutionMarker;
+                const outputs = [...document.querySelectorAll('.scholium-mermaid-output')];
+                const shadowRoots = outputs.map(output => output.shadowRoot).filter(Boolean);
+                return {
+                  runtime: window.scholiumMermaid?.version || 0,
+                  staticFamilyCount,
+                  architectureSecuritySettled: typeof architectureSecurityResult?.ok === 'boolean',
+                  prototypePolluted,
+                  rendered: shadowRoots.filter(root => root.querySelector('svg')).length,
+                  errors: document.querySelectorAll('.scholium-mermaid-error').length,
+                  links: shadowRoots.reduce((count, root) => count + root.querySelectorAll('a').length, 0),
+                  scripts: shadowRoots.reduce((count, root) => count + root.querySelectorAll('script').length, 0),
+                  visibleFallbacks: [...document.querySelectorAll('.scholium-mermaid-source')]
+                    .filter(element => getComputedStyle(element).display !== 'none').length,
+                  mapped: document.querySelector('.scholium-mermaid-rendered')?.dataset.sourceUtf16Start || ''
+                };
+                """
+            ) as? [String: Any])
         #expect(result["runtime"] as? Int == 2)
         #expect(result["staticFamilyCount"] as? Int == 5)
         #expect(result["architectureSecuritySettled"] as? Bool == true)
@@ -294,9 +322,10 @@ extension MarkdownEditorWebViewIntegrationTests {
             documentTitle: "Reasons < Emotion & Value"
         )
 
-        #expect(html.contains(
-            "class=\"scholium-note-title\" role=\"heading\" aria-level=\"1\""
-        ))
+        #expect(
+            html.contains(
+                "class=\"scholium-note-title\" role=\"heading\" aria-level=\"1\""
+            ))
         #expect(html.contains("Reasons &lt; Emotion &amp; Value"))
         #expect(html.contains("data-scholium-protected=\"note-title\""))
         let titleRange = try #require(html.range(of: "scholium-note-title"))
@@ -312,7 +341,6 @@ extension MarkdownEditorWebViewIntegrationTests {
         #expect(emptyHTML.contains("This note has no body content."))
     }
 
-
     @Test("Read loads its packaged prose font through the allowlisted scheme")
     func readLoadsAllowlistedPackagedFont() async throws {
         let source = "# Exact\n\nA rendered claim.\n"
@@ -327,9 +355,10 @@ extension MarkdownEditorWebViewIntegrationTests {
         defer { harness.close() }
 
         try await harness.waitUntilReady()
-        let loaded = try await harness.callBridgeJavaScript(
-            "return document.fonts.check('16px Alegreya');"
-        ) as? Bool
+        let loaded =
+            try await harness.callBridgeJavaScript(
+                "return document.fonts.check('16px Alegreya');"
+            ) as? Bool
         #expect(loaded == true)
     }
 
@@ -349,32 +378,34 @@ extension MarkdownEditorWebViewIntegrationTests {
         defer { harness.close() }
         try await harness.waitUntilReady()
 
-        let page = try #require(try await harness.callPageJavaScript(
-            """
-            return {
-              scripts: document.querySelectorAll('script').length,
-              proof: document.getElementById('scholium-proof') !== null,
-              pageHandler: Boolean(window.webkit
-                && window.webkit.messageHandlers
-                && window.webkit.messageHandlers.scholiumRead)
-            };
-            """
-        ) as? [String: Any])
+        let page = try #require(
+            try await harness.callPageJavaScript(
+                """
+                return {
+                  scripts: document.querySelectorAll('script').length,
+                  proof: document.getElementById('scholium-proof') !== null,
+                  pageHandler: Boolean(window.webkit
+                    && window.webkit.messageHandlers
+                    && window.webkit.messageHandlers.scholiumRead)
+                };
+                """
+            ) as? [String: Any])
         #expect(page["scripts"] as? Int == 0)
         #expect(page["proof"] as? Bool == false)
         #expect(page["pageHandler"] as? Bool == false)
 
-        let bridge = try #require(try await harness.callBridgeJavaScript(
-            """
-            return {
-              ready: window.scholiumReadReady instanceof Promise,
-              handler: Boolean(window.webkit
-                && window.webkit.messageHandlers
-                && window.webkit.messageHandlers.scholiumRead),
-              appliedCSS: document.getElementById('scholium-user-css')?.textContent || ''
-            };
-            """
-        ) as? [String: Any])
+        let bridge = try #require(
+            try await harness.callBridgeJavaScript(
+                """
+                return {
+                  ready: window.scholiumReadReady instanceof Promise,
+                  handler: Boolean(window.webkit
+                    && window.webkit.messageHandlers
+                    && window.webkit.messageHandlers.scholiumRead),
+                  appliedCSS: document.getElementById('scholium-user-css')?.textContent || ''
+                };
+                """
+            ) as? [String: Any])
         #expect(bridge["ready"] as? Bool == true)
         #expect(bridge["handler"] as? Bool == true)
         #expect(bridge["appliedCSS"] as? String == hostile)
@@ -401,9 +432,10 @@ extension MarkdownEditorWebViewIntegrationTests {
         )
         defer { harness.close() }
         try await harness.waitUntilReady()
-        let mermaidRuntime = try await harness.callBridgeJavaScript(
-            "return window.scholiumMermaid?.version || 0"
-        ) as? Int
+        let mermaidRuntime =
+            try await harness.callBridgeJavaScript(
+                "return window.scholiumMermaid?.version || 0"
+            ) as? Int
         #expect(mermaidRuntime == 0)
         _ = try await harness.waitUntilCapturedAnchor(stage: "initial one-shot restore") {
             $0.blockUTF16LowerBound == fixture.anchorLowerBound
@@ -472,7 +504,9 @@ extension MarkdownEditorWebViewIntegrationTests {
 
     @Test("Review preserves the visible document title at the document start")
     func reviewDocumentStartAnchorKeepsTitleVisible() async throws {
-        let source = "# First section\n\n" + (1...80)
+        let source =
+            "# First section\n\n"
+            + (1...80)
             .map { "Research paragraph \($0) remains available." }
             .joined(separator: "\n\n") + "\n"
         let document = NoteDocument(relativePath: "Reasons.md", rawContent: source)
@@ -497,18 +531,19 @@ extension MarkdownEditorWebViewIntegrationTests {
         try await harness.waitUntilReady()
         try await Task.sleep(for: .milliseconds(150))
 
-        let result = try #require(try await harness.callPageJavaScript(
-            """
-            const title = document.querySelector('.scholium-note-title');
-            if (!title) return null;
-            const bounds = title.getBoundingClientRect();
-            return {
-              scrollY: window.scrollY,
-              titleTop: bounds.top,
-              titleBottom: bounds.bottom
-            };
-            """
-        ) as? [String: Any])
+        let result = try #require(
+            try await harness.callPageJavaScript(
+                """
+                const title = document.querySelector('.scholium-note-title');
+                if (!title) return null;
+                const bounds = title.getBoundingClientRect();
+                return {
+                  scrollY: window.scrollY,
+                  titleTop: bounds.top,
+                  titleBottom: bounds.bottom
+                };
+                """
+            ) as? [String: Any])
         let scrollY = (result["scrollY"] as? NSNumber)?.doubleValue ?? 100
         let titleTop = (result["titleTop"] as? NSNumber)?.doubleValue ?? 10_000
         let titleBottom = (result["titleBottom"] as? NSNumber)?.doubleValue ?? 0
@@ -520,9 +555,10 @@ extension MarkdownEditorWebViewIntegrationTests {
 
     @Test("Review places the app title before quiet authored YAML and the body")
     func reviewFrontmatterFollowsDocumentTitle() async throws {
-        let source = "---\ntitle: Fixture\nsummary: Read in place\n---\n# First section\n\n" +
-            (1...40).map { "Research paragraph \($0) remains available." }
-                .joined(separator: "\n\n") + "\n"
+        let source =
+            "---\ntitle: Fixture\nsummary: Read in place\n---\n# First section\n\n"
+            + (1...40).map { "Research paragraph \($0) remains available." }
+            .joined(separator: "\n\n") + "\n"
         let document = NoteDocument(relativePath: "Frontmatter.md", rawContent: source)
         let harness = ReadHarness(
             source: source,
@@ -536,35 +572,36 @@ extension MarkdownEditorWebViewIntegrationTests {
         try await harness.waitUntilReady()
         try await Task.sleep(for: .milliseconds(150))
 
-        let result = try #require(try await harness.callPageJavaScript(
-            """
-            const scroller = document.scrollingElement;
-            const frontmatter = document.querySelector('.scholium-frontmatter-source');
-            const title = document.querySelector('.scholium-note-title');
-            if (!scroller || !frontmatter || !title) return null;
-            const titleBounds = title.getBoundingClientRect();
-            const frontmatterBounds = frontmatter.getBoundingClientRect();
-            const firstHeading = document.querySelector('#scholium-document > h1');
-            const headingBounds = firstHeading?.getBoundingClientRect();
-            const delimiters = Array.from(frontmatter.querySelectorAll('.scholium-frontmatter-delimiter-line'));
-            return {
-              scrollY: window.scrollY,
-              frontmatterTop: frontmatterBounds.top,
-              frontmatterBottom: frontmatterBounds.bottom,
-              titleTop: titleBounds.top,
-              titleBottom: titleBounds.bottom,
-              headingTop: headingBounds?.top ?? -1,
-              yamlKeyCount: frontmatter.querySelectorAll('.cm-live-yaml-key').length,
-              yamlStringCount: frontmatter.querySelectorAll('.cm-live-yaml-string').length,
-              delimitersQuiet: delimiters.every(element => {
-                const style = getComputedStyle(element);
-                return element.getBoundingClientRect().height > 0.5
-                  && style.display === 'block'
-                  && style.opacity === '0';
-              })
-            };
-            """
-        ) as? [String: Any])
+        let result = try #require(
+            try await harness.callPageJavaScript(
+                """
+                const scroller = document.scrollingElement;
+                const frontmatter = document.querySelector('.scholium-frontmatter-source');
+                const title = document.querySelector('.scholium-note-title');
+                if (!scroller || !frontmatter || !title) return null;
+                const titleBounds = title.getBoundingClientRect();
+                const frontmatterBounds = frontmatter.getBoundingClientRect();
+                const firstHeading = document.querySelector('#scholium-document > h1');
+                const headingBounds = firstHeading?.getBoundingClientRect();
+                const delimiters = Array.from(frontmatter.querySelectorAll('.scholium-frontmatter-delimiter-line'));
+                return {
+                  scrollY: window.scrollY,
+                  frontmatterTop: frontmatterBounds.top,
+                  frontmatterBottom: frontmatterBounds.bottom,
+                  titleTop: titleBounds.top,
+                  titleBottom: titleBounds.bottom,
+                  headingTop: headingBounds?.top ?? -1,
+                  yamlKeyCount: frontmatter.querySelectorAll('.cm-live-yaml-key').length,
+                  yamlStringCount: frontmatter.querySelectorAll('.cm-live-yaml-string').length,
+                  delimitersQuiet: delimiters.every(element => {
+                    const style = getComputedStyle(element);
+                    return element.getBoundingClientRect().height > 0.5
+                      && style.display === 'block'
+                      && style.opacity === '0';
+                  })
+                };
+                """
+            ) as? [String: Any])
         let scrollY = (result["scrollY"] as? NSNumber)?.doubleValue ?? 100
         let frontmatterTop = (result["frontmatterTop"] as? NSNumber)?.doubleValue ?? -10_000
         let frontmatterBottom = (result["frontmatterBottom"] as? NSNumber)?.doubleValue ?? 0
@@ -599,50 +636,51 @@ extension MarkdownEditorWebViewIntegrationTests {
         defer { harness.close() }
         try await harness.waitUntilReady()
 
-        let result = try #require(try await harness.callPageJavaScript(
-            """
-            const paragraph = document.querySelector('#scholium-document > p');
-            const reference = paragraph?.querySelector('.footnote-reference-wrap');
-            if (!paragraph || !reference) return null;
-            const walker = document.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT);
-            let punctuationNode = null;
-            while (walker.nextNode()) {
-              const node = walker.currentNode;
-              if ((reference.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING)
-                  && (node.nodeValue || '').includes('.')) {
-                punctuationNode = node;
-                break;
-              }
-            }
-            if (!punctuationNode) return null;
-            const punctuationOffset = punctuationNode.nodeValue.indexOf('.');
-            const punctuationRange = document.createRange();
-            punctuationRange.setStart(punctuationNode, punctuationOffset);
-            punctuationRange.setEnd(punctuationNode, punctuationOffset + 1);
-            paragraph.style.inlineSize = '360px';
-            const sameLineOffset = punctuationRange.getBoundingClientRect().top
-              - reference.getBoundingClientRect().top;
-            const lineHeight = Number.parseFloat(getComputedStyle(paragraph).lineHeight) || 20;
-            let orphanWidth = 0;
-            for (let width = 48; width <= 360; width += 1) {
-              paragraph.style.inlineSize = width + 'px';
-              const referenceTop = reference.getBoundingClientRect().top;
-              const punctuationTop = punctuationRange.getBoundingClientRect().top;
-              if (punctuationTop - referenceTop > sameLineOffset + lineHeight / 2) {
-                orphanWidth = width;
-                break;
-              }
-            }
-            paragraph.style.inlineSize = '';
-            const style = getComputedStyle(paragraph);
-            return {
-              orphanWidth,
-              lineBreak: style.lineBreak,
-              wordBreak: style.wordBreak,
-              overflowWrap: style.overflowWrap
-            };
-            """
-        ) as? [String: Any])
+        let result = try #require(
+            try await harness.callPageJavaScript(
+                """
+                const paragraph = document.querySelector('#scholium-document > p');
+                const reference = paragraph?.querySelector('.footnote-reference-wrap');
+                if (!paragraph || !reference) return null;
+                const walker = document.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT);
+                let punctuationNode = null;
+                while (walker.nextNode()) {
+                  const node = walker.currentNode;
+                  if ((reference.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING)
+                      && (node.nodeValue || '').includes('.')) {
+                    punctuationNode = node;
+                    break;
+                  }
+                }
+                if (!punctuationNode) return null;
+                const punctuationOffset = punctuationNode.nodeValue.indexOf('.');
+                const punctuationRange = document.createRange();
+                punctuationRange.setStart(punctuationNode, punctuationOffset);
+                punctuationRange.setEnd(punctuationNode, punctuationOffset + 1);
+                paragraph.style.inlineSize = '360px';
+                const sameLineOffset = punctuationRange.getBoundingClientRect().top
+                  - reference.getBoundingClientRect().top;
+                const lineHeight = Number.parseFloat(getComputedStyle(paragraph).lineHeight) || 20;
+                let orphanWidth = 0;
+                for (let width = 48; width <= 360; width += 1) {
+                  paragraph.style.inlineSize = width + 'px';
+                  const referenceTop = reference.getBoundingClientRect().top;
+                  const punctuationTop = punctuationRange.getBoundingClientRect().top;
+                  if (punctuationTop - referenceTop > sameLineOffset + lineHeight / 2) {
+                    orphanWidth = width;
+                    break;
+                  }
+                }
+                paragraph.style.inlineSize = '';
+                const style = getComputedStyle(paragraph);
+                return {
+                  orphanWidth,
+                  lineBreak: style.lineBreak,
+                  wordBreak: style.wordBreak,
+                  overflowWrap: style.overflowWrap
+                };
+                """
+            ) as? [String: Any])
         #expect(result["orphanWidth"] as? Int == 0, Comment(rawValue: "\(result)"))
         #expect(result["lineBreak"] as? String == "strict")
         #expect(result["wordBreak"] as? String == "normal")
@@ -813,7 +851,8 @@ extension MarkdownEditorWebViewIntegrationTests {
         defer { harness.close() }
         try await harness.waitUntilReady()
 
-        _ = try await harness.callBridgeJavaScript("document.querySelectorAll('.footnote-reference')[1].dispatchEvent(new PointerEvent('pointerover', {bubbles: true}));")
+        _ = try await harness.callBridgeJavaScript(
+            "document.querySelectorAll('.footnote-reference')[1].dispatchEvent(new PointerEvent('pointerover', {bubbles: true}));")
         try await harness.waitForNativePreview(title: "Footnote 1")
         #expect(try await harness.callNativePreview("return document.body.textContent.includes('Basis.');") as? Bool == true)
         _ = try await harness.callPageJavaScript("window.dispatchEvent(new Event('scroll'));")
@@ -822,20 +861,22 @@ extension MarkdownEditorWebViewIntegrationTests {
         try await harness.waitForNativePreview(title: "Footnote 1")
         _ = try await harness.callPageJavaScript("document.querySelectorAll('.footnote-reference')[1].blur();")
         try await harness.waitForNativePreview(visible: false)
-        let navigation = try #require(try await harness.callBridgeJavaScript("""
-            const reference = document.querySelectorAll('.footnote-reference')[1];
-            const origin = reference.closest('.footnote-reference-wrap');
-            const definition = document.getElementById(reference.dataset.target);
-            const back = definition.querySelector('.footnote-return');
-            let navigated = false, returned = false;
-            definition.scrollIntoView = () => { navigated = true; };
-            origin.scrollIntoView = () => { returned = true; };
-            reference.click();
-            const definitionFocused = document.activeElement === definition;
-            back.click();
-            return {origin: origin.id, navigated, returned, definitionFocused,
-                    referenceFocused: document.activeElement === reference};
-            """) as? [String: Any])
+        let navigation = try #require(
+            try await harness.callBridgeJavaScript(
+                """
+                const reference = document.querySelectorAll('.footnote-reference')[1];
+                const origin = reference.closest('.footnote-reference-wrap');
+                const definition = document.getElementById(reference.dataset.target);
+                const back = definition.querySelector('.footnote-return');
+                let navigated = false, returned = false;
+                definition.scrollIntoView = () => { navigated = true; };
+                origin.scrollIntoView = () => { returned = true; };
+                reference.click();
+                const definitionFocused = document.activeElement === definition;
+                back.click();
+                return {origin: origin.id, navigated, returned, definitionFocused,
+                        referenceFocused: document.activeElement === reference};
+                """) as? [String: Any])
         #expect(navigation["origin"] as? String == "fnref-1-2")
         for key in ["navigated", "returned", "definitionFocused", "referenceFocused"] {
             #expect(navigation[key] as? Bool == true)
@@ -858,9 +899,10 @@ extension MarkdownEditorWebViewIntegrationTests {
         )
         defer { harness.close() }
         try await harness.waitUntilReady()
-        let pageIdentity = try #require(try await harness.callPageJavaScript(
-            "return window.__scholiumTestingPageIdentity ??= `${Date.now()}:${Math.random()}`"
-        ) as? String)
+        let pageIdentity = try #require(
+            try await harness.callPageJavaScript(
+                "return window.__scholiumTestingPageIdentity ??= `${Date.now()}:${Math.random()}`"
+            ) as? String)
 
         harness.updateLinkPreviews([Self.linkPreview(atUTF16: 0)], revision: "graph-1")
         let clock = ContinuousClock()
@@ -868,7 +910,8 @@ extension MarkdownEditorWebViewIntegrationTests {
         var previewTitle = ""
         while previewTitle != "Target note" {
             _ = try await harness.callPageJavaScript("document.querySelector('a.wiki-link')?.dispatchEvent(new PointerEvent('pointerover', {bubbles: true}));")
-            previewTitle = (try? await harness.callNativePreview("return document.querySelector('.scholium-preview-title')?.textContent || '';")) as? String ?? ""
+            previewTitle =
+                (try? await harness.callNativePreview("return document.querySelector('.scholium-preview-title')?.textContent || '';")) as? String ?? ""
             if clock.now >= deadline {
                 Issue.record("Review did not install the updated link preview in place.")
                 break
@@ -876,9 +919,10 @@ extension MarkdownEditorWebViewIntegrationTests {
             try await Task.sleep(for: .milliseconds(25))
         }
         #expect(previewTitle == "Target note")
-        let retainedIdentity = try #require(try await harness.callPageJavaScript(
-            "return window.__scholiumTestingPageIdentity"
-        ) as? String)
+        let retainedIdentity = try #require(
+            try await harness.callPageJavaScript(
+                "return window.__scholiumTestingPageIdentity"
+            ) as? String)
         #expect(retainedIdentity == pageIdentity)
         await harness.closeAndDrain()
     }
@@ -889,21 +933,27 @@ extension MarkdownEditorWebViewIntegrationTests {
         let source = previewSource + "\n\n" + String(repeating: "Synthetic surrounding paragraph.\n\n", count: 24)
         let document = NoteDocument(relativePath: "LinkedDocument.md", rawContent: source)
         let rendered = SafeMarkdownRenderer.render(document)
-        let targetLink = try #require(rendered.semanticDocument.links.first {
-            $0.syntax == .wikilink
-        })
-        let embeddedLink = try #require(rendered.semanticDocument.links.first {
-            $0.syntax == .embed
-        })
-        let previewBody = "<h1>Target note</h1>" + String(
-            repeating: "<p>Scrollable preview content.</p>",
-            count: 60
-        )
+        let targetLink = try #require(
+            rendered.semanticDocument.links.first {
+                $0.syntax == .wikilink
+            })
+        let embeddedLink = try #require(
+            rendered.semanticDocument.links.first {
+                $0.syntax == .embed
+            })
+        let previewBody =
+            "<h1>Target note</h1>"
+            + String(
+                repeating: "<p>Scrollable preview content.</p>",
+                count: 60
+            )
         let embeddedTail = "Complete embedded tail"
-        let embeddedBody = "<h1>Embedded note</h1>" + String(
-            repeating: "<p>Complete embedded content.</p>",
-            count: 90
-        ) + "<p>\(embeddedTail)</p>"
+        let embeddedBody =
+            "<h1>Embedded note</h1>"
+            + String(
+                repeating: "<p>Complete embedded content.</p>",
+                count: 90
+            ) + "<p>\(embeddedTail)</p>"
         let harness = ReadHarness(
             source: source,
             htmlBody: rendered.htmlBody,
@@ -914,26 +964,28 @@ extension MarkdownEditorWebViewIntegrationTests {
         )
         defer { harness.close() }
         try await harness.waitUntilReady()
-        harness.updateLinkPreviews([
-            Self.linkPreview(
-                at: targetLink.span,
-                title: "Target note",
-                htmlBody: previewBody
-            ),
-            Self.linkPreview(
-                at: embeddedLink.span,
-                title: "Embedded note",
-                syntax: .embed,
-                htmlBody: embeddedBody
-            ),
-        ], revision: "complete-embedded-note-1")
+        harness.updateLinkPreviews(
+            [
+                Self.linkPreview(
+                    at: targetLink.span,
+                    title: "Target note",
+                    htmlBody: previewBody
+                ),
+                Self.linkPreview(
+                    at: embeddedLink.span,
+                    title: "Embedded note",
+                    syntax: .embed,
+                    htmlBody: embeddedBody
+                ),
+            ], revision: "complete-embedded-note-1")
 
         let clock = ContinuousClock()
         let deadline = clock.now.advanced(by: .seconds(5))
         while true {
-            let count = try await harness.callPageJavaScript(
-                "return document.querySelectorAll('.scholium-embedded-note').length"
-            ) as? Int ?? 0
+            let count =
+                try await harness.callPageJavaScript(
+                    "return document.querySelectorAll('.scholium-embedded-note').length"
+                ) as? Int ?? 0
             if count == 1 { break }
             if clock.now >= deadline {
                 Issue.record("Review did not install the finite embedded Note projection.")
@@ -942,34 +994,35 @@ extension MarkdownEditorWebViewIntegrationTests {
             try await Task.sleep(for: .milliseconds(25))
         }
 
-        let snapshot = try #require(try await harness.callPageJavaScript(
-            """
-            const wiki = document.querySelector('a.wiki-link:not(.scholium-embedded-note-open)');
-            const external = document.querySelector('a[href="https://example.com"]');
-            const shell = document.querySelector('.scholium-embedded-note');
-            const viewport = shell?.querySelector('.scholium-embedded-note-viewport');
-            const embeddedBody = shell?.querySelector('.scholium-embedded-note-body');
-            const open = shell?.querySelector('.scholium-embedded-note-open');
-            if (!wiki || !external || !shell || !viewport || !embeddedBody || !open) return null;
-            viewport.scrollTop = 160;
-            const wikiStyle = getComputedStyle(wiki);
-            const externalStyle = getComputedStyle(external);
-            return {
-              sameAccent: wikiStyle.color === externalStyle.color,
-              wikiDecoration: wikiStyle.textDecorationLine,
-              externalDecoration: externalStyle.textDecorationLine,
-              inlineEmbedCount: document.querySelectorAll('a.scholium-embed').length,
-              embeddedUsesDocumentOwner: embeddedBody.classList.contains('scholium-document'),
-              embeddedDuplicateTitleCount: [...embeddedBody.querySelectorAll('h1')]
-                .filter(heading => (heading.textContent || '').trim() === 'Embedded note').length,
-              embeddedHasTail: (embeddedBody.textContent || '').includes('Complete embedded tail'),
-              embeddedScrollable: viewport.scrollHeight > viewport.clientHeight && viewport.scrollTop > 0,
-              embeddedSourceLocators: embeddedBody.querySelectorAll('[data-source-utf16-start]').length,
-              openBadgeCount: open.querySelectorAll('.scholium-system-symbol').length,
-              viewportTabIndex: viewport.tabIndex
-            };
-            """
-        ) as? [String: Any])
+        let snapshot = try #require(
+            try await harness.callPageJavaScript(
+                """
+                const wiki = document.querySelector('a.wiki-link:not(.scholium-embedded-note-open)');
+                const external = document.querySelector('a[href="https://example.com"]');
+                const shell = document.querySelector('.scholium-embedded-note');
+                const viewport = shell?.querySelector('.scholium-embedded-note-viewport');
+                const embeddedBody = shell?.querySelector('.scholium-embedded-note-body');
+                const open = shell?.querySelector('.scholium-embedded-note-open');
+                if (!wiki || !external || !shell || !viewport || !embeddedBody || !open) return null;
+                viewport.scrollTop = 160;
+                const wikiStyle = getComputedStyle(wiki);
+                const externalStyle = getComputedStyle(external);
+                return {
+                  sameAccent: wikiStyle.color === externalStyle.color,
+                  wikiDecoration: wikiStyle.textDecorationLine,
+                  externalDecoration: externalStyle.textDecorationLine,
+                  inlineEmbedCount: document.querySelectorAll('a.scholium-embed').length,
+                  embeddedUsesDocumentOwner: embeddedBody.classList.contains('scholium-document'),
+                  embeddedDuplicateTitleCount: [...embeddedBody.querySelectorAll('h1')]
+                    .filter(heading => (heading.textContent || '').trim() === 'Embedded note').length,
+                  embeddedHasTail: (embeddedBody.textContent || '').includes('Complete embedded tail'),
+                  embeddedScrollable: viewport.scrollHeight > viewport.clientHeight && viewport.scrollTop > 0,
+                  embeddedSourceLocators: embeddedBody.querySelectorAll('[data-source-utf16-start]').length,
+                  openBadgeCount: open.querySelectorAll('.scholium-system-symbol').length,
+                  viewportTabIndex: viewport.tabIndex
+                };
+                """
+            ) as? [String: Any])
         #expect(snapshot["sameAccent"] as? Bool == true)
         #expect((snapshot["wikiDecoration"] as? String)?.contains("underline") == true)
         #expect((snapshot["externalDecoration"] as? String)?.contains("underline") == true)
@@ -981,21 +1034,25 @@ extension MarkdownEditorWebViewIntegrationTests {
         #expect(snapshot["embeddedSourceLocators"] as? Int == 0)
         #expect(snapshot["openBadgeCount"] as? Int == 0)
         #expect(snapshot["viewportTabIndex"] as? Int == 0)
-        _ = try await harness.callPageJavaScript("document.querySelector('a.wiki-link:not(.scholium-embedded-note-open)').dispatchEvent(new PointerEvent('pointerover', {bubbles: true}));")
+        _ = try await harness.callPageJavaScript(
+            "document.querySelector('a.wiki-link:not(.scholium-embedded-note-open)').dispatchEvent(new PointerEvent('pointerover', {bubbles: true}));")
         try await harness.waitForNativePreview(title: "Target note")
-        let preview = try #require(try await harness.callNativePreview("""
-            window.scrollTo(0, 120);
-            const body = document.querySelector('.scholium-preview-body');
-            return {usesDocumentOwner: body.classList.contains('scholium-document'),
-                    duplicates: body.querySelectorAll('h1').length,
-                    scrolls: document.documentElement.scrollHeight > innerHeight,
-                    metadataHidden: document.querySelector('.scholium-preview-metadata').hidden};
-            """) as? [String: Any])
+        let preview = try #require(
+            try await harness.callNativePreview(
+                """
+                window.scrollTo(0, 120);
+                const body = document.querySelector('.scholium-preview-body');
+                return {usesDocumentOwner: body.classList.contains('scholium-document'),
+                        duplicates: body.querySelectorAll('h1').length,
+                        scrolls: document.documentElement.scrollHeight > innerHeight,
+                        metadataHidden: document.querySelector('.scholium-preview-metadata').hidden};
+                """) as? [String: Any])
         #expect(preview["usesDocumentOwner"] as? Bool == true)
         #expect(preview["duplicates"] as? Int == 0)
         #expect(preview["scrolls"] as? Bool == true)
         #expect(preview["metadataHidden"] as? Bool == true)
-        _ = try await harness.callPageJavaScript("document.querySelector('a.wiki-link').dispatchEvent(new PointerEvent('pointerout', {bubbles: true, relatedTarget: document.body}));")
+        _ = try await harness.callPageJavaScript(
+            "document.querySelector('a.wiki-link').dispatchEvent(new PointerEvent('pointerout', {bubbles: true, relatedTarget: document.body}));")
         try harness.hoverNativePreview(entered: true)
         try await Task.sleep(for: .milliseconds(220))
         #expect(harness.nativePreviewWebView() != nil)
@@ -1007,10 +1064,10 @@ extension MarkdownEditorWebViewIntegrationTests {
     @Test("Review link previews open inside callouts")
     func reviewCalloutLinkPreviews() async throws {
         let previewSource = """
-        > [!connect] Curated connections
-        > - [[Target]]
-        > - [[Support]]{{A scoped reason.}}
-        """
+            > [!connect] Curated connections
+            > - [[Target]]
+            > - [[Support]]{{A scoped reason.}}
+            """
         let source = previewSource + "\n\n" + String(repeating: "Synthetic surrounding paragraph.\n\n", count: 24)
         let document = NoteDocument(relativePath: "CalloutPreviews.md", rawContent: source)
         let rendered = SafeMarkdownRenderer.render(document)
@@ -1028,22 +1085,25 @@ extension MarkdownEditorWebViewIntegrationTests {
         )
         defer { harness.close() }
         try await harness.waitUntilReady()
-        harness.updateLinkPreviews([
-            Self.linkPreview(
-                at: links[0].linkSpan,
-                title: "Target note"
-            ),
-            Self.linkPreview(
-                at: links[1].linkSpan,
-                title: "Supporting note"
-            ),
-        ], revision: "callout-links-1")
+        harness.updateLinkPreviews(
+            [
+                Self.linkPreview(
+                    at: links[0].linkSpan,
+                    title: "Target note"
+                ),
+                Self.linkPreview(
+                    at: links[1].linkSpan,
+                    title: "Supporting note"
+                ),
+            ], revision: "callout-links-1")
 
         for (index, title) in ["Target note", "Supporting note"].enumerated() {
             let deadline = ContinuousClock.now.advanced(by: .seconds(5))
             var actual = ""
             while actual != title && ContinuousClock.now < deadline {
-                _ = try await harness.callPageJavaScript("document.querySelectorAll('.scholium-callout a.wiki-link')[index]?.dispatchEvent(new PointerEvent('pointerover', {bubbles: true}));", arguments: ["index": index])
+                _ = try await harness.callPageJavaScript(
+                    "document.querySelectorAll('.scholium-callout a.wiki-link')[index]?.dispatchEvent(new PointerEvent('pointerover', {bubbles: true}));",
+                    arguments: ["index": index])
                 actual = (try? await harness.callNativePreview("return document.querySelector('.scholium-preview-title')?.textContent || '';")) as? String ?? ""
                 if actual != title { try await Task.sleep(for: .milliseconds(25)) }
             }
@@ -1069,12 +1129,16 @@ extension MarkdownEditorWebViewIntegrationTests {
         try await harness.waitUntilReady()
 
         let originalHeight = try await harness.callPageJavaScript("return document.documentElement.scrollHeight;") as? Double
-        _ = try await harness.callPageJavaScript("document.querySelector('.scholium-link-annotation-button').dispatchEvent(new PointerEvent('pointerover', {bubbles: true}));")
+        _ = try await harness.callPageJavaScript(
+            "document.querySelector('.scholium-link-annotation-button').dispatchEvent(new PointerEvent('pointerover', {bubbles: true}));")
         try await harness.waitForNativePreview()
         #expect(try await harness.callNativePreview("return document.querySelector('strong')?.textContent;") as? String == "reason")
         #expect(try await harness.callNativePreview("return document.body.textContent.includes('Second reason.');") as? Bool == true)
-        #expect(try await harness.callPageJavaScript("return document.querySelector('.scholium-link-annotation-button').getAttribute('aria-expanded');") as? String == "true")
-        _ = try await harness.callPageJavaScript("""
+        #expect(
+            try await harness.callPageJavaScript("return document.querySelector('.scholium-link-annotation-button').getAttribute('aria-expanded');") as? String
+                == "true")
+        _ = try await harness.callPageJavaScript(
+            """
             const button = document.querySelector('.scholium-link-annotation-button');
             button.click();
             button.dispatchEvent(new PointerEvent('pointerout', {bubbles: true, relatedTarget: document.body}));
@@ -1083,11 +1147,16 @@ extension MarkdownEditorWebViewIntegrationTests {
         #expect(harness.nativePreviewWebView() != nil)
         _ = try await harness.callPageJavaScript("document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}));")
         try await harness.waitForNativePreview(visible: false)
-        _ = try await harness.callPageJavaScript("const button = document.querySelector('.scholium-link-annotation-button'); button.blur(); button.focus({preventScroll: true});")
+        _ = try await harness.callPageJavaScript(
+            "const button = document.querySelector('.scholium-link-annotation-button'); button.blur(); button.focus({preventScroll: true});")
         try await harness.waitForNativePreview()
-        #expect(try await harness.callPageJavaScript("return document.activeElement === document.querySelector('.scholium-link-annotation-button');") as? Bool == true)
+        #expect(
+            try await harness.callPageJavaScript("return document.activeElement === document.querySelector('.scholium-link-annotation-button');") as? Bool
+                == true)
         #expect(try await harness.callPageJavaScript("return document.documentElement.scrollHeight;") as? Double == originalHeight)
-        #expect(try await harness.callPageJavaScript("return document.querySelectorAll('#scholium-preview-popover, .scholium-link-annotation-panel').length;") as? Int == 0)
+        #expect(
+            try await harness.callPageJavaScript("return document.querySelectorAll('#scholium-preview-popover, .scholium-link-annotation-panel').length;")
+                as? Int == 0)
         _ = try await harness.callPageJavaScript("document.querySelector('.scholium-link-annotation-button').blur();")
         try await harness.waitForNativePreview(visible: false)
         await harness.closeAndDrain()
@@ -1096,14 +1165,14 @@ extension MarkdownEditorWebViewIntegrationTests {
     @Test("Review selection remains exact after a semantic table")
     func reviewSelectionAfterTableRemainsExact() async throws {
         let source = """
-        | Claim | Status |
-        |:---|:---:|
-        | Fittingness | Open |
+            | Claim | Status |
+            |:---|:---:|
+            | Fittingness | Open |
 
-        After the table remains selectable.
+            After the table remains selectable.
 
-        A final paragraph follows.
-        """
+            A final paragraph follows.
+            """
         let document = NoteDocument(relativePath: "Selection.md", rawContent: source)
         let harness = ReadHarness(
             source: source,
@@ -1128,9 +1197,9 @@ extension MarkdownEditorWebViewIntegrationTests {
     func reviewSelectionPresentationExcludesLayoutOnlyBlockSpace() async throws {
         let source = "First paragraph text.\n\nSecond paragraph text.\n"
         let htmlBody = """
-        <p data-source-line="1">First paragraph text.</p>
-        <p data-source-line="3">Second paragraph text.</p>
-        """
+            <p data-source-line="1">First paragraph text.</p>
+            <p data-source-line="3">Second paragraph text.</p>
+            """
         let harness = ReadHarness(
             source: source,
             htmlBody: htmlBody,
@@ -1166,14 +1235,15 @@ extension MarkdownEditorWebViewIntegrationTests {
         defer { harness.close() }
         try await harness.waitUntilReady()
 
-        let result = try #require(try await harness.callPageJavaScript(
-            """
-            const mark = document.querySelector('.scholium-highlight');
-            if (!mark) return null;
-            const style = getComputedStyle(mark);
-            return {background: style.backgroundColor, color: style.color};
-            """
-        ) as? [String: String])
+        let result = try #require(
+            try await harness.callPageJavaScript(
+                """
+                const mark = document.querySelector('.scholium-highlight');
+                if (!mark) return null;
+                const style = getComputedStyle(mark);
+                return {background: style.backgroundColor, color: style.color};
+                """
+            ) as? [String: String])
         #expect(result["background"] == "rgb(255, 154, 0)")
         #expect(result["color"] == "rgb(40, 36, 29)")
         await harness.closeAndDrain()
@@ -1231,7 +1301,8 @@ extension MarkdownEditorWebViewIntegrationTests {
         }
 
         var expectedRootLineWidth: String {
-            let value = lineWidthCharacterUnits
+            let value =
+                lineWidthCharacterUnits
                 ?? DocumentAppearanceSettings.defaultLineWidthCharacterUnits
             return "\(Int(value))ch"
         }
@@ -1245,18 +1316,19 @@ extension MarkdownEditorWebViewIntegrationTests {
 
         var presentationCSS: String {
             guard let lineWidthCharacterUnits else { return configuration.css }
-            return configuration.css + String(
-                format: """
+            return configuration.css
+                + String(
+                    format: """
 
-                :root {
-                  --scholium-document-line-width: %.15gch;
-                  --scholium-document-half-line-width: %.15gch;
-                }
-                """,
-                locale: Locale(identifier: "en_US_POSIX"),
-                lineWidthCharacterUnits,
-                lineWidthCharacterUnits / 2
-            )
+                        :root {
+                          --scholium-document-line-width: %.15gch;
+                          --scholium-document-half-line-width: %.15gch;
+                        }
+                        """,
+                    locale: Locale(identifier: "en_US_POSIX"),
+                    lineWidthCharacterUnits,
+                    lineWidthCharacterUnits / 2
+                )
         }
 
         var expectedParagraphGap: String {
@@ -1300,15 +1372,15 @@ extension MarkdownEditorWebViewIntegrationTests {
             configuration: .init(textScale: 1),
             appearanceName: .aqua,
             readUserCSS: """
-            .scholium-document { max-width: calc(100% - 16px); }
-            .scholium-document h2 { font-weight: 500; }
-            .scholium-document p { line-height: 1.75; }
-            """,
+                .scholium-document { max-width: calc(100% - 16px); }
+                .scholium-document h2 { font-weight: 500; }
+                .scholium-document p { line-height: 1.75; }
+                """,
             liveUserCSS: """
-            .cm-editor.scholium-live-mode .cm-content { max-width: calc(100% - 16px); }
-            .scholium-live-mode .cm-live-h2 { font-weight: 500; }
-            .scholium-live-mode .cm-live-paragraph { line-height: 1.75; }
-            """
+                .cm-editor.scholium-live-mode .cm-content { max-width: calc(100% - 16px); }
+                .scholium-live-mode .cm-live-h2 { font-weight: 500; }
+                .scholium-live-mode .cm-live-paragraph { line-height: 1.75; }
+                """
         ),
     ]
 
@@ -1354,9 +1426,11 @@ extension MarkdownEditorWebViewIntegrationTests {
             #expect(readSnapshot.rootLineWidth == scenario.expectedRootLineWidth)
             #expect(readSnapshot.rootParagraphGap == scenario.expectedParagraphGap)
             let actualInset = try #require(cssPixels(readSnapshot.documentPaddingInlineStart))
-            #expect(actualInset + 0.5 >= scenario.minimumInlineInset(
-                viewportWidth: readSnapshot.viewportWidth
-            ))
+            #expect(
+                actualInset + 0.5
+                    >= scenario.minimumInlineInset(
+                        viewportWidth: readSnapshot.viewportWidth
+                    ))
             if scenario.readUserCSS.isEmpty {
                 #expect(abs(readSnapshot.documentWidth - readSnapshot.viewportWidth) <= 1)
             }
@@ -1441,7 +1515,7 @@ extension MarkdownEditorWebViewIntegrationTests {
         var source = testingPresentationFixtureSource() + "\n"
         var anchorLowerBound = 0
         var anchorUpperBound = 0
-        for index in 1 ... 80 {
+        for index in 1...80 {
             let line = "Research paragraph \(index) develops a deliberately long philosophical claim for scroll restoration."
             let lowerBound = source.utf16.count
             let upperBound = lowerBound + line.utf16.count
@@ -1644,8 +1718,11 @@ extension MarkdownEditorWebViewIntegrationTests {
         @Published var surfaceIdentity = 0
         @Published var sourceLocationRequest: DocumentSourceLocationRequest?
         func requestSourceLocation(line: Int?, range: SearchSourceRange? = nil, fingerprint: String? = nil) {
-            sourceLocationRequest = line.map { .init(id: UUID(), target: .unavailable(vaultID: UUID(), relativePath: "Fixture.md"),
-                line: $0, range: range, requiresExactSelection: range != nil, sourceFingerprint: fingerprint) }
+            sourceLocationRequest = line.map {
+                .init(
+                    id: UUID(), target: .unavailable(vaultID: UUID(), relativePath: "Fixture.md"),
+                    line: $0, range: range, requiresExactSelection: range != nil, sourceFingerprint: fingerprint)
+            }
         }
         var sourceRangeUnavailable = false
         var sourceRevisionChanged = false
@@ -1655,8 +1732,8 @@ extension MarkdownEditorWebViewIntegrationTests {
         @Published var selectionSurfaceIsActive = true
         var selection: MarkdownReviewSelection?
         #if DEBUG
-        @Published var testingForcesFinalizationFailure = false
-        let testingScrollRestoreDelayMilliseconds: Int
+            @Published var testingForcesFinalizationFailure = false
+            let testingScrollRestoreDelayMilliseconds: Int
         #endif
         var observedScrollPosition: ObservedScrollPosition
         private var lastIssuedRestoration: Restoration
@@ -1682,8 +1759,8 @@ extension MarkdownEditorWebViewIntegrationTests {
             )
             self.userCSS = userCSS
             #if DEBUG
-            self.testingForcesFinalizationFailure = testingForcesFinalizationFailure
-            self.testingScrollRestoreDelayMilliseconds = testingScrollRestoreDelayMilliseconds
+                self.testingForcesFinalizationFailure = testingForcesFinalizationFailure
+                self.testingScrollRestoreDelayMilliseconds = testingScrollRestoreDelayMilliseconds
             #endif
         }
 
@@ -1721,7 +1798,7 @@ extension MarkdownEditorWebViewIntegrationTests {
 
         func retryAfterFinalizationFailure() {
             #if DEBUG
-            testingForcesFinalizationFailure = false
+                testingForcesFinalizationFailure = false
             #endif
             failure = nil
         }
@@ -1730,8 +1807,6 @@ extension MarkdownEditorWebViewIntegrationTests {
             linkPreviews = previews
             linkPreviewRevision = revision
         }
-
-
 
     }
 
@@ -1795,7 +1870,10 @@ extension MarkdownEditorWebViewIntegrationTests {
             hostingController = controller
             window.contentViewController = controller
             window.orderFrontRegardless()
-            if laysOutForNativePreview { window.makeKeyAndOrderFront(nil); NSApp.activate() }
+            if laysOutForNativePreview {
+                window.makeKeyAndOrderFront(nil)
+                NSApp.activate()
+            }
         }
 
         func waitUntilReady() async throws {
@@ -1807,7 +1885,9 @@ extension MarkdownEditorWebViewIntegrationTests {
                     throw ReadHarnessError.renderingFailed
                 }
                 if clock.now >= deadline {
-                    let diagnostic = try? await callBridgeJavaScript("return {state: document.readyState, fonts: document.fonts.status, native: typeof window.scholiumNativeFloatingEvent, width: innerWidth, height: innerHeight};")
+                    let diagnostic = try? await callBridgeJavaScript(
+                        "return {state: document.readyState, fonts: document.fonts.status, native: typeof window.scholiumNativeFloatingEvent, width: innerWidth, height: innerHeight};"
+                    )
                     print("READ READY DIAGNOSTIC", diagnostic ?? "nil")
                     Issue.record("The Read WKWebView did not report rendering readiness.")
                     throw ReadHarnessError.timedOut
@@ -1815,8 +1895,6 @@ extension MarkdownEditorWebViewIntegrationTests {
                 try await Task.sleep(for: .milliseconds(25))
             }
         }
-
-
 
         func resize(width: CGFloat, height: CGFloat, duration: TimeInterval = 0) {
             guard duration > 0 else {
@@ -1835,19 +1913,21 @@ extension MarkdownEditorWebViewIntegrationTests {
         }
 
         func viewportScrollBarSnapshot() async throws -> ViewportScrollBarSnapshot {
-            guard let snapshot = try await callBridgeJavaScript(
-                """
-                const root = document.documentElement;
-                return {
-                  usesOverlayScrollBar: Math.abs(window.innerWidth - root.clientWidth) < 1,
-                  isSuppressed: root.classList.contains(
-                    'scholium-viewport-resize-suppresses-overlay-scrollbar'
-                  ),
-                  scrollBarWidth: getComputedStyle(root).scrollbarWidth,
-                  scrollY: window.scrollY
-                };
-                """
-            ) as? [String: Any] else {
+            guard
+                let snapshot = try await callBridgeJavaScript(
+                    """
+                    const root = document.documentElement;
+                    return {
+                      usesOverlayScrollBar: Math.abs(window.innerWidth - root.clientWidth) < 1,
+                      isSuppressed: root.classList.contains(
+                        'scholium-viewport-resize-suppresses-overlay-scrollbar'
+                      ),
+                      scrollBarWidth: getComputedStyle(root).scrollbarWidth,
+                      scrollY: window.scrollY
+                    };
+                    """
+                ) as? [String: Any]
+            else {
                 throw ReadHarnessError.invalidSnapshot
             }
             return ViewportScrollBarSnapshot(
@@ -1875,7 +1955,8 @@ extension MarkdownEditorWebViewIntegrationTests {
 
         func nativePreviewWebView() -> WKWebView? {
             guard let root = window.contentViewController?.view,
-                  let owner = findWebView(in: root) else { return nil }
+                let owner = findWebView(in: root)
+            else { return nil }
             return (owner.superview?.subviews ?? []).compactMap { $0 as? NSGlassEffectView }
                 .compactMap { $0.contentView as? WKWebView }.first
         }
@@ -1884,11 +1965,14 @@ extension MarkdownEditorWebViewIntegrationTests {
             let deadline = ContinuousClock.now.advanced(by: .seconds(5))
             while ContinuousClock.now < deadline {
                 if let preview = nativePreviewWebView() {
-                    let actual = (try? await preview.evaluateJavaScript(
-                        "document.querySelector('.scholium-preview-title')?.textContent || ''"
-                    )) as? String ?? ""
+                    let actual =
+                        (try? await preview.evaluateJavaScript(
+                            "document.querySelector('.scholium-preview-title')?.textContent || ''"
+                        )) as? String ?? ""
                     if visible && !actual.isEmpty && (title == nil || actual == title) { return }
-                } else if !visible { return }
+                } else if !visible {
+                    return
+                }
                 try await Task.sleep(for: .milliseconds(20))
             }
             Issue.record("Native preview did not reach the expected visibility/title: \(title ?? "any"), visible=\(visible)")
@@ -1904,9 +1988,11 @@ extension MarkdownEditorWebViewIntegrationTests {
             let root = try #require(window.contentViewController?.view)
             let owner = try #require(findWebView(in: root))
             let glass = try #require(owner.superview?.subviews.compactMap { $0 as? NSGlassEffectView }.first)
-            let event = try #require(NSEvent.mouseEvent(with: .mouseMoved, location: .zero,
-                modifierFlags: [], timestamp: 0, windowNumber: window.windowNumber,
-                context: nil, eventNumber: 0, clickCount: 0, pressure: 0))
+            let event = try #require(
+                NSEvent.mouseEvent(
+                    with: .mouseMoved, location: .zero,
+                    modifierFlags: [], timestamp: 0, windowNumber: window.windowNumber,
+                    context: nil, eventNumber: 0, clickCount: 0, pressure: 0))
             if entered { glass.mouseEntered(with: event) } else { glass.mouseExited(with: event) }
         }
 
@@ -1915,7 +2001,8 @@ extension MarkdownEditorWebViewIntegrationTests {
             arguments: [String: Any] = [:]
         ) async throws -> Any? {
             guard let rootView = window.contentViewController?.view,
-                  let webView = findWebView(in: rootView) else {
+                let webView = findWebView(in: rootView)
+            else {
                 throw ReadHarnessError.webViewUnavailable
             }
             return try await webView.callAsyncJavaScript(
@@ -1935,7 +2022,8 @@ extension MarkdownEditorWebViewIntegrationTests {
             arguments: [String: Any] = [:]
         ) async throws -> Any? {
             guard let rootView = window.contentViewController?.view,
-                  let webView = findWebView(in: rootView) else {
+                let webView = findWebView(in: rootView)
+            else {
                 throw ReadHarnessError.webViewUnavailable
             }
             return try await webView.callAsyncJavaScript(
@@ -1951,7 +2039,8 @@ extension MarkdownEditorWebViewIntegrationTests {
             let deadline = clock.now.advanced(by: .seconds(5))
             while true {
                 if let rootView = window.contentViewController?.view,
-                   findWebView(in: rootView) != nil {
+                    findWebView(in: rootView) != nil
+                {
                     return
                 }
                 if clock.now >= deadline { throw ReadHarnessError.timedOut }
@@ -2018,7 +2107,8 @@ extension MarkdownEditorWebViewIntegrationTests {
 
         func webViewIdentity() throws -> ObjectIdentifier {
             guard let rootView = window.contentViewController?.view,
-                  let webView = findWebView(in: rootView) else {
+                let webView = findWebView(in: rootView)
+            else {
                 throw ReadHarnessError.webViewUnavailable
             }
             return ObjectIdentifier(webView)
@@ -2026,7 +2116,8 @@ extension MarkdownEditorWebViewIntegrationTests {
 
         func webViewAccessibilityIdentifier() throws -> String? {
             guard let rootView = window.contentViewController?.view,
-                  let webView = findWebView(in: rootView) else {
+                let webView = findWebView(in: rootView)
+            else {
                 throw ReadHarnessError.webViewUnavailable
             }
             return webView.accessibilityIdentifier()
@@ -2042,7 +2133,6 @@ extension MarkdownEditorWebViewIntegrationTests {
             // coordinator's nil load signature.
             sourceBox.surfaceIdentity += 1
         }
-
 
         func updateLinkPreviews(_ previews: [DocumentLinkPreview], revision: String) {
             sourceBox.updateLinkPreviews(previews, revision: revision)
@@ -2094,7 +2184,8 @@ extension MarkdownEditorWebViewIntegrationTests {
 
         func sourceLineTop(_ line: Int) async throws -> Double {
             guard let rootView = window.contentViewController?.view,
-                  let webView = findWebView(in: rootView) else {
+                let webView = findWebView(in: rootView)
+            else {
                 throw ReadHarnessError.webViewUnavailable
             }
             let result = try await webView.callAsyncJavaScript(
@@ -2114,7 +2205,8 @@ extension MarkdownEditorWebViewIntegrationTests {
 
         func sourceLineRange(_ line: Int) async throws -> (lowerBound: Int, upperBound: Int) {
             guard let rootView = window.contentViewController?.view,
-                  let webView = findWebView(in: rootView) else {
+                let webView = findWebView(in: rootView)
+            else {
                 throw ReadHarnessError.webViewUnavailable
             }
             let result = try await webView.callAsyncJavaScript(
@@ -2131,8 +2223,9 @@ extension MarkdownEditorWebViewIntegrationTests {
                 contentWorld: .page
             )
             guard let payload = result as? [String: Any],
-                  let lowerBound = (payload["lowerBound"] as? NSNumber)?.intValue,
-                  let upperBound = (payload["upperBound"] as? NSNumber)?.intValue else {
+                let lowerBound = (payload["lowerBound"] as? NSNumber)?.intValue,
+                let upperBound = (payload["upperBound"] as? NSNumber)?.intValue
+            else {
                 throw ReadHarnessError.invalidSnapshot
             }
             return (lowerBound, upperBound)
@@ -2149,7 +2242,8 @@ extension MarkdownEditorWebViewIntegrationTests {
             let deadline = clock.now.advanced(by: .seconds(5))
             while true {
                 if sourceBox.isReady,
-                   try await currentLoadRevision() == "B" {
+                    try await currentLoadRevision() == "B"
+                {
                     return
                 }
                 if clock.now >= deadline { throw ReadHarnessError.timedOut }
@@ -2159,7 +2253,8 @@ extension MarkdownEditorWebViewIntegrationTests {
 
         private func currentLoadRevision() async throws -> String {
             guard let rootView = window.contentViewController?.view,
-                  let webView = findWebView(in: rootView) else {
+                let webView = findWebView(in: rootView)
+            else {
                 throw ReadHarnessError.webViewUnavailable
             }
             let result = try await webView.callAsyncJavaScript(
@@ -2173,7 +2268,8 @@ extension MarkdownEditorWebViewIntegrationTests {
 
         func restoreInvocationCount() async throws -> Int {
             guard let rootView = window.contentViewController?.view,
-                  let webView = findWebView(in: rootView) else {
+                let webView = findWebView(in: rootView)
+            else {
                 throw ReadHarnessError.webViewUnavailable
             }
             let result = try await webView.callAsyncJavaScript(
@@ -2205,7 +2301,8 @@ extension MarkdownEditorWebViewIntegrationTests {
 
         func scroll(toFraction fraction: Double) async throws {
             guard let rootView = window.contentViewController?.view,
-                  let webView = findWebView(in: rootView) else {
+                let webView = findWebView(in: rootView)
+            else {
                 throw ReadHarnessError.webViewUnavailable
             }
             _ = try await webView.callAsyncJavaScript(
@@ -2222,7 +2319,8 @@ extension MarkdownEditorWebViewIntegrationTests {
 
         func selectVisibleText(_ requestedText: String) async throws -> MarkdownReviewSelection {
             guard let rootView = window.contentViewController?.view,
-                  let webView = findWebView(in: rootView) else {
+                let webView = findWebView(in: rootView)
+            else {
                 throw ReadHarnessError.webViewUnavailable
             }
             sourceBox.selection = nil
@@ -2281,11 +2379,12 @@ extension MarkdownEditorWebViewIntegrationTests {
                 """
             )
             guard JSONSerialization.isValidJSONObject(rawResult as Any),
-                  let data = try? JSONSerialization.data(withJSONObject: rawResult as Any),
-                  let snapshot = try? JSONDecoder().decode(
+                let data = try? JSONSerialization.data(withJSONObject: rawResult as Any),
+                let snapshot = try? JSONDecoder().decode(
                     ReviewSelectionPresentationSnapshot.self,
                     from: data
-                  ) else {
+                )
+            else {
                 throw ReadHarnessError.invalidSnapshot
             }
             return snapshot
@@ -2296,7 +2395,8 @@ extension MarkdownEditorWebViewIntegrationTests {
             visualOrderIsMonotonic: Bool
         ) {
             guard let rootView = window.contentViewController?.view,
-                  let webView = findWebView(in: rootView) else {
+                let webView = findWebView(in: rootView)
+            else {
                 throw ReadHarnessError.webViewUnavailable
             }
             let result = try await webView.callAsyncJavaScript(
@@ -2306,8 +2406,9 @@ extension MarkdownEditorWebViewIntegrationTests {
                 contentWorld: SafeMarkdownReadWebView.bridgeContentWorld
             )
             guard let payload = result as? [String: Any],
-                  let count = (payload["registryCount"] as? NSNumber)?.intValue,
-                  let visualOrderIsMonotonic = payload["visualOrderIsMonotonic"] as? Bool else {
+                let count = (payload["registryCount"] as? NSNumber)?.intValue,
+                let visualOrderIsMonotonic = payload["visualOrderIsMonotonic"] as? Bool
+            else {
                 throw ReadHarnessError.invalidSnapshot
             }
             return (count, visualOrderIsMonotonic)
@@ -2315,7 +2416,8 @@ extension MarkdownEditorWebViewIntegrationTests {
 
         func presentationSnapshot() async throws -> MarkdownEditorSession.TestingPresentationSnapshot {
             guard let rootView = window.contentViewController?.view,
-                  let webView = findWebView(in: rootView) else {
+                let webView = findWebView(in: rootView)
+            else {
                 throw ReadHarnessError.webViewUnavailable
             }
             let rawResult = try await webView.callAsyncJavaScript(
@@ -2506,11 +2608,12 @@ extension MarkdownEditorWebViewIntegrationTests {
                 contentWorld: .page
             )
             guard JSONSerialization.isValidJSONObject(rawResult as Any),
-                  let data = try? JSONSerialization.data(withJSONObject: rawResult as Any),
-                  let snapshot = try? JSONDecoder().decode(
+                let data = try? JSONSerialization.data(withJSONObject: rawResult as Any),
+                let snapshot = try? JSONDecoder().decode(
                     MarkdownEditorSession.TestingPresentationSnapshot.self,
                     from: data
-                  ) else {
+                )
+            else {
                 throw ReadHarnessError.invalidSnapshot
             }
             return snapshot
@@ -2536,11 +2639,13 @@ extension MarkdownEditorWebViewIntegrationTests {
                 while true {
                     let snapshot = try await presentationSnapshot()
                     if snapshot.rootTextScale == scenario.expectedTextScale,
-                       snapshot.documentWidth > 0 {
+                        snapshot.documentWidth > 0
+                    {
                         try await Task.sleep(for: .milliseconds(100))
                         let stableSnapshot = try await presentationSnapshot()
                         guard stableSnapshot.rootTextScale == scenario.expectedTextScale,
-                              stableSnapshot.documentWidth > 0 else { continue }
+                            stableSnapshot.documentWidth > 0
+                        else { continue }
                         snapshots.append((scenario, stableSnapshot))
                         break
                     }
@@ -2658,8 +2763,8 @@ extension MarkdownEditorWebViewIntegrationTests {
                 }
             )
             #if DEBUG
-            surface.testingForcesFinalizationFailure = sourceBox.testingForcesFinalizationFailure
-            surface.testingScrollRestoreDelayMilliseconds = sourceBox.testingScrollRestoreDelayMilliseconds
+                surface.testingForcesFinalizationFailure = sourceBox.testingForcesFinalizationFailure
+                surface.testingScrollRestoreDelayMilliseconds = sourceBox.testingScrollRestoreDelayMilliseconds
             #endif
             return surface.id(sourceBox.surfaceIdentity)
                 .frame(width: laysOutForNativePreview ? 720 : nil, height: laysOutForNativePreview ? 420 : nil)

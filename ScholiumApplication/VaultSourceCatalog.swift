@@ -100,7 +100,8 @@ actor VaultSourceCatalog {
             try await reconcile(projectionRequirement: projectionRequirement)
         } else {
             if projectionRequirement == .search,
-               records.contains(where: { $0.value.searchProjection == nil }) {
+                records.contains(where: { $0.value.searchProjection == nil })
+            {
                 try completeSearchProjections()
             }
             if refreshFolders {
@@ -111,7 +112,8 @@ actor VaultSourceCatalog {
                 }
             }
         }
-        let measurement = consumePendingMeasurement
+        let measurement =
+            consumePendingMeasurement
             ? pendingMeasurement
             : lastMeasurement
         if consumePendingMeasurement {
@@ -170,16 +172,17 @@ actor VaultSourceCatalog {
         folders = observedFolders
         isInitialized = true
         needsFullReconcile = false
-        record(VaultSourceCatalogMeasurement(
-            enumeratedFiles: paths.count,
-            readFiles: readFiles,
-            parsedDocuments: parsedDocuments,
-            projectedDocuments: projectedDocuments,
-            enumerationDuration: enumerationDuration,
-            readDuration: readDuration,
-            parseDuration: parseDuration,
-            projectionDuration: projectionDuration
-        ))
+        record(
+            VaultSourceCatalogMeasurement(
+                enumeratedFiles: paths.count,
+                readFiles: readFiles,
+                parsedDocuments: parsedDocuments,
+                projectedDocuments: projectedDocuments,
+                enumerationDuration: enumerationDuration,
+                readDuration: readDuration,
+                parseDuration: parseDuration,
+                projectionDuration: projectionDuration
+            ))
     }
 
     func apply(
@@ -230,16 +233,17 @@ actor VaultSourceCatalog {
         if changed { try advanceGeneration() }
         records = nextRecords
         folders = nextFolders
-        record(VaultSourceCatalogMeasurement(
-            enumeratedFiles: 0,
-            readFiles: readFiles,
-            parsedDocuments: parsedDocuments,
-            projectedDocuments: projectedDocuments,
-            enumerationDuration: enumerationDuration,
-            readDuration: readDuration,
-            parseDuration: parseDuration,
-            projectionDuration: projectionDuration
-        ))
+        record(
+            VaultSourceCatalogMeasurement(
+                enumeratedFiles: 0,
+                readFiles: readFiles,
+                parsedDocuments: parsedDocuments,
+                projectedDocuments: projectedDocuments,
+                enumerationDuration: enumerationDuration,
+                readDuration: readDuration,
+                parseDuration: parseDuration,
+                projectionDuration: projectionDuration
+            ))
     }
 
     func apply(_ event: VaultWatchEvent) async throws {
@@ -375,8 +379,9 @@ actor VaultSourceCatalog {
                     version: existing.version
                 ) {
                     if projectionRequirement == .search,
-                       existing.semantic != nil,
-                       existing.searchProjection == nil {
+                        existing.semantic != nil,
+                        existing.searchProjection == nil
+                    {
                         let projectionStart = ContinuousClock().now
                         let completed = recordByCompletingSearchProjection(
                             existing,
@@ -469,8 +474,10 @@ actor VaultSourceCatalog {
         let projectionStart = clock.now
         var nextRecords = records
         var projectedDocuments = 0
-        for (path, record) in records where record.semantic != nil
-            && record.searchProjection == nil {
+        for (path, record) in records
+        where record.semantic != nil
+            && record.searchProjection == nil
+        {
             try Task.checkCancellation()
             nextRecords[path] = Self.recordByCompletingSearchProjection(
                 record,
@@ -481,16 +488,17 @@ actor VaultSourceCatalog {
         guard projectedDocuments > 0 else { return }
         try advanceGeneration()
         records = nextRecords
-        record(VaultSourceCatalogMeasurement(
-            enumeratedFiles: 0,
-            readFiles: 0,
-            parsedDocuments: 0,
-            projectedDocuments: projectedDocuments,
-            enumerationDuration: .zero,
-            readDuration: .zero,
-            parseDuration: .zero,
-            projectionDuration: projectionStart.duration(to: clock.now)
-        ))
+        record(
+            VaultSourceCatalogMeasurement(
+                enumeratedFiles: 0,
+                readFiles: 0,
+                parsedDocuments: 0,
+                projectedDocuments: projectedDocuments,
+                enumerationDuration: .zero,
+                readDuration: .zero,
+                parseDuration: .zero,
+                projectionDuration: projectionStart.duration(to: clock.now)
+            ))
     }
 
     private static func recordByCompletingSearchProjection(
@@ -544,9 +552,10 @@ actor VaultSourceCatalog {
             documents: ordered,
             sourceVersions: records.mapValues(\.version),
             fileMetadata: records.mapValues(\.fileMetadata),
-            semantics: Dictionary(uniqueKeysWithValues: records.compactMap {
-                path, record in record.semantic.map { (path, $0) }
-            }),
+            semantics: Dictionary(
+                uniqueKeysWithValues: records.compactMap {
+                    path, record in record.semantic.map { (path, $0) }
+                }),
             searchProjections: Dictionary(
                 uniqueKeysWithValues: records.compactMap { path, record in
                     record.searchProjection.map { (path, $0) }

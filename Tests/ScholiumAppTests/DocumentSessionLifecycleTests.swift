@@ -1,7 +1,8 @@
+import Combine
 import Foundation
 import ScholiumContracts
 import Testing
-import Combine
+
 @testable import ScholiumApp
 
 @MainActor
@@ -9,36 +10,41 @@ import Combine
 struct DocumentSessionLifecycleTests {
     @Test("Document top presents persistent feedback, Actions, then permission education")
     func documentTopSurfacePriority() {
-        #expect(DocumentTopSurfacePresentation.resolve(
-            hasPersistentFeedback: true,
-            hasActionNotifications: true,
-            hasSettlementReminder: true,
-            hasNotificationPermissionNotice: true
-        ) == .persistentFeedback)
-        #expect(DocumentTopSurfacePresentation.resolve(
-            hasPersistentFeedback: false,
-            hasActionNotifications: true,
-            hasSettlementReminder: false,
-            hasNotificationPermissionNotice: true
-        ) == .researchNotifications)
-        #expect(DocumentTopSurfacePresentation.resolve(
-            hasPersistentFeedback: false,
-            hasActionNotifications: false,
-            hasSettlementReminder: true,
-            hasNotificationPermissionNotice: true
-        ) == .researchNotifications)
-        #expect(DocumentTopSurfacePresentation.resolve(
-            hasPersistentFeedback: false,
-            hasActionNotifications: false,
-            hasSettlementReminder: false,
-            hasNotificationPermissionNotice: true
-        ) == .notificationPermissionNotice)
-        #expect(DocumentTopSurfacePresentation.resolve(
-            hasPersistentFeedback: false,
-            hasActionNotifications: false,
-            hasSettlementReminder: false,
-            hasNotificationPermissionNotice: false
-        ) == .none)
+        #expect(
+            DocumentTopSurfacePresentation.resolve(
+                hasPersistentFeedback: true,
+                hasActionNotifications: true,
+                hasSettlementReminder: true,
+                hasNotificationPermissionNotice: true
+            ) == .persistentFeedback)
+        #expect(
+            DocumentTopSurfacePresentation.resolve(
+                hasPersistentFeedback: false,
+                hasActionNotifications: true,
+                hasSettlementReminder: false,
+                hasNotificationPermissionNotice: true
+            ) == .researchNotifications)
+        #expect(
+            DocumentTopSurfacePresentation.resolve(
+                hasPersistentFeedback: false,
+                hasActionNotifications: false,
+                hasSettlementReminder: true,
+                hasNotificationPermissionNotice: true
+            ) == .researchNotifications)
+        #expect(
+            DocumentTopSurfacePresentation.resolve(
+                hasPersistentFeedback: false,
+                hasActionNotifications: false,
+                hasSettlementReminder: false,
+                hasNotificationPermissionNotice: true
+            ) == .notificationPermissionNotice)
+        #expect(
+            DocumentTopSurfacePresentation.resolve(
+                hasPersistentFeedback: false,
+                hasActionNotifications: false,
+                hasSettlementReminder: false,
+                hasNotificationPermissionNotice: false
+            ) == .none)
     }
 
     @Test("Repeated Review preparation preserves a finalized retained revision")
@@ -167,9 +173,10 @@ struct DocumentSessionLifecycleTests {
 
         #expect(session.editorSession.preferredDocumentFocusTarget == .editor)
         #expect(session.windowPresentationSnapshot.focusTarget == .editor)
-        #expect(session.windowPresentationSnapshot.selections == [
-            WindowDocumentSelectionRange(anchor: 12, head: 12),
-        ])
+        #expect(
+            session.windowPresentationSnapshot.selections == [
+                WindowDocumentSelectionRange(anchor: 12, head: 12)
+            ])
     }
 
     @Test("Managed creation keeps explicit body focus")
@@ -310,19 +317,22 @@ struct DocumentSessionLifecycleTests {
 
     @Test("Document integrity presentation excludes invalid state combinations")
     func documentIntegrityPresentation() {
-        #expect(DocumentIntegrityPresentation.resolve(
-            editError: nil,
-            conflict: nil,
-            canRetrySave: false
-        ) == nil)
-        #expect(DocumentIntegrityPresentation.resolve(
-            editError: "The save service is unavailable.",
-            conflict: nil,
-            canRetrySave: true
-        ) == .autosaveFailed(
-            message: "The save service is unavailable.",
-            canRetry: true
-        ))
+        #expect(
+            DocumentIntegrityPresentation.resolve(
+                editError: nil,
+                conflict: nil,
+                canRetrySave: false
+            ) == nil)
+        #expect(
+            DocumentIntegrityPresentation.resolve(
+                editError: "The save service is unavailable.",
+                conflict: nil,
+                canRetrySave: true
+            )
+                == .autosaveFailed(
+                    message: "The save service is unavailable.",
+                    canRetry: true
+                ))
 
         let conflict = DocumentConflictSnapshot(
             relativePath: "Conflict.md",
@@ -330,21 +340,24 @@ struct DocumentSessionLifecycleTests {
             diskSource: "disk",
             baseRevision: DocumentFingerprint(content: "base")
         )
-        #expect(DocumentIntegrityPresentation.resolve(
-            editError: "A lower-level conflict description.",
-            conflict: conflict,
-            canRetrySave: true
-        ) == .conflict)
+        #expect(
+            DocumentIntegrityPresentation.resolve(
+                editError: "A lower-level conflict description.",
+                conflict: conflict,
+                canRetrySave: true
+            ) == .conflict)
 
-        #expect(DocumentController.saveFailureAllowsRetry(
-            VaultRepositoryError.writeFailed("Temporary provider failure")
-        ))
-        #expect(!DocumentController.saveFailureAllowsRetry(
-            VaultRepositoryError.conflict(
-                expected: DocumentFingerprint(content: "before"),
-                current: DocumentFingerprint(content: "external")
-            )
-        ))
+        #expect(
+            DocumentController.saveFailureAllowsRetry(
+                VaultRepositoryError.writeFailed("Temporary provider failure")
+            ))
+        #expect(
+            !DocumentController.saveFailureAllowsRetry(
+                VaultRepositoryError.conflict(
+                    expected: DocumentFingerprint(content: "before"),
+                    current: DocumentFingerprint(content: "external")
+                )
+            ))
     }
 
     @Test("A clean detached zero-lease session is fully reaped")

@@ -1,6 +1,9 @@
 import Foundation
 
-public enum ZoteroMCPAccess: String, Sendable { case readOnly = "read-only", guardedImports = "guarded-imports" }
+public enum ZoteroMCPAccess: String, Sendable {
+    case readOnly = "read-only"
+    case guardedImports = "guarded-imports"
+}
 
 public enum ZoteroMCPCapability: String, Codable, CaseIterable, Hashable, Sendable {
     case status

@@ -161,7 +161,8 @@ struct StyleOperationsTests {
         )
         defer { try? FileManager.default.removeItem(at: root) }
         let support = root.appendingPathComponent("Support", isDirectory: true)
-        let styles = support
+        let styles =
+            support
             .appendingPathComponent("Workspace", isDirectory: true)
             .appendingPathComponent("Styles", isDirectory: true)
         try FileManager.default.createDirectory(at: styles, withIntermediateDirectories: true)
@@ -174,10 +175,11 @@ struct StyleOperationsTests {
         var settings = try #require(profileObject["settings"] as? [String: Any])
         settings.removeValue(forKey: missingField)
         profileObject["settings"] = settings
-        let manifest = [
-            "selectedProfileID": profile.id.uuidString,
-            "profiles": [profileObject],
-        ] as [String: Any]
+        let manifest =
+            [
+                "selectedProfileID": profile.id.uuidString,
+                "profiles": [profileObject],
+            ] as [String: Any]
         let manifestData = try JSONSerialization.data(withJSONObject: manifest)
         try manifestData.write(to: styles.appendingPathComponent("appearances.json"), options: .atomic)
 
@@ -226,7 +228,8 @@ struct StyleOperationsTests {
         )
         defer { try? FileManager.default.removeItem(at: root) }
         let support = root.appendingPathComponent("Application Support", isDirectory: true)
-        let snippetsFolder = support
+        let snippetsFolder =
+            support
             .appendingPathComponent("Workspace", isDirectory: true)
             .appendingPathComponent("Styles", isDirectory: true)
             .appendingPathComponent("Snippets", isDirectory: true)
@@ -298,7 +301,8 @@ struct StyleOperationsTests {
         )
         defer { try? FileManager.default.removeItem(at: root) }
         let support = root.appendingPathComponent("Application Support", isDirectory: true)
-        let styles = support
+        let styles =
+            support
             .appendingPathComponent("Workspace", isDirectory: true)
             .appendingPathComponent("Styles", isDirectory: true)
         try FileManager.default.createDirectory(at: styles, withIntermediateDirectories: true)

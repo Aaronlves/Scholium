@@ -1,5 +1,5 @@
-import ScholiumContracts
 import Foundation
+import ScholiumContracts
 
 public actor WorkspaceRegistry {
     public static let currentSchemaVersion = 3
@@ -41,7 +41,8 @@ public actor WorkspaceRegistry {
         do {
             data = try Data(contentsOf: registryURL)
         } catch let error as CocoaError
-            where error.code == .fileReadNoSuchFile || error.code == .fileNoSuchFile {
+            where error.code == .fileReadNoSuchFile || error.code == .fileNoSuchFile
+        {
             return .healthy
         } catch {
             return .ioFailure(error.localizedDescription)
@@ -91,9 +92,10 @@ public actor WorkspaceRegistry {
             }
             sourceIdentity = String(describing: identifier)
         } catch {
-            throw WorkspaceRegistryError.registryRecoveryRequired(.ioFailure(
-                "The damaged registry could not be bound to one readable file before recovery: \(error.localizedDescription)"
-            ))
+            throw WorkspaceRegistryError.registryRecoveryRequired(
+                .ioFailure(
+                    "The damaged registry could not be bound to one readable file before recovery: \(error.localizedDescription)"
+                ))
         }
         let health = health(for: sourceData)
         guard health.canRelinkAfterPreserving else {
@@ -110,9 +112,10 @@ public actor WorkspaceRegistry {
         do {
             try fileManager.moveItem(at: source, to: destination)
         } catch {
-            throw WorkspaceRegistryError.registryRecoveryRequired(.ioFailure(
-                "The damaged registry could not be preserved: \(error.localizedDescription)"
-            ))
+            throw WorkspaceRegistryError.registryRecoveryRequired(
+                .ioFailure(
+                    "The damaged registry could not be preserved: \(error.localizedDescription)"
+                ))
         }
         do {
             let movedData = try Data(contentsOf: destination)
@@ -122,16 +125,18 @@ public actor WorkspaceRegistry {
                 if !fileManager.fileExists(atPath: source.path) {
                     try? fileManager.moveItem(at: destination, to: source)
                 }
-                throw WorkspaceRegistryError.registryRecoveryRequired(.ioFailure(
-                    "The registry changed while recovery was preparing its preserved copy; no replacement was authorized."
-                ))
+                throw WorkspaceRegistryError.registryRecoveryRequired(
+                    .ioFailure(
+                        "The registry changed while recovery was preparing its preserved copy; no replacement was authorized."
+                    ))
             }
         } catch let error as WorkspaceRegistryError {
             throw error
         } catch {
-            throw WorkspaceRegistryError.registryRecoveryRequired(.ioFailure(
-                "The preserved registry could not be verified: \(error.localizedDescription)"
-            ))
+            throw WorkspaceRegistryError.registryRecoveryRequired(
+                .ioFailure(
+                    "The preserved registry could not be verified: \(error.localizedDescription)"
+                ))
         }
         return destination
     }
@@ -167,9 +172,11 @@ public actor WorkspaceRegistry {
                 bookmarkData: bookmark ?? updated.bookmarkData,
                 registeredAt: updated.registeredAt
             )
-            guard !registry.vaults.contains(where: {
-                $0.id != existing.id && $0.name.caseInsensitiveCompare(chosenName) == .orderedSame
-            }) else {
+            guard
+                !registry.vaults.contains(where: {
+                    $0.id != existing.id && $0.name.caseInsensitiveCompare(chosenName) == .orderedSame
+                })
+            else {
                 throw WorkspaceRegistryError.duplicateName(chosenName)
             }
             registry.vaults.removeAll { $0.id == existing.id }
@@ -178,9 +185,11 @@ public actor WorkspaceRegistry {
             return updated
         }
 
-        guard !registry.vaults.contains(where: {
-            $0.name.caseInsensitiveCompare(chosenName) == .orderedSame
-        }) else {
+        guard
+            !registry.vaults.contains(where: {
+                $0.name.caseInsensitiveCompare(chosenName) == .orderedSame
+            })
+        else {
             throw WorkspaceRegistryError.duplicateName(chosenName)
         }
         let vault = RegisteredVault(
@@ -227,14 +236,16 @@ public actor WorkspaceRegistry {
             registry: registry
         )
         let previous = registry.triptychs.first(where: { $0.id == triptychID })
-        let previousVaultIDs = previous.map { triptych in
-            Set(WorkspaceVaultSlot.allCases.map { triptych.vaultID(for: $0) })
-        } ?? []
+        let previousVaultIDs =
+            previous.map { triptych in
+                Set(WorkspaceVaultSlot.allCases.map { triptych.vaultID(for: $0) })
+            } ?? []
 
         var registered: [WorkspaceVaultSlot: RegisteredVault] = [:]
         for selection in canonical {
             let samePath = registry.vaults.first(where: { $0.canonicalPath == selection.url.path })
-            let registeredAt = samePath?.registeredAt
+            let registeredAt =
+                samePath?.registeredAt
                 ?? registry.vaults.first(where: { $0.id == selection.identityID })?.registeredAt
                 ?? Date()
             registry.vaults.removeAll {
@@ -253,8 +264,9 @@ public actor WorkspaceRegistry {
         }
 
         guard let analyses = registered[.paperAnalysis],
-              let topics = registered[.topicKnowledge],
-              let works = registered[.output] else {
+            let topics = registered[.topicKnowledge],
+            let works = registered[.output]
+        else {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
 
@@ -275,9 +287,10 @@ public actor WorkspaceRegistry {
         registry.triptychs.append(triptych)
         if registry.defaultTriptychID == nil { registry.defaultTriptychID = triptychID }
 
-        let referencedIDs = Set(registry.triptychs.flatMap { triptych in
-            WorkspaceVaultSlot.allCases.map { triptych.vaultID(for: $0) }
-        })
+        let referencedIDs = Set(
+            registry.triptychs.flatMap { triptych in
+                WorkspaceVaultSlot.allCases.map { triptych.vaultID(for: $0) }
+            })
         registry.vaults.removeAll {
             previousVaultIDs.contains($0.id) && !referencedIDs.contains($0.id)
         }
@@ -337,9 +350,10 @@ public actor WorkspaceRegistry {
         let registry = try load()
         return try sortedTriptychs(registry.triptychs).map { triptych in
             guard let assignment = assignment(for: triptych, in: registry) else {
-                throw WorkspaceRegistryError.registryRecoveryRequired(.malformedCurrentSchema(
-                    "Triptych \(triptych.id.uuidString) does not reference three registered vaults."
-                ))
+                throw WorkspaceRegistryError.registryRecoveryRequired(
+                    .malformedCurrentSchema(
+                        "Triptych \(triptych.id.uuidString) does not reference three registered vaults."
+                    ))
             }
             return assignment
         }
@@ -353,9 +367,10 @@ public actor WorkspaceRegistry {
 
     public func defaultTriptych() throws -> TriptychAssignment? {
         let registry = try load()
-        let selected = registry.defaultTriptychID.flatMap { id in
-            registry.triptychs.first(where: { $0.id == id })
-        } ?? sortedTriptychs(registry.triptychs).first
+        let selected =
+            registry.defaultTriptychID.flatMap { id in
+                registry.triptychs.first(where: { $0.id == id })
+            } ?? sortedTriptychs(registry.triptychs).first
         guard let selected else { return nil }
         return assignment(for: selected, in: registry)
     }
@@ -382,9 +397,10 @@ public actor WorkspaceRegistry {
             WorkspaceVaultSlot.allCases.map { removed.vaultID(for: $0) }
         )
         registry.triptychs.removeAll { $0.id == id }
-        let remainingVaultIDs = Set(registry.triptychs.flatMap { triptych in
-            WorkspaceVaultSlot.allCases.map { triptych.vaultID(for: $0) }
-        })
+        let remainingVaultIDs = Set(
+            registry.triptychs.flatMap { triptych in
+                WorkspaceVaultSlot.allCases.map { triptych.vaultID(for: $0) }
+            })
         registry.vaults.removeAll {
             removedVaultIDs.contains($0.id) && !remainingVaultIDs.contains($0.id)
         }
@@ -476,11 +492,14 @@ public actor WorkspaceRegistry {
     public func portableAccess(forWorksURL worksURL: URL) throws -> PortableControlAccess? {
         let path = try canonicalDirectory(worksURL).path
         let registry = try load()
-        guard let works = registry.vaults.first(where: {
-            $0.canonicalPath == path && $0.role == .draftProject
-        }), let triptych = registry.triptychs.first(where: {
-            $0.outputVaultID == works.id
-        }) else { return nil }
+        guard
+            let works = registry.vaults.first(where: {
+                $0.canonicalPath == path && $0.role == .draftProject
+            }),
+            let triptych = registry.triptychs.first(where: {
+                $0.outputVaultID == works.id
+            })
+        else { return nil }
         return triptych.portableControlAccess
     }
 
@@ -559,9 +578,11 @@ public actor WorkspaceRegistry {
             .appendingPathComponent(".scholium", isDirectory: true)
             .standardizedFileURL.path
         for triptych in registry.triptychs where triptych.id != triptychID {
-            guard let works = registry.vaults.first(where: {
-                $0.id == triptych.outputVaultID
-            }) else { continue }
+            guard
+                let works = registry.vaults.first(where: {
+                    $0.id == triptych.outputVaultID
+                })
+            else { continue }
             let existingControlPath = URL(
                 fileURLWithPath: works.canonicalPath,
                 isDirectory: true
@@ -579,7 +600,8 @@ public actor WorkspaceRegistry {
         triptychID: UUID,
         registry: RegistryFile
     ) throws {
-        let previousVaultIDs = registry.triptychs
+        let previousVaultIDs =
+            registry.triptychs
             .first(where: { $0.id == triptychID })
             .map { triptych in
                 Set(WorkspaceVaultSlot.allCases.map { triptych.vaultID(for: $0) })
@@ -627,10 +649,11 @@ public actor WorkspaceRegistry {
             }
             vaults[slot] = vault
         }
-        let parents = Set(vaults.values.map {
-            URL(fileURLWithPath: $0.canonicalPath, isDirectory: true)
-                .deletingLastPathComponent().path
-        })
+        let parents = Set(
+            vaults.values.map {
+                URL(fileURLWithPath: $0.canonicalPath, isDirectory: true)
+                    .deletingLastPathComponent().path
+            })
         return TriptychAssignment(
             triptych: triptych,
             vaults: vaults,
@@ -710,7 +733,8 @@ public actor WorkspaceRegistry {
                 }
             }
             if let access = triptych.portableControlAccess,
-               let works = registeredVaults[triptych.outputVaultID] {
+                let works = registeredVaults[triptych.outputVaultID]
+            {
                 let expected = URL(
                     fileURLWithPath: works.canonicalPath,
                     isDirectory: true
@@ -721,7 +745,8 @@ public actor WorkspaceRegistry {
             }
         }
         if let defaultTriptychID = registry.defaultTriptychID,
-           !triptychIDs.contains(defaultTriptychID) {
+            !triptychIDs.contains(defaultTriptychID)
+        {
             return "The registry default Triptych is not registered."
         }
         return nil
@@ -739,10 +764,11 @@ public actor WorkspaceRegistry {
             vaults.first(where: { $0.id == triptych.vaultID(for: slot) })
         }
         guard assigned.count == WorkspaceVaultSlot.allCases.count else { return triptych.name }
-        let parents = Set(assigned.map {
-            URL(fileURLWithPath: $0.canonicalPath, isDirectory: true)
-                .deletingLastPathComponent().path
-        })
+        let parents = Set(
+            assigned.map {
+                URL(fileURLWithPath: $0.canonicalPath, isDirectory: true)
+                    .deletingLastPathComponent().path
+            })
         if parents.count == 1, let parent = parents.first {
             return normalizedName(URL(fileURLWithPath: parent, isDirectory: true).lastPathComponent)
         }

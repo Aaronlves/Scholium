@@ -48,13 +48,13 @@ public enum CSSSnippetSanitizer {
         "source-warning", "data-scholium-protected", "researcher-comment", "scholium-preview",
         "workflow-gate", "cm-live-callout", "scholium-link-annotation",
         "cm-live-link-annotation", "scholium-note-title", "scholium-frontmatter",
-        "scholium-document-attachment", "scholium-document-empty-state"
+        "scholium-document-attachment", "scholium-document-empty-state",
     ]
 
     private static let allowedElements: Set<String> = [
         "body", "main", "h1", "h2", "h3", "h4", "h5", "h6", "p", "a",
         "mark", "blockquote", "ul", "ol", "li", "table", "thead", "tbody",
-        "tr", "th", "td", "pre", "code", "hr", "strong", "em"
+        "tr", "th", "td", "pre", "code", "hr", "strong", "em",
     ]
 
     private static let allowedClasses: Set<String> = [
@@ -65,7 +65,7 @@ public enum CSSSnippetSanitizer {
         "callout", "callout-title", "callout-body", "callout-content",
         "callout-quotation", "callout-orient", "callout-cite", "callout-connect",
         "callout-state", "callout-illustrate", "callout-quote", "callout-flag",
-        "callout-neutral"
+        "callout-neutral",
     ]
 
     private static let publicCalloutReadSelectorMap: [String: String] = [
@@ -81,7 +81,7 @@ public enum CSSSnippetSanitizer {
         ".callout-illustrate": ".scholium-callout-illustrate",
         ".callout-quote": ".scholium-callout-quote",
         ".callout-flag": ".scholium-callout-flag",
-        ".callout-neutral": ".scholium-callout-neutral"
+        ".callout-neutral": ".scholium-callout-neutral",
     ]
 
     private static let publicCalloutLiveSelectorMap: [String: String] = [
@@ -99,7 +99,7 @@ public enum CSSSnippetSanitizer {
         ".callout-illustrate": ".cm-live-callout-role-illustrate",
         ".callout-quote": ".cm-live-callout-role-quote",
         ".callout-flag": ".cm-live-callout-role-flag",
-        ".callout-neutral": ".cm-live-callout-role-neutral"
+        ".callout-neutral": ".cm-live-callout-role-neutral",
     ]
 
     private static let allowedProperties: Set<String> = [
@@ -114,7 +114,7 @@ public enum CSSSnippetSanitizer {
         "padding-block-start", "padding-block-end", "padding-inline",
         "padding-inline-start", "padding-inline-end", "border", "border-color",
         "border-style", "border-width", "border-radius", "box-shadow",
-        "list-style", "list-style-position"
+        "list-style", "list-style-position",
     ]
 
     private static let liveSelectorMap: [String: [String]] = [
@@ -136,7 +136,7 @@ public enum CSSSnippetSanitizer {
         "code": [".scholium-live-mode .cm-live-code"],
         "hr": [".scholium-live-mode .cm-live-rule"],
         "strong": [".scholium-live-mode .cm-live-strong"],
-        "em": [".scholium-live-mode .cm-live-emphasis"]
+        "em": [".scholium-live-mode .cm-live-emphasis"],
     ]
 
     public static func sanitize(_ source: String) throws -> CSSSnippetProjection {
@@ -372,7 +372,8 @@ public enum CSSSnippetSanitizer {
     /// property set. Zero font sizes receive a second, value-level guard while
     /// useful nonzero document typography remains available.
     private static func isZeroCSSLength(_ value: String) -> Bool {
-        let compact = value
+        let compact =
+            value
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased()
             .replacingOccurrences(of: " ", with: "")

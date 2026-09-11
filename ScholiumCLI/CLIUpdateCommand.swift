@@ -5,7 +5,8 @@ extension ScholiumCLI {
     static func runUpdate(_ arguments: [String]) async throws {
         let formatValue = option("--format", in: arguments) ?? "text"
         guard let format = CLIOutputFormat(rawValue: formatValue),
-              format == .text || format == .json else {
+            format == .text || format == .json
+        else {
             throw CLIError.usage("Update supports --format text or json.")
         }
 

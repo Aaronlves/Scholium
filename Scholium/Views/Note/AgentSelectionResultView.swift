@@ -8,7 +8,11 @@ struct AgentSelectionResultView: View {
     @State private var adopting = false
     @State private var adopted = false
     @State private var copied = false
-    init(result: AgentSelectionResult, close: @escaping () -> Void) { self.result = result; self.close = close; self.chat = result.chat }
+    init(result: AgentSelectionResult, close: @escaping () -> Void) {
+        self.result = result
+        self.close = close
+        self.chat = result.chat
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -34,7 +38,10 @@ struct AgentSelectionResultView: View {
                     } else if let error = chat.selectionResultError(in: result.conversationID) {
                         Text(error).textSelection(.enabled)
                     } else if chat.isBusy(in: result.conversationID) {
-                        HStack { ProgressView().controlSize(.small); Text("Preparing reply…") }
+                        HStack {
+                            ProgressView().controlSize(.small)
+                            Text("Preparing reply…")
+                        }
                     } else {
                         Text("No completed reply. Continue in Chat to review or retry.")
                     }
@@ -45,30 +52,40 @@ struct AgentSelectionResultView: View {
                 if let reply = result.finalReply {
                     Button("Copy", systemImage: "doc.on.doc") {
                         NSPasteboard.general.clearContents()
-                        NSPasteboard.general.setString(reply, forType: .string); copied = true
+                        NSPasteboard.general.setString(reply, forType: .string)
+                        copied = true
                     }.labelStyle(.iconOnly)
-                    .help(copied ? "Copied" : "Copy")
+                        .help(copied ? "Copied" : "Copy")
                     if let adopt = result.adopt {
                         Button(ScholiumL10n.string(adopted ? "Adopted" : "Adopt")) {
                             adopting = true
                             Task { @MainActor in
                                 defer { adopting = false }
-                                do { try await adopt(reply); adopted = true; adoptionError = nil }
-                                catch { adoptionError = error.localizedDescription }
+                                do {
+                                    try await adopt(reply)
+                                    adopted = true
+                                    adoptionError = nil
+                                } catch { adoptionError = error.localizedDescription }
                             }
                         }.disabled(adopted || adopting)
-                        .accessibilityIdentifier("scholium.selectionResult.adopt")
+                            .accessibilityIdentifier("scholium.selectionResult.adopt")
                     }
                 }
                 Spacer()
-                Button("Continue in Chat") { close(); result.continueInChat() }
-                    .accessibilityIdentifier("scholium.selectionResult.continue")
+                Button("Continue in Chat") {
+                    close()
+                    result.continueInChat()
+                }
+                .accessibilityIdentifier("scholium.selectionResult.continue")
             }
         }
-        .environment(\.openURL, OpenURLAction { url in
-            if url.scheme == "scholium-note" { return result.openReference(url) ? .handled : .discarded }
-            return ["https", "http"].contains(url.scheme?.lowercased() ?? "") ? .systemAction : .discarded
-        })
+        .environment(
+            \.openURL,
+            OpenURLAction { url in
+                if url.scheme == "scholium-note" { return result.openReference(url) ? .handled : .discarded }
+                return ["https", "http"].contains(url.scheme?.lowercased() ?? "") ? .systemAction : .discarded
+            }
+        )
         .padding(16)
         .frame(width: 340)
         .fixedSize(horizontal: false, vertical: true)

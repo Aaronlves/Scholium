@@ -43,12 +43,18 @@ struct OverviewAttachmentsView: View {
                 Menu {
                     Button("Attach a Copy…") { attach(.copyIntoTriptych) }
                     Button("Reference Original…") { attach(.referenceOriginal) }
-                } label: { Image(systemName: "plus") }
+                } label: {
+                    Image(systemName: "plus")
+                }
                 .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
                 .disabled(session.isAttachingDocument)
                 .accessibilityLabel("Add Document")
-                Button { expanded.toggle() } label: { Image(systemName: expanded ? "chevron.up" : "chevron.down") }
-                    .accessibilityLabel(expanded ? "Collapse Attachments" : "Expand Attachments")
+                Button {
+                    expanded.toggle()
+                } label: {
+                    Image(systemName: expanded ? "chevron.up" : "chevron.down")
+                }
+                .accessibilityLabel(expanded ? "Collapse Attachments" : "Expand Attachments")
             }.buttonStyle(.borderless)
             if expanded {
                 if session.documentAttachmentsLoading { ProgressView().controlSize(.small) }
@@ -56,7 +62,9 @@ struct OverviewAttachmentsView: View {
                     Text(problem).font(ScholiumTypography.interface(.body)).foregroundStyle(ScholiumNativeColorRole.secondaryLabel.color)
                     Button("Retry") { Task { try? await context.refresh() } }.buttonStyle(.borderless)
                 }
-                if let error { Text(error).font(ScholiumTypography.interface(.body)).foregroundStyle(ScholiumNativeColorRole.secondaryLabel.color).textSelection(.enabled) }
+                if let error {
+                    Text(error).font(ScholiumTypography.interface(.body)).foregroundStyle(ScholiumNativeColorRole.secondaryLabel.color).textSelection(.enabled)
+                }
                 if let item = selected {
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
                         Button(item.record.filename) { open(item) }
@@ -90,14 +98,17 @@ struct OverviewAttachmentsView: View {
         .task(id: "\(selected?.record.id.uuidString ?? ""):\(selected?.availability.rawValue ?? ""):\(expanded):\(retry)") {
             let requestID = UUID()
             previewRequestID = requestID
-            loading = false; thumbnail = nil; error = nil
+            loading = false
+            thumbnail = nil
+            error = nil
             guard expanded, let item = selected, item.availability == .available else { return }
             loading = true
             defer { if previewRequestID == requestID { loading = false } }
             do {
                 let lease = try await context.prepare(item.record.id)
                 do {
-                    let request = QLThumbnailGenerator.Request(fileAt: lease.fileURL,
+                    let request = QLThumbnailGenerator.Request(
+                        fileAt: lease.fileURL,
                         size: NSSize(width: 760, height: 1000), scale: 1, representationTypes: .thumbnail)
                     let image = try await QLThumbnailGenerator.shared.generateBestRepresentation(for: request)
                     if !Task.isCancelled, previewRequestID == requestID { thumbnail = image.nsImage }
@@ -112,32 +123,44 @@ struct OverviewAttachmentsView: View {
         .onChange(of: error ?? session.documentAttachmentsError) { _, message in
             if let message { AccessibilityNotification.Announcement(message).post() }
         }
-        .quickLookPreview(Binding(
-            get: { quickLook.url },
-            set: { if $0 == nil { quickLook.dismiss() } }
-        ))
+        .quickLookPreview(
+            Binding(
+                get: { quickLook.url },
+                set: { if $0 == nil { quickLook.dismiss() } }
+            )
+        )
         .onAppear { visible = true }
-        .onDisappear { visible = false; quickLook.dismiss() }
+        .onDisappear {
+            visible = false
+            quickLook.dismiss()
+        }
     }
 
     @ViewBuilder private func preview(_ item: DocumentAttachmentSnapshot) -> some View {
         if let thumbnail {
-            Button { open(item) } label: {
+            Button {
+                open(item)
+            } label: {
                 Image(nsImage: thumbnail).resizable().scaledToFit()
                     .frame(maxWidth: .infinity).clipShape(RoundedRectangle(cornerRadius: 6))
             }.buttonStyle(.borderless).accessibilityLabel(Text("Preview \(item.record.filename)"))
                 .help(String(localized: "Quick Look"))
         } else {
             VStack(spacing: 8) {
-                if loading { ProgressView().controlSize(.small) }
-                else {
+                if loading {
+                    ProgressView().controlSize(.small)
+                } else {
                     Text(item.availability == .unavailable ? "Attachment Unavailable" : "Preview Unavailable")
                         .font(ScholiumTypography.interface(.body)).foregroundStyle(ScholiumNativeColorRole.secondaryLabel.color)
                     HStack {
-                        Button("Retry") { Task {
-                            do { try await context.refresh(); retry += 1 }
-                            catch { self.error = error.localizedDescription }
-                        } }
+                        Button("Retry") {
+                            Task {
+                                do {
+                                    try await context.refresh()
+                                    retry += 1
+                                } catch { self.error = error.localizedDescription }
+                            }
+                        }
                         if item.availability == .available { Button("Quick Look") { open(item) } }
                     }.buttonStyle(.borderless)
                 }
@@ -148,9 +171,9 @@ struct OverviewAttachmentsView: View {
     private func attach(_ mode: DocumentAttachmentSelectionMode) {
         expanded = true
         Task { @MainActor in
-            do { try await context.attach(mode, fileSelectionPresenter) }
-            catch is CancellationError { return }
-            catch { self.error = error.localizedDescription }
+            do { try await context.attach(mode, fileSelectionPresenter) } catch is CancellationError { return } catch {
+                self.error = error.localizedDescription
+            }
         }
     }
     private func open(_ item: DocumentAttachmentSnapshot) {
@@ -158,7 +181,8 @@ struct OverviewAttachmentsView: View {
             do {
                 let lease = try await context.prepare(item.record.id)
                 guard visible, selected?.record.id == item.record.id else {
-                    await context.release(lease.accessToken); return
+                    await context.release(lease.accessToken)
+                    return
                 }
                 quickLook.present(lease, releaseAccess: context.release)
             } catch { self.error = error.localizedDescription }

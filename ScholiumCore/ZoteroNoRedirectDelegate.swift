@@ -2,7 +2,8 @@ import Foundation
 
 /// Local API transports never follow a server redirect to a different resource or authority.
 public final class ZoteroNoRedirectDelegate: NSObject, URLSessionTaskDelegate,
-    @unchecked Sendable {
+    @unchecked Sendable
+{
     public override init() { super.init() }
 
     public func urlSession(

@@ -1,5 +1,5 @@
-import ScholiumContracts
 import AppKit
+import ScholiumContracts
 import SwiftUI
 
 /// Fires after AppKit lays out the SwiftUI subtree for one generation. This is

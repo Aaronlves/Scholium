@@ -209,10 +209,12 @@ public struct SearchExplanation: Codable, Hashable, Sendable {
     private static func normalization(
         for provider: SearchProvider
     ) -> [SearchExplanationNormalization] {
-        [.canonicalUnicodeCaseWhitespace,
-         .lexicalUnicodeCaseDiacriticWhitespace,
-         .cjkCharacterAndOverlappingBigramProjection,
-         .caseSensitiveTopLevelPropertyKey]
+        [
+            .canonicalUnicodeCaseWhitespace,
+            .lexicalUnicodeCaseDiacriticWhitespace,
+            .cjkCharacterAndOverlappingBigramProjection,
+            .caseSensitiveTopLevelPropertyKey,
+        ]
     }
 }
 
@@ -320,7 +322,8 @@ public struct SearchQueryParseResult: Codable, Hashable, Sendable {
         diagnostics: [SearchQueryDiagnostic]
     ) {
         self.provider = provider ?? ast?.provider ?? .note
-        self.providerWasExplicit = providerWasExplicit
+        self.providerWasExplicit =
+            providerWasExplicit
             ?? ast?.providerWasExplicit
             ?? false
         self.ast = ast
@@ -330,12 +333,13 @@ public struct SearchQueryParseResult: Codable, Hashable, Sendable {
     public var isValid: Bool { ast != nil && diagnostics.isEmpty }
 
     public func explanation(scope: SearchPresentationScope) -> SearchExplanation {
-        ast?.explanation(scope: scope) ?? SearchExplanation(
-            provider: provider,
-            providerWasExplicit: providerWasExplicit,
-            scope: scope,
-            clauses: []
-        )
+        ast?.explanation(scope: scope)
+            ?? SearchExplanation(
+                provider: provider,
+                providerWasExplicit: providerWasExplicit,
+                scope: scope,
+                clauses: []
+            )
     }
 }
 
@@ -359,12 +363,14 @@ public enum SearchQueryParser {
         guard raw.utf16.count <= SearchContract.maximumQueryUTF16Count else {
             return SearchQueryParseResult(
                 ast: nil,
-                diagnostics: [SearchQueryDiagnostic(
-                    code: .unsupportedSyntax,
-                    message: "Search queries are limited to \(SearchContract.maximumQueryUTF16Count) UTF-16 code units.",
-                    utf16LowerBound: 0,
-                    utf16UpperBound: SearchContract.maximumQueryUTF16Count
-                )]
+                diagnostics: [
+                    SearchQueryDiagnostic(
+                        code: .unsupportedSyntax,
+                        message: "Search queries are limited to \(SearchContract.maximumQueryUTF16Count) UTF-16 code units.",
+                        utf16LowerBound: 0,
+                        utf16UpperBound: SearchContract.maximumQueryUTF16Count
+                    )
+                ]
             )
         }
         let tokenized = tokenize(raw)
@@ -386,12 +392,14 @@ public enum SearchQueryParser {
             let overflow = tokenized.tokens[SearchContract.maximumQueryTokenCount]
             return SearchQueryParseResult(
                 ast: nil,
-                diagnostics: [SearchQueryDiagnostic(
-                    code: .unsupportedSyntax,
-                    message: "Search queries are limited to \(SearchContract.maximumQueryTokenCount) tokens.",
-                    utf16LowerBound: overflow.range.lowerBound,
-                    utf16UpperBound: overflow.range.upperBound
-                )]
+                diagnostics: [
+                    SearchQueryDiagnostic(
+                        code: .unsupportedSyntax,
+                        message: "Search queries are limited to \(SearchContract.maximumQueryTokenCount) tokens.",
+                        utf16LowerBound: overflow.range.lowerBound,
+                        utf16UpperBound: overflow.range.upperBound
+                    )
+                ]
             )
         }
 
@@ -418,11 +426,13 @@ public enum SearchQueryParser {
 
         diagnostics.append(contentsOf: linkDiagnostics(anchors: linkAnchors))
         if diagnostics.isEmpty, let anchor = linkAnchors.first {
-            clauses.append(.link(SearchLinkQuery(
-                direction: anchor.direction,
-                noteIdentity: anchor.identity,
-                sourceRange: anchor.sourceRange
-            )))
+            clauses.append(
+                .link(
+                    SearchLinkQuery(
+                        direction: anchor.direction,
+                        noteIdentity: anchor.identity,
+                        sourceRange: anchor.sourceRange
+                    )))
         }
         guard diagnostics.isEmpty else {
             return SearchQueryParseResult(
@@ -446,23 +456,26 @@ public enum SearchQueryParser {
             }
         }
         if !clauses.isEmpty, !hasPositiveUnfielded, !hasFilter,
-           clauses.allSatisfy({ clause in
-               switch clause {
-               case .lexical(let value): value.excluded
-               case .structured, .property, .link: false
-               }
-           }) {
+            clauses.allSatisfy({ clause in
+                switch clause {
+                case .lexical(let value): value.excluded
+                case .structured, .property, .link: false
+                }
+            })
+        {
             let range = tokenized.tokens.first?.range ?? 0..<max(0, raw.utf16.count)
             return SearchQueryParseResult(
                 provider: providerResolution.provider,
                 providerWasExplicit: providerResolution.explicit,
                 ast: nil,
-                diagnostics: [SearchQueryDiagnostic(
-                    code: .onlyExcludedFreeText,
-                    message: "Add a positive term or a provider filter.",
-                    utf16LowerBound: range.lowerBound,
-                    utf16UpperBound: range.upperBound
-                )]
+                diagnostics: [
+                    SearchQueryDiagnostic(
+                        code: .onlyExcludedFreeText,
+                        message: "Add a positive term or a provider filter.",
+                        utf16LowerBound: range.lowerBound,
+                        utf16UpperBound: range.upperBound
+                    )
+                ]
             )
         }
 
@@ -482,11 +495,16 @@ public enum SearchQueryParser {
     ) -> (provider: SearchProvider, explicit: Bool, diagnostics: [SearchQueryDiagnostic]) {
         let kindTokens = tokens.filter(isKindToken)
         guard kindTokens.count <= 1 else {
-            return (.note, true, [diagnostic(
-                .duplicateClause,
-                "kind: may appear only once.",
-                kindTokens[1]
-            )])
+            return (
+                .note, true,
+                [
+                    diagnostic(
+                        .duplicateClause,
+                        "kind: may appear only once.",
+                        kindTokens[1]
+                    )
+                ]
+            )
         }
         guard let token = kindTokens.first else { return (.note, false, []) }
         var raw = token.raw
@@ -494,18 +512,28 @@ public enum SearchQueryParser {
         if excluded { raw.removeFirst() }
         let split = splitField(raw)
         guard !excluded else {
-            return (.note, true, [diagnostic(
-                .unsupportedSyntax,
-                "kind: cannot be excluded.",
-                token
-            )])
+            return (
+                .note, true,
+                [
+                    diagnostic(
+                        .unsupportedSyntax,
+                        "kind: cannot be excluded.",
+                        token
+                    )
+                ]
+            )
         }
         guard !split.value.isEmpty else {
-            return (.note, true, [diagnostic(
-                .missingFieldValue,
-                "The kind field requires note.",
-                token
-            )])
+            return (
+                .note, true,
+                [
+                    diagnostic(
+                        .missingFieldValue,
+                        "The kind field requires note.",
+                        token
+                    )
+                ]
+            )
         }
         let decoded: DecodedValue
         switch decodeValue(split.value, token: token) {
@@ -513,12 +541,18 @@ public enum SearchQueryParser {
         case .failure(let error): return (.note, true, [error])
         }
         guard !decoded.quoted, !decoded.hadTrailingAsterisk,
-              let provider = SearchProvider(rawValue: decoded.text.lowercased()) else {
-            return (.note, true, [diagnostic(
-                .unknownStructuredValue,
-                "kind: accepts only note.",
-                token
-            )])
+            let provider = SearchProvider(rawValue: decoded.text.lowercased())
+        else {
+            return (
+                .note, true,
+                [
+                    diagnostic(
+                        .unknownStructuredValue,
+                        "kind: accepts only note.",
+                        token
+                    )
+                ]
+            )
         }
         return (provider, true, [])
     }
@@ -545,21 +579,23 @@ public enum SearchQueryParser {
         }
         let field = fieldName.lowercased()
         guard !split.value.isEmpty else {
-            return .diagnostic(diagnostic(
-                .missingFieldValue,
-                "The \(field) field requires a value.",
-                token
-            ))
+            return .diagnostic(
+                diagnostic(
+                    .missingFieldValue,
+                    "The \(field) field requires a value.",
+                    token
+                ))
         }
         if scopeSelectors.contains(field) {
             return .diagnostic(scopeSelectorDiagnostic(token))
         }
         if knownUnsupportedFields.contains(field) {
-            return .diagnostic(diagnostic(
-                .unsupportedField,
-                "The \(field): field is known but is not supported by the current Search contract.",
-                token
-            ))
+            return .diagnostic(
+                diagnostic(
+                    .unsupportedField,
+                    "The \(field): field is known but is not supported by the current Search contract.",
+                    token
+                ))
         }
         if let lexicalField = SearchLexicalField(rawValue: field) {
             switch lexicalClause(
@@ -639,25 +675,28 @@ public enum SearchQueryParser {
         }
         if value.hadTrailingAsterisk {
             guard permitsPrefix else {
-                return .failure(diagnostic(
-                    .unsupportedSyntax,
-                    "This field does not support prefix values.",
-                    token
-                ))
+                return .failure(
+                    diagnostic(
+                        .unsupportedSyntax,
+                        "This field does not support prefix values.",
+                        token
+                    ))
             }
             if SearchTokenization.containsCJK(normalized) {
-                return .failure(diagnostic(
-                    .cjkPrefixUnsupported,
-                    "CJK clauses do not use *. Continuous character and bigram matching is automatic.",
-                    token
-                ))
+                return .failure(
+                    diagnostic(
+                        .cjkPrefixUnsupported,
+                        "CJK clauses do not use *. Continuous character and bigram matching is automatic.",
+                        token
+                    ))
             }
             guard normalized.unicodeScalars.count >= 2 else {
-                return .failure(diagnostic(
-                    .invalidPrefix,
-                    "A prefix requires at least two non-CJK Unicode scalars before *.",
-                    token
-                ))
+                return .failure(
+                    diagnostic(
+                        .invalidPrefix,
+                        "A prefix requires at least two non-CJK Unicode scalars before *.",
+                        token
+                    ))
             }
             return .success(.prefix(normalized))
         }
@@ -676,30 +715,34 @@ public enum SearchQueryParser {
         case .failure(let error): return .failure(error)
         }
         guard !value.quoted, !value.hadTrailingAsterisk else {
-            return .failure(diagnostic(
-                .unsupportedSyntax,
-                "Structured Search values are canonical identifiers, not phrases or prefixes.",
-                token
-            ))
+            return .failure(
+                diagnostic(
+                    .unsupportedSyntax,
+                    "Structured Search values are canonical identifiers, not phrases or prefixes.",
+                    token
+                ))
         }
         let normalized = value.text.lowercased()
-        let allowed: Set<String> = switch field {
-        case .callout: calloutValues
-        case .has: ["broken-link"]
-        }
+        let allowed: Set<String> =
+            switch field {
+            case .callout: calloutValues
+            case .has: ["broken-link"]
+            }
         guard allowed.contains(normalized) else {
-            return .failure(diagnostic(
-                .unknownStructuredValue,
-                "Unknown canonical \(field.rawValue) value \(value.text).",
-                token
-            ))
+            return .failure(
+                diagnostic(
+                    .unknownStructuredValue,
+                    "Unknown canonical \(field.rawValue) value \(value.text).",
+                    token
+                ))
         }
-        return .success(SearchStructuredClause(
-            field: field,
-            value: normalized,
-            excluded: excluded,
-            sourceRange: token.range
-        ))
+        return .success(
+            SearchStructuredClause(
+                field: field,
+                value: normalized,
+                excluded: excluded,
+                sourceRange: token.range
+            ))
     }
 
     private static func propertyClause(
@@ -708,37 +751,41 @@ public enum SearchQueryParser {
         token: Token
     ) -> Result<SearchPropertyClause, SearchQueryDiagnostic> {
         guard !excluded else {
-            return .failure(diagnostic(
-                .unsupportedSyntax,
-                "Structured Metadata clauses cannot be excluded.",
-                token
-            ))
+            return .failure(
+                diagnostic(
+                    .unsupportedSyntax,
+                    "Structured Metadata clauses cannot be excluded.",
+                    token
+                ))
         }
         let equality = rawValue.firstIndex(of: "=")
         let rawKey = equality.map { String(rawValue[..<$0]) } ?? rawValue
         guard isUnambiguousPropertyKey(rawKey) else {
-            return .failure(diagnostic(
-                .unsupportedSyntax,
-                "Metadata keys use an unquoted identifier containing letters, numbers, _ or -.",
-                token
-            ))
+            return .failure(
+                diagnostic(
+                    .unsupportedSyntax,
+                    "Metadata keys use an unquoted identifier containing letters, numbers, _ or -.",
+                    token
+                ))
         }
         let key = rawKey.precomposedStringWithCanonicalMapping
         guard let equality else {
-            return .success(SearchPropertyClause(
-                key: key,
-                value: nil,
-                valueWasQuoted: false,
-                sourceRange: token.range
-            ))
+            return .success(
+                SearchPropertyClause(
+                    key: key,
+                    value: nil,
+                    valueWasQuoted: false,
+                    sourceRange: token.range
+                ))
         }
         let rawEqualityValue = String(rawValue[rawValue.index(after: equality)...])
         guard !rawEqualityValue.isEmpty else {
-            return .failure(diagnostic(
-                .missingFieldValue,
-                "Metadata equality requires a string value.",
-                token
-            ))
+            return .failure(
+                diagnostic(
+                    .missingFieldValue,
+                    "Metadata equality requires a string value.",
+                    token
+                ))
         }
         let decoded: DecodedValue
         switch decodeValue(rawEqualityValue, token: token) {
@@ -746,22 +793,24 @@ public enum SearchQueryParser {
         case .failure(let error): return .failure(error)
         }
         guard !decoded.hadTrailingAsterisk else {
-            return .failure(diagnostic(
-                .unsupportedSyntax,
-                "Metadata equality is exact and does not support prefixes.",
-                token
-            ))
+            return .failure(
+                diagnostic(
+                    .unsupportedSyntax,
+                    "Metadata equality is exact and does not support prefixes.",
+                    token
+                ))
         }
         let normalized = SearchTextNormalization.normalize(decoded.text)
         guard !normalized.isEmpty else {
             return .failure(diagnostic(.emptyClause, "A Metadata value cannot be empty.", token))
         }
-        return .success(SearchPropertyClause(
-            key: key,
-            value: normalized,
-            valueWasQuoted: decoded.quoted,
-            sourceRange: token.range
-        ))
+        return .success(
+            SearchPropertyClause(
+                key: key,
+                value: normalized,
+                valueWasQuoted: decoded.quoted,
+                sourceRange: token.range
+            ))
     }
 
     private static func linkAnchor(
@@ -771,11 +820,12 @@ public enum SearchQueryParser {
         token: Token
     ) -> Result<LinkAnchor, SearchQueryDiagnostic> {
         guard !excluded else {
-            return .failure(diagnostic(
-                .unsupportedSyntax,
-                "Link anchors cannot be excluded.",
-                token
-            ))
+            return .failure(
+                diagnostic(
+                    .unsupportedSyntax,
+                    "Link anchors cannot be excluded.",
+                    token
+                ))
         }
         let value: DecodedValue
         switch decodeValue(rawValue, token: token) {
@@ -783,33 +833,37 @@ public enum SearchQueryParser {
         case .failure(let error): return .failure(error)
         }
         guard !value.hadTrailingAsterisk else {
-            return .failure(diagnostic(
-                .unsupportedSyntax,
-                "Link identities do not support prefixes.",
-                token
-            ))
+            return .failure(
+                diagnostic(
+                    .unsupportedSyntax,
+                    "Link identities do not support prefixes.",
+                    token
+                ))
         }
         let identity = SearchTextNormalization.normalize(value.text)
         guard !identity.isEmpty else {
             return .failure(diagnostic(.emptyClause, "A link identity cannot be empty.", token))
         }
-        return .success(LinkAnchor(
-            direction: direction,
-            identity: identity,
-            sourceRange: token.range
-        ))
+        return .success(
+            LinkAnchor(
+                direction: direction,
+                identity: identity,
+                sourceRange: token.range
+            ))
     }
 
     private static func linkDiagnostics(
         anchors: [LinkAnchor]
     ) -> [SearchQueryDiagnostic] {
         if anchors.count > 1 {
-            return [SearchQueryDiagnostic(
-                code: .duplicateClause,
-                message: "Use exactly one from-note: or to-note: anchor.",
-                utf16LowerBound: anchors[1].sourceRange.lowerBound,
-                utf16UpperBound: anchors[1].sourceRange.upperBound
-            )]
+            return [
+                SearchQueryDiagnostic(
+                    code: .duplicateClause,
+                    message: "Use exactly one from-note: or to-note: anchor.",
+                    utf16LowerBound: anchors[1].sourceRange.lowerBound,
+                    utf16UpperBound: anchors[1].sourceRange.upperBound
+                )
+            ]
         }
         return []
     }
@@ -826,11 +880,12 @@ public enum SearchQueryParser {
     ) -> Result<DecodedValue, SearchQueryDiagnostic> {
         if raw.hasPrefix("\"") {
             if raw.hasSuffix("\"*") {
-                return .failure(diagnostic(
-                    .invalidPrefix,
-                    "A quoted phrase cannot also be a prefix query.",
-                    token
-                ))
+                return .failure(
+                    diagnostic(
+                        .invalidPrefix,
+                        "A quoted phrase cannot also be a prefix query.",
+                        token
+                    ))
             }
             guard raw.count >= 2, raw.hasSuffix("\"") else {
                 return .failure(diagnostic(.unclosedPhrase, "The quoted phrase is not closed.", token))
@@ -840,11 +895,12 @@ public enum SearchQueryParser {
             for character in raw.dropFirst().dropLast() {
                 if escaped {
                     guard character == "\"" || character == "\\" else {
-                        return .failure(diagnostic(
-                            .invalidEscape,
-                            "Only \\\" and \\\\ are valid Search phrase escapes.",
-                            token
-                        ))
+                        return .failure(
+                            diagnostic(
+                                .invalidEscape,
+                                "Only \\\" and \\\\ are valid Search phrase escapes.",
+                                token
+                            ))
                     }
                     result.append(character)
                     escaped = false
@@ -855,39 +911,44 @@ public enum SearchQueryParser {
                 }
             }
             if escaped {
-                return .failure(diagnostic(
-                    .invalidEscape,
-                    "A phrase cannot end with an escape marker.",
-                    token
-                ))
+                return .failure(
+                    diagnostic(
+                        .invalidEscape,
+                        "A phrase cannot end with an escape marker.",
+                        token
+                    ))
             }
-            return .success(DecodedValue(
-                text: result,
-                quoted: true,
-                hadTrailingAsterisk: false
-            ))
+            return .success(
+                DecodedValue(
+                    text: result,
+                    quoted: true,
+                    hadTrailingAsterisk: false
+                ))
         }
         if raw.contains("\"") {
-            return .failure(diagnostic(
-                .unsupportedSyntax,
-                "A quote must enclose the complete value of one Search clause.",
-                token
-            ))
+            return .failure(
+                diagnostic(
+                    .unsupportedSyntax,
+                    "A quote must enclose the complete value of one Search clause.",
+                    token
+                ))
         }
         let stars = raw.filter { $0 == "*" }.count
         guard stars == 0 || (stars == 1 && raw.hasSuffix("*")) else {
-            return .failure(diagnostic(
-                .invalidPrefix,
-                "* is supported only once at the end of an unquoted term.",
-                token
-            ))
+            return .failure(
+                diagnostic(
+                    .invalidPrefix,
+                    "* is supported only once at the end of an unquoted term.",
+                    token
+                ))
         }
         let value = raw.hasSuffix("*") ? String(raw.dropLast()) : raw
-        return .success(DecodedValue(
-            text: value,
-            quoted: false,
-            hadTrailingAsterisk: raw.hasSuffix("*")
-        ))
+        return .success(
+            DecodedValue(
+                text: value,
+                quoted: false,
+                hadTrailingAsterisk: raw.hasSuffix("*")
+            ))
     }
 
     private static func unsupportedSyntaxDiagnostic(
@@ -897,7 +958,8 @@ public enum SearchQueryParser {
         let syntax = syntaxOutsideQuotedValue(raw)
         if syntax.caseInsensitiveCompare("OR") == .orderedSame
             || syntax.caseInsensitiveCompare("NEAR") == .orderedSame
-            || syntax.contains("(") || syntax.contains(")") || syntax.contains("|") {
+            || syntax.contains("(") || syntax.contains(")") || syntax.contains("|")
+        {
             return diagnostic(
                 .unsupportedSyntax,
                 "OR, NEAR, grouping, and alternate-expression syntax are not supported.",
@@ -909,7 +971,8 @@ public enum SearchQueryParser {
             || syntax.contains("..")
             || (candidate.count > 1
                 && candidate.hasPrefix("/")
-                && candidate.hasSuffix("/")) {
+                && candidate.hasSuffix("/"))
+        {
             return diagnostic(
                 .unsupportedSyntax,
                 "Regular-expression, fuzzy, and range syntax are not supported.",
@@ -958,7 +1021,8 @@ public enum SearchQueryParser {
 
     private static func isUnambiguousPropertyKey(_ value: String) -> Bool {
         guard let first = value.unicodeScalars.first,
-              CharacterSet.letters.contains(first) || first == "_" else { return false }
+            CharacterSet.letters.contains(first) || first == "_"
+        else { return false }
         return value.unicodeScalars.dropFirst().allSatisfy {
             CharacterSet.alphanumerics.contains($0) || $0 == "_" || $0 == "-"
         }
@@ -969,8 +1033,9 @@ public enum SearchQueryParser {
         var fieldedIdentityValues: [String] = []
         for clause in clauses {
             guard case .lexical(let lexical) = clause,
-                  !lexical.excluded,
-                  !lexical.value.isPrefix else { continue }
+                !lexical.excluded,
+                !lexical.value.isPrefix
+            else { continue }
             switch lexical.field {
             case nil:
                 unfieldedValues.append(lexical.value.text)
@@ -1042,12 +1107,17 @@ public enum SearchQueryParser {
             let end = index
             let range = start.utf16Offset(in: raw)..<end.utf16Offset(in: raw)
             if quoted {
-                return ([], [SearchQueryDiagnostic(
-                    code: .unclosedPhrase,
-                    message: "The quoted phrase is not closed.",
-                    utf16LowerBound: range.lowerBound,
-                    utf16UpperBound: range.upperBound
-                )])
+                return (
+                    [],
+                    [
+                        SearchQueryDiagnostic(
+                            code: .unclosedPhrase,
+                            message: "The quoted phrase is not closed.",
+                            utf16LowerBound: range.lowerBound,
+                            utf16UpperBound: range.upperBound
+                        )
+                    ]
+                )
             }
             tokens.append(Token(raw: String(raw[start..<end]), range: range))
         }
@@ -1143,20 +1213,22 @@ public enum SearchTextNormalization {
                 let lower = normalizedUTF16Count
                 normalized.append(" ")
                 normalizedUTF16Count += 1
-                offsets.append(Offset(
-                    normalized: lower..<(lower + 1),
-                    original: pendingWhitespace
-                ))
+                offsets.append(
+                    Offset(
+                        normalized: lower..<(lower + 1),
+                        original: pendingWhitespace
+                    ))
             }
             pendingWhitespace = nil
             let folded = normalizer(String(character))
             let lower = normalizedUTF16Count
             normalized += folded
             normalizedUTF16Count += folded.utf16.count
-            offsets.append(Offset(
-                normalized: lower..<normalizedUTF16Count,
-                original: originalRange
-            ))
+            offsets.append(
+                Offset(
+                    normalized: lower..<normalizedUTF16Count,
+                    original: originalRange
+                ))
         }
 
         guard normalized == normalizer(value) else { return nil }
@@ -1213,19 +1285,20 @@ public enum SearchTokenization {
     public static func isCJK(_ scalar: Unicode.Scalar) -> Bool {
         switch scalar.value {
         case 0x1100...0x11FF,
-             0x2E80...0x2FFF,
-             0x3040...0x30FF,
-             0x3100...0x312F,
-             0x3130...0x318F,
-             0x31A0...0x31BF,
-             0x31F0...0x31FF,
-             0x3400...0x4DBF,
-             0x4E00...0x9FFF,
-             0xA960...0xA97F,
-             0xAC00...0xD7FF,
-             0xF900...0xFAFF,
-             0xFF65...0xFF9F,
-             0x20000...0x2FA1F: true
+            0x2E80...0x2FFF,
+            0x3040...0x30FF,
+            0x3100...0x312F,
+            0x3130...0x318F,
+            0x31A0...0x31BF,
+            0x31F0...0x31FF,
+            0x3400...0x4DBF,
+            0x4E00...0x9FFF,
+            0xA960...0xA97F,
+            0xAC00...0xD7FF,
+            0xF900...0xFAFF,
+            0xFF65...0xFF9F,
+            0x20000...0x2FA1F:
+            true
         default: false
         }
     }
@@ -1270,8 +1343,9 @@ public enum SearchTokenization {
     private static func indexTokens(forCJKRun run: String) -> [String] {
         let scalars = run.unicodeScalars.map(String.init)
         guard scalars.count > 1 else { return scalars }
-        return scalars + (0..<(scalars.count - 1)).map {
-            scalars[$0] + scalars[$0 + 1]
-        }
+        return scalars
+            + (0..<(scalars.count - 1)).map {
+                scalars[$0] + scalars[$0 + 1]
+            }
     }
 }

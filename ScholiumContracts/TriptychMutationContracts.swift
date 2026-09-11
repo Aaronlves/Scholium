@@ -18,7 +18,6 @@ public enum TriptychMutationFileRole: String, Codable, Hashable, Sendable {
     case trashedFolder
 }
 
-
 public enum TriptychMutationRecoveryState: String, Codable, Hashable, Sendable {
     case restored
     case intendedBytesRemain

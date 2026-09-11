@@ -1,6 +1,6 @@
-import ScholiumContracts
 import CryptoKit
 import Foundation
+import ScholiumContracts
 
 public actor TriptychMutationRecoveryStore {
     private static let recordsDirectory = "records"
@@ -14,8 +14,10 @@ public actor TriptychMutationRecoveryStore {
 
     public init(storageURL: URL, fileManager: FileManager = .default) throws {
         self.storageURL = storageURL.standardizedFileURL
-        triptychID = UUID(uuidString: self.storageURL
-            .deletingLastPathComponent().lastPathComponent)
+        triptychID =
+            UUID(
+                uuidString: self.storageURL
+                    .deletingLastPathComponent().lastPathComponent)
             ?? UUID(uuidString: "00000000-0000-0000-0000-000000000000")!
         try fileManager.createDirectory(at: self.storageURL, withIntermediateDirectories: true)
         let storage = SecureRecordDirectory(
@@ -44,8 +46,10 @@ public actor TriptychMutationRecoveryStore {
         postCommitFault: @escaping @Sendable (String) throws -> Void
     ) throws {
         self.storageURL = storageURL.standardizedFileURL
-        triptychID = UUID(uuidString: self.storageURL
-            .deletingLastPathComponent().lastPathComponent)
+        triptychID =
+            UUID(
+                uuidString: self.storageURL
+                    .deletingLastPathComponent().lastPathComponent)
             ?? UUID(uuidString: "00000000-0000-0000-0000-000000000000")!
         try fileManager.createDirectory(at: self.storageURL, withIntermediateDirectories: true)
         let storage = SecureRecordDirectory(
@@ -75,8 +79,10 @@ public actor TriptychMutationRecoveryStore {
         preCommitFault: @escaping @Sendable (String) throws -> Void
     ) throws {
         self.storageURL = storageURL.standardizedFileURL
-        triptychID = UUID(uuidString: self.storageURL
-            .deletingLastPathComponent().lastPathComponent)
+        triptychID =
+            UUID(
+                uuidString: self.storageURL
+                    .deletingLastPathComponent().lastPathComponent)
             ?? UUID(uuidString: "00000000-0000-0000-0000-000000000000")!
         try fileManager.createDirectory(at: self.storageURL, withIntermediateDirectories: true)
         let storage = SecureRecordDirectory(
@@ -126,10 +132,12 @@ public actor TriptychMutationRecoveryStore {
                     )
                 }
                 let fileName = Self.fileName(record.id)
-                guard try storage.readIfPresent(
-                    directory: Self.recordsDirectory,
-                    fileName: fileName
-                ) != nil else {
+                guard
+                    try storage.readIfPresent(
+                        directory: Self.recordsDirectory,
+                        fileName: fileName
+                    ) != nil
+                else {
                     throw SecureRecordDirectoryError.unsafe(
                         "An unreadable transaction recovery entry is not a resolvable record."
                     )
@@ -148,8 +156,9 @@ public actor TriptychMutationRecoveryStore {
     private func loadRecords() throws -> [TriptychMutationRecoveryRecord] {
         try storage.fileNames(in: Self.recordsDirectory).map { fileName in
             guard fileName.hasSuffix(".json"),
-                  let id = UUID(uuidString: String(fileName.dropLast(5))),
-                  fileName == Self.fileName(id) else {
+                let id = UUID(uuidString: String(fileName.dropLast(5))),
+                fileName == Self.fileName(id)
+            else {
                 return unreadableRecord(
                     id: Self.unreadableRecordID(
                         triptychID: triptychID,
@@ -197,16 +206,18 @@ public actor TriptychMutationRecoveryStore {
             operation: .noteSave,
             createdAt: Date(timeIntervalSince1970: 0),
             failure: "Recovery record \(fileName) is unreadable and remains unchanged: \(error.localizedDescription)",
-            files: [TriptychMutationRecoveryFile(
-                vaultID: nil,
-                path: "records/\(fileName)",
-                role: .savedNote,
-                beforeRevision: nil,
-                intendedRevision: nil,
-                observedRevision: nil,
-                state: .unreadable,
-                detail: "Reveal the operation records in Finder and preserve this file for manual recovery."
-            )]
+            files: [
+                TriptychMutationRecoveryFile(
+                    vaultID: nil,
+                    path: "records/\(fileName)",
+                    role: .savedNote,
+                    beforeRevision: nil,
+                    intendedRevision: nil,
+                    observedRevision: nil,
+                    state: .unreadable,
+                    detail: "Reveal the operation records in Finder and preserve this file for manual recovery."
+                )
+            ]
         )
     }
 
@@ -232,10 +243,12 @@ public actor TriptychMutationRecoveryStore {
                 fileName: fileName
             )
         }
-        guard try JSONDecoder().decode(
-            TriptychMutationRecoveryRecord.self,
-            from: readback
-        ) == record else {
+        guard
+            try JSONDecoder().decode(
+                TriptychMutationRecoveryRecord.self,
+                from: readback
+            ) == record
+        else {
             throw SecureRecordDirectoryError.replacementCommitUncertain(
                 "The transaction recovery readback did not match the requested record."
             )
@@ -251,13 +264,15 @@ public actor TriptychMutationRecoveryStore {
         fileName: String
     ) -> UUID {
         let seed = "transaction-recovery-unreadable\u{1F}\(triptychID.uuidString.lowercased())\u{1F}\(fileName)"
-        var hexadecimal = Array(SHA256.hash(data: Data(seed.utf8))
-            .map { String(format: "%02x", $0) }
-            .joined()
-            .prefix(32))
+        var hexadecimal = Array(
+            SHA256.hash(data: Data(seed.utf8))
+                .map { String(format: "%02x", $0) }
+                .joined()
+                .prefix(32))
         hexadecimal[12] = "5"
         hexadecimal[16] = "8"
-        let value = String(hexadecimal[0..<8]) + "-" + String(hexadecimal[8..<12]) + "-"
+        let value =
+            String(hexadecimal[0..<8]) + "-" + String(hexadecimal[8..<12]) + "-"
             + String(hexadecimal[12..<16]) + "-" + String(hexadecimal[16..<20]) + "-"
             + String(hexadecimal[20..<32])
         return UUID(uuidString: value)!
@@ -276,9 +291,10 @@ public actor TriptychMutationRecoveryStore {
             error: &coordinationError
         ) { coordinatedURL in
             guard coordinatedURL.standardizedFileURL == url.standardizedFileURL else {
-                result = .failure(SecureRecordDirectoryError.unsafe(
-                    "The transaction recovery directory moved during coordination."
-                ))
+                result = .failure(
+                    SecureRecordDirectoryError.unsafe(
+                        "The transaction recovery directory moved during coordination."
+                    ))
                 return
             }
             result = Result { try operation() }
@@ -292,7 +308,6 @@ public actor TriptychMutationRecoveryStore {
         return try result.get()
     }
 }
-
 
 enum TriptychTransactionFaultPoint: Hashable, Sendable {
     case beforeMove
@@ -364,7 +379,8 @@ public actor TriptychMoveCoordinator {
     }
 
     private func prepareMove(_ plan: IncomingLinkRewritePlan, expectedRevision: DocumentFingerprint)
-        async throws -> (VaultRepository, NoteDocument, [PreparedRewrite]) {
+        async throws -> (VaultRepository, NoteDocument, [PreparedRewrite])
+    {
         try Task.checkCancellation()
         guard plan.movedNote.vaultID == plan.destination.vaultID else {
             throw TriptychTransactionError.invalidPlan("A note cannot change vault identity during an ordinary move.")
@@ -398,7 +414,8 @@ public actor TriptychMoveCoordinator {
         do {
             for rewrite in plan.rewrites {
                 let repository = try await repository(for: rewrite.source)
-                let mutationPath = rewrite.source == plan.movedNote
+                let mutationPath =
+                    rewrite.source == plan.movedNote
                     ? plan.destination.relativePath
                     : rewrite.source.relativePath
                 let before: NoteDocument
@@ -421,12 +438,13 @@ public actor TriptychMoveCoordinator {
                         proposed.validationWarnings.joined(separator: "\n")
                     )
                 }
-                prepared.append(PreparedRewrite(
-                    plan: rewrite,
-                    repository: repository,
-                    mutationPath: mutationPath,
-                    before: before
-                ))
+                prepared.append(
+                    PreparedRewrite(
+                        plan: rewrite,
+                        repository: repository,
+                        mutationPath: mutationPath,
+                        before: before
+                    ))
             }
         } catch let error as TriptychTransactionError {
             throw error
@@ -455,10 +473,11 @@ public actor TriptychMoveCoordinator {
                     changeSet: .exactContent(rewrite.plan.updatedSource),
                     expectedRevision: rewrite.plan.expectedRevision
                 )
-                applied.append(AppliedRewrite(
-                    prepared: rewrite,
-                    committed: saved.document
-                ))
+                applied.append(
+                    AppliedRewrite(
+                        prepared: rewrite,
+                        committed: saved.document
+                    ))
                 try faultPlan.trigger(.afterRewrite(index))
             }
         } catch {
@@ -483,9 +502,10 @@ public actor TriptychMoveCoordinator {
                 rewrittenOccurrences: $0.prepared.plan.rewrittenOccurrences
             )
         }
-        let finalMovedRevision = applied.first {
-            $0.prepared.plan.source == plan.movedNote
-        }?.committed.fingerprint ?? moveResult.document.fingerprint
+        let finalMovedRevision =
+            applied.first {
+                $0.prepared.plan.source == plan.movedNote
+            }?.committed.fingerprint ?? moveResult.document.fingerprint
         return TriptychMoveCommit(
             movedNote: plan.movedNote,
             destination: plan.destination,
@@ -608,23 +628,26 @@ public actor TriptychMoveCoordinator {
         } else {
             moveState = .externallyChanged
         }
-        var files = [TriptychMutationRecoveryFile(
-            vaultID: plan.movedNote.vaultID,
-            path: plan.movedNote.relativePath,
-            alternatePath: plan.destination.relativePath,
-            role: .movedNote,
-            beforeRevision: sourceBefore.fingerprint,
-            intendedRevision: sourceBefore.fingerprint,
-            observedRevision: sourceObserved?.fingerprint ?? destinationObserved?.fingerprint,
-            state: moveState,
-            detail: "Observe both the original and destination paths before choosing recovery."
-        )]
+        var files = [
+            TriptychMutationRecoveryFile(
+                vaultID: plan.movedNote.vaultID,
+                path: plan.movedNote.relativePath,
+                alternatePath: plan.destination.relativePath,
+                role: .movedNote,
+                beforeRevision: sourceBefore.fingerprint,
+                intendedRevision: sourceBefore.fingerprint,
+                observedRevision: sourceObserved?.fingerprint ?? destinationObserved?.fingerprint,
+                state: moveState,
+                detail: "Observe both the original and destination paths before choosing recovery."
+            )
+        ]
 
         for appliedRewrite in applied {
             let rewrite = appliedRewrite.prepared
             let observedPath: String
             if rewrite.plan.source == plan.movedNote {
-                observedPath = sourceObserved == nil
+                observedPath =
+                    sourceObserved == nil
                     ? plan.destination.relativePath
                     : plan.movedNote.relativePath
             } else {
@@ -642,16 +665,17 @@ public actor TriptychMoveCoordinator {
             } else {
                 state = .externallyChanged
             }
-            files.append(TriptychMutationRecoveryFile(
-                vaultID: rewrite.plan.source.vaultID,
-                path: observedPath,
-                role: .incomingLinkRewrite,
-                beforeRevision: rewrite.before.fingerprint,
-                intendedRevision: intended,
-                observedRevision: observed?.fingerprint,
-                state: state,
-                detail: "Incoming link rewrite for \(rewrite.plan.rewrittenOccurrences) resolved occurrence(s)."
-            ))
+            files.append(
+                TriptychMutationRecoveryFile(
+                    vaultID: rewrite.plan.source.vaultID,
+                    path: observedPath,
+                    role: .incomingLinkRewrite,
+                    beforeRevision: rewrite.before.fingerprint,
+                    intendedRevision: intended,
+                    observedRevision: observed?.fingerprint,
+                    state: state,
+                    detail: "Incoming link rewrite for \(rewrite.plan.rewrittenOccurrences) resolved occurrence(s)."
+                ))
         }
         return files
     }

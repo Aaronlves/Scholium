@@ -34,32 +34,47 @@ struct AgentChatReadReply: View {
                 VStack(alignment: .leading) {
                     Text(failure).foregroundStyle(.secondary)
                     Text(verbatim: source).textSelection(.enabled)
-                    Button("Retry") { self.failure = nil; ready = false }
+                    Button("Retry") {
+                        self.failure = nil
+                        ready = false
+                    }
                 }
             } else if let projection {
-                SafeMarkdownReadWebView(documentID: "chat-reply", fingerprint: projection.document.fingerprint.sha256,
+                SafeMarkdownReadWebView(
+                    documentID: "chat-reply", fingerprint: projection.document.fingerprint.sha256,
                     source: projection.document.rawContent, htmlBody: projection.html, presentationCSS: css, userCSS: "",
                     onLinkClick: { if let url = URL(string: $0) { openLink(url) } }, onOpenExternalURL: openLink,
                     selectionSurfaceIsActive: false, renderingReadinessIsAcknowledged: ready,
                     onRenderingFailure: { failure = $0 }, onRenderingLoading: { ready = false },
-                    onRenderingReady: { ready = true }, onReplyEvent: { receive($0, expectedSource: projection.document.rawContent) }, replyQuoteRequest: quoteRequest)
-                    .frame(maxWidth: fitsContent ? intrinsicWidth ?? .infinity : .infinity)
-                    .frame(height: height)
-                    .contextMenu {
-                        if quote != nil {
-                            Button("Ask About Selection") { quoteRequest = UUID() }
-                        }
+                    onRenderingReady: { ready = true }, onReplyEvent: { receive($0, expectedSource: projection.document.rawContent) },
+                    replyQuoteRequest: quoteRequest
+                )
+                .frame(maxWidth: fitsContent ? intrinsicWidth ?? .infinity : .infinity)
+                .frame(height: height)
+                .contextMenu {
+                    if quote != nil {
+                        Button("Ask About Selection") { quoteRequest = UUID() }
                     }
-            } else { ProgressView("Loading…") }
+                }
+            } else {
+                ProgressView("Loading…")
+            }
         }
         .onDisappear { preview.close() }
-        .task(id: source) { preview.close(); failure = nil; ready = false; projection = Projection(source) }
+        .task(id: source) {
+            preview.close()
+            failure = nil
+            ready = false
+            projection = Projection(source)
+        }
     }
 
     private func receive(_ event: ReadReplyEvent, expectedSource: String) {
         guard expectedSource == source else { return }
         switch event {
-        case .layout(let value, let width): height = value; intrinsicWidth = width
+        case .layout(let value, let width):
+            height = value
+            intrinsicWidth = width
         case .quote(let text): quote?(.reader(source: source, excerpt: text))
         case .object(let index, let copy, let size, let anchor, let view):
             let layout = AgentChatObjectProjection.layoutReply(source)
@@ -70,29 +85,31 @@ struct AgentChatReadReply: View {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(segment.code ?? layout.text.attributedSubstring(from: segment.range).string, forType: .string)
             } else {
-                preview.present(content:
-                    AgentChatRichContent(source: source, openLink: openLink,
-                        onlySegment: segment.id, expandedDiagramSize: size), naturalSize: size, anchor: anchor, of: view)
+                preview.present(
+                    content:
+                        AgentChatRichContent(
+                            source: source, openLink: openLink,
+                            onlySegment: segment.id, expandedDiagramSize: size), naturalSize: size, anchor: anchor, of: view)
             }
         }
     }
 
     private var css: String {
         AgentChatDiagram.presentationCSS(dark: colorScheme == .dark, increasedContrast: contrast == .increased)
-        + ScholiumChatAppearance.messageBodyCSS
-        + ScholiumChatAppearance.inlineCodeCSS(dark: colorScheme == .dark, increasedContrast: contrast == .increased) + """
-        html, body { overflow: hidden; }
-        .scholium-document a { color: var(--scholium-color-accent); text-decoration-color: var(--scholium-color-accent); }
-        .scholium-reply-object { margin-block: .85em; }
-        .scholium-reply-controls { display: flex; justify-content: end; gap: 8px; user-select: none; }
-        .scholium-reply-controls button { border: 0; background: transparent; color: var(--scholium-color-secondary-text); width: 24px; height: 24px; font: inherit; cursor: pointer; }
-        .scholium-reply-controls button span { display: block; width: 16px; height: 16px; background: currentColor; -webkit-mask: var(--reply-symbol) center / contain no-repeat; mask: var(--reply-symbol) center / contain no-repeat; }
-        .scholium-table-scroll { margin-block: 0; }
-        .scholium-reply-controls button:focus-visible { outline: auto; }
-        .scholium-reply-object-scroll { overflow-x: auto; max-width: 100%; }
-        .scholium-reply-object table { width: max-content; min-width: 100%; border-collapse: collapse; }
-        .scholium-reply-object th, .scholium-reply-object td { min-width: 120px; padding: 6px 10px; text-align: start; }
-        .scholium-reply-object-scroll pre { width: max-content; min-width: 100%; margin: 0; }
-        """
+            + ScholiumChatAppearance.messageBodyCSS
+            + ScholiumChatAppearance.inlineCodeCSS(dark: colorScheme == .dark, increasedContrast: contrast == .increased) + """
+                html, body { overflow: hidden; }
+                .scholium-document a { color: var(--scholium-color-accent); text-decoration-color: var(--scholium-color-accent); }
+                .scholium-reply-object { margin-block: .85em; }
+                .scholium-reply-controls { display: flex; justify-content: end; gap: 8px; user-select: none; }
+                .scholium-reply-controls button { border: 0; background: transparent; color: var(--scholium-color-secondary-text); width: 24px; height: 24px; font: inherit; cursor: pointer; }
+                .scholium-reply-controls button span { display: block; width: 16px; height: 16px; background: currentColor; -webkit-mask: var(--reply-symbol) center / contain no-repeat; mask: var(--reply-symbol) center / contain no-repeat; }
+                .scholium-table-scroll { margin-block: 0; }
+                .scholium-reply-controls button:focus-visible { outline: auto; }
+                .scholium-reply-object-scroll { overflow-x: auto; max-width: 100%; }
+                .scholium-reply-object table { width: max-content; min-width: 100%; border-collapse: collapse; }
+                .scholium-reply-object th, .scholium-reply-object td { min-width: 120px; padding: 6px 10px; text-align: start; }
+                .scholium-reply-object-scroll pre { width: max-content; min-width: 100%; margin: 0; }
+                """
     }
 }

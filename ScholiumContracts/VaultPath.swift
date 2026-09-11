@@ -12,7 +12,8 @@ public enum VaultPath {
         let rootComponents = normalizedComponents(of: rootURL)
         let itemComponents = normalizedComponents(of: itemURL)
         guard itemComponents.count > rootComponents.count,
-              Array(itemComponents.prefix(rootComponents.count)) == rootComponents else {
+            Array(itemComponents.prefix(rootComponents.count)) == rootComponents
+        else {
             return nil
         }
         return itemComponents.dropFirst(rootComponents.count).joined(separator: "/")

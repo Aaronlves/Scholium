@@ -1,6 +1,6 @@
-import ScholiumContracts
 import Combine
 import Foundation
+import ScholiumContracts
 
 enum AttentionPopoverAnchor: String, Equatable, Sendable {
     case toolbar
@@ -38,8 +38,7 @@ enum AttentionPresentationRequest: Equatable, Sendable {
 final class AttentionPopoverSession: ObservableObject {
     struct Dependencies {
         let dismissalDaysChanges: AnyPublisher<Int, Never>
-        let settlementRequirementChanges:
-            AnyPublisher<[WorkspaceSettlementRequirement], Never>
+        let settlementRequirementChanges: AnyPublisher<[WorkspaceSettlementRequirement], Never>
         let agentChangeChanges: AnyPublisher<[AgentChange]?, Never>
         let agentChangeErrorChanges: AnyPublisher<String?, Never>
         let refresh: @MainActor () async -> Void
@@ -48,8 +47,7 @@ final class AttentionPopoverSession: ObservableObject {
 
     @Published private(set) var presentedAnchor: AttentionPopoverAnchor?
     @Published private(set) var dismissalDays: Int
-    @Published private(set) var settlementRequirements:
-        [WorkspaceSettlementRequirement] = []
+    @Published private(set) var settlementRequirements: [WorkspaceSettlementRequirement] = []
     @Published private(set) var agentChanges: [AgentChange]?
     @Published private(set) var agentChangesError: String?
     @Published private var refreshInProgress = false
@@ -140,11 +138,13 @@ final class AttentionPopoverSession: ObservableObject {
         workspaceSlot: WorkspaceVaultSlot?,
         noteScope: VaultQualifiedNoteID?
     ) {
-        let resolvedWorkspaceSlot = workspaceSlot ?? noteScope.flatMap { note in
-            workspaceController.state.assignment?.vaults.first(where: {
-                $0.value.id == note.vaultID
-            })?.key
-        }
+        let resolvedWorkspaceSlot =
+            workspaceSlot
+            ?? noteScope.flatMap { note in
+                workspaceController.state.assignment?.vaults.first(where: {
+                    $0.value.id == note.vaultID
+                })?.key
+            }
         if anchor == .inspector {
             presentation.filter = AttentionQueueFilter()
             presentation.notificationFilter = .all
@@ -208,9 +208,11 @@ final class AttentionPopoverSession: ObservableObject {
     func scopedItems(for presentation: AttentionPresentationState) -> [AttentionQueueItem] {
         return (projectionController.catalog?.attention ?? []).filter { item in
             if let workspaceSlot = presentation.workspaceSlot {
-                guard let vaultID = workspaceController.state.assignment?
+                guard
+                    let vaultID = workspaceController.state.assignment?
                         .vault(for: workspaceSlot)?.id,
-                      item.note.vaultID == vaultID else { return false }
+                    item.note.vaultID == vaultID
+                else { return false }
             }
             guard let noteScope = presentation.noteScope else { return true }
             return item.note.vaultID == noteScope.vaultID
@@ -234,11 +236,13 @@ final class AttentionPopoverSession: ObservableObject {
             )
         return settlementRequirements.filter { requirement in
             if let workspaceVaultID,
-               requirement.note.vaultID != workspaceVaultID {
+                requirement.note.vaultID != workspaceVaultID
+            {
                 return false
             }
             if let noteScope = presentation.noteScope,
-               requirement.note != noteScope {
+                requirement.note != noteScope
+            {
                 return false
             }
             guard !query.isEmpty else { return true }
@@ -265,7 +269,8 @@ final class AttentionPopoverSession: ObservableObject {
         let query = normalized(presentation.filter.query, locale: locale)
         return (agentChanges ?? []).filter { change in
             if let workspaceSlot = presentation.workspaceSlot,
-               change.role != workspaceSlot.vaultRole {
+                change.role != workspaceSlot.vaultRole
+            {
                 return false
             }
             if presentation.noteScope != nil, change.noteID != noteID {
@@ -306,7 +311,8 @@ final class AttentionPopoverSession: ObservableObject {
 
     func noteTitle(for change: AgentChange) -> String {
         if let title = catalogNotes(for: change.noteID).first?.title,
-           !title.isEmpty {
+            !title.isEmpty
+        {
             return title
         }
         return AgentChangePresentation.displayName(for: change)
@@ -339,9 +345,11 @@ final class AttentionPopoverSession: ObservableObject {
     }
 
     func inspect(_ requirement: WorkspaceSettlementRequirement) {
-        guard let vault = workspaceController.state.assignment?.vaults.values.first(where: {
-            $0.id == requirement.note.vaultID
-        }) else { return }
+        guard
+            let vault = workspaceController.state.assignment?.vaults.values.first(where: {
+                $0.id == requirement.note.vaultID
+            })
+        else { return }
         dismiss()
         discoveryController.requestOpen(
             VaultNoteReference(

@@ -1,6 +1,6 @@
 import AppKit
-import SwiftUI
 import ScholiumContracts
+import SwiftUI
 
 /// The native field editor owns composition and focus. Only committed text is
 /// sent to Search; updates never overwrite marked text or reselect typed input.
@@ -74,7 +74,8 @@ struct ResearchSearchField: NSViewRepresentable {
         }
         private func applyFocusRequest() {
             guard let focusRequestID, focusRequestID != appliedFocusRequestID,
-                  !isComposing, let window, !isHiddenOrHasHiddenAncestor else { return }
+                !isComposing, let window, !isHiddenOrHasHiddenAncestor
+            else { return }
             if currentEditor() != nil || window.makeFirstResponder(self) {
                 appliedFocusRequestID = focusRequestID
             }

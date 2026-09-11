@@ -71,10 +71,10 @@ struct RestoreWorkspaceAccessView: View {
                         chooseFolder()
                     }
                 }
-                    .scholiumActivationPointer()
-                    .scholiumButtonStyle(.bordered)
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(isBusy)
+                .scholiumActivationPointer()
+                .scholiumButtonStyle(.bordered)
+                .keyboardShortcut(.defaultAction)
+                .disabled(isBusy)
             }
         }
         .padding(ScholiumGrid.Spacing.regionContentInset)
@@ -90,9 +90,11 @@ struct RestoreWorkspaceAccessView: View {
             }
             .scholiumActivationPointer()
             Button("Cancel", role: .cancel) {}
-            .scholiumActivationPointer()
+                .scholiumActivationPointer()
         } message: {
-            Text("Scholium will remove only this Triptych’s registration from this Mac, then open setup again. It will not delete or change Analyses, Topics, Works, or the portable .scholium folder.")
+            Text(
+                "Scholium will remove only this Triptych’s registration from this Mac, then open setup again. It will not delete or change Analyses, Topics, Works, or the portable .scholium folder."
+            )
         }
         .confirmationDialog(
             "Archive and Rebuild Portable Control?",
@@ -104,9 +106,11 @@ struct RestoreWorkspaceAccessView: View {
             }
             .scholiumActivationPointer()
             Button("Cancel", role: .cancel) {}
-            .scholiumActivationPointer()
+                .scholiumActivationPointer()
         } message: {
-            Text("Scholium will move the entire existing .scholium folder to a uniquely named sibling recovery folder, preserving its exact files without interpreting the old schema. Analyses, Topics, and Works will not be changed. Scholium will then create current portable control state.")
+            Text(
+                "Scholium will move the entire existing .scholium folder to a uniquely named sibling recovery folder, preserving its exact files without interpreting the old schema. Analyses, Topics, and Works will not be changed. Scholium will then create current portable control state."
+            )
         }
         .confirmationDialog(
             "Archive Invalid Metadata Record?",
@@ -118,9 +122,11 @@ struct RestoreWorkspaceAccessView: View {
             }
             .scholiumActivationPointer()
             Button("Cancel", role: .cancel) {}
-            .scholiumActivationPointer()
+                .scholiumActivationPointer()
         } message: {
-            Text("Scholium will preserve this record’s exact bytes under a unique recovery name, remove only that invalid record from the active Metadata catalog, and reload the Triptych. Markdown and every other portable control file remain unchanged.")
+            Text(
+                "Scholium will preserve this record’s exact bytes under a unique recovery name, remove only that invalid record from the active Metadata catalog, and reload the Triptych. Markdown and every other portable control file remain unchanged."
+            )
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("scholium.restoreAccess")
@@ -136,19 +142,22 @@ struct RestoreWorkspaceAccessView: View {
             )
         case .portableControl:
             String(
-                localized: "Choose the folder containing Works again so Scholium can renew access to the adjacent portable .scholium folder. Other Triptych locations remain unchanged.",
+                localized:
+                    "Choose the folder containing Works again so Scholium can renew access to the adjacent portable .scholium folder. Other Triptych locations remain unchanged.",
                 table: "Localizable",
                 bundle: .module
             )
         case .unsupportedPortableControl:
             String(
-                localized: "This Triptych’s portable .scholium control folder is incompatible or damaged. Archive the entire folder unchanged, then let Scholium rebuild current control state. Analyses, Topics, and Works remain untouched.",
+                localized:
+                    "This Triptych’s portable .scholium control folder is incompatible or damaged. Archive the entire folder unchanged, then let Scholium rebuild current control state. Analyses, Topics, and Works remain untouched.",
                 table: "Localizable",
                 bundle: .module
             )
         case .invalidNoteMetadataRecord:
             String(
-                localized: "One portable Note Metadata record is damaged, orphaned, or incompatible with its current role. Archive only that exact record so Scholium can reload the remaining Metadata catalog.",
+                localized:
+                    "One portable Note Metadata record is damaged, orphaned, or incompatible with its current role. Archive only that exact record so Scholium can reload the remaining Metadata catalog.",
                 table: "Localizable",
                 bundle: .module
             )
@@ -204,9 +213,12 @@ struct RestoreWorkspaceAccessView: View {
         )
         Task { @MainActor in
             do {
-                guard let url = try await fileSelectionPresenter
-                    .requiredForFileSelection()
-                    .selectURL(request) else { return }
+                guard
+                    let url =
+                        try await fileSelectionPresenter
+                        .requiredForFileSelection()
+                        .selectURL(request)
+                else { return }
                 isRestoring = true
                 errorMessage = nil
                 try await restore(url)

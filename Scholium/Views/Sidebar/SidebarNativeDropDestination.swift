@@ -25,17 +25,19 @@ func sidebarNativeDragPayload(
     let folderData = pasteboard.data(forType: sidebarNativeDraggingTypes[1])
     guard (noteData != nil) != (folderData != nil) else { return nil }
     if let noteData,
-       let item = try? JSONDecoder().decode(
-           SidebarNoteDragItem.self,
-           from: noteData
-       ) {
+        let item = try? JSONDecoder().decode(
+            SidebarNoteDragItem.self,
+            from: noteData
+        )
+    {
         return .note(item)
     }
     if let folderData,
-       let item = try? JSONDecoder().decode(
-           SidebarFolderDragItem.self,
-           from: folderData
-       ) {
+        let item = try? JSONDecoder().decode(
+            SidebarFolderDragItem.self,
+            from: folderData
+        )
+    {
         return .folder(item)
     }
     return nil
@@ -148,8 +150,9 @@ private final class SidebarLibraryHeaderDropView: NSView {
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
         guard let payload = validatedPayload(from: sender),
-              let onMoveNoteDrop,
-              let onMoveFolderDrop else {
+            let onMoveNoteDrop,
+            let onMoveFolderDrop
+        else {
             setDropTargeted(false)
             return false
         }
@@ -179,7 +182,8 @@ private final class SidebarLibraryHeaderDropView: NSView {
     private func validatedOperation(
         for sender: NSDraggingInfo
     ) -> NSDragOperation {
-        let operation: NSDragOperation = validatedPayload(from: sender) == nil
+        let operation: NSDragOperation =
+            validatedPayload(from: sender) == nil
             ? []
             : .move
         setDropTargeted(operation == .move)
@@ -190,12 +194,13 @@ private final class SidebarLibraryHeaderDropView: NSView {
         from sender: NSDraggingInfo
     ) -> SidebarNativeDragPayload? {
         guard let dropInventory,
-              let payload = sidebarNativeDragPayload(from: sender),
-              sidebarNativeDropIsValid(
-                  payload,
-                  folderRelativePath: nil,
-                  inventory: dropInventory
-              ) else { return nil }
+            let payload = sidebarNativeDragPayload(from: sender),
+            sidebarNativeDropIsValid(
+                payload,
+                folderRelativePath: nil,
+                inventory: dropInventory
+            )
+        else { return nil }
         return payload
     }
 

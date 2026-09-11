@@ -1,6 +1,7 @@
 import Foundation
 import ScholiumContracts
 import Testing
+
 @testable import ScholiumCore
 
 @Suite("Settlement store", .serialized)
@@ -100,7 +101,8 @@ struct SettlementStoreTests {
                 .deletingLastPathComponent()
                 .deletingLastPathComponent()
                 .deletingLastPathComponent()
-            root = repositoryRoot
+            root =
+                repositoryRoot
                 .appendingPathComponent(".build/core-unit-state", isDirectory: true)
                 .appendingPathComponent(UUID().uuidString.lowercased(), isDirectory: true)
             controlURL = root.appendingPathComponent(".scholium", isDirectory: true)

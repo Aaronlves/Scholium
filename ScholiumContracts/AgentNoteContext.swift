@@ -9,8 +9,10 @@ public struct AgentNoteContext: Sendable {
     public let zoteroBindingsRevision: DocumentFingerprint?
     public let attachments: AgentAttachmentListing
 
-    public init(note: VaultQualifiedNoteID, metadata: NoteMetadataSnapshot?, zoteroBinding: AnalysisZoteroBinding?,
-                zoteroBindingsRevision: DocumentFingerprint?, attachments: AgentAttachmentListing) {
+    public init(
+        note: VaultQualifiedNoteID, metadata: NoteMetadataSnapshot?, zoteroBinding: AnalysisZoteroBinding?,
+        zoteroBindingsRevision: DocumentFingerprint?, attachments: AgentAttachmentListing
+    ) {
         self.note = note
         self.metadata = metadata
         self.zoteroBinding = zoteroBinding

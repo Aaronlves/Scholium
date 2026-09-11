@@ -27,10 +27,13 @@ struct InspectorLinkDirectionControl: NSViewRepresentable {
         control.selectedSegment = direction == .incoming ? 0 : 1
     }
 
-    func sizeThatFits(_ proposal: ProposedViewSize, nsView: NSSegmentedControl,
-                     context: Context) -> CGSize? {
-        CGSize(width: proposal.width ?? nsView.intrinsicContentSize.width,
-               height: nsView.intrinsicContentSize.height)
+    func sizeThatFits(
+        _ proposal: ProposedViewSize, nsView: NSSegmentedControl,
+        context: Context
+    ) -> CGSize? {
+        CGSize(
+            width: proposal.width ?? nsView.intrinsicContentSize.width,
+            height: nsView.intrinsicContentSize.height)
     }
 
     @MainActor final class Coordinator: NSObject {

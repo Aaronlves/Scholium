@@ -30,7 +30,8 @@ final class SelectionActionBar: NSStackView {
         if !self.actions.isEmpty { more.menu?.addItem(.separator()) }
         for (index, action) in self.actions.enumerated() {
             let item = NSMenuItem(title: action.name, action: #selector(runCustom(_:)), keyEquivalent: "")
-            item.target = self; item.tag = index
+            item.target = self
+            item.tag = index
             more.menu?.addItem(item)
         }
         [explain, polish, more].forEach { control in

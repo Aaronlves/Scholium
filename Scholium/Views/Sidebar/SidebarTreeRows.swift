@@ -77,28 +77,33 @@ struct SidebarNoteCommandGroup: Hashable, Identifiable {
 }
 
 func sidebarNoteCommandGroups() -> [SidebarNoteCommandGroup] {
-    var groups = [SidebarNoteCommandGroup(
-        kind: .opening,
-        commands: [.openInNewTab, .addToChat]
-    )]
+    var groups = [
+        SidebarNoteCommandGroup(
+            kind: .opening,
+            commands: [.openInNewTab, .addToChat]
+        )
+    ]
 
     var editing: [SidebarNoteCommand] = []
     editing.append(.duplicate)
     editing.append(.rename)
     editing.append(.move)
-    groups.append(SidebarNoteCommandGroup(
-        kind: .editing,
-        commands: editing
-    ))
-    groups.append(SidebarNoteCommandGroup(
-        kind: .fileActions,
-        commands: [.moveToSystemTrash]
-    ))
+    groups.append(
+        SidebarNoteCommandGroup(
+            kind: .editing,
+            commands: editing
+        ))
+    groups.append(
+        SidebarNoteCommandGroup(
+            kind: .fileActions,
+            commands: [.moveToSystemTrash]
+        ))
 
-    groups.append(SidebarNoteCommandGroup(
-        kind: .location,
-        commands: [.copyRelativePath, .revealInFinder]
-    ))
+    groups.append(
+        SidebarNoteCommandGroup(
+            kind: .location,
+            commands: [.copyRelativePath, .revealInFinder]
+        ))
     return groups
 }
 
@@ -131,8 +136,7 @@ struct SidebarTreeNodeRow: View {
 
     var body: some View {
         Group {
-            if node.isFolder { folderRow }
-            else if let note = node.note { noteRow(note) }
+            if node.isFolder { folderRow } else if let note = node.note { noteRow(note) }
         }
         .id(node.id)
     }
@@ -140,17 +144,21 @@ struct SidebarTreeNodeRow: View {
     private var folderRow: some View {
         HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
             Image(systemName: "folder")
-                .font(ScholiumTypography.nativeSourceList(
-                    pointSize: presentation.textPointSize
-                ))
+                .font(
+                    ScholiumTypography.nativeSourceList(
+                        pointSize: presentation.textPointSize
+                    )
+                )
                 .foregroundStyle(itemTypeForeground)
                 .frame(width: ScholiumMetrics.Library.leadingSlotWidth)
                 .accessibilityHidden(true)
 
             Text(node.name)
-                .font(ScholiumTypography.nativeSourceList(
-                    pointSize: presentation.textPointSize
-                ))
+                .font(
+                    ScholiumTypography.nativeSourceList(
+                        pointSize: presentation.textPointSize
+                    )
+                )
                 .foregroundStyle(titleForeground)
                 .lineLimit(1)
                 .truncationMode(.middle)
@@ -258,7 +266,8 @@ struct SidebarTreeNodeRow: View {
         note: WindowDocumentLocation,
         surface: SidebarNoteCommandSurface
     ) -> some View {
-        let title = surface == .contextMenu
+        let title =
+            surface == .contextMenu
             ? command.contextMenuTitle
             : command.accessibilityTitle
         Button(role: command.role) {
@@ -267,7 +276,8 @@ struct SidebarTreeNodeRow: View {
             Text(title)
         }
         .disabled(
-            command == .addToChat ? !context.canAddNoteToChat(note)
+            command == .addToChat
+                ? !context.canAddNoteToChat(note)
                 : command.requiresMutationTarget && NoteMutationTarget(note) == nil
         )
     }
@@ -302,8 +312,7 @@ struct SidebarTreeNodeRow: View {
                 return
             }
             Task {
-                do { try await context.requestSystemTrash(target) }
-                catch {
+                do { try await context.requestSystemTrash(target) } catch {
                     context.showError(
                         "Could not prepare Move to Trash. \(error.localizedDescription)"
                     )
@@ -320,8 +329,7 @@ struct SidebarTreeNodeRow: View {
     private var subtreeIsExpanded: Bool { subtreeFolderIDs.isSubset(of: expandedFolders) }
 
     private func toggleEntireSubtree() {
-        if subtreeIsExpanded { expandedFolders.subtract(subtreeFolderIDs) }
-        else { expandedFolders.formUnion(subtreeFolderIDs) }
+        if subtreeIsExpanded { expandedFolders.subtract(subtreeFolderIDs) } else { expandedFolders.formUnion(subtreeFolderIDs) }
     }
 
     private func canMutateFolder(_ path: String) -> Bool {
@@ -336,8 +344,9 @@ struct SidebarTreeNodeRow: View {
 
     private func performFolderTrash(_ target: FolderMutationTarget) {
         Task {
-            do { try await context.requestFolderSystemTrash(target) }
-            catch { context.showError("Could not prepare this folder for Move to Trash. \(error.localizedDescription)") }
+            do { try await context.requestFolderSystemTrash(target) } catch {
+                context.showError("Could not prepare this folder for Move to Trash. \(error.localizedDescription)")
+            }
         }
     }
 
@@ -363,16 +372,20 @@ struct SidebarNoteRow: View {
     var body: some View {
         HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
             Image(systemName: "doc.text")
-                .font(ScholiumTypography.nativeSourceList(
-                    pointSize: presentation.textPointSize
-                ))
+                .font(
+                    ScholiumTypography.nativeSourceList(
+                        pointSize: presentation.textPointSize
+                    )
+                )
                 .foregroundStyle(itemTypeForeground)
                 .frame(width: ScholiumMetrics.Library.leadingSlotWidth)
                 .accessibilityHidden(true)
             Text(note.title ?? note.displayName)
-                .font(ScholiumTypography.nativeSourceList(
-                    pointSize: presentation.textPointSize
-                ))
+                .font(
+                    ScholiumTypography.nativeSourceList(
+                        pointSize: presentation.textPointSize
+                    )
+                )
                 .lineLimit(1)
                 .truncationMode(.middle)
                 .foregroundStyle(titleForeground)

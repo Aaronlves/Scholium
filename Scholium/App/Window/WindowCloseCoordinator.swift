@@ -23,10 +23,11 @@ final class WindowCloseCoordinator {
     private let finalizeDependencies: Finalizer
     private var closeAttemptSequence: UInt64 = 0
     private var currentCloseAttemptID = LifecycleAttemptID(rawValue: 0)
-    private var activePreparation: (
-        attempt: LifecycleAttemptID,
-        task: Task<WindowClosePreparationOutcome, Error>
-    )?
+    private var activePreparation:
+        (
+            attempt: LifecycleAttemptID,
+            task: Task<WindowClosePreparationOutcome, Error>
+        )?
     private(set) var isFinalized = false
 
     init(

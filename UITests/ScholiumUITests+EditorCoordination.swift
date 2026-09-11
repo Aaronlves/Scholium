@@ -1,7 +1,7 @@
-@preconcurrency import XCTest
 import AppKit
 import Carbon
 import CryptoKit
+@preconcurrency import XCTest
 import notify
 
 extension ScholiumUITests {
@@ -10,9 +10,10 @@ extension ScholiumUITests {
         try enterLivePreviewAndAppend("\n\n*Source-role classification")
         let editor = app.descendants(matching: .any)["Markdown editor, Edit mode"].firstMatch
         app.typeText("*")
-        XCTAssertTrue(waitUntil(timeout: 5) {
-            (editor.value as? String ?? "").contains("*Source-role classification*")
-        })
+        XCTAssertTrue(
+            waitUntil(timeout: 5) {
+                (editor.value as? String ?? "").contains("*Source-role classification*")
+            })
         let line = app.staticTexts.matching(NSPredicate(format: "value CONTAINS %@", "Source-role classification")).firstMatch
         func markersAreVisible() -> Bool {
             (line.value as? String ?? "").contains("*Source-role classification*")
@@ -30,9 +31,10 @@ extension ScholiumUITests {
         app.typeText(" ")
         XCTAssertTrue(waitUntil(timeout: 5) { !markersAreVisible() })
         let noteURL = triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md")
-        XCTAssertTrue(waitUntil(timeout: 12) {
-            (try? String(contentsOf: noteURL, encoding: .utf8))?.contains("*Source-role classification* ") == true
-        }, "Hidden syntax must remain byte-exact in the saved Markdown.")
+        XCTAssertTrue(
+            waitUntil(timeout: 12) {
+                (try? String(contentsOf: noteURL, encoding: .utf8))?.contains("*Source-role classification* ") == true
+            }, "Hidden syntax must remain byte-exact in the saved Markdown.")
         let inactive = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
         inactive.name = "Syntax hidden after leaving construct"
         inactive.lifetime = .keepAlways
@@ -44,15 +46,18 @@ extension ScholiumUITests {
         try enterLivePreviewAndAppend("\n\n")
         let editor = app.descendants(matching: .any)["Markdown editor, Edit mode"].firstMatch
         let inputSource = TISCopyCurrentKeyboardInputSource().takeRetainedValue()
-        let isASCII = TISGetInputSourceProperty(inputSource, kTISPropertyInputSourceIsASCIICapable)
+        let isASCII =
+            TISGetInputSourceProperty(inputSource, kTISPropertyInputSourceIsASCIICapable)
             .map { Unmanaged<CFBoolean>.fromOpaque($0).takeUnretainedValue() }
             .map(CFBooleanGetValue) ?? true
         app.typeText("# ")
         app.typeText("headingprobe")
         if !isASCII { app.typeKey(.return, modifierFlags: []) }
         XCTAssertTrue(waitUntil(timeout: 5) { (editor.value as? String ?? "").contains("# headingprobe") })
-        let heading = app.staticTexts.matching(NSPredicate(
-            format: "label CONTAINS %@ OR value CONTAINS %@", "headingprobe", "headingprobe")).firstMatch
+        let heading = app.staticTexts.matching(
+            NSPredicate(
+                format: "label CONTAINS %@ OR value CONTAINS %@", "headingprobe", "headingprobe")
+        ).firstMatch
         XCTAssertTrue(heading.waitForExistence(timeout: 5))
         let headingHeight = heading.frame.height
         func capture(_ name: String) {
@@ -85,7 +90,8 @@ extension ScholiumUITests {
         let viewport = app.webViews.firstMatch
         let frame = viewport.frame
         let inputSource = TISCopyCurrentKeyboardInputSource().takeRetainedValue()
-        let isASCII = TISGetInputSourceProperty(inputSource, kTISPropertyInputSourceIsASCIICapable)
+        let isASCII =
+            TISGetInputSourceProperty(inputSource, kTISPropertyInputSourceIsASCIICapable)
             .map { Unmanaged<CFBoolean>.fromOpaque($0).takeUnretainedValue() }
             .map(CFBooleanGetValue) ?? true
         func typeAndCommit(_ text: String) {
@@ -102,9 +108,10 @@ extension ScholiumUITests {
         XCTAssertTrue((editor.value as? String ?? "").contains("/date"))
         XCTAssertEqual(suggestions.frame.height, 40, accuracy: 1)
         let savedNote = triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md")
-        XCTAssertTrue(waitUntil(timeout: 12) {
-            (try? String(contentsOf: savedNote, encoding: .utf8))?.contains("/date") == true
-        }, "Wait for the real autosave before activating the retained completion.")
+        XCTAssertTrue(
+            waitUntil(timeout: 12) {
+                (try? String(contentsOf: savedNote, encoding: .utf8))?.contains("/date") == true
+            }, "Wait for the real autosave before activating the retained completion.")
         XCTAssertTrue(suggestions.exists, "Autosave must preserve the open candidate list.")
         let screenshot = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
         screenshot.name = "Native Liquid Glass completion"
@@ -207,10 +214,11 @@ extension ScholiumUITests {
         // Send paste to the app's actual responder, without clicking the editor.
         try setPasteboardText("focusreturned")
         app.typeKey("v", modifierFlags: [.command])
-        XCTAssertTrue(waitUntil(timeout: 5) {
-            let value = editor.value as? String ?? ""
-            return value.contains("changedprobe focusreturned.")
-        })
+        XCTAssertTrue(
+            waitUntil(timeout: 5) {
+                let value = editor.value as? String ?? ""
+                return value.contains("changedprobe focusreturned.")
+            })
 
         app.menuBars.menuBarItems["Edit"].click()
         app.menuItems["Find"].firstMatch.hover()
@@ -297,9 +305,10 @@ extension ScholiumUITests {
         let secondRow = app.descendants(matching: .any)["scholium.noteRow.QA Autosave B.md"]
         XCTAssertTrue(secondRow.waitForExistence(timeout: 5))
         secondRow.click()
-        XCTAssertTrue(waitUntil(timeout: 15) {
-            self.documentTitle() == "QA Autosave B"
-        })
+        XCTAssertTrue(
+            waitUntil(timeout: 15) {
+                self.documentTitle() == "QA Autosave B"
+            })
         XCTAssertTrue(waitUntil(timeout: 8) { (try? self.source(at: firstURL).contains(token)) == true })
         XCTAssertFalse(try source(at: secondURL).contains(token))
     }
@@ -340,9 +349,10 @@ extension ScholiumUITests {
             }
             RunLoop.current.run(until: Date().addingTimeInterval(0.01))
         }
-        let reviewToEditMilliseconds = Double(
-            DispatchTime.now().uptimeNanoseconds - reviewToEditStart
-        ) / 1_000_000
+        let reviewToEditMilliseconds =
+            Double(
+                DispatchTime.now().uptimeNanoseconds - reviewToEditStart
+            ) / 1_000_000
         XCTAssertTrue(editor.exists && editor.isHittable)
         XCTAssertEqual(
             sourceExposureSamples,
@@ -354,9 +364,10 @@ extension ScholiumUITests {
         let editToReviewStart = DispatchTime.now().uptimeNanoseconds
         selectMode("Review")
         XCTAssertTrue(rendered.waitForExistence(timeout: 8))
-        let editToReviewMilliseconds = Double(
-            DispatchTime.now().uptimeNanoseconds - editToReviewStart
-        ) / 1_000_000
+        let editToReviewMilliseconds =
+            Double(
+                DispatchTime.now().uptimeNanoseconds - editToReviewStart
+            ) / 1_000_000
 
         selectMode("Edit")
         XCTAssertTrue(editor.waitForExistence(timeout: 8))
@@ -366,15 +377,17 @@ extension ScholiumUITests {
         XCTAssertTrue(secondRow.waitForExistence(timeout: 5))
         let firstToSecondStart = DispatchTime.now().uptimeNanoseconds
         secondRow.click()
-        XCTAssertTrue(waitUntil(timeout: 8) {
-            self.documentTitle() == "QA Autosave B"
-                && self.app.descendants(matching: .any)[
-                    "Markdown editor, Edit mode"
-                ].exists
-        })
-        let firstToSecondMilliseconds = Double(
-            DispatchTime.now().uptimeNanoseconds - firstToSecondStart
-        ) / 1_000_000
+        XCTAssertTrue(
+            waitUntil(timeout: 8) {
+                self.documentTitle() == "QA Autosave B"
+                    && self.app.descendants(matching: .any)[
+                        "Markdown editor, Edit mode"
+                    ].exists
+            })
+        let firstToSecondMilliseconds =
+            Double(
+                DispatchTime.now().uptimeNanoseconds - firstToSecondStart
+            ) / 1_000_000
 
         let firstRow = app.descendants(matching: .any)[
             "scholium.noteRow.QA Autosave A.md"
@@ -382,24 +395,27 @@ extension ScholiumUITests {
         XCTAssertTrue(firstRow.waitForExistence(timeout: 5))
         let secondToFirstStart = DispatchTime.now().uptimeNanoseconds
         firstRow.click()
-        XCTAssertTrue(waitUntil(timeout: 8) {
-            self.documentTitle() == "QA Autosave A"
-                && editor.exists
-        })
-        let secondToFirstMilliseconds = Double(
-            DispatchTime.now().uptimeNanoseconds - secondToFirstStart
-        ) / 1_000_000
+        XCTAssertTrue(
+            waitUntil(timeout: 8) {
+                self.documentTitle() == "QA Autosave A"
+                    && editor.exists
+            })
+        let secondToFirstMilliseconds =
+            Double(
+                DispatchTime.now().uptimeNanoseconds - secondToFirstStart
+            ) / 1_000_000
 
         XCTAssertEqual(try Data(contentsOf: firstURL), firstSource)
         XCTAssertEqual(try Data(contentsOf: secondURL), secondSource)
-        let evidence = XCTAttachment(string: """
-        Debug/QA scenario observation (not the packaged Release performance gate):
-        Review to Edit: \(reviewToEditMilliseconds) ms
-        Edit to Review: \(editToReviewMilliseconds) ms
-        Edit A to Review B through Library: \(firstToSecondMilliseconds) ms
-        Review B to restored Edit A through Library: \(secondToFirstMilliseconds) ms
-        Hittable Source samples during Review to Edit: \(sourceExposureSamples)
-        """)
+        let evidence = XCTAttachment(
+            string: """
+                Debug/QA scenario observation (not the packaged Release performance gate):
+                Review to Edit: \(reviewToEditMilliseconds) ms
+                Edit to Review: \(editToReviewMilliseconds) ms
+                Edit A to Review B through Library: \(firstToSecondMilliseconds) ms
+                Review B to restored Edit A through Library: \(secondToFirstMilliseconds) ms
+                Hittable Source samples during Review to Edit: \(sourceExposureSamples)
+                """)
         evidence.name = "Document mode and Library handoff timings"
         evidence.lifetime = .keepAlways
         add(evidence)
@@ -459,7 +475,6 @@ extension ScholiumUITests {
         XCTAssertFalse(app.staticTexts["Confirm Note Identity"].exists)
     }
 
-
     @MainActor
     func testDirtyExternalRenameRebindsAndPreservesTheUncommittedEditorBuffer() throws {
         let localToken = " DIRTY-RENAME-\(UUID().uuidString)"
@@ -515,7 +530,8 @@ extension ScholiumUITests {
     @MainActor
     func testDirtyExternalEditPreservesTheBufferAndPresentsConflictRecovery() throws {
         let localToken = " LOCAL-\(UUID().uuidString)"
-        let diskToken = "## External Disk Revision — "
+        let diskToken =
+            "## External Disk Revision — "
             + String(repeating: "synthetic exact-source soft-wrap probe ", count: 18)
         let noteURL = triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md")
         try enterLivePreviewAndAppend(localToken)
@@ -558,9 +574,10 @@ extension ScholiumUITests {
             760,
             "Conflict comparison must retain a readable text width instead of collapsing to its controls."
         )
-        XCTAssertTrue(app.descendants(matching: .any)[
-            "scholium.conflict.diff"
-        ].waitForExistence(timeout: 3))
+        XCTAssertTrue(
+            app.descendants(matching: .any)[
+                "scholium.conflict.diff"
+            ].waitForExistence(timeout: 3))
         let diffRows = app.descendants(matching: .any).matching(
             NSPredicate(
                 format: "identifier BEGINSWITH %@",
@@ -673,11 +690,12 @@ extension ScholiumUITests {
         var cjkParagraphs: [String] = []
         var paragraphStart = cjkCharacters.startIndex
         while paragraphStart < cjkCharacters.endIndex {
-            let paragraphEnd = cjkCharacters.index(
-                paragraphStart,
-                offsetBy: 1_000,
-                limitedBy: cjkCharacters.endIndex
-            ) ?? cjkCharacters.endIndex
+            let paragraphEnd =
+                cjkCharacters.index(
+                    paragraphStart,
+                    offsetBy: 1_000,
+                    limitedBy: cjkCharacters.endIndex
+                ) ?? cjkCharacters.endIndex
             cjkParagraphs.append(String(cjkCharacters[paragraphStart..<paragraphEnd]))
             paragraphStart = paragraphEnd
         }
@@ -710,10 +728,12 @@ extension ScholiumUITests {
         XCTAssertFalse(visibleEditorFrame.isNull)
         XCTAssertGreaterThan(visibleEditorFrame.width, 0)
         XCTAssertGreaterThan(visibleEditorFrame.height, 0)
-        window.coordinate(withNormalizedOffset: CGVector(
-            dx: (visibleEditorFrame.midX - window.frame.minX) / window.frame.width,
-            dy: (visibleEditorFrame.midY - window.frame.minY) / window.frame.height
-        )).click()
+        window.coordinate(
+            withNormalizedOffset: CGVector(
+                dx: (visibleEditorFrame.midX - window.frame.minX) / window.frame.width,
+                dy: (visibleEditorFrame.midY - window.frame.minY) / window.frame.height
+            )
+        ).click()
 
         let beginningToken = "QA-CJK-BEGIN-\(UUID().uuidString)"
         editor.typeKey(.home, modifierFlags: [.command])
@@ -755,11 +775,13 @@ extension ScholiumUITests {
             source,
             "The 100k save may place the visual-end token before footnote definitions, but every pre-existing Markdown byte must remain exact."
         )
-        let saveTransitionMilliseconds = Double(
-            DispatchTime.now().uptimeNanoseconds - saveTransitionStarted
-        ) / 1_000_000
+        let saveTransitionMilliseconds =
+            Double(
+                DispatchTime.now().uptimeNanoseconds - saveTransitionStarted
+            ) / 1_000_000
         let evidence = XCTAttachment(
-            string: "100,000-CJK-character dirty Live Preview reached byte-exact committed Read mode in \(saveTransitionMilliseconds) ms under the QA automation boundary."
+            string:
+                "100,000-CJK-character dirty Live Preview reached byte-exact committed Read mode in \(saveTransitionMilliseconds) ms under the QA automation boundary."
         )
         evidence.name = "100k CJK byte-exact save transition observation"
         evidence.lifetime = .keepAlways
@@ -809,9 +831,10 @@ extension ScholiumUITests {
         if sharedFolder.value as? String != "Expanded" {
             sharedFolder.click()
         }
-        XCTAssertTrue(waitUntil(timeout: 5) {
-            sharedFolder.value as? String == "Expanded"
-        })
+        XCTAssertTrue(
+            waitUntil(timeout: 5) {
+                sharedFolder.value as? String == "Expanded"
+            })
 
         let documentTabs = app.descendants(matching: .any)["scholium.documentTabs"]
         XCTAssertTrue(documentTabs.waitForExistence(timeout: 8))
@@ -847,14 +870,16 @@ extension ScholiumUITests {
         )
 
         firstTab.click()
-        XCTAssertTrue(waitUntil(timeout: 5) {
-            sharedPresentationIsPreserved(expectedNote: "QA Autosave A")
-        })
+        XCTAssertTrue(
+            waitUntil(timeout: 5) {
+                sharedPresentationIsPreserved(expectedNote: "QA Autosave A")
+            })
 
         secondTab.click()
-        XCTAssertTrue(waitUntil(timeout: 5) {
-            sharedPresentationIsPreserved(expectedNote: "QA Autosave B")
-        })
+        XCTAssertTrue(
+            waitUntil(timeout: 5) {
+                sharedPresentationIsPreserved(expectedNote: "QA Autosave B")
+            })
         documentTabs.buttons["Close QA Autosave B"].click()
         XCTAssertTrue(
             waitUntil(timeout: 8) {

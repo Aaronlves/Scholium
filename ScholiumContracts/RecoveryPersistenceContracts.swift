@@ -35,9 +35,11 @@ public struct SystemTrashDeletionPlan: Codable, Hashable, Sendable {
         sourceReceipts: [SystemTrashDeletionSourceReceipt]? = nil
     ) {
         self.preview = preview
-        self.sourceReceipts = sourceReceipts ?? preview.sources.map {
-            SystemTrashDeletionSourceReceipt(targetID: $0.id, progress: .pending)
-        }
+        self.sourceReceipts =
+            sourceReceipts
+            ?? preview.sources.map {
+                SystemTrashDeletionSourceReceipt(targetID: $0.id, progress: .pending)
+            }
     }
 
     public var id: UUID { preview.id }

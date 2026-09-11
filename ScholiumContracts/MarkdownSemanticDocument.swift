@@ -148,7 +148,8 @@ public enum CalloutSemanticVocabulary {
     ]
 
     public static func canonicalIdentifier(for raw: String) -> String {
-        let normalized = raw
+        let normalized =
+            raw
             .trimmingCharacters(in: .whitespacesAndNewlines.union(CharacterSet(charactersIn: ":")))
             .lowercased()
         return aliasesByCanonicalIdentifier.first(where: { $0.value.contains(normalized) })?.key
@@ -474,12 +475,13 @@ public enum MarkdownSemanticParser {
         )
         literalRanges.append(contentsOf: commentResult.ranges)
         literalRanges.append(contentsOf: inlineCodeRanges(in: document.body))
-        inlines.append(contentsOf: parseHighlights(
-            body: document.body,
-            bodyUTF16Offset: bodyOffset,
-            sourceMapper: sourceMapper,
-            excluded: literalRanges
-        ))
+        inlines.append(
+            contentsOf: parseHighlights(
+                body: document.body,
+                bodyUTF16Offset: bodyOffset,
+                sourceMapper: sourceMapper,
+                excluded: literalRanges
+            ))
 
         let calloutResult = parseCallouts(
             body: document.body,
@@ -520,9 +522,10 @@ public enum MarkdownSemanticParser {
             footnoteReferences: footnoteResult.references,
             mathExpressions: mathResult.expressions,
             links: linkResult.links,
-            diagnostics: (commentResult.diagnostics + calloutResult.diagnostics + footnoteResult.diagnostics + mathResult.diagnostics + linkResult.diagnostics).sorted {
-                ($0.span?.utf16LowerBound ?? Int.max) < ($1.span?.utf16LowerBound ?? Int.max)
-            }
+            diagnostics: (commentResult.diagnostics + calloutResult.diagnostics + footnoteResult.diagnostics + mathResult.diagnostics + linkResult.diagnostics)
+                .sorted {
+                    ($0.span?.utf16LowerBound ?? Int.max) < ($1.span?.utf16LowerBound ?? Int.max)
+                }
         )
     }
 
@@ -537,7 +540,8 @@ public enum MarkdownSemanticParser {
         literalRanges: inout [NSRange]
     ) {
         if let range = markup.range,
-           let relativeRange = bodyMapper.nsRange(for: range) {
+            let relativeRange = bodyMapper.nsRange(for: range)
+        {
             let fullRange = NSRange(
                 location: bodyUTF16Offset + relativeRange.location,
                 length: relativeRange.length
@@ -618,9 +622,10 @@ public enum MarkdownSemanticParser {
             range: NSRange(location: 0, length: bodyLength)
         ).compactMap { match in
             guard match.numberOfRanges > 1,
-                  match.range.length > 4,
-                  !intersectsExcluded(match.range, excluded),
-                  let span = sourceMapper.span(for: shifted(match.range, by: bodyUTF16Offset)) else {
+                match.range.length > 4,
+                !intersectsExcluded(match.range, excluded),
+                let span = sourceMapper.span(for: shifted(match.range, by: bodyUTF16Offset))
+            else {
                 return nil
             }
             return MarkdownInline(kind: .highlight, span: span)
@@ -657,9 +662,11 @@ public enum MarkdownSemanticParser {
         excluded: [NSRange]
     ) -> CalloutParseResult {
         let nsBody = body as NSString
-        guard let headerRegex = try? NSRegularExpression(
-            pattern: #"^(\s*(?:>\s*)+)\[!([^\]\r\n]+)\]([+-])?[ \t]*(.*)$"#
-        ) else { return CalloutParseResult(callouts: [], diagnostics: []) }
+        guard
+            let headerRegex = try? NSRegularExpression(
+                pattern: #"^(\s*(?:>\s*)+)\[!([^\]\r\n]+)\]([+-])?[ \t]*(.*)$"#
+            )
+        else { return CalloutParseResult(callouts: [], diagnostics: []) }
 
         var callouts: [CalloutBlock] = []
         var diagnostics: [MarkdownDiagnostic] = []
@@ -669,10 +676,11 @@ public enum MarkdownSemanticParser {
             let contentRange = lineContentRange(lineRange, in: nsBody)
             defer { cursor = max(NSMaxRange(lineRange), cursor + 1) }
             guard !intersectsExcluded(contentRange, excluded),
-                  let match = headerRegex.firstMatch(
+                let match = headerRegex.firstMatch(
                     in: body,
                     range: contentRange
-                  ) else { continue }
+                )
+            else { continue }
 
             let prefix = nsBody.substring(with: match.range(at: 1))
             let depth = prefix.reduce(into: 0) { if $1 == ">" { $0 += 1 } }
@@ -692,46 +700,51 @@ public enum MarkdownSemanticParser {
             let rawKind = nsBody.substring(with: match.range(at: 2))
             let normalizedKind = CalloutSemanticVocabulary.canonicalIdentifier(for: rawKind)
             let title = optionalTrimmed(nsBody.substring(with: match.range(at: 4)))
-            let foldState: CalloutFoldState = switch match.range(at: 3).location == NSNotFound
-                ? nil
-                : nsBody.substring(with: match.range(at: 3)) {
-            case "+": .expanded
-            case "-": .collapsed
-            default: .fixed
-            }
+            let foldState: CalloutFoldState =
+                switch match.range(at: 3).location == NSNotFound
+                    ? nil
+                    : nsBody.substring(with: match.range(at: 3))
+                {
+                case "+": .expanded
+                case "-": .collapsed
+                default: .fixed
+                }
             let relativeBlockRange = NSRange(
                 location: lineRange.location,
                 length: blockEnd - lineRange.location
             )
             guard let span = sourceMapper.span(for: shifted(relativeBlockRange, by: bodyUTF16Offset)),
-                  let headerSpan = sourceMapper.span(for: shifted(contentRange, by: bodyUTF16Offset)) else {
+                let headerSpan = sourceMapper.span(for: shifted(contentRange, by: bodyUTF16Offset))
+            else {
                 continue
             }
 
-            callouts.append(CalloutBlock(
-                rawKind: rawKind,
-                kind: normalizedKind,
-                role: CalloutSemanticVocabulary.role(for: normalizedKind),
-                title: title,
-                bodySource: dequotedCalloutBody(
-                    nsBody: nsBody,
-                    blockRange: relativeBlockRange,
-                    headerLineRange: lineRange,
-                    depth: depth
-                ),
-                quoteDepth: depth,
-                foldState: foldState,
-                span: span,
-                headerSpan: headerSpan
-            ))
+            callouts.append(
+                CalloutBlock(
+                    rawKind: rawKind,
+                    kind: normalizedKind,
+                    role: CalloutSemanticVocabulary.role(for: normalizedKind),
+                    title: title,
+                    bodySource: dequotedCalloutBody(
+                        nsBody: nsBody,
+                        blockRange: relativeBlockRange,
+                        headerLineRange: lineRange,
+                        depth: depth
+                    ),
+                    quoteDepth: depth,
+                    foldState: foldState,
+                    span: span,
+                    headerSpan: headerSpan
+                ))
 
             if !CalloutSemanticVocabulary.preferredIdentifiers.contains(normalizedKind) {
-                diagnostics.append(MarkdownDiagnostic(
-                    code: .unknownCallout,
-                    severity: .information,
-                    message: "Unknown callout type '\(rawKind)' is rendered as a neutral note.",
-                    span: headerSpan
-                ))
+                diagnostics.append(
+                    MarkdownDiagnostic(
+                        code: .unknownCallout,
+                        severity: .information,
+                        message: "Unknown callout type '\(rawKind)' is rendered as a neutral note.",
+                        span: headerSpan
+                    ))
             }
         }
 
@@ -786,7 +799,8 @@ public enum MarkdownSemanticParser {
             let contentRange = lineContentRange(lineRange, in: nsBody)
             defer { cursor = max(NSMaxRange(lineRange), cursor + 1) }
             guard !intersectsExcluded(contentRange, excluded),
-                  let match = definitionRegex.firstMatch(in: body, range: contentRange) else { continue }
+                let match = definitionRegex.firstMatch(in: body, range: contentRange)
+            else { continue }
 
             let identifier = nsBody.substring(with: match.range(at: 1))
             var definitionEnd = NSMaxRange(lineRange)
@@ -797,38 +811,42 @@ public enum MarkdownSemanticParser {
                 let candidateContent = lineContentRange(candidateLine, in: nsBody)
                 let candidate = nsBody.substring(with: candidateContent)
                 guard candidate.hasPrefix("  ") || candidate.hasPrefix("\t") || candidate.isEmpty else { break }
-                contentParts.append(candidate.replacingOccurrences(
-                    // Remove exactly one Scholium continuation indent. Any
-                    // additional indentation is semantic Markdown belonging
-                    // to a nested list, quote, or code block.
-                    of: #"^(?: {2}|\t)"#,
-                    with: "",
-                    options: .regularExpression
-                ))
+                contentParts.append(
+                    candidate.replacingOccurrences(
+                        // Remove exactly one Scholium continuation indent. Any
+                        // additional indentation is semantic Markdown belonging
+                        // to a nested list, quote, or code block.
+                        of: #"^(?: {2}|\t)"#,
+                        with: "",
+                        options: .regularExpression
+                    ))
                 definitionEnd = NSMaxRange(candidateLine)
                 next = definitionEnd
             }
             let wholeRange = NSRange(location: lineRange.location, length: definitionEnd - lineRange.location)
             definitionMarkerRanges.append(match.range)
-            rawDefinitions.append(RawFootnoteDefinition(
-                identifier: identifier,
-                content: contentParts.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines),
-                relativeRange: wholeRange,
-                isInline: false
-            ))
+            rawDefinitions.append(
+                RawFootnoteDefinition(
+                    identifier: identifier,
+                    content: contentParts.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines),
+                    relativeRange: wholeRange,
+                    isInline: false
+                ))
         }
 
         var rawReferences: [RawFootnoteReference] = []
         for match in referenceRegex.matches(in: body, range: NSRange(location: 0, length: nsBody.length)) {
             guard !intersectsExcluded(match.range, excluded),
-                  !definitionMarkerRanges.contains(where: { NSIntersectionRange($0, match.range).length > 0 }),
-                  !isEscaped(at: match.range.location, in: nsBody) else { continue }
-            rawReferences.append(RawFootnoteReference(
-                identifier: nsBody.substring(with: match.range(at: 1)),
-                relativeRange: match.range,
-                isInline: false,
-                inlineContent: nil
-            ))
+                !definitionMarkerRanges.contains(where: { NSIntersectionRange($0, match.range).length > 0 }),
+                !isEscaped(at: match.range.location, in: nsBody)
+            else { continue }
+            rawReferences.append(
+                RawFootnoteReference(
+                    identifier: nsBody.substring(with: match.range(at: 1)),
+                    relativeRange: match.range,
+                    isInline: false,
+                    inlineContent: nil
+                ))
         }
         var inlineCounter = 0
         for match in inlineRegex.matches(in: body, range: NSRange(location: 0, length: nsBody.length)) {
@@ -836,18 +854,20 @@ public enum MarkdownSemanticParser {
             inlineCounter += 1
             let identifier = "inline-\(inlineCounter)"
             let content = nsBody.substring(with: match.range(at: 1))
-            rawReferences.append(RawFootnoteReference(
-                identifier: identifier,
-                relativeRange: match.range,
-                isInline: true,
-                inlineContent: content
-            ))
-            rawDefinitions.append(RawFootnoteDefinition(
-                identifier: identifier,
-                content: content,
-                relativeRange: match.range,
-                isInline: true
-            ))
+            rawReferences.append(
+                RawFootnoteReference(
+                    identifier: identifier,
+                    relativeRange: match.range,
+                    isInline: true,
+                    inlineContent: content
+                ))
+            rawDefinitions.append(
+                RawFootnoteDefinition(
+                    identifier: identifier,
+                    content: content,
+                    relativeRange: match.range,
+                    isInline: true
+                ))
         }
         rawReferences.sort { $0.relativeRange.location < $1.relativeRange.location }
 
@@ -860,57 +880,62 @@ public enum MarkdownSemanticParser {
             let occurrence = (occurrenceByIdentifier[raw.identifier] ?? 0) + 1
             occurrenceByIdentifier[raw.identifier] = occurrence
             guard let span = sourceMapper.span(for: shifted(raw.relativeRange, by: bodyUTF16Offset)) else { continue }
-            references.append(FootnoteReference(
-                identifier: raw.identifier,
-                ordinal: ordinal,
-                occurrence: occurrence,
-                isInline: raw.isInline,
-                span: span
-            ))
+            references.append(
+                FootnoteReference(
+                    identifier: raw.identifier,
+                    ordinal: ordinal,
+                    occurrence: occurrence,
+                    isInline: raw.isInline,
+                    span: span
+                ))
         }
 
         var firstDefinitionByIdentifier: [String: RawFootnoteDefinition] = [:]
         for raw in rawDefinitions {
             if firstDefinitionByIdentifier[raw.identifier] != nil {
                 let span = sourceMapper.span(for: shifted(raw.relativeRange, by: bodyUTF16Offset))
-                diagnostics.append(MarkdownDiagnostic(
-                    code: .duplicateFootnote,
-                    severity: .warning,
-                    message: "Footnote '\(raw.identifier)' is defined more than once.",
-                    span: span
-                ))
+                diagnostics.append(
+                    MarkdownDiagnostic(
+                        code: .duplicateFootnote,
+                        severity: .warning,
+                        message: "Footnote '\(raw.identifier)' is defined more than once.",
+                        span: span
+                    ))
             } else {
                 firstDefinitionByIdentifier[raw.identifier] = raw
             }
         }
 
         for reference in references where firstDefinitionByIdentifier[reference.identifier] == nil {
-            diagnostics.append(MarkdownDiagnostic(
-                code: .undefinedFootnote,
-                severity: .warning,
-                message: "Footnote '\(reference.identifier)' has no definition.",
-                span: reference.span
-            ))
+            diagnostics.append(
+                MarkdownDiagnostic(
+                    code: .undefinedFootnote,
+                    severity: .warning,
+                    message: "Footnote '\(reference.identifier)' has no definition.",
+                    span: reference.span
+                ))
         }
 
         var definitions: [FootnoteDefinition] = []
         for raw in firstDefinitionByIdentifier.values {
             guard let span = sourceMapper.span(for: shifted(raw.relativeRange, by: bodyUTF16Offset)) else { continue }
             let ordinal = ordinalByIdentifier[raw.identifier]
-            definitions.append(FootnoteDefinition(
-                identifier: raw.identifier,
-                content: raw.content,
-                ordinal: ordinal,
-                isInline: raw.isInline,
-                span: span
-            ))
-            if ordinal == nil {
-                diagnostics.append(MarkdownDiagnostic(
-                    code: .unreferencedFootnote,
-                    severity: .information,
-                    message: "Footnote '\(raw.identifier)' is never referenced.",
+            definitions.append(
+                FootnoteDefinition(
+                    identifier: raw.identifier,
+                    content: raw.content,
+                    ordinal: ordinal,
+                    isInline: raw.isInline,
                     span: span
                 ))
+            if ordinal == nil {
+                diagnostics.append(
+                    MarkdownDiagnostic(
+                        code: .unreferencedFootnote,
+                        severity: .information,
+                        message: "Footnote '\(raw.identifier)' is never referenced.",
+                        span: span
+                    ))
             }
         }
         definitions.sort {
@@ -958,7 +983,8 @@ public enum MarkdownSemanticParser {
             let contentRange = lineContentRange(lineRange, in: source)
             defer { cursor = max(NSMaxRange(lineRange), cursor + 1) }
             guard !intersectsExcluded(contentRange, excluded),
-                  let opener = displayFence(in: contentRange, source: source) else { continue }
+                let opener = displayFence(in: contentRange, source: source)
+            else { continue }
 
             var search = NSMaxRange(lineRange)
             var closingLineRange: NSRange?
@@ -967,8 +993,9 @@ public enum MarkdownSemanticParser {
                 let candidateLine = source.lineRange(for: NSRange(location: search, length: 0))
                 let candidateContent = lineContentRange(candidateLine, in: source)
                 if !intersectsExcluded(candidateContent, excluded),
-                   let candidate = displayFence(in: candidateContent, source: source),
-                   candidate.length >= opener.length {
+                    let candidate = displayFence(in: candidateContent, source: source),
+                    candidate.length >= opener.length
+                {
                     closingLineRange = candidateLine
                     closingFenceRange = candidate
                     break
@@ -978,12 +1005,13 @@ public enum MarkdownSemanticParser {
 
             guard let closingLineRange, let closingFenceRange else {
                 let span = sourceMapper.span(for: shifted(opener, by: bodyUTF16Offset))
-                diagnostics.append(MarkdownDiagnostic(
-                    code: .malformedMath,
-                    severity: .warning,
-                    message: "Display mathematics has no closing dollar fence.",
-                    span: span
-                ))
+                diagnostics.append(
+                    MarkdownDiagnostic(
+                        code: .malformedMath,
+                        severity: .warning,
+                        message: "Display mathematics has no closing dollar fence.",
+                        span: span
+                    ))
                 continue
             }
 
@@ -996,17 +1024,19 @@ public enum MarkdownSemanticParser {
                 length: closingLineRange.location - NSMaxRange(lineRange)
             )
             guard let span = sourceMapper.span(for: shifted(wholeRange, by: bodyUTF16Offset)),
-                  let contentSpan = sourceMapper.span(for: shifted(rawContentRange, by: bodyUTF16Offset)) else {
+                let contentSpan = sourceMapper.span(for: shifted(rawContentRange, by: bodyUTF16Offset))
+            else {
                 continue
             }
             displayRanges.append(wholeRange)
-            expressions.append(MathExpression(
-                kind: .display,
-                content: source.substring(with: rawContentRange).trimmingCharacters(in: .newlines),
-                delimiterLength: opener.length,
-                span: span,
-                contentSpan: contentSpan
-            ))
+            expressions.append(
+                MathExpression(
+                    kind: .display,
+                    content: source.substring(with: rawContentRange).trimmingCharacters(in: .newlines),
+                    delimiterLength: opener.length,
+                    span: span,
+                    contentSpan: contentSpan
+                ))
             cursor = NSMaxRange(closingLineRange)
         }
 
@@ -1022,9 +1052,10 @@ public enum MarkdownSemanticParser {
             let delimiterLength = cursor - openingStart
             let openingRange = NSRange(location: openingStart, length: delimiterLength)
             guard !isEscaped(at: openingStart, in: source),
-                  !intersectsExcluded(openingRange, inlineExcluded),
-                  (openingStart == 0 || source.character(at: openingStart - 1) != 0x24),
-                  (cursor == source.length || source.character(at: cursor) != 0x24) else { continue }
+                !intersectsExcluded(openingRange, inlineExcluded),
+                openingStart == 0 || source.character(at: openingStart - 1) != 0x24,
+                cursor == source.length || source.character(at: cursor) != 0x24
+            else { continue }
 
             var search = cursor
             var closingStart: Int?
@@ -1036,9 +1067,10 @@ public enum MarkdownSemanticParser {
                 let runStart = search
                 while search < source.length, source.character(at: search) == 0x24 { search += 1 }
                 guard search - runStart == delimiterLength,
-                      !isEscaped(at: runStart, in: source),
-                      (runStart == 0 || source.character(at: runStart - 1) != 0x24),
-                      (search == source.length || source.character(at: search) != 0x24) else { continue }
+                    !isEscaped(at: runStart, in: source),
+                    runStart == 0 || source.character(at: runStart - 1) != 0x24,
+                    search == source.length || source.character(at: search) != 0x24
+                else { continue }
                 closingStart = runStart
                 break
             }
@@ -1050,19 +1082,21 @@ public enum MarkdownSemanticParser {
             )
             let contentRange = NSRange(location: cursor, length: closingStart - cursor)
             guard !intersectsExcluded(wholeRange, inlineExcluded),
-                  let span = sourceMapper.span(for: shifted(wholeRange, by: bodyUTF16Offset)),
-                  let contentSpan = sourceMapper.span(for: shifted(contentRange, by: bodyUTF16Offset)) else {
+                let span = sourceMapper.span(for: shifted(wholeRange, by: bodyUTF16Offset)),
+                let contentSpan = sourceMapper.span(for: shifted(contentRange, by: bodyUTF16Offset))
+            else {
                 continue
             }
             let rawContent = source.substring(with: contentRange)
             let content = normalizedInlineMathContent(rawContent)
-            expressions.append(MathExpression(
-                kind: .inline,
-                content: content,
-                delimiterLength: delimiterLength,
-                span: span,
-                contentSpan: contentSpan
-            ))
+            expressions.append(
+                MathExpression(
+                    kind: .inline,
+                    content: content,
+                    delimiterLength: delimiterLength,
+                    span: span,
+                    contentSpan: contentSpan
+                ))
             cursor = NSMaxRange(wholeRange)
         }
 
@@ -1080,13 +1114,15 @@ public enum MarkdownSemanticParser {
             indentation += 1
         }
         guard indentation <= 3, position < NSMaxRange(line), source.character(at: position) == 0x24,
-              !isEscaped(at: position, in: source) else { return nil }
+            !isEscaped(at: position, in: source)
+        else { return nil }
         let start = position
         while position < NSMaxRange(line), source.character(at: position) == 0x24 { position += 1 }
         let delimiterEnd = position
         guard delimiterEnd - start >= 2 else { return nil }
         while position < NSMaxRange(line),
-              source.character(at: position) == 0x20 || source.character(at: position) == 0x09 {
+            source.character(at: position) == 0x20 || source.character(at: position) == 0x09
+        {
             position += 1
         }
         guard position == NSMaxRange(line) else { return nil }
@@ -1095,9 +1131,10 @@ public enum MarkdownSemanticParser {
 
     private static func normalizedInlineMathContent(_ raw: String) -> String {
         guard raw.count > 2,
-              raw.first?.isWhitespace == true,
-              raw.last?.isWhitespace == true,
-              raw.contains(where: { !$0.isWhitespace }) else { return raw }
+            raw.first?.isWhitespace == true,
+            raw.last?.isWhitespace == true,
+            raw.contains(where: { !$0.isWhitespace })
+        else { return raw }
         return String(raw.dropFirst().dropLast())
     }
 
@@ -1118,15 +1155,18 @@ public enum MarkdownSemanticParser {
             for match in wikiRegex.matches(in: body, range: fullRange) {
                 guard !intersectsExcluded(match.range, excluded), !isEscaped(at: match.range.location, in: nsBody) else { continue }
                 let prefixLocation = match.range.location - 1
-                let prefix = prefixLocation >= 0
+                let prefix =
+                    prefixLocation >= 0
                     ? nsBody.substring(with: NSRange(location: prefixLocation, length: 1))
                     : nil
                 let isEmbed = prefix == "!" && !isEscaped(at: prefixLocation, in: nsBody)
-                let linkRange = isEmbed
+                let linkRange =
+                    isEmbed
                     ? NSRange(location: prefixLocation, length: match.range.length + 1)
                     : match.range
                 guard !intersectsExcluded(linkRange, excluded),
-                      !isEscaped(at: linkRange.location, in: nsBody) else { continue }
+                    !isEscaped(at: linkRange.location, in: nsBody)
+                else { continue }
                 let inner = nsBody.substring(with: match.range(at: 1))
                 let parsed = parseWikilinkInner(inner)
                 guard let linkSpan = sourceMapper.span(for: shifted(linkRange, by: bodyUTF16Offset)) else { continue }
@@ -1140,26 +1180,28 @@ public enum MarkdownSemanticParser {
                         annotation = value
                         occurrenceRange = NSUnionRange(linkRange, range)
                     case .malformed(let range, let message):
-                        diagnostics.append(MarkdownDiagnostic(
-                            code: .malformedLinkAnnotation,
-                            severity: .warning,
-                            message: message,
-                            span: sourceMapper.span(for: shifted(range, by: bodyUTF16Offset))
-                        ))
+                        diagnostics.append(
+                            MarkdownDiagnostic(
+                                code: .malformedLinkAnnotation,
+                                severity: .warning,
+                                message: message,
+                                span: sourceMapper.span(for: shifted(range, by: bodyUTF16Offset))
+                            ))
                     }
                 }
                 guard let span = sourceMapper.span(for: shifted(occurrenceRange, by: bodyUTF16Offset)) else { continue }
-                links.append(LinkOccurrence(
-                    syntax: isEmbed ? .embed : .wikilink,
-                    target: parsed.target,
-                    alias: parsed.alias,
-                    fragment: parsed.fragment,
-                    annotation: annotation,
-                    localContext: localContext(in: nsBody, containing: occurrenceRange),
-                    isExternal: false,
-                    span: span,
-                    linkSpan: linkSpan
-                ))
+                links.append(
+                    LinkOccurrence(
+                        syntax: isEmbed ? .embed : .wikilink,
+                        target: parsed.target,
+                        alias: parsed.alias,
+                        fragment: parsed.fragment,
+                        annotation: annotation,
+                        localContext: localContext(in: nsBody, containing: occurrenceRange),
+                        isExternal: false,
+                        span: span,
+                        linkSpan: linkSpan
+                    ))
             }
         }
 
@@ -1171,15 +1213,16 @@ public enum MarkdownSemanticParser {
                 let rawDestination = nsBody.substring(with: match.range(at: 3)).trimmingCharacters(in: .whitespaces)
                 let destination = splitTargetAndFragment(rawDestination)
                 guard let span = sourceMapper.span(for: shifted(match.range, by: bodyUTF16Offset)) else { continue }
-                links.append(LinkOccurrence(
-                    syntax: isEmbed ? .embed : .markdown,
-                    target: destination.target.removingPercentEncoding ?? destination.target,
-                    alias: alias,
-                    fragment: destination.fragment,
-                    localContext: localContext(in: nsBody, containing: match.range),
-                    isExternal: isExternalDestination(rawDestination),
-                    span: span
-                ))
+                links.append(
+                    LinkOccurrence(
+                        syntax: isEmbed ? .embed : .markdown,
+                        target: destination.target.removingPercentEncoding ?? destination.target,
+                        alias: alias,
+                        fragment: destination.fragment,
+                        localContext: localContext(in: nsBody, containing: match.range),
+                        isExternal: isExternalDestination(rawDestination),
+                        span: span
+                    ))
             }
         }
 
@@ -1204,12 +1247,14 @@ public enum MarkdownSemanticParser {
         let nsSource = source as NSString
         let opening = NSMaxRange(linkRange)
         guard opening + 1 < nsSource.length,
-              nsSource.character(at: opening) == 0x7B,
-              nsSource.character(at: opening + 1) == 0x7B else { return .absent }
+            nsSource.character(at: opening) == 0x7B,
+            nsSource.character(at: opening + 1) == 0x7B
+        else { return .absent }
 
         var cursor = opening + 2
         while cursor + 1 < nsSource.length {
-            let isDelimiter = nsSource.character(at: cursor) == 0x7B
+            let isDelimiter =
+                nsSource.character(at: cursor) == 0x7B
                 && nsSource.character(at: cursor + 1) == 0x7B
             if isDelimiter, !isEscaped(at: cursor, in: nsSource) {
                 return .malformed(
@@ -1218,7 +1263,8 @@ public enum MarkdownSemanticParser {
                 )
             }
 
-            let isClosing = nsSource.character(at: cursor) == 0x7D
+            let isClosing =
+                nsSource.character(at: cursor) == 0x7D
                 && nsSource.character(at: cursor + 1) == 0x7D
             if isClosing, !isEscaped(at: cursor, in: nsSource) {
                 let annotationRange = NSRange(location: opening, length: cursor + 2 - opening)
@@ -1229,7 +1275,8 @@ public enum MarkdownSemanticParser {
                     return .malformed(annotationRange, "Link annotations must contain visible text.")
                 }
                 guard let span = sourceMapper.span(for: shifted(annotationRange, by: bodyUTF16Offset)),
-                      let contentSpan = sourceMapper.span(for: shifted(contentRange, by: bodyUTF16Offset)) else {
+                    let contentSpan = sourceMapper.span(for: shifted(contentRange, by: bodyUTF16Offset))
+                else {
                     return .malformed(annotationRange, "The link annotation source range is invalid.")
                 }
                 return .valid(
@@ -1257,7 +1304,7 @@ public enum MarkdownSemanticParser {
         let nsMarkdown = markdown as NSString
         var projected = markdown
         for link in semantic.links.reversed()
-            where link.syntax == .wikilink || link.syntax == .embed {
+        where link.syntax == .wikilink || link.syntax == .embed {
             let range = link.linkSpan.nsRange
             guard NSMaxRange(range) <= nsMarkdown.length else { continue }
             let visible = markdownEscapedText(link.alias ?? link.target)
@@ -1299,10 +1346,12 @@ public enum MarkdownSemanticParser {
         let firstLine = source.lineRange(for: NSRange(location: start, length: 0))
         let lastLocation = upper > start ? upper - 1 : upper
         let lastLine = source.lineRange(for: NSRange(location: lastLocation, length: 0))
-        return source.substring(with: NSRange(
-            location: firstLine.location,
-            length: NSMaxRange(lastLine) - firstLine.location
-        )).trimmingCharacters(in: .newlines)
+        return source.substring(
+            with: NSRange(
+                location: firstLine.location,
+                length: NSMaxRange(lastLine) - firstLine.location
+            )
+        ).trimmingCharacters(in: .newlines)
     }
 
     private static func isExternalDestination(_ raw: String) -> Bool {
@@ -1342,10 +1391,11 @@ public enum MarkdownSemanticParser {
 
     private static func quoteDepth(of line: String) -> Int {
         guard let expression = try? NSRegularExpression(pattern: #"^\s*((?:>\s*)+)"#),
-              let match = expression.firstMatch(
+            let match = expression.firstMatch(
                 in: line,
                 range: NSRange(location: 0, length: (line as NSString).length)
-              ) else { return 0 }
+            )
+        else { return 0 }
         return (line as NSString).substring(with: match.range(at: 1)).reduce(into: 0) {
             if $1 == ">" { $0 += 1 }
         }
@@ -1387,23 +1437,26 @@ public enum MarkdownSemanticParser {
                     range: closingSearchRange
                 )
                 guard closing.location != NSNotFound else {
-                    ranges.append(NSRange(
-                        location: opening.location,
-                        length: source.length - opening.location
-                    ))
-                    diagnostics.append(MarkdownDiagnostic(
-                        code: .malformedComment,
-                        severity: .warning,
-                        message: "\(delimiter.name) has no closing \(delimiter.closing) delimiter.",
-                        span: sourceMapper.span(for: shifted(opening, by: bodyUTF16Offset))
-                    ))
+                    ranges.append(
+                        NSRange(
+                            location: opening.location,
+                            length: source.length - opening.location
+                        ))
+                    diagnostics.append(
+                        MarkdownDiagnostic(
+                            code: .malformedComment,
+                            severity: .warning,
+                            message: "\(delimiter.name) has no closing \(delimiter.closing) delimiter.",
+                            span: sourceMapper.span(for: shifted(opening, by: bodyUTF16Offset))
+                        ))
                     break
                 }
 
-                ranges.append(NSRange(
-                    location: opening.location,
-                    length: NSMaxRange(closing) - opening.location
-                ))
+                ranges.append(
+                    NSRange(
+                        location: opening.location,
+                        length: NSMaxRange(closing) - opening.location
+                    ))
                 cursor = NSMaxRange(closing)
             }
         }
@@ -1514,11 +1567,12 @@ private struct SemanticSourceMapper {
 
     func span(for range: NSRange) -> SourceSpan? {
         guard range.location != NSNotFound,
-              range.location >= 0,
-              range.length >= 0,
-              NSMaxRange(range) <= nsSource.length,
-              let lowerByte = utf8Offset(forUTF16Offset: range.location),
-              let upperByte = utf8Offset(forUTF16Offset: NSMaxRange(range)) else { return nil }
+            range.location >= 0,
+            range.length >= 0,
+            NSMaxRange(range) <= nsSource.length,
+            let lowerByte = utf8Offset(forUTF16Offset: range.location),
+            let upperByte = utf8Offset(forUTF16Offset: NSMaxRange(range))
+        else { return nil }
         return SourceSpan(
             utf8LowerBound: lowerByte,
             utf8UpperBound: upperByte,
@@ -1531,8 +1585,9 @@ private struct SemanticSourceMapper {
 
     func nsRange(for sourceRange: Markdown.SourceRange) -> NSRange? {
         guard let lower = utf16Offset(line: sourceRange.lowerBound.line, utf8Column: sourceRange.lowerBound.column),
-              let upper = utf16Offset(line: sourceRange.upperBound.line, utf8Column: sourceRange.upperBound.column),
-              upper >= lower else { return nil }
+            let upper = utf16Offset(line: sourceRange.upperBound.line, utf8Column: sourceRange.upperBound.column),
+            upper >= lower
+        else { return nil }
         return NSRange(location: lower, length: upper - lower)
     }
 

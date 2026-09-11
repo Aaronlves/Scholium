@@ -6,10 +6,11 @@ public struct CanonicalPropertyInput: Codable, Hashable, Sendable {
 
     public init(key: String, value: YAMLValue) throws {
         guard !key.isEmpty,
-              key.utf8.count <= 128,
-              !key.unicodeScalars.contains(where: {
-                  CharacterSet.controlCharacters.contains($0)
-              }) else {
+            key.utf8.count <= 128,
+            !key.unicodeScalars.contains(where: {
+                CharacterSet.controlCharacters.contains($0)
+            })
+        else {
             throw DocumentCreationError.invalidPropertyKey(key)
         }
         self.key = key
@@ -105,12 +106,14 @@ public struct AnalysisCreationMetadata: Codable, Hashable, Sendable {
         fields: [CanonicalPropertyInput] = []
     ) throws {
         guard fields.count <= 256,
-              Set(fields.map(\.key)).count == fields.count,
-              !fields.contains(where: { $0.key == "type" }) else {
+            Set(fields.map(\.key)).count == fields.count,
+            !fields.contains(where: { $0.key == "type" })
+        else {
             throw DocumentCreationError.invalidMetadata([])
         }
-        let order = Dictionary(uniqueKeysWithValues:
-            AnalysisSourceTypeProfileCatalog.profile(for: sourceType)
+        let order = Dictionary(
+            uniqueKeysWithValues:
+                AnalysisSourceTypeProfileCatalog.profile(for: sourceType)
                 .serializationFieldOrder.enumerated().map { ($0.element, $0.offset) }
         )
         self.sourceType = sourceType
@@ -158,24 +161,26 @@ public struct AuthoredNoteYAML: Codable, Hashable, Sendable {
         summary: String? = nil,
         keywords: [String] = []
     ) throws {
-        guard summary.map({ value in
-            !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                && value.utf8.count <= Self.maximumSummaryUTF8ByteCount
-                && !value.contains("\r")
-                && !value.unicodeScalars.contains(where: { scalar in
-                    scalar != "\n" && CharacterSet.controlCharacters.contains(scalar)
-                })
-        }) ?? true,
-        keywords.count <= Self.maximumKeywordCount,
-        Set(keywords).count == keywords.count,
-        keywords.allSatisfy({ value in
-            value == value.trimmingCharacters(in: .whitespacesAndNewlines)
-                && !value.isEmpty
-                && value.utf8.count <= Self.maximumKeywordUTF8ByteCount
-                && !value.unicodeScalars.contains(where: {
-                    CharacterSet.controlCharacters.contains($0)
-                })
-        }) else {
+        guard
+            summary.map({ value in
+                !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    && value.utf8.count <= Self.maximumSummaryUTF8ByteCount
+                    && !value.contains("\r")
+                    && !value.unicodeScalars.contains(where: { scalar in
+                        scalar != "\n" && CharacterSet.controlCharacters.contains(scalar)
+                    })
+            }) ?? true,
+            keywords.count <= Self.maximumKeywordCount,
+            Set(keywords).count == keywords.count,
+            keywords.allSatisfy({ value in
+                value == value.trimmingCharacters(in: .whitespacesAndNewlines)
+                    && !value.isEmpty
+                    && value.utf8.count <= Self.maximumKeywordUTF8ByteCount
+                    && !value.unicodeScalars.contains(where: {
+                        CharacterSet.controlCharacters.contains($0)
+                    })
+            })
+        else {
             throw DocumentCreationError.invalidAuthoredYAML
         }
         self.summary = summary
@@ -230,11 +235,12 @@ public struct ManagedNoteCreationRequest: Hashable, Sendable {
         authority: ManagedCreationAuthority = .researcher
     ) throws {
         guard body.utf8.count <= ScholiumMCPContract.maximumDocumentUTF8ByteCount,
-              !body.unicodeScalars.contains(where: { $0.value == 0 }),
-              NoteDocument(
-                  relativePath: "Managed Body.md",
-                  rawContent: body
-              ).frontmatterState == .absent else {
+            !body.unicodeScalars.contains(where: { $0.value == 0 }),
+            NoteDocument(
+                relativePath: "Managed Body.md",
+                rawContent: body
+            ).frontmatterState == .absent
+        else {
             throw DocumentCreationError.invalidBody
         }
         self.vaultID = vaultID
@@ -258,14 +264,17 @@ public enum ManagedNoteSourceBuilder {
         let summarySource: String
         if let summary = authored.summary {
             summarySource = try FrontmatterPatchPlanner.serializeTopLevelMapping([
-                (key: "summary", value: .string(summary)),
+                (key: "summary", value: .string(summary))
             ])
         } else {
             summarySource = ""
         }
-        let keywordsSource = authored.keywords.isEmpty ? "" : try FrontmatterPatchPlanner.serializeTopLevelMapping([
-            (key: "keywords", value: .array(authored.keywords)),
-        ])
+        let keywordsSource =
+            authored.keywords.isEmpty
+            ? ""
+            : try FrontmatterPatchPlanner.serializeTopLevelMapping([
+                (key: "keywords", value: .array(authored.keywords))
+            ])
         let source = "---\n" + summarySource + keywordsSource + "---\n" + request.body
         let document = NoteDocument(
             relativePath: "Managed Creation.md",
@@ -318,7 +327,8 @@ public enum DocumentCreationError: LocalizedError, Equatable, Sendable {
         case .invalidPropertyKey(let key):
             return "The managed creation Metadata key is invalid: \(key)"
         case .invalidBody:
-            return "Managed creation accepts bounded UTF-8 body text without NUL bytes or a top-level YAML envelope. Use Import for complete authored Markdown source."
+            return
+                "Managed creation accepts bounded UTF-8 body text without NUL bytes or a top-level YAML envelope. Use Import for complete authored Markdown source."
         case .invalidAuthoredYAML:
             return "Managed creation accepts only a bounded nonempty Summary and unique nonempty Keywords; omit either value to keep its fixed empty scaffold."
         case .analysisMetadataRoleMismatch:

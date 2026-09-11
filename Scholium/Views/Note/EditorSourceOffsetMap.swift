@@ -92,13 +92,16 @@ struct EditorSourceOffsetMap: Equatable, Sendable {
         var completedShift = 0
         for offset in crlfSourceOffsets {
             while completedDeltaIndex < ordered.count,
-                  ordered[completedDeltaIndex].toUTF16 < offset {
+                ordered[completedDeltaIndex].toUTF16 < offset
+            {
                 let delta = ordered[completedDeltaIndex]
-                completedShift += delta.insertion.utf16.count
+                completedShift +=
+                    delta.insertion.utf16.count
                     - (delta.toUTF16 - delta.fromUTF16)
                 completedDeltaIndex += 1
             }
-            let intersectsChangedBoundary = completedDeltaIndex < ordered.count
+            let intersectsChangedBoundary =
+                completedDeltaIndex < ordered.count
                 && offset >= max(0, ordered[completedDeltaIndex].fromUTF16 - 1)
                 && offset <= ordered[completedDeltaIndex].toUTF16
             guard !intersectsChangedBoundary else { continue }
@@ -117,7 +120,8 @@ struct EditorSourceOffsetMap: Equatable, Sendable {
                 for offset in scanLower...scanUpper
                 where offset + 1 < resultingLength
                     && resultingCharacterAt(offset) == 13
-                    && resultingCharacterAt(offset + 1) == 10 {
+                    && resultingCharacterAt(offset + 1) == 10
+                {
                     rescanned.append(offset)
                 }
             }

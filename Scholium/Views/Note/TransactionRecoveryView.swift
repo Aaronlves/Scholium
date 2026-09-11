@@ -15,7 +15,7 @@ struct TransactionRecoveryNotice: View {
             region: .workspaceBanner
         ) {
             Button("Inspect Recovery…", action: onInspect)
-            .scholiumActivationPointer()
+                .scholiumActivationPointer()
         }
         .accessibilityIdentifier("scholium.transactionRecovery.notice")
     }
@@ -48,11 +48,13 @@ struct TransactionRecoveryView: View {
     let refresh: @MainActor () async -> Void
     let markResolved: @MainActor (UUID) async throws -> Void
     let revealRecords: @MainActor () -> Void
-    let loadInterruptedSave: @MainActor (InterruptedSaveRecovery) async throws
-        -> InterruptedSaveRecoveryContent
+    let loadInterruptedSave:
+        @MainActor (InterruptedSaveRecovery) async throws
+            -> InterruptedSaveRecoveryContent
     let revealInterruptedSave: @MainActor (InterruptedSaveRecovery) async throws -> Void
-    let restoreInterruptedSave: @MainActor (InterruptedSaveRecovery) async throws
-        -> InterruptedSaveRecoveryRestoreCommit
+    let restoreInterruptedSave:
+        @MainActor (InterruptedSaveRecovery) async throws
+            -> InterruptedSaveRecoveryRestoreCommit
 
     @State private var selectedRecord: TriptychMutationRecoveryRecord?
     @State private var selectedInterruptedSave: InterruptedSaveRecovery?
@@ -64,9 +66,10 @@ struct TransactionRecoveryView: View {
             header
             Divider()
             if records.isEmpty,
-               interruptedSaves.isEmpty,
-               error == nil,
-               interruptedSaveError == nil {
+                interruptedSaves.isEmpty,
+                error == nil,
+                interruptedSaveError == nil
+            {
                 ScholiumContentStateView(
                     "No Pending Recovery",
                     detail: Text("No interrupted save candidate or recorded file operation needs inspection."),
@@ -111,12 +114,15 @@ struct TransactionRecoveryView: View {
         }
         .frame(minWidth: 0, idealWidth: 820, minHeight: 520, idealHeight: 640)
         .task { await refresh() }
-        .alert(selectedRecoveryAction.alertTitle, isPresented: Binding(
-            get: { selectedRecord != nil },
-            set: { if !$0 { selectedRecord = nil } }
-        )) {
+        .alert(
+            selectedRecoveryAction.alertTitle,
+            isPresented: Binding(
+                get: { selectedRecord != nil },
+                set: { if !$0 { selectedRecord = nil } }
+            )
+        ) {
             Button("Cancel", role: .cancel) { selectedRecord = nil }
-            .scholiumActivationPointer()
+                .scholiumActivationPointer()
             Button(selectedRecoveryAction.buttonTitle) {
                 guard let record = selectedRecord else { return }
                 selectedRecord = nil
@@ -130,9 +136,11 @@ struct TransactionRecoveryView: View {
                             bundle: .module
                         )
                     } catch let committed as ScholiumApplicationError
-                        where committed.durableMutationWasCommitted {
+                        where committed.durableMutationWasCommitted
+                    {
                         operationError = nil
-                        completionMessage = TransactionRecoveryActionPresentation
+                        completionMessage =
+                            TransactionRecoveryActionPresentation
                             .committedRefreshMessage
                         await refresh()
                     } catch {
@@ -144,12 +152,15 @@ struct TransactionRecoveryView: View {
         } message: {
             Text(selectedRecoveryAction.message)
         }
-        .alert("Restore Interrupted Save?", isPresented: Binding(
-            get: { selectedInterruptedSave != nil },
-            set: { if !$0 { selectedInterruptedSave = nil } }
-        )) {
+        .alert(
+            "Restore Interrupted Save?",
+            isPresented: Binding(
+                get: { selectedInterruptedSave != nil },
+                set: { if !$0 { selectedInterruptedSave = nil } }
+            )
+        ) {
             Button("Cancel", role: .cancel) { selectedInterruptedSave = nil }
-            .scholiumActivationPointer()
+                .scholiumActivationPointer()
             Button(interruptedSaveConfirmationButtonTitle) {
                 guard let recovery = selectedInterruptedSave else { return }
                 selectedInterruptedSave = nil
@@ -158,7 +169,8 @@ struct TransactionRecoveryView: View {
                 Task { @MainActor in
                     do {
                         let commit = try await restoreInterruptedSave(recovery)
-                        completionMessage = commit.didReplaceSource
+                        completionMessage =
+                            commit.didReplaceSource
                             ? String(
                                 localized: "The interrupted candidate is now the current source.",
                                 table: "Localizable",
@@ -295,13 +307,15 @@ struct TransactionRecoveryView: View {
     private var interruptedSaveConfirmationMessage: String {
         guard selectedInterruptedSave?.sourceState == .candidateRevision else {
             return String(
-                localized: "Scholium first saves every open editor, then restores only if this Note still has the expected revision. If the source changed, recovery stops and keeps the candidate.",
+                localized:
+                    "Scholium first saves every open editor, then restores only if this Note still has the expected revision. If the source changed, recovery stops and keeps the candidate.",
                 table: "Localizable",
                 bundle: .module
             )
         }
         return String(
-            localized: "Scholium first saves every open editor, verifies that the candidate is still the canonical source, and then removes only its completed machine-local recovery record.",
+            localized:
+                "Scholium first saves every open editor, verifies that the candidate is still the canonical source, and then removes only its completed machine-local recovery record.",
             table: "Localizable",
             bundle: .module
         )
@@ -356,11 +370,17 @@ struct TransactionRecoveryActionPresentation: Equatable {
             }) {
                 alertTitle = String(localized: "Resolve Unknown Trash Outcome?", table: "Localizable", bundle: .module)
                 buttonTitle = String(localized: "Resolve", table: "Localizable", bundle: .module)
-                message = String(localized: "Scholium cannot prove whether the native Trash move completed. After you inspect Finder and the listed paths, Resolve releases the deletion gate without restoring or removing a file.", table: "Localizable", bundle: .module)
+                message = String(
+                    localized:
+                        "Scholium cannot prove whether the native Trash move completed. After you inspect Finder and the listed paths, Resolve releases the deletion gate without restoring or removing a file.",
+                    table: "Localizable", bundle: .module)
             } else {
                 alertTitle = String(localized: "Continue Trash Cleanup?", table: "Localizable", bundle: .module)
                 buttonTitle = String(localized: "Continue Cleanup", table: "Localizable", bundle: .module)
-                message = String(localized: "Scholium will resume only the persisted forward plan. Items already moved to the macOS Trash remain under Finder control; Scholium completes the operation receipts without removing portable identities.", table: "Localizable", bundle: .module)
+                message = String(
+                    localized:
+                        "Scholium will resume only the persisted forward plan. Items already moved to the macOS Trash remain under Finder control; Scholium completes the operation receipts without removing portable identities.",
+                    table: "Localizable", bundle: .module)
             }
             return
         }
@@ -372,7 +392,10 @@ struct TransactionRecoveryActionPresentation: Equatable {
         case .noteCreation:
             alertTitle = String(localized: "Reconcile Created Note?")
             buttonTitle = String(localized: "Reconcile Created Note")
-            message = String(localized: "Scholium will recheck the exact Markdown source and portable identity. It may add the reserved identity to the exact created source, or remove that same reserved identity when the source is absent. Any other identity at the path, any Zotero binding on an identity that would be removed, or changed or unreadable state stops for separate researcher resolution. Markdown source is never created, replaced, or removed, and no other portable identity is changed.")
+            message = String(
+                localized:
+                    "Scholium will recheck the exact Markdown source and portable identity. It may add the reserved identity to the exact created source, or remove that same reserved identity when the source is absent. Any other identity at the path, any Zotero binding on an identity that would be removed, or changed or unreadable state stops for separate researcher resolution. Markdown source is never created, replaced, or removed, and no other portable identity is changed."
+            )
         case .noteSave, .noteMove, .folderMove, .systemTrashDeletion:
             self = .generic
         }
@@ -381,7 +404,10 @@ struct TransactionRecoveryActionPresentation: Equatable {
     static let generic = TransactionRecoveryActionPresentation(
         alertTitle: String(localized: "Mark Recovery Complete?"),
         buttonTitle: String(localized: "Mark Recovery Complete"),
-        message: String(localized: "Use this only after you have inspected every listed path and completed any Finder recovery. This removes the recovery record; it does not change research files.")
+        message: String(
+            localized:
+                "Use this only after you have inspected every listed path and completed any Finder recovery. This removes the recovery record; it does not change research files."
+        )
     )
 
     private init(alertTitle: String, buttonTitle: String, message: String) {
@@ -496,7 +522,7 @@ private struct InterruptedSaveRecoveryRow: View {
                     .accessibilityLabel("Interrupted save candidate source")
                 }
                 Button("Copy Candidate") { copy(content.exactSource) }
-                .scholiumActivationPointer()
+                    .scholiumActivationPointer()
             }
         } else if let contentError {
             Text(contentError)
@@ -521,7 +547,8 @@ private struct InterruptedSaveRecoveryRow: View {
 
     private func copy(_ exactSource: String) {
         let copied = ScholiumPasteboardWriter.general.writeText(exactSource)
-        actionMessage = copied
+        actionMessage =
+            copied
             ? String(
                 localized: "Candidate copied.",
                 table: "Localizable",

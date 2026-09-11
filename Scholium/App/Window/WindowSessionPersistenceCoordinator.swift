@@ -25,10 +25,11 @@ extension WorkspaceStore: WindowSessionPersistenceStore {}
 /// authorize window closure.
 @MainActor
 final class WindowSessionPersistenceCoordinator {
-    typealias Saver = @MainActor (
-        WindowSessionSnapshot,
-        LifecycleAttemptID
-    ) async throws -> Void
+    typealias Saver =
+        @MainActor (
+            WindowSessionSnapshot,
+            LifecycleAttemptID
+        ) async throws -> Void
 
     private let lifecyclePolicy: ScholiumLifecyclePolicy
     private let store: any WindowSessionPersistenceStore
@@ -60,9 +61,11 @@ final class WindowSessionPersistenceCoordinator {
     ) {
         guard !isFinalizing, !isClosed else { return }
         guard let attempt = nextWriteAttempt() else {
-            completion(.failure(ScholiumWindowLifecycleError.failed(
-                "Window persistence attempt IDs were exhausted."
-            )))
+            completion(
+                .failure(
+                    ScholiumWindowLifecycleError.failed(
+                        "Window persistence attempt IDs were exhausted."
+                    )))
             return
         }
         saveTask?.cancel()

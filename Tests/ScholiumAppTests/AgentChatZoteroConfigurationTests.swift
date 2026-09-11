@@ -1,8 +1,9 @@
 import Foundation
 import ScholiumContracts
 import Testing
-@testable import ScholiumApplication
+
 @testable import ScholiumApp
+@testable import ScholiumApplication
 
 @Suite("Zotero Chat configuration", .serialized) @MainActor
 struct AgentChatZoteroConfigurationTests {
@@ -46,7 +47,7 @@ struct AgentChatZoteroConfigurationTests {
         #expect(config["project_doc_max_bytes"] == .integer(0))
         #expect(config["project_root_markers"] == .array([]))
         #expect(defaults.objectValue?["developerInstructions"]?.stringValue?.contains(triptych.uuidString) == true)
-        #expect(caps.zoteroConnection == nil) // The app default never writes the user's config.
+        #expect(caps.zoteroConnection == nil)  // The app default never writes the user's config.
         let preset = try #require(caps.zoteroToolEdit(executable: first.zoteroToolExecutable))
         #expect(preset.connection.name == "scholium-zotero" && preset.connection.kind == .local)
         #expect(preset.connection.arguments == ["zotero", "mcp", "serve", "--read-only"])
@@ -56,34 +57,40 @@ struct AgentChatZoteroConfigurationTests {
         try await wait { caps.canConfigureTools }
         #expect(caps.zoteroConnection?.enabled == true)
         #expect(caps.tools.first { $0.name == "scholium-zotero" }?.connectionStatus == "notStarted")
-        caps.checkZotero(); try await wait { !caps.isCheckingZotero }
+        caps.checkZotero()
+        try await wait { !caps.isCheckingZotero }
         #expect(caps.zoteroLibraryInfo?.status == .apiDisabled && caps.zoteroConnection?.enabled == true)
         await calls.setStatus(200)
-        caps.checkZotero(); try await wait { !caps.isCheckingZotero }
+        caps.checkZotero()
+        try await wait { !caps.isCheckingZotero }
         #expect(caps.zoteroLibraryInfo?.status == .available)
         #expect(await calls.count == 2)
         var disabled = try #require(caps.zoteroToolEdit(executable: first.zoteroToolExecutable))
         disabled.connection.enabled = false
-        #expect(await caps.saveTool(disabled)); try await wait { caps.canConfigureTools }
+        #expect(await caps.saveTool(disabled))
+        try await wait { caps.canConfigureTools }
         await first.disconnect()
         let second = try await make()
         #expect(second.capabilities.zoteroConnection?.enabled == false)
         #expect(second.capabilities.zoteroConnection?.arguments == preset.connection.arguments)
         #expect(second.capabilities.zoteroLibraryInfo == nil)
         let retained = try #require(second.capabilities.zoteroToolEdit(executable: second.zoteroToolExecutable))
-        second.editDraft("hold"); second.send()
+        second.editDraft("hold")
+        second.send()
         try await wait { second.state == .working && second.selected?.pendingMessageID == nil }
         let disabledParameters = try JSONDecoder().decode(MCPJSONValue.self, from: Data(contentsOf: configurationFile))
         #expect(disabledParameters.objectValue?["config"]?.objectValue?["mcp_servers"]?.objectValue?["scholium-zotero"] == nil)
         #expect(second.capabilities.zoteroToolEdit(executable: second.zoteroToolExecutable) == nil)
         #expect(!(await second.capabilities.saveTool(retained)))
         #expect(second.capabilities.zoteroConnection?.enabled == false)
-        second.stop(); try await wait { second.state == .ready && !second.isBusy }
+        second.stop()
+        try await wait { second.state == .ready && !second.isBusy }
         #expect(await second.capabilities.saveTool(retained, removing: true))
         try await wait { second.capabilities.canConfigureTools }
         var custom = try #require(second.capabilities.editTool())
         custom.connection = .init(name: "scholium-zotero", address: "https://example.invalid/custom", enabled: false)
-        #expect(await second.capabilities.saveTool(custom)); try await wait { second.capabilities.canConfigureTools }
+        #expect(await second.capabilities.saveTool(custom))
+        try await wait { second.capabilities.canConfigureTools }
         let existing = try #require(second.capabilities.zoteroToolEdit(executable: second.zoteroToolExecutable))
         #expect(existing.connection.address == custom.connection.address && existing.connection.kind == .remote)
         await second.disconnect()

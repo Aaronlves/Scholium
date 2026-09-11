@@ -128,18 +128,23 @@ struct SidebarLibraryFilterMenu: View {
                 }
             }
         } label: {
-            ScholiumSidebarHeaderIcon(systemImage: activeFilterCount == 0
-                ? "line.3.horizontal.decrease"
-                : "line.3.horizontal.decrease.circle.fill")
+            ScholiumSidebarHeaderIcon(
+                systemImage: activeFilterCount == 0
+                    ? "line.3.horizontal.decrease"
+                    : "line.3.horizontal.decrease.circle.fill")
         }
         .scholiumSidebarHeaderControl()
-        .help(activeFilterCount == 0
-            ? "Organize, filter, and sort Library notes"
-            : "\(activeFilterCount) Library filters active")
+        .help(
+            activeFilterCount == 0
+                ? "Organize, filter, and sort Library notes"
+                : "\(activeFilterCount) Library filters active"
+        )
         .accessibilityLabel("Organize Library")
-        .accessibilityValue(activeFilterCount == 0
-            ? "No filters active"
-            : "\(activeFilterCount) filters active")
+        .accessibilityValue(
+            activeFilterCount == 0
+                ? "No filters active"
+                : "\(activeFilterCount) filters active"
+        )
         .accessibilityIdentifier("scholium.libraryFilters")
     }
 
@@ -150,8 +155,7 @@ struct SidebarLibraryFilterMenu: View {
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
-            if selected { Label(title, systemImage: "checkmark") }
-            else { Text(title) }
+            if selected { Label(title, systemImage: "checkmark") } else { Text(title) }
         }
     }
 

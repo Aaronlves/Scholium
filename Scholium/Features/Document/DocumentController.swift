@@ -1,6 +1,6 @@
-import ScholiumContracts
 import Combine
 import Foundation
+import ScholiumContracts
 import SwiftUI
 
 /// Stable session identity plus the current path/title projection used by a
@@ -176,15 +176,9 @@ final class DocumentController: ObservableObject {
     /// Workspace publications are invalidations, not a second source owner.
     /// While one session is saving, retain only its latest complete snapshot
     /// and reconcile it immediately after the save releases ownership.
-    private var deferredWorkspaceSnapshotsDuringSave: [
-        DocumentSessionKey: WorkspaceNoteSnapshot
-    ] = [:]
-    private var restoredPresentationsByVault: [
-        UUID: [String: WindowDocumentPresentationSnapshot]
-    ] = [:]
-    private var restoredUnqualifiedPresentations: [
-        String: WindowDocumentPresentationSnapshot
-    ] = [:]
+    private var deferredWorkspaceSnapshotsDuringSave: [DocumentSessionKey: WorkspaceNoteSnapshot] = [:]
+    private var restoredPresentationsByVault: [UUID: [String: WindowDocumentPresentationSnapshot]] = [:]
+    private var restoredUnqualifiedPresentations: [String: WindowDocumentPresentationSnapshot] = [:]
     private var activeWorkspace: WorkspaceVaultSlot = .paperAnalysis
     private var presentationModesByWorkspace: [WorkspaceVaultSlot: NotePresentationMode]
     private struct ClosedPresentationEntry {
@@ -308,13 +302,14 @@ final class DocumentController: ObservableObject {
             notes: catalogNotes,
             generation: graphGeneration
         )
-        return (try? await linkCompletionIndex.query(
-            kind: kind,
-            query,
-            sourcePath: sourcePath,
-            currentVaultID: currentVaultID,
-            generation: graphGeneration
-        )) ?? []
+        return
+            (try? await linkCompletionIndex.query(
+                kind: kind,
+                query,
+                sourcePath: sourcePath,
+                currentVaultID: currentVaultID,
+                generation: graphGeneration
+            )) ?? []
     }
 
     func load(_ id: VaultQualifiedNoteID) async throws -> NoteDocument {
@@ -395,19 +390,21 @@ final class DocumentController: ObservableObject {
             try Task.checkCancellation()
             guard session.documentAttachmentsRequestID == requestID else { return }
             session.documentAttachments = attachments
-        } catch is CancellationError { throw CancellationError() }
-        catch {
+        } catch is CancellationError { throw CancellationError() } catch {
             if session.documentAttachmentsRequestID == requestID { session.documentAttachmentsError = error.localizedDescription }
             throw error
         }
     }
 
-    func selectDocumentAttachment(_ mode: DocumentAttachmentSelectionMode,
-                                  for target: NoteDocumentAttachmentTarget,
-                                  session: DocumentSessionModel,
-                                  presenter: ScholiumFileSelectionPresenter?) async throws {
+    func selectDocumentAttachment(
+        _ mode: DocumentAttachmentSelectionMode,
+        for target: NoteDocumentAttachmentTarget,
+        session: DocumentSessionModel,
+        presenter: ScholiumFileSelectionPresenter?
+    ) async throws {
         guard session.key == DocumentSessionKey(vaultID: target.vaultID, noteID: target.noteID),
-              !session.isAttachingDocument else { return }
+            !session.isAttachingDocument
+        else { return }
         guard let presenter else { throw ScholiumFileSelectionError.presenterUnavailable }
         session.isAttachingDocument = true
         defer { session.isAttachingDocument = false }
@@ -420,7 +417,8 @@ final class DocumentController: ObservableObject {
             prompt: String(localized: "Attach"), kind: .files(allowedContentTypes: [.content]))
         guard let sourceURL = try await presenter.selectURL(request) else { return }
         try Task.checkCancellation()
-        let attachment = try await attachDocument(at: sourceURL, to: target,
+        let attachment = try await attachDocument(
+            at: sourceURL, to: target,
             management: copiesFile ? .copyIntoTriptych : .referenceOriginal)
         var attachments = session.documentAttachments.filter { $0.record.id != attachment.record.id }
         attachments.append(attachment)
@@ -543,7 +541,8 @@ final class DocumentController: ObservableObject {
         guard sessionCancellables[identifier] == nil else { return }
         sessionCancellables[identifier] = session.objectWillChange.sink { [weak self, weak session] in
             guard let self, let session,
-                  pendingChromeRefreshes.insert(identifier).inserted else { return }
+                pendingChromeRefreshes.insert(identifier).inserted
+            else { return }
             Task { @MainActor [weak self, weak session] in
                 await Task.yield()
                 guard let self else { return }
@@ -592,19 +591,23 @@ final class DocumentController: ObservableObject {
         refreshChromeProjection()
     }
 
-    func requestSourceLocation(line: Int?, range: SearchSourceRange? = nil, requiresExactSelection: Bool = false,
-        sourceFingerprint: String? = nil) {
+    func requestSourceLocation(
+        line: Int?, range: SearchSourceRange? = nil, requiresExactSelection: Bool = false,
+        sourceFingerprint: String? = nil
+    ) {
         guard let target = selectedDocument?.editingTarget, line != nil || range != nil else {
             sourceLocationRequest = nil
             return
         }
-        sourceLocationRequest = .init(id: UUID(), target: target, line: line, range: range,
+        sourceLocationRequest = .init(
+            id: UUID(), target: target, line: line, range: range,
             requiresExactSelection: requiresExactSelection, sourceFingerprint: sourceFingerprint)
     }
 
     func consumeSourceLocation(_ id: UUID) {
         guard sourceLocationRequest?.id == id,
-              sourceLocationRequest?.target == selectedDocument?.editingTarget else { return }
+            sourceLocationRequest?.target == selectedDocument?.editingTarget
+        else { return }
         sourceLocationRequest = nil
     }
 
@@ -662,9 +665,10 @@ final class DocumentController: ObservableObject {
         // flush. Otherwise newly accepted WebKit input can be skipped merely
         // because the tab lease publication is one main-actor turn behind.
         if let selectedDocument,
-           let selectedSession = sessions.retainedSession(
-            for: selectedDocument.editingTarget
-           ) {
+            let selectedSession = sessions.retainedSession(
+                for: selectedDocument.editingTarget
+            )
+        {
             candidatesByTarget[selectedDocument.editingTarget] = selectedSession
         }
         let candidates = candidatesByTarget.sorted {
@@ -672,7 +676,8 @@ final class DocumentController: ObservableObject {
         }
         for (target, session) in candidates {
             if capturingEditorState,
-               session.editorSession.hasAttachedWebView {
+                session.editorSession.hasAttachedWebView
+            {
                 try await session.editorSession.captureStateForViewReconstruction()
             }
             // An attached CodeMirror surface can contain input whose bridge
@@ -681,10 +686,12 @@ final class DocumentController: ObservableObject {
             // path retrieves the complete text and returns cheaply when it is
             // genuinely unchanged. Detached sessions can use their retained
             // mirror because no newer WebKit state exists.
-            guard session.isEditing && session.editorSession.hasAttachedWebView
+            guard
+                session.isEditing && session.editorSession.hasAttachedWebView
                     || session.hasUnsavedChanges
                     || session.isSavingEdit
-                    || session.canRetrySave else {
+                    || session.canRetrySave
+            else {
                 continue
             }
             try await flushForExternalOperation(session: session, target: target)
@@ -698,10 +705,12 @@ final class DocumentController: ObservableObject {
         if session.editorSession.hasAttachedWebView {
             try await session.editorSession.captureStateForViewReconstruction()
         }
-        guard session.isEditing && session.editorSession.hasAttachedWebView
+        guard
+            session.isEditing && session.editorSession.hasAttachedWebView
                 || session.hasUnsavedChanges
                 || session.isSavingEdit
-                || session.canRetrySave else { return }
+                || session.canRetrySave
+        else { return }
         try await flushForExternalOperation(session: session, target: document.editingTarget)
     }
 
@@ -785,26 +794,30 @@ final class DocumentController: ObservableObject {
         )
         retainedReferences[key] = reference
         guard activeDocument?.sessionKey == key else { return }
-        updateDocumentProjection(WindowDocumentDescriptor(
-            sessionKey: key,
-            reference: reference
-        ))
+        updateDocumentProjection(
+            WindowDocumentDescriptor(
+                sessionKey: key,
+                reference: reference
+            ))
         reconcile(session: session(for: key), with: snapshot)
     }
 
     /// Updates mutable path and title projections without replacing the
     /// document session, editor buffer, undo bridge, or conflict state.
     func updateDocumentProjection(_ descriptor: WindowDocumentDescriptor) {
-        let previousPath = retainedReferences[descriptor.sessionKey]?.relativePath
+        let previousPath =
+            retainedReferences[descriptor.sessionKey]?.relativePath
             ?? snapshots[descriptor.sessionKey]?.id.relativePath
         retainedReferences[descriptor.sessionKey] = descriptor.reference
         guard selectedDocument?.sessionKey == descriptor.sessionKey else { return }
         selectedDocument = .workspace(descriptor)
         guard previousPath != nil,
-              previousPath != descriptor.reference.relativePath else { return }
+            previousPath != descriptor.reference.relativePath
+        else { return }
 
         let session = session(for: descriptor.sessionKey)
-        editingDocumentPath = session.isEditing
+        editingDocumentPath =
+            session.isEditing
             ? descriptor.reference.relativePath
             : editingDocumentPath
 
@@ -832,10 +845,11 @@ final class DocumentController: ObservableObject {
                 }
             }
             guard !Task.isCancelled,
-                  session.conflict == nil,
-                  self.relativePath(for: .workspace(descriptor.sessionKey))
+                session.conflict == nil,
+                self.relativePath(for: .workspace(descriptor.sessionKey))
                     == descriptor.reference.relativePath,
-                  session.hasUnsavedChanges else { return }
+                session.hasUnsavedChanges
+            else { return }
             session.editError = nil
             session.canRetrySave = false
             self.setSaveError(nil)
@@ -879,7 +893,8 @@ final class DocumentController: ObservableObject {
     }
 
     func scrollPosition(for path: String, vaultID: UUID?) -> Double {
-        let value = presentationSession(for: path, vaultID: vaultID)?.scrollFraction
+        let value =
+            presentationSession(for: path, vaultID: vaultID)?.scrollFraction
             ?? vaultID.flatMap {
                 restoredPresentationsByVault[$0]?[path]?.scrollFraction
             }
@@ -896,13 +911,15 @@ final class DocumentController: ObservableObject {
             session.scrollFraction = normalized
         } else {
             if let vaultID {
-                var presentation = restoredPresentationsByVault[vaultID]?[path]
+                var presentation =
+                    restoredPresentationsByVault[vaultID]?[path]
                     ?? WindowDocumentPresentationSnapshot()
                 guard abs(presentation.scrollFraction - normalized) > 0.002 else { return }
                 presentation.scrollFraction = normalized
                 restoredPresentationsByVault[vaultID, default: [:]][path] = presentation
             } else {
-                var presentation = restoredUnqualifiedPresentations[path]
+                var presentation =
+                    restoredUnqualifiedPresentations[path]
                     ?? WindowDocumentPresentationSnapshot()
                 guard abs(presentation.scrollFraction - normalized) > 0.002 else { return }
                 presentation.scrollFraction = normalized
@@ -942,7 +959,7 @@ final class DocumentController: ObservableObject {
             documents[reference.relativePath] = session.windowPresentationSnapshot
         }
         for (target, session) in sessions.retainedSessions
-            where target.isFallback && (vaultID == nil || target.vaultID == vaultID) {
+        where target.isFallback && (vaultID == nil || target.vaultID == vaultID) {
             let path = relativePath(for: target)
             documents[path] = session.windowPresentationSnapshot
         }
@@ -960,15 +977,16 @@ final class DocumentController: ObservableObject {
         vaultID: UUID?
     ) {
         if let vaultID,
-           let presentation = restoredPresentationsByVault[vaultID]?.removeValue(
-            forKey: sourcePath
-           ) {
-            restoredPresentationsByVault[vaultID, default: [:]][destinationPath]
-                = presentation
+            let presentation = restoredPresentationsByVault[vaultID]?.removeValue(
+                forKey: sourcePath
+            )
+        {
+            restoredPresentationsByVault[vaultID, default: [:]][destinationPath] = presentation
         } else if vaultID == nil,
-                  let presentation = restoredUnqualifiedPresentations.removeValue(
-                    forKey: sourcePath
-                  ) {
+            let presentation = restoredUnqualifiedPresentations.removeValue(
+                forKey: sourcePath
+            )
+        {
             restoredUnqualifiedPresentations[destinationPath] = presentation
         }
         let migratedKeys = retainedReferences.compactMap { key, reference in
@@ -1089,7 +1107,8 @@ final class DocumentController: ObservableObject {
 
     private func refreshChromeProjection() {
         guard let selectedDocument,
-              let session = selectedSessionWithoutCreation() else {
+            let session = selectedSessionWithoutCreation()
+        else {
             if chromeProjection != .empty { chromeProjection = .empty }
             return
         }
@@ -1130,7 +1149,8 @@ final class DocumentController: ObservableObject {
             session.scrollFraction = retained.scrollPosition.fraction
             session.scrollAnchor = retained.scrollPosition.anchor
         }
-        let restoredPresentation = restoredPresentationsByVault[target.vaultID]?
+        let restoredPresentation =
+            restoredPresentationsByVault[target.vaultID]?
             .removeValue(forKey: path)
             ?? restoredUnqualifiedPresentations.removeValue(forKey: path)
         if let restoredPresentation {
@@ -1166,18 +1186,20 @@ final class DocumentController: ObservableObject {
                 // Tab changes already flush the departing editor. Never use a
                 // presentation cutover to discard a recovery-bearing session.
                 guard !session.hasUnsavedChanges,
-                      session.conflict == nil,
-                      session.editError == nil,
-                      !session.isSavingEdit,
-                      session.activeSaveTask == nil else { return }
+                    session.conflict == nil,
+                    session.editError == nil,
+                    !session.isSavingEdit,
+                    session.activeSaveTask == nil
+                else { return }
                 finishEditing(session: session, target: target)
             } else {
                 session.preparePresentationMode(.read)
             }
         case .livePreview, .source:
             if case .workspace(let key) = target,
-               let capabilities = snapshots[key]?.capabilities,
-               !capabilities.canEditSource {
+                let capabilities = snapshots[key]?.capabilities,
+                !capabilities.canEditSource
+            {
                 session.preparePresentationMode(.read)
                 return
             }
@@ -1212,7 +1234,8 @@ final class DocumentController: ObservableObject {
 
     private func trimClosedPresentations(to limit: Int) {
         while closedPresentations.count > limit,
-              let oldest = closedPresentations.min(by: { $0.value.access < $1.value.access }) {
+            let oldest = closedPresentations.min(by: { $0.value.access < $1.value.access })
+        {
             closedPresentations[oldest.key] = nil
         }
     }
@@ -1254,9 +1277,10 @@ final class DocumentController: ObservableObject {
         session.editingSource = source
         session.editingRevision = revision
         if mode == .livePreview,
-           session.renderedReadFingerprint == DocumentFingerprint(content: source).sha256,
-           let range = session.readSelection?.exactUTF16Range,
-           range.lowerBound >= 0, range.upperBound <= source.utf16.count {
+            session.renderedReadFingerprint == DocumentFingerprint(content: source).sha256,
+            let range = session.readSelection?.exactUTF16Range,
+            range.lowerBound >= 0, range.upperBound <= source.utf16.count
+        {
             session.editorSession.prepareReadSelection(range)
         }
         session.editorSession.authorizeAutomaticFocus()
@@ -1296,9 +1320,10 @@ final class DocumentController: ObservableObject {
         target: DocumentEditingTarget
     ) {
         guard session.isEditing,
-              !session.suppressAutosave,
-              session.conflict == nil,
-              session.hasUnsavedChanges else { return }
+            !session.suppressAutosave,
+            session.conflict == nil,
+            session.hasUnsavedChanges
+        else { return }
         let path = relativePath(for: target)
         guard !path.isEmpty else { return }
         if editingDocumentPath != path {
@@ -1350,8 +1375,9 @@ final class DocumentController: ObservableObject {
             return
         } catch {
             if let repositoryError = error as? VaultRepositoryError,
-               case .fileDoesNotExist = repositoryError,
-               case .workspace = target {
+                case .fileDoesNotExist = repositoryError,
+                case .workspace = target
+            {
                 // External move detection arrives through the typed workspace
                 // stream shortly after the repository observes the old path
                 // missing. Give stable identity a brief, cancellable chance
@@ -1520,9 +1546,10 @@ final class DocumentController: ObservableObject {
         for session: DocumentSessionModel
     ) -> VaultRepositoryError? {
         guard let key = session.key,
-              let snapshot = deferredWorkspaceSnapshotsDuringSave.removeValue(
+            let snapshot = deferredWorkspaceSnapshotsDuringSave.removeValue(
                 forKey: key
-              ) else { return nil }
+            )
+        else { return nil }
         reconcile(session: session, with: snapshot)
         return repositoryConflict(for: session)
     }
@@ -1559,8 +1586,10 @@ final class DocumentController: ObservableObject {
         session.suppressAutosave = true
         session.editingSource = sourceBeingSaved
         defer { session.suppressAutosave = false }
-        guard sourceBeingSaved != session.originalEditingSource
-                || session.editorSession.isDirty else {
+        guard
+            sourceBeingSaved != session.originalEditingSource
+                || session.editorSession.isDirty
+        else {
             if editingDocumentPath == path { editingDocumentPath = nil }
             return .clean
         }
@@ -1633,9 +1662,11 @@ final class DocumentController: ObservableObject {
         let message = error.localizedDescription
         setSaveError(message)
         if case VaultRepositoryError.conflict = error,
-           let diskDocument = try? await loadDocument(for: target),
-           let baseRevision = session.editingRevision {
-            let editorSource = session.editorSession.isLoaded
+            let diskDocument = try? await loadDocument(for: target),
+            let baseRevision = session.editingRevision
+        {
+            let editorSource =
+                session.editorSession.isLoaded
                 ? session.editorSession.checkedSource
                 : session.editingSource
             session.editingSource = editorSource
@@ -1674,12 +1705,13 @@ final class DocumentController: ObservableObject {
     }
 
     private static let autosaveDelayMilliseconds: Int = {
-#if DEBUG
-        if let raw = ProcessInfo.processInfo.environment["SCHOLIUM_UI_TEST_AUTOSAVE_DELAY_MS"],
-           let value = Int(raw), value >= 0 {
-            return value
-        }
-#endif
+        #if DEBUG
+            if let raw = ProcessInfo.processInfo.environment["SCHOLIUM_UI_TEST_AUTOSAVE_DELAY_MS"],
+                let value = Int(raw), value >= 0
+            {
+                return value
+            }
+        #endif
         return 850
     }()
 
@@ -1713,9 +1745,11 @@ final class DocumentController: ObservableObject {
                 // state; it is not evidence that the document was deleted.
                 continue
             case .missing:
-                guard let session = sessions.retainedSession(
-                    for: document.editingTarget
-                ), !sessions.pinReasons(for: session).isEmpty else {
+                guard
+                    let session = sessions.retainedSession(
+                        for: document.editingTarget
+                    ), !sessions.pinReasons(for: session).isEmpty
+                else {
                     removed.insert(document)
                     continue
                 }
@@ -1733,9 +1767,10 @@ final class DocumentController: ObservableObject {
 
     var retainedDeletedDocumentPath: String? {
         guard let selectedDocument,
-              let session = sessions.retainedSession(
-                  for: selectedDocument.editingTarget
-              ), !sessions.pinReasons(for: session).isEmpty else {
+            let session = sessions.retainedSession(
+                for: selectedDocument.editingTarget
+            ), !sessions.pinReasons(for: session).isEmpty
+        else {
             return nil
         }
         return selectedDocument.relativePath
@@ -1752,7 +1787,8 @@ final class DocumentController: ObservableObject {
         in workspace: WorkspaceSnapshot
     ) -> PublishedDocumentLocation {
         guard let vaultID = document.vaultID,
-              let vault = workspace.vault(id: vaultID) else {
+            let vault = workspace.vault(id: vaultID)
+        else {
             return .missing
         }
         switch document {
@@ -1762,9 +1798,11 @@ final class DocumentController: ObservableObject {
             }) {
                 return .located(vault, note)
             }
-            guard let pathMatch = vault.documents.first(where: {
-                $0.id.relativePath == descriptor.reference.relativePath
-            }) else {
+            guard
+                let pathMatch = vault.documents.first(where: {
+                    $0.id.relativePath == descriptor.reference.relativePath
+                })
+            else {
                 return .missing
             }
             return switch pathMatch.stableIdentity {
@@ -1782,9 +1820,11 @@ final class DocumentController: ObservableObject {
                 .identityUnavailable
             }
         case .unavailable(_, let relativePath):
-            guard let note = vault.documents.first(where: {
-                $0.id.relativePath == relativePath
-            }) else {
+            guard
+                let note = vault.documents.first(where: {
+                    $0.id.relativePath == relativePath
+                })
+            else {
                 return .missing
             }
             return .located(vault, note)
@@ -1848,9 +1888,11 @@ final class DocumentController: ObservableObject {
                 retainedReferences[key] = nil
                 deferredWorkspaceSnapshotsDuringSave[key] = nil
             }
-            guard let session = sessions.retainedSession(
-                for: document.editingTarget
-            ) else { continue }
+            guard
+                let session = sessions.retainedSession(
+                    for: document.editingTarget
+                )
+            else { continue }
             session.cancelScheduledWork()
             session.finishEditing()
             session.conflict = nil
@@ -1858,7 +1900,8 @@ final class DocumentController: ObservableObject {
             session.canRetrySave = false
         }
         if let selectedDocument,
-           targets.contains(selectedDocument.editingTarget) {
+            targets.contains(selectedDocument.editingTarget)
+        {
             if editingDocumentPath == selectedDocument.relativePath {
                 editingDocumentPath = nil
             }
@@ -1892,7 +1935,8 @@ final class DocumentController: ObservableObject {
 
         if session.hasUnsavedChanges || session.editorSession.isComposing {
             session.cancelAutosave()
-            let editorSource = session.editorSession.isLoaded
+            let editorSource =
+                session.editorSession.isLoaded
                 ? session.editorSession.checkedSource
                 : session.editingSource
             session.editingSource = editorSource
@@ -1903,10 +1947,11 @@ final class DocumentController: ObservableObject {
                 baseRevision: baseRevision
             )
             session.canRetrySave = false
-            session.editError = VaultRepositoryError.conflict(
-                expected: baseRevision,
-                current: snapshot.fingerprint
-            ).localizedDescription
+            session.editError =
+                VaultRepositoryError.conflict(
+                    expected: baseRevision,
+                    current: snapshot.fingerprint
+                ).localizedDescription
             setSaveError(session.editError)
             return
         }
@@ -1918,7 +1963,8 @@ final class DocumentController: ObservableObject {
         session.conflict = nil
         session.editError = nil
         session.canRetrySave = false
-        let managedBodyStart = session.isEnteringManagedCreation
+        let managedBodyStart =
+            session.isEnteringManagedCreation
             ? snapshot.document.bodyUTF16Offset
             : nil
         if let managedBodyStart {
@@ -1949,13 +1995,21 @@ enum DocumentControllerError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .saveFailed(let message):
-            String(localized: "Scholium kept the current editor open because it could not safely save this note. \(message)", table: "Localizable", bundle: .module)
+            String(
+                localized: "Scholium kept the current editor open because it could not safely save this note. \(message)", table: "Localizable", bundle: .module
+            )
         case .editorUnavailable:
-            String(localized: "Scholium kept the current editor open because it could not retrieve the complete Markdown buffer.", table: "Localizable", bundle: .module)
+            String(
+                localized: "Scholium kept the current editor open because it could not retrieve the complete Markdown buffer.", table: "Localizable",
+                bundle: .module)
         case .changedDuringSave:
-            String(localized: "Scholium kept the current editor open because the note continued changing while it was being saved.", table: "Localizable", bundle: .module)
+            String(
+                localized: "Scholium kept the current editor open because the note continued changing while it was being saved.", table: "Localizable",
+                bundle: .module)
         case .documentUnavailable:
-            String(localized: "Scholium kept the exact editor buffer open because this document is no longer available through the active Triptych.", table: "Localizable", bundle: .module)
+            String(
+                localized: "Scholium kept the exact editor buffer open because this document is no longer available through the active Triptych.",
+                table: "Localizable", bundle: .module)
         }
     }
 

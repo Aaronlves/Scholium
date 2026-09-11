@@ -1,12 +1,15 @@
 import Foundation
-import Testing
 import ScholiumContracts
+import Testing
+
 @testable import ScholiumApplication
 
 struct AgentMCPServiceTests {
     @Test func helperRejectsStandaloneAndImportEntrypoints() {
-        for args in [["update"], ["mcp", "serve"], ["zotero", "mcp", "serve"],
-                     ["mcp", "serve", "--conversation-token", "invalid"]] {
+        for args in [
+            ["update"], ["mcp", "serve"], ["zotero", "mcp", "serve"],
+            ["mcp", "serve", "--conversation-token", "invalid"],
+        ] {
             #expect(throws: (any Error).self) { try AgentMCPService.helperHandler(arguments: args, environment: [:]) }
         }
     }
@@ -28,7 +31,8 @@ struct AgentMCPServiceTests {
         let tools = result["tools"] as! [[String: Any]]
         #expect(tools.count == 7)
         #expect(!tools.contains { ($0["name"] as? String)?.contains("import") == true })
-        let denied = try #require(await handler(Data(#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"zotero_import_bibtex","arguments":{}}}"#.utf8)))
+        let denied = try #require(
+            await handler(Data(#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"zotero_import_bibtex","arguments":{}}}"#.utf8)))
         #expect(String(decoding: denied, as: UTF8.self).contains("error"))
     }
 }

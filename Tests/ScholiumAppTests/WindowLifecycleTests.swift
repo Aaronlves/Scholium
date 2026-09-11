@@ -3,6 +3,7 @@ import Foundation
 import ScholiumContracts
 import SwiftUI
 import Testing
+
 @testable import ScholiumApp
 
 @Suite("Window lifecycle", .serialized)
@@ -419,10 +420,11 @@ struct WindowLifecycleTests {
         coordinator.detach()
         #expect(window.delegate === coordinator)
 
-        coordinator.windowWillClose(Notification(
-            name: NSWindow.willCloseNotification,
-            object: window
-        ))
+        coordinator.windowWillClose(
+            Notification(
+                name: NSWindow.willCloseNotification,
+                object: window
+            ))
         #expect(expectedDelegate.didReceiveWindowWillClose)
     }
 

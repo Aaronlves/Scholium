@@ -55,7 +55,8 @@ public actor VaultRepository {
             hooks: mutationHooks,
             descriptorAccess: descriptorAccess
         )
-        self.storageURL = applicationSupportURL
+        self.storageURL =
+            applicationSupportURL
             .appendingPathComponent("Vaults", isDirectory: true)
             .appendingPathComponent(identity.id.uuidString, isDirectory: true)
         self.recoveryLedger = try PrewriteRecoveryLedger(
@@ -109,7 +110,8 @@ public actor VaultRepository {
                 throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
             }
             guard Self.sameFileState(initialStatus, finalStatus),
-                  Int(finalStatus.st_size) == data.count else {
+                Int(finalStatus.st_size) == data.count
+            else {
                 throw VaultRepositoryError.commitUncertain(
                     "The source changed while its exact bytes were being read."
                 )
@@ -210,15 +212,17 @@ public actor VaultRepository {
     public func markdownRelativePaths() throws -> [String] {
         try descriptorAccess.verifyRootIdentity()
         var enumerationError: (any Error)?
-        guard let enumerator = fileManager.enumerator(
-            at: canonicalRoot,
-            includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey, .isDirectoryKey],
-            options: [.skipsHiddenFiles, .skipsPackageDescendants],
-            errorHandler: { _, error in
-                enumerationError = error
-                return false
-            }
-        ) else {
+        guard
+            let enumerator = fileManager.enumerator(
+                at: canonicalRoot,
+                includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey, .isDirectoryKey],
+                options: [.skipsHiddenFiles, .skipsPackageDescendants],
+                errorHandler: { _, error in
+                    enumerationError = error
+                    return false
+                }
+            )
+        else {
             throw VaultRepositoryError.commitUncertain(
                 "The vault Markdown inventory could not be enumerated."
             )
@@ -234,7 +238,8 @@ public actor VaultRepository {
                 continue
             }
             guard values.isRegularFile == true,
-                  url.pathExtension.caseInsensitiveCompare("md") == .orderedSame else { continue }
+                url.pathExtension.caseInsensitiveCompare("md") == .orderedSame
+            else { continue }
             paths.append(relativePath)
         }
         if let enumerationError { throw enumerationError }
@@ -250,15 +255,17 @@ public actor VaultRepository {
     {
         try descriptorAccess.verifyRootIdentity()
         var enumerationError: (any Error)?
-        guard let enumerator = fileManager.enumerator(
-            at: canonicalRoot,
-            includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey],
-            options: [.skipsHiddenFiles, .skipsPackageDescendants],
-            errorHandler: { _, error in
-                enumerationError = error
-                return false
-            }
-        ) else {
+        guard
+            let enumerator = fileManager.enumerator(
+                at: canonicalRoot,
+                includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey],
+                options: [.skipsHiddenFiles, .skipsPackageDescendants],
+                errorHandler: { _, error in
+                    enumerationError = error
+                    return false
+                }
+            )
+        else {
             throw VaultRepositoryError.commitUncertain(
                 "The vault folder inventory could not be enumerated."
             )
@@ -271,8 +278,9 @@ public actor VaultRepository {
                 continue
             }
             guard values.isDirectory == true,
-                  let relativePath = VaultPath.relativePath(for: url, in: canonicalRoot),
-                  let path = try? VaultRelativeFolderPath(relativePath) else { continue }
+                let relativePath = VaultPath.relativePath(for: url, in: canonicalRoot),
+                let path = try? VaultRelativeFolderPath(relativePath)
+            else { continue }
             paths.append(path)
         }
         if let enumerationError { throw enumerationError }
@@ -307,7 +315,8 @@ public actor VaultRepository {
     ) throws -> FolderRepositoryMoveResult {
         let sourcePrefix = source.rawValue + "/"
         guard destination.rawValue != source.rawValue,
-              !destination.rawValue.hasPrefix(sourcePrefix) else {
+            !destination.rawValue.hasPrefix(sourcePrefix)
+        else {
             throw VaultRepositoryError.invalidRelativePath(destination.rawValue)
         }
         _ = try existingFolderURL(path: source)
@@ -353,7 +362,8 @@ public actor VaultRepository {
     ) throws -> [NoteDocument] {
         let sourcePrefix = source.rawValue + "/"
         guard destination.rawValue != source.rawValue,
-              !destination.rawValue.hasPrefix(sourcePrefix) else {
+            !destination.rawValue.hasPrefix(sourcePrefix)
+        else {
             throw VaultRepositoryError.invalidRelativePath(destination.rawValue)
         }
         _ = try existingFolderURL(path: source)
@@ -409,20 +419,23 @@ public actor VaultRepository {
         let current = NoteDocument(relativePath: relativePath, rawContent: currentContent)
         let updatedContent = try current.applying(changeSet, timestampKey: nil)
         let updated = NoteDocument(relativePath: relativePath, rawContent: updatedContent)
-        let preservesClosedInvalidFrontmatter: Bool = switch changeSet {
-        case .body:
-            current.rawFrontmatter != nil
-                && current.rawFrontmatter == updated.rawFrontmatter
-                && current.hasProvableBodyBoundary
-        default:
-            false
-        }
+        let preservesClosedInvalidFrontmatter: Bool =
+            switch changeSet {
+            case .body:
+                current.rawFrontmatter != nil
+                    && current.rawFrontmatter == updated.rawFrontmatter
+                    && current.hasProvableBodyBoundary
+            default:
+                false
+            }
         if !updated.validationWarnings.isEmpty,
-           updated.rawFrontmatter != nil,
-           !preservesClosedInvalidFrontmatter {
-            return .notWritten(.invalidFrontmatter(
-                updated.validationWarnings.joined(separator: "\n")
-            ))
+            updated.rawFrontmatter != nil,
+            !preservesClosedInvalidFrontmatter
+        {
+            return .notWritten(
+                .invalidFrontmatter(
+                    updated.validationWarnings.joined(separator: "\n")
+                ))
         }
 
         let candidateData = Data(updatedContent.utf8)
@@ -468,7 +481,8 @@ public actor VaultRepository {
             // replacement and still report an error. Exact canonical bytes,
             // not that advisory error, determine the user-visible save state.
             if let canonical = try? readSource(relativePath: relativePath),
-               canonical == candidateData {
+                canonical == candidateData
+            {
                 try? recoveryLedger.completeMutation(mutation)
                 return .committed(SaveResult(document: updated))
             }
@@ -477,7 +491,8 @@ public actor VaultRepository {
             // nothing. Remove its redundant local transaction and preserve
             // the original error rather than presenting a recovery candidate.
             if let canonical = try? readSource(relativePath: relativePath),
-               canonical == currentData {
+                canonical == currentData
+            {
                 try? recoveryLedger.completeMutation(mutation)
                 throw VaultRepositoryError.writeFailed(error.localizedDescription)
             }
@@ -490,9 +505,10 @@ public actor VaultRepository {
                     mutation,
                     reason: error.localizedDescription
                 )
-                return .recoveryRequired(try interruptedSaveRecovery(
-                    for: mutation
-                ))
+                return .recoveryRequired(
+                    try interruptedSaveRecovery(
+                        for: mutation
+                    ))
             } catch {
                 throw VaultRepositoryError.recoveryLedgerUnavailable(
                     "The exact interrupted-save transaction could not be retained: \(error.localizedDescription)"
@@ -534,10 +550,11 @@ public actor VaultRepository {
     ) throws -> NoteDocument {
         let filename = URL(fileURLWithPath: preferredFilename).lastPathComponent
         guard filename == preferredFilename,
-              filename.caseInsensitiveCompare(".md") != .orderedSame,
-              URL(fileURLWithPath: filename).pathExtension
+            filename.caseInsensitiveCompare(".md") != .orderedSame,
+            URL(fileURLWithPath: filename).pathExtension
                 .caseInsensitiveCompare("md") == .orderedSame,
-              let content = NoteDocument.decodeUTF8PreservingBOM(sourceData) else {
+            let content = NoteDocument.decodeUTF8PreservingBOM(sourceData)
+        else {
             throw DocumentImportError.unsupportedSource(preferredFilename)
         }
 
@@ -546,7 +563,8 @@ public actor VaultRepository {
         let ext = requested.pathExtension
         var ordinal = 1
         while true {
-            let relativePath = ordinal == 1
+            let relativePath =
+                ordinal == 1
                 ? filename
                 : "\(base) \(ordinal).\(ext)"
             do {
@@ -639,9 +657,10 @@ public actor VaultRepository {
             // error. Exact path presence and destination readback settle the
             // result without creating a source-history copy.
             if (try? filePresence(relativePath: relativePath)) == .absent,
-               let destinationData = try? readSource(relativePath: destinationRelativePath),
-               destinationData == currentData,
-               let content = NoteDocument.decodeUTF8PreservingBOM(destinationData) {
+                let destinationData = try? readSource(relativePath: destinationRelativePath),
+                destinationData == currentData,
+                let content = NoteDocument.decodeUTF8PreservingBOM(destinationData)
+            {
                 removeEmptyParentDirectories(startingAt: sourceURL.deletingLastPathComponent())
                 return NoteMoveResult(
                     document: NoteDocument(
@@ -707,8 +726,10 @@ public actor VaultRepository {
             path: folder,
             bindingID: bindingID
         ) { candidateURL in
-            guard try self.systemTrashDirectoryManifest(at: candidateURL)
-                    == expectedDirectoryManifest else {
+            guard
+                try self.systemTrashDirectoryManifest(at: candidateURL)
+                    == expectedDirectoryManifest
+            else {
                 throw VaultRepositoryError.commitUncertain(
                     "The folder inventory changed during the coordinated system-Trash operation."
                 )
@@ -738,8 +759,10 @@ public actor VaultRepository {
                 isDirectory: true
             )
         }
-        guard try systemTrashDirectoryManifest(at: candidateURL)
-                == expectedDirectoryManifest else {
+        guard
+            try systemTrashDirectoryManifest(at: candidateURL)
+                == expectedDirectoryManifest
+        else {
             throw VaultRepositoryError.commitUncertain(
                 "The folder inventory changed after confirmation."
             )
@@ -767,25 +790,28 @@ public actor VaultRepository {
             .isSymbolicLinkKey,
         ])
         guard rootValues.isDirectory == true,
-              rootValues.isSymbolicLink != true else {
+            rootValues.isSymbolicLink != true
+        else {
             throw VaultRepositoryError.commitUncertain(
                 "The system-Trash folder candidate is missing or is not a contained directory."
             )
         }
         var enumerationError: (any Error)?
-        guard let enumerator = fileManager.enumerator(
-            at: folderURL,
-            includingPropertiesForKeys: [
-                .isDirectoryKey,
-                .isRegularFileKey,
-                .isSymbolicLinkKey,
-            ],
-            options: [],
-            errorHandler: { _, error in
-                enumerationError = error
-                return false
-            }
-        ) else {
+        guard
+            let enumerator = fileManager.enumerator(
+                at: folderURL,
+                includingPropertiesForKeys: [
+                    .isDirectoryKey,
+                    .isRegularFileKey,
+                    .isSymbolicLinkKey,
+                ],
+                options: [],
+                errorHandler: { _, error in
+                    enumerationError = error
+                    return false
+                }
+            )
+        else {
             throw VaultRepositoryError.commitUncertain(
                 "The complete folder inventory could not be enumerated."
             )
@@ -798,7 +824,8 @@ public actor VaultRepository {
                 .isSymbolicLinkKey,
             ])
             guard values.isSymbolicLink != true,
-                  let path = VaultPath.relativePath(for: url, in: folderURL) else {
+                let path = VaultPath.relativePath(for: url, in: folderURL)
+            else {
                 throw VaultRepositoryError.commitUncertain(
                     "The folder contains an unsupported symbolic link."
                 )
@@ -975,9 +1002,10 @@ public actor VaultRepository {
         _ recovery: InterruptedSaveRecovery
     ) throws {
         let transaction = try retainedMutation(matching: recovery)
-        let current = DocumentFingerprint(data: try readSource(
-            relativePath: transaction.relativePath
-        ))
+        let current = DocumentFingerprint(
+            data: try readSource(
+                relativePath: transaction.relativePath
+            ))
         guard current == transaction.expected else {
             throw VaultRepositoryError.conflict(
                 expected: transaction.expected,
@@ -1011,10 +1039,11 @@ public actor VaultRepository {
             id: recovery.id.transactionID
         )
         guard transaction.relativePath == recovery.relativePath,
-              transaction.expected == recovery.expectedRevision,
-              transaction.candidate == recovery.candidateRevision,
-              transaction.createdAt == recovery.createdAt,
-              transaction.retainedReason == recovery.retainedReason else {
+            transaction.expected == recovery.expectedRevision,
+            transaction.candidate == recovery.candidateRevision,
+            transaction.createdAt == recovery.createdAt,
+            transaction.retainedReason == recovery.retainedReason
+        else {
             throw VaultRepositoryError.recoveryLedgerUnavailable(
                 "The interrupted save record changed after it was presented. Refresh Recovery before continuing."
             )
@@ -1025,9 +1054,11 @@ public actor VaultRepository {
     private func interruptedSaveRecovery(
         for transaction: PrewriteRecoveryLedger.MutationTransaction
     ) throws -> InterruptedSaveRecovery {
-        guard let recovery = try interruptedSaveRecoveries().first(where: {
-            $0.id.transactionID == transaction.id
-        }) else {
+        guard
+            let recovery = try interruptedSaveRecoveries().first(where: {
+                $0.id.transactionID == transaction.id
+            })
+        else {
             throw VaultRepositoryError.recoveryLedgerUnavailable(
                 "The retained interrupted-save transaction could not be read back."
             )
@@ -1047,20 +1078,20 @@ public actor VaultRepository {
         case .invalidFrontmatter(let reason):
             return .notWritten(.invalidFrontmatter(reason))
         case .invalidRelativePath,
-             .outsideVault,
-             .rootUnavailable,
-             .fileDoesNotExist,
-             .fileAlreadyExists,
-             .notRegularFile,
-             .markdownRequired,
-             .readbackMismatch,
-             .recoveryEntryNotFound,
-             .recoveryPathConflict,
-             .recoveryLedgerUnavailable,
-             .pathCollision,
-             .writeFailed,
-             .commitUncertain,
-             .recoveryRequired:
+            .outsideVault,
+            .rootUnavailable,
+            .fileDoesNotExist,
+            .fileAlreadyExists,
+            .notRegularFile,
+            .markdownRequired,
+            .readbackMismatch,
+            .recoveryEntryNotFound,
+            .recoveryPathConflict,
+            .recoveryLedgerUnavailable,
+            .pathCollision,
+            .writeFailed,
+            .commitUncertain,
+            .recoveryRequired:
             return nil
         }
     }
@@ -1198,7 +1229,8 @@ public actor VaultRepository {
             .isDirectoryKey,
         ])
         guard directValues.isSymbolicLink != true,
-              directValues.isDirectory == true else {
+            directValues.isDirectory == true
+        else {
             throw VaultRepositoryError.notRegularFile(path.rawValue)
         }
         let resolved = candidate.resolvingSymlinksInPath().standardizedFileURL
@@ -1226,10 +1258,11 @@ public actor VaultRepository {
                 .isSymbolicLinkKey,
             ])
             guard source != nil,
-                  candidateValues.isSymbolicLink != true,
-                  sourceValues?.isSymbolicLink != true,
-                  candidateValues.fileResourceIdentifier as? AnyHashable
-                    == sourceValues?.fileResourceIdentifier as? AnyHashable else {
+                candidateValues.isSymbolicLink != true,
+                sourceValues?.isSymbolicLink != true,
+                candidateValues.fileResourceIdentifier as? AnyHashable
+                    == sourceValues?.fileResourceIdentifier as? AnyHashable
+            else {
                 throw VaultRepositoryError.fileAlreadyExists(path.rawValue)
             }
         }
@@ -1253,13 +1286,16 @@ public actor VaultRepository {
             .isDirectoryKey,
         ])
         guard directValues.isSymbolicLink != true,
-              directValues.isDirectory == true else {
+            directValues.isDirectory == true
+        else {
             throw VaultRepositoryError.outsideVault(path.rawValue)
         }
         let resolvedParent = parent.resolvingSymlinksInPath().standardizedFileURL
         let rootPath = canonicalRoot.path.hasSuffix("/") ? canonicalRoot.path : canonicalRoot.path + "/"
-        guard resolvedParent.path == canonicalRoot.path
-                || resolvedParent.path.hasPrefix(rootPath) else {
+        guard
+            resolvedParent.path == canonicalRoot.path
+                || resolvedParent.path.hasPrefix(rootPath)
+        else {
             throw VaultRepositoryError.outsideVault(path.rawValue)
         }
         return candidate
@@ -1280,7 +1316,8 @@ public actor VaultRepository {
         return try currentPaths.map { relativePath in
             let document = try load(relativePath: relativePath)
             guard let expected = expectedDocuments[relativePath],
-                  document.fingerprint == expected else {
+                document.fingerprint == expected
+            else {
                 throw VaultRepositoryError.conflict(
                     expected: expectedDocuments[relativePath] ?? document.fingerprint,
                     current: document.fingerprint
@@ -1319,7 +1356,8 @@ public actor VaultRepository {
         // suffix. A symlinked ancestor is never an authorized destination.
         var ancestor = candidate.deletingLastPathComponent()
         while ancestor.path != canonicalRoot.path,
-              !fileManager.fileExists(atPath: ancestor.path) {
+            !fileManager.fileExists(atPath: ancestor.path)
+        {
             ancestor.deleteLastPathComponent()
         }
         guard fileManager.fileExists(atPath: ancestor.path) else {

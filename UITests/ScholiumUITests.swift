@@ -1,6 +1,6 @@
-@preconcurrency import XCTest
 import AppKit
 import CryptoKit
+@preconcurrency import XCTest
 import notify
 
 /// Enters an exact query without changing the user's active input source.
@@ -93,7 +93,8 @@ final class ScholiumUITests: XCTestCase {
             || name.contains("testPeripheralToolbarVisibilityControlsToggleWithPointerCoordinates")
             || name.contains("testAppearanceLineWidthVisualMatrixAndKeyboardControl")
             || name.contains("testDocumentHeadingStudyWrapsLongMixedTitleUsingAcceptedBodyRhythm")
-            || name.contains("testLibraryRemainsReadableAtItsNativeMinimum") {
+            || name.contains("testLibraryRemainsReadableAtItsNativeMinimum")
+        {
             return Int(QAWorkspaceMetricContract.preferredWidth)
         }
         return 1_380
@@ -103,7 +104,8 @@ final class ScholiumUITests: XCTestCase {
         if name.contains("testRestoreAccessQuitScholiumTerminatesApplication")
             || name.contains(
                 "testFixtureLaunchWithoutExplicitSessionIDUsesOneWindowSession"
-            ) {
+            )
+        {
             return nil
         }
         if name.contains("testDocumentHeadingStudyWrapsLongMixedTitleUsingAcceptedBodyRhythm") {
@@ -197,14 +199,15 @@ final class ScholiumUITests: XCTestCase {
             hierarchy.lifetime = .keepAlways
             add(hierarchy)
             if let homeDirectory,
-               let recoveryURL = FileManager.default.enumerator(
-                   at: homeDirectory,
-                   includingPropertiesForKeys: nil
-               )?.compactMap({ $0 as? URL }).first(where: {
-                   $0.lastPathComponent == "transaction-recovery.json"
-               }),
-               let recoveryData = try? Data(contentsOf: recoveryURL),
-               let recoveryText = String(data: recoveryData, encoding: .utf8) {
+                let recoveryURL = FileManager.default.enumerator(
+                    at: homeDirectory,
+                    includingPropertiesForKeys: nil
+                )?.compactMap({ $0 as? URL }).first(where: {
+                    $0.lastPathComponent == "transaction-recovery.json"
+                }),
+                let recoveryData = try? Data(contentsOf: recoveryURL),
+                let recoveryText = String(data: recoveryData, encoding: .utf8)
+            {
                 let recovery = XCTAttachment(string: recoveryText)
                 recovery.name = "Scholium transaction recovery record"
                 recovery.lifetime = .keepAlways
@@ -213,7 +216,8 @@ final class ScholiumUITests: XCTestCase {
         }
         app?.terminate()
         if ProcessInfo.processInfo.environment["SCHOLIUM_QA_KEEP_ARTIFACTS"] != "1",
-           let testDirectory {
+            let testDirectory
+        {
             try? FileManager.default.removeItem(at: testDirectory)
         }
         app = nil

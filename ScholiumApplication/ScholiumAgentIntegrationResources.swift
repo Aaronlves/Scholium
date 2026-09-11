@@ -35,11 +35,13 @@ public enum ScholiumAgentIntegrationResources {
             .resolvingSymlinksInPath()
             .standardizedFileURL
         var isDirectory: ObjCBool = false
-        guard fileManager.fileExists(
-            atPath: candidate.path,
-            isDirectory: &isDirectory
-        ), !isDirectory.boolValue,
-           fileManager.isExecutableFile(atPath: candidate.path) else {
+        guard
+            fileManager.fileExists(
+                atPath: candidate.path,
+                isDirectory: &isDirectory
+            ), !isDirectory.boolValue,
+            fileManager.isExecutableFile(atPath: candidate.path)
+        else {
             return nil
         }
         return candidate

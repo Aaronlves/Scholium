@@ -25,7 +25,8 @@ public actor StyleOperations: StyleUseCases {
 
     public init(applicationSupportURL: URL, fileManager: FileManager = .default) {
         self.fileManager = fileManager
-        directoryURL = applicationSupportURL
+        directoryURL =
+            applicationSupportURL
             .appendingPathComponent("Workspace", isDirectory: true)
             .appendingPathComponent("Styles", isDirectory: true)
             .appendingPathComponent("Snippets", isDirectory: true)
@@ -101,7 +102,8 @@ public actor StyleOperations: StyleUseCases {
         ensureLoaded()
         let name = normalizedName(requestedName, fallback: "")
         guard !name.isEmpty,
-              let index = appearanceProfiles.firstIndex(where: { $0.id == id }) else {
+            let index = appearanceProfiles.firstIndex(where: { $0.id == id })
+        else {
             return snapshot()
         }
         var candidate = appearanceProfiles
@@ -126,11 +128,13 @@ public actor StyleOperations: StyleUseCases {
     public func removeAppearanceProfile(_ id: UUID) throws -> StyleSnapshot {
         ensureLoaded()
         guard appearanceProfiles.count > 1,
-              appearanceProfiles.contains(where: { $0.id == id }) else {
+            appearanceProfiles.contains(where: { $0.id == id })
+        else {
             return snapshot()
         }
         let candidate = appearanceProfiles.filter { $0.id != id }
-        let nextSelectedID = selectedAppearanceProfileID == id
+        let nextSelectedID =
+            selectedAppearanceProfileID == id
             ? candidate.first?.id
             : selectedAppearanceProfileID
         try commitAppearance(candidate, selectedID: nextSelectedID)
@@ -327,7 +331,8 @@ public actor StyleOperations: StyleUseCases {
             newLinkFormat = object["newLinkFormat"] as? String
         }
         if theme == nil,
-           let object = jsonObject(at: obsidianURL.appendingPathComponent("appearance.json")) {
+            let object = jsonObject(at: obsidianURL.appendingPathComponent("appearance.json"))
+        {
             theme = object["theme"] as? String
         }
         if let object = jsonObject(at: obsidianURL.appendingPathComponent("core-plugins.json")) {
@@ -380,8 +385,9 @@ public actor StyleOperations: StyleUseCases {
                 selectedAppearanceProfileID = appearanceProfiles.first?.id
             }
             if fileManager.fileExists(atPath: safeModeURL.path),
-               let persisted = String(data: try Data(contentsOf: safeModeURL), encoding: .utf8),
-               !persisted.isEmpty {
+                let persisted = String(data: try Data(contentsOf: safeModeURL), encoding: .utf8),
+                !persisted.isEmpty
+            {
                 safeModeReason = persisted
                 for index in snippets.indices { snippets[index].isEnabled = false }
             }
@@ -457,7 +463,8 @@ public actor StyleOperations: StyleUseCases {
         guard let firstID = normalizedProfiles.first?.id else { return }
         let resolvedSelectedID: UUID
         if let selectedID,
-           normalizedProfiles.contains(where: { $0.id == selectedID }) {
+            normalizedProfiles.contains(where: { $0.id == selectedID })
+        {
             resolvedSelectedID = selectedID
         } else {
             resolvedSelectedID = firstID
@@ -494,7 +501,8 @@ public actor StyleOperations: StyleUseCases {
     private func readAppearanceBytes() throws -> Data {
         let values = try appearanceManifestURL.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey])
         guard values.isRegularFile == true, values.isSymbolicLink != true,
-              (values.fileSize ?? 0) <= 2_000_000 else {
+            (values.fileSize ?? 0) <= 2_000_000
+        else {
             throw StyleUseCaseError.invalidConfiguration("appearances.json must be a regular file smaller than 2 MB.")
         }
         let bytes = try Data(contentsOf: appearanceManifestURL)
@@ -508,8 +516,9 @@ public actor StyleOperations: StyleUseCases {
         do {
             let manifest = try JSONDecoder().decode(AppearanceManifest.self, from: bytes)
             guard !manifest.profiles.isEmpty,
-                  Set(manifest.profiles.map(\.id)).count == manifest.profiles.count,
-                  manifest.profiles.contains(where: { $0.id == manifest.selectedProfileID }) else {
+                Set(manifest.profiles.map(\.id)).count == manifest.profiles.count,
+                manifest.profiles.contains(where: { $0.id == manifest.selectedProfileID })
+            else {
                 throw StyleUseCaseError.invalidConfiguration("profiles must have unique IDs and contain selectedProfileID.")
             }
             let normalizedManifest = AppearanceManifest(
@@ -527,7 +536,9 @@ public actor StyleOperations: StyleUseCases {
             let context: DecodingError.Context
             var missingKey: String?
             switch error {
-            case .keyNotFound(let key, let value): context = value; missingKey = key.stringValue
+            case .keyNotFound(let key, let value):
+                context = value
+                missingKey = key.stringValue
             case .typeMismatch(_, let value), .valueNotFound(_, let value), .dataCorrupted(let value): context = value
             @unknown default: throw StyleUseCaseError.invalidConfiguration(error.localizedDescription)
             }
@@ -556,7 +567,10 @@ public actor StyleOperations: StyleUseCases {
 
     private func rejectUnknownConfigurationKeys(_ input: Any, decoded: Any, path: String) throws {
         if let input = input as? [String: Any], let decoded = decoded as? [String: Any] {
-            let optionalCalloutKeys: Set<String> = ["lineHeight", "startInsetEm", "endInsetEm", "titleGapEm", "titleColumnEm", "columnGapEm", "paddingBlockEm", "paddingInlineEm", "contentIndentEm", "quotationScale", "attributionScale"]
+            let optionalCalloutKeys: Set<String> = [
+                "lineHeight", "startInsetEm", "endInsetEm", "titleGapEm", "titleColumnEm", "columnGapEm", "paddingBlockEm", "paddingInlineEm",
+                "contentIndentEm", "quotationScale", "attributionScale",
+            ]
             for (key, value) in input {
                 guard let canonical = decoded[key] else {
                     if decoded["role"] != nil, optionalCalloutKeys.contains(key), value is NSNull { continue }
@@ -574,13 +588,15 @@ public actor StyleOperations: StyleUseCases {
     private func normalized(_ profile: DocumentAppearanceProfile) -> DocumentAppearanceProfile {
         var profile = profile
         profile.name = normalizedName(profile.name, fallback: "Untitled Appearance")
-        profile.settings.lineWidthCharacterUnits = profile.settings.lineWidthCharacterUnits.isFinite
+        profile.settings.lineWidthCharacterUnits =
+            profile.settings.lineWidthCharacterUnits.isFinite
             ? profile.settings.lineWidthCharacterUnits.clamped(
                 to: DocumentAppearanceSettings.lineWidthCharacterUnitsRange
             )
             : DocumentAppearanceSettings.defaultLineWidthCharacterUnits
         profile.settings.body.fontSizePoints = profile.settings.body.fontSizePoints.clamped(to: 9...24)
-        profile.settings.source.fontSizePoints = profile.settings.source.fontSizePoints.isFinite
+        profile.settings.source.fontSizePoints =
+            profile.settings.source.fontSizePoints.isFinite
             ? profile.settings.source.fontSizePoints.clamped(to: 6...72)
             : DocumentSourceAppearance().fontSizePoints
         profile.settings.body.lineHeight = profile.settings.body.lineHeight.clamped(to: 1.2...2.4)
@@ -650,15 +666,16 @@ public actor StyleOperations: StyleUseCases {
         let knownFileNames = Set(records.map(\.managedFileName))
         for url in discovered where !knownFileNames.contains(url.lastPathComponent) {
             let baseName = url.deletingPathExtension().lastPathComponent
-            records.append(CSSSnippetRecord(
-                id: UUID(),
-                name: CSSSnippetSanitizer.normalizedSnippetName(
-                    baseName,
-                    fallback: "CSS Snippet"
-                ),
-                managedFileName: url.lastPathComponent,
-                isEnabled: safeModeReason == nil
-            ))
+            records.append(
+                CSSSnippetRecord(
+                    id: UUID(),
+                    name: CSSSnippetSanitizer.normalizedSnippetName(
+                        baseName,
+                        fallback: "CSS Snippet"
+                    ),
+                    managedFileName: url.lastPathComponent,
+                    isEnabled: safeModeReason == nil
+                ))
         }
         return records
     }
@@ -667,7 +684,7 @@ public actor StyleOperations: StyleUseCases {
         let keys: Set<URLResourceKey> = [
             .isRegularFileKey,
             .isSymbolicLinkKey,
-            .nameKey
+            .nameKey,
         ]
         let enumerator = fileManager.enumerator(
             at: directoryURL,
@@ -677,8 +694,9 @@ public actor StyleOperations: StyleUseCases {
         var urls: [URL] = []
         while let url = enumerator?.nextObject() as? URL {
             guard url.pathExtension.caseInsensitiveCompare("css") == .orderedSame,
-                  url.deletingLastPathComponent().standardizedFileURL
-                    == directoryURL.standardizedFileURL else { continue }
+                url.deletingLastPathComponent().standardizedFileURL
+                    == directoryURL.standardizedFileURL
+            else { continue }
             let values = try url.resourceValues(forKeys: keys)
             guard values.isRegularFile == true, values.isSymbolicLink != true else { continue }
             urls.append(url)
@@ -747,7 +765,8 @@ public actor StyleOperations: StyleUseCases {
             throw CSSSnippetSanitizationError.forbiddenConstruct("managed path escape")
         }
         if let values = try? url.resourceValues(forKeys: [.isSymbolicLinkKey]),
-           values.isSymbolicLink == true {
+            values.isSymbolicLink == true
+        {
             throw CSSSnippetSanitizationError.forbiddenConstruct("symbolic-link snippet")
         }
         return url

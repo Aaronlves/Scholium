@@ -1,6 +1,7 @@
 import Foundation
 import ScholiumContracts
 import Testing
+
 @testable import ScholiumCore
 
 @Suite("Occurrence-owned Link Graph")
@@ -23,14 +24,17 @@ struct LinkGraphTests {
         #expect(snapshot.contractVersion == 6)
         #expect(outgoing.count == 2)
         #expect(incoming == outgoing)
-        #expect(outgoing.map { $0.occurrence.annotation?.markdown } == [
-            "First **reason**.", "Second reason.",
-        ])
-        #expect(outgoing.map { $0.occurrence.annotation?.text } == [
-            "First reason.", "Second reason.",
-        ])
-        #expect(outgoing[0].occurrence.linkSpan.utf16UpperBound
-            < outgoing[0].occurrence.span.utf16UpperBound)
+        #expect(
+            outgoing.map { $0.occurrence.annotation?.markdown } == [
+                "First **reason**.", "Second reason.",
+            ])
+        #expect(
+            outgoing.map { $0.occurrence.annotation?.text } == [
+                "First reason.", "Second reason.",
+            ])
+        #expect(
+            outgoing[0].occurrence.linkSpan.utf16UpperBound
+                < outgoing[0].occurrence.span.utf16UpperBound)
         #expect(outgoing.allSatisfy { !$0.occurrence.localContext.isEmpty })
         #expect(snapshot.diagnostics.isEmpty)
     }
@@ -139,9 +143,10 @@ struct LinkGraphTests {
         _ documents: [NoteDocument],
         generation: Int = 1
     ) -> GraphSnapshot {
-        let semantics = Dictionary(uniqueKeysWithValues: documents.map { document in
-            (id(document), MarkdownSemanticDocument(parsing: document))
-        })
+        let semantics = Dictionary(
+            uniqueKeysWithValues: documents.map { document in
+                (id(document), MarkdownSemanticDocument(parsing: document))
+            })
         return LinkGraphBuilder.build(
             generation: generation,
             catalog: documents.map { document in

@@ -1,5 +1,5 @@
-import ScholiumContracts
 import Foundation
+import ScholiumContracts
 
 public actor SavedSearchStore {
     private let fileURL: URL
@@ -69,7 +69,6 @@ public actor SavedSearchStore {
         return preserved
     }
 }
-
 
 private extension JSONEncoder {
     static var scholium: JSONEncoder {

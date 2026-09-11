@@ -13,7 +13,8 @@ public enum AgentChatCommandOutput {
         var result = incoming
         if let previous, previous.kind == .command {
             result.outputTruncated = previous.outputTruncated == true || incoming.outputTruncated == true
-            let old = previous.detail, new = incoming.detail
+            let old = previous.detail
+            let new = incoming.detail
             if new.hasPrefix(old), previous.outputTruncated != true {
                 retain(new, in: &result)
             } else if old.hasSuffix(new) {
@@ -21,12 +22,17 @@ public enum AgentChatCommandOutput {
             } else {
                 retain(old + String(decoding: Array(new.utf8).dropFirst(overlap(old, new)), as: UTF8.self), in: &result)
             }
-        } else { retain(incoming.detail, in: &result) }
+        } else {
+            retain(incoming.detail, in: &result)
+        }
         return result
     }
 
     private static func retain(_ text: String, in activity: inout AgentChatActivity) {
-        guard text.utf8.count > maximumUTF8Bytes else { activity.detail = text; return }
+        guard text.utf8.count > maximumUTF8Bytes else {
+            activity.detail = text
+            return
+        }
         // Discard only complete Unicode scalars, never add replacement characters.
         var bytes = text.utf8.suffix(maximumUTF8Bytes)
         while let first = bytes.first, first & 0xC0 == 0x80 { bytes = bytes.dropFirst() }

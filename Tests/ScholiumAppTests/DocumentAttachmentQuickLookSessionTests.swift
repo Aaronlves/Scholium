@@ -1,6 +1,7 @@
 import Foundation
 import ScholiumContracts
 import Testing
+
 @testable import ScholiumApp
 
 @Suite("System Quick Look access")
@@ -28,7 +29,8 @@ struct DocumentAttachmentQuickLookSessionTests {
     }
 
     private func lease(_ filename: String) -> DocumentAttachmentPreviewLease {
-        .init(accessToken: UUID(), attachmentID: UUID(), filename: filename,
-              fileURL: URL(fileURLWithPath: "/synthetic/\(filename)"))
+        .init(
+            accessToken: UUID(), attachmentID: UUID(), filename: filename,
+            fileURL: URL(fileURLWithPath: "/synthetic/\(filename)"))
     }
 }

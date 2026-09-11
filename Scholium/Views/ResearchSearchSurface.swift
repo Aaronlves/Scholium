@@ -12,11 +12,13 @@ struct ResearchSearchSurface<Library: View>: View {
     @ObservedObject private var shellState: WindowShellState
     @ObservedObject private var workspaceProjectionController: WindowWorkspaceProjectionController
 
-    init(controller: DiscoveryController, searchController: WindowSearchController,
-         shellState: WindowShellState, workspaceProjectionController: WindowWorkspaceProjectionController,
-         presentation: SearchPresentation,
-         revealDocument: @escaping () -> Void,
-         @ViewBuilder library: () -> Library) {
+    init(
+        controller: DiscoveryController, searchController: WindowSearchController,
+        shellState: WindowShellState, workspaceProjectionController: WindowWorkspaceProjectionController,
+        presentation: SearchPresentation,
+        revealDocument: @escaping () -> Void,
+        @ViewBuilder library: () -> Library
+    ) {
         self.presentation = presentation
         self.revealDocument = revealDocument
         self.library = library()
@@ -27,8 +29,10 @@ struct ResearchSearchSurface<Library: View>: View {
     }
 
     var body: some View {
-        ResearchSearchView(controller: discoveryController, searchController: searchController,
-                           context: searchContext, presentation: presentation) { library }
+        ResearchSearchView(
+            controller: discoveryController, searchController: searchController,
+            context: searchContext, presentation: presentation
+        ) { library }
     }
 
     private var searchContext: ResearchSearchContext {
@@ -49,7 +53,10 @@ struct ResearchSearchSurface<Library: View>: View {
             openNote: { result in
                 Task {
                     if await searchController.open(result, disposition: .replaceCurrent),
-                       searchController.presentation == .advanced { revealDocument() }
+                        searchController.presentation == .advanced
+                    {
+                        revealDocument()
+                    }
                 }
             }
         )

@@ -1,7 +1,8 @@
-import ScholiumContracts
 import Foundation
 import ScholiumApplication
+import ScholiumContracts
 import Testing
+
 @testable import ScholiumApp
 
 @Suite("Window document metadata projection")
@@ -9,12 +10,12 @@ struct WindowDocumentMetadataProjectionTests {
     @Test("Unknown YAML remains source-only and never becomes a semantic property")
     func statusIsNotCoreVocabulary() {
         let source = """
-        ---
-        status: reviewed
-        unknown: untouched
-        ---
-        Body
-        """
+            ---
+            status: reviewed
+            unknown: untouched
+            ---
+            Body
+            """
         let note = metadataLocation(source, role: .sourceCorpus)
 
         #expect(PropertyContractCatalog.contract(for: "status", profile: .analysis) == nil)
@@ -32,14 +33,14 @@ struct WindowDocumentMetadataProjectionTests {
         #expect(contract.valueKind == .date)
         #expect(PropertyContractCatalog.contract(for: "year", profile: .analysis) == nil)
         let source = """
-        ---
-        publication_date: 1990/1992
-        year: 1991
-        unknown:
-          nested: untouched
-        ---
-        Body
-        """
+            ---
+            publication_date: 1990/1992
+            year: 1991
+            unknown:
+              nested: untouched
+            ---
+            Body
+            """
         let note = metadataLocation(
             source,
             role: .sourceCorpus,
@@ -47,10 +48,11 @@ struct WindowDocumentMetadataProjectionTests {
         )
 
         #expect(note.authoredYAMLValue(named: "publication_date") == nil)
-        #expect(note.semanticProperty(
-            at: "publication_date",
-            catalog: .builtIn
-        ) == .string("1990/1992"))
+        #expect(
+            note.semanticProperty(
+                at: "publication_date",
+                catalog: .builtIn
+            ) == .string("1990/1992"))
         #expect(note.semanticProperty(at: "year", catalog: .builtIn) == nil)
         #expect(note.rawContent == source)
     }
@@ -125,7 +127,7 @@ struct WindowDocumentMetadataProjectionTests {
             .paperAnalysis: [
                 MetadataFieldDefinition(key: "research_status", valueKind: .text),
                 MetadataFieldDefinition(key: "too_long", valueKind: .text),
-            ],
+            ]
         ])
         let first = metadataLocation(
             """
@@ -181,9 +183,11 @@ struct WindowDocumentMetadataProjectionTests {
         #expect(options.valuesByKey["status"] == nil)
         #expect(options.valuesByKey["nested.child"] == nil)
         #expect(options.valuesByKey["too_long"] == nil)
-        #expect(options.keys == options.keys.sorted {
-            $0.localizedStandardCompare($1) == .orderedAscending
-        })
+        #expect(
+            options.keys
+                == options.keys.sorted {
+                    $0.localizedStandardCompare($1) == .orderedAscending
+                })
         #expect(Set(options.keys).count == options.keys.count)
     }
 
@@ -200,15 +204,17 @@ struct WindowDocumentMetadataProjectionTests {
             encoding: .utf8
         )
         let start = try #require(source.range(of: "private var sidebarContext"))
-        let end = try #require(source.range(
-            of: "private var currentWorkspaceSlot",
-            range: start.upperBound..<source.endIndex
-        ))
+        let end = try #require(
+            source.range(
+                of: "private var currentWorkspaceSlot",
+                range: start.upperBound..<source.endIndex
+            ))
         let sidebarContext = source[start.lowerBound..<end.lowerBound]
 
-        #expect(sidebarContext.contains(
-            "let propertyFilterOptions = appState.availablePropertyFilterOptions"
-        ))
+        #expect(
+            sidebarContext.contains(
+                "let propertyFilterOptions = appState.availablePropertyFilterOptions"
+            ))
         #expect(!sidebarContext.contains("availablePropertyValues(for:"))
     }
 
@@ -231,17 +237,20 @@ struct WindowDocumentMetadataProjectionTests {
             encoding: .utf8
         )
 
-        #expect(controller.contains(
-            "var propertyFilterOptions = WindowPropertyFilterOptions("
-        ))
-        #expect(controller.contains(
-            "state.propertyFilterOptions = WindowPropertyFilterOptions("
-        ))
+        #expect(
+            controller.contains(
+                "var propertyFilterOptions = WindowPropertyFilterOptions("
+            ))
+        #expect(
+            controller.contains(
+                "state.propertyFilterOptions = WindowPropertyFilterOptions("
+            ))
         #expect(controller.contains("state.authors = Set(notes.flatMap(\\.authors)).sorted()"))
         #expect(!controller.contains("state.years"))
-        #expect(app.contains(
-            "var availablePropertyFilterOptions: WindowPropertyFilterOptions {"
-        ))
+        #expect(
+            app.contains(
+                "var availablePropertyFilterOptions: WindowPropertyFilterOptions {"
+            ))
         #expect(app.contains("workspaceProjectionController.propertyFilterOptions"))
         #expect(app.contains("workspaceProjectionController.authors"))
         #expect(!app.contains("workspaceProjectionController.years"))
@@ -265,22 +274,23 @@ private func metadataLocation(
             revision: DocumentFingerprint(content: String(describing: $0))
         )
     }
-    return .workspace(WorkspaceNoteSnapshot(
-        id: VaultQualifiedNoteID(vaultID: UUID(), relativePath: relativePath),
-        vaultRole: role,
-        stableIdentity: .resolved(noteID),
-        document: document,
-        fileMetadata: WorkspaceFileMetadata(
-            byteCount: document.sourceBytes.count,
-            creationDate: nil,
-            modificationDate: nil
-        ),
-        graphCounts: WorkspaceGraphCounts(
-            incoming: 0,
-            outgoing: 0,
-            broken: 0,
-            ambiguous: 0
-        ),
-        metadata: metadata
-    ))
+    return .workspace(
+        WorkspaceNoteSnapshot(
+            id: VaultQualifiedNoteID(vaultID: UUID(), relativePath: relativePath),
+            vaultRole: role,
+            stableIdentity: .resolved(noteID),
+            document: document,
+            fileMetadata: WorkspaceFileMetadata(
+                byteCount: document.sourceBytes.count,
+                creationDate: nil,
+                modificationDate: nil
+            ),
+            graphCounts: WorkspaceGraphCounts(
+                incoming: 0,
+                outgoing: 0,
+                broken: 0,
+                ambiguous: 0
+            ),
+            metadata: metadata
+        ))
 }

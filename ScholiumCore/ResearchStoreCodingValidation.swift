@@ -39,7 +39,8 @@ enum ResearchStoreCodingValidation {
         )
         let allowed = Set(allowed)
         if let unknown = container.allKeys.map(\.stringValue)
-            .first(where: { !allowed.contains($0) }) {
+            .first(where: { !allowed.contains($0) })
+        {
             throw onUnknownField(unknown)
         }
     }

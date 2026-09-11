@@ -41,7 +41,9 @@ extension WorkspaceStore {
     func displayAgentNote(windowID: UUID, target: AgentNoteDisplayTarget, request: ScholiumMCPBridgeRequest) async throws {
         guard let window = noteDisplayWindows[windowID] else { throw Self.displayUnavailable() }
         func admitted() -> Bool {
-            guard noteDisplayWindows[windowID]?.registrationID == window.registrationID, let current = noteDisplayWindows[windowID]?.state(), current.triptychID == target.triptychID, current.canDisplay else { return false }
+            guard noteDisplayWindows[windowID]?.registrationID == window.registrationID, let current = noteDisplayWindows[windowID]?.state(),
+                current.triptychID == target.triptychID, current.canDisplay
+            else { return false }
             if request.conversationToken != nil { return chatRegistry.admitsDisplay(request, windowID: windowID) }
             return true
         }
@@ -50,7 +52,8 @@ extension WorkspaceStore {
     }
 
     static func displayUnavailable() -> ScholiumMCPFailure {
-        .init(code: .workspaceNotReady, message: "The originating window or conversation is not available for display.",
+        .init(
+            code: .workspaceNotReady, message: "The originating window or conversation is not available for display.",
             recovery: "Select the intended window and conversation, then request display again. No window is foregrounded automatically.")
     }
 }

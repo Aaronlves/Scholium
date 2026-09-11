@@ -1,10 +1,11 @@
-import ScholiumContracts
 import Combine
 import Foundation
 import OSLog
 import ScholiumApplication
+import ScholiumContracts
+
 #if canImport(AppKit)
-import AppKit
+    import AppKit
 #endif
 
 @MainActor
@@ -83,7 +84,8 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
     private var chatRegistryStorage: AgentChatRegistry?
     var chatRegistry: AgentChatRegistry {
         if let current = chatRegistryStorage { return current }
-        let registry = AgentChatRegistry(root: applicationSupportURL.appendingPathComponent("Chat"), zotero: applicationRuntime.zotero,
+        let registry = AgentChatRegistry(
+            root: applicationSupportURL.appendingPathComponent("Chat"), zotero: applicationRuntime.zotero,
             displayWindow: { [weak self] triptych, conversation in self?.chatDisplayWindow(triptychID: triptych, conversationID: conversation) },
             notificationSink: { route, isCurrent in
                 SystemNotificationService.shared.receive(route, isCurrent: isCurrent)
@@ -93,10 +95,13 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
                     throw AgentCollaborationError.invalidRequest("Scholium is unavailable.")
                 }
                 return try await router.previewChatUpdate(request)
-            }) { [weak self] request in
+            }
+        ) { [weak self] request in
             guard let router = self?.requestRouter else {
-                return try! ScholiumMCPBridgeResponse(requestID: request.requestID, error: .init(
-                    code: .appUnavailable, message: "Scholium is unavailable.", recovery: "Reconnect Chat."))
+                return try! ScholiumMCPBridgeResponse(
+                    requestID: request.requestID,
+                    error: .init(
+                        code: .appUnavailable, message: "Scholium is unavailable.", recovery: "Reconnect Chat."))
             }
             return await router.handleChatOperation(request)
         }
@@ -134,10 +139,12 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
         guard registryHealth.isHealthy else {
             throw WorkspaceRegistryError.registryRecoveryRequired(registryHealth)
         }
-        let runtime = WorkspaceRuntime(configuration: .live(.init(
-            applicationSupportURL: applicationSupportURL,
-            workspaceRegistryStorageURL: workspaceURL
-        )))
+        let runtime = WorkspaceRuntime(
+            configuration: .live(
+                .init(
+                    applicationSupportURL: applicationSupportURL,
+                    workspaceRegistryStorageURL: workspaceURL
+                )))
         applicationRuntime = runtime
         cssSnippetStore = CSSSnippetStore(operations: applicationRuntime.styles)
         zoteroBridge = ZoteroBridge(operations: applicationRuntime.zotero)
@@ -163,8 +170,10 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
                 didConfirmChange: { SystemNotificationService.shared.receive($0) },
                 chatHandler: { [weak self] request in
                     guard let self else {
-                        return try! ScholiumMCPBridgeResponse(requestID: request.requestID, error: .init(
-                            code: .appUnavailable, message: "Scholium is unavailable.", recovery: "Reconnect Chat."))
+                        return try! ScholiumMCPBridgeResponse(
+                            requestID: request.requestID,
+                            error: .init(
+                                code: .appUnavailable, message: "Scholium is unavailable.", recovery: "Reconnect Chat."))
                     }
                     return await self.chatRegistry.handle(request)
                 }
@@ -234,7 +243,8 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
         noteDisplayWindows.removeAll()
         await chatRegistry.shutdown()
         if let appBridge,
-           !(await appBridge.stopAndWait()) {
+            !(await appBridge.stopAndWait())
+        {
             Self.publicationLogger.fault(
                 "Application runtime shutdown was deferred because the App bridge handler did not stop."
             )
@@ -260,7 +270,7 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
 
     func revealInFinder(_ url: URL) {
         #if canImport(AppKit)
-        NSWorkspace.shared.activateFileViewerSelecting([url])
+            NSWorkspace.shared.activateFileViewerSelecting([url])
         #endif
     }
 
@@ -274,9 +284,9 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
             destination = url
         }
         #if canImport(AppKit)
-        return NSWorkspace.shared.open(destination)
+            return NSWorkspace.shared.open(destination)
         #else
-        return false
+            return false
         #endif
     }
 
@@ -443,10 +453,11 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
         id: UUID,
         openingVault: WorkspaceVaultSlot? = nil
     ) async throws -> WindowWorkspaceCapabilities {
-        capabilities(from: try await workspaceHandle(
-            id: id,
-            openingVault: openingVault
-        ))
+        capabilities(
+            from: try await workspaceHandle(
+                id: id,
+                openingVault: openingVault
+            ))
     }
 
     private func configureTriptych(
@@ -458,12 +469,14 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
         triptychName: String? = nil,
         openingVault: WorkspaceVaultSlot? = nil
     ) async throws -> WorkspaceHandle {
-        let selectedPaths = Set([
-            paperAnalysisURL,
-            topicKnowledgeURL,
-            outputURL,
-        ].map { $0.resolvingSymlinksInPath().standardizedFileURL.path })
-        let previous = triptychID.flatMap { handles[$0]?.runtimeIdentity }
+        let selectedPaths = Set(
+            [
+                paperAnalysisURL,
+                topicKnowledgeURL,
+                outputURL,
+            ].map { $0.resolvingSymlinksInPath().standardizedFileURL.path })
+        let previous =
+            triptychID.flatMap { handles[$0]?.runtimeIdentity }
             ?? handles.values.first(where: { handle in
                 Set(handle.assignment.vaults.values.map(\.canonicalPath)) == selectedPaths
             })?.runtimeIdentity
@@ -489,15 +502,16 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
         triptychName: String? = nil,
         openingVault: WorkspaceVaultSlot? = nil
     ) async throws -> WindowWorkspaceCapabilities {
-        capabilities(from: try await configureTriptych(
-            paperAnalysisURL: paperAnalysisURL,
-            topicKnowledgeURL: topicKnowledgeURL,
-            outputURL: outputURL,
-            portableContainerURL: portableContainerURL,
-            triptychID: triptychID,
-            triptychName: triptychName,
-            openingVault: openingVault
-        ))
+        capabilities(
+            from: try await configureTriptych(
+                paperAnalysisURL: paperAnalysisURL,
+                topicKnowledgeURL: topicKnowledgeURL,
+                outputURL: outputURL,
+                portableContainerURL: portableContainerURL,
+                triptychID: triptychID,
+                triptychName: triptychName,
+                openingVault: openingVault
+            ))
     }
 
     func portableContainerURL(forWorksURL worksURL: URL) async -> URL? {
@@ -525,9 +539,11 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
     func settingsSnapshot(preferredTriptychID: UUID?) async throws -> WorkspaceSettingsSnapshot {
         let vaults = try await registeredVaults()
         let triptychs = try await registeredTriptychs()
-        guard let assignment = preferredTriptychID.flatMap({ preferred in
-            triptychs.first { $0.id == preferred }
-        }) ?? triptychs.first else {
+        guard
+            let assignment = preferredTriptychID.flatMap({ preferred in
+                triptychs.first { $0.id == preferred }
+            }) ?? triptychs.first
+        else {
             return WorkspaceSettingsSnapshot(
                 registeredVaults: vaults,
                 registeredTriptychs: triptychs
@@ -686,8 +702,10 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
     func snapshot(
         for runtimeIdentity: TriptychRuntimeIdentity
     ) -> WorkspaceSnapshot? {
-        guard workspaceActivations[runtimeIdentity.triptychID]?.runtimeIdentity
-                == runtimeIdentity else { return nil }
+        guard
+            workspaceActivations[runtimeIdentity.triptychID]?.runtimeIdentity
+                == runtimeIdentity
+        else { return nil }
         return workspaceSnapshots[runtimeIdentity.triptychID]
     }
 
@@ -745,8 +763,9 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
             )
         }
         if let existing = handles[handle.id],
-           existing.runtimeIdentity == handle.runtimeIdentity,
-           previousIdentity == nil || previousIdentity?.triptychID == handle.id {
+            existing.runtimeIdentity == handle.runtimeIdentity,
+            previousIdentity == nil || previousIdentity?.triptychID == handle.id
+        {
             return
         }
 
@@ -794,12 +813,14 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
         // the same successor. Recheck after both suspension points so only one
         // explicitly phased installation is committed and retained.
         if let existing = handles[handle.id],
-           existing.runtimeIdentity == handle.runtimeIdentity,
-           previousIdentity == nil || previousIdentity?.triptychID == handle.id {
+            existing.runtimeIdentity == handle.runtimeIdentity,
+            previousIdentity == nil || previousIdentity?.triptychID == handle.id
+        {
             return
         }
         if let previousIdentity,
-           previousIdentity.triptychID != handle.id {
+            previousIdentity.triptychID != handle.id
+        {
             eventTasks[previousIdentity.triptychID]?.cancel()
             eventTasks[previousIdentity.triptychID] = nil
             handles[previousIdentity.triptychID] = nil
@@ -812,10 +833,11 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
         handles[handle.id] = handle
         workspaceSnapshots[handle.id] = snapshot
         eventGates[handle.id] = WorkspaceEventGenerationGate()
-        workspaceEvents[handle.id] = .snapshot(WorkspaceSnapshotEvent(
-            generation: 0,
-            snapshot: snapshot
-        ))
+        workspaceEvents[handle.id] = .snapshot(
+            WorkspaceSnapshotEvent(
+                generation: 0,
+                snapshot: snapshot
+            ))
         let activationKind: WorkspaceActivationKind
         if let previousIdentity {
             activationKind = .replacement(previous: previousIdentity)
@@ -832,7 +854,8 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
             for await event in stream {
                 guard !Task.isCancelled, let self else { return }
                 if case .runtimeReloaded(let reload) = event,
-                   reload.runtimeIdentity != handle.runtimeIdentity {
+                    reload.runtimeIdentity != handle.runtimeIdentity
+                {
                     await self.adoptRuntimeReplacement(
                         reload,
                         previousIdentity: handle.runtimeIdentity
@@ -901,7 +924,8 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
         activationID: UUID
     ) {
         guard let handle = handles[triptychID],
-              handle.runtimeIdentity.activationID == activationID else { return }
+            handle.runtimeIdentity.activationID == activationID
+        else { return }
         var gate = eventGates[triptychID] ?? WorkspaceEventGenerationGate()
         guard gate.accept(event) else { return }
         let publicationStart = ContinuousClock().now

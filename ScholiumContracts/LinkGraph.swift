@@ -31,7 +31,8 @@ public struct LinkCatalogNote: Codable, Hashable, Sendable {
         let semantic = semantic ?? MarkdownSemanticDocument(parsing: document)
         id = VaultQualifiedNoteID(vaultID: vaultID, relativePath: document.relativePath)
         title = ResearchNoteTitleResolver.resolve(document: document)
-        aliases = profile == .topicMarkdown
+        aliases =
+            profile == .topicMarkdown
             ? metadata?.record.fields["aliases"]?.canonicalStringList ?? []
             : []
         headings = semantic.headings
@@ -39,16 +40,19 @@ public struct LinkCatalogNote: Codable, Hashable, Sendable {
     }
 
     private static func blockAnchors(in document: NoteDocument, blocks: [MarkdownBlock]) -> [String: SourceSpan] {
-        guard let regex = try? NSRegularExpression(
-            pattern: #"(?:^|\s)\^([A-Za-z0-9][A-Za-z0-9_-]*)\s*$"#,
-            options: [.anchorsMatchLines]
-        ) else { return [:] }
+        guard
+            let regex = try? NSRegularExpression(
+                pattern: #"(?:^|\s)\^([A-Za-z0-9][A-Za-z0-9_-]*)\s*$"#,
+                options: [.anchorsMatchLines]
+            )
+        else { return [:] }
         let body = document.body as NSString
         var anchors: [String: SourceSpan] = [:]
         for match in regex.matches(in: document.body, range: NSRange(location: 0, length: body.length)) where match.numberOfRanges > 1 {
             let identifier = body.substring(with: match.range(at: 1))
             let lineRange = (body as String).lineRange(containingUTF16Offset: match.range.location)
-            let fullFileLine = document.rawContent.prefixUTF16Length(beforeBodyUTF8Offset: document.bodyByteRange.lowerBound)
+            let fullFileLine =
+                document.rawContent.prefixUTF16Length(beforeBodyUTF8Offset: document.bodyByteRange.lowerBound)
                 .map { offset in
                     (document.rawContent as NSString).substring(to: offset + lineRange.location)
                         .reduce(into: 1) { if $1 == "\n" { $0 += 1 } }
@@ -63,7 +67,8 @@ public struct LinkCatalogNote: Codable, Hashable, Sendable {
 private extension String {
     func prefixUTF16Length(beforeBodyUTF8Offset byteOffset: Int) -> Int? {
         guard let utf8Index = utf8.index(utf8.startIndex, offsetBy: byteOffset, limitedBy: utf8.endIndex),
-              let index = String.Index(utf8Index, within: self) else { return nil }
+            let index = String.Index(utf8Index, within: self)
+        else { return nil }
         return self[..<index].utf16.count
     }
 
@@ -303,23 +308,25 @@ public enum LinkGraphBuilder {
                     incoming[destination.note, default: []].append(edge)
                 }
                 if case .ambiguous = resolution {
-                    diagnostics.append(LinkGraphDiagnostic(
-                        code: .ambiguous,
-                        source: source,
-                        target: occurrence.target,
-                        message: "The link matches more than one note; Scholium did not choose one.",
-                        span: occurrence.span
-                    ))
+                    diagnostics.append(
+                        LinkGraphDiagnostic(
+                            code: .ambiguous,
+                            source: source,
+                            target: occurrence.target,
+                            message: "The link matches more than one note; Scholium did not choose one.",
+                            span: occurrence.span
+                        ))
                 } else if case .broken(let target) = resolution {
-                    diagnostics.append(LinkGraphDiagnostic(
-                        code: .broken,
-                        source: source,
-                        target: target,
-                        message: resolutionScope == .workspace
-                            ? "The link target does not exist in this Triptych."
-                            : "The link target does not exist in this vault.",
-                        span: occurrence.span
-                    ))
+                    diagnostics.append(
+                        LinkGraphDiagnostic(
+                            code: .broken,
+                            source: source,
+                            target: target,
+                            message: resolutionScope == .workspace
+                                ? "The link target does not exist in this Triptych."
+                                : "The link target does not exist in this vault.",
+                            span: occurrence.span
+                        ))
                 }
             }
             outgoing[source] = edges
@@ -504,13 +511,18 @@ public enum LinkGraphBuilder {
             if let span = note.blockAnchors[key] {
                 return (LinkDestination(note: id, kind: .block, fragment: fragment, span: span), [])
             }
-            return (nil, [LinkGraphDiagnostic(
-                code: .missingBlock,
-                source: source,
-                target: occurrence.target,
-                message: "The target note has no block anchor ^\(key).",
-                span: occurrence.span
-            )])
+            return (
+                nil,
+                [
+                    LinkGraphDiagnostic(
+                        code: .missingBlock,
+                        source: source,
+                        target: occurrence.target,
+                        message: "The target note has no block anchor ^\(key).",
+                        span: occurrence.span
+                    )
+                ]
+            )
         }
 
         let sought = normalizedHeading(fragment)
@@ -519,7 +531,8 @@ public enum LinkGraphBuilder {
             return (LinkDestination(note: id, kind: .heading, fragment: fragment, span: matches[0].span), [])
         }
         let code: LinkGraphDiagnosticCode = matches.isEmpty ? .missingHeading : .ambiguousHeading
-        let message = matches.isEmpty
+        let message =
+            matches.isEmpty
             ? "The target note has no heading named \(fragment)."
             : "The target note has more than one heading named \(fragment)."
         return (nil, [LinkGraphDiagnostic(code: code, source: source, target: occurrence.target, message: message, span: occurrence.span)])

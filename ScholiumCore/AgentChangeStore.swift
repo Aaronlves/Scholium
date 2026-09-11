@@ -171,9 +171,11 @@ public actor AgentChangeStore {
         afterData: Data?,
         move: AgentMoveEvidence? = nil
     ) throws -> AgentChange {
-        guard [beforeData, afterData].compactMap({ $0 }).allSatisfy({
-            $0.count <= ScholiumMCPContract.maximumDocumentUTF8ByteCount
-        }) else {
+        guard
+            [beforeData, afterData].compactMap({ $0 }).allSatisfy({
+                $0.count <= ScholiumMCPContract.maximumDocumentUTF8ByteCount
+            })
+        else {
             throw AgentChangeError.sourceTooLarge
         }
         let payload = Payload(
@@ -217,7 +219,8 @@ public actor AgentChangeStore {
                 return current.change
             }
             guard current.state == .prepared,
-                  current.afterFingerprint == observedAfterFingerprint else {
+                current.afterFingerprint == observedAfterFingerprint
+            else {
                 throw AgentChangeError.mismatchedBinding(id)
             }
             let replacement = Payload(
@@ -311,9 +314,10 @@ public actor AgentChangeStore {
         try locked {
             let payload = try readPayload(id)
             guard payload.operation == .update,
-                  payload.state == .confirmed,
-                  payload.afterFingerprint == expectedAfterFingerprint,
-                  let data = payload.beforeData else {
+                payload.state == .confirmed,
+                payload.afterFingerprint == expectedAfterFingerprint,
+                let data = payload.beforeData
+            else {
                 throw AgentChangeError.undoUnavailable(id)
             }
             return data
@@ -329,9 +333,10 @@ public actor AgentChangeStore {
         try locked {
             let current = try readPayload(id)
             guard current.operation == .update || current.operation == .move || current.operation.isRecordMutation,
-                  current.state == .confirmed,
-                  current.beforeFingerprint == restoredFingerprint,
-                  restoredMoveFingerprints == current.move.map({ Dictionary(uniqueKeysWithValues: $0.effects.map { ($0.noteID, $0.beforeFingerprint) }) }) else {
+                current.state == .confirmed,
+                current.beforeFingerprint == restoredFingerprint,
+                restoredMoveFingerprints == current.move.map({ Dictionary(uniqueKeysWithValues: $0.effects.map { ($0.noteID, $0.beforeFingerprint) }) })
+            else {
                 throw AgentChangeError.undoUnavailable(id)
             }
             let replacement = Payload(
@@ -408,54 +413,57 @@ public actor AgentChangeStore {
             guard let before = payload.beforeData, let after = payload.afterData else { throw AgentChangeError.invalid(payload.id) }
             try AgentRecordChange.validate(operation: payload.operation, noteID: payload.noteID, before: before, after: after)
         }
-        let shapeIsValid: Bool = switch payload.operation {
-        case .create:
-            payload.beforeData == nil && payload.beforeFingerprint == nil
-                && payload.afterData != nil && payload.afterFingerprint != nil
-                && payload.originalRelativePath == nil
-                && payload.finalRelativePath != nil
-        case .update, .metadata, .attachment:
-            payload.beforeData != nil && payload.beforeFingerprint != nil
-                && payload.afterData != nil && payload.afterFingerprint != nil
-                && payload.originalRelativePath != nil
-                && payload.originalRelativePath == payload.finalRelativePath
-        case .move:
-            payload.beforeData != nil && payload.afterData != nil
-                && payload.originalRelativePath != nil && payload.finalRelativePath != nil
-                && payload.originalRelativePath != payload.finalRelativePath && payload.move != nil
-        case .trash:
-            payload.beforeData != nil && payload.beforeFingerprint != nil
-                && payload.afterData == nil && payload.afterFingerprint == nil
-                && payload.originalRelativePath != nil
-                && payload.finalRelativePath == nil
-        }
-        let stateIsValid: Bool = switch payload.state {
-        case .prepared, .outcomeUncertain:
-            payload.confirmedAt == nil && payload.undoneAt == nil
-        case .confirmed:
-            payload.confirmedAt != nil && payload.undoneAt == nil
-        case .undone:
-            (payload.operation == .update || payload.operation == .move || payload.operation.isRecordMutation) && payload.confirmedAt != nil
-                && payload.undoneAt != nil
-        }
+        let shapeIsValid: Bool =
+            switch payload.operation {
+            case .create:
+                payload.beforeData == nil && payload.beforeFingerprint == nil
+                    && payload.afterData != nil && payload.afterFingerprint != nil
+                    && payload.originalRelativePath == nil
+                    && payload.finalRelativePath != nil
+            case .update, .metadata, .attachment:
+                payload.beforeData != nil && payload.beforeFingerprint != nil
+                    && payload.afterData != nil && payload.afterFingerprint != nil
+                    && payload.originalRelativePath != nil
+                    && payload.originalRelativePath == payload.finalRelativePath
+            case .move:
+                payload.beforeData != nil && payload.afterData != nil
+                    && payload.originalRelativePath != nil && payload.finalRelativePath != nil
+                    && payload.originalRelativePath != payload.finalRelativePath && payload.move != nil
+            case .trash:
+                payload.beforeData != nil && payload.beforeFingerprint != nil
+                    && payload.afterData == nil && payload.afterFingerprint == nil
+                    && payload.originalRelativePath != nil
+                    && payload.finalRelativePath == nil
+            }
+        let stateIsValid: Bool =
+            switch payload.state {
+            case .prepared, .outcomeUncertain:
+                payload.confirmedAt == nil && payload.undoneAt == nil
+            case .confirmed:
+                payload.confirmedAt != nil && payload.undoneAt == nil
+            case .undone:
+                (payload.operation == .update || payload.operation == .move || payload.operation.isRecordMutation) && payload.confirmedAt != nil
+                    && payload.undoneAt != nil
+            }
         guard payload.schemaVersion == Payload.currentSchemaVersion,
-              payload.triptychID == triptychID,
-              shapeIsValid,
-              stateIsValid,
-              (payload.operation == .move) == (payload.move != nil),
-              [payload.beforeData, payload.afterData].compactMap({ $0 }).allSatisfy({
-                  $0.count <= ScholiumMCPContract.maximumDocumentUTF8ByteCount
-              }),
-              payload.beforeData.map(DocumentFingerprint.init(data:))
+            payload.triptychID == triptychID,
+            shapeIsValid,
+            stateIsValid,
+            (payload.operation == .move) == (payload.move != nil),
+            [payload.beforeData, payload.afterData].compactMap({ $0 }).allSatisfy({
+                $0.count <= ScholiumMCPContract.maximumDocumentUTF8ByteCount
+            }),
+            payload.beforeData.map(DocumentFingerprint.init(data:))
                 == payload.beforeFingerprint,
-              payload.afterData.map(DocumentFingerprint.init(data:))
+            payload.afterData.map(DocumentFingerprint.init(data:))
                 == payload.afterFingerprint,
-              payload.beforeFingerprint.map(
-                  ResearchStoreCodingValidation.isValidFingerprint
-              ) ?? true,
-              payload.afterFingerprint.map(
-                  ResearchStoreCodingValidation.isValidFingerprint
-              ) ?? true else {
+            payload.beforeFingerprint.map(
+                ResearchStoreCodingValidation.isValidFingerprint
+            ) ?? true,
+            payload.afterFingerprint.map(
+                ResearchStoreCodingValidation.isValidFingerprint
+            ) ?? true
+        else {
             throw AgentChangeError.invalid(payload.id)
         }
     }
@@ -464,25 +472,34 @@ public actor AgentChangeStore {
         guard let move = payload.move else { return }
         let primary = move.primary
         let effects = move.effects
-        let totalBytes = (payload.beforeData?.count ?? 0) + (payload.afterData?.count ?? 0)
+        let totalBytes =
+            (payload.beforeData?.count ?? 0) + (payload.afterData?.count ?? 0)
             + move.linkedSources.reduce(0) { $0 + $1.beforeData.count + $1.afterData.count }
         guard effects.count <= AgentMoveEvidence.maximumAffectedNotes, totalBytes <= AgentMoveEvidence.maximumSourceByteCount,
-              primary.noteID == payload.noteID, primary.role == payload.role,
-              primary.source.relativePath == payload.originalRelativePath, primary.destination.relativePath == payload.finalRelativePath,
-              primary.beforeFingerprint == payload.beforeFingerprint, primary.afterFingerprint == payload.afterFingerprint,
-              primary.source.vaultID == primary.destination.vaultID,
-              (primary.rewrittenOccurrences == 0) == (primary.beforeFingerprint == primary.afterFingerprint),
-              Set(effects.map(\.noteID)).count == effects.count, Set(effects.map(\.source)).count == effects.count,
-              Set(effects.map(\.destination)).count == effects.count,
-              [payload.beforeData, payload.afterData].allSatisfy({ $0.flatMap(NoteDocument.decodeUTF8PreservingBOM) != nil }),
-              effects.allSatisfy({ $0.role != .other && $0.rewrittenOccurrences >= 0
-                  && (try? MarkdownRelativePath($0.source.relativePath)) != nil && (try? MarkdownRelativePath($0.destination.relativePath)) != nil
-                  && ResearchStoreCodingValidation.isValidFingerprint($0.beforeFingerprint) && ResearchStoreCodingValidation.isValidFingerprint($0.afterFingerprint) }),
-              move.linkedSources.allSatisfy({ $0.effect.source == $0.effect.destination && $0.effect.rewrittenOccurrences > 0
-                  && $0.effect.beforeFingerprint != $0.effect.afterFingerprint
-                  && $0.beforeData.count <= ScholiumMCPContract.maximumDocumentUTF8ByteCount && $0.afterData.count <= ScholiumMCPContract.maximumDocumentUTF8ByteCount
-                  && DocumentFingerprint(data: $0.beforeData) == $0.effect.beforeFingerprint && DocumentFingerprint(data: $0.afterData) == $0.effect.afterFingerprint
-                  && NoteDocument.decodeUTF8PreservingBOM($0.beforeData) != nil && NoteDocument.decodeUTF8PreservingBOM($0.afterData) != nil }) else {
+            primary.noteID == payload.noteID, primary.role == payload.role,
+            primary.source.relativePath == payload.originalRelativePath, primary.destination.relativePath == payload.finalRelativePath,
+            primary.beforeFingerprint == payload.beforeFingerprint, primary.afterFingerprint == payload.afterFingerprint,
+            primary.source.vaultID == primary.destination.vaultID,
+            (primary.rewrittenOccurrences == 0) == (primary.beforeFingerprint == primary.afterFingerprint),
+            Set(effects.map(\.noteID)).count == effects.count, Set(effects.map(\.source)).count == effects.count,
+            Set(effects.map(\.destination)).count == effects.count,
+            [payload.beforeData, payload.afterData].allSatisfy({ $0.flatMap(NoteDocument.decodeUTF8PreservingBOM) != nil }),
+            effects.allSatisfy({
+                $0.role != .other && $0.rewrittenOccurrences >= 0
+                    && (try? MarkdownRelativePath($0.source.relativePath)) != nil && (try? MarkdownRelativePath($0.destination.relativePath)) != nil
+                    && ResearchStoreCodingValidation.isValidFingerprint($0.beforeFingerprint)
+                    && ResearchStoreCodingValidation.isValidFingerprint($0.afterFingerprint)
+            }),
+            move.linkedSources.allSatisfy({
+                $0.effect.source == $0.effect.destination && $0.effect.rewrittenOccurrences > 0
+                    && $0.effect.beforeFingerprint != $0.effect.afterFingerprint
+                    && $0.beforeData.count <= ScholiumMCPContract.maximumDocumentUTF8ByteCount
+                    && $0.afterData.count <= ScholiumMCPContract.maximumDocumentUTF8ByteCount
+                    && DocumentFingerprint(data: $0.beforeData) == $0.effect.beforeFingerprint
+                    && DocumentFingerprint(data: $0.afterData) == $0.effect.afterFingerprint
+                    && NoteDocument.decodeUTF8PreservingBOM($0.beforeData) != nil && NoteDocument.decodeUTF8PreservingBOM($0.afterData) != nil
+            })
+        else {
             throw AgentChangeError.invalid(payload.id)
         }
     }

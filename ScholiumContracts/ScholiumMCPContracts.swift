@@ -158,19 +158,26 @@ public struct ScholiumMCPRecoveryDetails: Codable, Hashable, Sendable {
     public let files: [TriptychMutationRecoveryFile]
     public let total: Int
     public init(record: TriptychMutationRecoveryRecord) {
-        recoveryID = record.id; files = Array(record.files.prefix(100)); total = record.files.count
+        recoveryID = record.id
+        files = Array(record.files.prefix(100))
+        total = record.files.count
     }
     public var jsonValue: MCPJSONValue {
         func fingerprint(_ value: DocumentFingerprint?) -> MCPJSONValue {
             value.map { .object(["sha256": .string($0.sha256), "byte_count": .integer($0.byteCount)]) } ?? .null
         }
-        return .object(["recovery_id": .string(recoveryID.uuidString.lowercased()), "total": .integer(total), "has_more": .bool(files.count < total),
-            "files": .array(files.map { file in .object([
-                "vault_id": file.vaultID.map { .string($0.uuidString.lowercased()) } ?? .null, "path": .string(file.path),
-                "alternate_path": file.alternatePath.map(MCPJSONValue.string) ?? .null, "role": .string(file.role.rawValue),
-                "before_fingerprint": fingerprint(file.beforeRevision), "intended_fingerprint": fingerprint(file.intendedRevision),
-                "observed_fingerprint": fingerprint(file.observedRevision), "state": .string(file.state.rawValue), "detail": .string(file.detail),
-            ]) })])
+        return .object([
+            "recovery_id": .string(recoveryID.uuidString.lowercased()), "total": .integer(total), "has_more": .bool(files.count < total),
+            "files": .array(
+                files.map { file in
+                    .object([
+                        "vault_id": file.vaultID.map { .string($0.uuidString.lowercased()) } ?? .null, "path": .string(file.path),
+                        "alternate_path": file.alternatePath.map(MCPJSONValue.string) ?? .null, "role": .string(file.role.rawValue),
+                        "before_fingerprint": fingerprint(file.beforeRevision), "intended_fingerprint": fingerprint(file.intendedRevision),
+                        "observed_fingerprint": fingerprint(file.observedRevision), "state": .string(file.state.rawValue), "detail": .string(file.detail),
+                    ])
+                }),
+        ])
     }
 }
 
@@ -241,10 +248,11 @@ public struct ScholiumMCPBridgeRequest: Codable, Hashable, Sendable {
         schemaVersion = version
         requestID = try container.decode(UUID.self, forKey: .requestID)
         tool = try container.decode(ScholiumMCPToolName.self, forKey: .tool)
-        arguments = try container.decodeIfPresent(
-            [String: MCPJSONValue].self,
-            forKey: .arguments
-        ) ?? [:]
+        arguments =
+            try container.decodeIfPresent(
+                [String: MCPJSONValue].self,
+                forKey: .arguments
+            ) ?? [:]
         conversationToken = try container.decodeIfPresent(UUID.self, forKey: .conversationToken)
         runtimeContext = try container.decodeIfPresent(ScholiumMCPRuntimeContext.self, forKey: .runtimeContext)
     }

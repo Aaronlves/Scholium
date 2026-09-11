@@ -1,6 +1,6 @@
-import ScholiumContracts
 import Combine
 import Foundation
+import ScholiumContracts
 
 enum ResearchInspectorMode: String, CaseIterable, Identifiable, Sendable {
     case about
@@ -255,22 +255,27 @@ final class ResearchController: ObservableObject {
         _ reference: VaultNoteReference,
         sourceLine: Int? = nil
     ) {
-        intentHandler(.openDocument(WindowDocumentRoute(
-            reference: reference,
-            sourceLocator: sourceLine.map {
-                SourceLocator(
-                    file: reference.relativePath,
-                    line: $0,
-                    column: 1
-                )
-            }
-        )))
+        intentHandler(
+            .openDocument(
+                WindowDocumentRoute(
+                    reference: reference,
+                    sourceLocator: sourceLine.map {
+                        SourceLocator(
+                            file: reference.relativePath,
+                            line: $0,
+                            column: 1
+                        )
+                    }
+                )))
     }
 
     func requestEditAtSource(_ reference: VaultNoteReference, line: Int) {
-        intentHandler(.revealSourceLocator(vaultID: reference.vaultID, locator: SourceLocator(
-            file: reference.relativePath, line: line, column: 1
-        )))
+        intentHandler(
+            .revealSourceLocator(
+                vaultID: reference.vaultID,
+                locator: SourceLocator(
+                    file: reference.relativePath, line: line, column: 1
+                )))
     }
 
     func reset() {

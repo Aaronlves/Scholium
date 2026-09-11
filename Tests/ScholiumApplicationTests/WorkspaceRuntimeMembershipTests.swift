@@ -1,6 +1,6 @@
-import ScholiumContracts
 import Foundation
 import ScholiumApplication
+import ScholiumContracts
 import Testing
 
 @Suite("Workspace runtime membership and presentation persistence")
@@ -23,17 +23,19 @@ struct WorkspaceRuntimeMembershipTests {
         let reopened = fixture.liveRuntime()
         #expect(try await reopened.savedSearches() == fixture.savedSearches)
         #expect(try await reopened.windowSession(id: fixture.session.id) == fixture.session)
-        #expect(FileManager.default.fileExists(
-            atPath: fixture.registryStorageURL
-                .appendingPathComponent("saved-searches.json")
-                .path
-        ))
-        #expect(FileManager.default.fileExists(
-            atPath: fixture.applicationSupportURL
-                .appendingPathComponent("Window Sessions", isDirectory: true)
-                .appendingPathComponent(fixture.session.id.uuidString + ".json")
-                .path
-        ))
+        #expect(
+            FileManager.default.fileExists(
+                atPath: fixture.registryStorageURL
+                    .appendingPathComponent("saved-searches.json")
+                    .path
+            ))
+        #expect(
+            FileManager.default.fileExists(
+                atPath: fixture.applicationSupportURL
+                    .appendingPathComponent("Window Sessions", isDirectory: true)
+                    .appendingPathComponent(fixture.session.id.uuidString + ".json")
+                    .path
+            ))
         await reopened.shutdown()
     }
 
@@ -111,10 +113,12 @@ struct WorkspaceRuntimeMembershipTests {
                 withIntermediateDirectories: true
             )
         }
-        let seedingRuntime = WorkspaceRuntime(configuration: .live(.init(
-            applicationSupportURL: support,
-            workspaceRegistryStorageURL: registryStorage
-        )))
+        let seedingRuntime = WorkspaceRuntime(
+            configuration: .live(
+                .init(
+                    applicationSupportURL: support,
+                    workspaceRegistryStorageURL: registryStorage
+                )))
         let assignment = try await seedingRuntime.configureTriptych(
             paperAnalysisURL: analyses,
             topicKnowledgeURL: topics,
@@ -127,10 +131,12 @@ struct WorkspaceRuntimeMembershipTests {
         let manifestURL = portable.appendingPathComponent("manifest.json")
         try incompatibleManifest.write(to: manifestURL)
         try FileManager.default.removeItem(at: analyses)
-        let runtime = WorkspaceRuntime(configuration: .live(.init(
-            applicationSupportURL: support,
-            workspaceRegistryStorageURL: registryStorage
-        )))
+        let runtime = WorkspaceRuntime(
+            configuration: .live(
+                .init(
+                    applicationSupportURL: support,
+                    workspaceRegistryStorageURL: registryStorage
+                )))
 
         try await runtime.removeLocalTriptychRegistration(id: assignment.id)
 
@@ -204,8 +210,9 @@ struct WorkspaceRuntimeMembershipTests {
             worksURL: fixture.worksURL,
             triptychID: fixture.assignment.id
         )
-        #expect(try Data(contentsOf: preserved.appendingPathComponent("settings.json"))
-            == oldSettings)
+        #expect(
+            try Data(contentsOf: preserved.appendingPathComponent("settings.json"))
+                == oldSettings)
         let opened = try await runtime.configureTriptych(
             paperAnalysisURL: fixture.analysesURL,
             topicKnowledgeURL: fixture.topicsURL,
@@ -299,9 +306,11 @@ struct WorkspaceRuntimeMembershipTests {
         )
         #expect(try Data(contentsOf: preserved) == invalidBytes)
         #expect(try Data(contentsOf: settingsURL) == settingsBytes)
-        #expect(try Data(contentsOf: fixture.analysesURL.appendingPathComponent(
-            id.relativePath
-        )) == exactSource)
+        #expect(
+            try Data(
+                contentsOf: fixture.analysesURL.appendingPathComponent(
+                    id.relativePath
+                )) == exactSource)
 
         let reopened = try await runtime.configureTriptych(
             paperAnalysisURL: fixture.analysesURL,
@@ -422,10 +431,12 @@ private struct RuntimeMembershipFixture: Sendable {
             )
         }
 
-        let runtime = WorkspaceRuntime(configuration: .live(.init(
-            applicationSupportURL: support,
-            workspaceRegistryStorageURL: registryStorage
-        )))
+        let runtime = WorkspaceRuntime(
+            configuration: .live(
+                .init(
+                    applicationSupportURL: support,
+                    workspaceRegistryStorageURL: registryStorage
+                )))
         let handle = try await runtime.configureTriptych(
             paperAnalysisURL: analyses,
             topicKnowledgeURL: topics,
@@ -461,10 +472,12 @@ private struct RuntimeMembershipFixture: Sendable {
                 WindowWorkspaceSessionSnapshot(
                     workspace: .paperAnalysis,
                     vaultID: analysesIdentity.id,
-                    openDocuments: [VaultQualifiedNoteID(
-                        vaultID: analysesIdentity.id,
-                        relativePath: "Agency.md"
-                    )],
+                    openDocuments: [
+                        VaultQualifiedNoteID(
+                            vaultID: analysesIdentity.id,
+                            relativePath: "Agency.md"
+                        )
+                    ],
                     selectedDocument: VaultQualifiedNoteID(
                         vaultID: analysesIdentity.id,
                         relativePath: "Agency.md"
@@ -472,10 +485,10 @@ private struct RuntimeMembershipFixture: Sendable {
                     documentPresentations: [
                         "Agency.md": WindowDocumentPresentationSnapshot(
                             scrollFraction: 0.25
-                        ),
+                        )
                     ],
                     inspectorMode: "outgoing"
-                ),
+                )
             ],
             inspectorVisible: true,
             searchState: SearchWorkspaceState(query: "reasons", scope: .currentVault),
@@ -495,10 +508,12 @@ private struct RuntimeMembershipFixture: Sendable {
     }
 
     func liveRuntime() -> WorkspaceRuntime {
-        WorkspaceRuntime(configuration: .live(.init(
-            applicationSupportURL: applicationSupportURL,
-            workspaceRegistryStorageURL: registryStorageURL
-        )))
+        WorkspaceRuntime(
+            configuration: .live(
+                .init(
+                    applicationSupportURL: applicationSupportURL,
+                    workspaceRegistryStorageURL: registryStorageURL
+                )))
     }
 
     func addSecondAssignment() async throws -> TriptychAssignment {

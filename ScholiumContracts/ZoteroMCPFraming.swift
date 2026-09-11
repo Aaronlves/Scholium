@@ -35,7 +35,8 @@ public struct ZoteroMCPFrameParser: Sendable {
         let remaining = buffer.trimmingASCIIWhitespace
         if !remaining.isEmpty {
             if String(decoding: remaining.prefix(15), as: UTF8.self)
-                .lowercased().hasPrefix("content-length:") {
+                .lowercased().hasPrefix("content-length:")
+            {
                 throw ZoteroMCPFrameError.invalidHeader
             }
             guard remaining.count <= Self.maximumFrameSize else {
@@ -69,9 +70,10 @@ public struct ZoteroMCPFrameParser: Sendable {
                 $0.lowercased().hasPrefix("content-length:")
             }
             guard let lengthLine,
-                  let separator = lengthLine.firstIndex(of: ":"),
-                  let length = Int(lengthLine[lengthLine.index(after: separator)...].trimmingCharacters(in: .whitespaces)),
-                  (0...Self.maximumFrameSize).contains(length) else {
+                let separator = lengthLine.firstIndex(of: ":"),
+                let length = Int(lengthLine[lengthLine.index(after: separator)...].trimmingCharacters(in: .whitespaces)),
+                (0...Self.maximumFrameSize).contains(length)
+            else {
                 throw ZoteroMCPFrameError.invalidHeader
             }
             let bodyStart = headerBoundary.end

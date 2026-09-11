@@ -113,7 +113,8 @@ final class VaultMutationCoordinator {
                 )
                 try self.hooks.didReach?(.finalCheck)
                 guard rechecked == expected,
-                      recheckedIdentity == originalIdentity else {
+                    recheckedIdentity == originalIdentity
+                else {
                     throw VaultRepositoryError.conflict(
                         expected: DocumentFingerprint(data: expected),
                         current: DocumentFingerprint(data: rechecked)
@@ -223,7 +224,8 @@ final class VaultMutationCoordinator {
                 }
                 var status = stat()
                 guard fstatat(parentFD, name, &status, AT_SYMLINK_NOFOLLOW) == 0,
-                      (status.st_mode & S_IFMT) == S_IFDIR else {
+                    (status.st_mode & S_IFMT) == S_IFDIR
+                else {
                     throw VaultRepositoryError.commitUncertain(
                         "Created folder could not be verified as a directory."
                     )
@@ -283,13 +285,15 @@ final class VaultMutationCoordinator {
                         destination,
                         retainedDescriptor: destinationParent
                     )
-                    guard renameatx_np(
-                        sourceParent,
-                        sourceName,
-                        destinationParent,
-                        destinationName,
-                        UInt32(RENAME_EXCL)
-                    ) == 0 else {
+                    guard
+                        renameatx_np(
+                            sourceParent,
+                            sourceName,
+                            destinationParent,
+                            destinationName,
+                            UInt32(RENAME_EXCL)
+                        ) == 0
+                    else {
                         let code = errno
                         if code == EEXIST {
                             throw VaultRepositoryError.fileAlreadyExists(destination.rawValue)
@@ -349,12 +353,14 @@ final class VaultMutationCoordinator {
                 try self.withTwoParentDescriptors(source: source, destination: destination) {
                     sourceParent, sourceName, destinationParent, destinationName in
                     var sourceStatus = stat()
-                    guard fstatat(
-                        sourceParent,
-                        sourceName,
-                        &sourceStatus,
-                        AT_SYMLINK_NOFOLLOW
-                    ) == 0 else {
+                    guard
+                        fstatat(
+                            sourceParent,
+                            sourceName,
+                            &sourceStatus,
+                            AT_SYMLINK_NOFOLLOW
+                        ) == 0
+                    else {
                         throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
                     }
                     guard (sourceStatus.st_mode & S_IFMT) == S_IFDIR else {
@@ -375,15 +381,17 @@ final class VaultMutationCoordinator {
                     let result: Int32
                     if sourceKey == destinationKey {
                         var destinationStatus = stat()
-                        let destinationExists = fstatat(
-                            destinationParent,
-                            destinationName,
-                            &destinationStatus,
-                            AT_SYMLINK_NOFOLLOW
-                        ) == 0
+                        let destinationExists =
+                            fstatat(
+                                destinationParent,
+                                destinationName,
+                                &destinationStatus,
+                                AT_SYMLINK_NOFOLLOW
+                            ) == 0
                         if destinationExists,
-                           (destinationStatus.st_dev != sourceStatus.st_dev
-                            || destinationStatus.st_ino != sourceStatus.st_ino) {
+                            destinationStatus.st_dev != sourceStatus.st_dev
+                                || destinationStatus.st_ino != sourceStatus.st_ino
+                        {
                             throw VaultRepositoryError.fileAlreadyExists(destination.rawValue)
                         }
                         result = renameat(
@@ -415,15 +423,17 @@ final class VaultMutationCoordinator {
                     }
 
                     var committedStatus = stat()
-                    guard fstatat(
-                        destinationParent,
-                        destinationName,
-                        &committedStatus,
-                        AT_SYMLINK_NOFOLLOW
-                    ) == 0,
-                          (committedStatus.st_mode & S_IFMT) == S_IFDIR,
-                          committedStatus.st_dev == sourceStatus.st_dev,
-                          committedStatus.st_ino == sourceStatus.st_ino else {
+                    guard
+                        fstatat(
+                            destinationParent,
+                            destinationName,
+                            &committedStatus,
+                            AT_SYMLINK_NOFOLLOW
+                        ) == 0,
+                        (committedStatus.st_mode & S_IFMT) == S_IFDIR,
+                        committedStatus.st_dev == sourceStatus.st_dev,
+                        committedStatus.st_ino == sourceStatus.st_ino
+                    else {
                         throw VaultRepositoryError.commitUncertain(
                             "The moved folder could not be verified at its destination."
                         )
@@ -641,11 +651,13 @@ final class VaultMutationCoordinator {
                 try self.hooks.didReach?(.finalCheck)
                 try verifyCurrentParent()
                 try validateOriginal()
-                guard try self.entryIdentity(
-                    name: name,
-                    parentFD: parentFD,
-                    expectedDirectory: expectedDirectory
-                ) == initialIdentity else {
+                guard
+                    try self.entryIdentity(
+                        name: name,
+                        parentFD: parentFD,
+                        expectedDirectory: expectedDirectory
+                    ) == initialIdentity
+                else {
                     throw VaultRepositoryError.commitUncertain(
                         "The exact \(itemDescription.lowercased()) directory entry changed before the system Trash binding."
                     )
@@ -786,8 +798,9 @@ final class VaultMutationCoordinator {
     ) throws -> T {
         let bindingName = SystemTrashBindingPath.directoryName(id: bindingID)
         if createIfMissing,
-           mkdirat(parentFD, bindingName, S_IRWXU) != 0,
-           errno != EEXIST {
+            mkdirat(parentFD, bindingName, S_IRWXU) != 0,
+            errno != EEXIST
+        {
             throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
         }
         let bindingFD = openat(
@@ -807,13 +820,15 @@ final class VaultMutationCoordinator {
         parentFD: Int32,
         bindingFD: Int32
     ) throws {
-        guard renameatx_np(
-            parentFD,
-            name,
-            bindingFD,
-            name,
-            UInt32(RENAME_EXCL)
-        ) == 0 else {
+        guard
+            renameatx_np(
+                parentFD,
+                name,
+                bindingFD,
+                name,
+                UInt32(RENAME_EXCL)
+            ) == 0
+        else {
             let code = errno
             if code == EEXIST {
                 throw VaultRepositoryError.commitUncertain(
@@ -850,13 +865,15 @@ final class VaultMutationCoordinator {
         case .absent:
             break
         }
-        guard renameatx_np(
-            bindingFD,
-            name,
-            parentFD,
-            name,
-            UInt32(RENAME_EXCL)
-        ) == 0 else {
+        guard
+            renameatx_np(
+                bindingFD,
+                name,
+                parentFD,
+                name,
+                UInt32(RENAME_EXCL)
+            ) == 0
+        else {
             if errno == EEXIST { return false }
             throw VaultRepositoryError.commitUncertain(
                 "The exact source remains preserved in its system-Trash binding because restoration failed: \(String(cString: strerror(errno)))."
@@ -891,7 +908,8 @@ final class VaultMutationCoordinator {
             }
             throw SystemTrashMoveError.outcomeUnknown(
                 resultingURL: systemResult,
-                reason: "Foundation failed and the exact source remains preserved in its binding because the original path is occupied: \(error.localizedDescription)"
+                reason:
+                    "Foundation failed and the exact source remains preserved in its binding because the original path is occupied: \(error.localizedDescription)"
             )
         case .absent:
             throw SystemTrashMoveError.outcomeUnknown(
@@ -928,11 +946,13 @@ final class VaultMutationCoordinator {
         bindingFD: Int32
     ) throws {
         let retainedIdentity = try VaultDescriptorAccess.identity(descriptor: bindingFD)
-        guard try entryIdentity(
-            name: name,
-            parentFD: parentFD,
-            expectedDirectory: true
-        ) == retainedIdentity else {
+        guard
+            try entryIdentity(
+                name: name,
+                parentFD: parentFD,
+                expectedDirectory: true
+            ) == retainedIdentity
+        else {
             throw VaultRepositoryError.commitUncertain(
                 "The transaction-owned system-Trash binding directory changed identity before the native move."
             )

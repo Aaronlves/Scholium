@@ -1,5 +1,5 @@
-import ScholiumContracts
 import Foundation
+import ScholiumContracts
 
 /// Records synthetic-fixture performance boundaries only when an explicit
 /// `/tmp` JSONL destination and one supported metric are supplied. Records
@@ -39,17 +39,19 @@ final class PerformanceProbe {
     private let now: () -> UInt64
     private var searchStartNanoseconds: UInt64?
     private var readStartNanoseconds: UInt64?
-    private var editorModeTransition: (
-        documentID: String,
-        mode: MarkdownEditorMode,
-        startNanoseconds: UInt64,
-        bridgeStartedNanoseconds: UInt64?,
-        acknowledgedNanoseconds: UInt64?
-    )?
-    private var editActivation: (
-        documentID: String,
-        startNanoseconds: UInt64
-    )?
+    private var editorModeTransition:
+        (
+            documentID: String,
+            mode: MarkdownEditorMode,
+            startNanoseconds: UInt64,
+            bridgeStartedNanoseconds: UInt64?,
+            acknowledgedNanoseconds: UInt64?
+        )?
+    private var editActivation:
+        (
+            documentID: String,
+            startNanoseconds: UInt64
+        )?
     private var warmLibraryWindowModelInitializationNanoseconds: UInt64?
     private var warmLibraryWorkspaceReadyNanoseconds: UInt64?
     private var startupSafetyReadyNanoseconds: UInt64?
@@ -71,31 +73,33 @@ final class PerformanceProbe {
         now: @escaping () -> UInt64 = { DispatchTime.now().uptimeNanoseconds }
     ) {
         self.now = now
-        let requestedSampleCount = environment["SCHOLIUM_PERFORMANCE_SAMPLE_COUNT"]
+        let requestedSampleCount =
+            environment["SCHOLIUM_PERFORMANCE_SAMPLE_COUNT"]
             .flatMap(Int.init) ?? 1
         guard let rawURL = environment["SCHOLIUM_PERFORMANCE_RESULTS_PATH"],
-              let rawMetric = environment["SCHOLIUM_PERFORMANCE_METRIC"],
-              let metric = Metric(rawValue: rawMetric),
-              let rawRunID = environment["SCHOLIUM_PERFORMANCE_RUN_ID"],
-              Self.isSafeRunID(rawRunID),
-              let bundleID,
-              Self.allowsConfiguration(
-                  environment: environment,
-                  bundleID: bundleID,
-                  arguments: arguments
-              ),
-              let resultURL = Self.safeResultURL(
-                  rawURL,
-                  runID: rawRunID,
-                  bundleID: bundleID,
-                  isolatedHomePath: environment["SCHOLIUM_HOME"]
-              ),
-              let rawSample = environment["SCHOLIUM_PERFORMANCE_SAMPLE"],
-              let sample = Int(rawSample),
-              sample >= 0,
-              requestedSampleCount > 0,
-              requestedSampleCount <= 1_000,
-              sample <= Int.max - requestedSampleCount else {
+            let rawMetric = environment["SCHOLIUM_PERFORMANCE_METRIC"],
+            let metric = Metric(rawValue: rawMetric),
+            let rawRunID = environment["SCHOLIUM_PERFORMANCE_RUN_ID"],
+            Self.isSafeRunID(rawRunID),
+            let bundleID,
+            Self.allowsConfiguration(
+                environment: environment,
+                bundleID: bundleID,
+                arguments: arguments
+            ),
+            let resultURL = Self.safeResultURL(
+                rawURL,
+                runID: rawRunID,
+                bundleID: bundleID,
+                isolatedHomePath: environment["SCHOLIUM_HOME"]
+            ),
+            let rawSample = environment["SCHOLIUM_PERFORMANCE_SAMPLE"],
+            let sample = Int(rawSample),
+            sample >= 0,
+            requestedSampleCount > 0,
+            requestedSampleCount <= 1_000,
+            sample <= Int.max - requestedSampleCount
+        else {
             configuration = nil
             return
         }
@@ -147,31 +151,36 @@ final class PerformanceProbe {
 
     func markWarmLibraryWindowModelInitializationStarted() {
         guard configuration?.metric == .warmLibraryLaunch,
-              warmLibraryWindowModelInitializationNanoseconds == nil else { return }
+            warmLibraryWindowModelInitializationNanoseconds == nil
+        else { return }
         warmLibraryWindowModelInitializationNanoseconds = now()
     }
 
     func markWarmLibraryWorkspaceReady() {
         guard configuration?.metric == .warmLibraryLaunch,
-              warmLibraryWorkspaceReadyNanoseconds == nil else { return }
+            warmLibraryWorkspaceReadyNanoseconds == nil
+        else { return }
         warmLibraryWorkspaceReadyNanoseconds = now()
     }
 
     func markStartupSafetyReady() {
         guard configuration?.metric == .warmLibraryLaunch,
-              startupSafetyReadyNanoseconds == nil else { return }
+            startupSafetyReadyNanoseconds == nil
+        else { return }
         startupSafetyReadyNanoseconds = now()
     }
 
     func markVaultConfigurationReady() {
         guard configuration?.metric == .warmLibraryLaunch,
-              vaultConfigurationReadyNanoseconds == nil else { return }
+            vaultConfigurationReadyNanoseconds == nil
+        else { return }
         vaultConfigurationReadyNanoseconds = now()
     }
 
     func markWarmLibraryProjectionReady() {
         guard configuration?.metric == .warmLibraryLaunch,
-              warmLibraryProjectionNanoseconds == nil else { return }
+            warmLibraryProjectionNanoseconds == nil
+        else { return }
         warmLibraryProjectionNanoseconds = now()
     }
 
@@ -189,17 +198,19 @@ final class PerformanceProbe {
 
     func markSearchResultsReady(query: String, resultCount: Int) {
         guard let configuration,
-              configuration.metric == .indexedSearch,
-              query == configuration.expectedQuery,
-              configuration.expectedCount.map({ $0 == resultCount }) ?? true,
-              let start = searchStartNanoseconds else { return }
+            configuration.metric == .indexedSearch,
+            query == configuration.expectedQuery,
+            configuration.expectedCount.map({ $0 == resultCount }) ?? true,
+            let start = searchStartNanoseconds
+        else { return }
         record(startNanoseconds: start, observedCount: resultCount)
     }
 
     func beginReadActivation(documentID: String) {
         guard let configuration,
-              configuration.metric == .warmReadActivation
-                || configuration.metric == .firstReadActivation else { return }
+            configuration.metric == .warmReadActivation
+                || configuration.metric == .firstReadActivation
+        else { return }
         guard documentID == configuration.expectedDocument else {
             readStartNanoseconds = nil
             readIsArmed = true
@@ -212,37 +223,43 @@ final class PerformanceProbe {
 
     func markFirstReadDocumentSelected(documentID: String) {
         guard measuresExpectedFirstRead(documentID),
-              firstReadDocumentSelectedNanoseconds == nil else { return }
+            firstReadDocumentSelectedNanoseconds == nil
+        else { return }
         firstReadDocumentSelectedNanoseconds = now()
     }
 
     func markReadTaskStarted(documentID: String) {
         guard measuresExpectedFirstRead(documentID),
-              firstReadTaskStartedNanoseconds == nil else { return }
+            firstReadTaskStartedNanoseconds == nil
+        else { return }
         firstReadTaskStartedNanoseconds = now()
     }
 
     func markReadHTMLReady(documentID: String) {
         guard measuresExpectedFirstRead(documentID),
-              firstReadHTMLReadyNanoseconds == nil else { return }
+            firstReadHTMLReadyNanoseconds == nil
+        else { return }
         firstReadHTMLReadyNanoseconds = now()
     }
 
     func markReadNavigationStarted(documentID: String) {
         guard measuresExpectedFirstRead(documentID),
-              firstReadNavigationStartedNanoseconds == nil else { return }
+            firstReadNavigationStartedNanoseconds == nil
+        else { return }
         firstReadNavigationStartedNanoseconds = now()
     }
 
     func markReadNavigationFinished(documentID: String) {
         guard measuresExpectedFirstRead(documentID),
-              firstReadNavigationFinishedNanoseconds == nil else { return }
+            firstReadNavigationFinishedNanoseconds == nil
+        else { return }
         firstReadNavigationFinishedNanoseconds = now()
     }
 
     func markReadReady(documentID: String) {
         guard let configuration,
-              documentID == configuration.expectedDocument else { return }
+            documentID == configuration.expectedDocument
+        else { return }
         switch configuration.metric {
         case .warmReadActivation:
             guard let start = readStartNanoseconds else { return }
@@ -270,9 +287,10 @@ final class PerformanceProbe {
         mode: MarkdownEditorMode
     ) {
         guard let configuration,
-              configuration.metric == .editorModeTransition,
-              documentID == configuration.expectedDocument,
-              recordedSampleCount < configuration.sampleCount else {
+            configuration.metric == .editorModeTransition,
+            documentID == configuration.expectedDocument,
+            recordedSampleCount < configuration.sampleCount
+        else {
             editorModeTransition = nil
             return
         }
@@ -287,10 +305,11 @@ final class PerformanceProbe {
 
     func markEditorModeBridgeStarted(mode: MarkdownEditorMode) {
         guard let configuration,
-              configuration.metric == .editorModeTransition,
-              var transition = editorModeTransition,
-              transition.mode == mode,
-              transition.bridgeStartedNanoseconds == nil else { return }
+            configuration.metric == .editorModeTransition,
+            var transition = editorModeTransition,
+            transition.mode == mode,
+            transition.bridgeStartedNanoseconds == nil
+        else { return }
         transition.bridgeStartedNanoseconds = now()
         editorModeTransition = transition
     }
@@ -300,12 +319,13 @@ final class PerformanceProbe {
         mode: MarkdownEditorMode
     ) {
         guard let configuration,
-              configuration.metric == .editorModeTransition,
-              documentID == configuration.expectedDocument,
-              var transition = editorModeTransition,
-              transition.documentID == documentID,
-              transition.mode == mode,
-              transition.acknowledgedNanoseconds == nil else { return }
+            configuration.metric == .editorModeTransition,
+            documentID == configuration.expectedDocument,
+            var transition = editorModeTransition,
+            transition.documentID == documentID,
+            transition.mode == mode,
+            transition.acknowledgedNanoseconds == nil
+        else { return }
         transition.acknowledgedNanoseconds = now()
         editorModeTransition = transition
     }
@@ -318,17 +338,19 @@ final class PerformanceProbe {
         mode: MarkdownEditorMode
     ) {
         guard let configuration,
-              configuration.metric == .editorModeTransition,
-              documentID == configuration.expectedDocument,
-              let transition = editorModeTransition,
-              transition.documentID == documentID,
-              transition.mode == mode,
-              let bridgeStarted = transition.bridgeStartedNanoseconds,
-              let acknowledged = transition.acknowledgedNanoseconds else { return }
+            configuration.metric == .editorModeTransition,
+            documentID == configuration.expectedDocument,
+            let transition = editorModeTransition,
+            transition.documentID == documentID,
+            transition.mode == mode,
+            let bridgeStarted = transition.bridgeStartedNanoseconds,
+            let acknowledged = transition.acknowledgedNanoseconds
+        else { return }
         let completed = now()
         guard bridgeStarted >= transition.startNanoseconds,
-              acknowledged >= bridgeStarted,
-              completed >= acknowledged else { return }
+            acknowledged >= bridgeStarted,
+            completed >= acknowledged
+        else { return }
         editorModeTransition = nil
         record(
             startNanoseconds: transition.startNanoseconds,
@@ -355,12 +377,13 @@ final class PerformanceProbe {
         durationMilliseconds: Double
     ) {
         guard let configuration,
-              configuration.metric == .editorKeyToPaint,
-              documentID == configuration.expectedDocument,
-              durationMilliseconds.isFinite,
-              durationMilliseconds > 0,
-              durationMilliseconds < 600_000,
-              recordedSampleCount < configuration.sampleCount else { return }
+            configuration.metric == .editorKeyToPaint,
+            documentID == configuration.expectedDocument,
+            durationMilliseconds.isFinite,
+            durationMilliseconds > 0,
+            durationMilliseconds < 600_000,
+            recordedSampleCount < configuration.sampleCount
+        else { return }
         let completed = now()
         let object: [String: Any] = [
             "schema": "scholium-performance-v1",
@@ -380,13 +403,14 @@ final class PerformanceProbe {
         durationMilliseconds: Double
     ) {
         guard let configuration,
-              configuration.metric == metric,
-              metric == .editorCachedPreview || metric == .editorVisibleProjection,
-              documentID == configuration.expectedDocument,
-              durationMilliseconds.isFinite,
-              durationMilliseconds > 0,
-              durationMilliseconds < 600_000,
-              recordedSampleCount < configuration.sampleCount else { return }
+            configuration.metric == metric,
+            metric == .editorCachedPreview || metric == .editorVisibleProjection,
+            documentID == configuration.expectedDocument,
+            durationMilliseconds.isFinite,
+            durationMilliseconds > 0,
+            durationMilliseconds < 600_000,
+            recordedSampleCount < configuration.sampleCount
+        else { return }
         let completed = now()
         let object: [String: Any] = [
             "schema": "scholium-performance-v1",
@@ -402,10 +426,11 @@ final class PerformanceProbe {
 
     func beginEditActivation(documentID: String) {
         guard let configuration,
-              (configuration.metric == .warmEditActivation
-                || configuration.metric == .firstEditActivation),
-              documentID == configuration.expectedDocument,
-              recordedSampleCount < configuration.sampleCount else {
+            configuration.metric == .warmEditActivation
+                || configuration.metric == .firstEditActivation,
+            documentID == configuration.expectedDocument,
+            recordedSampleCount < configuration.sampleCount
+        else {
             editActivation = nil
             return
         }
@@ -414,11 +439,13 @@ final class PerformanceProbe {
 
     func markEditorVisible(documentID: String) {
         guard let configuration,
-              documentID == configuration.expectedDocument else { return }
+            documentID == configuration.expectedDocument
+        else { return }
         switch configuration.metric {
         case .warmEditActivation, .firstEditActivation:
             guard let activation = editActivation,
-                  activation.documentID == documentID else { return }
+                activation.documentID == documentID
+            else { return }
             editActivation = nil
             record(startNanoseconds: activation.startNanoseconds, observedCount: nil)
         default:
@@ -428,9 +455,10 @@ final class PerformanceProbe {
 
     func markLibraryReady(noteCount: Int) {
         guard let configuration,
-              configuration.metric == .warmLibraryLaunch,
-              configuration.expectedCount.map({ $0 == noteCount }) ?? true,
-              let start = configuration.externalStartNanoseconds else { return }
+            configuration.metric == .warmLibraryLaunch,
+            configuration.expectedCount.map({ $0 == noteCount }) ?? true,
+            let start = configuration.externalStartNanoseconds
+        else { return }
         let completed = now()
         record(
             startNanoseconds: start,
@@ -449,10 +477,12 @@ final class PerformanceProbe {
     /// container that owns this probe file.
     func markEditorModeReady(documentID: String, mode: MarkdownEditorMode) {
         guard let configuration,
-              configuration.metric == .editorRetainedMemory,
-              documentID == configuration.expectedDocument,
-              recordedSampleCount < configuration.sampleCount else { return }
-        let expectedMode: MarkdownEditorMode = recordedSampleCount.isMultiple(of: 2)
+            configuration.metric == .editorRetainedMemory,
+            documentID == configuration.expectedDocument,
+            recordedSampleCount < configuration.sampleCount
+        else { return }
+        let expectedMode: MarkdownEditorMode =
+            recordedSampleCount.isMultiple(of: 2)
             ? .livePreview
             : .source
         guard mode == expectedMode else { return }
@@ -470,9 +500,10 @@ final class PerformanceProbe {
     /// record. The performance driver owns the isolated destination.
     func recordLargeCJKCorrectness(documentID: String, source: String) {
         guard let configuration,
-              configuration.metric == .editorLargeCJKCorrectness,
-              documentID == configuration.expectedDocument,
-              recordedSampleCount == 0 else { return }
+            configuration.metric == .editorLargeCJKCorrectness,
+            documentID == configuration.expectedDocument,
+            recordedSampleCount == 0
+        else { return }
         let characterCount = source.unicodeScalars.reduce(into: 0) { count, scalar in
             if (0x4E00...0x9FFF).contains(scalar.value) { count += 1 }
         }
@@ -499,7 +530,8 @@ final class PerformanceProbe {
         phaseDurations: [String: Double] = [:]
     ) {
         guard let configuration,
-              recordedSampleCount < configuration.sampleCount else { return }
+            recordedSampleCount < configuration.sampleCount
+        else { return }
         let end = completedNanoseconds ?? now()
         guard end >= startNanoseconds else { return }
         let elapsed = end - startNanoseconds
@@ -535,12 +567,13 @@ final class PerformanceProbe {
         completedNanoseconds: UInt64
     ) -> [String: Double] {
         guard let windowModelInitialization = warmLibraryWindowModelInitializationNanoseconds,
-              let workspaceReady = warmLibraryWorkspaceReadyNanoseconds,
-              let projection = warmLibraryProjectionNanoseconds,
-              windowModelInitialization >= startNanoseconds,
-              workspaceReady >= windowModelInitialization,
-              projection >= workspaceReady,
-              completedNanoseconds >= projection else { return [:] }
+            let workspaceReady = warmLibraryWorkspaceReadyNanoseconds,
+            let projection = warmLibraryProjectionNanoseconds,
+            windowModelInitialization >= startNanoseconds,
+            workspaceReady >= windowModelInitialization,
+            projection >= workspaceReady,
+            completedNanoseconds >= projection
+        else { return [:] }
         var phases = [
             "process_to_window_model_init_duration_ms": milliseconds(
                 windowModelInitialization - startNanoseconds
@@ -556,10 +589,11 @@ final class PerformanceProbe {
             ),
         ]
         if let startupSafetyReady = startupSafetyReadyNanoseconds,
-           let vaultConfigurationReady = vaultConfigurationReadyNanoseconds,
-           startupSafetyReady >= workspaceReady,
-           vaultConfigurationReady >= startupSafetyReady,
-           projection >= vaultConfigurationReady {
+            let vaultConfigurationReady = vaultConfigurationReadyNanoseconds,
+            startupSafetyReady >= workspaceReady,
+            vaultConfigurationReady >= startupSafetyReady,
+            projection >= vaultConfigurationReady
+        {
             phases["workspace_ready_to_startup_safety_ready_duration_ms"] =
                 milliseconds(startupSafetyReady - workspaceReady)
             phases["startup_safety_ready_to_vault_configuration_ready_duration_ms"] =
@@ -575,16 +609,17 @@ final class PerformanceProbe {
         completedNanoseconds: UInt64
     ) -> [String: Double] {
         guard let documentSelected = firstReadDocumentSelectedNanoseconds,
-              let readTaskStarted = firstReadTaskStartedNanoseconds,
-              let htmlReady = firstReadHTMLReadyNanoseconds,
-              let navigationStarted = firstReadNavigationStartedNanoseconds,
-              let navigationFinished = firstReadNavigationFinishedNanoseconds,
-              documentSelected >= startNanoseconds,
-              readTaskStarted >= documentSelected,
-              htmlReady >= readTaskStarted,
-              navigationStarted >= htmlReady,
-              navigationFinished >= navigationStarted,
-              completedNanoseconds >= navigationFinished else { return [:] }
+            let readTaskStarted = firstReadTaskStartedNanoseconds,
+            let htmlReady = firstReadHTMLReadyNanoseconds,
+            let navigationStarted = firstReadNavigationStartedNanoseconds,
+            let navigationFinished = firstReadNavigationFinishedNanoseconds,
+            documentSelected >= startNanoseconds,
+            readTaskStarted >= documentSelected,
+            htmlReady >= readTaskStarted,
+            navigationStarted >= htmlReady,
+            navigationFinished >= navigationStarted,
+            completedNanoseconds >= navigationFinished
+        else { return [:] }
         return [
             "activation_to_document_selection_duration_ms": milliseconds(
                 documentSelected - startNanoseconds
@@ -608,10 +643,12 @@ final class PerformanceProbe {
     }
 
     private func append(_ object: [String: Any], to resultURL: URL) -> Bool {
-        guard let encoded = try? JSONSerialization.data(
-            withJSONObject: object,
-            options: [.sortedKeys]
-        ) else { return false }
+        guard
+            let encoded = try? JSONSerialization.data(
+                withJSONObject: object,
+                options: [.sortedKeys]
+            )
+        else { return false }
         do {
             if !FileManager.default.fileExists(atPath: resultURL.path) {
                 guard FileManager.default.createFile(atPath: resultURL.path, contents: nil) else {
@@ -643,12 +680,14 @@ final class PerformanceProbe {
         }
         let candidate = URL(fileURLWithPath: rawPath).standardizedFileURL
         guard candidate.pathExtension == "jsonl",
-              candidate.lastPathComponent == (rawPath as NSString).lastPathComponent else {
+            candidate.lastPathComponent == (rawPath as NSString).lastPathComponent
+        else {
             return nil
         }
         let parent = candidate.deletingLastPathComponent().resolvingSymlinksInPath()
         let isolatedSuffix = "/.build/performance-\(runID)/app-state/raw"
-        let isSystemTemporary = bundleID == "com.scholium.qa"
+        let isSystemTemporary =
+            bundleID == "com.scholium.qa"
             && (parent.path == "/tmp"
                 || parent.path.hasPrefix("/tmp/")
                 || parent.path == "/private/tmp"
@@ -656,7 +695,8 @@ final class PerformanceProbe {
         let isolatedRaw = parent.path.components(separatedBy: isolatedSuffix).first.map {
             $0 + isolatedSuffix
         }
-        let isIsolatedBuildOutput = bundleID == "com.scholium.qa"
+        let isIsolatedBuildOutput =
+            bundleID == "com.scholium.qa"
             && parent.path.hasPrefix("/Users/")
             && isolatedRaw.map {
                 parent.path == $0 || parent.path.hasPrefix($0 + "/")
@@ -671,7 +711,8 @@ final class PerformanceProbe {
             "raw",
             isDirectory: true
         )
-        let isPackagedOutput = bundleID == "com.scholium.app"
+        let isPackagedOutput =
+            bundleID == "com.scholium.app"
             && packagedRunRoot?.lastPathComponent == runID
             && packagedRunRoot?.deletingLastPathComponent().lastPathComponent
                 == "Performance Runs"
@@ -683,7 +724,8 @@ final class PerformanceProbe {
         }
         var isDirectory: ObjCBool = false
         guard FileManager.default.fileExists(atPath: parent.path, isDirectory: &isDirectory),
-              isDirectory.boolValue else { return nil }
+            isDirectory.boolValue
+        else { return nil }
         return parent.appendingPathComponent(candidate.lastPathComponent, isDirectory: false)
     }
 
@@ -701,8 +743,9 @@ final class PerformanceProbe {
     }
 
     private static func isSafeRunID(_ value: String) -> Bool {
-        !value.isEmpty && value.count <= 80 && value.unicodeScalars.allSatisfy {
-            CharacterSet.alphanumerics.contains($0) || $0 == "-" || $0 == "_"
-        }
+        !value.isEmpty && value.count <= 80
+            && value.unicodeScalars.allSatisfy {
+                CharacterSet.alphanumerics.contains($0) || $0 == "-" || $0 == "_"
+            }
     }
 }

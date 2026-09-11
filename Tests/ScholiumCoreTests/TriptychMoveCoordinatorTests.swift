@@ -1,6 +1,7 @@
 import Foundation
-import Testing
 import ScholiumContracts
+import Testing
+
 @testable import ScholiumCore
 
 @Suite("Triptych transactional note movement")
@@ -41,7 +42,9 @@ struct TriptychMoveCoordinatorTests {
         await #expect(throws: VaultRepositoryError.self) {
             _ = try await fixture.repository(.paperAnalysis).load(relativePath: sourceID.relativePath)
         }
-        #expect(try await fixture.repository(.topicKnowledge).load(relativePath: "Topics/A.md").rawContent == "[[Sources/Renamed B#Claim|paper]]{{Move-safe context.}}\r\n")
+        #expect(
+            try await fixture.repository(.topicKnowledge).load(relativePath: "Topics/A.md").rawContent
+                == "[[Sources/Renamed B#Claim|paper]]{{Move-safe context.}}\r\n")
     }
 
     @Test("A stale source fails before the destination or any rewrite mutates")
@@ -230,7 +233,7 @@ struct TriptychMoveCoordinatorTests {
         }
 
         let wrongRepositories = [
-            fixture.vaultID(.paperAnalysis): fixture.repository(.topicKnowledge),
+            fixture.vaultID(.paperAnalysis): fixture.repository(.topicKnowledge)
         ]
         let mismatched = TriptychMoveCoordinator(
             triptychID: fixture.triptychID,
@@ -263,16 +266,18 @@ struct TriptychMoveCoordinatorTests {
                 triptychID: triptychID,
                 operation: .noteSave,
                 failure: "Fixture",
-                files: [TriptychMutationRecoveryFile(
-                    vaultID: vaultID,
-                    path: path,
-                    role: .savedNote,
-                    beforeRevision: DocumentFingerprint(content: "before"),
-                    intendedRevision: DocumentFingerprint(content: "after"),
-                    observedRevision: nil,
-                    state: .unreadable,
-                    detail: "Fixture"
-                )]
+                files: [
+                    TriptychMutationRecoveryFile(
+                        vaultID: vaultID,
+                        path: path,
+                        role: .savedNote,
+                        beforeRevision: DocumentFingerprint(content: "before"),
+                        intendedRevision: DocumentFingerprint(content: "after"),
+                        observedRevision: nil,
+                        state: .unreadable,
+                        detail: "Fixture"
+                    )
+                ]
             )
         }
         let a = record("A.md")
@@ -346,16 +351,18 @@ struct TriptychMoveCoordinatorTests {
                 triptychID: triptychID,
                 operation: .noteCreation,
                 failure: "Fixture \(state.rawValue)",
-                files: [TriptychMutationRecoveryFile(
-                    vaultID: vaultID,
-                    path: "Created.md",
-                    role: .createdNote,
-                    beforeRevision: nil,
-                    intendedRevision: DocumentFingerprint(content: "created"),
-                    observedRevision: nil,
-                    state: state,
-                    detail: "Fixture"
-                )]
+                files: [
+                    TriptychMutationRecoveryFile(
+                        vaultID: vaultID,
+                        path: "Created.md",
+                        role: .createdNote,
+                        beforeRevision: nil,
+                        intendedRevision: DocumentFingerprint(content: "created"),
+                        observedRevision: nil,
+                        state: state,
+                        detail: "Fixture"
+                    )
+                ]
             )
         }
         let old = record(state: .missing)
@@ -382,16 +389,18 @@ struct TriptychMoveCoordinatorTests {
                 triptychID: triptychID,
                 operation: .noteSave,
                 failure: "Fixture",
-                files: [TriptychMutationRecoveryFile(
-                    vaultID: vaultID,
-                    path: path,
-                    role: .savedNote,
-                    beforeRevision: DocumentFingerprint(content: "before"),
-                    intendedRevision: DocumentFingerprint(content: "after"),
-                    observedRevision: nil,
-                    state: .unreadable,
-                    detail: "Fixture"
-                )]
+                files: [
+                    TriptychMutationRecoveryFile(
+                        vaultID: vaultID,
+                        path: path,
+                        role: .savedNote,
+                        beforeRevision: DocumentFingerprint(content: "before"),
+                        intendedRevision: DocumentFingerprint(content: "after"),
+                        observedRevision: nil,
+                        state: .unreadable,
+                        detail: "Fixture"
+                    )
+                ]
             )
         }
         let first = record("First.md")
@@ -422,16 +431,18 @@ struct TriptychMoveCoordinatorTests {
             triptychID: UUID(),
             operation: .noteSave,
             failure: "Fixture",
-            files: [TriptychMutationRecoveryFile(
-                vaultID: UUID(),
-                path: "Note.md",
-                role: .savedNote,
-                beforeRevision: DocumentFingerprint(content: "before"),
-                intendedRevision: DocumentFingerprint(content: "after"),
-                observedRevision: nil,
-                state: .unreadable,
-                detail: "Fixture"
-            )]
+            files: [
+                TriptychMutationRecoveryFile(
+                    vaultID: UUID(),
+                    path: "Note.md",
+                    role: .savedNote,
+                    beforeRevision: DocumentFingerprint(content: "before"),
+                    intendedRevision: DocumentFingerprint(content: "after"),
+                    observedRevision: nil,
+                    state: .unreadable,
+                    detail: "Fixture"
+                )
+            ]
         )
         try await normal.record(record)
         let uncertain = try TriptychMutationRecoveryStore(
@@ -482,7 +493,8 @@ struct TriptychMoveCoordinatorTests {
         let triptychID = UUID()
         let base = FileManager.default.temporaryDirectory
             .appendingPathComponent("Scholium-Recovery-Corrupt-\(UUID().uuidString)")
-        let root = base
+        let root =
+            base
             .appendingPathComponent(triptychID.uuidString)
             .appendingPathComponent("transactions")
         defer { try? FileManager.default.removeItem(at: base) }
@@ -495,7 +507,8 @@ struct TriptychMoveCoordinatorTests {
         )
         try await store.record(valid)
         let corruptID = UUID()
-        let corruptURL = root
+        let corruptURL =
+            root
             .appendingPathComponent("records", isDirectory: true)
             .appendingPathComponent(corruptID.uuidString.lowercased() + ".json")
         try Data("not json".utf8).write(to: corruptURL)
@@ -517,7 +530,8 @@ struct TriptychMoveCoordinatorTests {
         let triptychID = UUID()
         let base = FileManager.default.temporaryDirectory
             .appendingPathComponent("Scholium-Recovery-Invalid-Name-\(UUID().uuidString)")
-        let root = base
+        let root =
+            base
             .appendingPathComponent(triptychID.uuidString)
             .appendingPathComponent("transactions")
         defer { try? FileManager.default.removeItem(at: base) }
@@ -529,7 +543,8 @@ struct TriptychMoveCoordinatorTests {
             files: []
         )
         try await store.record(valid)
-        let invalidURL = root
+        let invalidURL =
+            root
             .appendingPathComponent("records", isDirectory: true)
             .appendingPathComponent(".DS_Store")
         try Data("finder metadata".utf8).write(to: invalidURL)
@@ -556,36 +571,41 @@ struct TriptychMoveCoordinatorTests {
         let vaultID = UUID()
         let detail = String(repeating: "x", count: 100_000)
         for index in 0..<90 {
-            try await store.record(TriptychMutationRecoveryRecord(
-                triptychID: triptychID,
-                operation: .noteSave,
-                failure: "Fixture",
-                files: [TriptychMutationRecoveryFile(
-                    vaultID: vaultID,
-                    path: "\(index).md",
-                    role: .savedNote,
-                    beforeRevision: DocumentFingerprint(content: "before"),
-                    intendedRevision: DocumentFingerprint(content: "after"),
-                    observedRevision: nil,
-                    state: .unreadable,
-                    detail: detail
-                )]
-            ))
+            try await store.record(
+                TriptychMutationRecoveryRecord(
+                    triptychID: triptychID,
+                    operation: .noteSave,
+                    failure: "Fixture",
+                    files: [
+                        TriptychMutationRecoveryFile(
+                            vaultID: vaultID,
+                            path: "\(index).md",
+                            role: .savedNote,
+                            beforeRevision: DocumentFingerprint(content: "before"),
+                            intendedRevision: DocumentFingerprint(content: "after"),
+                            observedRevision: nil,
+                            state: .unreadable,
+                            detail: detail
+                        )
+                    ]
+                ))
         }
         let final = TriptychMutationRecoveryRecord(
             triptychID: triptychID,
             operation: .noteCreation,
             failure: "Small final duty",
-            files: [TriptychMutationRecoveryFile(
-                vaultID: vaultID,
-                path: "Final.md",
-                role: .createdNote,
-                beforeRevision: nil,
-                intendedRevision: DocumentFingerprint(content: "created"),
-                observedRevision: nil,
-                state: .unreadable,
-                detail: "small"
-            )]
+            files: [
+                TriptychMutationRecoveryFile(
+                    vaultID: vaultID,
+                    path: "Final.md",
+                    role: .createdNote,
+                    beforeRevision: nil,
+                    intendedRevision: DocumentFingerprint(content: "created"),
+                    observedRevision: nil,
+                    state: .unreadable,
+                    detail: "small"
+                )
+            ]
         )
         try await store.record(final)
 
@@ -613,11 +633,12 @@ struct TriptychMoveCoordinatorTests {
             for slot in WorkspaceVaultSlot.allCases {
                 let id = UUID()
                 let url = root.appendingPathComponent(slot.displayName, isDirectory: true)
-                let fixtureDirectory: String = switch slot {
-                case .paperAnalysis: "01-analyses"
-                case .topicKnowledge: "02-topics"
-                case .output: "03-works"
-                }
+                let fixtureDirectory: String =
+                    switch slot {
+                    case .paperAnalysis: "01-analyses"
+                    case .topicKnowledge: "02-topics"
+                    case .output: "03-works"
+                    }
                 try FileManager.default.copyItem(at: repositoryRoot.appendingPathComponent("TestVaults/" + fixtureDirectory), to: url)
                 built[slot] = try VaultRepository(
                     vaultURL: url,
@@ -641,9 +662,10 @@ struct TriptychMoveCoordinatorTests {
         }
         func repository(_ slot: WorkspaceVaultSlot) -> VaultRepository { repositories[slot]! }
         var repositoryMap: [UUID: VaultRepository] {
-            Dictionary(uniqueKeysWithValues: repositories.map { slot, repository in
-                (vaultID(slot), repository)
-            })
+            Dictionary(
+                uniqueKeysWithValues: repositories.map { slot, repository in
+                    (vaultID(slot), repository)
+                })
         }
         func id(_ slot: WorkspaceVaultSlot, _ path: String) -> VaultQualifiedNoteID {
             VaultQualifiedNoteID(vaultID: vaultID(slot), relativePath: path)

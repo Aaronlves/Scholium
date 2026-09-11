@@ -1,5 +1,5 @@
-import ScholiumContracts
 import Foundation
+import ScholiumContracts
 
 extension ScholiumCLI {
     static func runRead(
@@ -69,8 +69,9 @@ extension ScholiumCLI {
             )
         case "metadata-set":
             guard arguments.count >= 3,
-                  let valuePath = option("--value-from", in: arguments),
-                  let expected = option("--expected", in: arguments) else {
+                let valuePath = option("--value-from", in: arguments),
+                let expected = option("--expected", in: arguments)
+            else {
                 throw commandUsageError("note metadata-set")
             }
             let (vault, path) = try await context.resolveTarget(arguments[1])
@@ -99,7 +100,8 @@ extension ScholiumCLI {
             writeMutationWarnings(outcome)
         case "metadata-remove":
             guard arguments.count >= 3,
-                  let expected = option("--expected", in: arguments) else {
+                let expected = option("--expected", in: arguments)
+            else {
                 throw commandUsageError("note metadata-remove")
             }
             let (vault, path) = try await context.resolveTarget(arguments[1])
@@ -107,7 +109,8 @@ extension ScholiumCLI {
             let handle = try await context.handle(for: assignment)
             let id = VaultQualifiedNoteID(vaultID: vault.id, relativePath: path)
             guard let current = try await handle.documents.metadata(id),
-                  current.record.fields[arguments[2]] != nil else {
+                current.record.fields[arguments[2]] != nil
+            else {
                 throw CLIError.usage(
                     "That managed Metadata field is not present. Run metadata-read before removing it."
                 )
@@ -135,7 +138,8 @@ extension ScholiumCLI {
             let (vault, path) = try await context.resolveTarget(arguments[1])
             let assignment = try await context.triptych(containing: [vault.id])
             let handle = try await context.handle(for: assignment)
-            let body = try option("--body-from", in: arguments)
+            let body =
+                try option("--body-from", in: arguments)
                 .map(sourceContent(from:)) ?? ""
             let metadata = try option("--analysis-from", in: arguments).map {
                 try JSONDecoder().decode(
@@ -177,8 +181,9 @@ extension ScholiumCLI {
             writeMutationWarnings(outcome)
         case "replace":
             guard arguments.count >= 2,
-                  let input = option("--from", in: arguments),
-                  let expected = option("--expected", in: arguments) else {
+                let input = option("--from", in: arguments),
+                let expected = option("--expected", in: arguments)
+            else {
                 throw commandUsageError("note replace")
             }
             let (vault, path) = try await context.resolveTarget(arguments[1])
@@ -217,7 +222,8 @@ extension ScholiumCLI {
             writeMutationWarnings(outcome)
         case "move-to-trash":
             guard arguments.count >= 2,
-                  let expected = option("--expected", in: arguments) else {
+                let expected = option("--expected", in: arguments)
+            else {
                 throw commandUsageError("note move-to-trash")
             }
             let (vault, path) = try await context.resolveTarget(arguments[1])
@@ -227,9 +233,11 @@ extension ScholiumCLI {
             let current = try await handle.documents.load(noteID)
             try requireExpected(expected, current: current.fingerprint)
             let snapshots = try await handle.documents.snapshot()
-            guard let note = snapshots.first(where: { $0.vault.id == vault.id })?
-                .documents.first(where: { $0.id == noteID }),
-                  let stableNoteID = note.stableIdentity.resolvedID else {
+            guard
+                let note = snapshots.first(where: { $0.vault.id == vault.id })?
+                    .documents.first(where: { $0.id == noteID }),
+                let stableNoteID = note.stableIdentity.resolvedID
+            else {
                 throw CLIError.usage(
                     "The Note has no resolved stable identity; refresh and resolve it before moving it to Trash."
                 )
@@ -283,7 +291,8 @@ extension ScholiumCLI {
             return nil
         }
         guard let current,
-              expected.lowercased() == current.revision.sha256.lowercased() else {
+            expected.lowercased() == current.revision.sha256.lowercased()
+        else {
             throw CLIError.usage(
                 "Metadata revision mismatch. Run metadata-read and use its current metadata_sha256."
             )
@@ -332,7 +341,8 @@ extension ScholiumCLI {
             }
             let double = value.doubleValue
             if double.rounded() == double,
-               double >= Double(Int.min), double <= Double(Int.max) {
+                double >= Double(Int.min), double <= Double(Int.max)
+            {
                 return .integer(value.intValue)
             }
             return .double(double)

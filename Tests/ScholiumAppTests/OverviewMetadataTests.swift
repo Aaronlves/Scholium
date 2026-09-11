@@ -1,13 +1,16 @@
 import AppKit
 import ScholiumContracts
 import Testing
+
 @testable import ScholiumApp
 
 @Suite("Overview continuous Metadata") @MainActor
 struct OverviewMetadataTests {
     private func session() -> OverviewMetadataSession {
         let session = OverviewMetadataSession()
-        session.configure(note: .syntheticPreview(relativePath: "Fixture.md", rawContent: "# Fixture\n", vaultRole: .sourceCorpus), catalog: .builtIn, visible: ["type", "authors", "publication_date"])
+        session.configure(
+            note: .syntheticPreview(relativePath: "Fixture.md", rawContent: "# Fixture\n", vaultRole: .sourceCorpus), catalog: .builtIn,
+            visible: ["type", "authors", "publication_date"])
         return session
     }
 
@@ -17,7 +20,8 @@ struct OverviewMetadataTests {
         var stored: [String: YAMLValue] = [:]
         var revisions: [DocumentFingerprint?] = []
         session.save = { values, revision in
-            revisions.append(revision); stored = values
+            revisions.append(revision)
+            stored = values
             return DocumentFingerprint(content: "revision-\(revisions.count)")
         }
         session.edit("publication_date") { $0.text = "2026" }
@@ -35,7 +39,10 @@ struct OverviewMetadataTests {
     func committedUndoRedo() async throws {
         let session = session()
         var stored: [String: YAMLValue] = [:]
-        session.save = { values, _ in stored = values; return DocumentFingerprint(content: String(describing: values)) }
+        session.save = { values, _ in
+            stored = values
+            return DocumentFingerprint(content: String(describing: values))
+        }
         session.edit("publication_date") { $0.text = "2030" }
         session.requestCommit()
         try await session.undoCommitted()
@@ -49,7 +56,10 @@ struct OverviewMetadataTests {
     func conflictAndComposition() async throws {
         let session = session()
         var attempts = 0
-        session.save = { _, _ in attempts += 1; throw NoteMetadataError.revisionConflict(UUID()) }
+        session.save = { _, _ in
+            attempts += 1
+            throw NoteMetadataError.revisionConflict(UUID())
+        }
         session.edit("publication_date") { $0.text = "2031" }
         session.composing.insert("publication_date")
         await #expect(throws: (any Error).self) { try await session.flush() }
@@ -64,7 +74,9 @@ struct OverviewMetadataTests {
     func nativeNameTraversal() async throws {
         _ = NSApplication.shared
         let host = MetadataFieldsHost()
-        host.session.configure(note: .syntheticPreview(relativePath: "Fixture.md", rawContent: "# Fixture\n", vaultRole: .sourceCorpus), catalog: .builtIn, visible: ["authors", "publication_date", "type"])
+        host.session.configure(
+            note: .syntheticPreview(relativePath: "Fixture.md", rawContent: "# Fixture\n", vaultRole: .sourceCorpus), catalog: .builtIn,
+            visible: ["authors", "publication_date", "type"])
         host.session.save = { values, _ in DocumentFingerprint(content: String(describing: values)) }
         host.refresh()
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 420, height: 360), styleMask: [.titled], backing: .buffered, defer: false)
@@ -117,8 +129,10 @@ struct OverviewMetadataTests {
         _ = NSApplication.shared
         let host = MetadataFieldsHost()
         let text = String(repeating: "A long source title with mixed 中文 content. ", count: 8)
-        host.session.configure(note: .syntheticPreview(relativePath: "Fixture.md", rawContent: "# Fixture\n",
-            vaultRole: .sourceCorpus, managedMetadata: ["title": .string(text)]),
+        host.session.configure(
+            note: .syntheticPreview(
+                relativePath: "Fixture.md", rawContent: "# Fixture\n",
+                vaultRole: .sourceCorpus, managedMetadata: ["title": .string(text)]),
             catalog: .builtIn, visible: ["title", "authors", "publication_date", "type"])
         host.refresh()
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 440, height: 800), styleMask: [.titled], backing: .buffered, defer: false)
@@ -146,10 +160,14 @@ struct OverviewMetadataTests {
     func addAuthorKeepsEmptyInputLocal() async throws {
         _ = NSApplication.shared
         let host = MetadataFieldsHost()
-        host.session.configure(note: .syntheticPreview(relativePath: "Fixture.md", rawContent: "# Fixture\n", vaultRole: .sourceCorpus),
+        host.session.configure(
+            note: .syntheticPreview(relativePath: "Fixture.md", rawContent: "# Fixture\n", vaultRole: .sourceCorpus),
             catalog: .builtIn, visible: ["authors"])
         var writes = 0
-        host.session.save = { _, _ in writes += 1; return DocumentFingerprint(content: "unexpected") }
+        host.session.save = { _, _ in
+            writes += 1
+            return DocumentFingerprint(content: "unexpected")
+        }
         host.refresh()
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 320, height: 400), styleMask: [.titled], backing: .buffered, defer: false)
         window.contentView = host
@@ -177,10 +195,15 @@ struct OverviewMetadataTests {
         let catalog = NoteMetadataCatalog(customFieldsByRole: [
             .paperAnalysis: [.init(key: "checked", valueKind: .boolean, label: "Checked")]
         ])
-        host.session.configure(note: .syntheticPreview(relativePath: "Fixture.md", rawContent: "# Fixture\n",
-            vaultRole: .sourceCorpus, managedMetadata: ["checked": .boolean(true)]), catalog: catalog, visible: ["checked"])
+        host.session.configure(
+            note: .syntheticPreview(
+                relativePath: "Fixture.md", rawContent: "# Fixture\n",
+                vaultRole: .sourceCorpus, managedMetadata: ["checked": .boolean(true)]), catalog: catalog, visible: ["checked"])
         var stored: [String: YAMLValue] = [:]
-        host.session.save = { values, _ in stored = values; return DocumentFingerprint(content: "saved") }
+        host.session.save = { values, _ in
+            stored = values
+            return DocumentFingerprint(content: "saved")
+        }
         host.refresh()
         let checkbox = try #require(descendants(host, as: MetadataToggleButton.self).first)
         #expect(checkbox.state == .on)

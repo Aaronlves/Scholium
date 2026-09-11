@@ -1,8 +1,8 @@
-import ScholiumContracts
 import AppKit
 import Combine
 import Darwin
 import Foundation
+import ScholiumContracts
 
 /// Observable macOS adapter over Application-owned style persistence.
 @MainActor
@@ -187,9 +187,10 @@ final class CSSSnippetStore: ObservableObject {
     private func installSnippetWatchers(for records: [CSSSnippetRecord]) async {
         for record in records {
             guard snippetWatchers[record.managedFileName] == nil,
-                  let url = try? await operations.managedStyleSnippetURL(record.id),
-                  FileManager.default.fileExists(atPath: url.path),
-                  let watcher = makeWatcher(for: url) else { continue }
+                let url = try? await operations.managedStyleSnippetURL(record.id),
+                FileManager.default.fileExists(atPath: url.path),
+                let watcher = makeWatcher(for: url)
+            else { continue }
             snippetWatchers[record.managedFileName] = watcher
         }
     }

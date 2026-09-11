@@ -18,7 +18,10 @@ final class LinksInspectorSession: ObservableObject {
         change(&location)
         locations[key] = location
     }
-    func reset() { locations = [:]; direction = .incoming }
+    func reset() {
+        locations = [:]
+        direction = .incoming
+    }
 }
 
 struct InspectorLinkItem: Identifiable {
@@ -88,20 +91,24 @@ struct ConnectionsProjection {
         current: VaultQualifiedNoteID?,
         direction: ConnectionDirection
     ) -> Self {
-        let notesByID = Dictionary(uniqueKeysWithValues: (catalog?.notes ?? []).map {
-            (VaultQualifiedNoteID(
-                vaultID: $0.reference.vaultID,
-                relativePath: $0.reference.relativePath
-            ), $0)
-        })
+        let notesByID = Dictionary(
+            uniqueKeysWithValues: (catalog?.notes ?? []).map {
+                (
+                    VaultQualifiedNoteID(
+                        vaultID: $0.reference.vaultID,
+                        relativePath: $0.reference.relativePath
+                    ), $0
+                )
+            })
         guard let graph, let current else {
             return Self(items: [])
         }
 
-        let edges = switch direction {
-        case .incoming: graph.incoming[current] ?? []
-        case .outgoing: graph.outgoing[current] ?? []
-        }
+        let edges =
+            switch direction {
+            case .incoming: graph.incoming[current] ?? []
+            case .outgoing: graph.outgoing[current] ?? []
+            }
         let items = edges.map { edge in
             let peerID = direction == .incoming ? edge.source : edge.destination?.note
             let peer = peerID.flatMap { notesByID[$0] }
@@ -135,7 +142,8 @@ struct InspectorLinkGroup: Identifiable {
         var groups: [Self] = []
         for item in items {
             let peer = item.peer?.reference
-            let key = peer.map { "\($0.vaultID):\($0.relativePath)" }
+            let key =
+                peer.map { "\($0.vaultID):\($0.relativePath)" }
                 ?? "unresolved:" + item.edge.occurrence.target
             if let index = groups.firstIndex(where: { $0.id == key }) {
                 let previous = groups[index]
@@ -157,16 +165,22 @@ struct ConnectionsInspectorView: View {
         "\(context.current?.vaultID.uuidString ?? ""):\(context.current?.relativePath ?? ""):\(direction.rawValue)"
     }
     private var query: Binding<String> {
-        Binding(get: { session.location(for: locationKey).query },
-                set: { value in session.update(locationKey) { $0.query = value } })
+        Binding(
+            get: { session.location(for: locationKey).query },
+            set: { value in session.update(locationKey) { $0.query = value } })
     }
     private var groups: [InspectorLinkGroup] {
         let term = query.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        let items = ConnectionsProjection.make(graph: context.graph, catalog: context.catalog,
-            current: context.current, direction: direction).items.filter { item in
-                term.isEmpty || [item.displayTitle, item.edge.occurrence.localContext,
-                    item.edge.occurrence.annotation?.text ?? ""].contains { $0.localizedStandardContains(term) }
-            }
+        let items = ConnectionsProjection.make(
+            graph: context.graph, catalog: context.catalog,
+            current: context.current, direction: direction
+        ).items.filter { item in
+            term.isEmpty
+                || [
+                    item.displayTitle, item.edge.occurrence.localContext,
+                    item.edge.occurrence.annotation?.text ?? "",
+                ].contains { $0.localizedStandardContains(term) }
+        }
         return InspectorLinkGroup.make(items)
     }
 
@@ -185,10 +199,11 @@ struct ConnectionsInspectorView: View {
                         ForEach(groups) { group in
                             let expanded = Binding(
                                 get: { !session.location(for: locationKey).collapsedGroups.contains(group.id) },
-                                set: { expanded in session.update(locationKey) {
-                                    if expanded { $0.collapsedGroups.remove(group.id) }
-                                    else { $0.collapsedGroups.insert(group.id) }
-                                } }
+                                set: { expanded in
+                                    session.update(locationKey) {
+                                        if expanded { $0.collapsedGroups.remove(group.id) } else { $0.collapsedGroups.insert(group.id) }
+                                    }
+                                }
                             )
                             DisclosureGroup(isExpanded: expanded) {
                                 VStack(alignment: .leading, spacing: 12) {
@@ -204,13 +219,16 @@ struct ConnectionsInspectorView: View {
                                     }
                                 }.padding(.top, 8)
                             } label: {
-                                Button { expanded.wrappedValue.toggle() } label: {
+                                Button {
+                                    expanded.wrappedValue.toggle()
+                                } label: {
                                     HStack(alignment: .firstTextBaseline) {
                                         Text(group.title).font(ScholiumTypography.interface(.control, emphasis: .medium))
                                             .fixedSize(horizontal: false, vertical: true)
                                             .multilineTextAlignment(.leading)
                                         Spacer(minLength: 4)
-                                        Text(group.items.count.formatted()).font(ScholiumTypography.interface(.body)).foregroundStyle(ScholiumNativeColorRole.secondaryLabel.color)
+                                        Text(group.items.count.formatted()).font(ScholiumTypography.interface(.body)).foregroundStyle(
+                                            ScholiumNativeColorRole.secondaryLabel.color)
                                     }
                                     .contentShape(Rectangle())
                                 }
@@ -233,13 +251,18 @@ struct ConnectionsInspectorView: View {
                     .padding(.bottom, ResearchInspectorLayout.bottomInset)
                     .scrollTargetLayout()
                 }
-                .scrollPosition(id: Binding(
-                    get: { session.location(for: locationKey).scrollID },
-                    set: { value in if let value { session.update(locationKey) { $0.scrollID = value } } }
-                ))
+                .scrollPosition(
+                    id: Binding(
+                        get: { session.location(for: locationKey).scrollID },
+                        set: { value in if let value { session.update(locationKey) { $0.scrollID = value } } }
+                    )
+                )
                 .onChange(of: locationKey, initial: true) { _, key in
-                    if let id = session.location(for: key).scrollID { proxy.scrollTo(id, anchor: .top) }
-                    else if let id = groups.first?.id { proxy.scrollTo(id, anchor: .top) }
+                    if let id = session.location(for: key).scrollID {
+                        proxy.scrollTo(id, anchor: .top)
+                    } else if let id = groups.first?.id {
+                        proxy.scrollTo(id, anchor: .top)
+                    }
                 }
                 .accessibilityLabel(Text(verbatim: ScholiumL10n.dynamicString(direction.title)))
             }
@@ -274,7 +297,9 @@ private struct LinkOccurrenceRow: View {
                 .disabled(item.source == nil)
                 .help("Show this passage")
                 .accessibilityIdentifier("scholium.links.occurrence." + item.id)
-                if item.edge.occurrence.annotation != nil || (item.direction == .outgoing && item.edge.occurrence.fragment != nil && item.edge.destination?.span != nil) {
+                if item.edge.occurrence.annotation != nil
+                    || (item.direction == .outgoing && item.edge.occurrence.fragment != nil && item.edge.destination?.span != nil)
+                {
                     options
                 }
             }
@@ -289,7 +314,8 @@ private struct LinkOccurrenceRow: View {
     private var options: some View {
         Menu {
             if item.direction == .outgoing, item.edge.occurrence.fragment != nil,
-               let peer = item.peer, let line = item.edge.destination?.span?.start.line {
+                let peer = item.peer, let line = item.edge.destination?.span?.start.line
+            {
                 Button("Open Linked Passage") { openReference(peer.reference, line) }
             }
             if let source = item.source, item.edge.occurrence.annotation != nil {
@@ -297,7 +323,9 @@ private struct LinkOccurrenceRow: View {
                     editSource(source.reference, item.edge.occurrence.linkSpan.start.line)
                 }
             }
-        } label: { Image(systemName: "ellipsis") }
+        } label: {
+            Image(systemName: "ellipsis")
+        }
         .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
         .accessibilityLabel("Link Options")
     }
@@ -313,14 +341,16 @@ private struct LinkOccurrenceRow: View {
 }
 
 #Preview {
-    ConnectionsInspectorView(context: ConnectionsInspectorContext(
-        graph: nil,
-        catalog: nil,
-        current: nil,
-        freshness: .unavailable("No workspace is open."),
-        retryRefresh: {},
-        openReference: { _, _ in },
-        editSource: { _, _ in }
-    ), session: LinksInspectorSession())
+    ConnectionsInspectorView(
+        context: ConnectionsInspectorContext(
+            graph: nil,
+            catalog: nil,
+            current: nil,
+            freshness: .unavailable("No workspace is open."),
+            retryRefresh: {},
+            openReference: { _, _ in },
+            editSource: { _, _ in }
+        ), session: LinksInspectorSession()
+    )
     .frame(width: 320, height: 600)
 }

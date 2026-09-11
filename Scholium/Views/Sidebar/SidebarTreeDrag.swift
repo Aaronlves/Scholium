@@ -105,18 +105,20 @@ struct SidebarTreeDropInventory {
             folderPathComparisonKeys = []
             return
         }
-        notePathComparisonKeys = Set(notes.compactMap { note in
-            guard let path = try? MarkdownRelativePath(note.relativePath) else {
-                return nil
-            }
-            return pathComparisonPolicy.comparisonKey(for: path)
-        })
-        folderPathComparisonKeys = Set(folderRelativePaths.compactMap { rawPath in
-            guard let path = try? VaultRelativeFolderPath(rawPath) else {
-                return nil
-            }
-            return pathComparisonPolicy.comparisonKey(for: path)
-        })
+        notePathComparisonKeys = Set(
+            notes.compactMap { note in
+                guard let path = try? MarkdownRelativePath(note.relativePath) else {
+                    return nil
+                }
+                return pathComparisonPolicy.comparisonKey(for: path)
+            })
+        folderPathComparisonKeys = Set(
+            folderRelativePaths.compactMap { rawPath in
+                guard let path = try? VaultRelativeFolderPath(rawPath) else {
+                    return nil
+                }
+                return pathComparisonPolicy.comparisonKey(for: path)
+            })
     }
 }
 
@@ -126,16 +128,16 @@ func sidebarValidatedNoteDropDestination(
     inventory: SidebarTreeDropInventory
 ) -> String? {
     guard inventory.sourceScope == .library,
-          inventory.canMutate,
-          item.documentID.vaultID == inventory.currentVaultID,
-          !inventory.pendingNoteMoves.contains(item.id),
-          let source = inventory.notes.first(where: {
-              $0.relativePath == item.documentID.relativePath
-          }),
-          NoteMutationTarget(source) == item.mutationTarget,
-          sidebarDropFolderIsMutable(folderRelativePath, inventory: inventory),
-          let pathComparisonPolicy = inventory.pathComparisonPolicy,
-          let sourcePath = try? MarkdownRelativePath(item.documentID.relativePath)
+        inventory.canMutate,
+        item.documentID.vaultID == inventory.currentVaultID,
+        !inventory.pendingNoteMoves.contains(item.id),
+        let source = inventory.notes.first(where: {
+            $0.relativePath == item.documentID.relativePath
+        }),
+        NoteMutationTarget(source) == item.mutationTarget,
+        sidebarDropFolderIsMutable(folderRelativePath, inventory: inventory),
+        let pathComparisonPolicy = inventory.pathComparisonPolicy,
+        let sourcePath = try? MarkdownRelativePath(item.documentID.relativePath)
     else { return nil }
 
     let destination = sidebarNoteDropDestination(
@@ -148,8 +150,8 @@ func sidebarValidatedNoteDropDestination(
     let sourceKey = pathComparisonPolicy.comparisonKey(for: sourcePath)
     let destinationKey = pathComparisonPolicy.comparisonKey(for: destinationPath)
     guard destinationKey != sourceKey,
-          !inventory.notePathComparisonKeys.contains(destinationKey),
-          !inventory.folderPathComparisonKeys.contains(destinationKey)
+        !inventory.notePathComparisonKeys.contains(destinationKey),
+        !inventory.folderPathComparisonKeys.contains(destinationKey)
     else { return nil }
 
     return destination
@@ -161,19 +163,19 @@ func sidebarValidatedFolderDropDestination(
     inventory: SidebarTreeDropInventory
 ) -> String? {
     guard inventory.sourceScope == .library,
-          inventory.canMutate,
-          item.vaultID == inventory.currentVaultID,
-          !inventory.pendingFolderMoves.contains(item.id),
-          inventory.folderRelativePaths.contains(item.relativePath),
-          sidebarDropFolderIsMutable(item.relativePath, inventory: inventory),
-          sidebarDropFolderIsMutable(folderRelativePath, inventory: inventory),
-          let pathComparisonPolicy = inventory.pathComparisonPolicy,
-          let sourcePath = try? VaultRelativeFolderPath(item.relativePath),
-          let destination = sidebarFolderDropDestination(
-              sourceRelativePath: item.relativePath,
-              folderRelativePath: folderRelativePath
-          ),
-          let destinationPath = try? VaultRelativeFolderPath(destination)
+        inventory.canMutate,
+        item.vaultID == inventory.currentVaultID,
+        !inventory.pendingFolderMoves.contains(item.id),
+        inventory.folderRelativePaths.contains(item.relativePath),
+        sidebarDropFolderIsMutable(item.relativePath, inventory: inventory),
+        sidebarDropFolderIsMutable(folderRelativePath, inventory: inventory),
+        let pathComparisonPolicy = inventory.pathComparisonPolicy,
+        let sourcePath = try? VaultRelativeFolderPath(item.relativePath),
+        let destination = sidebarFolderDropDestination(
+            sourceRelativePath: item.relativePath,
+            folderRelativePath: folderRelativePath
+        ),
+        let destinationPath = try? VaultRelativeFolderPath(destination)
     else { return nil }
 
     let sourceKey = pathComparisonPolicy.comparisonKey(for: sourcePath)
@@ -183,14 +185,16 @@ func sidebarValidatedFolderDropDestination(
         }
         let targetKey = pathComparisonPolicy.comparisonKey(for: targetPath)
         guard targetKey != sourceKey,
-              !targetKey.value.hasPrefix(sourceKey.value + "/") else {
+            !targetKey.value.hasPrefix(sourceKey.value + "/")
+        else {
             return nil
         }
     }
     let destinationKey = pathComparisonPolicy.comparisonKey(for: destinationPath)
     guard destinationKey != sourceKey,
-          !inventory.folderPathComparisonKeys.contains(destinationKey),
-          !inventory.notePathComparisonKeys.contains(destinationKey) else {
+        !inventory.folderPathComparisonKeys.contains(destinationKey),
+        !inventory.notePathComparisonKeys.contains(destinationKey)
+    else {
         return nil
     }
     return destination
@@ -213,7 +217,8 @@ func sidebarNoteDropDestination(
 ) -> String {
     let fileName = (sourceRelativePath as NSString).lastPathComponent
     guard let folderRelativePath,
-          !folderRelativePath.isEmpty else { return fileName }
+        !folderRelativePath.isEmpty
+    else { return fileName }
     return (folderRelativePath as NSString).appendingPathComponent(fileName)
 }
 

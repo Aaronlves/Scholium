@@ -75,7 +75,8 @@ public struct SearchPropertyProjection: Hashable, Sendable {
             catalog: metadataCatalog
         )
         guard let frontmatter = document.rawFrontmatter,
-              document.validationWarnings.isEmpty else {
+            document.validationWarnings.isEmpty
+        else {
             entries = managedEntries
             issues = document.rawFrontmatter == nil ? [] : [.invalidYAML]
             return
@@ -110,19 +111,21 @@ public struct SearchPropertyProjection: Hashable, Sendable {
 
         for pair in mapping {
             guard case .scalar(let keyScalar) = pair.key,
-                  keyScalar.style == .plain,
-                  let rawKey = pair.key.string,
-                  authoredKeys.contains(
+                keyScalar.style == .plain,
+                let rawKey = pair.key.string,
+                authoredKeys.contains(
                     rawKey.precomposedStringWithCanonicalMapping
-                  ) else {
+                )
+            else {
                 continue
             }
             guard Self.isQueryableKey(keyScalar.string),
-                  let keyRange = source.range(
+                let keyRange = source.range(
                     startingAt: keyScalar.mark,
                     tokenUTF16Length: keyScalar.string.utf16.count
-                  ),
-                  source.substring(in: keyRange) == keyScalar.string else {
+                ),
+                source.substring(in: keyRange) == keyScalar.string
+            else {
                 projectionIssues.append(.unboundedKey)
                 continue
             }
@@ -133,19 +136,21 @@ public struct SearchPropertyProjection: Hashable, Sendable {
                 key: key,
                 source: source
             )
-            projected.append(Entry(
-                key: key,
-                keySourceRange: source.searchRange(for: keyRange),
-                valueKind: projectedValue.kind,
-                isEmpty: projectedValue.isEmpty,
-                stringMembers: projectedValue.members
-            ))
+            projected.append(
+                Entry(
+                    key: key,
+                    keySourceRange: source.searchRange(for: keyRange),
+                    valueKind: projectedValue.kind,
+                    isEmpty: projectedValue.isEmpty,
+                    stringMembers: projectedValue.members
+                ))
             projectionIssues.append(contentsOf: projectedValue.issues)
         }
 
-        let duplicates = Set(keyCounts.compactMap { key, count in
-            count > 1 ? key : nil
-        })
+        let duplicates = Set(
+            keyCounts.compactMap { key, count in
+                count > 1 ? key : nil
+            })
         projected.removeAll { duplicates.contains($0.key) }
         projectionIssues.append(contentsOf: duplicates.sorted().map(Issue.duplicateKey))
         entries = projected.sorted {
@@ -175,9 +180,12 @@ public struct SearchPropertyProjection: Hashable, Sendable {
             let isEmpty: Bool
             switch value {
             case .null:
-                kind = .null; values = []; isEmpty = true
+                kind = .null
+                values = []
+                isEmpty = true
             case .string(let text):
-                kind = .string; values = [text]
+                kind = .string
+                values = [text]
                 isEmpty = SearchTextNormalization.normalize(text).isEmpty
             case .array(let members):
                 let strings = members.compactMap(\.scalarString)
@@ -190,7 +198,9 @@ public struct SearchPropertyProjection: Hashable, Sendable {
                 }
                 isEmpty = members.isEmpty
             case .object(let members):
-                kind = .mapping; values = []; isEmpty = members.isEmpty
+                kind = .mapping
+                values = []
+                isEmpty = members.isEmpty
             case .integer, .double, .boolean:
                 kind = .scalar
                 values = value.scalarString.map { [$0] } ?? []
@@ -237,11 +247,13 @@ public struct SearchPropertyProjection: Hashable, Sendable {
             }
             return (
                 .string,
-                [StringMember(
-                    value: scalar.string,
-                    normalizedValue: SearchTextNormalization.normalize(scalar.string),
-                    sourceRange: source.searchRange(for: range)
-                )],
+                [
+                    StringMember(
+                        value: scalar.string,
+                        normalizedValue: SearchTextNormalization.normalize(scalar.string),
+                        sourceRange: source.searchRange(for: range)
+                    )
+                ],
                 SearchTextNormalization.normalize(scalar.string).isEmpty,
                 []
             )
@@ -251,7 +263,8 @@ public struct SearchPropertyProjection: Hashable, Sendable {
             var issues: [Issue] = []
             for child in sequence {
                 guard case .scalar(let scalar) = child,
-                      child.tag.rawValue == Tag.Name.str.rawValue else {
+                    child.tag.rawValue == Tag.Name.str.rawValue
+                else {
                     allStrings = false
                     continue
                 }
@@ -260,11 +273,12 @@ public struct SearchPropertyProjection: Hashable, Sendable {
                     issues.append(.unboundedStringValue(key))
                     continue
                 }
-                members.append(StringMember(
-                    value: scalar.string,
-                    normalizedValue: SearchTextNormalization.normalize(scalar.string),
-                    sourceRange: source.searchRange(for: range)
-                ))
+                members.append(
+                    StringMember(
+                        value: scalar.string,
+                        normalizedValue: SearchTextNormalization.normalize(scalar.string),
+                        sourceRange: source.searchRange(for: range)
+                    ))
             }
             return (
                 allStrings ? .stringSequence : .sequence,
@@ -281,7 +295,8 @@ public struct SearchPropertyProjection: Hashable, Sendable {
 
     private static func isQueryableKey(_ key: String) -> Bool {
         guard let first = key.unicodeScalars.first,
-              CharacterSet.letters.contains(first) || first == "_" else {
+            CharacterSet.letters.contains(first) || first == "_"
+        else {
             return false
         }
         return key.unicodeScalars.dropFirst().allSatisfy { scalar in
@@ -302,10 +317,11 @@ private extension SearchPropertyProjection {
             self.frontmatter = frontmatter
             if let byteRange = document.frontmatterByteRange {
                 let prefixBytes = document.sourceBytes.prefix(byteRange.lowerBound)
-                frontmatterStartUTF16 = String(
-                    decoding: prefixBytes,
-                    as: UTF8.self
-                ).utf16.count
+                frontmatterStartUTF16 =
+                    String(
+                        decoding: prefixBytes,
+                        as: UTF8.self
+                    ).utf16.count
             } else {
                 frontmatterStartUTF16 = 0
             }
@@ -323,12 +339,13 @@ private extension SearchPropertyProjection {
 
         func scalarTokenRange(_ scalar: Node.Scalar) -> Range<Int>? {
             guard let start = utf16Offset(for: scalar.mark),
-                  let startIndex = complete.utf16.index(
+                let startIndex = complete.utf16.index(
                     complete.utf16.startIndex,
                     offsetBy: start,
                     limitedBy: complete.utf16.endIndex
-                  ),
-                  let stringStart = startIndex.samePosition(in: complete) else {
+                ),
+                let stringStart = startIndex.samePosition(in: complete)
+            else {
                 return nil
             }
             switch scalar.style {
@@ -347,16 +364,19 @@ private extension SearchPropertyProjection {
         }
 
         func substring(in utf16Range: Range<Int>) -> String? {
-            guard let lower = complete.utf16.index(
-                complete.utf16.startIndex,
-                offsetBy: utf16Range.lowerBound,
-                limitedBy: complete.utf16.endIndex
-            ), let upper = complete.utf16.index(
-                complete.utf16.startIndex,
-                offsetBy: utf16Range.upperBound,
-                limitedBy: complete.utf16.endIndex
-            ), let lowerIndex = lower.samePosition(in: complete),
-               let upperIndex = upper.samePosition(in: complete) else { return nil }
+            guard
+                let lower = complete.utf16.index(
+                    complete.utf16.startIndex,
+                    offsetBy: utf16Range.lowerBound,
+                    limitedBy: complete.utf16.endIndex
+                ),
+                let upper = complete.utf16.index(
+                    complete.utf16.startIndex,
+                    offsetBy: utf16Range.upperBound,
+                    limitedBy: complete.utf16.endIndex
+                ), let lowerIndex = lower.samePosition(in: complete),
+                let upperIndex = upper.samePosition(in: complete)
+            else { return nil }
             return String(complete[lowerIndex..<upperIndex])
         }
 
@@ -386,12 +406,13 @@ private extension SearchPropertyProjection {
                 cursor = frontmatter.unicodeScalars.index(after: cursor)
             }
             guard line == mark.line,
-                  let scalarIndex = frontmatter.unicodeScalars.index(
+                let scalarIndex = frontmatter.unicodeScalars.index(
                     lineStart,
                     offsetBy: mark.column - 1,
                     limitedBy: frontmatter.unicodeScalars.endIndex
-                  ),
-                  let utf16Index = scalarIndex.samePosition(in: frontmatter.utf16) else {
+                ),
+                let utf16Index = scalarIndex.samePosition(in: frontmatter.utf16)
+            else {
                 return nil
             }
             return frontmatterStartUTF16
@@ -469,7 +490,8 @@ private extension SearchPropertyProjection {
             let line = prefix.reduce(into: 1) { count, character in
                 if character == "\n" { count += 1 }
             }
-            let lastLine = prefix.split(separator: "\n", omittingEmptySubsequences: false).last
+            let lastLine =
+                prefix.split(separator: "\n", omittingEmptySubsequences: false).last
                 .map(String.init) ?? ""
             return (line, lastLine.utf16.count + 1)
         }

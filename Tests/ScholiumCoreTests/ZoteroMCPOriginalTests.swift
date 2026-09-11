@@ -5,6 +5,7 @@ import ImageIO
 import PDFKit
 import ScholiumContracts
 import Testing
+
 @testable import ScholiumCore
 
 @Suite("Exact Zotero original selection")
@@ -35,10 +36,14 @@ struct ZoteroMCPOriginalTests {
         #expect(try Data(contentsOf: fixture.file) == bytes)
         let requests = await fixture.client.requests
         #expect(requests.count == 8)
-        #expect(requests.allSatisfy { $0.httpMethod == "GET" && $0.httpBody == nil && $0.url?.host == "127.0.0.1" && $0.url?.path.hasPrefix("/api/groups/42/items/ATTACH01") == true })
-        #expect(requests.filter { $0.url?.path.hasSuffix("/file/view/url") == true }.allSatisfy {
-            $0.value(forHTTPHeaderField: "Accept") == "text/plain" && $0.value(forHTTPHeaderField: "Zotero-Server-ID") == "synthetic-instance"
-        })
+        #expect(
+            requests.allSatisfy {
+                $0.httpMethod == "GET" && $0.httpBody == nil && $0.url?.host == "127.0.0.1" && $0.url?.path.hasPrefix("/api/groups/42/items/ATTACH01") == true
+            })
+        #expect(
+            requests.filter { $0.url?.path.hasSuffix("/file/view/url") == true }.allSatisfy {
+                $0.value(forHTTPHeaderField: "Accept") == "text/plain" && $0.value(forHTTPHeaderField: "Zotero-Server-ID") == "synthetic-instance"
+            })
         for path in ["attachments:Source.txt", "attachments:folder/Source.txt"] {
             await fixture.client.reset()
             await fixture.client.setMetadata(try fixture.metadata(linkedPath: path))
@@ -83,8 +88,11 @@ struct ZoteroMCPOriginalTests {
         #expect(try await fixture.call(["page": 4]).failed)
         #expect(try await fixture.call([:]).failed)
         let document = try #require(PDFDocument(data: bytes))
-        let locked = try #require(document.dataRepresentation(options: [PDFDocumentWriteOption.ownerPasswordOption: "fixture-owner",
-            PDFDocumentWriteOption.userPasswordOption: "fixture-reader"]))
+        let locked = try #require(
+            document.dataRepresentation(options: [
+                PDFDocumentWriteOption.ownerPasswordOption: "fixture-owner",
+                PDFDocumentWriteOption.userPasswordOption: "fixture-reader",
+            ]))
         try locked.write(to: fixture.file)
         let refused = try await fixture.call(["page": 1])
         #expect(refused.failed && (refused.value["error"] as? String)?.contains("locked") == true)
@@ -125,8 +133,10 @@ struct ZoteroMCPOriginalTests {
         let fixture = try OriginalFixture(filename: "Source.txt", mime: "text/plain")
         defer { fixture.remove() }
         try Data("Selected".utf8).write(to: fixture.file)
-        for url in ["https://example.invalid/Source.txt", "file://remote.invalid/Source.txt", fixture.file.absoluteString + "?query=1",
-                    fixture.root.appendingPathComponent("Missing.txt").absoluteString, fixture.file.absoluteString + "#fragment"] {
+        for url in [
+            "https://example.invalid/Source.txt", "file://remote.invalid/Source.txt", fixture.file.absoluteString + "?query=1",
+            fixture.root.appendingPathComponent("Missing.txt").absoluteString, fixture.file.absoluteString + "#fragment",
+        ] {
             await fixture.client.reset()
             await fixture.client.setURLResponse(.init(statusCode: 200, headers: ["Zotero-Server-ID": "synthetic-instance"], body: Data(url.utf8)))
             let result = try await fixture.call([:])
@@ -146,7 +156,10 @@ struct ZoteroMCPOriginalTests {
         let alias = fixture.root.appendingPathComponent("Alias")
         try FileManager.default.createSymbolicLink(at: alias, withDestinationURL: fixture.root)
         await fixture.client.reset()
-        await fixture.client.setURLResponse(.init(statusCode: 200, headers: ["Zotero-Server-ID": "synthetic-instance"], body: Data(alias.appendingPathComponent("Source.txt").absoluteString.utf8)))
+        await fixture.client.setURLResponse(
+            .init(
+                statusCode: 200, headers: ["Zotero-Server-ID": "synthetic-instance"], body: Data(alias.appendingPathComponent("Source.txt").absoluteString.utf8)
+            ))
         #expect(try await fixture.call([:]).failed)
         await fixture.client.reset()
         await fixture.client.setMetadata(try fixture.metadata(mime: "application/pdf"))
@@ -157,8 +170,10 @@ struct ZoteroMCPOriginalTests {
     func originalBoundsAndUnavailable() async throws {
         let fixture = try OriginalFixture(filename: "Source.txt", mime: "text/plain")
         defer { fixture.remove() }
-        for args: [String: Any] in [["mode": "ocr"], ["page": 0], ["page": 1e100], ["maximum_utf8": 65_537],
-            ["start_utf8": 1], ["mode": "image", "maximum_utf8": 100], ["path": fixture.file.path], ["url": fixture.file.absoluteString]] {
+        for args: [String: Any] in [
+            ["mode": "ocr"], ["page": 0], ["page": 1e100], ["maximum_utf8": 65_537],
+            ["start_utf8": 1], ["mode": "image", "maximum_utf8": 100], ["path": fixture.file.path], ["url": fixture.file.absoluteString],
+        ] {
             #expect(try await fixture.call(args).failed)
         }
         #expect(await fixture.client.requests.isEmpty)
@@ -191,9 +206,12 @@ struct ZoteroMCPOriginalTests {
         let consumer = try #require(CGDataConsumer(data: data))
         let context = try #require(CGContext(consumer: consumer, mediaBox: nil, nil))
         for text in pages {
-            context.beginPDFPage(nil); context.textPosition = CGPoint(x: 40, y: 500)
-            let attributed = NSAttributedString(string: text, attributes: [NSAttributedString.Key(kCTFontAttributeName as String): CTFontCreateWithName("Helvetica" as CFString, 14, nil)])
-            CTLineDraw(CTLineCreateWithAttributedString(attributed), context); context.endPDFPage()
+            context.beginPDFPage(nil)
+            context.textPosition = CGPoint(x: 40, y: 500)
+            let attributed = NSAttributedString(
+                string: text, attributes: [NSAttributedString.Key(kCTFontAttributeName as String): CTFontCreateWithName("Helvetica" as CFString, 14, nil)])
+            CTLineDraw(CTLineCreateWithAttributedString(attributed), context)
+            context.endPDFPage()
         }
         context.closePDF()
         return data as Data
@@ -213,7 +231,8 @@ private struct OriginalFixture: Sendable {
             .appendingPathComponent(".build/agent-knowledge-tools/zotero-original-fixtures/\(UUID())")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         file = root.appendingPathComponent(filename)
-        self.mime = mime; self.linked = linked
+        self.mime = mime
+        self.linked = linked
         client = OriginalFixtureClient(metadata: try Self.metadata(file: file, mime: mime, linked: linked, version: 1), fileURL: file.absoluteString)
         server = ZoteroMCPServer(client: client)
     }
@@ -222,8 +241,10 @@ private struct OriginalFixture: Sendable {
         try Self.metadata(file: file, mime: mime ?? self.mime, linked: linked, version: version, linkedPath: linkedPath)
     }
     private static func metadata(file: URL, mime: String, linked: Bool, version: Int, linkedPath: String? = nil) throws -> Data {
-        var data: [String: Any] = ["key": "ATTACH01", "itemType": "attachment", "contentType": mime,
-            "linkMode": linked ? "linked_file" : "imported_file", "parentItem": "PARENT01"]
+        var data: [String: Any] = [
+            "key": "ATTACH01", "itemType": "attachment", "contentType": mime,
+            "linkMode": linked ? "linked_file" : "imported_file", "parentItem": "PARENT01",
+        ]
         if linked { data["path"] = linkedPath ?? file.path } else { data["filename"] = file.lastPathComponent }
         return try JSONSerialization.data(withJSONObject: ["key": "ATTACH01", "version": version, "data": data], options: [.sortedKeys])
     }
@@ -235,7 +256,10 @@ private struct OriginalFixture: Sendable {
     }
     func call(_ extra: [String: Any]) async throws -> Response {
         let defaults: [String: Any] = ["library": "group:42", "attachment_key": "ATTACH01", "mode": "text"]
-        let data = try JSONSerialization.data(withJSONObject: ["jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": ["name": "zotero_read_original", "arguments": defaults.merging(extra, uniquingKeysWith: { _, new in new })]])
+        let data = try JSONSerialization.data(withJSONObject: [
+            "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+            "params": ["name": "zotero_read_original", "arguments": defaults.merging(extra, uniquingKeysWith: { _, new in new })],
+        ])
         let response = try #require(await server.handle(requestData: data, access: .readOnly))
         let rpc = try #require(JSONSerialization.jsonObject(with: response) as? [String: Any])
         let result = try #require(rpc["result"] as? [String: Any])
@@ -256,10 +280,17 @@ private actor OriginalFixtureClient: ZoteroMCPHTTPClient {
     private(set) var requests: [URLRequest] = []
 
     init(metadata: Data, fileURL: String) {
-        self.initialMetadata = metadata; self.metadata = metadata; self.fileURL = fileURL
+        self.initialMetadata = metadata
+        self.metadata = metadata
+        self.fileURL = fileURL
     }
     func reset(hook: (@Sendable (Int) throws -> Void)? = nil) {
-        requests = []; metadata = initialMetadata; metadataAfterRead = nil; secondURL = nil; urlResponse = nil; self.hook = hook
+        requests = []
+        metadata = initialMetadata
+        metadataAfterRead = nil
+        secondURL = nil
+        urlResponse = nil
+        self.hook = hook
     }
     func setMetadataAfterRead(_ value: Data) { metadataAfterRead = value }
     func setMetadata(_ value: Data) { metadata = value }

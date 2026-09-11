@@ -16,13 +16,16 @@ public enum BundledResearchSkillResourceError: LocalizedError, Sendable {
 
 public enum BundledResearchSkillResources {
     public static func coreProtocolSkillDirectoryURL() throws -> URL {
-        guard let skillsRoot = Bundle.module.url(
-            forResource: "Skills",
-            withExtension: nil
-        ) else {
+        guard
+            let skillsRoot = Bundle.module.url(
+                forResource: "Skills",
+                withExtension: nil
+            )
+        else {
             throw BundledResearchSkillResourceError.unavailable
         }
-        let root = skillsRoot
+        let root =
+            skillsRoot
             .appendingPathComponent(
                 "Scholium System Skills/scholium-core-protocol",
                 isDirectory: true

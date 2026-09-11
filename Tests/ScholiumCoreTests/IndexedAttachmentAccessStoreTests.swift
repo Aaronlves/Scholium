@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+
 @testable import ScholiumCore
 
 @Suite("Indexed attachment access")
@@ -16,42 +17,48 @@ struct IndexedAttachmentAccessStoreTests {
         )
         let attachmentID = UUID()
 
-        #expect(try await store.register(
-            attachmentID: attachmentID,
-            selectedURL: selected,
-            expectedAbsolutePath: selected.path
-        ))
-        #expect(try await store.isAvailable(
-            attachmentID: attachmentID,
-            expectedFilename: selected.lastPathComponent
-        ))
+        #expect(
+            try await store.register(
+                attachmentID: attachmentID,
+                selectedURL: selected,
+                expectedAbsolutePath: selected.path
+            ))
+        #expect(
+            try await store.isAvailable(
+                attachmentID: attachmentID,
+                expectedFilename: selected.lastPathComponent
+            ))
         let access = try await store.beginAccess(
             attachmentID: attachmentID,
             expectedFilename: selected.lastPathComponent
         )
-        #expect(access.url.resolvingSymlinksInPath().standardizedFileURL.path
-            == selected.path)
+        #expect(
+            access.url.resolvingSymlinksInPath().standardizedFileURL.path
+                == selected.path)
         await store.endAccess(access.token)
 
         let moved = fixture.root.appendingPathComponent("Moved.png")
         try FileManager.default.moveItem(at: selected, to: moved)
-        #expect(try await store.isAvailable(
-            attachmentID: attachmentID,
-            expectedFilename: selected.lastPathComponent
-        ) == false)
+        #expect(
+            try await store.isAvailable(
+                attachmentID: attachmentID,
+                expectedFilename: selected.lastPathComponent
+            ) == false)
 
         #expect(try await store.attachmentID(forAbsolutePath: selected.path) == attachmentID)
 
         try await store.removeIfPresent(attachmentID: attachmentID)
-        #expect(try await store.isAvailable(
-            attachmentID: attachmentID,
-            expectedFilename: selected.lastPathComponent
-        ) == false)
+        #expect(
+            try await store.isAvailable(
+                attachmentID: attachmentID,
+                expectedFilename: selected.lastPathComponent
+            ) == false)
         #expect(FileManager.default.fileExists(atPath: moved.path))
     }
 
-    private static let png = Data(base64Encoded:
-        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+    private static let png = Data(
+        base64Encoded:
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
     )!
 
     private struct Fixture {
@@ -64,7 +71,8 @@ struct IndexedAttachmentAccessStoreTests {
                 .deletingLastPathComponent()
                 .deletingLastPathComponent()
                 .deletingLastPathComponent()
-            root = repositoryRoot
+            root =
+                repositoryRoot
                 .appendingPathComponent(".build/indexed-attachment-access-tests")
                 .appendingPathComponent(UUID().uuidString.lowercased())
             support = root.appendingPathComponent("Support", isDirectory: true)

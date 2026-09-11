@@ -3,6 +3,7 @@ import Foundation
 import ScholiumContracts
 import SwiftUI
 import Testing
+
 @testable import ScholiumApp
 
 @Suite("Library folder tree")
@@ -40,10 +41,12 @@ struct SidebarTreeTests {
     @Test("Window tree cache ignores unrelated presentation publications")
     @MainActor
     func windowTreeProjectionCache() {
-        let notes = [WindowDocumentLocation.syntheticPreview(
-            relativePath: "Cluster/Note.md",
-            rawContent: "# Note\n"
-        )]
+        let notes = [
+            WindowDocumentLocation.syntheticPreview(
+                relativePath: "Cluster/Note.md",
+                rawContent: "# Note\n"
+            )
+        ]
         let cache = LibraryTreeProjectionCache()
         let first = cache.projection(
             preorderedNotes: notes,
@@ -63,10 +66,12 @@ struct SidebarTreeTests {
         )
         #expect(changed.revision == first.revision + 1)
 
-        let revisedNotes = [WindowDocumentLocation.syntheticPreview(
-            relativePath: "Cluster/Note.md",
-            rawContent: "# Revised\n"
-        )]
+        let revisedNotes = [
+            WindowDocumentLocation.syntheticPreview(
+                relativePath: "Cluster/Note.md",
+                rawContent: "# Revised\n"
+            )
+        ]
         let revised = cache.projection(
             preorderedNotes: revisedNotes,
             folderRelativePaths: ["Empty", "Second"]
@@ -125,18 +130,18 @@ struct SidebarTreeTests {
 
     @Test("Context menus and accessibility actions share one file-command projection")
     func noteCommandProjection() {
-        let workspaceMenu = sidebarNoteCommandGroups(
-        ).flatMap(\.commands)
-        #expect(workspaceMenu == [
-            .openInNewTab,
-            .addToChat,
-            .duplicate,
-            .rename,
-            .move,
-            .moveToSystemTrash,
-            .copyRelativePath,
-            .revealInFinder,
-        ])
+        let workspaceMenu = sidebarNoteCommandGroups().flatMap(\.commands)
+        #expect(
+            workspaceMenu == [
+                .openInNewTab,
+                .addToChat,
+                .duplicate,
+                .rename,
+                .move,
+                .moveToSystemTrash,
+                .copyRelativePath,
+                .revealInFinder,
+            ])
 
     }
 
@@ -310,7 +315,7 @@ struct SidebarTreeTests {
                 .syntheticPreview(
                     relativePath: "papers/Ethics/Overview.md",
                     rawContent: "# Overview\n"
-                ),
+                )
             ],
             folderRelativePaths: [
                 "papers",
@@ -322,9 +327,10 @@ struct SidebarTreeTests {
 
         let papers = try #require(tree.first { $0.id == "papers" })
         let ethics = try #require(papers.children.first { $0.id == "papers/Ethics" })
-        let empty = try #require(ethics.children.first {
-            $0.id == "papers/Ethics/Empty Archive"
-        })
+        let empty = try #require(
+            ethics.children.first {
+                $0.id == "papers/Ethics/Empty Archive"
+            })
         #expect(empty.isFolder)
         #expect(empty.children.isEmpty)
         #expect(empty.folderRelativePath == "papers/Ethics/Empty Archive")
@@ -367,13 +373,14 @@ struct SidebarTreeTests {
             from: tree,
             expandedFolders: ["Arguments", "Arguments/Agency"]
         )
-        #expect(expanded.map(\.id) == [
-            "Arguments",
-            "Arguments/Agency",
-            "Arguments/Agency/Reply.md",
-            "Arguments/Overview.md",
-            "Loose.md",
-        ])
+        #expect(
+            expanded.map(\.id) == [
+                "Arguments",
+                "Arguments/Agency",
+                "Arguments/Agency/Reply.md",
+                "Arguments/Overview.md",
+                "Loose.md",
+            ])
         #expect(sidebarControlSize(for: .small) == .small)
         #expect(sidebarControlSize(for: .medium) == .regular)
         #expect(sidebarControlSize(for: .large) == .large)
@@ -387,26 +394,30 @@ struct SidebarTreeTests {
     @Test("Native expansion synchronization runs only for changed disclosure or structure")
     func nativeExpansionSynchronizationInvalidation() {
         let disclosure: Set<String> = ["Cluster"]
-        #expect(sidebarExpansionSynchronizationIsRequired(
-            previouslyApplied: nil,
-            desired: disclosure,
-            structureChanged: false
-        ))
-        #expect(!sidebarExpansionSynchronizationIsRequired(
-            previouslyApplied: disclosure,
-            desired: disclosure,
-            structureChanged: false
-        ))
-        #expect(sidebarExpansionSynchronizationIsRequired(
-            previouslyApplied: disclosure,
-            desired: ["Other"],
-            structureChanged: false
-        ))
-        #expect(sidebarExpansionSynchronizationIsRequired(
-            previouslyApplied: disclosure,
-            desired: disclosure,
-            structureChanged: true
-        ))
+        #expect(
+            sidebarExpansionSynchronizationIsRequired(
+                previouslyApplied: nil,
+                desired: disclosure,
+                structureChanged: false
+            ))
+        #expect(
+            !sidebarExpansionSynchronizationIsRequired(
+                previouslyApplied: disclosure,
+                desired: disclosure,
+                structureChanged: false
+            ))
+        #expect(
+            sidebarExpansionSynchronizationIsRequired(
+                previouslyApplied: disclosure,
+                desired: ["Other"],
+                structureChanged: false
+            ))
+        #expect(
+            sidebarExpansionSynchronizationIsRequired(
+                previouslyApplied: disclosure,
+                desired: disclosure,
+                structureChanged: true
+            ))
     }
 
     @MainActor
@@ -415,31 +426,36 @@ struct SidebarTreeTests {
         let presentation = SidebarSourceListSelectionPresentation()
 
         #expect(presentation.inputModality == .pointer)
-        #expect(!presentation.selectionIsEmphasized(
-            isKeyWindow: true,
-            isFirstResponder: true
-        ))
+        #expect(
+            !presentation.selectionIsEmphasized(
+                isKeyWindow: true,
+                isFirstResponder: true
+            ))
 
         presentation.recordKeyboardInteraction()
-        #expect(presentation.selectionIsEmphasized(
-            isKeyWindow: true,
-            isFirstResponder: true
-        ))
-        #expect(!presentation.selectionIsEmphasized(
-            isKeyWindow: false,
-            isFirstResponder: true
-        ))
-        #expect(!presentation.selectionIsEmphasized(
-            isKeyWindow: true,
-            isFirstResponder: false
-        ))
+        #expect(
+            presentation.selectionIsEmphasized(
+                isKeyWindow: true,
+                isFirstResponder: true
+            ))
+        #expect(
+            !presentation.selectionIsEmphasized(
+                isKeyWindow: false,
+                isFirstResponder: true
+            ))
+        #expect(
+            !presentation.selectionIsEmphasized(
+                isKeyWindow: true,
+                isFirstResponder: false
+            ))
 
         presentation.recordResponderEvent(.leftMouseDown)
         #expect(presentation.inputModality == .pointer)
-        #expect(!presentation.selectionIsEmphasized(
-            isKeyWindow: true,
-            isFirstResponder: true
-        ))
+        #expect(
+            !presentation.selectionIsEmphasized(
+                isKeyWindow: true,
+                isFirstResponder: true
+            ))
         presentation.recordResponderEvent(.keyDown)
         #expect(presentation.inputModality == .keyboard)
 
@@ -461,11 +477,11 @@ struct SidebarTreeTests {
         presentation.recordKeyboardInteraction()
         row.isEmphasized = true
         #expect(row.isEmphasized)
-        row.isEmphasized = false // Native inactive-window/responder update.
+        row.isEmphasized = false  // Native inactive-window/responder update.
         #expect(!row.isEmphasized)
 
         presentation.recordPointerInteraction()
-        row.isEmphasized = true // A later AppKit update must still stay quiet.
+        row.isEmphasized = true  // A later AppKit update must still stay quiet.
         #expect(!row.isEmphasized)
         #expect(row.isSelected)
     }
@@ -529,7 +545,7 @@ struct SidebarTreeTests {
                 .syntheticPreview(
                     relativePath: "Arguments/Agency/Reply.md",
                     rawContent: "# Reply\n"
-                ),
+                )
             ],
             notesAreOrdered: { $0.relativePath < $1.relativePath }
         )
@@ -580,22 +596,26 @@ struct SidebarTreeTests {
 
     @Test("A Folder drop rejects no-op, self, and descendant destinations")
     func droppedFolderRejectsInvalidDestinations() {
-        #expect(sidebarFolderDropDestination(
-            sourceRelativePath: "Cluster-01/Arguments",
-            folderRelativePath: "Cluster-01"
-        ) == nil)
-        #expect(sidebarFolderDropDestination(
-            sourceRelativePath: "Cluster-01/Arguments",
-            folderRelativePath: "Cluster-01/Arguments"
-        ) == nil)
-        #expect(sidebarFolderDropDestination(
-            sourceRelativePath: "Cluster-01/Arguments",
-            folderRelativePath: "Cluster-01/Arguments/Replies"
-        ) == nil)
-        #expect(sidebarFolderDropDestination(
-            sourceRelativePath: "Arguments",
-            folderRelativePath: nil
-        ) == nil)
+        #expect(
+            sidebarFolderDropDestination(
+                sourceRelativePath: "Cluster-01/Arguments",
+                folderRelativePath: "Cluster-01"
+            ) == nil)
+        #expect(
+            sidebarFolderDropDestination(
+                sourceRelativePath: "Cluster-01/Arguments",
+                folderRelativePath: "Cluster-01/Arguments"
+            ) == nil)
+        #expect(
+            sidebarFolderDropDestination(
+                sourceRelativePath: "Cluster-01/Arguments",
+                folderRelativePath: "Cluster-01/Arguments/Replies"
+            ) == nil)
+        #expect(
+            sidebarFolderDropDestination(
+                sourceRelativePath: "Arguments",
+                folderRelativePath: nil
+            ) == nil)
     }
 
     @Test("Native Note drop validation rejects stale, pending, and occupied moves")
@@ -629,16 +649,18 @@ struct SidebarTreeTests {
             pendingFolderMoves: []
         )
 
-        #expect(sidebarValidatedNoteDropDestination(
-            item: item,
-            folderRelativePath: "papers/Cluster-10",
-            inventory: base
-        ) == "papers/Cluster-10/Argument.md")
-        #expect(sidebarValidatedNoteDropDestination(
-            item: item,
-            folderRelativePath: nil,
-            inventory: base
-        ) == "Argument.md")
+        #expect(
+            sidebarValidatedNoteDropDestination(
+                item: item,
+                folderRelativePath: "papers/Cluster-10",
+                inventory: base
+            ) == "papers/Cluster-10/Argument.md")
+        #expect(
+            sidebarValidatedNoteDropDestination(
+                item: item,
+                folderRelativePath: nil,
+                inventory: base
+            ) == "Argument.md")
 
         let unavailablePolicy = SidebarTreeDropInventory(
             currentVaultID: vaultID,
@@ -651,33 +673,37 @@ struct SidebarTreeTests {
             pendingNoteMoves: [],
             pendingFolderMoves: []
         )
-        #expect(sidebarValidatedNoteDropDestination(
-            item: item,
-            folderRelativePath: "papers/Cluster-10",
-            inventory: unavailablePolicy
-        ) == nil)
+        #expect(
+            sidebarValidatedNoteDropDestination(
+                item: item,
+                folderRelativePath: "papers/Cluster-10",
+                inventory: unavailablePolicy
+            ) == nil)
 
         let stale = SidebarTreeDropInventory(
             currentVaultID: vaultID,
             sourceScope: .library,
             currentVaultRole: .sourceCorpus,
             canMutate: true,
-            notes: [workspaceNote(
-                vaultID: vaultID,
-                stableID: stableID,
-                path: target.relativePath,
-                source: "# Changed while dragging\n"
-            )],
+            notes: [
+                workspaceNote(
+                    vaultID: vaultID,
+                    stableID: stableID,
+                    path: target.relativePath,
+                    source: "# Changed while dragging\n"
+                )
+            ],
             folderRelativePaths: base.folderRelativePaths,
             pathComparisonPolicy: pathComparisonPolicy,
             pendingNoteMoves: [],
             pendingFolderMoves: []
         )
-        #expect(sidebarValidatedNoteDropDestination(
-            item: item,
-            folderRelativePath: "papers/Cluster-10",
-            inventory: stale
-        ) == nil)
+        #expect(
+            sidebarValidatedNoteDropDestination(
+                item: item,
+                folderRelativePath: "papers/Cluster-10",
+                inventory: stale
+            ) == nil)
 
         let pending = SidebarTreeDropInventory(
             currentVaultID: vaultID,
@@ -690,11 +716,12 @@ struct SidebarTreeTests {
             pendingNoteMoves: [item.id],
             pendingFolderMoves: []
         )
-        #expect(sidebarValidatedNoteDropDestination(
-            item: item,
-            folderRelativePath: "papers/Cluster-10",
-            inventory: pending
-        ) == nil)
+        #expect(
+            sidebarValidatedNoteDropDestination(
+                item: item,
+                folderRelativePath: "papers/Cluster-10",
+                inventory: pending
+            ) == nil)
 
         let collision = SidebarTreeDropInventory(
             currentVaultID: vaultID,
@@ -715,11 +742,12 @@ struct SidebarTreeTests {
             pendingNoteMoves: [],
             pendingFolderMoves: []
         )
-        #expect(sidebarValidatedNoteDropDestination(
-            item: item,
-            folderRelativePath: "papers/Cluster-10",
-            inventory: collision
-        ) == nil)
+        #expect(
+            sidebarValidatedNoteDropDestination(
+                item: item,
+                folderRelativePath: "papers/Cluster-10",
+                inventory: collision
+            ) == nil)
     }
 
     @Test("Native Folder drop validation rejects pending and occupied moves")
@@ -729,10 +757,11 @@ struct SidebarTreeTests {
             caseSensitive: true,
             normalizationSensitive: true
         )
-        let item = SidebarFolderDragItem(FolderMutationTarget(
-            vaultID: vaultID,
-            relativePath: "papers/Cluster-01/Arguments"
-        ))
+        let item = SidebarFolderDragItem(
+            FolderMutationTarget(
+                vaultID: vaultID,
+                relativePath: "papers/Cluster-01/Arguments"
+            ))
         let folders: Set<String> = [
             "papers/Cluster-01",
             "papers/Cluster-01/Arguments",
@@ -749,16 +778,18 @@ struct SidebarTreeTests {
             pendingNoteMoves: [],
             pendingFolderMoves: []
         )
-        #expect(sidebarValidatedFolderDropDestination(
-            item: item,
-            folderRelativePath: "papers/Cluster-10",
-            inventory: base
-        ) == "papers/Cluster-10/Arguments")
-        #expect(sidebarValidatedFolderDropDestination(
-            item: item,
-            folderRelativePath: nil,
-            inventory: base
-        ) == "Arguments")
+        #expect(
+            sidebarValidatedFolderDropDestination(
+                item: item,
+                folderRelativePath: "papers/Cluster-10",
+                inventory: base
+            ) == "papers/Cluster-10/Arguments")
+        #expect(
+            sidebarValidatedFolderDropDestination(
+                item: item,
+                folderRelativePath: nil,
+                inventory: base
+            ) == "Arguments")
 
         let unavailablePolicy = SidebarTreeDropInventory(
             currentVaultID: vaultID,
@@ -771,11 +802,12 @@ struct SidebarTreeTests {
             pendingNoteMoves: [],
             pendingFolderMoves: []
         )
-        #expect(sidebarValidatedFolderDropDestination(
-            item: item,
-            folderRelativePath: "papers/Cluster-10",
-            inventory: unavailablePolicy
-        ) == nil)
+        #expect(
+            sidebarValidatedFolderDropDestination(
+                item: item,
+                folderRelativePath: "papers/Cluster-10",
+                inventory: unavailablePolicy
+            ) == nil)
 
         let pending = SidebarTreeDropInventory(
             currentVaultID: vaultID,
@@ -788,11 +820,12 @@ struct SidebarTreeTests {
             pendingNoteMoves: [],
             pendingFolderMoves: [item.id]
         )
-        #expect(sidebarValidatedFolderDropDestination(
-            item: item,
-            folderRelativePath: "papers/Cluster-10",
-            inventory: pending
-        ) == nil)
+        #expect(
+            sidebarValidatedFolderDropDestination(
+                item: item,
+                folderRelativePath: "papers/Cluster-10",
+                inventory: pending
+            ) == nil)
 
         let occupied = SidebarTreeDropInventory(
             currentVaultID: vaultID,
@@ -805,11 +838,12 @@ struct SidebarTreeTests {
             pendingNoteMoves: [],
             pendingFolderMoves: []
         )
-        #expect(sidebarValidatedFolderDropDestination(
-            item: item,
-            folderRelativePath: "papers/Cluster-10",
-            inventory: occupied
-        ) == nil)
+        #expect(
+            sidebarValidatedFolderDropDestination(
+                item: item,
+                folderRelativePath: "papers/Cluster-10",
+                inventory: occupied
+            ) == nil)
     }
 
     @Test("Native Note drop validation uses the mounted volume comparison policy")
@@ -844,11 +878,12 @@ struct SidebarTreeTests {
             pendingNoteMoves: [],
             pendingFolderMoves: []
         )
-        #expect(sidebarValidatedNoteDropDestination(
-            item: item,
-            folderRelativePath: "Target",
-            inventory: caseInsensitive
-        ) == nil)
+        #expect(
+            sidebarValidatedNoteDropDestination(
+                item: item,
+                folderRelativePath: "Target",
+                inventory: caseInsensitive
+            ) == nil)
 
         let caseSensitive = SidebarTreeDropInventory(
             currentVaultID: vaultID,
@@ -864,11 +899,12 @@ struct SidebarTreeTests {
             pendingNoteMoves: [],
             pendingFolderMoves: []
         )
-        #expect(sidebarValidatedNoteDropDestination(
-            item: item,
-            folderRelativePath: "Target",
-            inventory: caseSensitive
-        ) == "Target/Draft.md")
+        #expect(
+            sidebarValidatedNoteDropDestination(
+                item: item,
+                folderRelativePath: "Target",
+                inventory: caseSensitive
+            ) == "Target/Draft.md")
 
         let unicodeSource = workspaceNote(
             vaultID: vaultID,
@@ -899,20 +935,22 @@ struct SidebarTreeTests {
             pendingNoteMoves: [],
             pendingFolderMoves: []
         )
-        #expect(sidebarValidatedNoteDropDestination(
-            item: unicodeItem,
-            folderRelativePath: "Target",
-            inventory: normalizationInsensitive
-        ) == nil)
+        #expect(
+            sidebarValidatedNoteDropDestination(
+                item: unicodeItem,
+                folderRelativePath: "Target",
+                inventory: normalizationInsensitive
+            ) == nil)
     }
 
     @Test("Native Folder drop validation uses the mounted volume comparison policy")
     func nativeFolderDropUsesVolumeComparisonPolicy() {
         let vaultID = UUID()
-        let item = SidebarFolderDragItem(FolderMutationTarget(
-            vaultID: vaultID,
-            relativePath: "Source/Arguments"
-        ))
+        let item = SidebarFolderDragItem(
+            FolderMutationTarget(
+                vaultID: vaultID,
+                relativePath: "Source/Arguments"
+            ))
         let folders: Set<String> = [
             "Source",
             "Source/Arguments",
@@ -933,11 +971,12 @@ struct SidebarTreeTests {
             pendingNoteMoves: [],
             pendingFolderMoves: []
         )
-        #expect(sidebarValidatedFolderDropDestination(
-            item: item,
-            folderRelativePath: "Target",
-            inventory: caseInsensitive
-        ) == nil)
+        #expect(
+            sidebarValidatedFolderDropDestination(
+                item: item,
+                folderRelativePath: "Target",
+                inventory: caseInsensitive
+            ) == nil)
 
         let caseSensitive = SidebarTreeDropInventory(
             currentVaultID: vaultID,
@@ -953,11 +992,12 @@ struct SidebarTreeTests {
             pendingNoteMoves: [],
             pendingFolderMoves: []
         )
-        #expect(sidebarValidatedFolderDropDestination(
-            item: item,
-            folderRelativePath: "Target",
-            inventory: caseSensitive
-        ) == "Target/Arguments")
+        #expect(
+            sidebarValidatedFolderDropDestination(
+                item: item,
+                folderRelativePath: "Target",
+                inventory: caseSensitive
+            ) == "Target/Arguments")
 
         let currentParentWithDifferentCase = SidebarTreeDropInventory(
             currentVaultID: vaultID,
@@ -973,11 +1013,12 @@ struct SidebarTreeTests {
             pendingNoteMoves: [],
             pendingFolderMoves: []
         )
-        #expect(sidebarValidatedFolderDropDestination(
-            item: item,
-            folderRelativePath: "source",
-            inventory: currentParentWithDifferentCase
-        ) == nil)
+        #expect(
+            sidebarValidatedFolderDropDestination(
+                item: item,
+                folderRelativePath: "source",
+                inventory: currentParentWithDifferentCase
+            ) == nil)
     }
 
     @Test("Rename changes only the file name inside the current folder")
@@ -994,10 +1035,11 @@ struct SidebarTreeTests {
                 requestedName: "Revised.md"
             ) == "Revised.md"
         )
-        #expect(noteRenameDestination(
-            sourceRelativePath: "Argument.md",
-            requestedName: "Another/Folder"
-        ) == nil)
+        #expect(
+            noteRenameDestination(
+                sourceRelativePath: "Argument.md",
+                requestedName: "Another/Folder"
+            ) == nil)
     }
 
     @MainActor
@@ -1023,9 +1065,11 @@ struct SidebarTreeTests {
         let retainedRow = fixture.outlineView.selectedRow
         #expect(retainedRow >= 0)
         fixture.outlineView.selectRowIndexes(IndexSet(integer: retainedRow == 0 ? 1 : 0), byExtendingSelection: false)
-        coordinator.apply(configuration: configuration(reveal: DiscoveryLibraryRevealRequest(
-            generation: 1, scope: scope, relativePath: first.relativePath, alignment: .nearest
-        )))
+        coordinator.apply(
+            configuration: configuration(
+                reveal: DiscoveryLibraryRevealRequest(
+                    generation: 1, scope: scope, relativePath: first.relativePath, alignment: .nearest
+                )))
         try await Task.sleep(for: .milliseconds(25))
         #expect(fixture.outlineView.selectedRow == retainedRow)
         coordinator.detach(from: fixture.scrollView)
@@ -1138,23 +1182,24 @@ struct SidebarTreeTests {
         modificationDate: Date? = nil
     ) -> WindowDocumentLocation {
         let document = NoteDocument(relativePath: path, rawContent: source)
-        return .workspace(WorkspaceNoteSnapshot(
-            id: VaultQualifiedNoteID(vaultID: vaultID, relativePath: path),
-            vaultRole: .sourceCorpus,
-            stableIdentity: .resolved(stableID),
-            document: document,
-            fileMetadata: WorkspaceFileMetadata(
-                byteCount: document.sourceBytes.count,
-                creationDate: nil,
-                modificationDate: modificationDate
-            ),
-            graphCounts: WorkspaceGraphCounts(
-                incoming: 0,
-                outgoing: 0,
-                broken: 0,
-                ambiguous: 0
-            )
-        ))
+        return .workspace(
+            WorkspaceNoteSnapshot(
+                id: VaultQualifiedNoteID(vaultID: vaultID, relativePath: path),
+                vaultRole: .sourceCorpus,
+                stableIdentity: .resolved(stableID),
+                document: document,
+                fileMetadata: WorkspaceFileMetadata(
+                    byteCount: document.sourceBytes.count,
+                    creationDate: nil,
+                    modificationDate: modificationDate
+                ),
+                graphCounts: WorkspaceGraphCounts(
+                    incoming: 0,
+                    outgoing: 0,
+                    broken: 0,
+                    ambiguous: 0
+                )
+            ))
     }
 }
 

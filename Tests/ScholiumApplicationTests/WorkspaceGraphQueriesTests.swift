@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+
 @testable import ScholiumApplication
 @testable import ScholiumContracts
 
@@ -13,8 +14,9 @@ struct WorkspaceGraphQueriesTests {
 
         #expect(try queries.links(for: fixture.source, direction: .outgoing) == [edge])
         #expect(try queries.links(for: fixture.target, direction: .incoming) == [edge])
-        #expect(try #require(queries.links(for: fixture.target, direction: .incoming).first)
-            .occurrence.annotation?.markdown == "Authored reason.")
+        #expect(
+            try #require(queries.links(for: fixture.target, direction: .incoming).first)
+                .occurrence.annotation?.markdown == "Authored reason.")
         #expect(throws: WorkspaceGraphQueryError.noteNotFound(fixture.missing)) {
             try queries.links(for: fixture.missing, direction: .outgoing)
         }
@@ -30,9 +32,10 @@ private extension WorkspaceGraphQueriesTests {
         var missing: VaultQualifiedNoteID { .init(vaultID: vaultID, relativePath: "Missing.md") }
 
         func queries(edges: [LinkGraphEdge]) -> WorkspaceGraphQueries {
-            let notes = Set(edges.flatMap { edge in
-                [edge.source] + (edge.destination.map { [$0.note] } ?? [])
-            })
+            let notes = Set(
+                edges.flatMap { edge in
+                    [edge.source] + (edge.destination.map { [$0.note] } ?? [])
+                })
             return WorkspaceGraphQueries(
                 noteIDs: notes,
                 graph: GraphSnapshot(
@@ -40,9 +43,10 @@ private extension WorkspaceGraphQueriesTests {
                     generation: 1,
                     sourceManifestHash: "fixture",
                     outgoing: Dictionary(grouping: edges, by: \.source),
-                    incoming: Dictionary(grouping: edges.compactMap { edge in
-                        edge.destination == nil ? nil : edge
-                    }, by: { $0.destination!.note }),
+                    incoming: Dictionary(
+                        grouping: edges.compactMap { edge in
+                            edge.destination == nil ? nil : edge
+                        }, by: { $0.destination!.note }),
                     diagnostics: []
                 )
             )
@@ -53,12 +57,14 @@ private extension WorkspaceGraphQueriesTests {
             to destination: VaultQualifiedNoteID,
             annotated: Bool = false
         ) -> LinkGraphEdge {
-            let annotation = annotated ? LinkAnnotation(
-                markdown: "Authored reason.",
-                text: "Authored reason.",
-                span: span(utf16LowerBound: 10, utf16UpperBound: 30),
-                contentSpan: span(utf16LowerBound: 12, utf16UpperBound: 28)
-            ) : nil
+            let annotation =
+                annotated
+                ? LinkAnnotation(
+                    markdown: "Authored reason.",
+                    text: "Authored reason.",
+                    span: span(utf16LowerBound: 10, utf16UpperBound: 30),
+                    contentSpan: span(utf16LowerBound: 12, utf16UpperBound: 28)
+                ) : nil
             return LinkGraphEdge(
                 source: source,
                 occurrence: LinkOccurrence(

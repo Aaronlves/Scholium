@@ -1,6 +1,7 @@
 import Foundation
 import ScholiumContracts
 import Testing
+
 @testable import ScholiumApp
 
 @Suite("Search state presentation")
@@ -27,21 +28,26 @@ struct SearchStatePresentationTests {
     @Test("Note Search maps every non-current availability explicitly")
     func noteAvailabilityMapping() throws {
         let unavailable = try #require(SearchStatePresentation.note(.unavailable))
-        let building = try #require(SearchStatePresentation.note(
-            .building(SearchBuildProgress(completed: 1, total: 3))
-        ))
-        let limited = try #require(SearchStatePresentation.note(
-            .limited(lastGood: noteGeneration)
-        ))
-        let refreshing = try #require(SearchStatePresentation.note(
-            .refreshing(lastGood: noteGeneration)
-        ))
-        let stale = try #require(SearchStatePresentation.note(
-            .stale(lastGood: noteGeneration, reason: "changed")
-        ))
-        let failed = try #require(SearchStatePresentation.note(
-            .failed(lastGood: nil, reason: "broken")
-        ))
+        let building = try #require(
+            SearchStatePresentation.note(
+                .building(SearchBuildProgress(completed: 1, total: 3))
+            ))
+        let limited = try #require(
+            SearchStatePresentation.note(
+                .limited(lastGood: noteGeneration)
+            ))
+        let refreshing = try #require(
+            SearchStatePresentation.note(
+                .refreshing(lastGood: noteGeneration)
+            ))
+        let stale = try #require(
+            SearchStatePresentation.note(
+                .stale(lastGood: noteGeneration, reason: "changed")
+            ))
+        let failed = try #require(
+            SearchStatePresentation.note(
+                .failed(lastGood: nil, reason: "broken")
+            ))
 
         #expect(unavailable.meaning == .unavailable)
         #expect(unavailable.action == .refresh)
@@ -59,36 +65,42 @@ struct SearchStatePresentationTests {
 
     @Test("Completed zero-match searches retain No Results while unexplained projections do not")
     func noMatchPresentationBoundary() throws {
-        #expect(!SearchStatePresentation.suppressesNoMatchContent(
-            for: .current(noteGeneration),
-            scope: .triptych,
-            hasExecutionIssue: false
-        ))
-        #expect(SearchStatePresentation.suppressesNoMatchContent(
-            for: .unavailable,
-            scope: .triptych,
-            hasExecutionIssue: false
-        ))
-        #expect(!SearchStatePresentation.suppressesNoMatchContent(
-            for: .stale(lastGood: noteGeneration, reason: "changed"),
-            scope: .triptych,
-            hasExecutionIssue: false
-        ))
-        #expect(!SearchStatePresentation.suppressesNoMatchContent(
-            for: .limited(lastGood: noteGeneration),
-            scope: .currentVault,
-            hasExecutionIssue: false
-        ))
-        #expect(!SearchStatePresentation.suppressesNoMatchContent(
-            for: .unavailable,
-            scope: .thisNote,
-            hasExecutionIssue: false
-        ))
-        #expect(SearchStatePresentation.suppressesNoMatchContent(
-            for: .current(noteGeneration),
-            scope: .thisNote,
-            hasExecutionIssue: true
-        ))
+        #expect(
+            !SearchStatePresentation.suppressesNoMatchContent(
+                for: .current(noteGeneration),
+                scope: .triptych,
+                hasExecutionIssue: false
+            ))
+        #expect(
+            SearchStatePresentation.suppressesNoMatchContent(
+                for: .unavailable,
+                scope: .triptych,
+                hasExecutionIssue: false
+            ))
+        #expect(
+            !SearchStatePresentation.suppressesNoMatchContent(
+                for: .stale(lastGood: noteGeneration, reason: "changed"),
+                scope: .triptych,
+                hasExecutionIssue: false
+            ))
+        #expect(
+            !SearchStatePresentation.suppressesNoMatchContent(
+                for: .limited(lastGood: noteGeneration),
+                scope: .currentVault,
+                hasExecutionIssue: false
+            ))
+        #expect(
+            !SearchStatePresentation.suppressesNoMatchContent(
+                for: .unavailable,
+                scope: .thisNote,
+                hasExecutionIssue: false
+            ))
+        #expect(
+            SearchStatePresentation.suppressesNoMatchContent(
+                for: .current(noteGeneration),
+                scope: .thisNote,
+                hasExecutionIssue: true
+            ))
 
         let repository = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()

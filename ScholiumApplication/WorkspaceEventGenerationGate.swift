@@ -1,4 +1,5 @@
 import ScholiumContracts
+
 /// A small delivery-neutral cursor for consumers of `WorkspaceEvent`.
 ///
 /// Event sources publish monotonically increasing generations, but a delivery
@@ -18,7 +19,8 @@ public struct WorkspaceEventGenerationGate: Sendable {
     @discardableResult
     public mutating func accept(generation: UInt64) -> Bool {
         if let latestAcceptedGeneration,
-           generation <= latestAcceptedGeneration {
+            generation <= latestAcceptedGeneration
+        {
             return false
         }
         latestAcceptedGeneration = generation

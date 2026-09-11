@@ -149,10 +149,16 @@ Common development commands:
 developer_dir="$(./Tools/Scripts/resolve-xcode-developer-dir.sh)"
 DEVELOPER_DIR="$developer_dir" swift build
 DEVELOPER_DIR="$developer_dir" swift test
+./Tools/Scripts/lint.sh
+./Tools/Scripts/lint.sh --fix
 ./Tools/Scripts/run-debug-app.sh
 ./Tools/Scripts/run-ui-tests.sh smoke
 ./Tools/Scripts/run-ui-tests.sh complete
 ```
+
+`lint.sh` checks Swift source with the repository's `swift-format` configuration
+and type-checks the WebEditor in isolated temporary dependencies. `--fix`
+formats Swift source in place before checking it.
 
 The UI runner uses a disposable TestVault copy and isolated state beneath the
 ignored repository `.build/` directory. `smoke` runs the canonical journey;

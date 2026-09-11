@@ -24,10 +24,10 @@ final class ScholiumWebKitProcessPrewarmer {
 
     var isActive: Bool { webView != nil }
     #if DEBUG
-    var testingPreparedWebViewIdentity: ObjectIdentifier? {
-        webView.map(ObjectIdentifier.init)
-    }
-    var testingPreparedWebViewIsReady: Bool { isPageReady }
+        var testingPreparedWebViewIdentity: ObjectIdentifier? {
+            webView.map(ObjectIdentifier.init)
+        }
+        var testingPreparedWebViewIsReady: Bool { isPageReady }
     #endif
 
     func start() {

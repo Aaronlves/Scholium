@@ -1,9 +1,10 @@
-import Foundation
 import CryptoKit
 import Darwin
-@testable import ScholiumCLIUpdate
+import Foundation
 import ScholiumContracts
 import Testing
+
+@testable import ScholiumCLIUpdate
 
 @Suite("Scholium CLI update")
 struct CLIUpdateTests {
@@ -300,9 +301,10 @@ struct CLIUpdateTests {
             )
         )
         #expect(try fixture.run(prefix: fixture.root.appendingPathComponent("bundle-partial")).status == 0)
-        #expect(FileManager.default.isExecutableFile(
-            atPath: bundlePartial.appendingPathComponent("scholium").path
-        ))
+        #expect(
+            FileManager.default.isExecutableFile(
+                atPath: bundlePartial.appendingPathComponent("scholium").path
+            ))
 
         let executablePartial = fixture.root.appendingPathComponent("executable-partial/bin")
         try FileManager.default.createDirectory(at: executablePartial, withIntermediateDirectories: true)
@@ -311,11 +313,12 @@ struct CLIUpdateTests {
             to: executablePartial.appendingPathComponent("scholium")
         )
         #expect(try fixture.run(prefix: fixture.root.appendingPathComponent("executable-partial")).status == 0)
-        #expect(FileManager.default.fileExists(
-            atPath: executablePartial.appendingPathComponent(
-                "Scholium_ScholiumCore.bundle"
-            ).path
-        ))
+        #expect(
+            FileManager.default.fileExists(
+                atPath: executablePartial.appendingPathComponent(
+                    "Scholium_ScholiumCore.bundle"
+                ).path
+            ))
 
         let conflict = fixture.root.appendingPathComponent("conflict/bin")
         try FileManager.default.createDirectory(at: conflict, withIntermediateDirectories: true)
@@ -327,11 +330,13 @@ struct CLIUpdateTests {
         try Data("different".utf8).write(to: conflictBundle.appendingPathComponent("payload"))
         let conflictResult = try fixture.run(prefix: fixture.root.appendingPathComponent("conflict"))
         #expect(conflictResult.status != 0)
-        #expect(!FileManager.default.fileExists(
-            atPath: conflict.appendingPathComponent("scholium").path
-        ))
-        #expect(try Data(contentsOf: conflictBundle.appendingPathComponent("payload"))
-            == Data("different".utf8))
+        #expect(
+            !FileManager.default.fileExists(
+                atPath: conflict.appendingPathComponent("scholium").path
+            ))
+        #expect(
+            try Data(contentsOf: conflictBundle.appendingPathComponent("payload"))
+                == Data("different".utf8))
     }
 
     @Test(
@@ -522,15 +527,17 @@ struct CLIUpdateTests {
 
         #expect(result.status == 75)
         #expect(result.stderr.contains("already running"))
-        #expect(!FileManager.default.fileExists(
-            atPath: destination.appendingPathComponent("scholium").path
-        ))
-        #expect(!FileManager.default.fileExists(
-            atPath: destination.appendingPathComponent(
-                "Scholium_ScholiumCore.bundle",
-                isDirectory: true
-            ).path
-        ))
+        #expect(
+            !FileManager.default.fileExists(
+                atPath: destination.appendingPathComponent("scholium").path
+            ))
+        #expect(
+            !FileManager.default.fileExists(
+                atPath: destination.appendingPathComponent(
+                    "Scholium_ScholiumCore.bundle",
+                    isDirectory: true
+                ).path
+            ))
     }
 
     private func makeEngine(
@@ -542,7 +549,8 @@ struct CLIUpdateTests {
     ) -> CLIUpdateEngine {
         let checksum = checksumOverride ?? sha256Hex(archive)
         let fetchResource: CLIUpdateEngine.ResourceFetcher = { url in
-            let data = url.pathExtension == "sha256"
+            let data =
+                url.pathExtension == "sha256"
                 ? Data("\(checksum)  \(ScholiumCLIDistribution.archiveName)\n".utf8)
                 : archive
             return CLIUpdateFetchedResource(data: data, finalURL: url)
@@ -649,7 +657,8 @@ private struct InstallerFixture {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        root = repositoryRoot
+        root =
+            repositoryRoot
             .appendingPathComponent(".build/test-fixtures", isDirectory: true)
             .appendingPathComponent(
                 "scholium-cli-installer-test-\(UUID().uuidString.lowercased())",
@@ -673,13 +682,13 @@ private struct InstallerFixture {
             to: installer
         )
         let executableSource = """
-        #!/bin/zsh
-        if [[ "${1:-}" == "version" || "${1:-}" == "doctor" ]]; then
-          print '{"schema_version":1,"ok":true}'
-          exit 0
-        fi
-        exit 64
-        """
+            #!/bin/zsh
+            if [[ "${1:-}" == "version" || "${1:-}" == "doctor" ]]; then
+              print '{"schema_version":1,"ok":true}'
+              exit 0
+            fi
+            exit 64
+            """
         try Data(executableSource.utf8).write(to: sourceExecutable)
         try FileManager.default.setAttributes(
             [.posixPermissions: 0o755],
@@ -705,7 +714,7 @@ private struct InstallerFixture {
         process.executableURL = URL(fileURLWithPath: "/bin/zsh")
         process.arguments = [installer.path]
         process.environment = ProcessInfo.processInfo.environment.merging([
-            "SCHOLIUM_CLI_PREFIX": prefix.path,
+            "SCHOLIUM_CLI_PREFIX": prefix.path
         ]) { _, explicit in explicit }
         process.standardOutput = output
         process.standardError = errors
@@ -754,7 +763,8 @@ private func writePackage(
 }
 
 private func writeBundle(at bundle: URL, identity: CLIReleaseIdentity) throws {
-    let resources = bundle
+    let resources =
+        bundle
         .appendingPathComponent("Contents", isDirectory: true)
         .appendingPathComponent("Resources", isDirectory: true)
     try FileManager.default.createDirectory(at: resources, withIntermediateDirectories: true)
@@ -779,15 +789,17 @@ private func writeBundle(at bundle: URL, identity: CLIReleaseIdentity) throws {
 }
 
 private func readReleaseLabel(from bundle: URL) throws -> String {
-    let url = bundle
+    let url =
+        bundle
         .appendingPathComponent("Contents", isDirectory: true)
         .appendingPathComponent("Resources", isDirectory: true)
         .appendingPathComponent("ScholiumBuildProvenance.plist")
-    let values = try PropertyListSerialization.propertyList(
-        from: Data(contentsOf: url),
-        options: [],
-        format: nil
-    ) as? [String: Any]
+    let values =
+        try PropertyListSerialization.propertyList(
+            from: Data(contentsOf: url),
+            options: [],
+            format: nil
+        ) as? [String: Any]
     return try #require(values?["release_label"] as? String)
 }
 

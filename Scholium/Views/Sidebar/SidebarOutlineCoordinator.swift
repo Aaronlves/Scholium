@@ -48,13 +48,15 @@ extension SidebarOutlineSourceList {
             (outlineView as? SidebarOutlineView)?.chatAccessibilityAction = { [weak self, weak outlineView] in
                 guard let self, let outlineView, self.outlineView === outlineView, outlineView.selectedRow >= 0,
                     let item = outlineView.item(atRow: outlineView.selectedRow) as? SidebarOutlineItem,
-                    let note = item.node.note, self.configuration.context.canAddNoteToChat(note) else { return nil }
+                    let note = item.node.note, self.configuration.context.canAddNoteToChat(note)
+                else { return nil }
                 let selectedID = item.id
                 return NSAccessibilityCustomAction(name: ScholiumL10n.string("Add to Chat", locale: self.configuration.locale)) {
                     [weak self, weak outlineView] in
                     guard let self, let outlineView, self.outlineView === outlineView,
                         self.selectedItemID(in: outlineView) == selectedID,
-                        self.configuration.context.canAddNoteToChat(note) else { return false }
+                        self.configuration.context.canAddNoteToChat(note)
+                    else { return false }
                     self.configuration.context.addNoteToChat(note)
                     return true
                 }
@@ -80,7 +82,8 @@ extension SidebarOutlineSourceList {
             )
 
             let previousNativeSelectionID = selectedItemID(in: outlineView)
-            let activeDocumentChanged = !hasSynchronizedActiveDocument
+            let activeDocumentChanged =
+                !hasSynchronizedActiveDocument
                 || lastActiveDocumentPath != configuration.selectedDocumentPath
             var structureChanged = false
             let desiredRowSizeStyle: NSTableView.RowSizeStyle =
@@ -141,10 +144,11 @@ extension SidebarOutlineSourceList {
 
             roots = nodes.map { reconciledItem(for: $0, parent: nil) }
             itemsByID = itemsByID.filter { retainedIDs.contains($0.key) }
-            noteItemsByPath = Dictionary(uniqueKeysWithValues: itemsByID.values.compactMap {
-                guard let path = $0.node.note?.relativePath else { return nil }
-                return (path, $0)
-            })
+            noteItemsByPath = Dictionary(
+                uniqueKeysWithValues: itemsByID.values.compactMap {
+                    guard let path = $0.node.note?.relativePath else { return nil }
+                    return (path, $0)
+                })
         }
 
         private func selectedItemID(in outlineView: NSOutlineView) -> String? {
@@ -168,8 +172,9 @@ extension SidebarOutlineSourceList {
                     noteItemsByPath[$0]
                 }
             } else if let previousNativeSelectionID,
-                      let previous = itemsByID[previousNativeSelectionID],
-                      outlineView.row(forItem: previous) >= 0 {
+                let previous = itemsByID[previousNativeSelectionID],
+                outlineView.row(forItem: previous) >= 0
+            {
                 desiredItem = previous
             } else {
                 desiredItem = configuration.selectedDocumentPath.flatMap {
@@ -228,8 +233,9 @@ extension SidebarOutlineSourceList {
         private func refreshAvailableRows(in outlineView: NSOutlineView) {
             outlineView.enumerateAvailableRowViews { [weak self] rowView, row in
                 guard let self,
-                      row >= 0,
-                      let item = outlineView.item(atRow: row) as? SidebarOutlineItem else {
+                    row >= 0,
+                    let item = outlineView.item(atRow: row) as? SidebarOutlineItem
+                else {
                     return
                 }
                 (rowView as? SidebarOutlineRowView)?.configure(
@@ -237,11 +243,13 @@ extension SidebarOutlineSourceList {
                     isExpanded: outlineView.isItemExpanded(item),
                     nativeStrings: self.configuration.nativeStrings
                 )
-                guard let cell = outlineView.view(
+                guard
+                    let cell = outlineView.view(
                         atColumn: 0,
                         row: row,
                         makeIfNecessary: false
-                      ) as? SidebarOutlineHostingCell else { return }
+                    ) as? SidebarOutlineHostingCell
+                else { return }
                 self.configure(
                     cell: cell,
                     for: item,
@@ -269,16 +277,16 @@ extension SidebarOutlineSourceList {
                 presentation: SidebarSourceListRowPresentation(
                     effectiveRowSizeStyle: outlineView.effectiveRowSizeStyle
                 ),
-                usesEmphasizedSelectionForeground:
-                    (outlineView as? SidebarOutlineView)?
-                        .usesEmphasizedSelectionForeground == true
-                        && outlineView.selectedRow == outlineView.row(forItem: item)
+                usesEmphasizedSelectionForeground: (outlineView as? SidebarOutlineView)?
+                    .usesEmphasizedSelectionForeground == true
+                    && outlineView.selectedRow == outlineView.row(forItem: item)
             )
         }
 
         private func handleRevealRequest(in outlineView: NSOutlineView) {
             guard let request = configuration.revealRequest,
-                  request.generation != lastRevealGeneration else { return }
+                request.generation != lastRevealGeneration
+            else { return }
             guard configuration.disclosureScope == request.scope else {
                 lastRevealGeneration = request.generation
                 configuration.onConsumeRevealRequest(request)
@@ -291,8 +299,9 @@ extension SidebarOutlineSourceList {
 
             DispatchQueue.main.async { [weak self, weak outlineView] in
                 guard let self,
-                      let outlineView,
-                      self.outlineView === outlineView else { return }
+                    let outlineView,
+                    self.outlineView === outlineView
+                else { return }
                 let row = outlineView.row(forItem: item)
                 guard row >= 0 else {
                     self.lastRevealGeneration = nil
@@ -319,7 +328,8 @@ extension SidebarOutlineSourceList {
                 return
             }
             guard path != lastRequestedFocusPath,
-                  let item = itemsByID[path] else { return }
+                let item = itemsByID[path]
+            else { return }
             lastRequestedFocusPath = path
             expandAncestors(of: item, in: outlineView)
             let row = outlineView.row(forItem: item)
@@ -334,8 +344,9 @@ extension SidebarOutlineSourceList {
             (outlineView as? SidebarOutlineView)?.requestKeyboardFocus()
             DispatchQueue.main.async { [weak self, weak outlineView] in
                 guard let self,
-                      let outlineView,
-                      self.outlineView === outlineView else { return }
+                    let outlineView,
+                    self.outlineView === outlineView
+                else { return }
                 self.refreshAvailableRows(in: outlineView)
                 self.configuration.onFocusRequestHandled()
             }
@@ -472,16 +483,19 @@ extension SidebarOutlineSourceList {
             pasteboardWriterForItem item: Any
         ) -> (any NSPasteboardWriting)? {
             guard let item = item as? SidebarOutlineItem,
-                  configuration.dropInventory.sourceScope == .library,
-                  configuration.dropInventory.canMutate else { return nil }
+                configuration.dropInventory.sourceScope == .library,
+                configuration.dropInventory.canMutate
+            else { return nil }
 
             if let note = item.node.note,
-               let target = NoteMutationTarget(note) {
+                let target = NoteMutationTarget(note)
+            {
                 let payload = SidebarNoteDragItem(target)
                 guard !configuration.dropInventory.pendingNoteMoves.contains(payload.id),
-                      configuration.dropInventory.notes.contains(where: {
-                          NoteMutationTarget($0) == target
-                      }) else { return nil }
+                    configuration.dropInventory.notes.contains(where: {
+                        NoteMutationTarget($0) == target
+                    })
+                else { return nil }
                 return pasteboardItem(
                     payload,
                     contentType: SidebarNoteDragItem.pasteboardType
@@ -489,17 +503,20 @@ extension SidebarOutlineSourceList {
             }
 
             if let path = item.node.folderRelativePath,
-               let vaultID = configuration.dropInventory.currentVaultID {
-                let payload = SidebarFolderDragItem(FolderMutationTarget(
-                    vaultID: vaultID,
-                    relativePath: path
-                ))
+                let vaultID = configuration.dropInventory.currentVaultID
+            {
+                let payload = SidebarFolderDragItem(
+                    FolderMutationTarget(
+                        vaultID: vaultID,
+                        relativePath: path
+                    ))
                 guard payload.vaultID == configuration.dropInventory.currentVaultID,
-                      !configuration.dropInventory.pendingFolderMoves.contains(payload.id),
-                      sidebarDropFolderIsMutable(
-                          path,
-                          inventory: configuration.dropInventory
-                      ) else { return nil }
+                    !configuration.dropInventory.pendingFolderMoves.contains(payload.id),
+                    sidebarDropFolderIsMutable(
+                        path,
+                        inventory: configuration.dropInventory
+                    )
+                else { return nil }
                 return pasteboardItem(
                     payload,
                     contentType: SidebarFolderDragItem.pasteboardType
@@ -525,12 +542,13 @@ extension SidebarOutlineSourceList {
             proposedChildIndex index: Int
         ) -> NSDragOperation {
             guard let payload = sidebarNativeDragPayload(from: info),
-                  let target = dropFolderTarget(in: outlineView, info: info),
-                  let folderRelativePath = target.node.folderRelativePath,
-                  validatedDrop(
+                let target = dropFolderTarget(in: outlineView, info: info),
+                let folderRelativePath = target.node.folderRelativePath,
+                validatedDrop(
                     payload: payload,
                     folderRelativePath: folderRelativePath
-                  ) else {
+                )
+            else {
                 return []
             }
             outlineView.setDropItem(
@@ -547,16 +565,19 @@ extension SidebarOutlineSourceList {
             childIndex index: Int
         ) -> Bool {
             guard index == NSOutlineViewDropOnItemIndex,
-                  let target = item as? SidebarOutlineItem,
-                  target.node.isFolder,
-                  let targetFolder = target.node.folderRelativePath,
-                  let payload = sidebarNativeDragPayload(from: info) else {
+                let target = item as? SidebarOutlineItem,
+                target.node.isFolder,
+                let targetFolder = target.node.folderRelativePath,
+                let payload = sidebarNativeDragPayload(from: info)
+            else {
                 return false
             }
-            guard validatedDrop(
+            guard
+                validatedDrop(
                     payload: payload,
                     folderRelativePath: targetFolder
-                  ) else { return false }
+                )
+            else { return false }
             commitSidebarNativeDrop(
                 payload,
                 folderRelativePath: targetFolder,
@@ -579,12 +600,14 @@ extension SidebarOutlineSourceList {
 
         func outlineViewSelectionDidChange(_ notification: Notification) {
             guard !isSynchronizingSelection,
-                  let outlineView = notification.object as? NSOutlineView else { return }
+                let outlineView = notification.object as? NSOutlineView
+            else { return }
             refreshAvailableRows(in: outlineView)
             guard outlineView.selectedRow >= 0,
-                  let item = outlineView.item(
-                      atRow: outlineView.selectedRow
-                  ) as? SidebarOutlineItem else { return }
+                let item = outlineView.item(
+                    atRow: outlineView.selectedRow
+                ) as? SidebarOutlineItem
+            else { return }
             if let note = item.node.note {
                 configuration.onSelect(note)
             }
@@ -596,10 +619,11 @@ extension SidebarOutlineSourceList {
             item: Any
         ) -> NSView? {
             guard let item = item as? SidebarOutlineItem else { return nil }
-            let cell = outlineView.makeView(
-                withIdentifier: Self.cellIdentifier,
-                owner: self
-            ) as? SidebarOutlineHostingCell ?? SidebarOutlineHostingCell()
+            let cell =
+                outlineView.makeView(
+                    withIdentifier: Self.cellIdentifier,
+                    owner: self
+                ) as? SidebarOutlineHostingCell ?? SidebarOutlineHostingCell()
             cell.identifier = Self.cellIdentifier
             configure(cell: cell, for: item, in: outlineView)
             return cell
@@ -610,10 +634,11 @@ extension SidebarOutlineSourceList {
             rowViewForItem item: Any
         ) -> NSTableRowView? {
             guard let item = item as? SidebarOutlineItem else { return nil }
-            let row = outlineView.makeView(
-                withIdentifier: Self.rowIdentifier,
-                owner: self
-            ) as? SidebarOutlineRowView ?? SidebarOutlineRowView()
+            let row =
+                outlineView.makeView(
+                    withIdentifier: Self.rowIdentifier,
+                    owner: self
+                ) as? SidebarOutlineRowView ?? SidebarOutlineRowView()
             row.identifier = Self.rowIdentifier
             (outlineView as? SidebarOutlineView)?.configureSelectionPresentation(for: row)
             row.configure(
@@ -634,7 +659,8 @@ extension SidebarOutlineSourceList {
 
         private func updateExpansion(from notification: Notification, expanded: Bool) {
             guard !isSynchronizingExpansion,
-                  let item = notification.userInfo?["NSObject"] as? SidebarOutlineItem else {
+                let item = notification.userInfo?["NSObject"] as? SidebarOutlineItem
+            else {
                 return
             }
             var disclosure = configuration.expandedFolders

@@ -1,6 +1,7 @@
 import Foundation
 import ScholiumContracts
 import Testing
+
 @testable import ScholiumApplication
 
 @Suite("Application direct-link Search resolution")
@@ -46,12 +47,13 @@ struct NoteLinkSearchResolverTests {
 
         let thisNote = try fixture.resolve(
             "from-note:Anchor",
-            scope: .currentNote(SearchSourceSnapshot(
-                noteID: fixture.anchorID,
-                editorSessionID: UUID(),
-                source: "# Anchor\n",
-                editorRevision: 1
-            )),
+            scope: .currentNote(
+                SearchSourceSnapshot(
+                    noteID: fixture.anchorID,
+                    editorSessionID: UUID(),
+                    source: "# Anchor\n",
+                    editorRevision: 1
+                )),
             catalog: catalog
         )
         #expect(thisNote.matches.isEmpty)
@@ -77,8 +79,7 @@ struct NoteLinkSearchResolverTests {
 
         #expect(resolution.matches.isEmpty)
         #expect(resolution.diagnostic?.code == .notApplicable)
-        #expect(resolution.diagnostic?.message ==
-            "Direct link Search is unavailable until Graph and Note Search share one complete source manifest.")
+        #expect(resolution.diagnostic?.message == "Direct link Search is unavailable until Graph and Note Search share one complete source manifest.")
     }
 }
 
@@ -168,7 +169,7 @@ private extension NoteLinkSearchResolverTests {
                     anchorStableID: NoteMetadataSnapshot(
                         record: anchorMetadata,
                         revision: DocumentFingerprint(content: "anchor metadata")
-                    ),
+                    )
                 ]
             )
         }

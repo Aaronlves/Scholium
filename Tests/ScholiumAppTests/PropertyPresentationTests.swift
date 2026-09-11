@@ -3,6 +3,7 @@ import Foundation
 import ScholiumApplication
 import ScholiumContracts
 import Testing
+
 @testable import ScholiumApp
 
 @Suite("Portable metadata presentation and editor boundary")
@@ -10,19 +11,21 @@ struct PropertyPresentationTests {
     @Test("Individual field lookup preserves complete catalog semantics")
     func individualFieldLookup() {
         let catalog = NoteMetadataCatalog(customFieldsByRole: [
-            .paperAnalysis: [.init(key: "reading_note", valueKind: .text, label: "Reading note")],
+            .paperAnalysis: [.init(key: "reading_note", valueKind: .text, label: "Reading note")]
         ])
         let start = ContinuousClock.now
         for profile in PropertyPresentationCatalog.currentProfiles {
             let all = PropertyPresentationCatalog.presentations(for: profile, catalog: catalog)
             for _ in 0..<10 {
                 for expected in all {
-                    #expect(PropertyPresentationCatalog.presentation(
-                        for: expected.key, in: profile, catalog: catalog) == expected)
+                    #expect(
+                        PropertyPresentationCatalog.presentation(
+                            for: expected.key, in: profile, catalog: catalog) == expected)
                 }
             }
-            #expect(PropertyPresentationCatalog.presentation(
-                for: "not_a_field", in: profile, catalog: catalog) == nil)
+            #expect(
+                PropertyPresentationCatalog.presentation(
+                    for: "not_a_field", in: profile, catalog: catalog) == nil)
         }
         print("Individual field lookup diagnostic: \(start.duration(to: .now))")
     }
@@ -37,9 +40,11 @@ struct PropertyPresentationTests {
             let expected = NoteMetadataCatalog.builtIn.contracts(for: profile)
             #expect(presentations.count == Set(presentations.map(\.key)).count)
             #expect(Set(presentations.map(\.key)) == Set(expected.map(\.canonicalKey)))
-            #expect(presentations == presentations.sorted {
-                ($0.group.order, $0.order) < ($1.group.order, $1.order)
-            })
+            #expect(
+                presentations
+                    == presentations.sorted {
+                        ($0.group.order, $0.order) < ($1.group.order, $1.order)
+                    })
         }
     }
 
@@ -79,10 +84,11 @@ struct PropertyPresentationTests {
             field: type,
             text: "web_page"
         )
-        #expect(model.validationIssues(
-            proposedFields: invalid,
-            changedKeys: ["type"]
-        ).map(\.code) == [.valueNotAllowed])
+        #expect(
+            model.validationIssues(
+                proposedFields: invalid,
+                changedKeys: ["type"]
+            ).map(\.code) == [.valueNotAllowed])
     }
 
     @Test("Malformed YAML does not block an independent metadata edit")
@@ -100,10 +106,11 @@ struct PropertyPresentationTests {
             field: title,
             text: "Managed title"
         )
-        #expect(model.validationIssues(
-            proposedFields: proposed,
-            changedKeys: ["title"]
-        ).isEmpty)
+        #expect(
+            model.validationIssues(
+                proposedFields: proposed,
+                changedKeys: ["title"]
+            ).isEmpty)
         #expect(note.rawContent == source)
     }
 
@@ -117,8 +124,9 @@ struct PropertyPresentationTests {
         let model = PropertyEditorModel(note: note, metadataCatalog: .builtIn)
         let sourceProfile = AnalysisSourceTypeProfileCatalog.profile(for: .journalArticle)
 
-        #expect(Set(model.availableFields.map(\.key))
-            == Set(sourceProfile.applicableFields).subtracting(["type"]))
+        #expect(
+            Set(model.availableFields.map(\.key))
+                == Set(sourceProfile.applicableFields).subtracting(["type"]))
         #expect(!model.availableFields.map(\.key).contains("isbn"))
         for group in model.groupedAvailableFields {
             let flags = group.fields.map(\.isRecommended)
@@ -170,8 +178,8 @@ struct PropertyPresentationTests {
                     description: "Current stage of the topic",
                     allowedValues: ["draft", "review"],
                     lifecycle: .archived
-                ),
-            ],
+                )
+            ]
         ])
         let presentNote = propertyWorkspaceLocation(
             NoteDocument(relativePath: "topic.md", rawContent: "# Topic\n"),
@@ -182,9 +190,10 @@ struct PropertyPresentationTests {
             note: presentNote,
             metadataCatalog: catalog
         )
-        let field = try #require(present.presentFields.first {
-            $0.key == "research_stage"
-        })
+        let field = try #require(
+            present.presentFields.first {
+                $0.key == "research_stage"
+            })
         #expect(field.label == "Research Stage")
         #expect(field.help == "Current stage of the topic")
         #expect(field.allowedValues == ["draft", "review"])
@@ -197,11 +206,12 @@ struct PropertyPresentationTests {
             metadataCatalog: catalog
         )
         #expect(!absent.availableFields.contains { $0.key == "research_stage" })
-        #expect(!AboutProfileCatalog.allowsOptionalField(
-            "research_stage",
-            profile: .topicMarkdown,
-            catalog: catalog
-        ))
+        #expect(
+            !AboutProfileCatalog.allowsOptionalField(
+                "research_stage",
+                profile: .topicMarkdown,
+                catalog: catalog
+            ))
     }
 
     @Test("Managed list edits preserve duplicate researcher values")
@@ -240,14 +250,16 @@ struct PropertyPresentationTests {
 
     @Test("Choice values display human labels")
     func choiceValuesHaveHumanLabels() {
-        #expect(PropertyPresentationCatalog.choiceDisplayName(
-            for: "journal_article",
-            fieldKey: "type"
-        ) == "Journal Article")
-        #expect(PropertyPresentationCatalog.choiceDisplayName(
-            for: "in_press",
-            fieldKey: "publication_status"
-        ) == "In Press")
+        #expect(
+            PropertyPresentationCatalog.choiceDisplayName(
+                for: "journal_article",
+                fieldKey: "type"
+            ) == "Journal Article")
+        #expect(
+            PropertyPresentationCatalog.choiceDisplayName(
+                for: "in_press",
+                fieldKey: "publication_status"
+            ) == "In Press")
     }
 
     @Test("About keeps core empty fields and appends every other present value")
@@ -279,19 +291,19 @@ struct PropertyPresentationTests {
             catalog: .builtIn
         )
 
-        #expect(groups.map(\.group) == [
-            .source,
-            .publication,
-            .accessAndIdentifiers,
-        ])
-        #expect(groups.map(\.keys) == [
-            ["authors", "type"],
-            ["publication_date", "publisher"],
-            ["doi"],
-        ])
+        #expect(
+            groups.map(\.group) == [
+                .source,
+                .publication,
+                .accessAndIdentifiers,
+            ])
+        #expect(
+            groups.map(\.keys) == [
+                ["authors", "type"],
+                ["publication_date", "publisher"],
+                ["doi"],
+            ])
     }
-
-
 
     @Test("About keeps a present archived custom value without making it selectable when empty")
     func aboutKeepsPresentArchivedValue() throws {
@@ -301,8 +313,8 @@ struct PropertyPresentationTests {
                     key: "research_stage",
                     valueKind: .text,
                     lifecycle: .archived
-                ),
-            ],
+                )
+            ]
         ])
         let groups = AboutProfileCatalog.groupedEntries(
             for: .topicMarkdown,
@@ -312,11 +324,12 @@ struct PropertyPresentationTests {
         )
 
         #expect(groups.flatMap(\.keys).contains("research_stage"))
-        #expect(!AboutProfileCatalog.allowsOptionalField(
-            "research_stage",
-            profile: .topicMarkdown,
-            catalog: catalog
-        ))
+        #expect(
+            !AboutProfileCatalog.allowsOptionalField(
+                "research_stage",
+                profile: .topicMarkdown,
+                catalog: catalog
+            ))
     }
 
     @Test("Settlement presentation distinguishes current, changed, and never-settled revisions")
@@ -399,24 +412,26 @@ struct PropertyPresentationTests {
             formatDate: fixtureDate
         )
 
-        #expect(facts == [
-            ScholiumApparatusFact(
-                id: "file-created",
-                label: "Created",
-                value: "10",
-                monospacedDigits: true
-            ),
-            ScholiumApparatusFact(
-                id: "source-modified",
-                label: "Modified",
-                value: "20",
-                monospacedDigits: true
-            ),
-        ])
-        #expect(AboutFactPresentation.fileHistory(
-            metadata: nil,
-            formatDate: fixtureDate
-        ).map(\.value) == ["Unavailable", "Unavailable"])
+        #expect(
+            facts == [
+                ScholiumApparatusFact(
+                    id: "file-created",
+                    label: "Created",
+                    value: "10",
+                    monospacedDigits: true
+                ),
+                ScholiumApparatusFact(
+                    id: "source-modified",
+                    label: "Modified",
+                    value: "20",
+                    monospacedDigits: true
+                ),
+            ])
+        #expect(
+            AboutFactPresentation.fileHistory(
+                metadata: nil,
+                formatDate: fixtureDate
+            ).map(\.value) == ["Unavailable", "Unavailable"])
     }
 
     @Test("About distinguishes unavailable Settlement facts from never settled")
@@ -444,17 +459,18 @@ struct PropertyPresentationTests {
             formatDate: fixtureDate
         )
 
-        #expect(changed.map(\.id) == [
-            "settlement-status", "settled-at", "settled-by",
-        ])
+        #expect(
+            changed.map(\.id) == [
+                "settlement-status", "settled-at", "settled-by",
+            ])
         #expect(changed.map(\.label) == ["Settlement", "Last Settled", "Researcher"])
-        #expect(changed.map(\.value) == [
-            "Changed since settlement", "30", "Researcher",
-        ])
+        #expect(
+            changed.map(\.value) == [
+                "Changed since settlement", "30", "Researcher",
+            ])
         #expect(never.map(\.value) == ["Not yet settled"])
         #expect(unavailable.map(\.value) == ["Unavailable"])
     }
-
 
 }
 
@@ -474,18 +490,19 @@ private func propertyWorkspaceLocation(
             revision: DocumentFingerprint(content: String(describing: $0))
         )
     }
-    return .workspace(WorkspaceNoteSnapshot(
-        id: VaultQualifiedNoteID(vaultID: UUID(), relativePath: document.relativePath),
-        vaultRole: role,
-        stableIdentity: .resolved(noteID),
-        document: document,
-        fileMetadata: WorkspaceFileMetadata(
-            byteCount: document.sourceBytes.count,
-            creationDate: nil,
-            modificationDate: nil
-        ),
-        graphCounts: WorkspaceGraphCounts(incoming: 0, outgoing: 0, broken: 0, ambiguous: 0),
-        metadata: metadata,
-        headings: []
-    ))
+    return .workspace(
+        WorkspaceNoteSnapshot(
+            id: VaultQualifiedNoteID(vaultID: UUID(), relativePath: document.relativePath),
+            vaultRole: role,
+            stableIdentity: .resolved(noteID),
+            document: document,
+            fileMetadata: WorkspaceFileMetadata(
+                byteCount: document.sourceBytes.count,
+                creationDate: nil,
+                modificationDate: nil
+            ),
+            graphCounts: WorkspaceGraphCounts(incoming: 0, outgoing: 0, broken: 0, ambiguous: 0),
+            metadata: metadata,
+            headings: []
+        ))
 }

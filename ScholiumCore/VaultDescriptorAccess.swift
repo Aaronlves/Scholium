@@ -52,7 +52,8 @@ final class VaultDescriptorAccess {
             }
             let initialIdentity = FileIdentity(initialStatus)
             guard FileIdentity(finalStatus) == initialIdentity,
-                  Int(finalStatus.st_size) == data.count else {
+                Int(finalStatus.st_size) == data.count
+            else {
                 throw VaultRepositoryError.commitUncertain(
                     "The source changed while its exact bytes were being read."
                 )
@@ -252,8 +253,10 @@ final class VaultDescriptorAccess {
             throw error
         }
         do {
-            guard try Self.directoryIdentity(descriptor: descriptor)
-                    == authorizedRootIdentity else {
+            guard
+                try Self.directoryIdentity(descriptor: descriptor)
+                    == authorizedRootIdentity
+            else {
                 rootAuthorityIsInvalid = true
                 throw VaultRepositoryError.rootUnavailable(rootURL.path)
             }
@@ -279,7 +282,8 @@ final class VaultDescriptorAccess {
     private static func directoryIdentity(descriptor: Int32) throws -> FileIdentity {
         var status = stat()
         guard fstat(descriptor, &status) == 0,
-              (status.st_mode & S_IFMT) == S_IFDIR else {
+            (status.st_mode & S_IFMT) == S_IFDIR
+        else {
             throw VaultRepositoryError.rootUnavailable("authorized root")
         }
         return FileIdentity(status)

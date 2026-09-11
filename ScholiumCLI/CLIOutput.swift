@@ -4,14 +4,16 @@ import ScholiumContracts
 extension ScholiumCLI {
     static func option(_ name: String, in arguments: [String]) -> String? {
         guard let index = arguments.firstIndex(of: name),
-              arguments.indices.contains(index + 1) else { return nil }
+            arguments.indices.contains(index + 1)
+        else { return nil }
         return arguments[index + 1]
     }
 
     static func options(_ name: String, in arguments: [String]) -> [String] {
         arguments.indices.compactMap { index in
             guard arguments[index] == name,
-                  arguments.indices.contains(index + 1) else { return nil }
+                arguments.indices.contains(index + 1)
+            else { return nil }
             return arguments[index + 1]
         }
     }
@@ -46,35 +48,35 @@ extension ScholiumCLI {
                 .sorted()
             if !candidates.isEmpty {
                 return """
-                scholium \(key)
+                    scholium \(key)
 
-                Commands:
-                \(candidates.map { "  " + $0.dropFirst(key.count + 1) }.joined(separator: "\n"))
+                    Commands:
+                    \(candidates.map { "  " + $0.dropFirst(key.count + 1) }.joined(separator: "\n"))
 
-                Run `scholium help \(key) <command>` for details.
-                """
+                    Run `scholium help \(key) <command>` for details.
+                    """
             }
             throw CLIError.usage(
                 "Unknown help topic '\(key)'. Run 'scholium help'."
             )
         }
         return """
-        Scholium CLI — local Triptych maintenance and MCP adapter
+            Scholium CLI — local Triptych maintenance and MCP adapter
 
-        Commands:
-        \(rootCommandUsage)
+            Commands:
+            \(rootCommandUsage)
 
-        `scholium mcp serve` is the fixed external collaboration surface. It
-        connects only to the currently running App and does not open a
-        Triptych or read research files itself.
+            `scholium mcp serve` is the fixed external collaboration surface. It
+            connects only to the currently running App and does not open a
+            Triptych or read research files itself.
 
-        Omitting --triptych requires exactly one configured Triptych.
-        Triptych roles: analyses, topics, works.
+            Omitting --triptych requires exactly one configured Triptych.
+            Triptych roles: analyses, topics, works.
 
-        Existing-note maintenance commands require the exact SHA-256 reported
-        by `scholium read --format json`. A fingerprint is a revision check,
-        never permission to change research material.
-        """
+            Existing-note maintenance commands require the exact SHA-256 reported
+            by `scholium read --format json`. A fingerprint is a revision check,
+            never permission to change research material.
+            """
     }
 
     static func write(_ string: String) {
@@ -87,20 +89,22 @@ extension ScholiumCLI {
 
     static var searchHelp: String {
         let capabilities = SearchCapabilities.current
-        let noteFields = capabilities.capability(for: .note)?
+        let noteFields =
+            capabilities.capability(for: .note)?
             .fields.map { "\($0.name):" }.joined(separator: ", ") ?? ""
-        let examples = capabilities.capability(for: .note)?.examples
+        let examples =
+            capabilities.capability(for: .note)?.examples
             .map { "  scholium search '\($0)' --triptych <selector>" }
             .joined(separator: "\n") ?? ""
         return """
-        Usage: scholium search <query> (--vault <selector> [--triptych <selector>] | --triptych <selector>) [--limit <count>] [--format text|jsonl]
+            Usage: scholium search <query> (--vault <selector> [--triptych <selector>] | --triptych <selector>) [--limit <count>] [--format text|jsonl]
 
-        The positional query uses the shared Search v\(capabilities.contractVersion)
-        grammar and searches current Notes. Fields: \(noteFields)
+            The positional query uses the shared Search v\(capabilities.contractVersion)
+            grammar and searches current Notes. Fields: \(noteFields)
 
-        Examples:
-        \(examples)
-        """
+            Examples:
+            \(examples)
+            """
     }
 }
 

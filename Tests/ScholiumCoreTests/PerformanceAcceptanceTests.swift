@@ -1,14 +1,16 @@
 import Darwin
 import Foundation
-import Testing
 import ScholiumContracts
+import Testing
+
 @testable import ScholiumCore
 
 @Suite("Performance regression microbenchmarks", .serialized)
 struct PerformanceRegressionMicrobenchmarkTests {
     @Test("A generated long-note semantic projection remains under one second")
     func coldReadProjection() {
-        let paragraph = "A philosophical argument distinguishes evidence, inference, objection, reply, source, authority, and conclusion with explicit uncertainty. "
+        let paragraph =
+            "A philosophical argument distinguishes evidence, inference, objection, reply, source, authority, and conclusion with explicit uncertainty. "
         let body = (0..<500).map { index in
             index.isMultiple(of: 25)
                 ? "\n## Section \(index / 25 + 1)\n\n> [!argument] Step \(index)\n> \(paragraph)\n\nClaim[^n\(index)].\n\n[^n\(index)]: \(paragraph)"
@@ -52,7 +54,8 @@ struct PerformanceRegressionMicrobenchmarkTests {
 
     @Test("Search v10 records its 2,056-note cold, warm, and incremental acceptance evidence")
     func searchFoundationAcceptanceEvidence() async throws {
-        let root = repositoryRoot
+        let root =
+            repositoryRoot
             .appendingPathComponent(".build/search-v10-performance-artifacts", isDirectory: true)
             .appendingPathComponent(UUID().uuidString.lowercased(), isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
@@ -115,13 +118,14 @@ struct PerformanceRegressionMicrobenchmarkTests {
         let paginationStart = ContinuousClock.now
         var pagedResultIDs: [String] = []
         for offset in stride(from: 0, to: 500, by: 100) {
-            let response = try await index.testSearch(SearchRequest(
-                query: "deliberative",
-                presentationScope: .triptych,
-                executionScope: .triptych,
-                limit: 100,
-                offset: offset
-            ))
+            let response = try await index.testSearch(
+                SearchRequest(
+                    query: "deliberative",
+                    presentationScope: .triptych,
+                    executionScope: .triptych,
+                    limit: 100,
+                    offset: offset
+                ))
             #expect(response.results.count == 100)
             #expect(response.hasMore)
             pagedResultIDs.append(contentsOf: response.results.map(\.id))
@@ -219,24 +223,27 @@ struct PerformanceRegressionMicrobenchmarkTests {
         revision: Int
     ) -> SearchIndexDocument {
         let content = """
-        ---
-        summary: Synthetic fixture note \(number)
-        keywords: [normativity, cluster-\(number % 9)]
-        ---
-        # Argument \(number)
-        Deliberative control and normative reasons appear in note \(number). 哲学概念需要精确分析。
-        Revision \(revision).
-        """
+            ---
+            summary: Synthetic fixture note \(number)
+            keywords: [normativity, cluster-\(number % 9)]
+            ---
+            # Argument \(number)
+            Deliberative control and normative reasons appear in note \(number). 哲学概念需要精确分析。
+            Revision \(revision).
+            """
         let noteID = fixtureNoteID(number)
-        let metadata: NoteMetadataSnapshot? = vault.role == .sourceCorpus
+        let metadata: NoteMetadataSnapshot? =
+            vault.role == .sourceCorpus
             ? NoteMetadataSnapshot(
                 record: NoteMetadataRecord(
                     noteID: noteID,
                     fields: [
                         "title": .string("Philosophical Note \(number)"),
-                        "authors": .array([.object([
-                            "family": .string("Researcher \(number % 17)"),
-                        ])]),
+                        "authors": .array([
+                            .object([
+                                "family": .string("Researcher \(number % 17)")
+                            ])
+                        ]),
                         "publication_date": .string("\(1950 + number % 77)"),
                     ]
                 ),

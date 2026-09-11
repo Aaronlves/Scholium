@@ -1,6 +1,7 @@
 import Foundation
-import Testing
 import ScholiumContracts
+import Testing
+
 @testable import ScholiumCore
 
 @Suite("First-party Zotero MCP transport")
@@ -11,16 +12,25 @@ struct ZoteroMCPServerTests {
         let server = ZoteroMCPServer(client: client)
         let list = try await rpc(server, id: 1, method: "tools/list", params: [:], access: .readOnly)
         let tools = try #require(object(list["result"])["tools"] as? [[String: Any]])
-        #expect(Set(tools.compactMap { $0["name"] as? String }) == ["zotero_status", "zotero_search", "zotero_item", "zotero_selected_target", "zotero_list_annotations", "zotero_read_annotation", "zotero_read_original"])
+        #expect(
+            Set(tools.compactMap { $0["name"] as? String }) == [
+                "zotero_status", "zotero_search", "zotero_item", "zotero_selected_target", "zotero_list_annotations", "zotero_read_annotation",
+                "zotero_read_original",
+            ])
         for name in ["zotero_import_bibtex", "zotero_import_ris"] {
-            let response = try await rpc(server, id: 2, method: "tools/call", params: ["name": name,
-                "arguments": ["dry_run": false, "confirm": true, "authorization_token": "forged"]], access: .readOnly)
+            let response = try await rpc(
+                server, id: 2, method: "tools/call",
+                params: [
+                    "name": name,
+                    "arguments": ["dry_run": false, "confirm": true, "authorization_token": "forged"],
+                ], access: .readOnly)
             #expect(try toolIsError(response))
         }
         #expect(await client.recordedRequests().isEmpty)
         await client.enqueue(method: "GET", path: "/api/users/0/items", response: .init(statusCode: 200, body: Data("[]".utf8)))
         await client.enqueue(method: "GET", path: "/connector/ping", response: .init(statusCode: 200))
-        let status = try structuredContent(await rpc(server, id: 3, method: "tools/call", params: ["name": "zotero_status", "arguments": [:]], access: .readOnly))
+        let status = try structuredContent(
+            await rpc(server, id: 3, method: "tools/call", params: ["name": "zotero_status", "arguments": [:]], access: .readOnly))
         #expect(status["access_mode"] as? String == "read-only" && status["guarded_imports"] as? Bool == false)
         #expect(await client.recordedRequests().count == 2)
     }
@@ -44,12 +54,13 @@ struct ZoteroMCPServerTests {
         let list = try await rpc(server, id: 2, method: "tools/list", params: [:])
         let listResult = try object(list["result"])
         let tools = try #require(listResult["tools"] as? [[String: Any]])
-        #expect(Set(tools.compactMap { $0["name"] as? String }) == [
-            "zotero_status", "zotero_search", "zotero_item",
-            "zotero_selected_target", "zotero_import_bibtex", "zotero_import_ris",
-            "zotero_list_annotations", "zotero_read_annotation",
-            "zotero_read_original",
-        ])
+        #expect(
+            Set(tools.compactMap { $0["name"] as? String }) == [
+                "zotero_status", "zotero_search", "zotero_item",
+                "zotero_selected_target", "zotero_import_bibtex", "zotero_import_ris",
+                "zotero_list_annotations", "zotero_read_annotation",
+                "zotero_read_original",
+            ])
         #expect(await client.recordedRequests().isEmpty)
     }
 
@@ -92,12 +103,14 @@ struct ZoteroMCPServerTests {
         await client.enqueueJSON(
             method: "GET",
             path: "/api/users/0/items",
-            json: #"[{"key":"USER0001","data":{"key":"USER0001","itemType":"book","title":"Alpha","creators":[{"creatorType":"author","firstName":"A","lastName":"Author"}]}}]"#
+            json:
+                #"[{"key":"USER0001","data":{"key":"USER0001","itemType":"book","title":"Alpha","creators":[{"creatorType":"author","firstName":"A","lastName":"Author"}]}}]"#
         )
         await client.enqueueJSON(
             method: "GET",
             path: "/api/groups/42/items",
-            json: #"[{"key":"GROUP001","data":{"key":"GROUP001","itemType":"journalArticle","title":"Beta","creators":[{"creatorType":"author","name":"B Author"}]}}]"#
+            json:
+                #"[{"key":"GROUP001","data":{"key":"GROUP001","itemType":"journalArticle","title":"Beta","creators":[{"creatorType":"author","name":"B Author"}]}}]"#
         )
         let server = ZoteroMCPServer(client: client)
 
@@ -117,10 +130,11 @@ struct ZoteroMCPServerTests {
 
         let requests = await client.recordedRequests()
         #expect(requests.allSatisfy { $0.httpMethod == "GET" && $0.httpBody == nil })
-        #expect(requests.filter { $0.url?.path.hasSuffix("/items") == true }.allSatisfy {
-            URLComponents(url: $0.url!, resolvingAgainstBaseURL: false)?
-                .queryItems?.contains(URLQueryItem(name: "limit", value: "10")) == true
-        })
+        #expect(
+            requests.filter { $0.url?.path.hasSuffix("/items") == true }.allSatisfy {
+                URLComponents(url: $0.url!, resolvingAgainstBaseURL: false)?
+                    .queryItems?.contains(URLQueryItem(name: "limit", value: "10")) == true
+            })
     }
 
     @Test("Attachment pointers require the explicit inspection flag")
@@ -135,7 +149,8 @@ struct ZoteroMCPServerTests {
         await client.enqueueJSON(
             method: "GET",
             path: "/api/users/0/items/ITEM0001/children",
-            json: #"[{"key":"ATTACH01","data":{"key":"ATTACH01","itemType":"attachment","title":"Local PDF","contentType":"application/pdf","linkMode":"linked_file","path":"/tmp/test-source.pdf","parentItem":"ITEM0001"}},{"key":"NOTE0001","data":{"key":"NOTE0001","itemType":"note","note":"private text"}}]"#
+            json:
+                #"[{"key":"ATTACH01","data":{"key":"ATTACH01","itemType":"attachment","title":"Local PDF","contentType":"application/pdf","linkMode":"linked_file","path":"/tmp/test-source.pdf","parentItem":"ITEM0001"}},{"key":"NOTE0001","data":{"key":"NOTE0001","itemType":"note","note":"private text"}}]"#
         )
         let server = ZoteroMCPServer(client: client)
 
@@ -194,8 +209,7 @@ struct ZoteroMCPServerTests {
             ]
         )
         #expect(try toolIsError(importResponse))
-        #expect(try structuredContent(importResponse)["error"] as? String ==
-            "The selected Zotero destination changed after the dry run.")
+        #expect(try structuredContent(importResponse)["error"] as? String == "The selected Zotero destination changed after the dry run.")
         #expect(await client.recordedRequests().allSatisfy { $0.url?.path != "/connector/import" })
     }
 
@@ -205,7 +219,8 @@ struct ZoteroMCPServerTests {
         await client.enqueueJSON(
             method: "POST",
             path: "/connector/getSelectedCollection",
-            json: #"{"libraryID":1,"libraryName":"My Library","libraryEditable":true,"filesEditable":true,"editable":true,"id":17,"name":"My Library","targets":[],"tags":{}}"#
+            json:
+                #"{"libraryID":1,"libraryName":"My Library","libraryEditable":true,"filesEditable":true,"editable":true,"id":17,"name":"My Library","targets":[],"tags":{}}"#
         )
         await client.enqueueJSON(method: "GET", path: "/api/users/0/groups", json: "[]")
         await client.enqueueJSON(
@@ -238,7 +253,8 @@ struct ZoteroMCPServerTests {
         await client.enqueueJSON(
             method: "POST",
             path: "/connector/getSelectedCollection",
-            json: #"{"libraryID":42,"libraryName":"Renamed Group","libraryEditable":true,"filesEditable":true,"editable":true,"id":17,"name":"Selected Collection","targets":[],"tags":{}}"#
+            json:
+                #"{"libraryID":42,"libraryName":"Renamed Group","libraryEditable":true,"filesEditable":true,"editable":true,"id":17,"name":"Selected Collection","targets":[],"tags":{}}"#
         )
         await client.enqueueJSON(
             method: "GET",
@@ -304,8 +320,7 @@ struct ZoteroMCPServerTests {
             ]
         )
         #expect(try toolIsError(result))
-        #expect(try structuredContent(result)["error"] as? String ==
-            "The selected Zotero destination changed after the dry run.")
+        #expect(try structuredContent(result)["error"] as? String == "The selected Zotero destination changed after the dry run.")
         #expect(await client.recordedRequests().allSatisfy { $0.url?.path != "/connector/import" })
     }
 
@@ -331,7 +346,8 @@ struct ZoteroMCPServerTests {
         await client.enqueueJSON(
             method: "GET",
             path: "/api/users/0/items/NEW00001",
-            json: #"{"key":"NEW00001","library":{"type":"user","id":0,"name":"My Library"},"data":{"key":"NEW00001","itemType":"book","title":"Sample","creators":[{"creatorType":"author","name":"Test Author"}],"collections":[]}}"#
+            json:
+                #"{"key":"NEW00001","library":{"type":"user","id":0,"name":"My Library"},"data":{"key":"NEW00001","itemType":"book","title":"Sample","creators":[{"creatorType":"author","name":"Test Author"}],"collections":[]}}"#
         )
         let server = ZoteroMCPServer(client: client)
         let source = "@book{sample,\n title={Sample},\n author={Test Author}\n}"
@@ -466,7 +482,8 @@ struct ZoteroMCPServerTests {
     func frameParserSupportsBothModes() throws {
         let lineBody = Data(#"{"jsonrpc":"2.0","id":1,"method":"ping"}"#.utf8)
         let headerBody = Data(#"{"jsonrpc":"2.0","id":2,"method":"ping"}"#.utf8)
-        let bytes = lineBody + Data([0x0A])
+        let bytes =
+            lineBody + Data([0x0A])
             + Data("Content-Length: \(headerBody.count)\r\n\r\n".utf8)
             + headerBody
         var parser = ZoteroMCPFrameParser()
@@ -474,10 +491,11 @@ struct ZoteroMCPServerTests {
         for byte in bytes { frames.append(contentsOf: try parser.append(byte)) }
         frames.append(contentsOf: try parser.finish())
 
-        #expect(frames == [
-            ZoteroMCPFrame(body: lineBody, mode: .line),
-            ZoteroMCPFrame(body: headerBody, mode: .contentLength),
-        ])
+        #expect(
+            frames == [
+                ZoteroMCPFrame(body: lineBody, mode: .line),
+                ZoteroMCPFrame(body: headerBody, mode: .contentLength),
+            ])
     }
 
     @Test("The frame parser rejects a truncated Content-Length message")
@@ -502,8 +520,8 @@ struct ZoteroMCPServerTests {
     ) -> String {
         let selectedIDValue = selectedID.map(String.init) ?? "null"
         return """
-        {"libraryID":\(libraryID),"libraryName":"\(libraryName)","libraryEditable":true,"filesEditable":true,"editable":true,"id":\(selectedIDValue),"name":"\(selectedName)","targets":[],"tags":{}}
-        """
+            {"libraryID":\(libraryID),"libraryName":"\(libraryName)","libraryEditable":true,"filesEditable":true,"editable":true,"id":\(selectedIDValue),"name":"\(selectedName)","targets":[],"tags":{}}
+            """
     }
 
     private func toolCall(
@@ -512,10 +530,12 @@ struct ZoteroMCPServerTests {
         name: String,
         arguments: [String: Any] = [:]
     ) async throws -> [String: Any] {
-        try await rpc(server, id: id, method: "tools/call", params: [
-            "name": name,
-            "arguments": arguments,
-        ])
+        try await rpc(
+            server, id: id, method: "tools/call",
+            params: [
+                "name": name,
+                "arguments": arguments,
+            ])
     }
 
     private func rpc(
@@ -524,9 +544,10 @@ struct ZoteroMCPServerTests {
         method: String,
         params: [String: Any], access: ZoteroMCPAccess = .guardedImports
     ) async throws -> [String: Any] {
-        let request = try JSONSerialization.data(withJSONObject: [
-            "jsonrpc": "2.0", "id": id, "method": method, "params": params,
-        ], options: [.sortedKeys])
+        let request = try JSONSerialization.data(
+            withJSONObject: [
+                "jsonrpc": "2.0", "id": id, "method": method, "params": params,
+            ], options: [.sortedKeys])
         let responseData = try #require(await server.handle(requestData: request, access: access))
         return try object(JSONSerialization.jsonObject(with: responseData))
     }
@@ -564,10 +585,12 @@ extension ZoteroMCPServerTests {
         let listingFingerprint = try #require(page1["listing_fingerprint"] as? String)
         let recordFingerprint = try #require(pointers[0]["annotation_fingerprint"] as? String)
         await queueAnnotationListing(client, json: records)
-        let page2 = try structuredContent(await annotationCall(server, name: "zotero_list_annotations", arguments: ["offset": 1, "expected_listing_fingerprint": listingFingerprint]))
+        let page2 = try structuredContent(
+            await annotationCall(server, name: "zotero_list_annotations", arguments: ["offset": 1, "expected_listing_fingerprint": listingFingerprint]))
         #expect((page2["annotations"] as? [[String: Any]])?.first?["annotation_key"] as? String == "ANNO0002")
         await queueAnnotationRead(client, json: first)
-        let selected = try structuredContent(await annotationCall(server, name: "zotero_read_annotation", arguments: ["annotation_key": "ANNO0001", "expected_fingerprint": recordFingerprint]))
+        let selected = try structuredContent(
+            await annotationCall(server, name: "zotero_read_annotation", arguments: ["annotation_key": "ANNO0001", "expected_fingerprint": recordFingerprint]))
         #expect(selected["selected_text"] as? String == "  引文\r\nsource  ")
         #expect(selected["comment"] as? String == "My evaluation")
         #expect(selected["page_label"] as? String == "xii" && selected["original_file_read"] as? Bool == false)
@@ -597,26 +620,41 @@ extension ZoteroMCPServerTests {
         let pointer = try #require((listed["annotations"] as? [[String: Any]])?.first)
         let changed = try Self.annotationJSON(key: "ANNO0001", text: "Changed")
         await queueAnnotationRead(client, json: changed, revalidate: false)
-        let stale = try await annotationCall(server, name: "zotero_read_annotation", arguments: ["annotation_key": "ANNO0001", "expected_fingerprint": try #require(pointer["annotation_fingerprint"] as? String)])
+        let stale = try await annotationCall(
+            server, name: "zotero_read_annotation",
+            arguments: ["annotation_key": "ANNO0001", "expected_fingerprint": try #require(pointer["annotation_fingerprint"] as? String)])
         #expect(try toolIsError(stale))
         #expect(!(try structuredContent(stale)).keys.contains("selected_text"))
         await queueAnnotationListing(client, json: "[\(changed)]", revalidate: false)
-        #expect(try toolIsError(await annotationCall(server, name: "zotero_list_annotations", arguments: ["offset": 1, "expected_listing_fingerprint": try #require(listed["listing_fingerprint"] as? String)])))
+        #expect(
+            try toolIsError(
+                await annotationCall(
+                    server, name: "zotero_list_annotations",
+                    arguments: ["offset": 1, "expected_listing_fingerprint": try #require(listed["listing_fingerprint"] as? String)])))
         let crossed = try Self.annotationJSON(key: "ANNO0001", text: "Wrong paper", parent: "OTHER001")
         await queueAnnotationRead(client, json: crossed, revalidate: false)
         #expect(try toolIsError(await annotationCall(server, name: "zotero_read_annotation", arguments: ["annotation_key": "ANNO0001"])))
         await queueAnnotationRead(client, json: original, revalidate: false)
-        await client.enqueueJSON(method: "GET", path: "/api/groups/42/items/ATTACH01", json: Self.pdfJSON.replacingOccurrences(of: "\"version\":1", with: "\"version\":2"))
+        await client.enqueueJSON(
+            method: "GET", path: "/api/groups/42/items/ATTACH01", json: Self.pdfJSON.replacingOccurrences(of: "\"version\":1", with: "\"version\":2"))
         #expect(try toolIsError(await annotationCall(server, name: "zotero_read_annotation", arguments: ["annotation_key": "ANNO0001"])))
         let before = await client.recordedRequests().count
-        for arguments: [String: Any] in [["offset": 1], ["offset": -1], ["limit": 51], ["limit": 1e100], ["library": "group:-1"], ["attachment_key": "../escape"], ["expected_listing_fingerprint": "wrong"], ["guess": "title"]] {
+        for arguments: [String: Any] in [
+            ["offset": 1], ["offset": -1], ["limit": 51], ["limit": 1e100], ["library": "group:-1"], ["attachment_key": "../escape"],
+            ["expected_listing_fingerprint": "wrong"], ["guess": "title"],
+        ] {
             #expect(try toolIsError(await annotationCall(server, name: "zotero_list_annotations", arguments: arguments)))
         }
         #expect(await client.recordedRequests().count == before)
-        await client.enqueue(method: "GET", path: "/api/groups/42/items/ATTACH01", response: .init(statusCode: 200, headers: ["Zotero-Server-ID": "instance-A"], body: Data(Self.pdfJSON.utf8)))
-        await client.enqueue(method: "GET", path: "/api/groups/42/items/ANNO0001", response: .init(statusCode: 200, headers: ["Zotero-Server-ID": "instance-B"], body: Data(original.utf8)))
+        await client.enqueue(
+            method: "GET", path: "/api/groups/42/items/ATTACH01",
+            response: .init(statusCode: 200, headers: ["Zotero-Server-ID": "instance-A"], body: Data(Self.pdfJSON.utf8)))
+        await client.enqueue(
+            method: "GET", path: "/api/groups/42/items/ANNO0001",
+            response: .init(statusCode: 200, headers: ["Zotero-Server-ID": "instance-B"], body: Data(original.utf8)))
         #expect(try toolIsError(await annotationCall(server, name: "zotero_read_annotation", arguments: ["annotation_key": "ANNO0001"])))
-        await client.enqueueJSON(method: "GET", path: "/api/groups/42/items/ATTACH01", json: Self.pdfJSON.replacingOccurrences(of: "application/pdf", with: "text/html"))
+        await client.enqueueJSON(
+            method: "GET", path: "/api/groups/42/items/ATTACH01", json: Self.pdfJSON.replacingOccurrences(of: "application/pdf", with: "text/html"))
         let count = await client.recordedRequests().count
         #expect(try toolIsError(await annotationCall(server, name: "zotero_read_annotation", arguments: ["annotation_key": "ANNO0001"])))
         #expect(await client.recordedRequests().count == count + 1)
@@ -638,19 +676,32 @@ extension ZoteroMCPServerTests {
         await queueAnnotationListing(client, json: "[" + Array(repeating: one, count: 1_001).joined(separator: ",") + "]", revalidate: false)
         #expect(try toolIsError(await annotationCall(server, name: "zotero_list_annotations")))
         await client.enqueueJSON(method: "GET", path: "/api/groups/42/items/ATTACH01", json: Self.pdfJSON)
-        await client.enqueue(method: "GET", path: "/api/groups/42/items/ATTACH01/children", response: .init(statusCode: 200, headers: ["Total-Results": "2"], body: Data("[\(one)]".utf8)))
+        await client.enqueue(
+            method: "GET", path: "/api/groups/42/items/ATTACH01/children",
+            response: .init(statusCode: 200, headers: ["Total-Results": "2"], body: Data("[\(one)]".utf8)))
         #expect(try toolIsError(await annotationCall(server, name: "zotero_list_annotations")))
         await client.enqueueJSON(method: "GET", path: "/api/groups/42/items/ATTACH01", json: Self.pdfJSON)
-        await client.enqueue(method: "GET", path: "/api/groups/42/items/ATTACH01/children", response: .init(statusCode: 200, body: Data(repeating: 32, count: 4 * 1_024 * 1_024 + 1)))
+        await client.enqueue(
+            method: "GET", path: "/api/groups/42/items/ATTACH01/children",
+            response: .init(statusCode: 200, body: Data(repeating: 32, count: 4 * 1_024 * 1_024 + 1)))
         #expect(try toolIsError(await annotationCall(server, name: "zotero_list_annotations")))
     }
 
-    private static let pdfJSON = #"{"key":"ATTACH01","version":1,"data":{"key":"ATTACH01","itemType":"attachment","parentItem":"PARENT01","contentType":"application/pdf","linkMode":"imported_file"}}"#
+    private static let pdfJSON =
+        #"{"key":"ATTACH01","version":1,"data":{"key":"ATTACH01","itemType":"attachment","parentItem":"PARENT01","contentType":"application/pdf","linkMode":"imported_file"}}"#
 
-    private static func annotationJSON(key: String, text: String, comment: String = "", parent: String = "ATTACH01",
-                                       position: String = "{}", label: String = "") throws -> String {
-        let record: [String: Any] = ["key": key, "version": 1, "data": ["key": key, "itemType": "annotation", "parentItem": parent,
-            "annotationType": "highlight", "annotationText": text, "annotationComment": comment, "annotationPosition": position, "annotationPageLabel": label]]
+    private static func annotationJSON(
+        key: String, text: String, comment: String = "", parent: String = "ATTACH01",
+        position: String = "{}", label: String = ""
+    ) throws -> String {
+        let record: [String: Any] = [
+            "key": key, "version": 1,
+            "data": [
+                "key": key, "itemType": "annotation", "parentItem": parent,
+                "annotationType": "highlight", "annotationText": text, "annotationComment": comment, "annotationPosition": position,
+                "annotationPageLabel": label,
+            ],
+        ]
         return String(decoding: try JSONSerialization.data(withJSONObject: record, options: [.sortedKeys]), as: UTF8.self)
     }
 
@@ -668,8 +719,12 @@ extension ZoteroMCPServerTests {
 
     private func annotationCall(_ server: ZoteroMCPServer, name: String, arguments: [String: Any] = [:]) async throws -> [String: Any] {
         let base: [String: Any] = ["library": "group:42", "attachment_key": "ATTACH01"]
-        return try await rpc(server, id: 1, method: "tools/call", params: ["name": name,
-            "arguments": base.merging(arguments, uniquingKeysWith: { _, new in new })], access: .readOnly)
+        return try await rpc(
+            server, id: 1, method: "tools/call",
+            params: [
+                "name": name,
+                "arguments": base.merging(arguments, uniquingKeysWith: { _, new in new }),
+            ], access: .readOnly)
     }
 }
 

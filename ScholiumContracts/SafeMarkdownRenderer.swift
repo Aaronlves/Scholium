@@ -68,13 +68,16 @@ public enum SafeMarkdownRenderer {
         let removedDefinitionSpans = semantic.footnoteDefinitions
             .filter { !$0.isInline }
             .map(\.span)
-        let blockSourceSpans: [MarkdownBlockKind: [SourceSpan]] = depth == 0
-            ? Dictionary(grouping: semantic.blocks.filter { block in
-                !(outerCallouts.map(\.span) + removedDefinitionSpans).contains {
-                    $0.utf16LowerBound <= block.span.utf16LowerBound
-                        && $0.utf16UpperBound >= block.span.utf16UpperBound
-                }
-            }, by: \.kind).mapValues { blocks in
+        let blockSourceSpans: [MarkdownBlockKind: [SourceSpan]] =
+            depth == 0
+            ? Dictionary(
+                grouping: semantic.blocks.filter { block in
+                    !(outerCallouts.map(\.span) + removedDefinitionSpans).contains {
+                        $0.utf16LowerBound <= block.span.utf16LowerBound
+                            && $0.utf16UpperBound >= block.span.utf16UpperBound
+                    }
+                }, by: \.kind
+            ).mapValues { blocks in
                 blocks.map(\.span).sorted { $0.utf16LowerBound < $1.utf16LowerBound }
             }
             : [:]
@@ -83,7 +86,8 @@ public enum SafeMarkdownRenderer {
             let key = "\(nonce)-block-\(index)"
             let nestedLinkSpans = semantic.links.enumerated().compactMap { linkIndex, link -> SourceSpan? in
                 guard link.span.utf16LowerBound >= callout.headerSpan.utf16UpperBound,
-                      link.span.utf16UpperBound <= callout.span.utf16UpperBound else { return nil }
+                    link.span.utf16UpperBound <= callout.span.utf16UpperBound
+                else { return nil }
                 return locatedSpan(
                     at: linkIndex,
                     from: locatedLinkSpans,
@@ -95,24 +99,28 @@ public enum SafeMarkdownRenderer {
                 locatedLinkSpans: nestedLinkSpans,
                 depth: depth + 1
             )
-            replacements.append(Replacement(
-                range: relative,
-                text: "\n<div data-scholium-block-token=\"\(key)\"></div>\n"
-            ))
+            replacements.append(
+                Replacement(
+                    range: relative,
+                    text: "\n<div data-scholium-block-token=\"\(key)\"></div>\n"
+                ))
         }
 
         for definition in semantic.footnoteDefinitions where !definition.isInline {
             guard let relative = relativeRange(definition.span, bodyStart: bodyStart, bodyLength: bodyLength),
-                  !overlaps(relative, replacements.map(\.range)) else { continue }
+                !overlaps(relative, replacements.map(\.range))
+            else { continue }
             replacements.append(Replacement(range: relative, text: ""))
         }
 
         for (index, expression) in semantic.mathExpressions.enumerated() {
-            guard let relative = relativeRange(
-                expression.span,
-                bodyStart: bodyStart,
-                bodyLength: bodyLength
-            ), !overlaps(relative, replacements.map(\.range)) else { continue }
+            guard
+                let relative = relativeRange(
+                    expression.span,
+                    bodyStart: bodyStart,
+                    bodyLength: bodyLength
+                ), !overlaps(relative, replacements.map(\.range))
+            else { continue }
             let rawSource = (document.body as NSString).substring(with: relative)
             switch expression.kind {
             case .inline:
@@ -122,10 +130,11 @@ public enum SafeMarkdownRenderer {
             case .display:
                 let key = "\(nonce)-math-\(index)"
                 blockHTML[key] = renderMath(expression, rawSource: rawSource)
-                replacements.append(Replacement(
-                    range: relative,
-                    text: "\n<div data-scholium-block-token=\"\(key)\"></div>\n"
-                ))
+                replacements.append(
+                    Replacement(
+                        range: relative,
+                        text: "\n<div data-scholium-block-token=\"\(key)\"></div>\n"
+                    ))
             }
         }
 
@@ -134,7 +143,8 @@ public enum SafeMarkdownRenderer {
         )
         for reference in semantic.footnoteReferences {
             guard let relative = relativeRange(reference.span, bodyStart: bodyStart, bodyLength: bodyLength),
-                  !overlaps(relative, replacements.map(\.range)) else { continue }
+                !overlaps(relative, replacements.map(\.range))
+            else { continue }
             let key = "SCHOLIUMINLINETOKEN\(nonce)F\(reference.ordinal)R\(reference.occurrence)"
             let definitionExists = definitionsByIdentifier[reference.identifier] != nil
             let punctuation = trailingPunctuation(in: document.body, after: relative)
@@ -143,18 +153,20 @@ public enum SafeMarkdownRenderer {
                 definitionExists: definitionExists,
                 trailingPunctuation: punctuation.text
             )
-            replacements.append(Replacement(
-                range: NSRange(
-                    location: relative.location,
-                    length: relative.length + punctuation.utf16Length
-                ),
-                text: key
-            ))
+            replacements.append(
+                Replacement(
+                    range: NSRange(
+                        location: relative.location,
+                        length: relative.length + punctuation.utf16Length
+                    ),
+                    text: key
+                ))
         }
 
         for (index, link) in semantic.links.enumerated() where link.syntax != .markdown {
             guard let relative = relativeRange(link.span, bodyStart: bodyStart, bodyLength: bodyLength),
-                  !overlaps(relative, replacements.map(\.range)) else { continue }
+                !overlaps(relative, replacements.map(\.range))
+            else { continue }
             let key = "SCHOLIUMINLINETOKEN\(nonce)L\(index)"
             inlineHTML[key] = renderWikilink(
                 link,
@@ -168,21 +180,25 @@ public enum SafeMarkdownRenderer {
             replacements.append(Replacement(range: relative, text: key))
         }
 
-        let literalRanges = semantic.blocks.compactMap { block -> NSRange? in
-            guard block.kind == .code || block.kind == .html else { return nil }
-            return relativeRange(block.span, bodyStart: bodyStart, bodyLength: bodyLength)
-        } + inlineLiteralRanges(in: document.body)
+        let literalRanges =
+            semantic.blocks.compactMap { block -> NSRange? in
+                guard block.kind == .code || block.kind == .html else { return nil }
+                return relativeRange(block.span, bodyStart: bodyStart, bodyLength: bodyLength)
+            } + inlineLiteralRanges(in: document.body)
         let body = document.body as NSString
         for (index, highlight) in semantic.inlines
             .filter({ $0.kind == .highlight })
-            .enumerated() {
-            guard let relative = relativeRange(
-                highlight.span,
-                bodyStart: bodyStart,
-                bodyLength: bodyLength
-            ), relative.length > 4,
-               !overlaps(relative, literalRanges),
-               !overlaps(relative, replacements.map(\.range)) else { continue }
+            .enumerated()
+        {
+            guard
+                let relative = relativeRange(
+                    highlight.span,
+                    bodyStart: bodyStart,
+                    bodyLength: bodyLength
+                ), relative.length > 4,
+                !overlaps(relative, literalRanges),
+                !overlaps(relative, replacements.map(\.range))
+            else { continue }
             let key = "SCHOLIUMINLINETOKEN\(nonce)H\(index)"
             let contentRange = NSRange(location: relative.location + 2, length: relative.length - 4)
             inlineHTML[key] = "<mark class=\"scholium-highlight\">\(escapeHTML(body.substring(with: contentRange)))</mark>"
@@ -214,9 +230,10 @@ public enum SafeMarkdownRenderer {
         let purpose = escapeAttribute(callout.role.purpose)
         let accessibleRole = escapeAttribute("\(callout.role.displayLabel). \(callout.role.purpose)")
         let roleHTML = "<span class=\"scholium-callout-role\" dir=\"auto\" title=\"\(purpose)\" aria-label=\"\(accessibleRole)\">\(roleLabel)</span>"
-        let titleHTML = callout.title.map {
-            "<span class=\"scholium-callout-title\" dir=\"auto\">\(renderInlineMarkdown($0))</span>"
-        } ?? ""
+        let titleHTML =
+            callout.title.map {
+                "<span class=\"scholium-callout-title\" dir=\"auto\">\(renderInlineMarkdown($0))</span>"
+            } ?? ""
         let heading = "<span class=\"scholium-callout-heading\" role=\"heading\" aria-level=\"2\">\(roleHTML)\(titleHTML)</span>"
         let fragment = NoteDocument(relativePath: "callout.md", rawContent: callout.bodySource)
         let fragmentSemantic = MarkdownSemanticDocument(parsing: fragment)
@@ -228,17 +245,21 @@ public enum SafeMarkdownRenderer {
                 ? locatedLinkSpans
                 : nil
         )
-        let semanticBody = callout.role == .quote
+        let semanticBody =
+            callout.role == .quote
             ? "<blockquote class=\"scholium-callout-quotation\" dir=\"auto\">\(renderedBody)</blockquote>"
             : renderedBody
-        let body = "<div class=\"scholium-callout-body\"><span class=\"scholium-callout-signature\" aria-hidden=\"true\"></span><div class=\"scholium-callout-content\">\(semanticBody)</div></div>"
-        let attributes = "class=\"scholium-callout scholium-callout-\(callout.role.rawValue)\" data-callout=\"\(escapeAttribute(callout.kind))\" data-callout-source=\"\(escapeAttribute(callout.rawKind))\" data-callout-fold=\"\(callout.foldState.rawValue)\" \(sourceAttributes(callout.span)) data-scholium-protected=\"callout\""
+        let body =
+            "<div class=\"scholium-callout-body\"><span class=\"scholium-callout-signature\" aria-hidden=\"true\"></span><div class=\"scholium-callout-content\">\(semanticBody)</div></div>"
+        let attributes =
+            "class=\"scholium-callout scholium-callout-\(callout.role.rawValue)\" data-callout=\"\(escapeAttribute(callout.kind))\" data-callout-source=\"\(escapeAttribute(callout.rawKind))\" data-callout-fold=\"\(callout.foldState.rawValue)\" \(sourceAttributes(callout.span)) data-scholium-protected=\"callout\""
         switch callout.foldState {
         case .fixed:
             return "<aside \(attributes)><header>\(heading)</header>\(body)</aside>"
         case .expanded, .collapsed:
             let open = callout.foldState == .expanded ? " open" : ""
-            return "<details \(attributes)\(open)><summary>\(heading)<span class=\"scholium-callout-fold-mark\" aria-hidden=\"true\"></span></summary>\(body)</details>"
+            return
+                "<details \(attributes)\(open)><summary>\(heading)<span class=\"scholium-callout-fold-mark\" aria-hidden=\"true\"></span></summary>\(body)</details>"
         }
     }
 
@@ -250,7 +271,8 @@ public enum SafeMarkdownRenderer {
         let referenceID = "fnref-\(reference.ordinal)-\(reference.occurrence)"
         let target = "fn-\(reference.ordinal)"
         let disabled = definitionExists ? "" : " disabled aria-disabled=\"true\""
-        let locator = "<sup id=\"\(referenceID)\" class=\"footnote-reference-wrap\" \(sourceAttributes(reference.span)) data-scholium-protected=\"footnote\"><button type=\"button\" class=\"footnote-reference\" data-footnote=\"\(reference.ordinal)\" data-target=\"\(target)\" aria-label=\"Footnote \(reference.ordinal)\"\(disabled)>\(reference.ordinal)</button></sup>"
+        let locator =
+            "<sup id=\"\(referenceID)\" class=\"footnote-reference-wrap\" \(sourceAttributes(reference.span)) data-scholium-protected=\"footnote\"><button type=\"button\" class=\"footnote-reference\" data-footnote=\"\(reference.ordinal)\" data-target=\"\(target)\" aria-label=\"Footnote \(reference.ordinal)\"\(disabled)>\(reference.ordinal)</button></sup>"
         guard !trailingPunctuation.isEmpty else { return locator }
         return "<span class=\"footnote-reference-cluster\">\(locator)\(escapeHTML(trailingPunctuation))</span>"
     }
@@ -266,8 +288,9 @@ public enum SafeMarkdownRenderer {
             let characterRange = source.rangeOfComposedCharacterSequence(at: location)
             let character = source.substring(with: characterRange)
             guard character.count == 1,
-                  let valueCharacter = character.first,
-                  footnoteTrailingPunctuation.contains(valueCharacter) else { break }
+                let valueCharacter = character.first,
+                footnoteTrailingPunctuation.contains(valueCharacter)
+            else { break }
             value += character
             location = NSMaxRange(characterRange)
         }
@@ -278,7 +301,8 @@ public enum SafeMarkdownRenderer {
         let encoded = Data(expression.content.utf8).base64EncodedString()
         let kind = expression.kind.rawValue
         let tag = expression.kind == .display ? "div" : "span"
-        return "<\(tag) class=\"scholium-math scholium-math-\(kind)\" dir=\"ltr\" data-math-kind=\"\(kind)\" data-math-source=\"\(encoded)\" \(sourceAttributes(expression.span)) data-scholium-protected=\"math\"><code class=\"scholium-math-source\" dir=\"ltr\">\(escapeHTML(rawSource))</code></\(tag)>"
+        return
+            "<\(tag) class=\"scholium-math scholium-math-\(kind)\" dir=\"ltr\" data-math-kind=\"\(kind)\" data-math-source=\"\(encoded)\" \(sourceAttributes(expression.span)) data-scholium-protected=\"math\"><code class=\"scholium-math-source\" dir=\"ltr\">\(escapeHTML(rawSource))</code></\(tag)>"
     }
 
     private static func renderInlineMarkdown(_ source: String) -> String {
@@ -307,9 +331,11 @@ public enum SafeMarkdownRenderer {
                 semantic: MarkdownSemanticDocument(parsing: fragment),
                 depth: depth
             )
-            return "<li id=\"fn-\(ordinal)\" dir=\"auto\" data-footnote=\"\(ordinal)\" \(sourceAttributes(definition.span))><div class=\"footnote-content\">\(content)</div><button type=\"button\" class=\"footnote-return\" data-footnote=\"\(ordinal)\" aria-label=\"Return to footnote reference \(ordinal)\">↩</button></li>"
+            return
+                "<li id=\"fn-\(ordinal)\" dir=\"auto\" data-footnote=\"\(ordinal)\" \(sourceAttributes(definition.span))><div class=\"footnote-content\">\(content)</div><button type=\"button\" class=\"footnote-return\" data-footnote=\"\(ordinal)\" aria-label=\"Return to footnote reference \(ordinal)\">↩</button></li>"
         }.joined()
-        return "<div class=\"scholium-footnotes-slot\"><section class=\"footnotes\" data-scholium-protected=\"footnotes\" aria-label=\"Footnotes\"><hr><ol>\(items)</ol></section></div>"
+        return
+            "<div class=\"scholium-footnotes-slot\"><section class=\"footnotes\" data-scholium-protected=\"footnotes\" aria-label=\"Footnotes\"><hr><ol>\(items)</ol></section></div>"
     }
 
     private static func renderWikilink(
@@ -320,12 +346,15 @@ public enum SafeMarkdownRenderer {
         let display = link.alias ?? (link.target.isEmpty ? link.fragment ?? "Link" : link.target)
         let destination = link.target + (link.fragment.map { "#\($0)" } ?? "")
         let decodedDestination = destination.removingPercentEncoding ?? destination
-        let encoded = decodedDestination.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed)
+        let encoded =
+            decodedDestination.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed)
             ?? decodedDestination
         if link.syntax == .embed {
-            return "<a class=\"wiki-link scholium-embed\" dir=\"auto\" href=\"scholium-note:\(escapeAttribute(encoded))\" \(sourceAttributes(locatedSpan)) data-scholium-protected=\"embed\">\(escapeHTML(display))</a>"
+            return
+                "<a class=\"wiki-link scholium-embed\" dir=\"auto\" href=\"scholium-note:\(escapeAttribute(encoded))\" \(sourceAttributes(locatedSpan)) data-scholium-protected=\"embed\">\(escapeHTML(display))</a>"
         }
-        let linkHTML = "<a class=\"wiki-link\" dir=\"auto\" href=\"scholium-note:\(escapeAttribute(encoded))\" \(sourceAttributes(locatedSpan))>\(escapeHTML(display))</a>"
+        let linkHTML =
+            "<a class=\"wiki-link\" dir=\"auto\" href=\"scholium-note:\(escapeAttribute(encoded))\" \(sourceAttributes(locatedSpan))>\(escapeHTML(display))</a>"
         guard let annotation = link.annotation else { return linkHTML }
         let identifier = "link-annotation-\(link.span.utf16LowerBound)-\(link.span.utf16UpperBound)"
         let fragment = NoteDocument(relativePath: "link-annotation.md", rawContent: annotation.markdown)
@@ -336,7 +365,8 @@ public enum SafeMarkdownRenderer {
         )
         let label = escapeAttribute("Show link annotation for \(display)")
         let target = escapeAttribute(display)
-        return "<span class=\"scholium-annotated-link\" data-scholium-protected=\"link-annotation\">\(linkHTML)<sup class=\"scholium-link-annotation-marker\"><button type=\"button\" class=\"scholium-link-annotation-button\" data-link-annotation=\"\(identifier)\" data-link-annotation-target=\"\(target)\" aria-expanded=\"false\" aria-label=\"\(label)\"><span aria-hidden=\"true\"></span></button><template id=\"\(identifier)-template\"><div class=\"scholium-link-annotation-content\" dir=\"auto\" role=\"note\" \(sourceAttributes(annotation.span))>\(annotationHTML)</div></template></sup></span>"
+        return
+            "<span class=\"scholium-annotated-link\" data-scholium-protected=\"link-annotation\">\(linkHTML)<sup class=\"scholium-link-annotation-marker\"><button type=\"button\" class=\"scholium-link-annotation-button\" data-link-annotation=\"\(identifier)\" data-link-annotation-target=\"\(target)\" aria-expanded=\"false\" aria-label=\"\(label)\"><span aria-hidden=\"true\"></span></button><template id=\"\(identifier)-template\"><div class=\"scholium-link-annotation-content\" dir=\"auto\" role=\"note\" \(sourceAttributes(annotation.span))>\(annotationHTML)</div></template></sup></span>"
     }
 
     private static func bodyUTF16Offset(in document: NoteDocument) -> Int {
@@ -407,16 +437,18 @@ public enum SafeMarkdownRenderer {
                 range: NSRange(location: closingStart, length: source.length - closingStart)
             )
             guard closingRange.location != NSNotFound else {
-                ranges.append(NSRange(
-                    location: openingRange.location,
-                    length: source.length - openingRange.location
-                ))
+                ranges.append(
+                    NSRange(
+                        location: openingRange.location,
+                        length: source.length - openingRange.location
+                    ))
                 break
             }
-            ranges.append(NSRange(
-                location: openingRange.location,
-                length: NSMaxRange(closingRange) - openingRange.location
-            ))
+            ranges.append(
+                NSRange(
+                    location: openingRange.location,
+                    length: NSMaxRange(closingRange) - openingRange.location
+                ))
             cursor = NSMaxRange(closingRange)
         }
         return ranges
@@ -460,44 +492,62 @@ private struct SafeHTMLVisitor: MarkupWalker {
 
     mutating func visitDocument(_ document: Document) { descendInto(document) }
     mutating func visitParagraph(_ paragraph: Paragraph) {
-        result += "<p dir=\"auto\"\(sourceAttributes(for: .paragraph))>"; descendInto(paragraph); result += "</p>\n"
+        result += "<p dir=\"auto\"\(sourceAttributes(for: .paragraph))>"
+        descendInto(paragraph)
+        result += "</p>\n"
     }
     mutating func visitHeading(_ heading: Heading) {
         let span = nextSourceSpan(for: .heading)
         let anchor = span.map { " id=\"scholium-line-\($0.start.line)\" \(SafeMarkdownRenderer.sourceAttributes($0))" } ?? ""
-        result += "<h\(heading.level) dir=\"auto\"\(anchor)>"; descendInto(heading); result += "</h\(heading.level)>\n"
+        result += "<h\(heading.level) dir=\"auto\"\(anchor)>"
+        descendInto(heading)
+        result += "</h\(heading.level)>\n"
     }
     mutating func visitBlockQuote(_ blockQuote: BlockQuote) {
-        result += "<blockquote dir=\"auto\"\(sourceAttributes(for: .blockQuote))>"; descendInto(blockQuote); result += "</blockquote>\n"
+        result += "<blockquote dir=\"auto\"\(sourceAttributes(for: .blockQuote))>"
+        descendInto(blockQuote)
+        result += "</blockquote>\n"
     }
     mutating func visitCodeBlock(_ codeBlock: CodeBlock) {
         let language = codeBlock.language.map { " class=\"language-\(SafeMarkdownRenderer.escapeAttribute($0))\"" } ?? ""
-        result += "<pre dir=\"ltr\"\(sourceAttributes(for: .code))><code dir=\"ltr\"\(language)>\(SafeMarkdownRenderer.escapeHTML(codeBlock.code))</code></pre>\n"
+        result +=
+            "<pre dir=\"ltr\"\(sourceAttributes(for: .code))><code dir=\"ltr\"\(language)>\(SafeMarkdownRenderer.escapeHTML(codeBlock.code))</code></pre>\n"
     }
     mutating func visitInlineCode(_ inlineCode: InlineCode) {
         result += "<code dir=\"ltr\">\(SafeMarkdownRenderer.escapeHTML(inlineCode.code))</code>"
     }
     mutating func visitEmphasis(_ emphasis: Emphasis) {
-        result += "<em>"; descendInto(emphasis); result += "</em>"
+        result += "<em>"
+        descendInto(emphasis)
+        result += "</em>"
     }
     mutating func visitStrong(_ strong: Strong) {
-        result += "<strong>"; descendInto(strong); result += "</strong>"
+        result += "<strong>"
+        descendInto(strong)
+        result += "</strong>"
     }
     mutating func visitStrikethrough(_ strikethrough: Strikethrough) {
-        result += "<del>"; descendInto(strikethrough); result += "</del>"
+        result += "<del>"
+        descendInto(strikethrough)
+        result += "</del>"
     }
     mutating func visitLineBreak(_ lineBreak: LineBreak) { result += "<br>\n" }
     mutating func visitSoftBreak(_ softBreak: SoftBreak) { result += "\n" }
     mutating func visitThematicBreak(_ thematicBreak: ThematicBreak) { result += "<hr\(sourceAttributes(for: .thematicBreak))>\n" }
     mutating func visitUnorderedList(_ unorderedList: UnorderedList) {
-        result += "<ul\(sourceAttributes(for: .unorderedList))>"; descendInto(unorderedList); result += "</ul>\n"
+        result += "<ul\(sourceAttributes(for: .unorderedList))>"
+        descendInto(unorderedList)
+        result += "</ul>\n"
     }
     mutating func visitOrderedList(_ orderedList: OrderedList) {
         let start = orderedList.startIndex == 1 ? "" : " start=\"\(orderedList.startIndex)\""
-        result += "<ol\(start)\(sourceAttributes(for: .orderedList))>"; descendInto(orderedList); result += "</ol>\n"
+        result += "<ol\(start)\(sourceAttributes(for: .orderedList))>"
+        descendInto(orderedList)
+        result += "</ol>\n"
     }
     mutating func visitListItem(_ listItem: ListItem) {
-        let taskClass = listItem.checkbox == nil
+        let taskClass =
+            listItem.checkbox == nil
             ? ""
             : " class=\"scholium-task-list-item\""
         result += "<li\(taskClass) dir=\"auto\"\(sourceAttributes(for: .listItem))>"
@@ -517,7 +567,8 @@ private struct SafeHTMLVisitor: MarkupWalker {
             href = destination
         } else {
             let decodedDestination = destination.removingPercentEncoding ?? destination
-            let encoded = decodedDestination.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed)
+            let encoded =
+                decodedDestination.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed)
                 ?? decodedDestination
             href = "scholium-note:\(encoded)"
         }
@@ -537,7 +588,8 @@ private struct SafeHTMLVisitor: MarkupWalker {
         if let key = blockToken(in: html.rawHTML), let replacement = blockHTML[key] {
             result += replacement
         } else {
-            result += "<pre class=\"raw-html\" dir=\"ltr\"\(sourceAttributes(for: .html))><code dir=\"ltr\">\(SafeMarkdownRenderer.escapeHTML(html.rawHTML))</code></pre>"
+            result +=
+                "<pre class=\"raw-html\" dir=\"ltr\"\(sourceAttributes(for: .html))><code dir=\"ltr\">\(SafeMarkdownRenderer.escapeHTML(html.rawHTML))</code></pre>"
         }
     }
     mutating func visitInlineHTML(_ inlineHTML: InlineHTML) {
@@ -561,33 +613,43 @@ private struct SafeHTMLVisitor: MarkupWalker {
         let previousHeadState = isInsideTableHead
         isInsideTableHead = true
         currentTableColumn = 0
-        result += "<thead><tr>"; descendInto(tableHead); result += "</tr></thead>"
+        result += "<thead><tr>"
+        descendInto(tableHead)
+        result += "</tr></thead>"
         isInsideTableHead = previousHeadState
     }
     mutating func visitTableBody(_ tableBody: Table.Body) {
-        result += "<tbody>"; descendInto(tableBody); result += "</tbody>"
+        result += "<tbody>"
+        descendInto(tableBody)
+        result += "</tbody>"
     }
     mutating func visitTableRow(_ tableRow: Table.Row) {
         currentTableColumn = 0
-        result += "<tr>"; descendInto(tableRow); result += "</tr>"
+        result += "<tr>"
+        descendInto(tableRow)
+        result += "</tr>"
     }
     mutating func visitTableCell(_ tableCell: Table.Cell) {
         guard tableCell.colspan > 0, tableCell.rowspan > 0 else { return }
         let tag = isInsideTableHead ? "th" : "td"
         var attributes = isInsideTableHead ? " scope=\"col\"" : ""
         if currentTableColumn < tableColumnAlignments.count,
-           let alignment = tableColumnAlignments[currentTableColumn] {
-            let value = switch alignment {
-            case .left: "left"
-            case .center: "center"
-            case .right: "right"
-            }
+            let alignment = tableColumnAlignments[currentTableColumn]
+        {
+            let value =
+                switch alignment {
+                case .left: "left"
+                case .center: "center"
+                case .right: "right"
+                }
             attributes += " class=\"scholium-table-align-\(value)\""
         }
         if tableCell.colspan > 1 { attributes += " colspan=\"\(tableCell.colspan)\"" }
         if tableCell.rowspan > 1 { attributes += " rowspan=\"\(tableCell.rowspan)\"" }
         currentTableColumn += Int(tableCell.colspan)
-        result += "<\(tag) dir=\"auto\"\(attributes)>"; descendInto(tableCell); result += "</\(tag)>"
+        result += "<\(tag) dir=\"auto\"\(attributes)>"
+        descendInto(tableCell)
+        result += "</\(tag)>"
     }
 
     private mutating func appendTextReplacingTokens(_ value: String) {
@@ -620,12 +682,15 @@ private struct SafeHTMLVisitor: MarkupWalker {
     }
 
     private func blockToken(in rawHTML: String) -> String? {
-        guard let expression = try? NSRegularExpression(
-            pattern: #"^\s*<div data-scholium-block-token=\"([^\"]+)\"></div>\s*$"#
-        ), let match = expression.firstMatch(
-            in: rawHTML,
-            range: NSRange(location: 0, length: (rawHTML as NSString).length)
-        ) else { return nil }
+        guard
+            let expression = try? NSRegularExpression(
+                pattern: #"^\s*<div data-scholium-block-token=\"([^\"]+)\"></div>\s*$"#
+            ),
+            let match = expression.firstMatch(
+                in: rawHTML,
+                range: NSRange(location: 0, length: (rawHTML as NSString).length)
+            )
+        else { return nil }
         return (rawHTML as NSString).substring(with: match.range(at: 1))
     }
 

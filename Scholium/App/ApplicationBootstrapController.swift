@@ -53,7 +53,8 @@ struct ApplicationRegistryRecovery: Equatable, Sendable {
         case .triptych(_, let registryURL):
             let currentHealth: WorkspaceRegistryHealth
             if let registryError = error as? WorkspaceRegistryError,
-               case .registryRecoveryRequired(let observedHealth) = registryError {
+                case .registryRecoveryRequired(let observedHealth) = registryError
+            {
                 currentHealth = observedHealth
             } else {
                 currentHealth = .ioFailure(error.localizedDescription)
@@ -105,12 +106,14 @@ final class ApplicationBootstrapController: ObservableObject {
 
     func retry() {
         guard attempt < UInt64.max else {
-            state = .storageUnavailable(ApplicationStorageFailure(
-                summary: String(localized:
-                    "Scholium cannot establish its Application Support storage."
-                ),
-                details: "Storage retry attempt IDs were exhausted."
-            ))
+            state = .storageUnavailable(
+                ApplicationStorageFailure(
+                    summary: String(
+                        localized:
+                            "Scholium cannot establish its Application Support storage."
+                    ),
+                    details: "Storage retry attempt IDs were exhausted."
+                ))
             return
         }
         attempt += 1
@@ -134,49 +137,58 @@ final class ApplicationBootstrapController: ObservableObject {
                 switch error {
                 case .registryRecoveryRequired(let health):
                     guard let resolvedStorageURL else {
-                        state = .storageUnavailable(ApplicationStorageFailure(
-                            summary: String(localized:
-                                "Scholium cannot establish its Application Support storage."
-                            ),
-                            details: error.localizedDescription
-                        ))
+                        state = .storageUnavailable(
+                            ApplicationStorageFailure(
+                                summary: String(
+                                    localized:
+                                        "Scholium cannot establish its Application Support storage."
+                                ),
+                                details: error.localizedDescription
+                            ))
                         return
                     }
                     let registryURL = resolvedStorageURL
                         .standardizedFileURL
                         .appendingPathComponent("Workspace", isDirectory: true)
                         .appendingPathComponent("workspace-registration-v3.json")
-                    state = .registryRecovery(ApplicationRegistryRecovery(
-                        source: .triptych(health, registryURL: registryURL),
-                        recoveryFailure: nil
-                    ))
+                    state = .registryRecovery(
+                        ApplicationRegistryRecovery(
+                            source: .triptych(health, registryURL: registryURL),
+                            recoveryFailure: nil
+                        ))
                 default:
-                    state = .storageUnavailable(ApplicationStorageFailure(
-                        summary: String(localized:
-                            "Scholium cannot establish its Application Support storage."
-                        ),
-                        details: error.localizedDescription
-                    ))
+                    state = .storageUnavailable(
+                        ApplicationStorageFailure(
+                            summary: String(
+                                localized:
+                                    "Scholium cannot establish its Application Support storage."
+                            ),
+                            details: error.localizedDescription
+                        ))
                 }
             } catch {
                 guard self.attempt == currentAttempt else { return }
-                state = .storageUnavailable(ApplicationStorageFailure(
-                    summary: String(localized:
-                        "Scholium cannot establish its Application Support storage."
-                    ),
-                    details: error.localizedDescription
-                ))
+                state = .storageUnavailable(
+                    ApplicationStorageFailure(
+                        summary: String(
+                            localized:
+                                "Scholium cannot establish its Application Support storage."
+                        ),
+                        details: error.localizedDescription
+                    ))
             }
         }
     }
 
     func repairRegistryAndRetry() {
         guard case .registryRecovery(let recovery) = state,
-              recovery.canRelinkAfterPreserving else { return }
+            recovery.canRelinkAfterPreserving
+        else { return }
         do {
             switch recovery.source {
             case .triptych(_, let registryURL):
-                _ = try WorkspaceRegistryRecoveryOperations
+                _ =
+                    try WorkspaceRegistryRecoveryOperations
                     .preserveMalformedRegistryForRelinking(
                         storageURL: registryURL.deletingLastPathComponent()
                     )
@@ -201,11 +213,11 @@ final class ApplicationBootstrapController: ObservableObject {
                 isDirectory: true
             )
         }
-#if DEBUG
-        if bundleIdentifier == ScholiumRuntimeIsolation.qaBundleIdentifier {
-            throw CocoaError(.fileNoSuchFile)
-        }
-#endif
+        #if DEBUG
+            if bundleIdentifier == ScholiumRuntimeIsolation.qaBundleIdentifier {
+                throw CocoaError(.fileNoSuchFile)
+            }
+        #endif
         return try ScholiumPaths.sharedApplicationSupportURL()
     }
 }
@@ -293,7 +305,7 @@ private struct ApplicationRegistryRecoveryView: View {
 
             HStack {
                 Button("Quit") { NSApplication.shared.terminate(nil) }
-                .scholiumActivationPointer()
+                    .scholiumActivationPointer()
                 Spacer()
                 if recovery.canRelinkAfterPreserving {
                     Button("Relink Triptych", action: relink)
@@ -370,7 +382,7 @@ private struct ApplicationStorageUnavailableView: View {
 
             HStack {
                 Button("Quit") { NSApplication.shared.terminate(nil) }
-                .scholiumActivationPointer()
+                    .scholiumActivationPointer()
                 Spacer()
                 Button("Retry", action: retry)
                     .scholiumActivationPointer()
@@ -457,8 +469,9 @@ private final class StorageUnavailableWindowSizingView: NSView {
     private func applyDesiredContentSize() {
         pendingResize = nil
         guard let window,
-              desiredContentSize.width > 0,
-              desiredContentSize.height > 0 else { return }
+            desiredContentSize.width > 0,
+            desiredContentSize.height > 0
+        else { return }
         if sizedWindow !== window {
             restoreOriginalFrame()
             sizedWindow = window
@@ -469,8 +482,10 @@ private final class StorageUnavailableWindowSizingView: NSView {
             forContentRect: NSRect(origin: .zero, size: desiredContentSize)
         ).size
         let currentFrame = window.frame
-        guard abs(currentFrame.width - targetFrameSize.width) > 0.5
-                || abs(currentFrame.height - targetFrameSize.height) > 0.5 else {
+        guard
+            abs(currentFrame.width - targetFrameSize.width) > 0.5
+                || abs(currentFrame.height - targetFrameSize.height) > 0.5
+        else {
             return
         }
         let targetFrame = NSRect(

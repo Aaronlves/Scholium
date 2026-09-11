@@ -1,18 +1,21 @@
 import Foundation
 import ScholiumContracts
 import Testing
+
 @testable import ScholiumCore
 
 @Suite("Vault image attachments")
 struct VaultAttachmentStoreTests {
     @Test("Bounded attachment reads refuse symlink parents and files and leave originals unchanged")
     func boundedReadContainment() async throws {
-        let fixture = try Fixture(); defer { fixture.remove() }
+        let fixture = try Fixture()
+        defer { fixture.remove() }
         let store = VaultAttachmentStore(vaultURL: fixture.vault)
         let folder = fixture.vault.appendingPathComponent("Files")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let source = folder.appendingPathComponent("Exact.txt")
-        let bytes = Data("Exact\r\n".utf8); try bytes.write(to: source)
+        let bytes = Data("Exact\r\n".utf8)
+        try bytes.write(to: source)
         let path = try AttachmentRelativePath("Files/Exact.txt")
         #expect(try await store.readContent(relativePath: path, maximumByteCount: bytes.count) == bytes)
         await #expect(throws: Error.self) { try await store.readContent(relativePath: path, maximumByteCount: bytes.count - 1) }
@@ -44,10 +47,12 @@ struct VaultAttachmentStoreTests {
         )
 
         let copiedPath = try #require(prepared.copiedRelativePath)
-        #expect(copiedPath.rawValue
-            == "Attachments/\(attachmentID.uuidString.lowercased())/Figure one.png")
-        #expect(prepared.markdownDestination
-            == "../Attachments/\(attachmentID.uuidString.lowercased())/Figure%20one.png")
+        #expect(
+            copiedPath.rawValue
+                == "Attachments/\(attachmentID.uuidString.lowercased())/Figure one.png")
+        #expect(
+            prepared.markdownDestination
+                == "../Attachments/\(attachmentID.uuidString.lowercased())/Figure%20one.png")
         #expect(prepared.altText == "Figure one")
         let fingerprint = try #require(prepared.copiedFileFingerprint)
         let copied = fixture.vault.appendingPathComponent(copiedPath.rawValue)
@@ -79,9 +84,11 @@ struct VaultAttachmentStoreTests {
             management: .indexAbsolutePath
         )
 
-        #expect(prepared.location == .external(
-            try ExternalAttachmentReference(filename: image.lastPathComponent)
-        ))
+        #expect(
+            prepared.location
+                == .external(
+                    try ExternalAttachmentReference(filename: image.lastPathComponent)
+                ))
         #expect(prepared.markdownDestination == image.path)
         #expect(prepared.copiedFileFingerprint == nil)
         #expect(prepared.copiedRelativePath == nil)
@@ -120,9 +127,11 @@ struct VaultAttachmentStoreTests {
         #expect(dataPath.rawValue.hasSuffix("/Pasted Figure.png"))
         #expect(fileImport.copiedFileFingerprint != nil)
         #expect(dataImport.copiedFileFingerprint != nil)
-        #expect(try Data(contentsOf: fixture.vault.appendingPathComponent(
-            dataPath.rawValue
-        )) == Self.png)
+        #expect(
+            try Data(
+                contentsOf: fixture.vault.appendingPathComponent(
+                    dataPath.rawValue
+                )) == Self.png)
         #expect(try Data(contentsOf: existing) == Self.png)
     }
 
@@ -169,22 +178,28 @@ struct VaultAttachmentStoreTests {
             management: .copyIntoTriptych
         )
         let copiedPath = try #require(copied.copiedRelativePath)
-        #expect(copiedPath.rawValue
-            == "Attachments/\(copiedID.uuidString.lowercased())/Argument.txt")
-        #expect(try Data(contentsOf: fixture.vault.appendingPathComponent(
+        #expect(
             copiedPath.rawValue
-        )) == bytes)
-        #expect(try await store.documentURLIfAvailable(relativePath: copiedPath)
-            != nil)
+                == "Attachments/\(copiedID.uuidString.lowercased())/Argument.txt")
+        #expect(
+            try Data(
+                contentsOf: fixture.vault.appendingPathComponent(
+                    copiedPath.rawValue
+                )) == bytes)
+        #expect(
+            try await store.documentURLIfAvailable(relativePath: copiedPath)
+                != nil)
 
         let referenced = try await store.prepareDocument(
             at: source,
             attachmentID: UUID(),
             management: .referenceOriginal
         )
-        #expect(referenced.location == .external(
-            try ExternalAttachmentReference(filename: source.lastPathComponent)
-        ))
+        #expect(
+            referenced.location
+                == .external(
+                    try ExternalAttachmentReference(filename: source.lastPathComponent)
+                ))
         #expect(referenced.copiedFileFingerprint == nil)
         #expect(referenced.copiedRelativePath == nil)
 
@@ -192,8 +207,10 @@ struct VaultAttachmentStoreTests {
             relativePath: copiedPath,
             expectedFingerprint: try #require(copied.copiedFileFingerprint)
         )
-        #expect(!FileManager.default.fileExists(atPath: fixture.vault
-            .appendingPathComponent(copiedPath.rawValue).path))
+        #expect(
+            !FileManager.default.fileExists(
+                atPath: fixture.vault
+                    .appendingPathComponent(copiedPath.rawValue).path))
         #expect(try Data(contentsOf: source) == bytes)
     }
 
@@ -256,8 +273,9 @@ struct VaultAttachmentStoreTests {
         }
     }
 
-    private static let png = Data(base64Encoded:
-        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+    private static let png = Data(
+        base64Encoded:
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
     )!
 
     private struct Fixture {
@@ -269,7 +287,8 @@ struct VaultAttachmentStoreTests {
                 .deletingLastPathComponent()
                 .deletingLastPathComponent()
                 .deletingLastPathComponent()
-            root = repositoryRoot
+            root =
+                repositoryRoot
                 .appendingPathComponent(".build/attachment-store-tests", isDirectory: true)
                 .appendingPathComponent(UUID().uuidString.lowercased(), isDirectory: true)
             vault = root.appendingPathComponent("Works", isDirectory: true)

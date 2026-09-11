@@ -26,7 +26,8 @@ struct PerformanceProbeTests {
         ] {
             let probe = PerformanceProbe(
                 environment: [
-                    "SCHOLIUM_PERFORMANCE_RESULTS_PATH": directory
+                    "SCHOLIUM_PERFORMANCE_RESULTS_PATH":
+                        directory
                         .appendingPathComponent("\(metric.rawValue).jsonl").path,
                     "SCHOLIUM_PERFORMANCE_METRIC": metric.rawValue,
                     "SCHOLIUM_PERFORMANCE_RUN_ID": "review_setup_test",
@@ -40,7 +41,8 @@ struct PerformanceProbeTests {
 
         let search = PerformanceProbe(
             environment: [
-                "SCHOLIUM_PERFORMANCE_RESULTS_PATH": directory
+                "SCHOLIUM_PERFORMANCE_RESULTS_PATH":
+                    directory
                     .appendingPathComponent("indexed_search.jsonl").path,
                 "SCHOLIUM_PERFORMANCE_METRIC": "indexed_search",
                 "SCHOLIUM_PERFORMANCE_RUN_ID": "review_setup_test",
@@ -53,7 +55,8 @@ struct PerformanceProbeTests {
 
         let memory = PerformanceProbe(
             environment: [
-                "SCHOLIUM_PERFORMANCE_RESULTS_PATH": directory
+                "SCHOLIUM_PERFORMANCE_RESULTS_PATH":
+                    directory
                     .appendingPathComponent("editor_retained_memory.jsonl").path,
                 "SCHOLIUM_PERFORMANCE_METRIC": "editor_retained_memory",
                 "SCHOLIUM_PERFORMANCE_RUN_ID": "review_setup_test",
@@ -74,7 +77,8 @@ struct PerformanceProbeTests {
             isDirectory: true
         )
         let runID = "packaged_probe_test"
-        let runRoot = temporary
+        let runRoot =
+            temporary
             .appendingPathComponent("Performance Runs", isDirectory: true)
             .appendingPathComponent(runID, isDirectory: true)
         let home = runRoot.appendingPathComponent(
@@ -122,7 +126,8 @@ struct PerformanceProbeTests {
         #expect(fileManager.fileExists(atPath: result.path))
 
         var rejectedEnvironment = environment
-        rejectedEnvironment["SCHOLIUM_PERFORMANCE_RESULTS_PATH"] = outside
+        rejectedEnvironment["SCHOLIUM_PERFORMANCE_RESULTS_PATH"] =
+            outside
             .appendingPathComponent("warm_library_launch.jsonl").path
         let wrongRoot = PerformanceProbe(
             environment: rejectedEnvironment,
@@ -155,7 +160,8 @@ struct PerformanceProbeTests {
         defer { try? FileManager.default.removeItem(at: directory) }
         let probe = PerformanceProbe(
             environment: [
-                "SCHOLIUM_PERFORMANCE_RESULTS_PATH": directory
+                "SCHOLIUM_PERFORMANCE_RESULTS_PATH":
+                    directory
                     .appendingPathComponent("correctness.jsonl").path,
                 "SCHOLIUM_PERFORMANCE_METRIC": "editor_large_cjk_correctness",
                 "SCHOLIUM_PERFORMANCE_RUN_ID": "cjk_probe_test",
@@ -172,9 +178,10 @@ struct PerformanceProbeTests {
             documentID: "Wrong.md",
             source: String(repeating: "研", count: 100_000)
         )
-        #expect(!FileManager.default.fileExists(
-            atPath: directory.appendingPathComponent("correctness.jsonl").path
-        ))
+        #expect(
+            !FileManager.default.fileExists(
+                atPath: directory.appendingPathComponent("correctness.jsonl").path
+            ))
 
         probe.recordLargeCJKCorrectness(
             documentID: "Canonical.md",
@@ -235,14 +242,15 @@ struct PerformanceProbeTests {
         #expect(object["window_model_init_to_workspace_ready_duration_ms"] as? Double == 4)
         #expect(object["workspace_ready_to_projection_duration_ms"] as? Double == 5)
         #expect(object["projection_to_layout_duration_ms"] as? Double == 9)
-        #expect(Set(object.keys) == [
-            "schema", "run_id", "sample", "metric", "duration_ms",
-            "completed_uptime_ns", "observed_count",
-            "process_to_window_model_init_duration_ms",
-            "window_model_init_to_workspace_ready_duration_ms",
-            "workspace_ready_to_projection_duration_ms",
-            "projection_to_layout_duration_ms",
-        ])
+        #expect(
+            Set(object.keys) == [
+                "schema", "run_id", "sample", "metric", "duration_ms",
+                "completed_uptime_ns", "observed_count",
+                "process_to_window_model_init_duration_ms",
+                "window_model_init_to_workspace_ready_duration_ms",
+                "workspace_ready_to_projection_duration_ms",
+                "projection_to_layout_duration_ms",
+            ])
     }
 
     @Test("Editor Web metrics remain fixture-bound and privacy-safe")
@@ -287,10 +295,11 @@ struct PerformanceProbeTests {
         )
         #expect(object["metric"] as? String == "editor_cached_preview")
         #expect(object["duration_ms"] as? Double == 8)
-        #expect(Set(object.keys) == [
-            "schema", "run_id", "sample", "metric", "duration_ms",
-            "completed_uptime_ns",
-        ])
+        #expect(
+            Set(object.keys) == [
+                "schema", "run_id", "sample", "metric", "duration_ms",
+                "completed_uptime_ns",
+            ])
     }
 
     @Test("Warm Edit activation ends only at the matching visible editor")
@@ -471,14 +480,15 @@ struct PerformanceProbeTests {
         #expect(object["metric"] as? String == "editor_key_to_paint")
         #expect(object["sample"] as? Int == 4)
         #expect(object["duration_ms"] as? Double == 12.5)
-        #expect(Set(object.keys) == [
-            "schema",
-            "run_id",
-            "sample",
-            "metric",
-            "duration_ms",
-            "completed_uptime_ns",
-        ])
+        #expect(
+            Set(object.keys) == [
+                "schema",
+                "run_id",
+                "sample",
+                "metric",
+                "duration_ms",
+                "completed_uptime_ns",
+            ])
     }
 
     @Test("Editor mode latency records only the requested visible mode without research content")
@@ -531,19 +541,20 @@ struct PerformanceProbeTests {
         #expect(object["bridge_started_duration_ms"] as? Double == 5)
         #expect(object["bridge_roundtrip_duration_ms"] as? Double == 15)
         #expect(object["layout_duration_ms"] as? Double == 10)
-        #expect(Set(object.keys) == [
-            "schema",
-            "run_id",
-            "sample",
-            "metric",
-            "duration_ms",
-            "completed_uptime_ns",
-            "observed_mode",
-            "acknowledged_duration_ms",
-            "bridge_started_duration_ms",
-            "bridge_roundtrip_duration_ms",
-            "layout_duration_ms",
-        ])
+        #expect(
+            Set(object.keys) == [
+                "schema",
+                "run_id",
+                "sample",
+                "metric",
+                "duration_ms",
+                "completed_uptime_ns",
+                "observed_mode",
+                "acknowledged_duration_ms",
+                "bridge_started_duration_ms",
+                "bridge_roundtrip_duration_ms",
+                "layout_duration_ms",
+            ])
     }
 
     @Test("Retained Editor progress accepts only the expected fixture projection")
@@ -583,8 +594,9 @@ struct PerformanceProbeTests {
             }
         #expect(objects.count == 2)
         #expect(objects.compactMap { $0["mode"] as? String } == ["live_preview", "source"])
-        #expect(objects.allSatisfy {
-            Set($0.keys) == ["sample", "transition", "mode"]
-        })
+        #expect(
+            objects.allSatisfy {
+                Set($0.keys) == ["sample", "transition", "mode"]
+            })
     }
 }

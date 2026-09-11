@@ -97,10 +97,10 @@ private final class ScholiumFirstApparatusWidthOffer {
         guard !didOffer else { return }
         didOffer = true
         guard let splitView,
-              let apparatusItem,
-              !apparatusItem.isCollapsed,
-              let apparatusView = splitView.arrangedSubviews.last,
-              let documentView = splitView.arrangedSubviews.dropLast().last
+            let apparatusItem,
+            !apparatusItem.isCollapsed,
+            let apparatusView = splitView.arrangedSubviews.last,
+            let documentView = splitView.arrangedSubviews.dropLast().last
         else { return }
         splitView.layoutSubtreeIfNeeded()
 
@@ -135,12 +135,14 @@ struct ScholiumWorkspaceSplitView<Library: View, Chat: View, Document: View, App
     let closeDocumentTab: (UUID) -> Void
     let libraryVisibilityDidChange: (Bool) -> Void
     let researchInspectorVisibilityDidChange: (Bool) -> Void
-    let splitControllerDidAttach: @MainActor (
-        any ScholiumWorkspaceSplitControlling
-    ) -> Void
-    let splitControllerDidDetach: @MainActor (
-        any ScholiumWorkspaceSplitControlling
-    ) -> Void
+    let splitControllerDidAttach:
+        @MainActor (
+            any ScholiumWorkspaceSplitControlling
+        ) -> Void
+    let splitControllerDidDetach:
+        @MainActor (
+            any ScholiumWorkspaceSplitControlling
+        ) -> Void
     let library: Library
     let chat: Chat
     let sidebarContent: SidebarContent
@@ -157,12 +159,14 @@ struct ScholiumWorkspaceSplitView<Library: View, Chat: View, Document: View, App
         closeDocumentTab: @escaping (UUID) -> Void,
         libraryVisibilityDidChange: @escaping (Bool) -> Void,
         researchInspectorVisibilityDidChange: @escaping (Bool) -> Void,
-        splitControllerDidAttach: @escaping @MainActor (
-            any ScholiumWorkspaceSplitControlling
-        ) -> Void,
-        splitControllerDidDetach: @escaping @MainActor (
-            any ScholiumWorkspaceSplitControlling
-        ) -> Void,
+        splitControllerDidAttach:
+            @escaping @MainActor (
+                any ScholiumWorkspaceSplitControlling
+            ) -> Void,
+        splitControllerDidDetach:
+            @escaping @MainActor (
+                any ScholiumWorkspaceSplitControlling
+            ) -> Void,
         @ViewBuilder library: () -> Library,
         @ViewBuilder chat: () -> Chat,
         @ViewBuilder document: () -> Document,
@@ -242,12 +246,14 @@ struct ScholiumWorkspaceSplitView<Library: View, Chat: View, Document: View, App
         private var observesVisibility = false
         private var libraryVisibilityDidChange: (Bool) -> Void
         private var researchInspectorVisibilityDidChange: (Bool) -> Void
-        private var splitControllerDidAttach: @MainActor (
-            any ScholiumWorkspaceSplitControlling
-        ) -> Void
-        private var splitControllerDidDetach: @MainActor (
-            any ScholiumWorkspaceSplitControlling
-        ) -> Void
+        private var splitControllerDidAttach:
+            @MainActor (
+                any ScholiumWorkspaceSplitControlling
+            ) -> Void
+        private var splitControllerDidDetach:
+            @MainActor (
+                any ScholiumWorkspaceSplitControlling
+            ) -> Void
 
         init(
             initialLibraryVisible: Bool,
@@ -258,12 +264,14 @@ struct ScholiumWorkspaceSplitView<Library: View, Chat: View, Document: View, App
             closeDocumentTab: @escaping (UUID) -> Void,
             libraryVisibilityDidChange: @escaping (Bool) -> Void,
             researchInspectorVisibilityDidChange: @escaping (Bool) -> Void,
-            splitControllerDidAttach: @escaping @MainActor (
-                any ScholiumWorkspaceSplitControlling
-            ) -> Void,
-            splitControllerDidDetach: @escaping @MainActor (
-                any ScholiumWorkspaceSplitControlling
-            ) -> Void,
+            splitControllerDidAttach:
+                @escaping @MainActor (
+                    any ScholiumWorkspaceSplitControlling
+                ) -> Void,
+            splitControllerDidDetach:
+                @escaping @MainActor (
+                    any ScholiumWorkspaceSplitControlling
+                ) -> Void,
             library: Library,
             chat: Chat,
             sidebarContent: SidebarContent,
@@ -419,12 +427,14 @@ struct ScholiumWorkspaceSplitView<Library: View, Chat: View, Document: View, App
             closeDocumentTab: @escaping (UUID) -> Void,
             libraryVisibilityDidChange: @escaping (Bool) -> Void,
             researchInspectorVisibilityDidChange: @escaping (Bool) -> Void,
-            splitControllerDidAttach: @escaping @MainActor (
-                any ScholiumWorkspaceSplitControlling
-            ) -> Void,
-            splitControllerDidDetach: @escaping @MainActor (
-                any ScholiumWorkspaceSplitControlling
-            ) -> Void
+            splitControllerDidAttach:
+                @escaping @MainActor (
+                    any ScholiumWorkspaceSplitControlling
+                ) -> Void,
+            splitControllerDidDetach:
+                @escaping @MainActor (
+                    any ScholiumWorkspaceSplitControlling
+                ) -> Void
         ) {
             sidebarController.update(library: library, chat: chat, selection: sidebarContent)
             documentTabsController.update(
@@ -444,8 +454,8 @@ struct ScholiumWorkspaceSplitView<Library: View, Chat: View, Document: View, App
 
         func setLibraryVisible(_ visible: Bool, animated: Bool) {
             guard isViewLoaded,
-                  libraryItem != nil,
-                  libraryIsVisible != visible
+                libraryItem != nil,
+                libraryIsVisible != visible
             else { return }
             if animated {
                 NSAnimationContext.runAnimationGroup { context in
@@ -461,8 +471,8 @@ struct ScholiumWorkspaceSplitView<Library: View, Chat: View, Document: View, App
 
         func setResearchInspectorVisible(_ visible: Bool, animated: Bool) {
             guard isViewLoaded,
-                  apparatusItem != nil,
-                  researchInspectorIsVisible != visible
+                apparatusItem != nil,
+                researchInspectorIsVisible != visible
             else { return }
             if animated {
                 let firstApparatusWidthOffer = self.firstApparatusWidthOffer
@@ -497,8 +507,8 @@ struct ScholiumWorkspaceSplitView<Library: View, Chat: View, Document: View, App
 
         private func reportVisibility() {
             guard observesVisibility,
-                  libraryItem != nil,
-                  apparatusItem != nil
+                libraryItem != nil,
+                apparatusItem != nil
             else { return }
             libraryVisibilityDidChange(!libraryItem.isCollapsed)
             researchInspectorVisibilityDidChange(!apparatusItem.isCollapsed)
@@ -506,7 +516,6 @@ struct ScholiumWorkspaceSplitView<Library: View, Chat: View, Document: View, App
 
     }
 }
-
 
 enum ScholiumWorkspaceSplitViewIdentifier {
     static let value = NSUserInterfaceItemIdentifier("scholium.workspaceSplitView")
@@ -690,9 +699,10 @@ final class ScholiumDocumentTabsViewController<Document: View>: NSViewController
                     at: min(index, tabViewController.tabViewItems.count)
                 )
             } else if let item = pageItems[tab.id],
-                      let currentIndex = tabViewController.tabViewItems.firstIndex(
-                        where: { $0 === item }
-                      ), currentIndex != index {
+                let currentIndex = tabViewController.tabViewItems.firstIndex(
+                    where: { $0 === item }
+                ), currentIndex != index
+            {
                 tabViewController.removeTabViewItem(item)
                 tabViewController.insertTabViewItem(item, at: index)
             }
@@ -703,12 +713,14 @@ final class ScholiumDocumentTabsViewController<Document: View>: NSViewController
             selectedHost.rootView = document
         }
         if let selectedTabID,
-           let selectedIndex = tabs.firstIndex(where: { $0.id == selectedTabID }) {
+            let selectedIndex = tabs.firstIndex(where: { $0.id == selectedTabID })
+        {
             tabViewController.selectedTabViewItemIndex = selectedIndex
         } else if showsPlaceholder,
-                  let placeholderIndex = tabViewController.tabViewItems.firstIndex(
-                    where: { $0 === placeholderItem }
-                  ) {
+            let placeholderIndex = tabViewController.tabViewItems.firstIndex(
+                where: { $0 === placeholderItem }
+            )
+        {
             tabViewController.selectedTabViewItemIndex = placeholderIndex
         }
         rebuildSelector()
@@ -736,7 +748,8 @@ final class ScholiumDocumentTabsViewController<Document: View>: NSViewController
         }
         let showsTabStrip = tabs.count > 1
         tabStrip.isHidden = !showsTabStrip
-        tabStripHeightConstraint.constant = showsTabStrip
+        tabStripHeightConstraint.constant =
+            showsTabStrip
             ? ScholiumDocumentTabLayout.stripHeight
             : 0
     }
@@ -850,7 +863,8 @@ final class ScholiumDocumentTabsViewController<Document: View>: NSViewController
             ofSize: NSFont.systemFontSize,
             weight: isSelected ? .medium : .regular
         )
-        selector.title.contentTintColor = isSelected
+        selector.title.contentTintColor =
+            isSelected
             ? ScholiumColorRole.primaryText.nsColor
             : ScholiumColorRole.secondaryText.nsColor
         selector.title.setAccessibilityLabel(tab.title)
@@ -858,16 +872,17 @@ final class ScholiumDocumentTabsViewController<Document: View>: NSViewController
         let closeLabel = "Close \(tab.title)"
         selector.close.toolTip = closeLabel
         selector.close.setAccessibilityLabel(closeLabel)
-        selector.selectionRule.layer?.backgroundColor = isSelected
+        selector.selectionRule.layer?.backgroundColor =
+            isSelected
             ? ScholiumColorRole.accent.nsColor.cgColor
             : NSColor.clear.cgColor
     }
 
     #if DEBUG
-    func testingPageHost(for id: UUID) -> AnyObject? { pageHosts[id] }
-    func testingPageItem(for id: UUID) -> AnyObject? { pageItems[id] }
-    func testingSelectorView(for id: UUID) -> AnyObject? { selectorViews[id]?.container }
-    func testingPageLabel(for id: UUID) -> String? { pageItems[id]?.label }
+        func testingPageHost(for id: UUID) -> AnyObject? { pageHosts[id] }
+        func testingPageItem(for id: UUID) -> AnyObject? { pageItems[id] }
+        func testingSelectorView(for id: UUID) -> AnyObject? { selectorViews[id]?.container }
+        func testingPageLabel(for id: UUID) -> String? { pageItems[id]?.label }
     #endif
 
     @objc

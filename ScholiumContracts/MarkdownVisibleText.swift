@@ -69,9 +69,10 @@ private struct MarkdownRenderedTextCollector: MarkupWalker {
                 && $0.renderedRange.upperBound > lower
         }
         guard let first = overlapping.first,
-              let last = overlapping.last,
-              let firstSource = first.sourceRange,
-              let lastSource = last.sourceRange else { return nil }
+            let last = overlapping.last,
+            let firstSource = first.sourceRange,
+            let lastSource = last.sourceRange
+        else { return nil }
 
         let sourceLower: Int
         if first.exact {
@@ -81,7 +82,8 @@ private struct MarkdownRenderedTextCollector: MarkupWalker {
         }
         let sourceUpper: Int
         if last.exact {
-            sourceUpper = lastSource.lowerBound
+            sourceUpper =
+                lastSource.lowerBound
                 + min(lastSource.count, upper - last.renderedRange.lowerBound)
         } else {
             sourceUpper = lastSource.upperBound
@@ -97,24 +99,29 @@ private struct MarkdownRenderedTextCollector: MarkupWalker {
                 && fragmentSource.upperBound > sourceRange.lowerBound
         }
         guard let first = overlapping.first,
-              let last = overlapping.last,
-              let firstSource = first.sourceRange,
-              let lastSource = last.sourceRange else { return nil }
+            let last = overlapping.last,
+            let firstSource = first.sourceRange,
+            let lastSource = last.sourceRange
+        else { return nil }
 
-        let renderedLower = first.exact
+        let renderedLower =
+            first.exact
             ? first.renderedRange.lowerBound
                 + max(0, sourceRange.lowerBound - firstSource.lowerBound)
             : first.renderedRange.lowerBound
-        let renderedUpper = last.exact
+        let renderedUpper =
+            last.exact
             ? last.renderedRange.lowerBound
                 + min(last.renderedRange.count, sourceRange.upperBound - lastSource.lowerBound)
             : last.renderedRange.upperBound
         guard renderedUpper > renderedLower else { return nil }
         let nsRendered = renderedText as NSString
-        let result = nsRendered.substring(with: NSRange(
-            location: renderedLower,
-            length: renderedUpper - renderedLower
-        )).trimmingCharacters(in: .whitespacesAndNewlines)
+        let result = nsRendered.substring(
+            with: NSRange(
+                location: renderedLower,
+                length: renderedUpper - renderedLower
+            )
+        ).trimmingCharacters(in: .whitespacesAndNewlines)
         return result.isEmpty ? nil : result
     }
 
@@ -124,45 +131,52 @@ private struct MarkdownRenderedTextCollector: MarkupWalker {
         renderedText += text
         let renderedEnd = renderedText.utf16.count
         guard var range = sourceRange.flatMap(mapper.utf16Range) else {
-            fragments.append(MarkdownRenderedTextFragment(
-                renderedRange: renderedStart..<renderedEnd,
-                sourceRange: nil,
-                exact: false
-            ))
+            fragments.append(
+                MarkdownRenderedTextFragment(
+                    renderedRange: renderedStart..<renderedEnd,
+                    sourceRange: nil,
+                    exact: false
+                ))
             return
         }
         let nsSource = source as NSString
-        let raw = nsSource.substring(with: NSRange(
-            location: range.lowerBound,
-            length: range.count
-        ))
+        let raw = nsSource.substring(
+            with: NSRange(
+                location: range.lowerBound,
+                length: range.count
+            ))
         if raw != text,
-           let match = raw.range(of: text),
-           raw.range(of: text, range: match.upperBound..<raw.endIndex) == nil {
+            let match = raw.range(of: text),
+            raw.range(of: text, range: match.upperBound..<raw.endIndex) == nil
+        {
             let lower = match.lowerBound.utf16Offset(in: raw)
             let upper = match.upperBound.utf16Offset(in: raw)
             range = (range.lowerBound + lower)..<(range.lowerBound + upper)
         }
-        let exact = (source as NSString).substring(with: NSRange(
-            location: range.lowerBound,
-            length: range.count
-        )) == text
-        fragments.append(MarkdownRenderedTextFragment(
-            renderedRange: renderedStart..<renderedEnd,
-            sourceRange: range,
-            exact: exact
-        ))
+        let exact =
+            (source as NSString).substring(
+                with: NSRange(
+                    location: range.lowerBound,
+                    length: range.count
+                )) == text
+        fragments.append(
+            MarkdownRenderedTextFragment(
+                renderedRange: renderedStart..<renderedEnd,
+                sourceRange: range,
+                exact: exact
+            ))
     }
 
     private mutating func appendSeparator(_ separator: String) {
         guard !renderedText.hasSuffix(separator) else { return }
         let start = renderedText.utf16.count
         renderedText += separator
-        fragments.append(MarkdownRenderedTextFragment(
-            renderedRange: start..<renderedText.utf16.count,
-            sourceRange: nil,
-            exact: false
-        ))
+        fragments.append(
+            MarkdownRenderedTextFragment(
+                renderedRange: start..<renderedText.utf16.count,
+                sourceRange: nil,
+                exact: false
+            ))
     }
 }
 
@@ -191,13 +205,16 @@ private struct MarkdownRenderedSourceMapper {
     }
 
     func utf16Range(_ range: Markdown.SourceRange) -> Range<Int>? {
-        guard let lower = utf16Offset(
-            line: range.lowerBound.line,
-            utf8Column: range.lowerBound.column
-        ), let upper = utf16Offset(
-            line: range.upperBound.line,
-            utf8Column: range.upperBound.column
-        ), upper >= lower else { return nil }
+        guard
+            let lower = utf16Offset(
+                line: range.lowerBound.line,
+                utf8Column: range.lowerBound.column
+            ),
+            let upper = utf16Offset(
+                line: range.upperBound.line,
+                utf8Column: range.upperBound.column
+            ), upper >= lower
+        else { return nil }
         return lower..<upper
     }
 

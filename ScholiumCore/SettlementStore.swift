@@ -118,7 +118,8 @@ public actor SettlementStore {
         triptychID: UUID
     ) throws {
         self.triptychID = triptychID
-        storageURL = controlURL
+        storageURL =
+            controlURL
             .appendingPathComponent("settlements", isDirectory: true)
             .appendingPathComponent("v3", isDirectory: true)
         storage = SecureRecordDirectory(
@@ -184,7 +185,7 @@ public actor SettlementStore {
             var settlements: [SettlementRecord] = []
             var issues: [SettlementStoreIssue] = []
             for name in try storage.fileNames(in: nil)
-                where name.hasSuffix(".json") {
+            where name.hasSuffix(".json") {
                 do {
                     let state = try decodeAndValidate(
                         storage.read(directory: nil, fileName: name),
@@ -195,10 +196,11 @@ public actor SettlementStore {
                     }
                     settlements.append(state.settlement)
                 } catch {
-                    issues.append(SettlementStoreIssue(
-                        fileName: name,
-                        reason: error.localizedDescription
-                    ))
+                    issues.append(
+                        SettlementStoreIssue(
+                            fileName: name,
+                            reason: error.localizedDescription
+                        ))
                 }
             }
             return SettlementListing(
@@ -228,15 +230,16 @@ public actor SettlementStore {
     private func validate(_ state: State) throws {
         let settlement = state.settlement
         guard state.schemaVersion == State.currentSchemaVersion,
-              state.triptychID == triptychID,
-              !settlement.researcher.isEmpty,
-              settlement.researcher.utf8.count <= 256,
-              ResearchStoreCodingValidation.isValidFingerprint(settlement.fingerprint),
-              !ResearchStoreCodingValidation.containsAbsolutePath(settlement.researcher),
-              (settlement.rationale?.utf8.count ?? 0) <= 256 * 1_024,
-              !ResearchStoreCodingValidation.containsAbsolutePath(
-                  settlement.rationale ?? ""
-              ) else {
+            state.triptychID == triptychID,
+            !settlement.researcher.isEmpty,
+            settlement.researcher.utf8.count <= 256,
+            ResearchStoreCodingValidation.isValidFingerprint(settlement.fingerprint),
+            !ResearchStoreCodingValidation.containsAbsolutePath(settlement.researcher),
+            (settlement.rationale?.utf8.count ?? 0) <= 256 * 1_024,
+            !ResearchStoreCodingValidation.containsAbsolutePath(
+                settlement.rationale ?? ""
+            )
+        else {
             throw SettlementStoreError.invalid(settlement.id)
         }
     }
@@ -299,9 +302,10 @@ public actor SettlementStore {
             error: &coordinationError
         ) { coordinatedURL in
             guard coordinatedURL.standardizedFileURL == url.standardizedFileURL else {
-                result = .failure(SettlementStoreError.coordinationFailed(
-                    "The coordinated settlement root moved during the operation."
-                ))
+                result = .failure(
+                    SettlementStoreError.coordinationFailed(
+                        "The coordinated settlement root moved during the operation."
+                    ))
                 return
             }
             result = Result { try operation() }
@@ -332,9 +336,10 @@ public actor SettlementStore {
             error: &coordinationError
         ) { coordinatedURL in
             guard coordinatedURL.standardizedFileURL == url.standardizedFileURL else {
-                result = .failure(SettlementStoreError.coordinationFailed(
-                    "The coordinated settlement root moved during the operation."
-                ))
+                result = .failure(
+                    SettlementStoreError.coordinationFailed(
+                        "The coordinated settlement root moved during the operation."
+                    ))
                 return
             }
             result = Result { try operation() }

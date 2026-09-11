@@ -1,6 +1,7 @@
 import Foundation
-import Testing
 import ScholiumContracts
+import Testing
+
 @testable import ScholiumCore
 
 @Suite("Stable note identity recovery")
@@ -17,33 +18,37 @@ struct NoteIdentityRecoveryTests {
             changeSet: .body("# Revised Work\n"),
             expectedRevision: original.fingerprint
         )
-        let identity = try #require(try await stores.control.identity(
-            forVaultID: fixture.worksID,
-            relativePath: "Old.md",
-            fingerprint: saved.document.fingerprint
-        ))
+        let identity = try #require(
+            try await stores.control.identity(
+                forVaultID: fixture.worksID,
+                relativePath: "Old.md",
+                fingerprint: saved.document.fingerprint
+            ))
 
-        try await stores.sessions.save(WindowSessionSnapshot(
-            id: stores.sessionID,
-            selectedWorkspace: .output,
-            workspaceSessions: [
-                WindowWorkspaceSessionSnapshot(
-                    workspace: .output,
-                    vaultID: fixture.worksID,
-                    openDocuments: [VaultQualifiedNoteID(
+        try await stores.sessions.save(
+            WindowSessionSnapshot(
+                id: stores.sessionID,
+                selectedWorkspace: .output,
+                workspaceSessions: [
+                    WindowWorkspaceSessionSnapshot(
+                        workspace: .output,
                         vaultID: fixture.worksID,
-                        relativePath: "Old.md"
-                    )],
-                    selectedDocument: VaultQualifiedNoteID(
-                        vaultID: fixture.worksID,
-                        relativePath: "Old.md"
-                    ),
-                    documentPresentations: [
-                        "Old.md": WindowDocumentPresentationSnapshot(scrollFraction: 0.42),
-                    ]
-                ),
-            ]
-        ))
+                        openDocuments: [
+                            VaultQualifiedNoteID(
+                                vaultID: fixture.worksID,
+                                relativePath: "Old.md"
+                            )
+                        ],
+                        selectedDocument: VaultQualifiedNoteID(
+                            vaultID: fixture.worksID,
+                            relativePath: "Old.md"
+                        ),
+                        documentPresentations: [
+                            "Old.md": WindowDocumentPresentationSnapshot(scrollFraction: 0.42)
+                        ]
+                    )
+                ]
+            ))
         try FileManager.default.createDirectory(
             at: fixture.works.appendingPathComponent("Folder", isDirectory: true),
             withIntermediateDirectories: true
@@ -82,16 +87,18 @@ struct NoteIdentityRecoveryTests {
         let topicsRepository = try fixture.repository(vaultID: fixture.topicsID, root: fixture.topics)
         let analysisDocument = try await analysesRepository.create(relativePath: "Shared.md", content: "same")
         let topicDocument = try await topicsRepository.create(relativePath: "Shared.md", content: "same")
-        let analysisIdentity = try #require(try await stores.control.identity(
-            forVaultID: fixture.analysesID,
-            relativePath: "Shared.md",
-            fingerprint: analysisDocument.fingerprint
-        ))
-        let topicIdentity = try #require(try await stores.control.identity(
-            forVaultID: fixture.topicsID,
-            relativePath: "Shared.md",
-            fingerprint: topicDocument.fingerprint
-        ))
+        let analysisIdentity = try #require(
+            try await stores.control.identity(
+                forVaultID: fixture.analysesID,
+                relativePath: "Shared.md",
+                fingerprint: analysisDocument.fingerprint
+            ))
+        let topicIdentity = try #require(
+            try await stores.control.identity(
+                forVaultID: fixture.topicsID,
+                relativePath: "Shared.md",
+                fingerprint: topicDocument.fingerprint
+            ))
         try FileManager.default.moveItem(
             at: fixture.analyses.appendingPathComponent("Shared.md"),
             to: fixture.analyses.appendingPathComponent("Moved.md")
@@ -108,10 +115,11 @@ struct NoteIdentityRecoveryTests {
         )
 
         #expect(state.identities["Moved.md"]?.id == analysisIdentity.id)
-        #expect(try await stores.control.identityRecord(
-            vaultID: fixture.topicsID,
-            relativePath: "Shared.md"
-        )?.id == topicIdentity.id)
+        #expect(
+            try await stores.control.identityRecord(
+                vaultID: fixture.topicsID,
+                relativePath: "Shared.md"
+            )?.id == topicIdentity.id)
     }
 
     @Test("Completed saves do not leave history that blocks an external move")
@@ -126,11 +134,12 @@ struct NoteIdentityRecoveryTests {
             changeSet: .body("same"),
             expectedRevision: old.fingerprint
         )
-        let identity = try #require(try await stores.control.identity(
-            forVaultID: fixture.worksID,
-            relativePath: "Old.md",
-            fingerprint: oldSaved.document.fingerprint
-        ))
+        let identity = try #require(
+            try await stores.control.identity(
+                forVaultID: fixture.worksID,
+                relativePath: "Old.md",
+                fingerprint: oldSaved.document.fingerprint
+            ))
         let destination = try await repository.create(relativePath: "New.md", content: "destination")
         _ = try await repository.save(
             relativePath: "New.md",

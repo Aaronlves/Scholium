@@ -99,7 +99,8 @@ final class WindowEditorFlushCoordinator {
         selectedDocumentPath: String?
     ) {
         guard let registration = currentRegistration,
-              registration.token == token else {
+            registration.token == token
+        else {
             registry.unregisterEditorFlush(token: token)
             return
         }
@@ -187,7 +188,8 @@ final class WindowEditorFlushCoordinator {
         selectedDocumentPath: String?
     ) throws {
         if let selectedDocumentPath,
-           selectedDocumentPath != registration.relativePath {
+            selectedDocumentPath != registration.relativePath
+        {
             throw WindowEditorFlushError.staleEditorRegistration(
                 expected: selectedDocumentPath,
                 registered: registration.relativePath
@@ -197,7 +199,8 @@ final class WindowEditorFlushCoordinator {
 
     private func registerCurrentEditorIfPossible(triptychID: UUID?) {
         guard var registration = currentRegistration,
-              let triptychID else { return }
+            let triptychID
+        else { return }
         registry.registerEditorFlush(
             token: registration.token,
             triptychID: triptychID,
@@ -211,7 +214,8 @@ final class WindowEditorFlushCoordinator {
 
     private func unregisterInstalledCapabilities() {
         if let registration = currentRegistration,
-           registration.registeredTriptychID != nil {
+            registration.registeredTriptychID != nil
+        {
             registry.unregisterEditorFlush(token: registration.token)
         }
         if aggregateTriptychID != nil {
@@ -221,7 +225,8 @@ final class WindowEditorFlushCoordinator {
 
     private func reinstallCapabilities() {
         if let triptychID = aggregateTriptychID,
-           let aggregateFlush {
+            let aggregateFlush
+        {
             registry.registerEditorFlush(
                 token: aggregateToken,
                 triptychID: triptychID,

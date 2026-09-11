@@ -61,14 +61,18 @@ struct AgentChatComposerInput: NSViewRepresentable {
         // SwiftUI also probes an unbounded size. Do not pass that probe into
         // AppKit's text layout or its constraint system.
         let proposedWidth = proposal.width ?? nsView.bounds.width
-        let width = proposedWidth.isFinite && proposedWidth < CGFloat.greatestFiniteMagnitude
+        let width =
+            proposedWidth.isFinite && proposedWidth < CGFloat.greatestFiniteMagnitude
             ? max(1, proposedWidth) : max(1, nsView.bounds.width)
         return CGSize(width: width, height: nsView.fittingHeight(width: width))
     }
 
     static func dismantleNSView(_ host: AgentChatComposerHost, coordinator: ()) {
         host.commitCurrentDraft()
-        host.onEdit = nil; host.onFocus = nil; host.editor.onSubmit = nil; host.editor.onTransferMaterials = nil
+        host.onEdit = nil
+        host.onFocus = nil
+        host.editor.onSubmit = nil
+        host.editor.onTransferMaterials = nil
         host.editor.onFocusChange = nil
         host.editor.delegate = nil
         host.editor.onCompletionKey = nil
@@ -143,8 +147,9 @@ struct AgentChatComposerInput: NSViewRepresentable {
         let storage = NSTextStorage(attributedString: editor.attributedString())
         let manager = NSLayoutManager()
         manager.usesFontLeading = editor.layoutManager?.usesFontLeading ?? true
-        let container = NSTextContainer(containerSize: NSSize(
-            width: max(1, width - 2 * editor.textContainerInset.width), height: CGFloat.greatestFiniteMagnitude))
+        let container = NSTextContainer(
+            containerSize: NSSize(
+                width: max(1, width - 2 * editor.textContainerInset.width), height: CGFloat.greatestFiniteMagnitude))
         container.lineFragmentPadding = editor.textContainer?.lineFragmentPadding ?? 5
         storage.addLayoutManager(manager)
         manager.addTextContainer(container)
@@ -235,13 +240,16 @@ struct AgentChatComposerInput: NSViewRepresentable {
 
     override func validateUserInterfaceItem(_ item: any NSValidatedUserInterfaceItem) -> Bool {
         if item.action == #selector(paste(_:)), isEditable, onTransferMaterials != nil, !hasMarkedText(),
-            NSPasteboard.general.availableType(from: AgentChatPasteboardSnapshot.materialTypes) != nil { return true }
+            NSPasteboard.general.availableType(from: AgentChatPasteboardSnapshot.materialTypes) != nil
+        {
+            return true
+        }
         return super.validateUserInterfaceItem(item)
     }
 
     override func keyDown(with event: NSEvent) {
         if !hasMarkedText(), onCompletionKey?(event) == true { return }
-        if (event.keyCode == 36 || event.keyCode == 76), !hasMarkedText() {
+        if event.keyCode == 36 || event.keyCode == 76, !hasMarkedText() {
             if event.modifierFlags.contains(.shift) || event.modifierFlags.contains(.option) {
                 insertNewlineIgnoringFieldEditor(nil)
             } else {

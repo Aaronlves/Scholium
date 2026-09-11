@@ -144,8 +144,9 @@ private struct StatisticsVisibleTextCollector: MarkupWalker {
 
     private mutating func appendSeparator() {
         guard !isInsideComment,
-              !text.isEmpty,
-              text.last?.isWhitespace != true else { return }
+            !text.isEmpty,
+            text.last?.isWhitespace != true
+        else { return }
         text.append("\n")
     }
 }

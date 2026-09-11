@@ -5,7 +5,8 @@ import UniformTypeIdentifiers
 extension ZoteroMCPServer {
     func readOriginal(_ arguments: [String: ZoteroMCPJSONValue]) async throws -> ZoteroMCPJSONValue {
         guard Set(arguments.keys).isSubset(of: ["library", "attachment_key", "mode", "page", "start_utf8", "maximum_utf8", "expected_fingerprint"]),
-              let mode = arguments["mode"]?.stringValue.flatMap(AgentAttachmentRead.Mode.init(rawValue:)) else {
+            let mode = arguments["mode"]?.stringValue.flatMap(AgentAttachmentRead.Mode.init(rawValue:))
+        else {
             throw ZoteroMCPServiceError.invalidArguments
         }
         let (route, key) = try materialScope(arguments)
@@ -16,9 +17,12 @@ extension ZoteroMCPServer {
         if let value = arguments["page"] {
             guard let number = value.intValue, number > 0 else { throw ZoteroMCPServiceError.invalidArguments }
             page = number
-        } else { page = nil }
+        } else {
+            page = nil
+        }
         guard start == 0 || expected != nil,
-              mode != .image || (start == 0 && arguments["maximum_utf8"] == nil) else {
+            mode != .image || (start == 0 && arguments["maximum_utf8"] == nil)
+        else {
             throw ZoteroMCPServiceError.invalidArguments
         }
         let attachment = try await fileAttachment(key, route: route)
@@ -41,8 +45,9 @@ extension ZoteroMCPServer {
         let currentFingerprint = DocumentFingerprint(data: try await originalBytes(url))
         guard currentFingerprint == fingerprint else { throw ZoteroMCPServiceError.materialChanged }
         try Task.checkCancellation()
-        let request = AgentAttachmentRead(mode: mode, page: page, startUTF8: start, maximumUTF8: maximum,
-                                          expectedFingerprint: expected == nil ? nil : fingerprint)
+        let request = AgentAttachmentRead(
+            mode: mode, page: page, startUTF8: start, maximumUTF8: maximum,
+            expectedFingerprint: expected == nil ? nil : fingerprint)
         let content: AgentAttachmentContent
         do {
             content = try AgentAttachmentContentReader.read(bytes, filename: filename, request: request)
@@ -72,9 +77,11 @@ extension ZoteroMCPServer {
             result["next_start_utf8"] = content.endUTF8 < content.totalUTF8 ? .integer(content.endUTF8) : .null
         }
         if let png = content.imagePNG {
-            result["image"] = .object(["mime_type": .string("image/png"), "data": .string(png.base64EncodedString()),
+            result["image"] = .object([
+                "mime_type": .string("image/png"), "data": .string(png.base64EncodedString()),
                 "pixel_width": content.pixelWidth.map(ZoteroMCPJSONValue.integer) ?? .null,
-                "pixel_height": content.pixelHeight.map(ZoteroMCPJSONValue.integer) ?? .null])
+                "pixel_height": content.pixelHeight.map(ZoteroMCPJSONValue.integer) ?? .null,
+            ])
         }
         return .object(result)
     }
@@ -89,12 +96,13 @@ extension ZoteroMCPServer {
         let response = try await sendAPI(request)
         try sameServer(attachment.response, response)
         guard response.body.count <= 16_384, let text = String(data: response.body, encoding: .utf8),
-              text == text.trimmingCharacters(in: .whitespacesAndNewlines),
-              let parts = URLComponents(string: text), parts.scheme == "file", parts.host?.isEmpty != false,
-              parts.user == nil, parts.password == nil, parts.port == nil, parts.query == nil, parts.fragment == nil,
-              let url = parts.url, url.isFileURL, url.path.hasPrefix("/"), !url.path.utf8.contains(0),
-              url.path == url.standardizedFileURL.path,
-              (try? AttachmentRelativePath(String(url.path.dropFirst()))) != nil else {
+            text == text.trimmingCharacters(in: .whitespacesAndNewlines),
+            let parts = URLComponents(string: text), parts.scheme == "file", parts.host?.isEmpty != false,
+            parts.user == nil, parts.password == nil, parts.port == nil, parts.query == nil, parts.fragment == nil,
+            let url = parts.url, url.isFileURL, url.path.hasPrefix("/"), !url.path.utf8.contains(0),
+            url.path == url.standardizedFileURL.path,
+            (try? AttachmentRelativePath(String(url.path.dropFirst()))) != nil
+        else {
             throw ZoteroMCPServiceError.originalUnavailable
         }
         return url
@@ -102,13 +110,14 @@ extension ZoteroMCPServer {
 
     private func originalType(filename: String, attachment: AttachmentObservation) throws -> UTType {
         guard let data = attachment.value.objectValue?["data"]?.objectValue,
-              let contentType = data["contentType"]?.stringValue,
-              let declaredType = UTType(mimeType: contentType),
-              let type = UTType(filenameExtension: URL(fileURLWithPath: filename).pathExtension),
-              type == .pdf || type.conforms(to: .text) || type.conforms(to: .image),
-              (type == .pdf && declaredType == .pdf)
+            let contentType = data["contentType"]?.stringValue,
+            let declaredType = UTType(mimeType: contentType),
+            let type = UTType(filenameExtension: URL(fileURLWithPath: filename).pathExtension),
+            type == .pdf || type.conforms(to: .text) || type.conforms(to: .image),
+            (type == .pdf && declaredType == .pdf)
                 || (type.conforms(to: .text) && declaredType.conforms(to: .text))
-                || (type.conforms(to: .image) && declaredType.conforms(to: .image)) else {
+                || (type.conforms(to: .image) && declaredType.conforms(to: .image))
+        else {
             throw ZoteroMCPServiceError.originalUnavailable
         }
         let namedFile: String?
@@ -138,15 +147,26 @@ extension ZoteroMCPServer {
         }
     }
 
-    static let originalReadTool = tool(name: "zotero_read_original",
-        description: "Read an exact local attachment snapshot (at most 20 MiB): one physical PDF page, a bounded UTF-8 slice, or a bounded PNG. No arbitrary file path, index substitution, OCR or Zotero writes.",
+    static let originalReadTool = tool(
+        name: "zotero_read_original",
+        description:
+            "Read an exact local attachment snapshot (at most 20 MiB): one physical PDF page, a bounded UTF-8 slice, or a bounded PNG. No arbitrary file path, index substitution, OCR or Zotero writes.",
         properties: [
             "library": .object(["type": .string("string"), "pattern": .string("^(user|group:[1-9][0-9]*)$")]),
             "attachment_key": .object(["type": .string("string"), "maxLength": .integer(128)]),
             "mode": .object(["type": .string("string"), "enum": .array([.string("text"), .string("image")])]),
-            "page": .object(["type": .string("integer"), "minimum": .integer(1), "description": .string("Required one-based physical page for PDF; absent for text/image files.")]),
+            "page": .object([
+                "type": .string("integer"), "minimum": .integer(1),
+                "description": .string("Required one-based physical page for PDF; absent for text/image files."),
+            ]),
             "start_utf8": .object(["type": .string("integer"), "minimum": .integer(0), "maximum": .integer(20 * 1_024 * 1_024), "default": .integer(0)]),
-            "maximum_utf8": .object(["type": .string("integer"), "minimum": .integer(1), "maximum": .integer(65_536), "default": .integer(16_384), "description": .string("Text mode only.")]),
-            "expected_fingerprint": .object(["type": .string("string"), "pattern": .string("^[0-9a-f]{64}$"), "description": .string("Original file fingerprint; required for nonzero text offsets.")]),
+            "maximum_utf8": .object([
+                "type": .string("integer"), "minimum": .integer(1), "maximum": .integer(65_536), "default": .integer(16_384),
+                "description": .string("Text mode only."),
+            ]),
+            "expected_fingerprint": .object([
+                "type": .string("string"), "pattern": .string("^[0-9a-f]{64}$"),
+                "description": .string("Original file fingerprint; required for nonzero text offsets."),
+            ]),
         ], required: ["library", "attachment_key", "mode"])
 }

@@ -8,10 +8,12 @@ struct ZoteroMetadataFillTests {
     func absentApplicableFieldsOnly() throws {
         let noteID = UUID()
         let metadata = NoteMetadataSnapshot(
-            record: NoteMetadataRecord(noteID: noteID, fields: [
-                "type": .string("book"),
-                "title": .string("Researcher title"),
-            ]),
+            record: NoteMetadataRecord(
+                noteID: noteID,
+                fields: [
+                    "type": .string("book"),
+                    "title": .string("Researcher title"),
+                ]),
             revision: DocumentFingerprint(content: "metadata-v1")
         )
         let source = ZoteroExactItemRead(
@@ -61,20 +63,25 @@ struct ZoteroMetadataFillTests {
         #expect(plan.retainedConflicts.map(\.key) == ["type", "title"])
         #expect(plan.resultFields["type"] == .string("book"))
         #expect(plan.resultFields["title"] == .string("Researcher title"))
-        #expect(plan.resultFields["authors"] == .array([
-            .object(["given": .string("Philippa"), "family": .string("Foot")]),
-        ]))
-        #expect(plan.resultFields["editors"] == .array([
-            .object(["literal": .string("Literal Editor")]),
-        ]))
+        #expect(
+            plan.resultFields["authors"]
+                == .array([
+                    .object(["given": .string("Philippa"), "family": .string("Foot")])
+                ]))
+        #expect(
+            plan.resultFields["editors"]
+                == .array([
+                    .object(["literal": .string("Literal Editor")])
+                ]))
         #expect(plan.resultFields["issue"] == nil)
         #expect(plan.resultFields["container_title"] == nil)
         #expect(plan.resultFields["summary"] == nil)
         #expect(plan.resultFields["keywords"] == nil)
-        #expect(NoteMetadataCatalog.builtIn.validate(
-            fields: plan.resultFields,
-            profile: .analysis
-        ).isEmpty)
+        #expect(
+            NoteMetadataCatalog.builtIn.validate(
+                fields: plan.resultFields,
+                profile: .analysis
+            ).isEmpty)
     }
 
     @Test("An explicit bound-item refresh fills absent fields and updates only mapped values")
@@ -86,12 +93,14 @@ struct ZoteroMetadataFillTests {
             itemKey: "ITEM0001"
         )
         let metadata = NoteMetadataSnapshot(
-            record: NoteMetadataRecord(noteID: noteID, fields: [
-                "type": .string("journal_article"),
-                "title": .string("Earlier Zotero title"),
-                "language": .string("fr"),
-                "archive": .string("Researcher archive"),
-            ]),
+            record: NoteMetadataRecord(
+                noteID: noteID,
+                fields: [
+                    "type": .string("journal_article"),
+                    "title": .string("Earlier Zotero title"),
+                    "language": .string("fr"),
+                    "archive": .string("Researcher archive"),
+                ]),
             revision: DocumentFingerprint(content: "metadata-v1")
         )
         let source = ZoteroExactItemRead(

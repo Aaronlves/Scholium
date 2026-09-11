@@ -1,6 +1,7 @@
 import Foundation
 import ScholiumContracts
 import Testing
+
 @testable import ScholiumApplication
 
 @Suite("Application Zotero Link and Fill")
@@ -18,9 +19,10 @@ struct ZoteroLinkAndFillOperationsTests {
             .init(status: 200, data: item, serverID: "server-a"),
             .init(status: 200, data: item, serverID: "server-a"),
         ])
-        let runtime = fixture.runtime(zotero: ZoteroOperations(requestLoader: {
-            try await script.load($0)
-        }))
+        let runtime = fixture.runtime(
+            zotero: ZoteroOperations(requestLoader: {
+                try await script.load($0)
+            }))
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
         let sourceBefore = try await handle.documents.load(fixture.analysisNoteID)
         let note = try #require(
@@ -52,18 +54,23 @@ struct ZoteroLinkAndFillOperationsTests {
         #expect(metadata.record.fields["type"] == .string("journal_article"))
         #expect(metadata.record.fields["title"] == .string("Researcher title"))
         #expect(metadata.record.fields["doi"] == .string("10.1000/example"))
-        #expect(metadata.record.fields["authors"] == .array([
-            .object(["given": .string("Philippa"), "family": .string("Foot")]),
-        ]))
+        #expect(
+            metadata.record.fields["authors"]
+                == .array([
+                    .object(["given": .string("Philippa"), "family": .string("Foot")])
+                ]))
         #expect(sourceBefore.rawContent == exactSource)
-        #expect(try await handle.documents.load(fixture.analysisNoteID).rawContent
-            == exactSource)
-        #expect(try await handle.services.controlStore.zoteroBindings()
-            .binding(for: noteID)?.itemKey == "ITEM0001")
-        #expect(await script.paths() == [
-            "/api/users/0/items/ITEM0001",
-            "/api/users/0/items/ITEM0001",
-        ])
+        #expect(
+            try await handle.documents.load(fixture.analysisNoteID).rawContent
+                == exactSource)
+        #expect(
+            try await handle.services.controlStore.zoteroBindings()
+                .binding(for: noteID)?.itemKey == "ITEM0001")
+        #expect(
+            await script.paths() == [
+                "/api/users/0/items/ITEM0001",
+                "/api/users/0/items/ITEM0001",
+            ])
         await runtime.shutdown()
     }
 
@@ -78,9 +85,10 @@ struct ZoteroLinkAndFillOperationsTests {
             .init(status: 200, data: Self.itemData, serverID: "server-a"),
             .init(status: 200, data: Self.itemData, serverID: "server-a"),
         ])
-        let runtime = fixture.runtime(zotero: ZoteroOperations(requestLoader: {
-            try await script.load($0)
-        }))
+        let runtime = fixture.runtime(
+            zotero: ZoteroOperations(requestLoader: {
+                try await script.load($0)
+            }))
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
         let note = try #require(
             try await handle.snapshot().document(id: fixture.analysisNoteID)
@@ -120,13 +128,15 @@ struct ZoteroLinkAndFillOperationsTests {
         #expect(metadata.record.fields["title"] == .string("Zotero title"))
         #expect(metadata.record.fields["doi"] == .string("10.1000/example"))
         #expect(metadata.record.fields["language"] == .string("fr"))
-        #expect(try Data(
-            contentsOf: fixture.analysesURL.appendingPathComponent("Agency.md")
-        ) == sourceBefore)
-        #expect(await script.paths() == [
-            "/api/users/0/items/ITEM0001",
-            "/api/users/0/items/ITEM0001",
-        ])
+        #expect(
+            try Data(
+                contentsOf: fixture.analysesURL.appendingPathComponent("Agency.md")
+            ) == sourceBefore)
+        #expect(
+            await script.paths() == [
+                "/api/users/0/items/ITEM0001",
+                "/api/users/0/items/ITEM0001",
+            ])
         await runtime.shutdown()
     }
 
@@ -138,9 +148,10 @@ struct ZoteroLinkAndFillOperationsTests {
             .init(status: 200, data: Self.itemData, serverID: "server-a"),
             .init(status: 200, data: Self.itemData, serverID: "server-b"),
         ])
-        let runtime = fixture.runtime(zotero: ZoteroOperations(requestLoader: {
-            try await script.load($0)
-        }))
+        let runtime = fixture.runtime(
+            zotero: ZoteroOperations(requestLoader: {
+                try await script.load($0)
+            }))
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
         let note = try #require(
             try await handle.snapshot().document(id: fixture.analysisNoteID)
@@ -155,8 +166,9 @@ struct ZoteroLinkAndFillOperationsTests {
         await #expect(throws: ZoteroMetadataOperationError.self) {
             _ = try await handle.zoteroBindings.commitZoteroMetadataPlan(plan)
         }
-        #expect(try await handle.services.controlStore.zoteroBindings()
-            .binding(for: noteID) == nil)
+        #expect(
+            try await handle.services.controlStore.zoteroBindings()
+                .binding(for: noteID) == nil)
         #expect(try await handle.services.controlStore.noteMetadata(noteID: noteID) == nil)
         await runtime.shutdown()
     }
@@ -169,9 +181,10 @@ struct ZoteroLinkAndFillOperationsTests {
             .init(status: 200, data: Self.itemData, serverID: "server-a"),
             .init(status: 200, data: Self.itemData, serverID: "server-a"),
         ])
-        let runtime = fixture.runtime(zotero: ZoteroOperations(requestLoader: {
-            try await script.load($0)
-        }))
+        let runtime = fixture.runtime(
+            zotero: ZoteroOperations(requestLoader: {
+                try await script.load($0)
+            }))
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
         let note = try #require(
             try await handle.snapshot().document(id: fixture.analysisNoteID)
@@ -196,10 +209,12 @@ struct ZoteroLinkAndFillOperationsTests {
         await #expect(throws: NoteMetadataError.self) {
             _ = try await handle.zoteroBindings.commitZoteroMetadataPlan(plan)
         }
-        #expect(try await handle.services.controlStore.zoteroBindings()
-            .binding(for: noteID) == nil)
-        #expect(try await handle.services.controlStore.noteMetadata(noteID: noteID)
-            == concurrent)
+        #expect(
+            try await handle.services.controlStore.zoteroBindings()
+                .binding(for: noteID) == nil)
+        #expect(
+            try await handle.services.controlStore.noteMetadata(noteID: noteID)
+                == concurrent)
         await runtime.shutdown()
     }
 
@@ -211,9 +226,10 @@ struct ZoteroLinkAndFillOperationsTests {
             .init(status: 200, data: Self.itemData, serverID: "server-a"),
             .init(status: 200, data: Self.itemData, serverID: "server-a"),
         ])
-        let runtime = fixture.runtime(zotero: ZoteroOperations(requestLoader: {
-            try await script.load($0)
-        }))
+        let runtime = fixture.runtime(
+            zotero: ZoteroOperations(requestLoader: {
+                try await script.load($0)
+            }))
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
         let note = try #require(
             try await handle.snapshot().document(id: fixture.analysisNoteID)
@@ -231,33 +247,35 @@ struct ZoteroLinkAndFillOperationsTests {
         await #expect(throws: ZoteroMetadataOperationError.self) {
             _ = try await handle.zoteroBindings.commitZoteroMetadataPlan(plan)
         }
-        #expect(try await handle.services.controlStore.zoteroBindings()
-            .binding(for: noteID) == nil)
+        #expect(
+            try await handle.services.controlStore.zoteroBindings()
+                .binding(for: noteID) == nil)
         #expect(try await handle.services.controlStore.noteMetadata(noteID: noteID) == nil)
         await runtime.shutdown()
     }
 
-    private static let itemData = Data(#"""
-    {
-      "key": "ITEM0001",
-      "data": {
-        "key": "ITEM0001",
-        "itemType": "journalArticle",
-        "title": "Zotero title",
-        "creators": [
-          {"creatorType":"author","firstName":"Philippa","lastName":"Foot"}
-        ],
-        "date": "1967",
-        "publicationTitle": "Oxford Review",
-        "volume": "1",
-        "issue": "2",
-        "pages": "1-18",
-        "DOI": "10.1000/example",
-        "abstractNote": "Must not become summary.",
-        "tags": [{"tag":"must-not-become-keywords"}]
-      }
-    }
-    """#.utf8)
+    private static let itemData = Data(
+        #"""
+        {
+          "key": "ITEM0001",
+          "data": {
+            "key": "ITEM0001",
+            "itemType": "journalArticle",
+            "title": "Zotero title",
+            "creators": [
+              {"creatorType":"author","firstName":"Philippa","lastName":"Foot"}
+            ],
+            "date": "1967",
+            "publicationTitle": "Oxford Review",
+            "volume": "1",
+            "issue": "2",
+            "pages": "1-18",
+            "DOI": "10.1000/example",
+            "abstractNote": "Must not become summary.",
+            "tags": [{"tag":"must-not-become-keywords"}]
+          }
+        }
+        """#.utf8)
 }
 
 private actor LinkAndFillRequestScript {
@@ -287,12 +305,14 @@ private actor LinkAndFillRequestScript {
         requestedPaths.append(url.path)
         let step = steps.removeFirst()
         let headers = step.serverID.map { ["Zotero-Server-ID": $0] }
-        guard let response = HTTPURLResponse(
-            url: url,
-            statusCode: step.status,
-            httpVersion: "HTTP/1.1",
-            headerFields: headers
-        ) else {
+        guard
+            let response = HTTPURLResponse(
+                url: url,
+                statusCode: step.status,
+                httpVersion: "HTTP/1.1",
+                headerFields: headers
+            )
+        else {
             throw URLError(.badServerResponse)
         }
         return (step.data, response)
@@ -303,10 +323,12 @@ private actor LinkAndFillRequestScript {
 
 private extension ApplicationFixture {
     func runtime(zotero: ZoteroOperations) -> WorkspaceRuntime {
-        WorkspaceRuntime(configuration: .snapshot(.init(
-            applicationSupportURL: applicationSupportURL,
-            workspaceRegistryStorageURL: registryStorageURL,
-            assignments: [assignment]
-        )), zotero: zotero)
+        WorkspaceRuntime(
+            configuration: .snapshot(
+                .init(
+                    applicationSupportURL: applicationSupportURL,
+                    workspaceRegistryStorageURL: registryStorageURL,
+                    assignments: [assignment]
+                )), zotero: zotero)
     }
 }

@@ -43,29 +43,32 @@ struct AttachmentContractsTests {
             id: UUID(),
             noteID: UUID(),
             vaultID: UUID(),
-            location: .vaultRelative(try AttachmentRelativePath(
-                "Attachments/identity/Emotion and Reasons.pdf"
-            ))
+            location: .vaultRelative(
+                try AttachmentRelativePath(
+                    "Attachments/identity/Emotion and Reasons.pdf"
+                ))
         )
         let data = try JSONEncoder().encode(record)
 
-        #expect(try JSONDecoder().decode(
-            DocumentAttachmentRecord.self,
-            from: data
-        ) == record)
+        #expect(
+            try JSONDecoder().decode(
+                DocumentAttachmentRecord.self,
+                from: data
+            ) == record)
         #expect(record.filename == "Emotion and Reasons.pdf")
     }
 
     @Test("Only absolute Markdown image destinations enter indexed availability checks")
     func indexedImagePaths() {
         let source = """
-        ![Imported](../Attachments/id/Figure.png)
-        ![Indexed](/Users/researcher/Figures/Figure%20one.png)
-        [Ordinary link](/Users/researcher/Figures/Not-an-image.png)
-        `![Code](/Users/researcher/Figures/Code.png)`
-        """
-        #expect(IndexedImageReferences.absolutePaths(in: source) == [
-            "/Users/researcher/Figures/Figure one.png",
-        ])
+            ![Imported](../Attachments/id/Figure.png)
+            ![Indexed](/Users/researcher/Figures/Figure%20one.png)
+            [Ordinary link](/Users/researcher/Figures/Not-an-image.png)
+            `![Code](/Users/researcher/Figures/Code.png)`
+            """
+        #expect(
+            IndexedImageReferences.absolutePaths(in: source) == [
+                "/Users/researcher/Figures/Figure one.png"
+            ])
     }
 }

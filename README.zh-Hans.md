@@ -118,10 +118,15 @@ DEVELOPER_DIR="$developer_dir" ./Tools/Scripts/verify.sh
 developer_dir="$(./Tools/Scripts/resolve-xcode-developer-dir.sh)"
 DEVELOPER_DIR="$developer_dir" swift build
 DEVELOPER_DIR="$developer_dir" swift test
+./Tools/Scripts/lint.sh
+./Tools/Scripts/lint.sh --fix
 ./Tools/Scripts/run-debug-app.sh
 ./Tools/Scripts/run-ui-tests.sh smoke
 ./Tools/Scripts/run-ui-tests.sh complete
 ```
+
+`lint.sh` 使用仓库的 `swift-format` 配置检查 Swift 源码，并在隔离的临时依赖目录中
+对 WebEditor 执行类型检查。`--fix` 会先原地格式化 Swift 源码，再执行检查。
 
 UI runner 使用一次性 TestVault 副本和仓库内被忽略的 `.build/` 状态。`smoke`
 运行规范旅程；`complete` 枚举当前测试套件、只构建一次并串行执行。这些属于自动化

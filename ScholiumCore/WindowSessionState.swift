@@ -1,12 +1,13 @@
-import ScholiumContracts
 import Foundation
+import ScholiumContracts
 
 public actor WindowSessionSnapshotStore {
     private let directoryURL: URL
     private var acceptedWriteGenerations: [UUID: UInt64] = [:]
 
     public init(applicationSupportURL: URL) {
-        directoryURL = applicationSupportURL
+        directoryURL =
+            applicationSupportURL
             .appendingPathComponent("Window Sessions", isDirectory: true)
     }
 

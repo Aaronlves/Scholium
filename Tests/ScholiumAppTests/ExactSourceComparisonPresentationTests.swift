@@ -7,23 +7,26 @@ import Testing
 struct ExactSourceComparisonPresentationTests {
     @Test("Unified diff keeps three context lines and folds only the remainder")
     func foldsLongUnchangedRunsAroundChanges() {
-        let lines = (0..<12).map { unchanged($0) }
+        let lines =
+            (0..<12).map { unchanged($0) }
             + [changed(12, kind: .startingOnly), changed(13, kind: .endingOnly)]
             + (14..<24).map { unchanged($0) }
             + [changed(24, kind: .endingOnly)]
             + (25..<33).map { unchanged($0) }
 
         let rows = ExactSourceComparisonPresentation.rows(lines: lines)
-        #expect(rows.map(\.id) == [
-            "fold-0", "line-9", "line-10", "line-11",
-            "line-12", "line-13",
-            "line-14", "line-15", "line-16", "fold-17",
-            "line-21", "line-22", "line-23", "line-24",
-            "line-25", "line-26", "line-27", "fold-28",
-        ])
+        #expect(
+            rows.map(\.id) == [
+                "fold-0", "line-9", "line-10", "line-11",
+                "line-12", "line-13",
+                "line-14", "line-15", "line-16", "fold-17",
+                "line-21", "line-22", "line-23", "line-24",
+                "line-25", "line-26", "line-27", "fold-28",
+            ])
         guard case .folded(_, let leading) = rows[0],
-              case .folded(_, let middle) = rows[9],
-              case .folded(_, let trailing) = rows[17] else {
+            case .folded(_, let middle) = rows[9],
+            case .folded(_, let trailing) = rows[17]
+        else {
             Issue.record("Expected leading, middle, and trailing folded ranges.")
             return
         }

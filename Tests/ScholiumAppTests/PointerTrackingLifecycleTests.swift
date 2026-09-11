@@ -1,5 +1,6 @@
 import AppKit
 import Testing
+
 @testable import ScholiumApp
 
 @Suite("Content pointer tracking lifecycle")

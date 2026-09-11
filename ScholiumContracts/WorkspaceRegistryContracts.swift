@@ -20,7 +20,6 @@ public enum VaultRole: String, Codable, CaseIterable, Sendable {
         }
     }
 
-
     public init?(commandLineValue: String) {
         switch commandLineValue.lowercased() {
         case "source_corpus", "sources", "analyses": self = .sourceCorpus
@@ -266,7 +265,8 @@ public enum WorkspaceRegistryError: LocalizedError, Sendable {
         case .vaultAccessUnavailable(let path):
             return "Scholium no longer has access to '\(path)'. Open Manage Triptychs and choose that folder again."
         case .portableControlAccessUnavailable(let path):
-            return "Scholium needs access to '\(path)' because the portable .scholium folder sits beside Works. Open Manage Triptychs and authorize that folder again."
+            return
+                "Scholium needs access to '\(path)' because the portable .scholium folder sits beside Works. Open Manage Triptychs and authorize that folder again."
         }
     }
 }

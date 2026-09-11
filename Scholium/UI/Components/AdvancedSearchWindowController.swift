@@ -11,9 +11,10 @@ final class AdvancedSearchWindowController: NSWindowController, NSWindowDelegate
     init<Content: View>(sourceWindow: NSWindow?, content: Content, didClose: @escaping () -> Void) {
         self.sourceWindow = sourceWindow
         self.didClose = didClose
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 620),
-                              styleMask: [.titled, .closable, .miniaturizable, .resizable],
-                              backing: .buffered, defer: false)
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 760, height: 620),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            backing: .buffered, defer: false)
         window.title = ScholiumL10n.string("Advanced Search")
         window.identifier = NSUserInterfaceItemIdentifier("scholium.advancedSearchWindow")
         window.isReleasedWhenClosed = false

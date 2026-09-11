@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+
 @testable import ScholiumContracts
 
 @Suite("Document paths and capabilities")
@@ -25,24 +26,28 @@ struct DocumentPathAndCapabilitiesTests {
     func comparisonKeys() throws {
         let uppercase = try MarkdownRelativePath("CAFÉ.md")
         let decomposed = try MarkdownRelativePath("cafe\u{301}.md")
-        #expect(VaultPathComparisonKey(
-            uppercase,
-            caseSensitive: false,
-            normalizationSensitive: false
-        ) == VaultPathComparisonKey(
-            decomposed,
-            caseSensitive: false,
-            normalizationSensitive: false
-        ))
-        #expect(VaultPathComparisonKey(
-            uppercase,
-            caseSensitive: true,
-            normalizationSensitive: false
-        ) != VaultPathComparisonKey(
-            decomposed,
-            caseSensitive: true,
-            normalizationSensitive: false
-        ))
+        #expect(
+            VaultPathComparisonKey(
+                uppercase,
+                caseSensitive: false,
+                normalizationSensitive: false
+            )
+                == VaultPathComparisonKey(
+                    decomposed,
+                    caseSensitive: false,
+                    normalizationSensitive: false
+                ))
+        #expect(
+            VaultPathComparisonKey(
+                uppercase,
+                caseSensitive: true,
+                normalizationSensitive: false
+            )
+                != VaultPathComparisonKey(
+                    decomposed,
+                    caseSensitive: true,
+                    normalizationSensitive: false
+                ))
     }
 
     @Test("A vault comparison policy projects the same rules for Notes and Folders")
@@ -51,26 +56,32 @@ struct DocumentPathAndCapabilitiesTests {
             caseSensitive: false,
             normalizationSensitive: false
         )
-        #expect(insensitive.comparisonKey(
-            for: try MarkdownRelativePath("Draft/Café.md")
-        ) == insensitive.comparisonKey(
-            for: try MarkdownRelativePath("draft/Cafe\u{301}.md")
-        ))
-        #expect(insensitive.comparisonKey(
-            for: try VaultRelativeFolderPath("Draft/Café")
-        ) == insensitive.comparisonKey(
-            for: try VaultRelativeFolderPath("draft/Cafe\u{301}")
-        ))
+        #expect(
+            insensitive.comparisonKey(
+                for: try MarkdownRelativePath("Draft/Café.md")
+            )
+                == insensitive.comparisonKey(
+                    for: try MarkdownRelativePath("draft/Cafe\u{301}.md")
+                ))
+        #expect(
+            insensitive.comparisonKey(
+                for: try VaultRelativeFolderPath("Draft/Café")
+            )
+                == insensitive.comparisonKey(
+                    for: try VaultRelativeFolderPath("draft/Cafe\u{301}")
+                ))
 
         let sensitive = VaultPathComparisonPolicy(
             caseSensitive: true,
             normalizationSensitive: true
         )
-        #expect(sensitive.comparisonKey(
-            for: try MarkdownRelativePath("Draft.md")
-        ) != sensitive.comparisonKey(
-            for: try MarkdownRelativePath("draft.md")
-        ))
+        #expect(
+            sensitive.comparisonKey(
+                for: try MarkdownRelativePath("Draft.md")
+            )
+                != sensitive.comparisonKey(
+                    for: try MarkdownRelativePath("draft.md")
+                ))
     }
 
     @Test(
@@ -96,11 +107,12 @@ struct DocumentPathAndCapabilitiesTests {
             role: .topicKnowledge,
             identity: .resolved
         )
-        #expect(capabilities.fileActions == [
-            .duplicate,
-            .move,
-            .moveToSystemTrash,
-        ])
+        #expect(
+            capabilities.fileActions == [
+                .duplicate,
+                .move,
+                .moveToSystemTrash,
+            ])
     }
 
     @Test("Workspace snapshots publish the Application capability projection")

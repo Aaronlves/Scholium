@@ -91,10 +91,12 @@ struct ContentView: View {
             }
         ) {
             LibrarySurface {
-                ResearchSearchSurface(controller: discoveryController, searchController: searchController,
+                ResearchSearchSurface(
+                    controller: discoveryController, searchController: searchController,
                     shellState: shellState, workspaceProjectionController: workspaceProjectionController,
                     presentation: .sidebar,
-                    revealDocument: { windowCoordinator.makeKeyAndOrderFront() }) {
+                    revealDocument: { windowCoordinator.makeKeyAndOrderFront() }
+                ) {
                     SidebarView(controller: appState.discoveryController, context: sidebarContext)
                 }
             }
@@ -103,7 +105,8 @@ struct ContentView: View {
         } chat: {
             LibrarySurface {
                 if let chat = appState.chatController {
-                    AgentChatView(controller: chat,
+                    AgentChatView(
+                        controller: chat,
                         isVisible: shellState.libraryVisible && shellState.sidebarContent == .chat,
                         addSelection: { Task { await appState.addCurrentSelectionToChat() } },
                         noteChoices: appState.workspaceCatalog?.notes ?? [],
@@ -121,11 +124,12 @@ struct ContentView: View {
                         showConversationChanges: {
                             appState.presentationRouter.present(.agentChanges(scope: .conversation($0)))
                         }, changes: researchController.agentChanges,
-                        changesError: researchController.agentChangesError)
-                        .task { researchController.scheduleAgentChangesRefresh() }
-                        .onChange(of: chat.selected?.messages.compactMap(\.changeID)) { _, _ in
-                            researchController.scheduleAgentChangesRefresh()
-                        }
+                        changesError: researchController.agentChangesError
+                    )
+                    .task { researchController.scheduleAgentChangesRefresh() }
+                    .onChange(of: chat.selected?.messages.compactMap(\.changeID)) { _, _ in
+                        researchController.scheduleAgentChangesRefresh()
+                    }
                 }
             }
             .scholiumButtonStyle(.automatic)
@@ -147,13 +151,13 @@ struct ContentView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         } apparatus: {
             apparatusRegion
-            .scholiumButtonStyle(.automatic)
-            .scholiumSurface(.apparatus)
-            .frame(
-                maxWidth: .infinity,
-                maxHeight: .infinity,
-                alignment: .topLeading
-            )
+                .scholiumButtonStyle(.automatic)
+                .scholiumSurface(.apparatus)
+                .frame(
+                    maxWidth: .infinity,
+                    maxHeight: .infinity,
+                    alignment: .topLeading
+                )
         }
         // The native split and each semantic background fill the complete
         // titlebar frame. Native Liquid Glass controls float above those planes;
@@ -170,10 +174,13 @@ struct ContentView: View {
                 LoadingOverlay()
             }
         }
-        .focusedSceneValue(\.scholiumSearchActions, ScholiumSearchActions(
-            begin: { searchController.begin($0) },
-            advanced: { searchController.beginAdvanced() }
-        ))
+        .focusedSceneValue(
+            \.scholiumSearchActions,
+            ScholiumSearchActions(
+                begin: { searchController.begin($0) },
+                advanced: { searchController.beginAdvanced() }
+            )
+        )
         .onChange(of: searchController.focusRequestID) { _, _ in
             switch searchController.presentation {
             case .sidebar:
@@ -182,10 +189,12 @@ struct ContentView: View {
                 windowCoordinator.closeAdvancedSearch()
             case .advanced:
                 windowCoordinator.presentAdvancedSearch {
-                    ResearchSearchSurface(controller: discoveryController, searchController: searchController,
-                                          shellState: shellState, workspaceProjectionController: workspaceProjectionController,
-                                          presentation: .advanced,
-                                          revealDocument: { windowCoordinator.makeKeyAndOrderFront() }) {
+                    ResearchSearchSurface(
+                        controller: discoveryController, searchController: searchController,
+                        shellState: shellState, workspaceProjectionController: workspaceProjectionController,
+                        presentation: .advanced,
+                        revealDocument: { windowCoordinator.makeKeyAndOrderFront() }
+                    ) {
                         EmptyView()
                     }
                 }
@@ -216,7 +225,7 @@ struct ContentView: View {
 
     private var shellLibraryVisible: Bool {
         guard shellState.hasCompletedInitialRestore,
-              appState.vaultConfig != nil
+            appState.vaultConfig != nil
         else { return true }
         return shellState.libraryVisible
     }
@@ -256,7 +265,8 @@ struct ContentView: View {
             attentionPopoverSession: appState.attentionPopoverSession,
             openAttention: {
                 guard let note = appState.currentNote,
-                      let vaultID = appState.currentDocumentVaultID else { return }
+                    let vaultID = appState.currentDocumentVaultID
+                else { return }
                 windowCoordinator.actions.showAttention(
                     .queue(
                         anchor: .inspector,
@@ -288,21 +298,23 @@ struct ContentView: View {
                 await appState.zoteroCoordinator.bridge.openInZotero(binding: binding)
             },
             refreshZoteroMetadata: { noteID, binding in
-                appState.presentationRouter.present(.zoteroBinding(
-                    ZoteroBindingPanelRoute(
-                        noteID: noteID,
-                        currentBinding: binding,
-                        mode: .refresh
-                    )
-                ))
+                appState.presentationRouter.present(
+                    .zoteroBinding(
+                        ZoteroBindingPanelRoute(
+                            noteID: noteID,
+                            currentBinding: binding,
+                            mode: .refresh
+                        )
+                    ))
             },
             manageZoteroBinding: { noteID, binding in
-                appState.presentationRouter.present(.zoteroBinding(
-                    ZoteroBindingPanelRoute(
-                        noteID: noteID,
-                        currentBinding: binding
-                    )
-                ))
+                appState.presentationRouter.present(
+                    .zoteroBinding(
+                        ZoteroBindingPanelRoute(
+                            noteID: noteID,
+                            currentBinding: binding
+                        )
+                    ))
             },
             attachments: currentAttachmentContext
         )
@@ -321,10 +333,12 @@ struct ContentView: View {
 
     private var currentAttachmentContext: ResearchAttachmentContext? {
         guard let session = currentNoteDocumentSession,
-              let key = session.key, let note = appState.currentNote else { return nil }
+            let key = session.key, let note = appState.currentNote
+        else { return nil }
         let target = NoteDocumentAttachmentTarget(noteID: key.noteID, vaultID: key.vaultID, relativePath: note.relativePath)
         let controller = documentController
-        return ResearchAttachmentContext(session: session,
+        return ResearchAttachmentContext(
+            session: session,
             prepare: { id in try await controller.prepareDocumentAttachmentPreview(attachmentID: id, for: target) },
             release: { await controller.releaseDocumentAttachmentPreview(accessToken: $0) },
             refresh: { try await controller.refreshDocumentAttachments(for: target, session: session) },
@@ -347,7 +361,8 @@ struct ContentView: View {
             return appState.documentController.session(for: descriptor.sessionKey)
         }
         guard let vaultID = appState.currentDocumentVaultID,
-              let noteID = currentNoteStableID else { return nil }
+            let noteID = currentNoteStableID
+        else { return nil }
         return appState.documentController.session(
             for: DocumentSessionKey(vaultID: vaultID, noteID: noteID)
         )
@@ -356,7 +371,8 @@ struct ContentView: View {
     private var currentAnalysisZoteroBinding: AnalysisZoteroBinding? {
         guard appState.currentDocumentVaultRole == .sourceCorpus else { return nil }
         guard let note = appState.currentNote,
-              let vaultID = appState.currentDocumentVaultID else { return nil }
+            let vaultID = appState.currentDocumentVaultID
+        else { return nil }
         return appState.workspaceCatalog?.notes.first {
             $0.reference.vaultID == vaultID
                 && $0.reference.relativePath == note.relativePath
@@ -370,7 +386,8 @@ struct ContentView: View {
 
     private var currentDocumentNotificationScope: VaultQualifiedNoteID? {
         guard let note = appState.currentNote,
-              let vaultID = appState.currentDocumentVaultID else { return nil }
+            let vaultID = appState.currentDocumentVaultID
+        else { return nil }
         return VaultQualifiedNoteID(vaultID: vaultID, relativePath: note.relativePath)
     }
 
@@ -392,7 +409,6 @@ struct ContentView: View {
             )
         }
     }
-
 
     private var documentFeatureState: DocumentFeatureState {
         let note = appState.currentNote
@@ -460,22 +476,25 @@ struct ContentView: View {
                 appState.openingDocumentPresentationDidComplete()
             },
             renameNote: { requestedNote, expectedTitle, requestedTitle in
-                guard let requestedStableID = requestedNote.workspaceSnapshot?
-                    .stableIdentity.resolvedID,
-                      let currentNote = appState.currentNote,
-                      currentNote.vaultID == requestedNote.vaultID,
-                      currentNote.workspaceSnapshot?.stableIdentity.resolvedID
-                        == requestedStableID else {
+                guard
+                    let requestedStableID = requestedNote.workspaceSnapshot?
+                        .stableIdentity.resolvedID,
+                    let currentNote = appState.currentNote,
+                    currentNote.vaultID == requestedNote.vaultID,
+                    currentNote.workspaceSnapshot?.stableIdentity.resolvedID
+                        == requestedStableID
+                else {
                     throw DocumentTitleRenameError.noteUnavailable
                 }
                 guard currentNote.displayName == expectedTitle else {
                     throw DocumentTitleRenameError.titleChangedElsewhere
                 }
                 guard let target = NoteMutationTarget(currentNote),
-                      let destination = noteRenameDestination(
+                    let destination = noteRenameDestination(
                         sourceRelativePath: currentNote.relativePath,
                         requestedName: requestedTitle
-                      ) else {
+                    )
+                else {
                     throw DocumentTitleRenameError.invalidName
                 }
                 guard destination != currentNote.relativePath else {
@@ -504,8 +523,9 @@ struct ContentView: View {
         let propertyFilterOptions = appState.availablePropertyFilterOptions
         let preorderedNotes = appState.filteredNotes
         let folders = appState.currentLibraryFolders
-        let selectedLibraryDocumentPath = appState.currentDocumentVaultID
-            == appState.currentRegisteredVault?.id
+        let selectedLibraryDocumentPath =
+            appState.currentDocumentVaultID
+                == appState.currentRegisteredVault?.id
             ? appState.selectedDocumentPath
             : nil
         return SidebarContext(
@@ -602,7 +622,8 @@ struct ContentView: View {
         var values: [WorkspaceVaultSlot: Int] = [:]
         for slot in WorkspaceVaultSlot.allCases {
             guard let vaultID = assignment.vault(for: slot)?.id,
-                  let snapshot = snapshots[vaultID] else {
+                let snapshot = snapshots[vaultID]
+            else {
                 continue
             }
             values[slot] = snapshot.documents.count
@@ -733,16 +754,20 @@ struct ContentView: View {
                     try await researchController.agentChangeHistory()
                 },
                 loadReview: { changeID in
-                    guard let operations = appState.windowWorkspaceController
-                        .activeCapabilities?.agentCollaboration else {
+                    guard
+                        let operations = appState.windowWorkspaceController
+                            .activeCapabilities?.agentCollaboration
+                    else {
                         throw ScholiumApplicationError.noWorkspaceConfigured
                     }
                     return try await operations.agentChangeReview(id: changeID)
                 },
                 undo: { change in
-                    guard let operations = appState.windowWorkspaceController
-                        .activeCapabilities?.agentCollaboration,
-                          let fingerprint = change.afterFingerprint else {
+                    guard
+                        let operations = appState.windowWorkspaceController
+                            .activeCapabilities?.agentCollaboration,
+                        let fingerprint = change.afterFingerprint
+                    else {
                         throw AgentChangeError.undoUnavailable(change.id)
                     }
                     _ = try await operations.undoAgentChange(
@@ -769,7 +794,8 @@ struct ContentView: View {
             if !appState.transactionRecoveryRecords.isEmpty
                 || !appState.interruptedSaveRecoveries.isEmpty
                 || appState.transactionRecoveryError != nil
-                || appState.interruptedSaveRecoveryError != nil {
+                || appState.interruptedSaveRecoveryError != nil
+            {
                 TransactionRecoveryNotice(
                     count: appState.transactionRecoveryRecords.count
                         + appState.interruptedSaveRecoveries.count,
@@ -783,7 +809,8 @@ struct ContentView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 8) {
                         ForEach(shellState.operationIssues) { issue in
-                            ScholiumOperationIssueView(issue: issue,
+                            ScholiumOperationIssueView(
+                                issue: issue,
                                 refresh: { Task { await appState.retryDerivedRefresh() } },
                                 dismiss: { shellState.dismissOperationIssue(id: issue.id) })
                         }
@@ -798,7 +825,11 @@ struct ContentView: View {
                         }
                     }
                     .padding(12)
-                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { operationIssueHeight = $0 }
+                    .onGeometryChange(for: CGFloat.self) {
+                        $0.size.height
+                    } action: {
+                        operationIssueHeight = $0
+                    }
                 }
                 .frame(height: min(operationIssueHeight, 180))
             }
@@ -832,7 +863,8 @@ struct ContentView: View {
                 discussRelated: { card in
                     Task {
                         if await appState.useRelatedMaterial(card, inChat: true),
-                           !shellState.libraryVisible || shellState.sidebarContent != .chat {
+                            !shellState.libraryVisible || shellState.sidebarContent != .chat
+                        {
                             windowCoordinator.actions.activateSidebar(.chat)
                         }
                     }
@@ -858,14 +890,14 @@ struct ContentView: View {
                 state: documentFeatureState,
                 actions: documentFeatureActions
             )
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .transition(
-                    ScholiumMotion.documentRevealTransition(
-                        showingDocument: true,
-                        reduceMotion: reduceMotion
-                    )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .transition(
+                ScholiumMotion.documentRevealTransition(
+                    showingDocument: true,
+                    reduceMotion: reduceMotion
                 )
-                .zIndex(0)
+            )
+            .zIndex(0)
         } else {
             ScholiumNoDocumentDetailView()
                 .transition(
@@ -949,7 +981,8 @@ private struct LoadingOverlay: View {
         .deletingLastPathComponent()
         .deletingLastPathComponent()
     let workspaceStore = try! WorkspaceStore(
-        applicationSupportURL: repositoryRoot
+        applicationSupportURL:
+            repositoryRoot
             .appendingPathComponent(".build/previews", isDirectory: true)
             .appendingPathComponent("ContentView", isDirectory: true)
     )

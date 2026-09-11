@@ -39,11 +39,13 @@ struct RelatedMaterialsView: View {
                         .accessibilityIdentifier("scholium.related.issue")
                 }
                 if !session.isLoading, session.cards.isEmpty, session.issue == nil, session.omittedCount == 0 {
-                    Text(session.didSearch
-                         ? String(localized: "No related material found in Analyses or Topics. Try another passage.", bundle: .module)
-                         : String(localized: "Select a passage in Edit or Source to find related material.", bundle: .module))
-                        .foregroundStyle(.secondary)
-                        .accessibilityIdentifier("scholium.related.empty")
+                    Text(
+                        session.didSearch
+                            ? String(localized: "No related material found in Analyses or Topics. Try another passage.", bundle: .module)
+                            : String(localized: "Select a passage in Edit or Source to find related material.", bundle: .module)
+                    )
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("scholium.related.empty")
                 }
                 if session.needsRefresh || session.omittedCount > 0 {
                     Button("Refresh Results", action: refresh).disabled(session.isLoading)
@@ -59,8 +61,11 @@ struct RelatedMaterialsView: View {
                                 .frame(maxWidth: .infinity, alignment: .leading)
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(card.candidate.title).font(.subheadline)
-                                Text(card.reference.vaultRole == .sourceCorpus ? String(localized: "Analysis", bundle: .module) : String(localized: "Topic", bundle: .module))
-                                    .font(.caption).foregroundStyle(.secondary)
+                                Text(
+                                    card.reference.vaultRole == .sourceCorpus
+                                        ? String(localized: "Analysis", bundle: .module) : String(localized: "Topic", bundle: .module)
+                                )
+                                .font(.caption).foregroundStyle(.secondary)
                                 Text(reason(card.passage.matches)).font(.caption).foregroundStyle(.secondary)
                             }
                             ViewThatFits(in: .horizontal) {

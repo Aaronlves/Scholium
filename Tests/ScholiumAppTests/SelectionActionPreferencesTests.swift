@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import Testing
+
 @testable import ScholiumApp
 
 @Suite("Selection action preferences", .serialized)
@@ -13,7 +14,8 @@ import Testing
         let store = SelectionActionPreferences(defaults: defaults)
         #expect(SelectionActionPreferences.validationError(store.actions) == nil)
         var draft = store.actions.reversed().map { $0 }
-        draft[0].name = "核对原文"; draft[0].isEnabled = false
+        draft[0].name = "核对原文"
+        draft[0].isEnabled = false
         try store.save(draft)
         let saved = try #require(defaults.data(forKey: SelectionActionPreferences.key))
         #expect(SelectionActionPreferences(defaults: defaults).actions == draft)
@@ -22,7 +24,8 @@ import Testing
         #expect(throws: (any Error).self) { try store.save(invalid) }
         invalid[0].name = "A\nB"
         #expect(SelectionActionPreferences.validationError(invalid) != nil)
-        invalid = draft; invalid[0].prompt = "  "
+        invalid = draft
+        invalid[0].prompt = "  "
         #expect(SelectionActionPreferences.validationError(invalid) != nil)
         #expect(SelectionActionPreferences.validationError((0..<6).map { _ in .init(name: "Test", prompt: "Explain") }) != nil)
         #expect(defaults.data(forKey: SelectionActionPreferences.key) == saved)

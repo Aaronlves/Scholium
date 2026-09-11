@@ -65,7 +65,8 @@ struct ResearchInspectorView: View {
                 .disabled(shellState.inspector.mode != .about)
                 .accessibilityHidden(shellState.inspector.mode != .about)
             if shellState.inspector.mode == .related {
-                RelatedMaterialsView(session: research.relatedMaterials, find: findRelated, refresh: refreshRelated, open: openRelated, addToChat: discussRelated)
+                RelatedMaterialsView(
+                    session: research.relatedMaterials, find: findRelated, refresh: refreshRelated, open: openRelated, addToChat: discussRelated)
             }
             if shellState.inspector.mode == .links {
                 ConnectionsInspectorView(

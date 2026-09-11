@@ -46,8 +46,6 @@ extension ScholiumUITests {
         XCTAssertNotNil(UUID(uuidString: sessions[0].deletingPathExtension().lastPathComponent))
     }
 
-
-
     @MainActor
     func testNotificationsEmptyStateKeepsIndicatorWithCopy() {
         let notifications = app.buttons["Open Triptych Notifications"].firstMatch
@@ -137,8 +135,6 @@ extension ScholiumUITests {
         screenshot.lifetime = .keepAlways
         add(screenshot)
     }
-
-
 
     @MainActor
     func testWorkspaceInitialDefaultPreservesNativeReachability() throws {
@@ -797,10 +793,11 @@ extension ScholiumUITests {
                 field.typeKey("a", modifierFlags: .command)
                 field.typeText(String(target))
                 field.typeKey(.tab, modifierFlags: [])
-                XCTAssertTrue(waitUntil(timeout: 5) {
-                    guard let value = self.appearanceNumericValue(field) else { return false }
-                    return abs(value - target) <= step / 10
-                })
+                XCTAssertTrue(
+                    waitUntil(timeout: 5) {
+                        guard let value = self.appearanceNumericValue(field) else { return false }
+                        return abs(value - target) <= step / 10
+                    })
             }
 
             setNumber("Line spacing", target: lineHeight, step: 0.05)
@@ -981,7 +978,8 @@ final class ScholiumChatScrollUITests: XCTestCase {
         continueAfterFailure = false
         let environment = ProcessInfo.processInfo.environment
         guard let path = environment["SCHOLIUM_CHAT_SCROLL_APP"],
-              let conversation = environment["SCHOLIUM_CHAT_SCROLL_CONVERSATION"] else {
+            let conversation = environment["SCHOLIUM_CHAT_SCROLL_CONVERSATION"]
+        else {
             throw XCTSkip("Configure the disposable Chat scroll fixture.")
         }
         let app = XCUIApplication(url: URL(fileURLWithPath: path))
@@ -989,11 +987,13 @@ final class ScholiumChatScrollUITests: XCTestCase {
         app.launch()
         XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 20))
         let chat = app.radioButtons.matching(NSPredicate(format: "label == %@", "Chat")).firstMatch
-        XCTAssertTrue(chat.waitForExistence(timeout: 10)); chat.click()
+        XCTAssertTrue(chat.waitForExistence(timeout: 10))
+        chat.click()
         let back = app.buttons["scholium.chat.back"]
         if back.waitForExistence(timeout: 2) { back.click() }
         let row = app.buttons["scholium.chat.conversation.\(conversation)"]
-        XCTAssertTrue(row.waitForExistence(timeout: 10)); row.click()
+        XCTAssertTrue(row.waitForExistence(timeout: 10))
+        row.click()
         let transcript = app.scrollViews["scholium.chat.transcript"]
         XCTAssertTrue(transcript.waitForExistence(timeout: 15))
         let content = app.descendants(matching: .any)["scholium.chat.transcript.content"].firstMatch
@@ -1014,41 +1014,54 @@ final class ScholiumChatScrollUITests: XCTestCase {
         // Begin at the latest reply, repeatedly cross the reported prose/code
         // boundary upwards, then reverse through the same screen regions.
         if checkRegions {
-        for direction: CGFloat in [1, -1] {
-            for fraction: CGFloat in [0.25, 0.5, 0.7, 0.35, 0.6, 0.3, 0.65] {
-                let before = content.frame.minY
-                transcript.coordinate(withNormalizedOffset: CGVector(dx: 0.45, dy: fraction))
-                    .scroll(byDeltaX: 0, deltaY: direction * 250)
-                let moved = NSPredicate { _, _ in abs(content.frame.minY - before) > 3 }
-                XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: moved, object: nil)], timeout: 3), .completed,
-                               "Scroll ignored at viewport fraction \(fraction), direction \(direction)")
-                XCTAssertEqual(content.frame.height, height, accuracy: 1,
-                               "Loaded transcript extent changed while scrolling")
+            for direction: CGFloat in [1, -1] {
+                for fraction: CGFloat in [0.25, 0.5, 0.7, 0.35, 0.6, 0.3, 0.65] {
+                    let before = content.frame.minY
+                    transcript.coordinate(withNormalizedOffset: CGVector(dx: 0.45, dy: fraction))
+                        .scroll(byDeltaX: 0, deltaY: direction * 250)
+                    let moved = NSPredicate { _, _ in abs(content.frame.minY - before) > 3 }
+                    XCTAssertEqual(
+                        XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: moved, object: nil)], timeout: 3), .completed,
+                        "Scroll ignored at viewport fraction \(fraction), direction \(direction)")
+                    XCTAssertEqual(
+                        content.frame.height, height, accuracy: 1,
+                        "Loaded transcript extent changed while scrolling")
+                }
             }
-        }
         } else {
-        let scrollbar = try XCTUnwrap(transcript.scrollBars.allElementsBoundByIndex.first {
-            $0.frame.height > $0.frame.width
-        })
-        let window = app.windows.firstMatch
-        let origin = window.coordinate(withNormalizedOffset: .zero)
-        let rectangle = scrollbar.frame
-        let thumb = try XCTUnwrap(scrollbar.children(matching: .any).allElementsBoundByIndex.first {
-            $0.frame.width > 0 && $0.frame.height > 10 && $0.frame.height < rectangle.height
-        }).frame
-        let start = origin.withOffset(CGVector(dx: thumb.midX - window.frame.minX,
-            dy: thumb.midY - window.frame.minY))
-        let end = origin.withOffset(CGVector(dx: thumb.midX - window.frame.minX,
-            dy: rectangle.midY - window.frame.minY))
-        start.hover()
-        let prior = XCTAttachment(screenshot: app.screenshot())
-        prior.name = "Scroll thumb before drag"; prior.lifetime = .keepAlways; add(prior)
-        let beforeDrag = content.frame.minY
-        start.click(forDuration: 0.2, thenDragTo: end)
-        let after = XCTAttachment(screenshot: app.screenshot())
-        after.name = "Scroll thumb after drag"; after.lifetime = .keepAlways; add(after)
-        XCTAssertNotEqual(content.frame.minY, beforeDrag, "Dragging the scroll thumb did not move the conversation")
-        XCTAssertEqual(content.frame.height, height, accuracy: 1)
+            let scrollbar = try XCTUnwrap(
+                transcript.scrollBars.allElementsBoundByIndex.first {
+                    $0.frame.height > $0.frame.width
+                })
+            let window = app.windows.firstMatch
+            let origin = window.coordinate(withNormalizedOffset: .zero)
+            let rectangle = scrollbar.frame
+            let thumb = try XCTUnwrap(
+                scrollbar.children(matching: .any).allElementsBoundByIndex.first {
+                    $0.frame.width > 0 && $0.frame.height > 10 && $0.frame.height < rectangle.height
+                }
+            ).frame
+            let start = origin.withOffset(
+                CGVector(
+                    dx: thumb.midX - window.frame.minX,
+                    dy: thumb.midY - window.frame.minY))
+            let end = origin.withOffset(
+                CGVector(
+                    dx: thumb.midX - window.frame.minX,
+                    dy: rectangle.midY - window.frame.minY))
+            start.hover()
+            let prior = XCTAttachment(screenshot: app.screenshot())
+            prior.name = "Scroll thumb before drag"
+            prior.lifetime = .keepAlways
+            add(prior)
+            let beforeDrag = content.frame.minY
+            start.click(forDuration: 0.2, thenDragTo: end)
+            let after = XCTAttachment(screenshot: app.screenshot())
+            after.name = "Scroll thumb after drag"
+            after.lifetime = .keepAlways
+            add(after)
+            XCTAssertNotEqual(content.frame.minY, beforeDrag, "Dragging the scroll thumb did not move the conversation")
+            XCTAssertEqual(content.frame.height, height, accuracy: 1)
         }
         let attachment = XCTAttachment(screenshot: app.screenshot())
         attachment.name = "Rich reply scroll regions and stable extent"

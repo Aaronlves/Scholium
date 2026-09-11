@@ -29,7 +29,8 @@ struct ScholiumPathsTests {
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         defer { try? FileManager.default.removeItem(at: base) }
         let legacyRoot = base.appendingPathComponent("Scholium", isDirectory: true)
-        let legacyRegistry = legacyRoot
+        let legacyRegistry =
+            legacyRoot
             .appendingPathComponent("Workspace", isDirectory: true)
             .appendingPathComponent("workspace-registry-v2.json")
         try FileManager.default.createDirectory(
@@ -43,8 +44,11 @@ struct ScholiumPathsTests {
 
         #expect(current.path == legacyRoot.appendingPathComponent("State-v1").path)
         #expect(try Data(contentsOf: legacyRegistry) == legacyBytes)
-        #expect(!FileManager.default.fileExists(atPath: current
-            .appendingPathComponent("Workspace/workspace-registration-v3.json").path))
+        #expect(
+            !FileManager.default.fileExists(
+                atPath:
+                    current
+                    .appendingPathComponent("Workspace/workspace-registration-v3.json").path))
     }
 
     @Test("The CLI ignores retired container state and uses ordinary Application Support")
@@ -62,9 +66,11 @@ struct ScholiumPathsTests {
             baseURL: base.appendingPathComponent("fallback", isDirectory: true)
         )
 
-        #expect(discovered.standardizedFileURL == base
-            .appendingPathComponent("fallback/Scholium/State-v1", isDirectory: true)
-            .standardizedFileURL)
+        #expect(
+            discovered.standardizedFileURL
+                == base
+                .appendingPathComponent("fallback/Scholium/State-v1", isDirectory: true)
+                .standardizedFileURL)
         #expect(FileManager.default.fileExists(atPath: container.path))
     }
 
@@ -77,10 +83,12 @@ struct ScholiumPathsTests {
             environment: ["SCHOLIUM_HOME": "/a/different/process/value"]
         )
 
-        #expect(state.standardizedFileURL == isolatedHome
-            .appendingPathComponent("ApplicationSupport", isDirectory: true)
-            .appendingPathComponent("Workspace", isDirectory: true)
-            .standardizedFileURL)
+        #expect(
+            state.standardizedFileURL
+                == isolatedHome
+                .appendingPathComponent("ApplicationSupport", isDirectory: true)
+                .appendingPathComponent("Workspace", isDirectory: true)
+                .standardizedFileURL)
     }
 
     @Test("The production App bridge namespace selects one authentication file")

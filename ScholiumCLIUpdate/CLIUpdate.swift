@@ -104,7 +104,8 @@ public enum CLIUpdateError: LocalizedError, Equatable, Sendable {
         case .invalidProvenance(let message):
             return "The downloaded Scholium CLI has invalid release provenance: \(message)"
         case .incompatibleArchitecture(let current, let available):
-            return "The downloaded Scholium CLI architecture does not match the installed CLI (installed: \(current.joined(separator: ", ")); available: \(available.joined(separator: ", ")))."
+            return
+                "The downloaded Scholium CLI architecture does not match the installed CLI (installed: \(current.joined(separator: ", ")); available: \(available.joined(separator: ", ")))."
         case .unsupportedReleaseLabel(let label):
             return "The Scholium CLI release label cannot be compared safely: \(label)"
         case .concurrentUpdate:
@@ -296,7 +297,8 @@ public struct CLIUpdateEngine: Sendable {
                     root: root
                 )
                 guard latest.executableFingerprint == current.executableFingerprint,
-                      latest.bundleFingerprint == current.bundleFingerprint else {
+                    latest.bundleFingerprint == current.bundleFingerprint
+                else {
                     throw CLIUpdateError.concurrentUpdate
                 }
                 try install(
@@ -344,7 +346,7 @@ public struct CLIUpdateEngine: Sendable {
         }
 
         for transaction in children
-            where transaction.lastPathComponent.hasPrefix(transactionPrefix) {
+        where transaction.lastPathComponent.hasPrefix(transactionPrefix) {
             let values = try transaction.resourceValues(
                 forKeys: [.isDirectoryKey, .isSymbolicLinkKey]
             )
@@ -590,7 +592,8 @@ public struct CLIUpdateEngine: Sendable {
                 architectures: current.architectures
             )
             guard installed.executableFingerprint == candidate.executableFingerprint,
-                  installed.bundleFingerprint == candidate.bundleFingerprint else {
+                installed.bundleFingerprint == candidate.bundleFingerprint
+            else {
                 throw CLIUpdateError.replacement(
                     "the installed executable or resource bundle did not match the verified candidate"
                 )
@@ -645,9 +648,11 @@ public struct CLIUpdateEngine: Sendable {
         let executable = root.appendingPathComponent(executableName)
         let bundle = root.appendingPathComponent(bundleName, isDirectory: true)
         let current = try currentFingerprints(executable: executable, bundle: bundle)
-        let isOld = current.executable == manifest.oldExecutableFingerprint
+        let isOld =
+            current.executable == manifest.oldExecutableFingerprint
             && current.bundle == manifest.oldBundleFingerprint
-        let isNew = current.executable == manifest.newExecutableFingerprint
+        let isNew =
+            current.executable == manifest.newExecutableFingerprint
             && current.bundle == manifest.newBundleFingerprint
 
         switch (manifest.state, isOld, isNew) {
@@ -692,7 +697,8 @@ public struct CLIUpdateEngine: Sendable {
             bundle: root.appendingPathComponent(bundleName, isDirectory: true)
         )
         guard current.executable == manifest.oldExecutableFingerprint,
-              current.bundle == manifest.oldBundleFingerprint else {
+            current.bundle == manifest.oldBundleFingerprint
+        else {
             throw CLIUpdateError.recoveryConflict(
                 "the original CLI files could not be verified after recovery"
             )
@@ -774,8 +780,8 @@ public struct CLIUpdateEngine: Sendable {
             forKeys: [.isDirectoryKey, .isSymbolicLinkKey]
         )
         guard rootValues.isDirectory == true,
-              rootValues.isSymbolicLink != true,
-              let enumerator = FileManager.default.enumerator(
+            rootValues.isSymbolicLink != true,
+            let enumerator = FileManager.default.enumerator(
                 at: root,
                 includingPropertiesForKeys: [
                     .isDirectoryKey,
@@ -783,7 +789,8 @@ public struct CLIUpdateEngine: Sendable {
                     .isSymbolicLinkKey,
                 ],
                 options: []
-              ) else {
+            )
+        else {
             throw CLIUpdateError.replacement(
                 "could not enumerate recovery content at \(root.path)"
             )
@@ -844,8 +851,9 @@ public struct CLIUpdateEngine: Sendable {
             let data = try Data(contentsOf: manifestURL)
             let manifest = try JSONDecoder().decode(InstallationManifest.self, from: data)
             guard manifest.schemaVersion == 1,
-                  manifest.executableName == executableName,
-                  manifest.bundleName == bundleName else {
+                manifest.executableName == executableName,
+                manifest.bundleName == bundleName
+            else {
                 throw CLIUpdateError.recoveryConflict(
                     "transaction manifest is not for the Scholium CLI layout"
                 )
@@ -893,34 +901,37 @@ public struct CLIUpdateEngine: Sendable {
     }
 
     private static func readReleaseIdentity(from bundle: URL) throws -> CLIReleaseIdentity {
-        let provenance = bundle
+        let provenance =
+            bundle
             .appendingPathComponent("Contents", isDirectory: true)
             .appendingPathComponent("Resources", isDirectory: true)
             .appendingPathComponent("ScholiumBuildProvenance.plist")
         let values: [String: Any]
         do {
-            values = try PropertyListSerialization.propertyList(
-                from: Data(contentsOf: provenance),
-                options: [],
-                format: nil
-            ) as? [String: Any] ?? [:]
+            values =
+                try PropertyListSerialization.propertyList(
+                    from: Data(contentsOf: provenance),
+                    options: [],
+                    format: nil
+                ) as? [String: Any] ?? [:]
         } catch {
             throw CLIUpdateError.invalidProvenance(
                 "could not read \(provenance.path): \(error.localizedDescription)"
             )
         }
         guard values["schema"] as? String == "scholium-build-provenance-v1",
-              let marketingVersion = values["marketing_version"] as? String,
-              !marketingVersion.isEmpty,
-              let releaseLabel = values["release_label"] as? String,
-              !releaseLabel.isEmpty,
-              let buildNumber = values["build_number"] as? String,
-              !buildNumber.isEmpty,
-              values["package_mode"] as? String == "release",
-              values["source_clean"] as? Bool == true,
-              let gitExactTag = values["git_exact_tag"] as? String,
-              !gitExactTag.isEmpty,
-              gitExactTag == releaseLabel else {
+            let marketingVersion = values["marketing_version"] as? String,
+            !marketingVersion.isEmpty,
+            let releaseLabel = values["release_label"] as? String,
+            !releaseLabel.isEmpty,
+            let buildNumber = values["build_number"] as? String,
+            !buildNumber.isEmpty,
+            values["package_mode"] as? String == "release",
+            values["source_clean"] as? Bool == true,
+            let gitExactTag = values["git_exact_tag"] as? String,
+            !gitExactTag.isEmpty,
+            gitExactTag == releaseLabel
+        else {
             throw CLIUpdateError.invalidProvenance(
                 "the archive is not a clean, exactly tagged release"
             )
@@ -990,9 +1001,10 @@ public struct CLIUpdateEngine: Sendable {
             line = nil
         }
         guard let line,
-              let token = line.split(whereSeparator: { $0 == " " || $0 == "\t" }).first,
-              token.count == 64,
-              token.allSatisfy({ $0.isHexDigit }) else {
+            let token = line.split(whereSeparator: { $0 == " " || $0 == "\t" }).first,
+            token.count == 64,
+            token.allSatisfy({ $0.isHexDigit })
+        else {
             throw CLIUpdateError.invalidChecksum(
                 "checksum file does not contain one SHA-256 for \(archiveName)"
             )
@@ -1002,7 +1014,8 @@ public struct CLIUpdateEngine: Sendable {
 
     private static func officialArchiveURL() throws -> URL {
         guard let url = URL(string: ScholiumCLIDistribution.downloadURL),
-              isAllowedDownloadURL(url) else {
+            isAllowedDownloadURL(url)
+        else {
             throw CLIUpdateError.invalidDownloadURL(ScholiumCLIDistribution.downloadURL)
         }
         return url
@@ -1010,7 +1023,8 @@ public struct CLIUpdateEngine: Sendable {
 
     private static func officialChecksumURL(for archiveURL: URL) throws -> URL {
         guard let url = URL(string: archiveURL.absoluteString + ".sha256"),
-              isAllowedDownloadURL(url) else {
+            isAllowedDownloadURL(url)
+        else {
             throw CLIUpdateError.invalidDownloadURL(archiveURL.absoluteString + ".sha256")
         }
         return url
@@ -1018,7 +1032,8 @@ public struct CLIUpdateEngine: Sendable {
 
     private static func isAllowedDownloadURL(_ url: URL) -> Bool {
         guard url.scheme?.lowercased() == "https",
-              let host = url.host?.lowercased() else { return false }
+            let host = url.host?.lowercased()
+        else { return false }
         return [
             "github.com",
             "objects.githubusercontent.com",
@@ -1038,9 +1053,10 @@ public struct CLIUpdateEngine: Sendable {
         request.timeoutInterval = 120
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse,
-              (200 ... 299).contains(http.statusCode),
-              let finalURL = response.url,
-              isAllowedDownloadURL(finalURL) else {
+            (200...299).contains(http.statusCode),
+            let finalURL = response.url,
+            isAllowedDownloadURL(finalURL)
+        else {
             throw CLIUpdateError.network(
                 "the official release endpoint returned an unexpected response"
             )
@@ -1125,7 +1141,7 @@ public struct CLIUpdateEngine: Sendable {
         }
         let entrySize = is64Bit ? 32 : 20
         var result: Set<String> = []
-        for index in 0 ..< Int(count) {
+        for index in 0..<Int(count) {
             let offset = 8 + index * entrySize
             guard let cpu = readUInt32(data, offset: offset, endian: endian) else {
                 throw CLIUpdateError.invalidArchive("fat Mach-O header is truncated")
@@ -1141,7 +1157,7 @@ public struct CLIUpdateEngine: Sendable {
         endian: Endian
     ) -> UInt32? {
         guard offset >= 0, offset + 4 <= data.count else { return nil }
-        let bytes = [UInt8](data[offset ..< offset + 4])
+        let bytes = [UInt8](data[offset..<offset + 4])
         switch endian {
         case .little:
             return UInt32(bytes[0])
@@ -1190,7 +1206,8 @@ public struct CLIUpdateEngine: Sendable {
             forKeys: [.isRegularFileKey, .isSymbolicLinkKey]
         )
         guard values.isRegularFile == true, values.isSymbolicLink != true,
-              FileManager.default.isExecutableFile(atPath: url.path) else {
+            FileManager.default.isExecutableFile(atPath: url.path)
+        else {
             throw CLIUpdateError.invalidInstallation(
                 "expected a regular executable at \(url.path)"
             )
@@ -1209,11 +1226,13 @@ public struct CLIUpdateEngine: Sendable {
     }
 
     private static func validateTree(_ root: URL) throws {
-        guard let enumerator = FileManager.default.enumerator(
-            at: root,
-            includingPropertiesForKeys: [.isDirectoryKey, .isRegularFileKey, .isSymbolicLinkKey],
-            options: []
-        ) else {
+        guard
+            let enumerator = FileManager.default.enumerator(
+                at: root,
+                includingPropertiesForKeys: [.isDirectoryKey, .isRegularFileKey, .isSymbolicLinkKey],
+                options: []
+            )
+        else {
             throw CLIUpdateError.invalidArchive("could not enumerate \(root.path)")
         }
         for case let item as URL in enumerator {
@@ -1221,7 +1240,8 @@ public struct CLIUpdateEngine: Sendable {
                 forKeys: [.isDirectoryKey, .isRegularFileKey, .isSymbolicLinkKey]
             )
             guard values.isSymbolicLink != true,
-                  values.isDirectory == true || values.isRegularFile == true else {
+                values.isDirectory == true || values.isRegularFile == true
+            else {
                 throw CLIUpdateError.invalidArchive(
                     "resource bundle contains an unsupported entry: \(item.path)"
                 )
@@ -1250,11 +1270,13 @@ public struct CLIUpdateEngine: Sendable {
     static func directoryFingerprint(_ root: URL) throws -> String {
         try validateDirectory(root)
         try validateTree(root)
-        guard let enumerator = FileManager.default.enumerator(
-            at: root,
-            includingPropertiesForKeys: [.isDirectoryKey, .isRegularFileKey, .isSymbolicLinkKey],
-            options: []
-        ) else {
+        guard
+            let enumerator = FileManager.default.enumerator(
+                at: root,
+                includingPropertiesForKeys: [.isDirectoryKey, .isRegularFileKey, .isSymbolicLinkKey],
+                options: []
+            )
+        else {
             throw CLIUpdateError.invalidInstallation("could not enumerate \(root.path)")
         }
         var entries: [(relative: String, material: Data)] = []
@@ -1262,7 +1284,8 @@ public struct CLIUpdateEngine: Sendable {
             let values = try item.resourceValues(
                 forKeys: [.isDirectoryKey, .isRegularFileKey, .isSymbolicLinkKey]
             )
-            let relative = item.path.hasPrefix(root.path + "/")
+            let relative =
+                item.path.hasPrefix(root.path + "/")
                 ? String(item.path.dropFirst(root.path.count + 1))
                 : item.lastPathComponent
             if values.isDirectory == true {
@@ -1274,7 +1297,8 @@ public struct CLIUpdateEngine: Sendable {
                 entries.append((relative, material))
             }
         }
-        let records = entries
+        let records =
+            entries
             .sorted { $0.relative < $1.relative }
             .reduce(into: Data()) { result, entry in
                 result.append(entry.material)
@@ -1305,9 +1329,10 @@ public struct CLIUpdateEngine: Sendable {
         defer { _ = Darwin.close(descriptor) }
         var info = stat()
         guard fstat(descriptor, &info) == 0,
-              info.st_uid == geteuid(),
-              (info.st_mode & S_IFMT) == S_IFREG,
-              (info.st_mode & 0o077) == 0 else {
+            info.st_uid == geteuid(),
+            (info.st_mode & S_IFMT) == S_IFREG,
+            (info.st_mode & 0o077) == 0
+        else {
             throw CLIUpdateError.invalidInstallation(
                 "the shared installation lock is not a protected current-user file"
             )
@@ -1336,13 +1361,13 @@ private struct ParsedRelease: Comparable, Sendable {
 
         static func < (lhs: Identifier, rhs: Identifier) -> Bool {
             switch (lhs, rhs) {
-            case let (.numeric(left), .numeric(right)):
+            case (.numeric(let left), .numeric(let right)):
                 return left < right
             case (.numeric, .text):
                 return true
             case (.text, .numeric):
                 return false
-            case let (.text(left), .text(right)):
+            case (.text(let left), .text(let right)):
                 return left < right
             }
         }
@@ -1360,10 +1385,11 @@ private struct ParsedRelease: Comparable, Sendable {
         }
         let numbers = coreText.split(separator: ".", omittingEmptySubsequences: false)
         guard numbers.count == 3,
-              let major = Int(numbers[0]),
-              let minor = Int(numbers[1]),
-              let patch = Int(numbers[2]),
-              major >= 0, minor >= 0, patch >= 0 else {
+            let major = Int(numbers[0]),
+            let minor = Int(numbers[1]),
+            let patch = Int(numbers[2]),
+            major >= 0, minor >= 0, patch >= 0
+        else {
             throw CLIUpdateError.unsupportedReleaseLabel(label)
         }
         self.core = Core(major: major, minor: minor, patch: patch)

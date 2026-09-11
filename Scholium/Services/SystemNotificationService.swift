@@ -25,9 +25,11 @@ final class SystemNotificationService: NSObject, ObservableObject, UNUserNotific
     private var authorizationRequest: Task<Bool, Never>?
     private var requestedAuthorization = false
 
-    init(transport: (any SystemNotificationTransport)? = nil,
-         delay: Duration = .seconds(2),
-         isActive: @escaping @MainActor () -> Bool = { NSApp?.isActive ?? true }) {
+    init(
+        transport: (any SystemNotificationTransport)? = nil,
+        delay: Duration = .seconds(2),
+        isActive: @escaping @MainActor () -> Bool = { NSApp?.isActive ?? true }
+    ) {
         self.transport = transport
         self.delay = delay
         self.isActive = isActive
@@ -143,9 +145,10 @@ final class SystemNotificationService: NSObject, ObservableObject, UNUserNotific
         didReceive response: UNNotificationResponse
     ) async {
         guard response.actionIdentifier == UNNotificationDefaultActionIdentifier,
-              let data = response.notification.request.content.userInfo["route"] as? Data,
-              let route = try? JSONDecoder().decode(SystemNotificationRoute.self, from: data),
-              response.notification.request.identifier == route.identifier else { return }
+            let data = response.notification.request.content.userInfo["route"] as? Data,
+            let route = try? JSONDecoder().decode(SystemNotificationRoute.self, from: data),
+            response.notification.request.identifier == route.identifier
+        else { return }
         await MainActor.run { self.open(route) }
     }
 }
@@ -177,7 +180,8 @@ struct SystemNotificationRouting: ViewModifier {
     func body(content: Content) -> some View {
         content.onChange(of: notifications.pendingRoute, initial: true) { _, route in
             guard route != nil,
-                  let destination = notifications.takePendingRoute() else { return }
+                let destination = notifications.takePendingRoute()
+            else { return }
             let window = notifications.prepareWindow(for: destination)
             openWindow(id: "scholium-main", value: window)
         }

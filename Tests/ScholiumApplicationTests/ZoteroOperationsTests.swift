@@ -1,6 +1,7 @@
-import ScholiumContracts
 import Foundation
+import ScholiumContracts
 import Testing
+
 @testable import ScholiumApplication
 
 private actor MaterialFixtureClient {
@@ -8,21 +9,31 @@ private actor MaterialFixtureClient {
     private let originalURL: URL?
     init(originalURL: URL? = nil) { self.originalURL = originalURL }
     func send(_ request: URLRequest) async throws -> (Data, URLResponse) {
-        guard let url = request.url, let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: "HTTP/1.1", headerFields: nil) else { throw URLError(.badURL) }
+        guard let url = request.url, let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: "HTTP/1.1", headerFields: nil) else {
+            throw URLError(.badURL)
+        }
         requests.append(request)
         let json: String
         switch request.url?.path {
         case "/api/users/0/items/ATTACH01":
             if let originalURL {
-                return (try JSONSerialization.data(withJSONObject: ["key": "ATTACH01", "data": ["key": "ATTACH01",
-                    "itemType": "attachment", "contentType": "text/plain", "linkMode": "imported_file", "filename": originalURL.lastPathComponent]]), response)
+                return (
+                    try JSONSerialization.data(withJSONObject: [
+                        "key": "ATTACH01",
+                        "data": [
+                            "key": "ATTACH01",
+                            "itemType": "attachment", "contentType": "text/plain", "linkMode": "imported_file", "filename": originalURL.lastPathComponent,
+                        ],
+                    ]), response
+                )
             }
             json = #"{"key":"ATTACH01","data":{"key":"ATTACH01","itemType":"attachment","contentType":"application/pdf","linkMode":"imported_file"}}"#
         case "/api/users/0/items/ATTACH01/file/view/url":
             guard let originalURL else { throw URLError(.badURL) }
             return (Data(originalURL.absoluteString.utf8), response)
         case "/api/users/0/items/ANNO0001":
-            json = #"{"key":"ANNO0001","data":{"key":"ANNO0001","itemType":"annotation","parentItem":"ATTACH01","annotationText":"Exact selected text","annotationComment":"Separate comment","annotationPosition":"{\"pageIndex\":1}"}}"#
+            json =
+                #"{"key":"ANNO0001","data":{"key":"ANNO0001","itemType":"annotation","parentItem":"ATTACH01","annotationText":"Exact selected text","annotationComment":"Separate comment","annotationPosition":"{\"pageIndex\":1}"}}"#
         default:
             throw URLError(.badURL)
         }
@@ -41,7 +52,9 @@ struct ZoteroOperationsTests {
         try bytes.write(to: file)
         let client = MaterialFixtureClient(originalURL: file)
         let operations = ZoteroOperations(requestLoader: { try await client.send($0) })
-        let request = Data(#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"zotero_read_original","arguments":{"library":"user","attachment_key":"ATTACH01","mode":"text","maximum_utf8":14}}}"#.utf8)
+        let request = Data(
+            #"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"zotero_read_original","arguments":{"library":"user","attachment_key":"ATTACH01","mode":"text","maximum_utf8":14}}}"#
+                .utf8)
         let data = try #require(await operations.handle(requestData: request, access: .readOnly))
         let rpc = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
         let result = try #require(rpc["result"] as? [String: Any])
@@ -61,7 +74,9 @@ struct ZoteroOperationsTests {
     func annotationReadThroughApplication() async throws {
         let client = MaterialFixtureClient()
         let operations = ZoteroOperations(requestLoader: { try await client.send($0) })
-        let request = Data(#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"zotero_read_annotation","arguments":{"library":"user","attachment_key":"ATTACH01","annotation_key":"ANNO0001"}}}"#.utf8)
+        let request = Data(
+            #"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"zotero_read_annotation","arguments":{"library":"user","attachment_key":"ATTACH01","annotation_key":"ANNO0001"}}}"#
+                .utf8)
         let data = try #require(await operations.handle(requestData: request, access: .readOnly))
         let rpc = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
         let result = try #require(rpc["result"] as? [String: Any])
@@ -87,11 +102,14 @@ struct ZoteroOperationsTests {
         var result = try #require(rpc.objectValue?["result"]?.objectValue)
         // Codex 0.153.4 retains content/structuredContent; it has no result.isError field.
         result["isError"] = nil
-        let item: [String: MCPJSONValue] = ["id": .string("call"), "type": .string("mcpToolCall"), "server": .string("scholium-zotero"),
-            "tool": try #require(params["name"]), "arguments": try #require(params["arguments"]), "status": .string("completed"), "result": .object(result)]
+        let item: [String: MCPJSONValue] = [
+            "id": .string("call"), "type": .string("mcpToolCall"), "server": .string("scholium-zotero"),
+            "tool": try #require(params["name"]), "arguments": try #require(params["arguments"]), "status": .string("completed"), "result": .object(result),
+        ]
         let activity = try #require(CodexChatActivity.parse(item, completed: true))
         guard case .zoteroReadReport(let report) = activity.sourceObservation else {
-            Issue.record("Missing public tool report"); throw URLError(.cannotParseResponse)
+            Issue.record("Missing public tool report")
+            throw URLError(.cannotParseResponse)
         }
         #expect(activity.source == .runtime && report.isValid)
         return report
@@ -127,7 +145,8 @@ struct ZoteroOperationsTests {
         let runtime = fixture.runtime()
         let operations = runtime.zotero
         let request = Data(
-            #"{"jsonrpc":"2.0","id":7,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}"#.utf8
+            #"{"jsonrpc":"2.0","id":7,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}"#
+                .utf8
         )
         let response = try #require(await operations.handle(requestData: request, access: .guardedImports))
         let object = try #require(
@@ -153,31 +172,34 @@ struct ZoteroOperationsTests {
 
     @Test("Binding search keeps exact user and group library identities")
     func bindingSearchAcrossLibraries() async throws {
-        let groups = Data("""
-        [{"id":42,"name":"Shared Ethics"}]
-        """.utf8)
-        let userItems = Data("""
-        [{
-          "key": "USER0001",
-          "data": {
-            "key": "USER0001",
-            "itemType": "journalArticle",
-            "title": "Agency in Practice",
-            "creators": []
-          }
-        }]
-        """.utf8)
-        let groupItems = Data("""
-        [{
-          "key": "GROUP001",
-          "data": {
-            "key": "GROUP001",
-            "itemType": "book",
-            "title": "Reasons and Agency",
-            "creators": []
-          }
-        }]
-        """.utf8)
+        let groups = Data(
+            """
+            [{"id":42,"name":"Shared Ethics"}]
+            """.utf8)
+        let userItems = Data(
+            """
+            [{
+              "key": "USER0001",
+              "data": {
+                "key": "USER0001",
+                "itemType": "journalArticle",
+                "title": "Agency in Practice",
+                "creators": []
+              }
+            }]
+            """.utf8)
+        let groupItems = Data(
+            """
+            [{
+              "key": "GROUP001",
+              "data": {
+                "key": "GROUP001",
+                "itemType": "book",
+                "title": "Reasons and Agency",
+                "creators": []
+              }
+            }]
+            """.utf8)
         let script = AttachmentRequestScript(responses: [
             (200, groups),
             (200, userItems),
@@ -191,29 +213,32 @@ struct ZoteroOperationsTests {
 
         #expect(hits.map(\.library.identity) == [.user, .group(42)])
         #expect(hits.map(\.item.key) == ["USER0001", "GROUP001"])
-        #expect(await script.paths() == [
-            "/api/users/0/groups",
-            "/api/users/0/items",
-            "/api/groups/42/items",
-        ])
+        #expect(
+            await script.paths() == [
+                "/api/users/0/groups",
+                "/api/users/0/items",
+                "/api/groups/42/items",
+            ])
     }
 
     @Test("An exact item key present in user and group libraries requires library selection")
     func exactKeyAcrossLibraries() async throws {
-        let groups = Data("""
-        [{"id":42,"name":"Shared Ethics"}]
-        """.utf8)
-        let item = Data("""
-        {
-          "key": "SHARED01",
-          "data": {
-            "key": "SHARED01",
-            "itemType": "journalArticle",
-            "title": "Library-specific item",
-            "creators": []
-          }
-        }
-        """.utf8)
+        let groups = Data(
+            """
+            [{"id":42,"name":"Shared Ethics"}]
+            """.utf8)
+        let item = Data(
+            """
+            {
+              "key": "SHARED01",
+              "data": {
+                "key": "SHARED01",
+                "itemType": "journalArticle",
+                "title": "Library-specific item",
+                "creators": []
+              }
+            }
+            """.utf8)
         let script = AttachmentRequestScript(responses: [
             (200, groups),
             (200, item),
@@ -227,18 +252,20 @@ struct ZoteroOperationsTests {
 
         #expect(hits.map(\.item.key) == ["SHARED01", "SHARED01"])
         #expect(Set(hits.map(\.library.identity)) == [.user, .group(42)])
-        #expect(await script.paths() == [
-            "/api/users/0/groups",
-            "/api/users/0/items/SHARED01",
-            "/api/groups/42/items/SHARED01",
-        ])
+        #expect(
+            await script.paths() == [
+                "/api/users/0/groups",
+                "/api/users/0/items/SHARED01",
+                "/api/groups/42/items/SHARED01",
+            ])
     }
 
     @Test("A missing exact key never falls through to an item-collection search")
     func missingExactKeyDoesNotSearchCollections() async throws {
-        let groups = Data("""
-        [{"id":42,"name":"Shared Ethics"}]
-        """.utf8)
+        let groups = Data(
+            """
+            [{"id":42,"name":"Shared Ethics"}]
+            """.utf8)
         let script = AttachmentRequestScript(responses: [
             (200, groups),
             (404, Data()),
@@ -251,23 +278,25 @@ struct ZoteroOperationsTests {
         let hits = try await operations.searchLibrary(query: "missing1")
 
         #expect(hits.isEmpty)
-        #expect(await script.paths() == [
-            "/api/users/0/groups",
-            "/api/users/0/items/MISSING1",
-            "/api/groups/42/items/MISSING1",
-        ])
+        #expect(
+            await script.paths() == [
+                "/api/users/0/groups",
+                "/api/users/0/items/MISSING1",
+                "/api/groups/42/items/MISSING1",
+            ])
     }
 
     @Test("A response from any URL other than the exact loopback request is rejected")
     func redirectedResponseFailsClosed() async throws {
         let remoteURL = try #require(URL(string: "https://example.invalid/items"))
         let operations = ZoteroOperations(requestLoader: { _ in
-            let response = try #require(HTTPURLResponse(
-                url: remoteURL,
-                statusCode: 200,
-                httpVersion: "HTTP/1.1",
-                headerFields: nil
-            ))
+            let response = try #require(
+                HTTPURLResponse(
+                    url: remoteURL,
+                    statusCode: 200,
+                    httpVersion: "HTTP/1.1",
+                    headerFields: nil
+                ))
             return (Data("[]".utf8), response)
         })
 
@@ -281,7 +310,6 @@ struct ZoteroOperationsTests {
             }
         }
     }
-
 
 }
 
@@ -299,12 +327,14 @@ private actor AttachmentRequestScript {
         }
         requestedPaths.append(url.path)
         let next = responses.removeFirst()
-        guard let response = HTTPURLResponse(
-            url: url,
-            statusCode: next.0,
-            httpVersion: "HTTP/1.1",
-            headerFields: nil
-        ) else {
+        guard
+            let response = HTTPURLResponse(
+                url: url,
+                statusCode: next.0,
+                httpVersion: "HTTP/1.1",
+                headerFields: nil
+            )
+        else {
             throw URLError(.badServerResponse)
         }
         return (next.1, response)
@@ -328,11 +358,13 @@ private struct Fixture {
     }
 
     func runtime() -> WorkspaceRuntime {
-        WorkspaceRuntime(configuration: .snapshot(.init(
-            applicationSupportURL: supportURL,
-            workspaceRegistryStorageURL: registryURL,
-            assignments: []
-        )))
+        WorkspaceRuntime(
+            configuration: .snapshot(
+                .init(
+                    applicationSupportURL: supportURL,
+                    workspaceRegistryStorageURL: registryURL,
+                    assignments: []
+                )))
     }
 
     func remove() {

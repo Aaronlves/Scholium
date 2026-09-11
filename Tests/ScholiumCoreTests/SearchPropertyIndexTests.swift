@@ -1,6 +1,7 @@
 import Foundation
 import ScholiumContracts
 import Testing
+
 @testable import ScholiumCore
 
 @Suite("Search v10 metadata and direct-link filters")
@@ -11,25 +12,29 @@ struct SearchPropertyIndexTests {
         defer { fixture.remove() }
         let index = try fixture.index()
         let source = """
-        ---
-        summary: A source about akrasia
-        keywords: [Akrasia, "Weakness of Will"]
-        language: Retired YAML value
-        ---
-        Body
-        """
-        _ = try await index.synchronize([fixture.item(
-            "Topic.md",
-            source,
-            metadataFields: [
-                "aliases": .array([.string("Practical agency")]),
-            ]
-        )])
+            ---
+            summary: A source about akrasia
+            keywords: [Akrasia, "Weakness of Will"]
+            language: Retired YAML value
+            ---
+            Body
+            """
+        _ = try await index.synchronize([
+            fixture.item(
+                "Topic.md",
+                source,
+                metadataFields: [
+                    "aliases": .array([.string("Practical agency")])
+                ]
+            )
+        ])
 
         let summary = try await index.testSearch(fixture.request("property:summary"))
-        guard case .property(let summaryMatch) = try #require(
-            summary.noteResults.first?.primaryMatchReason
-        ) else {
+        guard
+            case .property(let summaryMatch) = try #require(
+                summary.noteResults.first?.primaryMatchReason
+            )
+        else {
             Issue.record("Summary search did not expose structured provenance")
             return
         }
@@ -39,21 +44,26 @@ struct SearchPropertyIndexTests {
         let keyword = try await index.testSearch(
             fixture.request("property:keywords=\"weakness of will\"")
         )
-        guard case .property(let keywordMatch) = try #require(
-            keyword.noteResults.first?.primaryMatchReason
-        ) else {
+        guard
+            case .property(let keywordMatch) = try #require(
+                keyword.noteResults.first?.primaryMatchReason
+            )
+        else {
             Issue.record("Keyword search did not expose structured provenance")
             return
         }
-        #expect(keywordMatch.valueSourceRanges.map { sourceText(source, range: $0) }
-            == ["\"Weakness of Will\""])
+        #expect(
+            keywordMatch.valueSourceRanges.map { sourceText(source, range: $0) }
+                == ["\"Weakness of Will\""])
 
         let alias = try await index.testSearch(
             fixture.request("property:aliases=\"practical agency\"")
         )
-        guard case .property(let aliasMatch) = try #require(
-            alias.noteResults.first?.primaryMatchReason
-        ) else {
+        guard
+            case .property(let aliasMatch) = try #require(
+                alias.noteResults.first?.primaryMatchReason
+            )
+        else {
             Issue.record("Managed aliases did not expose structured provenance")
             return
         }
@@ -61,9 +71,10 @@ struct SearchPropertyIndexTests {
         #expect(aliasMatch.valueSourceRanges.isEmpty)
         #expect(alias.noteResults.first?.sourceRange == nil)
 
-        #expect(try await index.testSearch(
-            fixture.request("property:language")
-        ).noteResults.isEmpty)
+        #expect(
+            try await index.testSearch(
+                fixture.request("property:language")
+            ).noteResults.isEmpty)
     }
 
     @Test("Keyword lexical hits retain their exact YAML member range")
@@ -72,12 +83,12 @@ struct SearchPropertyIndexTests {
         defer { fixture.remove() }
         let index = try fixture.index()
         let source = """
-        ---
-        summary: Ethics
-        keywords: [Ethics, Ethics]
-        ---
-        Body
-        """
+            ---
+            summary: Ethics
+            keywords: [Ethics, Ethics]
+            ---
+            Body
+            """
         _ = try await index.synchronize([fixture.item("Topic.md", source)])
 
         let response = try await index.testSearch(fixture.request("keyword:ethics"))
@@ -92,11 +103,11 @@ struct SearchPropertyIndexTests {
         defer { fixture.remove() }
         let index = try fixture.index()
         let source = """
-        ---
-        keywords: ["\\u0041gency"]
-        ---
-        Body
-        """
+            ---
+            keywords: ["\\u0041gency"]
+            ---
+            Body
+            """
         _ = try await index.synchronize([fixture.item("Topic.md", source)])
 
         let response = try await index.testSearch(fixture.request("keyword:agency"))
@@ -112,18 +123,20 @@ struct SearchPropertyIndexTests {
         let source = "---\nsummary: Agency map\nkeywords: [concept]\n---\nBody"
         let metadataCatalog = NoteMetadataCatalog(customFieldsByRole: [
             .topicKnowledge: [
-                MetadataFieldDefinition(key: "argument_stage", valueKind: .text),
-            ],
+                MetadataFieldDefinition(key: "argument_stage", valueKind: .text)
+            ]
         ])
-        _ = try await incremental.synchronize([fixture.item(
-            "Topic.md",
-            source,
-            metadataFields: [
-                "aliases": .array([.string("Practical agency")]),
-                "argument_stage": .string("Greek"),
-            ],
-            metadataCatalog: metadataCatalog
-        )])
+        _ = try await incremental.synchronize([
+            fixture.item(
+                "Topic.md",
+                source,
+                metadataFields: [
+                    "aliases": .array([.string("Practical agency")]),
+                    "argument_stage": .string("Greek"),
+                ],
+                metadataCatalog: metadataCatalog
+            )
+        ])
         let edited = fixture.item(
             "Topic.md",
             source,
@@ -148,12 +161,15 @@ struct SearchPropertyIndexTests {
         ] {
             let incrementalResults = try await incremental.testSearch(fixture.request(query))
             let cleanResults = try await clean.testSearch(fixture.request(query))
-            #expect(incrementalResults.noteResults.map(\.relativePath)
-                == cleanResults.noteResults.map(\.relativePath))
-            #expect(incrementalResults.noteResults.map(\.primaryMatchReason)
-                == cleanResults.noteResults.map(\.primaryMatchReason))
-            #expect(incrementalResults.noteResults.map(\.sourceRange)
-                == cleanResults.noteResults.map(\.sourceRange))
+            #expect(
+                incrementalResults.noteResults.map(\.relativePath)
+                    == cleanResults.noteResults.map(\.relativePath))
+            #expect(
+                incrementalResults.noteResults.map(\.primaryMatchReason)
+                    == cleanResults.noteResults.map(\.primaryMatchReason))
+            #expect(
+                incrementalResults.noteResults.map(\.sourceRange)
+                    == cleanResults.noteResults.map(\.sourceRange))
         }
     }
 
@@ -162,18 +178,22 @@ struct SearchPropertyIndexTests {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let index = try fixture.index()
-        _ = try await index.synchronize([fixture.item(
-            "Malformed.md",
-            "---\nsummary: [unfinished\n---\nmalformed-body-term",
-            metadataFields: ["aliases": .array([.string("Still managed")])]
-        )])
+        _ = try await index.synchronize([
+            fixture.item(
+                "Malformed.md",
+                "---\nsummary: [unfinished\n---\nmalformed-body-term",
+                metadataFields: ["aliases": .array([.string("Still managed")])]
+            )
+        ])
 
-        #expect(try await index.testSearch(
-            fixture.request("property:aliases=\"still managed\"")
-        ).noteResults.map(\.relativePath) == ["Malformed.md"])
-        #expect(try await index.testSearch(
-            fixture.request("malformed-body-term")
-        ).noteResults.map(\.relativePath) == ["Malformed.md"])
+        #expect(
+            try await index.testSearch(
+                fixture.request("property:aliases=\"still managed\"")
+            ).noteResults.map(\.relativePath) == ["Malformed.md"])
+        #expect(
+            try await index.testSearch(
+                fixture.request("malformed-body-term")
+            ).noteResults.map(\.relativePath) == ["Malformed.md"])
     }
 
     @Test("Lexical and metadata AND does not lose a late matching candidate")
@@ -188,21 +208,23 @@ struct SearchPropertyIndexTests {
                 metadataFields: ["aliases": .array([.string("provisional")])]
             )
         }
-        documents.append(fixture.item(
-            "zzzz-target.md",
-            "shared-concept",
-            metadataFields: ["aliases": .array([.string("settled")])]
-        ))
+        documents.append(
+            fixture.item(
+                "zzzz-target.md",
+                "shared-concept",
+                metadataFields: ["aliases": .array([.string("settled")])]
+            ))
         _ = try await index.synchronize(documents)
 
         let response = try await index.testSearch(
             fixture.request("shared-concept property:aliases=settled", limit: 1)
         )
         #expect(response.noteResults.map(\.relativePath) == ["zzzz-target.md"])
-        #expect(response.noteResults.first?.matchReasons.contains { reason in
-            if case .property = reason { return true }
-            return false
-        } == true)
+        #expect(
+            response.noteResults.first?.matchReasons.contains { reason in
+                if case .property = reason { return true }
+                return false
+            } == true)
     }
 
     @Test("Direct-link candidates remain externally resolved and source attributed")
@@ -222,10 +244,13 @@ struct SearchPropertyIndexTests {
             vaultID: fixture.vault.id,
             relativePath: "Matched.md"
         )
-        let authored = try #require(MarkdownSemanticDocument(parsing: NoteDocument(
-            relativePath: "Anchor.md",
-            rawContent: "# Anchor\n\n[[Matched]]{{A direct reason.}}\n"
-        )).links.first)
+        let authored = try #require(
+            MarkdownSemanticDocument(
+                parsing: NoteDocument(
+                    relativePath: "Anchor.md",
+                    rawContent: "# Anchor\n\n[[Matched]]{{A direct reason.}}\n"
+                )
+            ).links.first)
         let occurrence = SearchLinkOccurrence(sourceNote: anchor, occurrence: authored)
         let match = SearchLinkMatch(
             direction: .fromNote,
@@ -253,12 +278,12 @@ struct SearchPropertyIndexTests {
         defer { fixture.remove() }
         let index = try fixture.index()
         let source = """
-        # Annotated
+            # Annotated
 
-        Intro [[Hidden Destination#claim|visible link]]{{First **annotated reason** with [[Hidden Evidence|visible evidence]].
+            Intro [[Hidden Destination#claim|visible link]]{{First **annotated reason** with [[Hidden Evidence|visible evidence]].
 
-        Second line.}} tail prose.
-        """
+            Second line.}} tail prose.
+            """
         _ = try await index.synchronize([fixture.item("Annotated.md", source)])
 
         let annotation = try await index.testSearch(
@@ -268,18 +293,22 @@ struct SearchPropertyIndexTests {
         #expect(hit.matchedField == .linkAnnotation)
         #expect(sourceText(source, range: try #require(hit.sourceRange)) == "annotated reason")
 
-        #expect(try await index.testSearch(
-            fixture.request("visible evidence")
-        ).noteResults.first?.matchedField == .linkAnnotation)
-        #expect(try await index.testSearch(
-            fixture.request("visible link tail prose")
-        ).noteResults.map(\.relativePath) == ["Annotated.md"])
-        #expect(try await index.testSearch(
-            fixture.request(#""Hidden Destination""#)
-        ).noteResults.isEmpty)
-        #expect(try await index.testSearch(
-            fixture.request(#""Hidden Evidence""#)
-        ).noteResults.isEmpty)
+        #expect(
+            try await index.testSearch(
+                fixture.request("visible evidence")
+            ).noteResults.first?.matchedField == .linkAnnotation)
+        #expect(
+            try await index.testSearch(
+                fixture.request("visible link tail prose")
+            ).noteResults.map(\.relativePath) == ["Annotated.md"])
+        #expect(
+            try await index.testSearch(
+                fixture.request(#""Hidden Destination""#)
+            ).noteResults.isEmpty)
+        #expect(
+            try await index.testSearch(
+                fixture.request(#""Hidden Evidence""#)
+            ).noteResults.isEmpty)
     }
 
     private final class Fixture: @unchecked Sendable {
@@ -297,9 +326,9 @@ struct SearchPropertyIndexTests {
                 fileURLWithPath: FileManager.default.currentDirectoryPath,
                 isDirectory: true
             )
-                .appendingPathComponent(".build", isDirectory: true)
-                .appendingPathComponent("search-v10-property-tests", isDirectory: true)
-                .appendingPathComponent(UUID().uuidString, isDirectory: true)
+            .appendingPathComponent(".build", isDirectory: true)
+            .appendingPathComponent("search-v10-property-tests", isDirectory: true)
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
             try FileManager.default.createDirectory(
                 at: root,
                 withIntermediateDirectories: true
@@ -354,16 +383,19 @@ struct SearchPropertyIndexTests {
     }
 
     private func sourceText(_ source: String, range: SearchSourceRange) -> String? {
-        guard let lowerUTF16 = source.utf16.index(
-            source.utf16.startIndex,
-            offsetBy: range.utf16LowerBound,
-            limitedBy: source.utf16.endIndex
-        ), let upperUTF16 = source.utf16.index(
-            source.utf16.startIndex,
-            offsetBy: range.utf16UpperBound,
-            limitedBy: source.utf16.endIndex
-        ), let lower = lowerUTF16.samePosition(in: source),
-           let upper = upperUTF16.samePosition(in: source) else { return nil }
+        guard
+            let lowerUTF16 = source.utf16.index(
+                source.utf16.startIndex,
+                offsetBy: range.utf16LowerBound,
+                limitedBy: source.utf16.endIndex
+            ),
+            let upperUTF16 = source.utf16.index(
+                source.utf16.startIndex,
+                offsetBy: range.utf16UpperBound,
+                limitedBy: source.utf16.endIndex
+            ), let lower = lowerUTF16.samePosition(in: source),
+            let upper = upperUTF16.samePosition(in: source)
+        else { return nil }
         return String(source[lower..<upper])
     }
 }

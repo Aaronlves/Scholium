@@ -28,17 +28,19 @@ enum ScholiumRuntimeIsolation {
         guard let explicit = nonempty(environment["SCHOLIUM_HOME"]) else {
             return nil
         }
-#if DEBUG
-        let isDebugBuild = true
-#else
-        let isDebugBuild = false
-#endif
-        guard allowsExplicitHome(
-            environment: environment,
-            arguments: arguments,
-            bundleIdentifier: bundleIdentifier,
-            isDebugBuild: isDebugBuild
-        ) else { return nil }
+        #if DEBUG
+            let isDebugBuild = true
+        #else
+            let isDebugBuild = false
+        #endif
+        guard
+            allowsExplicitHome(
+                environment: environment,
+                arguments: arguments,
+                bundleIdentifier: bundleIdentifier,
+                isDebugBuild: isDebugBuild
+            )
+        else { return nil }
         return URL(
             fileURLWithPath: (explicit as NSString).expandingTildeInPath,
             isDirectory: true
@@ -75,15 +77,20 @@ enum ScholiumRuntimeIsolation {
         bundleIdentifier: String? = Bundle.main.bundleIdentifier,
         isDebugBuild: Bool? = nil
     ) -> URL? {
-        guard let explicit = nonempty(
-            environment["SCHOLIUM_UI_TEST_WORKSPACE_ROOT"]
-        ) else { return nil }
+        guard
+            let explicit = nonempty(
+                environment["SCHOLIUM_UI_TEST_WORKSPACE_ROOT"]
+            )
+        else { return nil }
         let debugBuild = isDebugBuild ?? currentBuildIsDebug
-        guard debugBuild || allowsPackagedPerformanceIsolation(
-            environment: environment,
-            arguments: arguments,
-            bundleIdentifier: bundleIdentifier
-        ) else {
+        guard
+            debugBuild
+                || allowsPackagedPerformanceIsolation(
+                    environment: environment,
+                    arguments: arguments,
+                    bundleIdentifier: bundleIdentifier
+                )
+        else {
             return nil
         }
         return URL(
@@ -98,18 +105,20 @@ enum ScholiumRuntimeIsolation {
         environment: [String: String] = ProcessInfo.processInfo.environment,
         bundleIdentifier: String? = Bundle.main.bundleIdentifier
     ) -> URL? {
-#if DEBUG
-        guard bundleIdentifier == qaBundleIdentifier,
-              environment["SCHOLIUM_UI_TEST_FILE_SELECTION_RECOVERY"] == "1",
-              let root = fixtureRootURL(environment: environment) else {
+        #if DEBUG
+            guard bundleIdentifier == qaBundleIdentifier,
+                environment["SCHOLIUM_UI_TEST_FILE_SELECTION_RECOVERY"] == "1",
+                let root = fixtureRootURL(environment: environment)
+            else {
+                return nil
+            }
+            return
+                root
+                .appendingPathComponent("01-analyses", isDirectory: true)
+                .standardizedFileURL
+        #else
             return nil
-        }
-        return root
-            .appendingPathComponent("01-analyses", isDirectory: true)
-            .standardizedFileURL
-#else
-        return nil
-#endif
+        #endif
     }
 
     /// Resolves the one deterministic native-window identity requested by
@@ -128,24 +137,29 @@ enum ScholiumRuntimeIsolation {
             if let rawID = nonempty(environment["SCHOLIUM_UI_TEST_SESSION_ID"]) {
                 return UUID(uuidString: rawID)
             }
-            guard fixtureRootURL(
+            guard
+                fixtureRootURL(
+                    environment: environment,
+                    arguments: arguments,
+                    bundleIdentifier: bundleIdentifier,
+                    isDebugBuild: true
+                ) != nil
+            else { return nil }
+            return qaFixtureWindowSessionID
+        }
+        guard
+            allowsPackagedPerformanceIsolation(
+                environment: environment,
+                arguments: arguments,
+                bundleIdentifier: bundleIdentifier
+            ),
+            fixtureRootURL(
                 environment: environment,
                 arguments: arguments,
                 bundleIdentifier: bundleIdentifier,
-                isDebugBuild: true
-            ) != nil else { return nil }
-            return qaFixtureWindowSessionID
-        }
-        guard allowsPackagedPerformanceIsolation(
-            environment: environment,
-            arguments: arguments,
-            bundleIdentifier: bundleIdentifier
-        ), fixtureRootURL(
-            environment: environment,
-            arguments: arguments,
-            bundleIdentifier: bundleIdentifier,
-            isDebugBuild: false
-        ) != nil else { return nil }
+                isDebugBuild: false
+            ) != nil
+        else { return nil }
         return packagedPerformanceWindowSessionID
     }
 
@@ -159,7 +173,8 @@ enum ScholiumRuntimeIsolation {
         isDebugBuild: Bool? = nil
     ) -> CGFloat? {
         let debugBuild = isDebugBuild ?? currentBuildIsDebug
-        let allowsWidth = debugBuild
+        let allowsWidth =
+            debugBuild
             ? bundleIdentifier == qaBundleIdentifier
             : allowsPackagedPerformanceIsolation(
                 environment: environment,
@@ -167,22 +182,23 @@ enum ScholiumRuntimeIsolation {
                 bundleIdentifier: bundleIdentifier
             )
         guard allowsWidth,
-              let rawWidth = nonempty(
-                  environment["SCHOLIUM_UI_TEST_INITIAL_WORKSPACE_WIDTH"]
-              ),
-              let width = Double(rawWidth),
-              width > 0 else {
+            let rawWidth = nonempty(
+                environment["SCHOLIUM_UI_TEST_INITIAL_WORKSPACE_WIDTH"]
+            ),
+            let width = Double(rawWidth),
+            width > 0
+        else {
             return nil
         }
         return CGFloat(width)
     }
 
     private static var currentBuildIsDebug: Bool {
-#if DEBUG
-        true
-#else
-        false
-#endif
+        #if DEBUG
+            true
+        #else
+            false
+        #endif
     }
 
     /// Provides a deterministic interface direction only to the isolated QA
@@ -192,24 +208,24 @@ enum ScholiumRuntimeIsolation {
         environment: [String: String] = ProcessInfo.processInfo.environment,
         bundleIdentifier: String? = Bundle.main.bundleIdentifier
     ) -> LayoutDirectionOverride? {
-#if DEBUG
-        guard bundleIdentifier == qaBundleIdentifier,
-              let value = nonempty(
-                  environment["SCHOLIUM_UI_TEST_LAYOUT_DIRECTION"]
-              )?.lowercased()
-        else { return nil }
+        #if DEBUG
+            guard bundleIdentifier == qaBundleIdentifier,
+                let value = nonempty(
+                    environment["SCHOLIUM_UI_TEST_LAYOUT_DIRECTION"]
+                )?.lowercased()
+            else { return nil }
 
-        switch value {
-        case "ltr":
-            return .leftToRight
-        case "rtl":
-            return .rightToLeft
-        default:
+            switch value {
+            case "ltr":
+                return .leftToRight
+            case "rtl":
+                return .rightToLeft
+            default:
+                return nil
+            }
+        #else
             return nil
-        }
-#else
-        return nil
-#endif
+        #endif
     }
 
     /// Prevents AppKit's process-wide saved scene state from leaking between
@@ -220,12 +236,12 @@ enum ScholiumRuntimeIsolation {
         environment: [String: String] = ProcessInfo.processInfo.environment,
         bundleIdentifier: String? = Bundle.main.bundleIdentifier
     ) -> Bool {
-#if DEBUG
-        guard bundleIdentifier == qaBundleIdentifier else { return false }
-        return environment["SCHOLIUM_UI_TEST_ENABLE_SYSTEM_WINDOW_RESTORATION"] != "1"
-#else
-        return false
-#endif
+        #if DEBUG
+            guard bundleIdentifier == qaBundleIdentifier else { return false }
+            return environment["SCHOLIUM_UI_TEST_ENABLE_SYSTEM_WINDOW_RESTORATION"] != "1"
+        #else
+            return false
+        #endif
     }
 
     private static func nonempty(_ value: String?) -> String? {

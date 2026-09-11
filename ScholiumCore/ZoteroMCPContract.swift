@@ -1,6 +1,6 @@
-import ScholiumContracts
-import Foundation
 import Darwin
+import Foundation
+import ScholiumContracts
 
 public enum ZoteroMCPTransportLocator {
     /// Locates the configured executable without launching it. The currently
@@ -16,13 +16,15 @@ public enum ZoteroMCPTransportLocator {
                 descriptorID: descriptor.identifier,
                 state: .commandAvailable,
                 commandPath: path.path,
-                note: "The first-party executable is present; use `status --probe` for Scholium's data-free initialize check or configure an external MCP client to launch it."
+                note:
+                    "The first-party executable is present; use `status --probe` for Scholium's data-free initialize check or configure an external MCP client to launch it."
             )
         }
         return ZoteroMCPTransportReport(
             descriptorID: descriptor.identifier,
             state: .notConfigured,
-            note: "Build or install the optional Scholium CLI transport and configure it in the external agent. The protected Skill remains available without a live connection."
+            note:
+                "Build or install the optional Scholium CLI transport and configure it in the external agent. The protected Skill remains available without a live connection."
         )
     }
 
@@ -88,9 +90,10 @@ public enum ZoteroMCPTransportLocator {
                 timeout: timeout
             )
             guard response.id == InitializeRequest.requestID,
-                  let result = response.result,
-                  let protocolVersion = result.protocolVersion,
-                  !protocolVersion.isEmpty else {
+                let result = response.result,
+                let protocolVersion = result.protocolVersion,
+                !protocolVersion.isEmpty
+            else {
                 throw ProbeFailure.invalidResponse
             }
 
@@ -143,10 +146,12 @@ public enum ZoteroMCPTransportLocator {
             }
         }
         if descriptor.identifier == ZoteroMCPTransportDescriptor.supportedLocal.identifier,
-           let currentArgument = ProcessInfo.processInfo.arguments.first {
+            let currentArgument = ProcessInfo.processInfo.arguments.first
+        {
             let current = URL(fileURLWithPath: currentArgument).standardizedFileURL
             if current.lastPathComponent == descriptor.command,
-               FileManager.default.isExecutableFile(atPath: current.path) {
+                FileManager.default.isExecutableFile(atPath: current.path)
+            {
                 return current
             }
         }
@@ -275,12 +280,20 @@ private enum JSONValue: Decodable, Sendable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
-        if container.decodeNil() { self = .null }
-        else if let value = try? container.decode(String.self) { self = .string(value) }
-        else if let value = try? container.decode(Bool.self) { self = .bool(value) }
-        else if let value = try? container.decode(Double.self) { self = .number(value) }
-        else if let value = try? container.decode([String: JSONValue].self) { self = .object(value) }
-        else if let value = try? container.decode([JSONValue].self) { self = .array(value) }
-        else { throw DecodingError.dataCorruptedError(in: container, debugDescription: "Unsupported JSON value") }
+        if container.decodeNil() {
+            self = .null
+        } else if let value = try? container.decode(String.self) {
+            self = .string(value)
+        } else if let value = try? container.decode(Bool.self) {
+            self = .bool(value)
+        } else if let value = try? container.decode(Double.self) {
+            self = .number(value)
+        } else if let value = try? container.decode([String: JSONValue].self) {
+            self = .object(value)
+        } else if let value = try? container.decode([JSONValue].self) {
+            self = .array(value)
+        } else {
+            throw DecodingError.dataCorruptedError(in: container, debugDescription: "Unsupported JSON value")
+        }
     }
 }

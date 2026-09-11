@@ -1,11 +1,11 @@
-import ScholiumContracts
 import AppKit
 import Combine
-import notify
 import QuartzCore
 import ScholiumApplication
+import ScholiumContracts
 import SwiftUI
 import UniformTypeIdentifiers
+import notify
 
 @MainActor
 final class ScholiumApplicationDelegate: NSObject, NSApplicationDelegate, ObservableObject {
@@ -139,7 +139,7 @@ struct ScholiumApp: App {
 
         Settings {
             ScholiumSettingsWindowContent()
-            .frame(minWidth: 620, minHeight: 180)
+                .frame(minWidth: 620, minHeight: 180)
         }
         .windowResizability(.automatic)
         .environmentObject(applicationBootstrap)
@@ -302,10 +302,11 @@ private struct ScholiumBootstrapRoot: View {
     ) {
         self.route = route
         self.lifecycleRegistry = lifecycleRegistry
-        _model = StateObject(wrappedValue: ScholiumBootstrapModel(
-            workspaceStore: workspaceStore,
-            route: route
-        ))
+        _model = StateObject(
+            wrappedValue: ScholiumBootstrapModel(
+                workspaceStore: workspaceStore,
+                route: route
+            ))
     }
 
     var body: some View {
@@ -389,14 +390,15 @@ private struct ScholiumBootstrapRoot: View {
 
     private func openConfiguredWorkspaceIfAvailable() {
         if route.purpose == .firstConfiguration,
-           let notificationWindowID = SystemNotificationService.shared.notificationWindowID {
+            let notificationWindowID = SystemNotificationService.shared.notificationWindowID
+        {
             didRouteToWorkspace = true
             destinationWindowID = notificationWindowID
             return
         }
         guard !didRouteToWorkspace,
-              let triptychID = model.workspaceAssignment?.id,
-              model.isReadyToOpenWorkspace
+            let triptychID = model.workspaceAssignment?.id,
+            model.isReadyToOpenWorkspace
         else { return }
         openWorkspace(TriptychWindowRoute(triptychID: triptychID))
     }
@@ -408,8 +410,8 @@ private struct ScholiumBootstrapRoot: View {
     /// registered-Triptych restore flow above.
     private func openFixtureWorkspaceIfRequested() -> Bool {
         guard ScholiumRuntimeIsolation.fixtureRootURL() != nil,
-              let windowID = ScholiumRuntimeIsolation.initialWindowSessionID(),
-              !didRouteToWorkspace
+            let windowID = ScholiumRuntimeIsolation.initialWindowSessionID(),
+            !didRouteToWorkspace
         else { return false }
         openWorkspace(
             TriptychWindowRoute(
@@ -574,11 +576,12 @@ private struct ScholiumWindowRoot: View {
             requestedInitialDocument: route.initialDocument
         )
         _appState = StateObject(wrappedValue: model)
-        _windowCoordinator = StateObject(wrappedValue: WorkspaceWindowCoordinator(
-            windowID: route.windowID,
-            appState: model,
-            lifecycleRegistry: lifecycleRegistry
-        ))
+        _windowCoordinator = StateObject(
+            wrappedValue: WorkspaceWindowCoordinator(
+                windowID: route.windowID,
+                appState: model,
+                lifecycleRegistry: lifecycleRegistry
+            ))
     }
 
     var body: some View {
@@ -640,139 +643,147 @@ private struct ScholiumWindowObservedRoot: View {
             appState: appState,
             windowCoordinator: windowCoordinator
         )
-            .navigationTitle(workspaceWindowTitle)
-            .navigationSubtitle(workspaceWindowSubtitle)
-            .toolbar(removing: .sidebarToggle)
-            .toolbar(removing: .title)
-            .tint(ScholiumColorRole.accent.color)
-            .scholiumButtonStyle(.automatic)
-            .focusedSceneObject(appState)
-            .focusedSceneObject(appState.commandObservation)
-            .focusedSceneValue(\.scholiumWorkspaceWindowActions, windowCoordinator.actions)
-            .background(
-                WorkspaceWindowAttachment(
-                    coordinator: windowCoordinator,
-                    colorScheme: shellState.colorScheme
-                )
+        .navigationTitle(workspaceWindowTitle)
+        .navigationSubtitle(workspaceWindowSubtitle)
+        .toolbar(removing: .sidebarToggle)
+        .toolbar(removing: .title)
+        .tint(ScholiumColorRole.accent.color)
+        .scholiumButtonStyle(.automatic)
+        .focusedSceneObject(appState)
+        .focusedSceneObject(appState.commandObservation)
+        .focusedSceneValue(\.scholiumWorkspaceWindowActions, windowCoordinator.actions)
+        .background(
+            WorkspaceWindowAttachment(
+                coordinator: windowCoordinator,
+                colorScheme: shellState.colorScheme
             )
-            .sheet(item: $accessRecovery, onDismiss: {
+        )
+        .sheet(
+            item: $accessRecovery,
+            onDismiss: {
                 windowWorkspaceController.dismissAccessRecovery()
-            }) { recovery in
-                RestoreWorkspaceAccessView(
-                    recovery: recovery,
-                    restore: {
-                        try await windowWorkspaceController.restoreWorkspaceAccess(using: $0)
-                    },
-                    rebuildPortableControl: {
-                        try await windowWorkspaceController.rebuildUnsupportedPortableControl()
-                    },
-                    archiveNoteMetadataRecord: {
-                        try await windowWorkspaceController.archiveInvalidNoteMetadataRecord()
-                    },
-                    canRemoveRegistration:
-                        windowWorkspaceController.canRemoveUnavailableTriptychRegistration,
-                    removeRegistration: {
-                        try await windowWorkspaceController.removeUnavailableTriptychRegistration()
-                        openOrdinaryBootstrapAfterRegistrationRemoval()
-                    },
-                    quitApplication: {
-                        windowWorkspaceController.dismissAccessRecovery()
-                        windowCoordinator.closeUnavailableWorkspaceAndTerminateApplication()
-                    }
-                )
-                .scholiumButtonStyle(.automatic)
             }
-            .preferredColorScheme(shellState.colorScheme.swiftUIColorScheme)
-            .onChange(of: windowWorkspaceController.state.accessRecovery) { _, recovery in
-                accessRecovery = recovery
-            }
-            .onChange(of: appState.workspaceAssignment?.id, initial: true) { _, triptychID in
-                lifecycleRegistry.updateWorkspaceTriptych(
-                    id: route.windowID,
-                    triptychID: triptychID
-                )
-            }
-            .task(id: hasReadyWorkspace) {
-                guard hasReadyWorkspace,
-                      let notification = SystemNotificationService.shared.takeOpeningRoute(windowID: route.windowID) else { return }
-                if let sidebar = await appState.openSystemNotification(notification),
-                   !shellState.libraryVisible || shellState.sidebarContent != sidebar {
-                    windowCoordinator.actions.activateSidebar(sidebar)
+        ) { recovery in
+            RestoreWorkspaceAccessView(
+                recovery: recovery,
+                restore: {
+                    try await windowWorkspaceController.restoreWorkspaceAccess(using: $0)
+                },
+                rebuildPortableControl: {
+                    try await windowWorkspaceController.rebuildUnsupportedPortableControl()
+                },
+                archiveNoteMetadataRecord: {
+                    try await windowWorkspaceController.archiveInvalidNoteMetadataRecord()
+                },
+                canRemoveRegistration:
+                    windowWorkspaceController.canRemoveUnavailableTriptychRegistration,
+                removeRegistration: {
+                    try await windowWorkspaceController.removeUnavailableTriptychRegistration()
+                    openOrdinaryBootstrapAfterRegistrationRemoval()
+                },
+                quitApplication: {
+                    windowWorkspaceController.dismissAccessRecovery()
+                    windowCoordinator.closeUnavailableWorkspaceAndTerminateApplication()
                 }
+            )
+            .scholiumButtonStyle(.automatic)
+        }
+        .preferredColorScheme(shellState.colorScheme.swiftUIColorScheme)
+        .onChange(of: windowWorkspaceController.state.accessRecovery) { _, recovery in
+            accessRecovery = recovery
+        }
+        .onChange(of: appState.workspaceAssignment?.id, initial: true) { _, triptychID in
+            lifecycleRegistry.updateWorkspaceTriptych(
+                id: route.windowID,
+                triptychID: triptychID
+            )
+        }
+        .task(id: hasReadyWorkspace) {
+            guard hasReadyWorkspace,
+                let notification = SystemNotificationService.shared.takeOpeningRoute(windowID: route.windowID)
+            else { return }
+            if let sidebar = await appState.openSystemNotification(notification),
+                !shellState.libraryVisible || shellState.sidebarContent != sidebar
+            {
+                windowCoordinator.actions.activateSidebar(sidebar)
             }
-            .task(id: presentationRouter.fileImport) {
-                await selectMarkdownFilesForImportIfRequested()
+        }
+        .task(id: presentationRouter.fileImport) {
+            await selectMarkdownFilesForImportIfRequested()
+        }
+        .task(id: route.windowID) {
+            windowCoordinator.update(reduceMotion: reduceMotion)
+            await appState.restoreWindowSession(id: route.windowID)
+            if let proofURL = ScholiumRuntimeIsolation.fileSelectionRecoveryProofURL() {
+                _ = windowWorkspaceController.recordRecovery(
+                    for: WorkspaceRegistryError.vaultAccessUnavailable(proofURL.path)
+                )
             }
-            .task(id: route.windowID) {
-                windowCoordinator.update(reduceMotion: reduceMotion)
-                await appState.restoreWindowSession(id: route.windowID)
-                if let proofURL = ScholiumRuntimeIsolation.fileSelectionRecoveryProofURL() {
-                    _ = windowWorkspaceController.recordRecovery(
-                        for: WorkspaceRegistryError.vaultAccessUnavailable(proofURL.path)
-                    )
-                }
-                redirectUnconfiguredWindowToBootstrapIfNeeded()
-                appState.openRequestedInitialDocumentIfNeeded()
+            redirectUnconfiguredWindowToBootstrapIfNeeded()
+            appState.openRequestedInitialDocumentIfNeeded()
 
+        }
+        .task(id: destinationBootstrapWindowID) {
+            guard let destinationBootstrapWindowID else { return }
+            do {
+                try await lifecycleRegistry.waitUntilReady(
+                    id: destinationBootstrapWindowID
+                )
+                dismissWindow()
+            } catch is CancellationError {
+                return
+            } catch {
+                self.destinationBootstrapWindowID = nil
+                appState.vaultError = error.localizedDescription
             }
-            .task(id: destinationBootstrapWindowID) {
-                guard let destinationBootstrapWindowID else { return }
-                do {
-                    try await lifecycleRegistry.waitUntilReady(
-                        id: destinationBootstrapWindowID
-                    )
-                    dismissWindow()
-                } catch is CancellationError {
-                    return
-                } catch {
-                    self.destinationBootstrapWindowID = nil
-                    appState.vaultError = error.localizedDescription
-                }
-            }
-            .onAppear { [weak appState, weak windowCoordinator] in
-                guard let appState, let windowCoordinator else { return }
-                let displayWindow = AgentNoteDisplayWindow(state: { [weak appState, weak windowCoordinator] in
+        }
+        .onAppear { [weak appState, weak windowCoordinator] in
+            guard let appState, let windowCoordinator else { return }
+            let displayWindow = AgentNoteDisplayWindow(
+                state: { [weak appState, weak windowCoordinator] in
                     appState?.agentNoteDisplayState(canDisplay: windowCoordinator?.canAcceptAgentDisplay == true)
-                }, display: { [weak appState] target, admitted in
+                },
+                display: { [weak appState] target, admitted in
                     guard let appState else { throw WorkspaceStore.displayUnavailable() }
                     try await appState.displayAgentNote(target, admitted: admitted)
                 })
-                appState.registerNoteDisplayWindow(displayWindow)
-                SystemNotificationService.shared.registerWindow(id: route.windowID) {
-                    [weak appState, weak windowCoordinator] notification in
-                    guard let appState, appState.workspaceAssignment?.id == notification.triptychID else { return false }
-                    windowCoordinator?.makeKeyAndOrderFront()
-                    Task {
-                        if let sidebar = await appState.openSystemNotification(notification),
-                           !appState.shellState.libraryVisible || appState.shellState.sidebarContent != sidebar {
-                            windowCoordinator?.actions.activateSidebar(sidebar)
-                        }
+            appState.registerNoteDisplayWindow(displayWindow)
+            SystemNotificationService.shared.registerWindow(id: route.windowID) {
+                [weak appState, weak windowCoordinator] notification in
+                guard let appState, appState.workspaceAssignment?.id == notification.triptychID else { return false }
+                windowCoordinator?.makeKeyAndOrderFront()
+                Task {
+                    if let sidebar = await appState.openSystemNotification(notification),
+                        !appState.shellState.libraryVisible || appState.shellState.sidebarContent != sidebar
+                    {
+                        windowCoordinator?.actions.activateSidebar(sidebar)
                     }
-                    return true
                 }
-                windowCoordinator.activate(
-                    showAttention: { request in
-                        switch request {
-                        case .queue(let anchor, let workspaceSlot, let noteScope):
-                            appState.attentionPopoverSession.presentQueue(
-                                anchor: anchor,
-                                workspaceSlot: workspaceSlot,
-                                noteScope: noteScope
-                            )
-                        }
+                return true
+            }
+            windowCoordinator.activate(
+                showAttention: { request in
+                    switch request {
+                    case .queue(let anchor, let workspaceSlot, let noteScope):
+                        appState.attentionPopoverSession.presentQueue(
+                            anchor: anchor,
+                            workspaceSlot: workspaceSlot,
+                            noteScope: noteScope
+                        )
                     }
-                )
-                windowCoordinator.update(reduceMotion: reduceMotion)
-            }
-            .onChange(of: reduceMotion) { _, reduceMotion in
-                windowCoordinator.update(reduceMotion: reduceMotion)
-            }
-            .onDisappear {
-                appState.unregisterNoteDisplayWindow()
-                SystemNotificationService.shared.unregisterWindow(id: route.windowID)
-                windowCoordinator.detach()
-            }
-            .scholiumFileSelectionScene(presenter: fileSelectionPresenter)
+                }
+            )
+            windowCoordinator.update(reduceMotion: reduceMotion)
+        }
+        .onChange(of: reduceMotion) { _, reduceMotion in
+            windowCoordinator.update(reduceMotion: reduceMotion)
+        }
+        .onDisappear {
+            appState.unregisterNoteDisplayWindow()
+            SystemNotificationService.shared.unregisterWindow(id: route.windowID)
+            windowCoordinator.detach()
+        }
+        .scholiumFileSelectionScene(presenter: fileSelectionPresenter)
     }
 
     private var workspaceWindowTitle: String {
@@ -796,21 +807,23 @@ private struct ScholiumWindowObservedRoot: View {
         }
 
         do {
-            guard let urls = try await fileSelectionPresenter.selectURLs(
-                ScholiumFileSelectionRequest(
-                    prompt: String(
-                        localized: "Import",
-                        table: "Localizable",
-                        bundle: .module
-                    ),
-                    kind: .files(
-                        allowedContentTypes: [
-                            UTType(filenameExtension: "md") ?? .plainText
-                        ],
-                        allowsMultipleSelection: true
+            guard
+                let urls = try await fileSelectionPresenter.selectURLs(
+                    ScholiumFileSelectionRequest(
+                        prompt: String(
+                            localized: "Import",
+                            table: "Localizable",
+                            bundle: .module
+                        ),
+                        kind: .files(
+                            allowedContentTypes: [
+                                UTType(filenameExtension: "md") ?? .plainText
+                            ],
+                            allowsMultipleSelection: true
+                        )
                     )
                 )
-            ) else { return }
+            else { return }
             appState.libraryMutationController.requestMarkdownImport(urls)
         } catch is CancellationError {
             return
@@ -821,9 +834,9 @@ private struct ScholiumWindowObservedRoot: View {
 
     private func redirectUnconfiguredWindowToBootstrapIfNeeded() {
         guard shellState.hasCompletedInitialRestore,
-              appState.vaultConfig == nil,
-              windowWorkspaceController.state.accessRecovery == nil,
-              destinationBootstrapWindowID == nil
+            appState.vaultConfig == nil,
+            windowWorkspaceController.state.accessRecovery == nil,
+            destinationBootstrapWindowID == nil
         else { return }
         let destination = BootstrapWindowRoute(
             purpose: appState.requestedTriptychIDForRecovery == nil
@@ -901,8 +914,10 @@ private struct ScholiumSettingsRoot: View {
     var body: some View {
         ScholiumSettingsView()
             .environmentObject(settingsModel)
-            .environment(\.agentChatSettingsController,
-                settingsModel.snapshot.activeTriptychID.map { workspaceStore.chatRegistry.controller(for: $0) })
+            .environment(
+                \.agentChatSettingsController,
+                settingsModel.snapshot.activeTriptychID.map { workspaceStore.chatRegistry.controller(for: $0) }
+            )
             .tint(nil)
             .buttonStyle(.automatic)
             .preferredColorScheme(
@@ -1035,34 +1050,37 @@ private struct ScholiumAfterNewItemCommandContent: View {
         Button("New Note") {
             appState?.libraryMutationController.requestUntitledNoteCreation(in: nil)
         }
-            .scholiumActivationPointer()
-            .keyboardShortcut("n", modifiers: [.command, .shift])
-            .disabled(
-                appState?.workspaceAssignment == nil
-                    || appState?.noteSourceScope != .library
-                    || appState?.libraryMutationController.isCreatingNote == true
-            )
+        .scholiumActivationPointer()
+        .keyboardShortcut("n", modifiers: [.command, .shift])
+        .disabled(
+            appState?.workspaceAssignment == nil
+                || appState?.noteSourceScope != .library
+                || appState?.libraryMutationController.isCreatingNote == true
+        )
         Button("Import Markdown…") { appState?.showMarkdownImporter = true }
             .scholiumActivationPointer()
             .disabled(appState?.workspaceAssignment == nil)
         Divider()
         Button("Duplicate Note…") {
             guard let note = appState?.currentNote,
-                  let target = NoteMutationTarget(note) else { return }
+                let target = NoteMutationTarget(note)
+            else { return }
             appState?.noteFileRequest = .duplicate(target)
         }
         .scholiumActivationPointer()
         .disabled(appState?.currentDocumentCapabilities.allows(.duplicate) != true)
         Button("Rename Note…") {
             guard let note = appState?.currentNote,
-                  let target = NoteMutationTarget(note) else { return }
+                let target = NoteMutationTarget(note)
+            else { return }
             appState?.noteFileRequest = .rename(target)
         }
         .scholiumActivationPointer()
         .disabled(appState?.currentDocumentCapabilities.allows(.move) != true)
         Button("Move Note…") {
             guard let note = appState?.currentNote,
-                  let target = NoteMutationTarget(note) else { return }
+                let target = NoteMutationTarget(note)
+            else { return }
             appState?.noteFileRequest = .move(target)
         }
         .scholiumActivationPointer()
@@ -1097,7 +1115,8 @@ private struct ScholiumAfterNewItemCommandContent: View {
             $0.triptych.name.caseInsensitiveCompare(assignment.triptych.name) == .orderedSame
         }
         guard duplicates.count > 1,
-              let works = assignment.vault(for: .output) else {
+            let works = assignment.vault(for: .output)
+        else {
             return assignment.triptych.name
         }
         let parent = URL(fileURLWithPath: works.canonicalPath, isDirectory: true)
@@ -1153,7 +1172,8 @@ private struct ScholiumPasteboardCommandContent: View {
         var payload = ["plainText": plainText]
         if let html, !html.isEmpty { payload["html"] = html }
         guard JSONSerialization.isValidJSONObject(payload),
-              let data = try? JSONSerialization.data(withJSONObject: payload) else {
+            let data = try? JSONSerialization.data(withJSONObject: payload)
+        else {
             return nil
         }
         return String(data: data, encoding: .utf8)
@@ -1408,7 +1428,8 @@ private struct ScholiumSidebarCommandContent: View {
         Button("Add Selection to Chat") {
             Task {
                 if await appState?.addCurrentSelectionToChat() == true,
-                   appState?.shellState.sidebarContent != .chat || appState?.shellState.libraryVisible != true {
+                    appState?.shellState.sidebarContent != .chat || appState?.shellState.libraryVisible != true
+                {
                     workspaceWindowActions?.activateSidebar(.chat)
                 }
             }
@@ -1433,7 +1454,7 @@ private struct ScholiumSidebarCommandContent: View {
         Menu("Document Mode") {
             if appState?.presentedDocumentMode == .read {
                 Button("Review") { appState?.requestDocumentMode(.read) }
-                .scholiumActivationPointer()
+                    .scholiumActivationPointer()
                 Button("Edit") { appState?.requestDocumentMode(.livePreview) }
                     .scholiumActivationPointer()
                     .scholiumKeyboardShortcut(shortcut(for: .toggleReviewEdit))
@@ -1458,21 +1479,21 @@ private struct ScholiumSidebarCommandContent: View {
             Button("Increase Text Size") {
                 appState?.adjustDocumentTextScale(by: ScholiumMetrics.Document.textScaleStep)
             }
-                .scholiumActivationPointer()
-                .keyboardShortcut("=", modifiers: [.command])
-                .disabled(
-                    appState?.currentNote == nil
-                        || appState?.documentTextScale == ScholiumMetrics.Document.maximumTextScale
-                )
+            .scholiumActivationPointer()
+            .keyboardShortcut("=", modifiers: [.command])
+            .disabled(
+                appState?.currentNote == nil
+                    || appState?.documentTextScale == ScholiumMetrics.Document.maximumTextScale
+            )
             Button("Decrease Text Size") {
                 appState?.adjustDocumentTextScale(by: -ScholiumMetrics.Document.textScaleStep)
             }
-                .scholiumActivationPointer()
-                .keyboardShortcut("-", modifiers: [.command])
-                .disabled(
-                    appState?.currentNote == nil
-                        || appState?.documentTextScale == ScholiumMetrics.Document.minimumTextScale
-                )
+            .scholiumActivationPointer()
+            .keyboardShortcut("-", modifiers: [.command])
+            .disabled(
+                appState?.currentNote == nil
+                    || appState?.documentTextScale == ScholiumMetrics.Document.minimumTextScale
+            )
             Button("Actual Size (100%)") { appState?.resetDocumentTextScale() }
                 .scholiumActivationPointer()
                 .keyboardShortcut("0", modifiers: [.command])
@@ -1487,21 +1508,21 @@ private struct ScholiumSidebarCommandContent: View {
             Button("200%") {
                 appState?.setDocumentTextScale(ScholiumMetrics.Document.maximumTextScale)
             }
-                .scholiumActivationPointer()
-                .disabled(
-                    appState?.currentNote == nil
-                        || appState?.documentTextScale == ScholiumMetrics.Document.maximumTextScale
-                )
+            .scholiumActivationPointer()
+            .disabled(
+                appState?.currentNote == nil
+                    || appState?.documentTextScale == ScholiumMetrics.Document.maximumTextScale
+            )
         }
         .scholiumActivationPointer()
         .disabled(appState?.currentNote == nil)
         Menu("Appearance") {
             Button("Use System Appearance") { appState?.colorScheme = .system }
-            .scholiumActivationPointer()
+                .scholiumActivationPointer()
             Button("Light") { appState?.colorScheme = .light }
-            .scholiumActivationPointer()
+                .scholiumActivationPointer()
             Button("Dark") { appState?.colorScheme = .dark }
-            .scholiumActivationPointer()
+                .scholiumActivationPointer()
         }
         .scholiumActivationPointer()
     }
@@ -1537,54 +1558,55 @@ private struct ScholiumAttentionCommandContent: View {
 }
 
 #if DEBUG
-private struct ScholiumQACommandContent: View {
-    @FocusedObject private var appState: WindowModel?
-    @FocusedValue(\.scholiumEditorActions) private var editorActions
+    private struct ScholiumQACommandContent: View {
+        @FocusedObject private var appState: WindowModel?
+        @FocusedValue(\.scholiumEditorActions) private var editorActions
 
-    var body: some View {
-        if qaEditorFaultsAreEnabled {
-            Button("Simulate Editor Process Termination") {
-                guard let documentID = editorActions?.documentID else { return }
-                DistributedNotificationCenter.default().postNotificationName(
-                    Notification.Name("com.scholium.qa.simulate-editor-process-termination"),
-                    object: nil,
-                    userInfo: ["documentID": documentID],
-                    deliverImmediately: true
-                )
+        var body: some View {
+            if qaEditorFaultsAreEnabled {
+                Button("Simulate Editor Process Termination") {
+                    guard let documentID = editorActions?.documentID else { return }
+                    DistributedNotificationCenter.default().postNotificationName(
+                        Notification.Name("com.scholium.qa.simulate-editor-process-termination"),
+                        object: nil,
+                        userInfo: ["documentID": documentID],
+                        deliverImmediately: true
+                    )
+                }
+                .scholiumActivationPointer()
+                .keyboardShortcut("w", modifiers: [.command, .option, .control])
+                .disabled(editorActions == nil)
             }
-            .scholiumActivationPointer()
-            .keyboardShortcut("w", modifiers: [.command, .option, .control])
-            .disabled(editorActions == nil)
-        }
-        if qaEditorFaultsAreEnabled && qaOperationProofsAreEnabled {
-            Divider()
-        }
-        if qaOperationProofsAreEnabled {
-            Button("Present Operation Issue Proof") {
-                appState?.reportOperationIssue(
-                    "QA operation warning",
-                    kind: .warning,
-                    detail: "The file is preserved. This synthetic warning checks that a long explanation remains readable beside its operation and offers only the valid refresh action.",
-                    offersRefresh: true
-                )
+            if qaEditorFaultsAreEnabled && qaOperationProofsAreEnabled {
+                Divider()
             }
-            .scholiumActivationPointer()
-            .disabled(appState == nil)
+            if qaOperationProofsAreEnabled {
+                Button("Present Operation Issue Proof") {
+                    appState?.reportOperationIssue(
+                        "QA operation warning",
+                        kind: .warning,
+                        detail:
+                            "The file is preserved. This synthetic warning checks that a long explanation remains readable beside its operation and offers only the valid refresh action.",
+                        offersRefresh: true
+                    )
+                }
+                .scholiumActivationPointer()
+                .disabled(appState == nil)
+            }
+        }
+
+        private var qaEditorFaultsAreEnabled: Bool {
+            Bundle.main.bundleIdentifier == "com.scholium.qa"
+                && ProcessInfo.processInfo.arguments.contains("--scholium-editor-qa-faults")
+        }
+
+        private var qaOperationProofsAreEnabled: Bool {
+            Bundle.main.bundleIdentifier == "com.scholium.qa"
+                && ProcessInfo.processInfo.arguments.contains(
+                    "--scholium-operation-proofs"
+                )
         }
     }
-
-    private var qaEditorFaultsAreEnabled: Bool {
-        Bundle.main.bundleIdentifier == "com.scholium.qa"
-            && ProcessInfo.processInfo.arguments.contains("--scholium-editor-qa-faults")
-    }
-
-    private var qaOperationProofsAreEnabled: Bool {
-        Bundle.main.bundleIdentifier == "com.scholium.qa"
-            && ProcessInfo.processInfo.arguments.contains(
-                "--scholium-operation-proofs"
-            )
-    }
-}
 #endif
 
 private struct ScholiumCommands: Commands {
@@ -1607,7 +1629,7 @@ private struct ScholiumCommands: Commands {
         let sidebarCommand = ScholiumSidebarCommandContent()
         let attentionCommand = ScholiumAttentionCommandContent()
         #if DEBUG
-        let qaCommand = ScholiumQACommandContent()
+            let qaCommand = ScholiumQACommandContent()
         #endif
         CommandGroup(replacing: .newItem) {
             newWindowCommand
@@ -1631,26 +1653,26 @@ private struct ScholiumCommands: Commands {
             attentionCommand
         }
         #if DEBUG
-        if qaEditorFaultsAreEnabled || qaOperationProofsAreEnabled {
-            CommandMenu("QA") {
-                qaCommand
+            if qaEditorFaultsAreEnabled || qaOperationProofsAreEnabled {
+                CommandMenu("QA") {
+                    qaCommand
+                }
             }
-        }
         #endif
     }
 
     #if DEBUG
-    private var qaEditorFaultsAreEnabled: Bool {
-        Bundle.main.bundleIdentifier == "com.scholium.qa"
-            && ProcessInfo.processInfo.arguments.contains("--scholium-editor-qa-faults")
-    }
+        private var qaEditorFaultsAreEnabled: Bool {
+            Bundle.main.bundleIdentifier == "com.scholium.qa"
+                && ProcessInfo.processInfo.arguments.contains("--scholium-editor-qa-faults")
+        }
 
-    private var qaOperationProofsAreEnabled: Bool {
-        Bundle.main.bundleIdentifier == "com.scholium.qa"
-            && ProcessInfo.processInfo.arguments.contains(
-                "--scholium-operation-proofs"
-            )
-    }
+        private var qaOperationProofsAreEnabled: Bool {
+            Bundle.main.bundleIdentifier == "com.scholium.qa"
+                && ProcessInfo.processInfo.arguments.contains(
+                    "--scholium-operation-proofs"
+                )
+        }
     #endif
 
 }
@@ -1716,9 +1738,13 @@ final class WindowModel: ObservableObject {
         var errorDescription: String? {
             switch self {
             case .noteUnavailable(let path):
-                String(localized: "The visited note '\(path)' is no longer available. Scholium kept the current document open.", table: "Localizable", bundle: .module)
+                String(
+                    localized: "The visited note '\(path)' is no longer available. Scholium kept the current document open.", table: "Localizable",
+                    bundle: .module)
             case .vaultUnavailable(let name):
-                String(localized: "The \(name) vault is not available in this Triptych. Scholium kept the current document open.", table: "Localizable", bundle: .module)
+                String(
+                    localized: "The \(name) vault is not available in this Triptych. Scholium kept the current document open.", table: "Localizable",
+                    bundle: .module)
             }
         }
     }
@@ -1809,9 +1835,10 @@ final class WindowModel: ObservableObject {
                 if let status {
                     self.refreshStatusText = status
                 } else if let refreshStatusText = self.refreshStatusText,
-                          ["Search unavailable", "Search failed"].contains(
-                              refreshStatusText
-                          ) {
+                    ["Search unavailable", "Search failed"].contains(
+                        refreshStatusText
+                    )
+                {
                     self.refreshStatusText = nil
                 }
             },
@@ -1828,8 +1855,9 @@ final class WindowModel: ObservableObject {
         dependencies: WindowLibraryMutationDependencies(
             context: { [weak self] in
                 guard let self,
-                      let assignment = self.workspaceAssignment,
-                      let vault = self.currentRegisteredVault else { return nil }
+                    let assignment = self.workspaceAssignment,
+                    let vault = self.currentRegisteredVault
+                else { return nil }
                 return WindowLibraryMutationContext(
                     assignmentID: assignment.id,
                     vault: vault,
@@ -1952,7 +1980,8 @@ final class WindowModel: ObservableObject {
         projectionController: workspaceProjectionController,
         dismissalDays: triptychSettings.attentionDismissalDays,
         dependencies: .init(
-            dismissalDaysChanges: $triptychSettings
+            dismissalDaysChanges:
+                $triptychSettings
                 .map(\.attentionDismissalDays)
                 .eraseToAnyPublisher(),
             settlementRequirementChanges: researchController.$researchSnapshot
@@ -2235,8 +2264,9 @@ final class WindowModel: ObservableObject {
         },
         presentationSnapshot: { [weak self] in
             guard let self,
-                  self.didRestoreWindowSession,
-                  !self.isRestoringWindowSession else { return nil }
+                self.didRestoreWindowSession,
+                !self.isRestoringWindowSession
+            else { return nil }
             return self.currentWindowSessionSnapshot()
         },
         recordPersistenceFailure: { [weak self] message in
@@ -2299,7 +2329,8 @@ final class WindowModel: ObservableObject {
         self.requestedInitialDocument = requestedInitialDocument
         if (requestedInitialDocument != nil
             || ProcessInfo.processInfo.environment["SCHOLIUM_UI_TEST_OPEN_NOTE"] != nil)
-            && !PerformanceProbe.shared.measuresEditorRetainedMemory {
+            && !PerformanceProbe.shared.measuresEditorRetainedMemory
+        {
             ScholiumWebKitProcessPrewarmer.shared.start()
         }
         cssSnippetStore = workspaceStore.cssSnippetStore
@@ -2326,9 +2357,10 @@ final class WindowModel: ObservableObject {
             )
         )
         if PerformanceProbe.shared.isEnabled,
-           ProcessInfo.processInfo.arguments.contains(
-               "--scholium-performance-editor-mode-notifications"
-           ) {
+            ProcessInfo.processInfo.arguments.contains(
+                "--scholium-performance-editor-mode-notifications"
+            )
+        {
             let requests = [
                 "com.scholium.qa.performance-editor-mode.live-preview",
                 "com.scholium.qa.performance-editor-mode.source",
@@ -2460,7 +2492,8 @@ final class WindowModel: ObservableObject {
             return vaultID
         }
         guard noteSourceScope == .library,
-              currentNote != nil else { return nil }
+            currentNote != nil
+        else { return nil }
         // Identity-recovery notes deliberately have no stable document
         // descriptor yet, but they remain vault-qualified by the Library
         // projection that selected them. Preserve that vault ownership so the
@@ -2498,9 +2531,10 @@ final class WindowModel: ObservableObject {
 
     var currentLibraryFolders: [String] {
         guard let vaultID = currentRegisteredVault?.id,
-              let snapshot = workspaceProjectionController.vaultSnapshot(
-                  id: vaultID
-              ) else { return [] }
+            let snapshot = workspaceProjectionController.vaultSnapshot(
+                id: vaultID
+            )
+        else { return [] }
         return snapshot.folders
             .map(\.rawValue)
             .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
@@ -2508,7 +2542,8 @@ final class WindowModel: ObservableObject {
 
     var currentLibraryPathComparisonPolicy: VaultPathComparisonPolicy? {
         guard let vaultID = currentRegisteredVault?.id else { return nil }
-        return workspaceProjectionController
+        return
+            workspaceProjectionController
             .vaultSnapshot(id: vaultID)?
             .pathComparisonPolicy
     }
@@ -2518,15 +2553,17 @@ final class WindowModel: ObservableObject {
             guard let descriptor = currentDocumentDescriptor else { return [:] }
             return [descriptor.reference.relativePath: descriptor.sessionKey.noteID]
         }
-        return Dictionary(uniqueKeysWithValues: snapshot.documents.compactMap { note in
-            note.stableIdentity.resolvedID.map { (note.id.relativePath, $0) }
-        })
+        return Dictionary(
+            uniqueKeysWithValues: snapshot.documents.compactMap { note in
+                note.stableIdentity.resolvedID.map { (note.id.relativePath, $0) }
+            })
     }
 
     var currentDocumentRevisions: [String: DocumentFingerprint] {
-        Dictionary(uniqueKeysWithValues: currentDocumentNotes.map {
-            ($0.relativePath, $0.document.fingerprint)
-        })
+        Dictionary(
+            uniqueKeysWithValues: currentDocumentNotes.map {
+                ($0.relativePath, $0.document.fingerprint)
+            })
     }
 
     var currentNote: WindowDocumentLocation? {
@@ -2534,11 +2571,12 @@ final class WindowModel: ObservableObject {
             return .workspace(active)
         }
         if let descriptor = currentDocumentDescriptor,
-           let snapshot = workspaceProjectionController.cachedNote(
-               vaultID: descriptor.reference.vaultID,
-               stableNoteID: descriptor.sessionKey.noteID,
-               relativePath: descriptor.reference.relativePath
-           ) {
+            let snapshot = workspaceProjectionController.cachedNote(
+                vaultID: descriptor.reference.vaultID,
+                stableNoteID: descriptor.sessionKey.noteID,
+                relativePath: descriptor.reference.relativePath
+            )
+        {
             return .workspace(snapshot)
         }
         guard let selectedDocumentPath else { return nil }
@@ -2616,7 +2654,8 @@ final class WindowModel: ObservableObject {
     }
 
     func requestIdentityResolution(for path: String) {
-        let ambiguity = currentNote?.relativePath == path
+        let ambiguity =
+            currentNote?.relativePath == path
             ? currentDocumentIdentityAmbiguity
             : identityAmbiguity(for: path)
         guard let ambiguity else { return }
@@ -2668,9 +2707,10 @@ final class WindowModel: ObservableObject {
         note: WindowDocumentLocation
     )? {
         guard let descriptor = currentDocumentDescriptor,
-              descriptor.reference.relativePath == path,
-              let note = currentNote,
-              note.relativePath == path else { return nil }
+            descriptor.reference.relativePath == path,
+            let note = currentNote,
+            note.relativePath == path
+        else { return nil }
         return (
             descriptor.sessionKey.noteID,
             descriptor.reference.vaultID,
@@ -2688,13 +2728,15 @@ final class WindowModel: ObservableObject {
         for target: NoteMutationTarget
     ) throws -> DocumentFingerprint {
         guard let descriptor = currentDocumentDescriptor,
-              descriptor.reference.vaultID == target.documentID.vaultID,
-              descriptor.reference.relativePath == target.relativePath,
-              descriptor.sessionKey.noteID == target.stableNoteID else {
+            descriptor.reference.vaultID == target.documentID.vaultID,
+            descriptor.reference.relativePath == target.relativePath,
+            descriptor.sessionKey.noteID == target.stableNoteID
+        else {
             return target.revision
         }
         guard let currentNote,
-              currentNote.workspaceSnapshot?.stableIdentity.resolvedID == target.stableNoteID else {
+            currentNote.workspaceSnapshot?.stableIdentity.resolvedID == target.stableNoteID
+        else {
             throw NoteIdentityRecoveryError.identityUnresolved(target.relativePath)
         }
         return currentNote.document.fingerprint
@@ -2749,9 +2791,10 @@ final class WindowModel: ObservableObject {
         _ target: NoteMutationTarget
     ) async throws {
         guard let descriptor = currentDocumentDescriptor,
-              descriptor.reference.vaultID == target.documentID.vaultID,
-              descriptor.reference.relativePath == target.relativePath,
-              descriptor.sessionKey.noteID == target.stableNoteID else { return }
+            descriptor.reference.vaultID == target.documentID.vaultID,
+            descriptor.reference.relativePath == target.relativePath,
+            descriptor.sessionKey.noteID == target.stableNoteID
+        else { return }
         try await flushRegisteredEditorIfNeeded()
     }
 
@@ -2815,8 +2858,9 @@ final class WindowModel: ObservableObject {
 
     private func revealRetainedDocumentAfterTransitionFailure() {
         guard let document = documentController.selectedDocument,
-              let vaultID = currentRegisteredVault?.id,
-              discoveryController.library.sourceScope == .library else { return }
+            let vaultID = currentRegisteredVault?.id,
+            discoveryController.library.sourceScope == .library
+        else { return }
         discoveryController.prepareLibraryNoteReveal(
             relativePath: document.relativePath,
             folderAncestors: libraryFolderAncestors(forDocumentPath: document.relativePath),
@@ -2829,9 +2873,10 @@ final class WindowModel: ObservableObject {
         preservingCurrentEditorState: Bool = true,
         retainingCurrentDocument target: DocumentSessionKey? = nil,
         validateBeforePreparation: @escaping @MainActor () throws -> Void = {},
-        _ operation: @escaping @MainActor (
-            DocumentTransitionCoordinator.Currency
-        ) async throws -> Void,
+        _ operation:
+            @escaping @MainActor (
+                DocumentTransitionCoordinator.Currency
+            ) async throws -> Void,
         didFail customFailure: (@MainActor (Error) -> Void)? = nil,
         didSucceed: (@MainActor () -> Void)? = nil,
         didFinish: (@MainActor () -> Void)? = nil
@@ -2885,9 +2930,9 @@ final class WindowModel: ObservableObject {
     }
 
     #if DEBUG
-    func waitForPendingDocumentTransitionsForTesting() async {
-        await documentTransitionCoordinator.waitForIdle()
-    }
+        func waitForPendingDocumentTransitionsForTesting() async {
+            await documentTransitionCoordinator.waitForIdle()
+        }
     #endif
 
     /// The only cross-feature routing boundary. Feature controllers emit a
@@ -2993,9 +3038,11 @@ final class WindowModel: ObservableObject {
             requestOpenNote(location.relativePath, disposition: disposition)
             return
         }
-        guard let vault = workspaceAssignment?.vaults.values.first(where: {
-            $0.id == snapshot.id.vaultID
-        }) else {
+        guard
+            let vault = workspaceAssignment?.vaults.values.first(where: {
+                $0.id == snapshot.id.vaultID
+            })
+        else {
             reportOperationIssue(String(localized: "The selected vault is no longer available.", table: "Localizable", bundle: .module), kind: .warning)
             return
         }
@@ -3043,9 +3090,10 @@ final class WindowModel: ObservableObject {
     func requestTriptychWorkspace(_ slot: WorkspaceVaultSlot) {
         let destination = discoveryController.libraryState(for: slot)
         guard requestedWorkspaceSelection != slot,
-              shellState.selectedWorkspace != slot
+            shellState.selectedWorkspace != slot
                 || requestedWorkspaceSelection != nil
-                || destination.sourceError != nil else { return }
+                || destination.sourceError != nil
+        else { return }
         requestedWorkspaceSelection = slot
         enqueueDocumentTransition { [weak self] in
             guard let self else { return }
@@ -3095,12 +3143,13 @@ final class WindowModel: ObservableObject {
     /// readiness only after CodeMirror acknowledges it.
     private func requestPerformanceEditorMode(_ mode: NotePresentationMode) {
         guard PerformanceProbe.shared.isEnabled,
-              ProcessInfo.processInfo.arguments.contains(
-                  "--scholium-performance-editor-mode-notifications"
-              ),
-              mode != .read,
-              canEditCurrentNote,
-              let descriptor = currentDocumentDescriptor else { return }
+            ProcessInfo.processInfo.arguments.contains(
+                "--scholium-performance-editor-mode-notifications"
+            ),
+            mode != .read,
+            canEditCurrentNote,
+            let descriptor = currentDocumentDescriptor
+        else { return }
 
         // The CJK correctness journey is not a latency measurement. Route it
         // through the same presentation-intent owner as the researcher menu so
@@ -3152,7 +3201,8 @@ final class WindowModel: ObservableObject {
                 .editorSession.measureVisibleProjection()
         case "com.scholium.qa.performance-editor-cjk-correctness":
             guard PerformanceProbe.shared.exercisesLargeCJKCorrectness,
-                  let descriptor = currentDocumentDescriptor else { return }
+                let descriptor = currentDocumentDescriptor
+            else { return }
             let session = documentController.session(for: descriptor)
             PerformanceProbe.shared.recordLargeCJKCorrectness(
                 documentID: descriptor.reference.relativePath,
@@ -3165,7 +3215,8 @@ final class WindowModel: ObservableObject {
 
     private func requestPerformanceEditActivation() {
         guard canEditCurrentNote,
-              let descriptor = currentDocumentDescriptor else { return }
+            let descriptor = currentDocumentDescriptor
+        else { return }
         let session = documentController.session(for: descriptor)
         guard !session.isEditing else { return }
         PerformanceProbe.shared.beginEditActivation(
@@ -3181,7 +3232,8 @@ final class WindowModel: ObservableObject {
         Task { @MainActor in
             for _ in 0..<200 {
                 guard currentDocumentDescriptor?.sessionKey == descriptor.sessionKey,
-                      session.isEditing else { return }
+                    session.isEditing
+                else { return }
                 if let preview = session.previewCatalog?.links.first {
                     await session.editorSession.showPreview(
                         for: preview,
@@ -3221,13 +3273,14 @@ final class WindowModel: ObservableObject {
         do {
             let snapshot = try await discoveryController.refreshWorkspace()
             guard currentRegisteredVault?.id == vaultID,
-                  let capabilities = windowWorkspaceController.activeCapabilities,
-                  let commit = workspaceProjectionController.replaceSnapshot(
-                      snapshot,
-                      runtimeIdentity: capabilities.runtimeIdentity,
-                      status: .current(WorkspaceDerivedRefreshEvidence(snapshot: snapshot)),
-                      context: workspaceProjectionContext
-                  ) else { return nil }
+                let capabilities = windowWorkspaceController.activeCapabilities,
+                let commit = workspaceProjectionController.replaceSnapshot(
+                    snapshot,
+                    runtimeIdentity: capabilities.runtimeIdentity,
+                    status: .current(WorkspaceDerivedRefreshEvidence(snapshot: snapshot)),
+                    context: workspaceProjectionContext
+                )
+            else { return nil }
             applyWorkspaceProjectionCommit(commit)
             refreshStatusText = nil
             workspaceProjectionController.reportCatalogError(nil)
@@ -3278,31 +3331,38 @@ final class WindowModel: ObservableObject {
 
     private var currentAttentionPaths: Set<String>? {
         guard let vaultID = currentRegisteredVault?.id,
-              let workspaceCatalog else { return nil }
-        return Set(workspaceCatalog.attention.compactMap { item in
-            item.note.vaultID == vaultID ? item.note.relativePath : nil
-        })
+            let workspaceCatalog
+        else { return nil }
+        return Set(
+            workspaceCatalog.attention.compactMap { item in
+                item.note.vaultID == vaultID ? item.note.relativePath : nil
+            })
     }
 
     private var currentMalformedMetadataPaths: Set<String>? {
         guard let vaultID = currentRegisteredVault?.id,
-              let workspaceCatalog else { return nil }
-        return Set(workspaceCatalog.notes.compactMap { catalogNote in
-            guard catalogNote.reference.vaultID == vaultID,
-                  !catalogNote.validationWarnings.isEmpty else { return nil }
-            return catalogNote.reference.relativePath
-        })
+            let workspaceCatalog
+        else { return nil }
+        return Set(
+            workspaceCatalog.notes.compactMap { catalogNote in
+                guard catalogNote.reference.vaultID == vaultID,
+                    !catalogNote.validationWarnings.isEmpty
+                else { return nil }
+                return catalogNote.reference.relativePath
+            })
     }
 
     private var currentLinkAnnotationPaths: Set<String>? {
         guard let vaultID = currentRegisteredVault?.id,
-              let graph = linkGraph else { return nil }
-        return Set(notes.compactMap { note in
-            let noteID = VaultQualifiedNoteID(vaultID: vaultID, relativePath: note.relativePath)
-            let edges = (graph.outgoing[noteID] ?? []) + (graph.incoming[noteID] ?? [])
-            let hasLinkAnnotation = edges.contains { $0.occurrence.annotation != nil }
-            return hasLinkAnnotation ? note.relativePath : nil
-        })
+            let graph = linkGraph
+        else { return nil }
+        return Set(
+            notes.compactMap { note in
+                let noteID = VaultQualifiedNoteID(vaultID: vaultID, relativePath: note.relativePath)
+                let edges = (graph.outgoing[noteID] ?? []) + (graph.incoming[noteID] ?? [])
+                let hasLinkAnnotation = edges.contains { $0.occurrence.annotation != nil }
+                return hasLinkAnnotation ? note.relativePath : nil
+            })
     }
 
     func notesAreOrdered(_ lhs: WindowDocumentLocation, _ rhs: WindowDocumentLocation) -> Bool {
@@ -3353,8 +3413,9 @@ final class WindowModel: ObservableObject {
 
     func openRequestedInitialDocumentIfNeeded() {
         guard !didOpenRequestedInitialDocument,
-              workspaceAssignment != nil,
-              let requestedInitialDocument else { return }
+            workspaceAssignment != nil,
+            let requestedInitialDocument
+        else { return }
         didOpenRequestedInitialDocument = true
         requestOpenNote(requestedInitialDocument, disposition: .replaceCurrent)
     }
@@ -3372,9 +3433,10 @@ final class WindowModel: ObservableObject {
     func selectDocumentTab(withID id: UUID) {
         let workspace = shellState.selectedWorkspace
         guard documentTabController.selectedTabID(in: workspace) != id,
-              let tab = documentTabController.tabs(in: workspace).first(where: {
-                  $0.id == id
-              }) else {
+            let tab = documentTabController.tabs(in: workspace).first(where: {
+                $0.id == id
+            })
+        else {
             return
         }
         enqueueDocumentTransition { [weak self] in
@@ -3391,9 +3453,10 @@ final class WindowModel: ObservableObject {
     func navigateDocumentHistory(_ direction: DocumentNavigationDirection) {
         enqueueDocumentTransition { [weak self] in
             guard let self,
-                  let target = self.documentNavigationHistoryController.target(
-                      for: direction
-                  ) else { return }
+                let target = self.documentNavigationHistoryController.target(
+                    for: direction
+                )
+            else { return }
             try await self.activateDocument(
                 target,
                 tabActivation: .place(.replaceSelected),
@@ -3408,8 +3471,9 @@ final class WindowModel: ObservableObject {
             return
         }
         guard plan.workspace == shellState.selectedWorkspace,
-              let closingDocument = documentTabController.tabs(in: plan.workspace)
-                .first(where: { $0.id == id })?.document else {
+            let closingDocument = documentTabController.tabs(in: plan.workspace)
+                .first(where: { $0.id == id })?.document
+        else {
             return
         }
         enqueueDocumentTransition { [weak self] in
@@ -3486,7 +3550,10 @@ final class WindowModel: ObservableObject {
         do {
             stored = try await windowSessionPersistenceCoordinator.load(id: id)
         } catch {
-            reportOperationIssue(String(localized: "The saved window layout could not be restored. Scholium opened a clean window instead.", table: "Localizable", bundle: .module), kind: .warning)
+            reportOperationIssue(
+                String(
+                    localized: "The saved window layout could not be restored. Scholium opened a clean window instead.", table: "Localizable", bundle: .module),
+                kind: .warning)
             stored = nil
         }
         guard let stored else {
@@ -3535,16 +3602,17 @@ final class WindowModel: ObservableObject {
             return
         }
 
-        let availablePathsByVault = Dictionary(uniqueKeysWithValues:
-            restoredAssignment.vaults.values.map { vault in
-                (
-                    vault.id,
-                    Set(
-                        workspaceProjectionController.vaultSnapshot(id: vault.id)?
-                            .documents.map(\.id.relativePath) ?? []
+        let availablePathsByVault = Dictionary(
+            uniqueKeysWithValues:
+                restoredAssignment.vaults.values.map { vault in
+                    (
+                        vault.id,
+                        Set(
+                            workspaceProjectionController.vaultSnapshot(id: vault.id)?
+                                .documents.map(\.id.relativePath) ?? []
+                        )
                     )
-                )
-            }
+                }
         )
         let restoredPresentation = stored.normalized(
             availablePathsByVault: availablePathsByVault
@@ -3565,24 +3633,26 @@ final class WindowModel: ObservableObject {
                 )
             }
         }
-        let inspectorModes = Dictionary(uniqueKeysWithValues:
-            WorkspaceVaultSlot.allCases.map { workspace in
-                (
-                    workspace,
-                    restoredPresentation.workspaceSession(for: workspace)?
-                        .inspectorMode ?? "about"
-                )
-            }
+        let inspectorModes = Dictionary(
+            uniqueKeysWithValues:
+                WorkspaceVaultSlot.allCases.map { workspace in
+                    (
+                        workspace,
+                        restoredPresentation.workspaceSession(for: workspace)?
+                            .inspectorMode ?? "about"
+                    )
+                }
         )
-        let documentModes = Dictionary(uniqueKeysWithValues:
-            WorkspaceVaultSlot.allCases.map { workspace in
-                (
-                    workspace,
-                    restoredPresentation.workspaceSession(for: workspace)
-                        .flatMap { NotePresentationMode(rawValue: $0.documentMode) }
-                        ?? .read
-                )
-            }
+        let documentModes = Dictionary(
+            uniqueKeysWithValues:
+                WorkspaceVaultSlot.allCases.map { workspace in
+                    (
+                        workspace,
+                        restoredPresentation.workspaceSession(for: workspace)
+                            .flatMap { NotePresentationMode(rawValue: $0.documentMode) }
+                            ?? .read
+                    )
+                }
         )
         shellState.selectWorkspace(selectedWorkspace)
         documentController.selectWorkspace(selectedWorkspace)
@@ -3597,9 +3667,10 @@ final class WindowModel: ObservableObject {
         shellState.restoreLibraryVisibility(
             restoredPresentation.libraryVisible ?? true
         )
-        discoveryController.replaceSearchCriteria(SearchWorkspaceState(
-            scope: restoredPresentation.searchState.scope
-        ))
+        discoveryController.replaceSearchCriteria(
+            SearchWorkspaceState(
+                scope: restoredPresentation.searchState.scope
+            ))
         shellState.setDocumentTextScale(
             restoredPresentation.documentTextScale
                 ?? ScholiumMetrics.Document.defaultTextScale
@@ -3609,9 +3680,11 @@ final class WindowModel: ObservableObject {
             // retain the selected committed document for each window. Restore
             // that identity before falling back to the launch-only QA note so
             // multiple fixture windows do not all converge on the same note.
-            if let selected = restoredPresentation
+            if let selected =
+                restoredPresentation
                 .workspaceSession(for: selectedWorkspace)?.selectedDocument,
-               selected.vaultID == restoredAssignment.vault(for: selectedWorkspace)?.id {
+                selected.vaultID == restoredAssignment.vault(for: selectedWorkspace)?.id
+            {
                 openNote(selected.relativePath)
             } else {
                 openRequestedTestNoteIfNeeded()
@@ -3621,9 +3694,10 @@ final class WindowModel: ObservableObject {
 
     func persistWindowSessionNow() {
         guard didRestoreWindowSession,
-              !isRestoringWindowSession,
-              !windowSessionPersistenceCoordinator.isFinalizing,
-              !windowSessionPersistenceCoordinator.isClosed else { return }
+            !isRestoringWindowSession,
+            !windowSessionPersistenceCoordinator.isFinalizing,
+            !windowSessionPersistenceCoordinator.isClosed
+        else { return }
         let snapshot = currentWindowSessionSnapshot()
         windowSessionPersistenceCoordinator.schedule(
             snapshot: snapshot,
@@ -3772,9 +3846,10 @@ final class WindowModel: ObservableObject {
         )
         PerformanceProbe.shared.markWarmLibraryWorkspaceReady()
         if let current = currentRegisteredVault,
-           let assignedCurrent = assignment.vaults.values.first(where: {
-               $0.id == current.id || $0.canonicalPath == current.canonicalPath
-           }) {
+            let assignedCurrent = assignment.vaults.values.first(where: {
+                $0.id == current.id || $0.canonicalPath == current.canonicalPath
+            })
+        {
             currentRegisteredVault = assignedCurrent
             currentVaultRole = assignedCurrent.role
             return
@@ -3798,9 +3873,10 @@ final class WindowModel: ObservableObject {
             activationIssues.append(settingsIssue)
         }
         if !activationIssues.isEmpty {
-            vaultError = ([
-                "Some workspace state could not be loaded. The affected files remain unchanged; see the details for unavailable operations.",
-            ] + activationIssues).joined(separator: "\n\n")
+            vaultError =
+                ([
+                    "Some workspace state could not be loaded. The affected files remain unchanged; see the details for unavailable operations."
+                ] + activationIssues).joined(separator: "\n\n")
         }
         let recoveryIssues = try await libraryMutationController.recoverInterruptedTransactions()
         await refreshTransactionRecoveryRecords()
@@ -3879,9 +3955,10 @@ final class WindowModel: ObservableObject {
                 return assigned.id == previousVault.id
                     || assigned.canonicalPath == previousVault.canonicalPath
             })
-            let rebound = previousSlot.flatMap { slot in
-                activation.capabilities.assignment.vault(for: slot)
-            }
+            let rebound =
+                previousSlot.flatMap { slot in
+                    activation.capabilities.assignment.vault(for: slot)
+                }
                 ?? activation.capabilities.assignment.vaults.values.first(where: {
                     $0.id == previousVault.id
                         || $0.canonicalPath == previousVault.canonicalPath
@@ -3910,9 +3987,10 @@ final class WindowModel: ObservableObject {
 
     var currentDocumentAboutConfiguration: VaultAboutConfiguration? {
         guard let vault = currentDocumentVault,
-              let slot = WorkspaceVaultSlot.allCases.first(where: {
-                  workspaceAssignment?.vault(for: $0)?.id == vault.id
-              }) else { return nil }
+            let slot = WorkspaceVaultSlot.allCases.first(where: {
+                workspaceAssignment?.vault(for: $0)?.id == vault.id
+            })
+        else { return nil }
         return WorkspaceAboutConfiguration.configuration(
             settings: triptychSettings,
             slot: slot,
@@ -3943,35 +4021,40 @@ final class WindowModel: ObservableObject {
         )
         var warnings: [String] = []
         if !outcome.failures.isEmpty {
-            warnings.append(String(
-                localized: "Some selected files were not imported. The imported files are already committed; do not import them again.",
-                table: "Localizable",
-                bundle: .module
-            ))
+            warnings.append(
+                String(
+                    localized: "Some selected files were not imported. The imported files are already committed; do not import them again.",
+                    table: "Localizable",
+                    bundle: .module
+                ))
             warnings.append(failureDetails)
         }
         if !outcome.derivedRefreshWarnings.isEmpty {
-            warnings.append(String(
-                localized: "Library, Search, or other derived views may be stale. Use Refresh instead of importing the files again.",
-                table: "Localizable",
-                bundle: .module
-            ))
+            warnings.append(
+                String(
+                    localized: "Library, Search, or other derived views may be stale. Use Refresh instead of importing the files again.",
+                    table: "Localizable",
+                    bundle: .module
+                ))
             warnings.append(outcome.derivedRefreshWarnings.joined(separator: " "))
         }
         if !outcome.identityRecoveryWarnings.isEmpty {
-            warnings.append(String(
-                localized: "The file operation completed, but stable note identity recovery is incomplete. Identity-dependent actions remain unavailable until recovery succeeds.",
-                table: "Localizable",
-                bundle: .module
-            ))
+            warnings.append(
+                String(
+                    localized:
+                        "The file operation completed, but stable note identity recovery is incomplete. Identity-dependent actions remain unavailable until recovery succeeds.",
+                    table: "Localizable",
+                    bundle: .module
+                ))
             warnings.append(outcome.identityRecoveryWarnings.joined(separator: " "))
         }
         if let presentationWarning = outcome.presentationWarning {
-            warnings.append(String(
-                localized: "This window could not refresh the imported documents. Use Refresh instead of importing the files again.",
-                table: "Localizable",
-                bundle: .module
-            ))
+            warnings.append(
+                String(
+                    localized: "This window could not refresh the imported documents. Use Refresh instead of importing the files again.",
+                    table: "Localizable",
+                    bundle: .module
+                ))
             warnings.append(presentationWarning)
         }
 
@@ -4035,11 +4118,12 @@ final class WindowModel: ObservableObject {
         _ document: WindowSelectedDocument
     ) throws {
         guard let vaultID = document.vaultID,
-              workspaceProjectionController.cachedNote(
+            workspaceProjectionController.cachedNote(
                 vaultID: vaultID,
                 stableNoteID: document.sessionKey?.noteID,
                 relativePath: document.relativePath
-              ) != nil else {
+            ) != nil
+        else {
             throw WindowNavigationError.noteUnavailable(document.relativePath)
         }
     }
@@ -4078,21 +4162,24 @@ final class WindowModel: ObservableObject {
             )
         )
         if let libraryRequest,
-           !discoveryController.isCurrentLibraryRequest(libraryRequest) {
+            !discoveryController.isCurrentLibraryRequest(libraryRequest)
+        {
             throw CancellationError()
         }
 
         guard let resolvedSlot = slot ?? workspaceSlot(for: registered) else {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
-        let targetSourceScope = libraryRequest?.sourceScope
+        let targetSourceScope =
+            libraryRequest?.sourceScope
             ?? discoveryController.libraryState(for: resolvedSlot).sourceScope
         let targetNotes = vaultSnapshot.documents
             .map(WindowDocumentLocation.workspace)
             .sorted(by: notesAreOrdered)
 
         if let libraryRequest,
-           !discoveryController.isCurrentLibraryRequest(libraryRequest) {
+            !discoveryController.isCurrentLibraryRequest(libraryRequest)
+        {
             throw CancellationError()
         }
         return StagedWorkspaceLibrarySelection(
@@ -4110,7 +4197,8 @@ final class WindowModel: ObservableObject {
         _ staged: StagedWorkspaceLibrarySelection
     ) throws {
         if let request = staged.request,
-           !discoveryController.isCurrentLibraryRequest(request) {
+            !discoveryController.isCurrentLibraryRequest(request)
+        {
             throw CancellationError()
         }
         currentRegisteredVault = staged.registeredVault
@@ -4164,9 +4252,11 @@ final class WindowModel: ObservableObject {
             let capabilities = session.capabilities
             let workspaceSnapshot = session.snapshot
             let workspaceVaultSnapshots = workspaceSnapshot.vaults
-            guard let vaultSnapshot = workspaceVaultSnapshots.first(where: {
-                $0.vault.id == registered.id
-            }) else {
+            guard
+                let vaultSnapshot = workspaceVaultSnapshots.first(where: {
+                    $0.vault.id == registered.id
+                })
+            else {
                 throw WorkspaceRegistryError.incompleteWorkspace
             }
             // Stage the complete target runtime and inventory before replacing
@@ -4225,9 +4315,11 @@ final class WindowModel: ObservableObject {
     }
 
     func restoreWorkspaceIfNeeded() async {
-        guard windowWorkspaceController.beginInitialRestoreIfNeeded(
-            isConfigured: vaultConfig != nil
-        ) else { return }
+        guard
+            windowWorkspaceController.beginInitialRestoreIfNeeded(
+                isConfigured: vaultConfig != nil
+            )
+        else { return }
         if let root = ScholiumRuntimeIsolation.fixtureRootURL() {
             do {
                 let analysesURL = root.appendingPathComponent(
@@ -4251,13 +4343,16 @@ final class WindowModel: ObservableObject {
                 let registered = registeredTriptychs.first { assignment in
                     WorkspaceVaultSlot.allCases.allSatisfy { slot in
                         guard let expected = fixtureURLs[slot],
-                              let actual = assignment.vault(for: slot) else { return false }
-                        return actual.canonicalPath == expected.resolvingSymlinksInPath()
+                            let actual = assignment.vault(for: slot)
+                        else { return false }
+                        return actual.canonicalPath
+                            == expected.resolvingSymlinksInPath()
                             .standardizedFileURL.path
                     }
                 }
                 if let registered,
-                   let openingVault = registered.vault(for: requestedInitialWorkspaceSlot) {
+                    let openingVault = registered.vault(for: requestedInitialWorkspaceSlot)
+                {
                     shellState.selectWorkspace(requestedInitialWorkspaceSlot)
                     await refreshWorkspaceAssignment(preferredTriptychID: registered.id)
                     guard workspaceAssignment?.id == registered.id else {
@@ -4301,17 +4396,18 @@ final class WindowModel: ObservableObject {
 
     private var requestedInitialWorkspaceSlot: WorkspaceVaultSlot {
         let allowsRequestedSlot: Bool = {
-#if DEBUG
-            true
-#else
-            PerformanceProbe.shared.isEnabled
-#endif
+            #if DEBUG
+                true
+            #else
+                PerformanceProbe.shared.isEnabled
+            #endif
         }()
         guard allowsRequestedSlot,
-              let rawValue = ProcessInfo.processInfo.environment[
+            let rawValue = ProcessInfo.processInfo.environment[
                 "SCHOLIUM_UI_TEST_OPEN_SLOT"
-              ],
-              let requested = WorkspaceVaultSlot(rawValue: rawValue) else {
+            ],
+            let requested = WorkspaceVaultSlot(rawValue: rawValue)
+        else {
             return shellState.selectedWorkspace
         }
         return requested
@@ -4323,8 +4419,10 @@ final class WindowModel: ObservableObject {
         // would create a transient, incorrect tab identity before the routed
         // document replaces it.
         guard requestedInitialDocument == nil,
-              let requested = ProcessInfo.processInfo.environment["SCHOLIUM_UI_TEST_OPEN_NOTE"] else { return }
-        let path = requested == "first"
+            let requested = ProcessInfo.processInfo.environment["SCHOLIUM_UI_TEST_OPEN_NOTE"]
+        else { return }
+        let path =
+            requested == "first"
             ? notes.sorted(by: notesAreOrdered).first?.relativePath
             : requested
         if let path { openNote(path) }
@@ -4352,7 +4450,8 @@ final class WindowModel: ObservableObject {
         }
         guard refreshToken == projectionRefreshToken, currentRegisteredVault?.id == startingVaultID else { return }
         if let vaultID = startingVaultID,
-           let vault = try? await documentController.workspaceSnapshot(vaultID: vaultID) {
+            let vault = try? await documentController.workspaceSnapshot(vaultID: vaultID)
+        {
             let snapshots = Dictionary(uniqueKeysWithValues: vault.documents.map { ($0.id.relativePath, $0) })
             workspaceProjectionController.refreshVisibleNoteSnapshots(snapshots)
         }
@@ -4377,8 +4476,10 @@ final class WindowModel: ObservableObject {
 
     func selectLibrarySourceScope(_ scope: LibrarySourceScope) async {
         guard let workspaceSlot = currentWorkspaceSlot else { return }
-        guard scope != noteSourceScope
-                || discoveryController.library.sourceError != nil else { return }
+        guard
+            scope != noteSourceScope
+                || discoveryController.library.sourceError != nil
+        else { return }
         let request = discoveryController.beginLibraryRequest(
             workspaceSlot: workspaceSlot,
             sourceScope: scope,
@@ -4400,7 +4501,8 @@ final class WindowModel: ObservableObject {
                 error.localizedDescription,
                 for: request
             )
-            reportOperationIssue(String(localized: "Could not open \(scope.rawValue): \(error.localizedDescription)", table: "Localizable", bundle: .module), kind: .error)
+            reportOperationIssue(
+                String(localized: "Could not open \(scope.rawValue): \(error.localizedDescription)", table: "Localizable", bundle: .module), kind: .error)
         }
     }
 
@@ -4451,9 +4553,11 @@ final class WindowModel: ObservableObject {
         if let snapshot = workspaceProjectionController.vaultSnapshot(id: vaultID) {
             return snapshot
         }
-        guard let snapshot = try await documentController.workspaceSnapshot(
-            vaultID: vaultID
-        ) else {
+        guard
+            let snapshot = try await documentController.workspaceSnapshot(
+                vaultID: vaultID
+            )
+        else {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
         return snapshot
@@ -4468,11 +4572,13 @@ final class WindowModel: ObservableObject {
         let document = commit.document
         do {
             let sourceAheadSnapshot = commit.sourceAheadSnapshot
-            guard workspaceProjectionController.recordCommittedNote(
-                sourceAheadSnapshot,
-                visibleVaultID: currentRegisteredVault?.id,
-                visibleSourceScope: noteSourceScope
-            ) != nil else {
+            guard
+                workspaceProjectionController.recordCommittedNote(
+                    sourceAheadSnapshot,
+                    visibleVaultID: currentRegisteredVault?.id,
+                    visibleSourceScope: noteSourceScope
+                ) != nil
+            else {
                 throw WorkspaceRegistryError.incompleteWorkspace
             }
             guard isCurrent() else {
@@ -4517,10 +4623,12 @@ final class WindowModel: ObservableObject {
         guard let vault = currentRegisteredVault else { return }
         let folder = outcome.committedValue
         do {
-            guard workspaceProjectionController.recordCommittedFolder(
-                folder,
-                vaultID: vault.id
-            ) != nil else {
+            guard
+                workspaceProjectionController.recordCommittedFolder(
+                    folder,
+                    vaultID: vault.id
+                ) != nil
+            else {
                 try await refreshCachedWorkspaceVaultSnapshot(vaultID: vault.id)
                 try await browseRegisteredVault(vault)
                 expandFolderAncestors(folder.rawValue, vaultID: vault.id)
@@ -4553,11 +4661,12 @@ final class WindowModel: ObservableObject {
         )
         var presentationWarning: String?
         if outcome.identityRecoveryWarning == nil,
-           let projection = workspaceProjectionController.recordCommittedFolderMove(
-               commit,
-               visibleVaultID: currentRegisteredVault?.id,
-               visibleSourceScope: noteSourceScope
-           ) {
+            let projection = workspaceProjectionController.recordCommittedFolderMove(
+                commit,
+                visibleVaultID: currentRegisteredVault?.id,
+                visibleSourceScope: noteSourceScope
+            )
+        {
             for note in projection.notes {
                 documentController.recordCommittedSnapshot(
                     note,
@@ -4585,9 +4694,11 @@ final class WindowModel: ObservableObject {
     /// so newly created empty folders and folder moves cannot be hidden by the
     /// preceding window generation.
     private func refreshCachedWorkspaceVaultSnapshot(vaultID: UUID) async throws {
-        guard let snapshot = try await documentController.workspaceSnapshot(
-            vaultID: vaultID
-        ) else {
+        guard
+            let snapshot = try await documentController.workspaceSnapshot(
+                vaultID: vaultID
+            )
+        else {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
         workspaceProjectionController.replaceVaultSnapshot(snapshot)
@@ -4670,9 +4781,11 @@ final class WindowModel: ObservableObject {
         target: NoteMutationTarget,
         destination: String
     ) async {
-        guard let vault = workspaceAssignment?.vaults.values.first(where: {
-            $0.id == target.documentID.vaultID
-        }) else {
+        guard
+            let vault = workspaceAssignment?.vaults.values.first(where: {
+                $0.id == target.documentID.vaultID
+            })
+        else {
             reportCommittedMutationWarnings(
                 outcome,
                 presentationWarning: WorkspaceRegistryError.incompleteWorkspace.localizedDescription
@@ -4697,9 +4810,11 @@ final class WindowModel: ObservableObject {
         _ outcome: WorkspaceMutationOutcome<TriptychMoveCommit>,
         target: NoteMutationTarget
     ) async {
-        guard let vault = workspaceAssignment?.vaults.values.first(where: {
-            $0.id == target.documentID.vaultID
-        }) else {
+        guard
+            let vault = workspaceAssignment?.vaults.values.first(where: {
+                $0.id == target.documentID.vaultID
+            })
+        else {
             reportCommittedMutationWarnings(
                 outcome,
                 presentationWarning: WorkspaceRegistryError.incompleteWorkspace.localizedDescription
@@ -4717,12 +4832,13 @@ final class WindowModel: ObservableObject {
         )
         var presentationWarning: String?
         if outcome.identityRecoveryWarning == nil,
-           let projection = workspaceProjectionController.recordCommittedNoteMove(
-               commit,
-               stableIdentity: .resolved(target.stableNoteID),
-               visibleVaultID: currentRegisteredVault?.id,
-               visibleSourceScope: noteSourceScope
-           ) {
+            let projection = workspaceProjectionController.recordCommittedNoteMove(
+                commit,
+                stableIdentity: .resolved(target.stableNoteID),
+                visibleVaultID: currentRegisteredVault?.id,
+                visibleSourceScope: noteSourceScope
+            )
+        {
             documentController.recordCommittedSnapshot(
                 projection.note,
                 vaultName: projection.vault.name,
@@ -4766,8 +4882,9 @@ final class WindowModel: ObservableObject {
 
     func requestCurrentNoteSystemTrash() {
         guard let currentNote,
-              let target = NoteMutationTarget(currentNote),
-              currentDocumentCapabilities.allows(.moveToSystemTrash) else {
+            let target = NoteMutationTarget(currentNote),
+            currentDocumentCapabilities.allows(.moveToSystemTrash)
+        else {
             return
         }
         Task { @MainActor [weak self] in
@@ -4833,7 +4950,8 @@ final class WindowModel: ObservableObject {
             transactionRecoveryError = "Scholium could not read the durable recovery records. Their file remains unchanged. \(error.localizedDescription)"
         }
         do {
-            interruptedSaveRecoveries = try await researchController
+            interruptedSaveRecoveries =
+                try await researchController
                 .loadInterruptedSaveRecoveries()
             interruptedSaveRecoveryError = nil
         } catch {
@@ -4865,7 +4983,8 @@ final class WindowModel: ObservableObject {
     func revealInterruptedSaveRecoveryInFinder(
         _ recovery: InterruptedSaveRecovery
     ) async throws {
-        let url = try await researchController
+        let url =
+            try await researchController
             .prepareInterruptedSaveRecoveryLocation(recovery)
         workspaceStore.revealInFinder(url)
     }
@@ -4888,11 +5007,13 @@ final class WindowModel: ObservableObject {
 
         var warnings: [String] = []
         if let derived = outcome.derivedRefreshWarning {
-            warnings.append(String(
-                localized: "The candidate was restored, but Library, Search, or another derived view may be stale. Use Refresh instead of repeating recovery. \(derived)",
-                table: "Localizable",
-                bundle: .module
-            ))
+            warnings.append(
+                String(
+                    localized:
+                        "The candidate was restored, but Library, Search, or another derived view may be stale. Use Refresh instead of repeating recovery. \(derived)",
+                    table: "Localizable",
+                    bundle: .module
+                ))
         }
         if !warnings.isEmpty {
             reportOperationIssue(warnings.joined(separator: " "), kind: .warning)
@@ -4934,19 +5055,21 @@ final class WindowModel: ObservableObject {
             }
         }
         if let descriptor = currentDocumentDescriptor,
-           descriptor.reference.vaultID == vaultID,
-           descriptor.reference.relativePath == sourcePath,
-           descriptor.sessionKey.noteID == noteID {
-            documentController.updateDocumentProjection(WindowDocumentDescriptor(
-                sessionKey: descriptor.sessionKey,
-                reference: VaultNoteReference(
-                    vaultID: descriptor.reference.vaultID,
-                    vaultName: descriptor.reference.vaultName,
-                    vaultRole: descriptor.reference.vaultRole,
-                    relativePath: destinationPath,
-                    stableNoteID: descriptor.reference.stableNoteID
-                )
-            ))
+            descriptor.reference.vaultID == vaultID,
+            descriptor.reference.relativePath == sourcePath,
+            descriptor.sessionKey.noteID == noteID
+        {
+            documentController.updateDocumentProjection(
+                WindowDocumentDescriptor(
+                    sessionKey: descriptor.sessionKey,
+                    reference: VaultNoteReference(
+                        vaultID: descriptor.reference.vaultID,
+                        vaultName: descriptor.reference.vaultName,
+                        vaultRole: descriptor.reference.vaultRole,
+                        relativePath: destinationPath,
+                        stableNoteID: descriptor.reference.stableNoteID
+                    )
+                ))
         }
         if let tab = documentTabController.allTabs.first(where: {
             $0.document.sessionKey == DocumentSessionKey(vaultID: vaultID, noteID: noteID)
@@ -5008,14 +5131,14 @@ final class WindowModel: ObservableObject {
                 stableNoteID: note.stableNoteID.flatMap(UUID.init(uuidString:)),
                 relativePath: note.relativePath
             )
-            let freshness = discovery?.searchGeneration.map(
-                SearchFreshnessToken.triptych
-            ) ?? (
-                workspaceProjectionController.snapshotPhase?.isComplete == false
+            let freshness =
+                discovery?.searchGeneration.map(
+                    SearchFreshnessToken.triptych
+                )
+                ?? (workspaceProjectionController.snapshotPhase?.isComplete == false
                     && cached?.fingerprint == note.fingerprint
                     ? note.freshnessToken
-                    : nil
-            )
+                    : nil)
             return WindowSearchResultEvidence(
                 freshness: freshness,
                 fingerprint: cached?.fingerprint
@@ -5028,7 +5151,8 @@ final class WindowModel: ObservableObject {
     /// a superseded tab cannot become This Note Search authority.
     private func currentSearchSourceSnapshot() async throws -> SearchSourceSnapshot? {
         guard let descriptor = currentDocumentDescriptor,
-              let note = currentNote else { return nil }
+            let note = currentNote
+        else { return nil }
         let session = documentController.session(for: descriptor)
         let sessionID = session.editorSession.sessionID
         let source: String
@@ -5040,8 +5164,9 @@ final class WindowModel: ObservableObject {
             source = note.rawContent
         }
         guard currentDocumentDescriptor?.sessionKey == descriptor.sessionKey,
-              documentController.session(for: descriptor) === session,
-              session.editorSession.sessionID == sessionID else {
+            documentController.session(for: descriptor) === session,
+            session.editorSession.sessionID == sessionID
+        else {
             throw CancellationError()
         }
         return SearchSourceSnapshot(
@@ -5068,8 +5193,9 @@ final class WindowModel: ObservableObject {
         }
         PerformanceProbe.shared.beginReadActivation(documentID: path)
         if let snapshot = location.workspaceSnapshot,
-           snapshot.stableIdentity.resolvedID != nil,
-           let vault = currentRegisteredVault {
+            snapshot.stableIdentity.resolvedID != nil,
+            let vault = currentRegisteredVault
+        {
             documentController.installOpenedDocument(
                 snapshot,
                 vaultName: vault.name,
@@ -5089,7 +5215,8 @@ final class WindowModel: ObservableObject {
 
     func openingDocumentPresentationDidComplete() {
         guard let capabilities = windowWorkspaceController.activeCapabilities,
-              presentedOpeningRuntimeIdentity != capabilities.runtimeIdentity else { return }
+            presentedOpeningRuntimeIdentity != capabilities.runtimeIdentity
+        else { return }
         presentedOpeningRuntimeIdentity = capabilities.runtimeIdentity
         ScholiumWebKitProcessPrewarmer.shared.finish()
         Task {
@@ -5113,10 +5240,11 @@ final class WindowModel: ObservableObject {
         recordsNavigationHistory: Bool = true
     ) async throws {
         guard let vaultID = document.vaultID,
-              let vault = workspaceAssignment?.vaults.values.first(where: {
-                  $0.id == vaultID
-              }),
-              let workspace = workspaceSlot(for: vault) else {
+            let vault = workspaceAssignment?.vaults.values.first(where: {
+                $0.id == vaultID
+            }),
+            let workspace = workspaceSlot(for: vault)
+        else {
             throw WindowNavigationError.noteUnavailable(document.relativePath)
         }
         if shellState.selectedWorkspace != workspace {
@@ -5171,17 +5299,21 @@ final class WindowModel: ObservableObject {
         validateDisplay: @MainActor () throws -> Void = {}
     ) async throws {
         try validateDisplay()
-        guard let vault = workspaceAssignment?.vaults.values.first(where: {
-            $0.id == reference.vaultID
-        }), let workspace = workspaceSlot(for: vault) else {
+        guard
+            let vault = workspaceAssignment?.vaults.values.first(where: {
+                $0.id == reference.vaultID
+            }), let workspace = workspaceSlot(for: vault)
+        else {
             throw WindowNavigationError.vaultUnavailable(reference.vaultName)
         }
         let requestedStableID = reference.stableNoteID.flatMap(UUID.init(uuidString:))
-        guard workspaceProjectionController.cachedNote(
-            vaultID: reference.vaultID,
-            stableNoteID: requestedStableID,
-            relativePath: reference.relativePath
-        ) != nil else {
+        guard
+            workspaceProjectionController.cachedNote(
+                vaultID: reference.vaultID,
+                stableNoteID: requestedStableID,
+                relativePath: reference.relativePath
+            ) != nil
+        else {
             throw WindowNavigationError.noteUnavailable(reference.relativePath)
         }
         if shellState.selectedWorkspace != workspace {
@@ -5190,11 +5322,13 @@ final class WindowModel: ObservableObject {
                 sourceScope: .library,
                 validateDestination: {
                     try validateDisplay()
-                    guard self.workspaceProjectionController.cachedNote(
-                        vaultID: reference.vaultID,
-                        stableNoteID: requestedStableID,
-                        relativePath: reference.relativePath
-                    ) != nil else {
+                    guard
+                        self.workspaceProjectionController.cachedNote(
+                            vaultID: reference.vaultID,
+                            stableNoteID: requestedStableID,
+                            relativePath: reference.relativePath
+                        ) != nil
+                    else {
                         throw WindowNavigationError.noteUnavailable(
                             reference.relativePath
                         )
@@ -5216,17 +5350,21 @@ final class WindowModel: ObservableObject {
         recordsNavigationHistory: Bool = true,
         managedCreationBodyStartUTF16: Int? = nil
     ) throws {
-        guard let vault = workspaceAssignment?.vaults.values.first(where: {
-            $0.id == reference.vaultID
-        }), workspaceSlot(for: vault) == shellState.selectedWorkspace else {
+        guard
+            let vault = workspaceAssignment?.vaults.values.first(where: {
+                $0.id == reference.vaultID
+            }), workspaceSlot(for: vault) == shellState.selectedWorkspace
+        else {
             throw WindowNavigationError.vaultUnavailable(reference.vaultName)
         }
         let requestedStableID = reference.stableNoteID.flatMap(UUID.init(uuidString:))
-        guard let snapshot = workspaceProjectionController.cachedNote(
-            vaultID: reference.vaultID,
-            stableNoteID: requestedStableID,
-            relativePath: reference.relativePath
-        ) else {
+        guard
+            let snapshot = workspaceProjectionController.cachedNote(
+                vaultID: reference.vaultID,
+                stableNoteID: requestedStableID,
+                relativePath: reference.relativePath
+            )
+        else {
             throw WindowNavigationError.noteUnavailable(reference.relativePath)
         }
         if managedCreationBodyStartUTF16 == nil {
@@ -5301,21 +5439,23 @@ final class WindowModel: ObservableObject {
 
     private func revealDocumentInLibrary(_ document: WindowSelectedDocument) async {
         guard let vaultID = document.vaultID,
-              workspaceProjectionController.cachedNote(
-                  vaultID: vaultID,
-                  stableNoteID: document.sessionKey?.noteID,
-                  relativePath: document.relativePath
-              ) != nil,
-              let vault = workspaceAssignment?.vaults.values.first(where: {
-                  $0.id == vaultID
-              }),
-              let slot = workspaceSlot(for: vault) else { return }
+            workspaceProjectionController.cachedNote(
+                vaultID: vaultID,
+                stableNoteID: document.sessionKey?.noteID,
+                relativePath: document.relativePath
+            ) != nil,
+            let vault = workspaceAssignment?.vaults.values.first(where: {
+                $0.id == vaultID
+            }),
+            let slot = workspaceSlot(for: vault)
+        else { return }
 
         let scope = LibraryDisclosureScope(
             vaultID: vaultID,
             sourceScope: .library
         )
-        let needsProjection = currentRegisteredVault?.id != vaultID
+        let needsProjection =
+            currentRegisteredVault?.id != vaultID
             || discoveryController.library.sourceScope != .library
             || discoveryController.libraryRequestIsActive
 
@@ -5352,9 +5492,10 @@ final class WindowModel: ObservableObject {
         }
 
         guard !Task.isCancelled,
-              documentController.selectedDocument == document,
-              currentRegisteredVault?.id == vaultID,
-              discoveryController.library.sourceScope == .library else { return }
+            documentController.selectedDocument == document,
+            currentRegisteredVault?.id == vaultID,
+            discoveryController.library.sourceScope == .library
+        else { return }
 
         let clearsFilters = !filteredNotes.contains {
             $0.relativePath == document.relativePath
@@ -5381,14 +5522,16 @@ final class WindowModel: ObservableObject {
         vaultID: UUID,
         removedPaths: Set<String>
     ) throws {
-        let matchingIDs = Set(documentTabController.allTabs.compactMap { tab -> UUID? in
-            guard let descriptor = tab.document.workspaceDescriptor,
-                  descriptor.reference.vaultID == vaultID,
-                  removedPaths.contains(descriptor.reference.relativePath) else {
-                return nil
-            }
-            return tab.id
-        })
+        let matchingIDs = Set(
+            documentTabController.allTabs.compactMap { tab -> UUID? in
+                guard let descriptor = tab.document.workspaceDescriptor,
+                    descriptor.reference.vaultID == vaultID,
+                    removedPaths.contains(descriptor.reference.relativePath)
+                else {
+                    return nil
+                }
+                return tab.id
+            })
         guard !matchingIDs.isEmpty else {
             if currentDocumentVaultID == vaultID {
                 documentController.clearSelection(forRemovedPaths: removedPaths)
@@ -5408,9 +5551,10 @@ final class WindowModel: ObservableObject {
         // Remove inactive pages first so the selected page's close plan can
         // never choose another document that was deleted in the same commit.
         let currentWorkspace = shellState.selectedWorkspace
-        let selectedIDs = Set(WorkspaceVaultSlot.allCases.compactMap {
-            documentTabController.selectedTabID(in: $0)
-        })
+        let selectedIDs = Set(
+            WorkspaceVaultSlot.allCases.compactMap {
+                documentTabController.selectedTabID(in: $0)
+            })
         for id in matchingIDs where !selectedIDs.contains(id) {
             if let plan = documentTabController.closePlan(forTabWithID: id) {
                 documentTabController.apply(plan)
@@ -5418,8 +5562,9 @@ final class WindowModel: ObservableObject {
         }
         for workspace in WorkspaceVaultSlot.allCases {
             guard let selectedID = documentTabController.selectedTabID(in: workspace),
-                  matchingIDs.contains(selectedID),
-                  let plan = documentTabController.closePlan(forTabWithID: selectedID) else {
+                matchingIDs.contains(selectedID),
+                let plan = documentTabController.closePlan(forTabWithID: selectedID)
+            else {
                 continue
             }
             if workspace == currentWorkspace {
@@ -5442,9 +5587,10 @@ final class WindowModel: ObservableObject {
     ) {
         guard !documents.isEmpty else { return }
         let targets = Set(documents.map(\.editingTarget))
-        let matchingIDs = Set(documentTabController.allTabs.compactMap { tab in
-            targets.contains(tab.document.editingTarget) ? tab.id : nil
-        })
+        let matchingIDs = Set(
+            documentTabController.allTabs.compactMap { tab in
+                targets.contains(tab.document.editingTarget) ? tab.id : nil
+            })
         do {
             try removeDocumentTabs(withIDs: matchingIDs)
         } catch {
@@ -5453,7 +5599,8 @@ final class WindowModel: ObservableObject {
             reconcileDocumentSessionLeases()
             reportOperationIssue(
                 String(
-                    localized: "The deleted note was removed, but Scholium could not activate the adjacent tab. Choose a document to continue. \(error.localizedDescription)",
+                    localized:
+                        "The deleted note was removed, but Scholium could not activate the adjacent tab. Choose a document to continue. \(error.localizedDescription)",
                     table: "Localizable",
                     bundle: .module
                 ),
@@ -5465,24 +5612,26 @@ final class WindowModel: ObservableObject {
     private func refreshDocumentTabProjections() {
         for tab in documentTabController.allTabs {
             guard case .workspace(let descriptor) = tab.document,
-                  let snapshot = workspaceProjectionController.cachedNote(
-                      vaultID: descriptor.reference.vaultID,
-                      stableNoteID: descriptor.sessionKey.noteID,
-                      relativePath: descriptor.reference.relativePath
-                  ),
-                  let vault = workspaceAssignment?.vaults.values.first(where: {
-                      $0.id == descriptor.reference.vaultID
-                  }) else { continue }
-            let updated = WindowSelectedDocument.workspace(WindowDocumentDescriptor(
-                sessionKey: descriptor.sessionKey,
-                reference: VaultNoteReference(
-                    vaultID: vault.id,
-                    vaultName: vault.name,
-                    vaultRole: vault.role,
-                    relativePath: snapshot.id.relativePath,
-                    stableNoteID: descriptor.reference.stableNoteID
-                )
-            ))
+                let snapshot = workspaceProjectionController.cachedNote(
+                    vaultID: descriptor.reference.vaultID,
+                    stableNoteID: descriptor.sessionKey.noteID,
+                    relativePath: descriptor.reference.relativePath
+                ),
+                let vault = workspaceAssignment?.vaults.values.first(where: {
+                    $0.id == descriptor.reference.vaultID
+                })
+            else { continue }
+            let updated = WindowSelectedDocument.workspace(
+                WindowDocumentDescriptor(
+                    sessionKey: descriptor.sessionKey,
+                    reference: VaultNoteReference(
+                        vaultID: vault.id,
+                        vaultName: vault.name,
+                        vaultRole: vault.role,
+                        relativePath: snapshot.id.relativePath,
+                        stableNoteID: descriptor.reference.stableNoteID
+                    )
+                ))
             let presentation = documentTabPresentation(for: updated)
             documentTabController.updateDocumentProjection(
                 updated,
@@ -5495,16 +5644,17 @@ final class WindowModel: ObservableObject {
     private func documentTabPresentation(
         for document: WindowSelectedDocument
     ) -> (title: String, toolTip: String) {
-        let location: WindowDocumentLocation? = if let sessionKey = document.sessionKey {
-            workspaceProjectionController.cachedNote(
-                vaultID: sessionKey.vaultID,
-                stableNoteID: sessionKey.noteID,
-                relativePath: document.relativePath
-            )
+        let location: WindowDocumentLocation? =
+            if let sessionKey = document.sessionKey {
+                workspaceProjectionController.cachedNote(
+                    vaultID: sessionKey.vaultID,
+                    stableNoteID: sessionKey.noteID,
+                    relativePath: document.relativePath
+                )
                 .map(WindowDocumentLocation.workspace)
-        } else {
-            notes.first(where: { $0.relativePath == document.relativePath })
-        }
+            } else {
+                notes.first(where: { $0.relativePath == document.relativePath })
+            }
         let fallbackTitle = URL(fileURLWithPath: document.relativePath)
             .deletingPathExtension()
             .lastPathComponent
@@ -5521,13 +5671,15 @@ final class WindowModel: ObservableObject {
 
     private func documentSessionKey(for path: String) -> DocumentSessionKey? {
         guard let vaultID = currentRegisteredVault?.id,
-              let noteID = noteIdentityByPath[path] else { return nil }
+            let noteID = noteIdentityByPath[path]
+        else { return nil }
         return DocumentSessionKey(vaultID: vaultID, noteID: noteID)
     }
 
     private func documentDescriptor(for path: String) -> WindowDocumentDescriptor? {
         guard let key = documentSessionKey(for: path),
-              let vault = currentRegisteredVault else { return nil }
+            let vault = currentRegisteredVault
+        else { return nil }
         return WindowDocumentDescriptor(
             sessionKey: key,
             reference: VaultNoteReference(
@@ -5548,8 +5700,10 @@ final class WindowModel: ObservableObject {
         if let descriptor = documentDescriptor(for: path) {
             return .workspace(descriptor)
         }
-        guard let vaultID = notes.first(where: { $0.relativePath == path })?
-            .workspaceSnapshot?.id.vaultID ?? currentRegisteredVault?.id else {
+        guard
+            let vaultID = notes.first(where: { $0.relativePath == path })?
+                .workspaceSnapshot?.id.vaultID ?? currentRegisteredVault?.id
+        else {
             return nil
         }
         return .unavailable(vaultID: vaultID, relativePath: path)
@@ -5564,7 +5718,8 @@ final class WindowModel: ObservableObject {
         if let descriptor = documentDescriptor(for: selectedDocumentPath) {
             documentController.selectDocument(.workspace(descriptor))
         } else if documentController.activeDocument == nil,
-                  let descriptor = selectionDescriptor(for: selectedDocumentPath) {
+            let descriptor = selectionDescriptor(for: selectedDocumentPath)
+        {
             documentController.selectDocument(descriptor)
         }
         synchronizeDocumentTabs(after: .preserveTabMembership)
@@ -5602,8 +5757,9 @@ final class WindowModel: ObservableObject {
             self.documentController.requestSourceLocation(line: line.map { max(1, $0) })
             // Read-only destinations already enter Review through DocumentController.
             // Ordinary navigation must not turn that exception into an edit warning.
-            self.requestPresentationMode = mode == nil
-                && self.currentNote?.workspaceSnapshot?.capabilities.canEditSource == false
+            self.requestPresentationMode =
+                mode == nil
+                    && self.currentNote?.workspaceSnapshot?.capabilities.canEditSource == false
                 ? nil : navigationMode
         }
     }
@@ -5626,8 +5782,10 @@ final class WindowModel: ObservableObject {
 
     func openInternalLink(_ targetWithFragment: String, from sourcePath: String) {
         guard let sourceContext = activeDocumentContext(for: sourcePath),
-              let graph = workspaceCatalog?.graph else {
-            reportOperationIssue(String(localized: "Connections are still refreshing. Try the link again shortly.", table: "Localizable", bundle: .module), kind: .information)
+            let graph = workspaceCatalog?.graph
+        else {
+            reportOperationIssue(
+                String(localized: "Connections are still refreshing. Try the link again shortly.", table: "Localizable", bundle: .module), kind: .information)
             return
         }
         let parts = targetWithFragment.split(separator: "#", maxSplits: 1, omittingEmptySubsequences: false)
@@ -5636,7 +5794,8 @@ final class WindowModel: ObservableObject {
         let fragment = rawFragment.flatMap { $0.removingPercentEncoding ?? $0 }
         let source = VaultQualifiedNoteID(vaultID: sourceContext.vaultID, relativePath: sourcePath)
         let matching = graph.outgoing[source, default: []].filter { edge in
-            let occurrenceTarget = edge.occurrence.target.removingPercentEncoding
+            let occurrenceTarget =
+                edge.occurrence.target.removingPercentEncoding
                 ?? edge.occurrence.target
             let occurrenceFragment = edge.occurrence.fragment.flatMap {
                 $0.removingPercentEncoding ?? $0
@@ -5658,7 +5817,8 @@ final class WindowModel: ObservableObject {
                 if case .ambiguous = $0.occurrence.resolution { return true }
                 return false
             }
-            let message = hasAmbiguity
+            let message =
+                hasAmbiguity
                 ? String(
                     localized: "This Connection is ambiguous. Open Incoming or Outgoing to choose a source-located candidate.",
                     table: "Localizable",
@@ -5675,11 +5835,14 @@ final class WindowModel: ObservableObject {
             )
             return
         }
-        guard let reference = workspaceCatalog?.notes.first(where: {
-            $0.reference.vaultID == destination.note.vaultID
-                && $0.reference.relativePath == destination.note.relativePath
-        })?.reference else {
-            reportOperationIssue(String(localized: "The resolved note is not available in the current Triptych catalog.", table: "Localizable", bundle: .module), kind: .warning)
+        guard
+            let reference = workspaceCatalog?.notes.first(where: {
+                $0.reference.vaultID == destination.note.vaultID
+                    && $0.reference.relativePath == destination.note.relativePath
+            })?.reference
+        else {
+            reportOperationIssue(
+                String(localized: "The resolved note is not available in the current Triptych catalog.", table: "Localizable", bundle: .module), kind: .warning)
             return
         }
         Task { await openWorkspaceReference(reference, line: destination.line) }
@@ -5730,9 +5893,11 @@ final class WindowModel: ObservableObject {
     func reloadMetadata(
         for path: String
     ) async throws -> (note: WindowDocumentLocation, revision: DocumentFingerprint?) {
-        guard let current = notes.first(where: { $0.relativePath == path })
+        guard
+            let current = notes.first(where: { $0.relativePath == path })
                 ?? (currentNote?.relativePath == path ? currentNote : nil),
-              let snapshot = current.workspaceSnapshot else {
+            let snapshot = current.workspaceSnapshot
+        else {
             throw VaultRepositoryError.fileDoesNotExist(path)
         }
         let metadata = try await documentController.metadata(snapshot.id)
@@ -5743,11 +5908,13 @@ final class WindowModel: ObservableObject {
 
     func openNotifiedAgentChange(_ route: AgentChangeNotificationRoute) async {
         guard workspaceAssignment?.id == route.triptychID,
-              let capabilities = windowWorkspaceController.activeCapabilities else { return }
+            let capabilities = windowWorkspaceController.activeCapabilities
+        else { return }
         do {
             let review = try await capabilities.agentCollaboration.agentChangeReview(id: route.changeID)
             guard windowWorkspaceController.activeCapabilities?.runtimeIdentity == capabilities.runtimeIdentity,
-                  route.matches(review.change) else {
+                route.matches(review.change)
+            else {
                 reportOperationIssue(String(localized: "This Agent Change is no longer available."), kind: .warning)
                 return
             }
@@ -5792,35 +5959,42 @@ final class WindowModel: ObservableObject {
     ) -> Bool {
         var messages: [String] = []
         if !derivedRefreshWarnings.isEmpty {
-            messages.append(String(
-                localized: "The file operation completed, but Library, Search, or other derived views may be stale. Use Refresh instead of repeating the action.",
-                table: "Localizable",
-                bundle: .module
-            ))
+            messages.append(
+                String(
+                    localized:
+                        "The file operation completed, but Library, Search, or other derived views may be stale. Use Refresh instead of repeating the action.",
+                    table: "Localizable",
+                    bundle: .module
+                ))
             messages.append(derivedRefreshWarnings.joined(separator: " "))
         }
         if !identityRecoveryWarnings.isEmpty {
-            messages.append(String(
-                localized: "The file operation completed, but stable note identity recovery is incomplete. Identity-dependent actions remain unavailable until recovery succeeds.",
-                table: "Localizable",
-                bundle: .module
-            ))
+            messages.append(
+                String(
+                    localized:
+                        "The file operation completed, but stable note identity recovery is incomplete. Identity-dependent actions remain unavailable until recovery succeeds.",
+                    table: "Localizable",
+                    bundle: .module
+                ))
             messages.append(identityRecoveryWarnings.joined(separator: " "))
         }
         if !portableMetadataRecoveryWarnings.isEmpty {
-            messages.append(String(
-                localized: "The file operation completed, but portable Note metadata recovery is incomplete. Inspect Metadata before continuing.",
-                table: "Localizable",
-                bundle: .module
-            ))
+            messages.append(
+                String(
+                    localized: "The file operation completed, but portable Note metadata recovery is incomplete. Inspect Metadata before continuing.",
+                    table: "Localizable",
+                    bundle: .module
+                ))
             messages.append(portableMetadataRecoveryWarnings.joined(separator: " "))
         }
         if let presentationWarning {
-            messages.append(String(
-                localized: "The file operation completed, but this window could not refresh its document view. Use Refresh instead of repeating the action.",
-                table: "Localizable",
-                bundle: .module
-            ))
+            messages.append(
+                String(
+                    localized:
+                        "The file operation completed, but this window could not refresh its document view. Use Refresh instead of repeating the action.",
+                    table: "Localizable",
+                    bundle: .module
+                ))
             messages.append(presentationWarning)
         }
         guard !messages.isEmpty else { return false }
@@ -5845,29 +6019,34 @@ final class WindowModel: ObservableObject {
         }
         let sourceScope = noteSourceScope
         guard refreshGeneration == identityRefreshGeneration,
-              currentRegisteredVault?.id == vault.id,
-              noteSourceScope == sourceScope else { return }
+            currentRegisteredVault?.id == vault.id,
+            noteSourceScope == sourceScope
+        else { return }
         let recovery: NoteIdentityRecoveryState
         let vaultSnapshot: WorkspaceVaultSnapshot
         do {
-            guard let snapshot = try await documentController.workspaceSnapshot(
-                vaultID: vault.id
-            ) else {
+            guard
+                let snapshot = try await documentController.workspaceSnapshot(
+                    vaultID: vault.id
+                )
+            else {
                 throw WorkspaceRegistryError.incompleteWorkspace
             }
             vaultSnapshot = snapshot
             recovery = snapshot.identityRecovery
         } catch {
             guard refreshGeneration == identityRefreshGeneration,
-                  currentRegisteredVault?.id == vault.id,
-                  noteSourceScope == sourceScope else { return }
+                currentRegisteredVault?.id == vault.id,
+                noteSourceScope == sourceScope
+            else { return }
             noteIdentityByPath = [:]
             identityResolutionError = error.localizedDescription
             return
         }
         guard refreshGeneration == identityRefreshGeneration,
-              currentRegisteredVault?.id == vault.id,
-              noteSourceScope == sourceScope else { return }
+            currentRegisteredVault?.id == vault.id,
+            noteSourceScope == sourceScope
+        else { return }
         installIdentityState(
             recovery,
             vault: vault,
@@ -5884,7 +6063,8 @@ final class WindowModel: ObservableObject {
         identityRefreshGeneration &+= 1
         let refreshGeneration = identityRefreshGeneration
         guard let vault = currentRegisteredVault,
-              vault.id == vaultSnapshot.vault.id else { return }
+            vault.id == vaultSnapshot.vault.id
+        else { return }
         let sourceScope = noteSourceScope
         installIdentityState(
             vaultSnapshot.identityRecovery,
@@ -5903,8 +6083,9 @@ final class WindowModel: ObservableObject {
         visibleSnapshots: [WorkspaceNoteSnapshot]?
     ) {
         guard refreshGeneration == identityRefreshGeneration,
-              currentRegisteredVault?.id == vault.id,
-              noteSourceScope == sourceScope else { return }
+            currentRegisteredVault?.id == vault.id,
+            noteSourceScope == sourceScope
+        else { return }
         let identities = recovery.identities
 
         for rebinding in recovery.completedRebindings {
@@ -5921,7 +6102,8 @@ final class WindowModel: ObservableObject {
         pendingIdentityRebindings = recovery.pendingRebindings
         identityMigrationFailures = recovery.failures
         if let selectedIdentityAmbiguity,
-           !identityAmbiguities.contains(where: { $0.id == selectedIdentityAmbiguity.id }) {
+            !identityAmbiguities.contains(where: { $0.id == selectedIdentityAmbiguity.id })
+        {
             self.selectedIdentityAmbiguity = nil
         }
         if let visibleSnapshots {
@@ -5960,28 +6142,35 @@ final class WindowModel: ObservableObject {
 
     fileprivate func receiveWorkspaceEvents(_ events: [UUID: WorkspaceEvent]) {
         guard let capabilities = windowWorkspaceController.activeCapabilities,
-              let event = events[capabilities.id] else { return }
-        guard workspaceProjectionController.canReceive(
-            event,
-            runtimeIdentity: capabilities.runtimeIdentity
-        ) else { return }
+            let event = events[capabilities.id]
+        else { return }
+        guard
+            workspaceProjectionController.canReceive(
+                event,
+                runtimeIdentity: capabilities.runtimeIdentity
+            )
+        else { return }
 
         if case .vaultAccessInvalidated(let invalidation) = event,
-           let path = WorkspaceVaultSlot.allCases.compactMap({ slot -> String? in
-               guard let vaultID = workspaceAssignment?.vault(for: slot)?.id else {
-                   return nil
-               }
-               return invalidation.unavailableVaultPaths[vaultID]
-           }).first {
+            let path = WorkspaceVaultSlot.allCases.compactMap({ slot -> String? in
+                guard let vaultID = workspaceAssignment?.vault(for: slot)?.id else {
+                    return nil
+                }
+                return invalidation.unavailableVaultPaths[vaultID]
+            }).first
+        {
             _ = windowWorkspaceController.recordRecovery(
                 for: WorkspaceRegistryError.vaultAccessUnavailable(path)
             )
         }
 
         if case .inventoryChanged(let change) = event,
-           let vaultID = currentRegisteredVault?.id {
-            for move in change.moved where move.previousLocation.vaultID == vaultID
-                && move.location.vaultID == vaultID {
+            let vaultID = currentRegisteredVault?.id
+        {
+            for move in change.moved
+            where move.previousLocation.vaultID == vaultID
+                && move.location.vaultID == vaultID
+            {
                 migrateInMemoryPath(
                     from: move.previousLocation.relativePath,
                     to: move.location.relativePath,
@@ -6010,8 +6199,8 @@ final class WindowModel: ObservableObject {
         case .sourceCommitted, .inventoryChanged:
             researchController.scheduleAgentChangesRefresh()
         case .snapshot, .derivedStateChanged, .researchStateChanged,
-             .researchConfigurationInvalidated, .vaultAccessInvalidated,
-             .runtimeReloaded:
+            .researchConfigurationInvalidated, .vaultAccessInvalidated,
+            .runtimeReloaded:
             break
         }
         if let commit = workspaceProjectionController.receive(
@@ -6055,7 +6244,8 @@ final class WindowModel: ObservableObject {
         case .current:
             if refreshStatusText == String(localized: "Refreshing derived state…")
                 || refreshStatusText == "Derived state is stale"
-                || refreshStatusText == "Derived refresh failed" {
+                || refreshStatusText == "Derived refresh failed"
+            {
                 refreshStatusText = nil
             }
         case .stale:
@@ -6071,17 +6261,20 @@ final class WindowModel: ObservableObject {
             refreshStatusText = "Conflict: note deleted outside Scholium"
         }
         if let vaultID = currentRegisteredVault?.id,
-           let vaultSnapshot = workspaceProjectionController.vaultSnapshot(id: vaultID) {
+            let vaultSnapshot = workspaceProjectionController.vaultSnapshot(id: vaultID)
+        {
             refreshIdentityState(from: vaultSnapshot)
         }
     }
 
     private func replaceCachedWorkspaceNote(_ note: WorkspaceNoteSnapshot) {
-        guard let vault = workspaceProjectionController.recordCommittedNote(
-            note,
-            visibleVaultID: currentRegisteredVault?.id,
-            visibleSourceScope: noteSourceScope
-        ) else { return }
+        guard
+            let vault = workspaceProjectionController.recordCommittedNote(
+                note,
+                visibleVaultID: currentRegisteredVault?.id,
+                visibleSourceScope: noteSourceScope
+            )
+        else { return }
         refreshDocumentTabProjections()
         documentController.recordCommittedSnapshot(
             note,
@@ -6103,10 +6296,11 @@ final class WindowModel: ObservableObject {
             stableNoteID: context.noteID,
             relativePath: document.relativePath
         )
-        let loaded = try? await documentController.noteSnapshot(VaultQualifiedNoteID(
-            vaultID: context.vaultID,
-            relativePath: document.relativePath
-        ))
+        let loaded = try? await documentController.noteSnapshot(
+            VaultQualifiedNoteID(
+                vaultID: context.vaultID,
+                relativePath: document.relativePath
+            ))
         let savedSnapshot: WorkspaceNoteSnapshot
         if let loaded, loaded.fingerprint == document.fingerprint {
             savedSnapshot = loaded

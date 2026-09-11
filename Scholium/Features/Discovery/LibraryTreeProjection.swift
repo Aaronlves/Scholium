@@ -17,8 +17,9 @@ struct TreeNode: Identifiable {
 
     func visibleExpandedFolderIDs(in expandedFolders: Set<String>) -> Set<String> {
         guard isFolder,
-              !children.isEmpty,
-              expandedFolders.contains(id) else { return [] }
+            !children.isEmpty,
+            expandedFolders.contains(id)
+        else { return [] }
         return children.reduce(into: Set([id])) {
             $0.formUnion($1.visibleExpandedFolderIDs(in: expandedFolders))
         }
@@ -33,41 +34,41 @@ struct LibraryTreeProjection {
     let roots: [TreeNode]
     let expandableFolderIDs: Set<String>
 
-#if DEBUG
-    private static let diagnosticsLogger = Logger(
-        subsystem: "com.scholium.app",
-        category: "SidebarProjection"
-    )
-
-    private static var diagnosticStartNanoseconds: UInt64? {
-        guard ProcessInfo.processInfo.arguments.contains(
-            "--scholium-sidebar-projection-diagnostics"
-        ) else { return nil }
-        return DispatchTime.now().uptimeNanoseconds
-    }
-
-    private static func recordDiagnosticBuild(
-        noteCount: Int,
-        folderCount: Int,
-        startNanoseconds: UInt64?
-    ) {
-        guard let startNanoseconds else { return }
-        let elapsedMicroseconds = (
-            DispatchTime.now().uptimeNanoseconds - startNanoseconds
-        ) / 1_000
-        diagnosticsLogger.notice(
-            "build notes=\(noteCount, privacy: .public) folders=\(folderCount, privacy: .public) duration_us=\(elapsedMicroseconds, privacy: .public)"
+    #if DEBUG
+        private static let diagnosticsLogger = Logger(
+            subsystem: "com.scholium.app",
+            category: "SidebarProjection"
         )
-    }
-#endif
+
+        private static var diagnosticStartNanoseconds: UInt64? {
+            guard
+                ProcessInfo.processInfo.arguments.contains(
+                    "--scholium-sidebar-projection-diagnostics"
+                )
+            else { return nil }
+            return DispatchTime.now().uptimeNanoseconds
+        }
+
+        private static func recordDiagnosticBuild(
+            noteCount: Int,
+            folderCount: Int,
+            startNanoseconds: UInt64?
+        ) {
+            guard let startNanoseconds else { return }
+            let elapsedMicroseconds = (DispatchTime.now().uptimeNanoseconds - startNanoseconds) / 1_000
+            diagnosticsLogger.notice(
+                "build notes=\(noteCount, privacy: .public) folders=\(folderCount, privacy: .public) duration_us=\(elapsedMicroseconds, privacy: .public)"
+            )
+        }
+    #endif
 
     init(
         preorderedNotes notes: [WindowDocumentLocation],
         folderRelativePaths folders: [String] = []
     ) {
-#if DEBUG
-        let diagnosticStartNanoseconds = Self.diagnosticStartNanoseconds
-#endif
+        #if DEBUG
+            let diagnosticStartNanoseconds = Self.diagnosticStartNanoseconds
+        #endif
         var rootNotes: [WindowDocumentLocation] = []
         var notesByFolder: [String: [WindowDocumentLocation]] = [:]
         var childFoldersByParent: [String: Set<String>] = [:]
@@ -90,18 +91,21 @@ struct LibraryTreeProjection {
 
             for count in 1...visibleParts.count {
                 let visibleAncestor = visibleParts.prefix(count).joined(separator: "/")
-                let actualAncestor = actualParts
+                let actualAncestor =
+                    actualParts
                     .prefix(hiddenPrefixCount + count)
                     .joined(separator: "/")
                 guard registeredActualAncestors.insert(actualAncestor).inserted else {
                     continue
                 }
-                let parent = count == 1
+                let parent =
+                    count == 1
                     ? ""
                     : visibleParts.prefix(count - 1).joined(separator: "/")
                 childFoldersByParent[parent, default: []].insert(visibleAncestor)
                 if let existing = actualFolderPaths[visibleAncestor],
-                   existing != actualAncestor {
+                    existing != actualAncestor
+                {
                     ambiguousFolderPaths.insert(visibleAncestor)
                 } else {
                     actualFolderPaths[visibleAncestor] = actualAncestor
@@ -184,17 +188,18 @@ struct LibraryTreeProjection {
         let folderRoots = (childFoldersByParent[""] ?? [])
             .sorted(by: foldersAreOrdered)
             .map { buildFolder(path: $0, depth: 0) }
-        let noteRoots = rootNotes
+        let noteRoots =
+            rootNotes
             .map { noteNode($0, depth: 0) }
         roots = folderRoots + noteRoots
         expandableFolderIDs = projectedExpandableFolderIDs
-#if DEBUG
-        Self.recordDiagnosticBuild(
-            noteCount: notes.count,
-            folderCount: folders.count,
-            startNanoseconds: diagnosticStartNanoseconds
-        )
-#endif
+        #if DEBUG
+            Self.recordDiagnosticBuild(
+                noteCount: notes.count,
+                folderCount: folders.count,
+                startNanoseconds: diagnosticStartNanoseconds
+            )
+        #endif
     }
 
     func visibleNodes(expandedFolders: Set<String>) -> [TreeNode] {
@@ -283,9 +288,10 @@ func libraryFolderAncestors(forDocumentPath path: String) -> Set<String> {
         .split(separator: "/")
         .map(String.init)
     guard parts.count > 1 else { return [] }
-    return Set((1..<parts.count).map { count in
-        parts.prefix(count).joined(separator: "/")
-    })
+    return Set(
+        (1..<parts.count).map { count in
+            parts.prefix(count).joined(separator: "/")
+        })
 }
 
 /// Returns the exact visible keyboard and focus order. AppKit owns hierarchy
@@ -299,9 +305,10 @@ func sidebarVisibleTreeNodes(
         guard root.isFolder, expandedFolders.contains(root.id) else {
             return [root]
         }
-        return [root] + root.children.flatMap {
-            sidebarVisibleTreeNodes(from: [$0], expandedFolders: expandedFolders)
-        }
+        return [root]
+            + root.children.flatMap {
+                sidebarVisibleTreeNodes(from: [$0], expandedFolders: expandedFolders)
+            }
     }
 }
 

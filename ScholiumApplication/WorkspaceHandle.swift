@@ -1,7 +1,7 @@
-import ScholiumContracts
 import Foundation
-import ScholiumCore
 import OSLog
+import ScholiumContracts
+import ScholiumCore
 
 enum WorkspaceAccessConfiguration: Sendable {
     case live
@@ -110,17 +110,19 @@ enum DerivedRefreshFailureDisposition: Sendable {
         let evidence = WorkspaceDerivedRefreshEvidence(snapshot: snapshot)
         switch self {
         case .staleAfterCommittedMutation(let affectedVaultIDs):
-            return .stale(WorkspaceDerivedRefreshIssue(
-                reason: "The authoritative mutation committed, but derived workspace refresh failed: \(error.localizedDescription)",
-                affectedVaultIDs: affectedVaultIDs,
-                lastKnownGood: evidence
-            ))
+            return .stale(
+                WorkspaceDerivedRefreshIssue(
+                    reason: "The authoritative mutation committed, but derived workspace refresh failed: \(error.localizedDescription)",
+                    affectedVaultIDs: affectedVaultIDs,
+                    lastKnownGood: evidence
+                ))
         case .failed(let affectedVaultIDs):
-            return .failed(WorkspaceDerivedRefreshIssue(
-                reason: "Derived workspace refresh failed: \(error.localizedDescription)",
-                affectedVaultIDs: affectedVaultIDs,
-                lastKnownGood: evidence
-            ))
+            return .failed(
+                WorkspaceDerivedRefreshIssue(
+                    reason: "Derived workspace refresh failed: \(error.localizedDescription)",
+                    affectedVaultIDs: affectedVaultIDs,
+                    lastKnownGood: evidence
+                ))
         }
     }
 }
@@ -151,9 +153,11 @@ enum SourceCatalogPreparation: Sendable {
     static func inferred(from publication: RefreshPublication) -> Self {
         switch publication {
         case .sourceCommitted(let id, _):
-            .delta([id.vaultID: VaultSourceCatalogDelta(
-                upserts: [id.relativePath]
-            )])
+            .delta([
+                id.vaultID: VaultSourceCatalogDelta(
+                    upserts: [id.relativePath]
+                )
+            ])
         case .liveInventory, .researchState:
             .none
         case .explicit, .runtimeReloaded:
@@ -162,9 +166,11 @@ enum SourceCatalogPreparation: Sendable {
     }
 
     static func merged(_ preparations: [Self]) -> Self {
-        guard !preparations.contains(where: {
-            if case .fullReconcile = $0 { true } else { false }
-        }) else { return .fullReconcile }
+        guard
+            !preparations.contains(where: {
+                if case .fullReconcile = $0 { true } else { false }
+            })
+        else { return .fullReconcile }
         var merged: [UUID: VaultSourceCatalogDelta] = [:]
         for preparation in preparations {
             guard case .delta(let changes) = preparation else { continue }
@@ -230,15 +236,16 @@ private struct WorkspaceRefreshPayload: Sendable {
                 affectedVaultIDs.formUnion(affected)
             }
         }
-        let metadataChanges: [UUID: NoteMetadataSnapshot]? = if payloads.allSatisfy({
-            $0.metadataChanges != nil
-        }) {
-            payloads.compactMap(\.metadataChanges).reduce(into: [:]) { result, changes in
-                result.merge(changes) { _, latest in latest }
+        let metadataChanges: [UUID: NoteMetadataSnapshot]? =
+            if payloads.allSatisfy({
+                $0.metadataChanges != nil
+            }) {
+                payloads.compactMap(\.metadataChanges).reduce(into: [:]) { result, changes in
+                    result.merge(changes) { _, latest in latest }
+                }
+            } else {
+                nil
             }
-        } else {
-            nil
-        }
         return Self(
             publication: mergedPublication(payloads.map(\.publication)),
             failureDisposition: includesCommittedMutation
@@ -256,23 +263,32 @@ private struct WorkspaceRefreshPayload: Sendable {
     ) -> RefreshPublication {
         if publications.allSatisfy({
             if case .researchState = $0 { true } else { false }
-        }) { return .researchState }
+        }) {
+            return .researchState
+        }
         if publications.allSatisfy({
             if case .liveInventory = $0 { true } else { false }
-        }) { return .liveInventory }
+        }) {
+            return .liveInventory
+        }
         if publications.allSatisfy({
             if case .runtimeReloaded = $0 { true } else { false }
-        }) { return .runtimeReloaded }
+        }) {
+            return .runtimeReloaded
+        }
         if publications.allSatisfy({
             if case .explicit = $0 { true } else { false }
-        }) { return .explicit }
+        }) {
+            return .explicit
+        }
         if case .sourceCommitted(let firstID, let firstKind) = publications[0],
-           publications.dropFirst().allSatisfy({ publication in
-               guard case .sourceCommitted(let id, let kind) = publication else {
-                   return false
-               }
-               return id == firstID && kind == firstKind
-           }) {
+            publications.dropFirst().allSatisfy({ publication in
+                guard case .sourceCommitted(let id, let kind) = publication else {
+                    return false
+                }
+                return id == firstID && kind == firstKind
+            })
+        {
             return .sourceCommitted(firstID, firstKind)
         }
         // One event generation cannot publish several source identities or
@@ -298,7 +314,8 @@ func sourceAuthorizedFolderNoteMoves(
     let destinationPrefix = destinationFolder.rawValue + "/"
     let sourceAhead = try sourceAheadIdentityRecords.map { location, record in
         guard location.vaultID == record.vaultID,
-              location.relativePath == record.relativePath else {
+            location.relativePath == record.relativePath
+        else {
             throw TriptychTransactionError.invalidPlan(
                 "A source-ahead identity record does not match its current location."
             )
@@ -385,10 +402,11 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     var currentSnapshot: WorkspaceSnapshot
     private(set) var latestRefreshMeasurement: WorkspaceRefreshMeasurement
     private var nextGraphGeneration = 2
-    private var refreshCoordinator: WorkspaceRefreshCoordinator<
-        WorkspaceRefreshPayload,
-        WorkspaceSnapshot
-    >!
+    private var refreshCoordinator:
+        WorkspaceRefreshCoordinator<
+            WorkspaceRefreshPayload,
+            WorkspaceSnapshot
+        >!
     private var derivedStateRequiresRefresh = false
     private var isShutDown = false
     private var liveWatcherTask: Task<Void, Never>?
@@ -408,12 +426,9 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     private var sourceAheadIdentityRecords: [VaultQualifiedNoteID: NoteIdentityRecord] = [:]
     private var pendingLiveEvents: [UUID: VaultWatchEventJournal] = [:]
     var sourceOperationGate = WorkspaceSourceOperationGate()
-    private var managedCreationPreLeaseBarrierForTesting:
-        (@Sendable () async -> Void)?
-    private var managedCreationPostSourceBarrierForTesting:
-        (@Sendable () async -> Void)?
-    private var progressiveActivationReconciliationBarrierForTesting:
-        (@Sendable () async -> Void)?
+    private var managedCreationPreLeaseBarrierForTesting: (@Sendable () async -> Void)?
+    private var managedCreationPostSourceBarrierForTesting: (@Sendable () async -> Void)?
+    private var progressiveActivationReconciliationBarrierForTesting: (@Sendable () async -> Void)?
     private var didCompleteActivationReconciliation = false
 
     func setManagedCreationPreLeaseBarrierForTesting(
@@ -514,7 +529,8 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             let vaultsReady = clock.now
 
             guard let worksVault = assignment.vault(for: .output),
-                  let worksURL = resolvedURLs[.output] else {
+                let worksURL = resolvedURLs[.output]
+            else {
                 throw ScholiumApplicationError.incompleteTriptych(assignment.id)
             }
 
@@ -526,7 +542,8 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 leases.append(portable)
             }
 
-            let triptychStorage = applicationSupportURL
+            let triptychStorage =
+                applicationSupportURL
                 .appendingPathComponent("Triptychs", isDirectory: true)
                 .appendingPathComponent(assignment.id.uuidString, isDirectory: true)
             let controlStore = try TriptychControlStore(
@@ -556,9 +573,10 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 }
             }
 
-            let vaultIDs = Dictionary(uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map {
-                ($0, assignment.triptych.vaultID(for: $0))
-            })
+            let vaultIDs = Dictionary(
+                uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map {
+                    ($0, assignment.triptych.vaultID(for: $0))
+                })
             let manifest: TriptychManifest
             do {
                 manifest = try await controlStore.bootstrap(
@@ -579,9 +597,9 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             } catch let error as TriptychControlError {
                 switch error {
                 case .invalidManifest, .settingsMissing, .settingsOldSchema,
-                     .settingsFutureSchema, .settingsCorrupted,
-                     .invalidZoteroBindings, .invalidIdentities,
-                     .invalidAttachmentCatalog:
+                    .settingsFutureSchema, .settingsCorrupted,
+                    .invalidZoteroBindings, .invalidIdentities,
+                    .invalidAttachmentCatalog:
                     throw ScholiumApplicationError.portableControlRecoveryRequired(
                         controlPath: controlURL.path,
                         reason: error.localizedDescription
@@ -632,9 +650,10 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             let services = WorkspaceServices(
                 manifest: manifest,
                 repositories: repositories,
-                sourceCatalogs: Dictionary(uniqueKeysWithValues: pooledVaults.map {
-                    ($0.key, $0.value.sourceCatalog)
-                }),
+                sourceCatalogs: Dictionary(
+                    uniqueKeysWithValues: pooledVaults.map {
+                        ($0.key, $0.value.sourceCatalog)
+                    }),
                 searchIndex: openedSearchIndex.index,
                 controlStore: controlStore,
                 indexedAttachmentAccessStore: try IndexedAttachmentAccessStore(
@@ -663,7 +682,8 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             // progressive open inventories only its first usable vault; the
             // buffered stream and complete background reconcile close edits
             // that race either scan.
-            let preOpenInventory = mode == .live && !usesProgressiveOpening
+            let preOpenInventory =
+                mode == .live && !usesProgressiveOpening
                 ? try await sourceInventory(
                     assignment: assignment,
                     sourceCatalogs: services.sourceCatalogs
@@ -722,9 +742,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             )
             await reference.bind(handle)
             if case .live = access {
-                let activationInventory: [
-                    VaultQualifiedNoteID: DocumentFingerprint
-                ]
+                let activationInventory: [VaultQualifiedNoteID: DocumentFingerprint]
                 if let preOpenInventory {
                     activationInventory = preOpenInventory
                 } else {
@@ -783,9 +801,10 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     ) throws -> DocumentPreviewCatalog {
         try requireActive()
         guard let graph = currentSnapshot.discovery.catalog.graph,
-              graph.generation == graphGeneration,
-              let sourceDocument = currentSnapshot.document(id: source)?.document,
-              sourceDocument.fingerprint == sourceFingerprint else {
+            graph.generation == graphGeneration,
+            let sourceDocument = currentSnapshot.document(id: source)?.document,
+            sourceDocument.fingerprint == sourceFingerprint
+        else {
             return DocumentPreviewCatalog(
                 graphGeneration: graphGeneration,
                 source: source,
@@ -793,18 +812,22 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 links: []
             )
         }
-        let targetIDs = Set((graph.outgoing[source] ?? []).compactMap {
-            $0.destination?.note
-        })
-        let targetDocuments = Dictionary(uniqueKeysWithValues: targetIDs.compactMap { id in
-            currentSnapshot.document(id: id).map { (id, $0.document) }
-        })
-        let targetProfiles = Dictionary(uniqueKeysWithValues: targetIDs.compactMap { id in
-            currentSnapshot.document(id: id).map { (id, $0.schemaProfile) }
-        })
-        let targetMetadata = Dictionary(uniqueKeysWithValues: targetIDs.compactMap { id in
-            currentSnapshot.document(id: id)?.metadata.map { (id, $0) }
-        })
+        let targetIDs = Set(
+            (graph.outgoing[source] ?? []).compactMap {
+                $0.destination?.note
+            })
+        let targetDocuments = Dictionary(
+            uniqueKeysWithValues: targetIDs.compactMap { id in
+                currentSnapshot.document(id: id).map { (id, $0.document) }
+            })
+        let targetProfiles = Dictionary(
+            uniqueKeysWithValues: targetIDs.compactMap { id in
+                currentSnapshot.document(id: id).map { (id, $0.schemaProfile) }
+            })
+        let targetMetadata = Dictionary(
+            uniqueKeysWithValues: targetIDs.compactMap { id in
+                currentSnapshot.document(id: id)?.metadata.map { (id, $0) }
+            })
         return DocumentPreviewCatalogBuilder.build(
             source: source,
             sourceFingerprint: sourceFingerprint,
@@ -874,8 +897,9 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             forKeys: [.isRegularFileKey, .isSymbolicLinkKey]
         )
         guard values.isRegularFile == true,
-              values.isSymbolicLink != true,
-              resolved.pathExtension.caseInsensitiveCompare("md") == .orderedSame else {
+            values.isSymbolicLink != true,
+            resolved.pathExtension.caseInsensitiveCompare("md") == .orderedSame
+        else {
             throw DocumentImportError.unsupportedSource(sourceURL.path)
         }
         let sourceData = try Data(contentsOf: resolved, options: [.mappedIfSafe])
@@ -900,19 +924,23 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         var committedDocument = document
         var identityRecoveryWarning: String?
         do {
-            guard try await services.controlStore.identity(
-                forVaultID: vaultID,
-                relativePath: document.relativePath,
-                fingerprint: document.fingerprint
-            ) != nil else {
+            guard
+                try await services.controlStore.identity(
+                    forVaultID: vaultID,
+                    relativePath: document.relativePath,
+                    fingerprint: document.fingerprint
+                ) != nil
+            else {
                 throw NoteIdentityRecoveryError.identityUnresolved(document.relativePath)
             }
         } catch let identityError {
-            guard let retained = try await retainedCreatedDocumentAfterIdentityFailure(
-                repository: repository,
-                document: document,
-                identityError: identityError
-            ) else {
+            guard
+                let retained = try await retainedCreatedDocumentAfterIdentityFailure(
+                    repository: repository,
+                    document: document,
+                    identityError: identityError
+                )
+            else {
                 throw identityError
             }
             committedDocument = retained.document
@@ -1060,21 +1088,23 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             guard case .external(let reference) = preparedFile.location else {
                 throw ImageAttachmentError.unsupportedImage(indexedSourceURL.path)
             }
-            let canonicalPath = indexedSourceURL
+            let canonicalPath =
+                indexedSourceURL
                 .resolvingSymlinksInPath()
                 .standardizedFileURL
                 .path
             if let existingID = try await services.indexedAttachmentAccessStore
                 .attachmentID(forAbsolutePath: canonicalPath),
-               let candidate = try await services.controlStore.attachmentRecords()
-                .first(where: {
-                    $0.id == existingID && $0.vaultID == vaultID
-                        && $0.location == preparedFile.location
-                }),
-               try await services.indexedAttachmentAccessStore.isAvailable(
-                   attachmentID: candidate.id,
-                   expectedFilename: reference.filename
-               ) {
+                let candidate = try await services.controlStore.attachmentRecords()
+                    .first(where: {
+                        $0.id == existingID && $0.vaultID == vaultID
+                            && $0.location == preparedFile.location
+                    }),
+                try await services.indexedAttachmentAccessStore.isAvailable(
+                    attachmentID: candidate.id,
+                    expectedFilename: reference.filename
+                )
+            {
                 existingIndexedRecord = candidate
             } else {
                 existingIndexedRecord = nil
@@ -1095,9 +1125,11 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 )
             } catch {
                 if let fingerprint = preparedFile.copiedFileFingerprint,
-                   let copiedRelativePath = preparedFile.copiedRelativePath {
+                    let copiedRelativePath = preparedFile.copiedRelativePath
+                {
                     if let imageError = error as? ImageAttachmentError,
-                       case .catalogCommitUncertain = imageError {
+                        case .catalogCommitUncertain = imageError
+                    {
                         throw error
                     }
                     do {
@@ -1123,7 +1155,8 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             }
             do {
                 if existingIndexedRecord == nil {
-                    let canonicalPath = indexedSourceURL
+                    let canonicalPath =
+                        indexedSourceURL
                         .resolvingSymlinksInPath()
                         .standardizedFileURL
                         .path
@@ -1206,12 +1239,14 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 unavailable.append(path)
                 continue
             }
-            guard let attachmentID = try await services.indexedAttachmentAccessStore
-                .attachmentID(forAbsolutePath: path),
-                  let record = records.first(where: {
-                      $0.id == attachmentID
+            guard
+                let attachmentID = try await services.indexedAttachmentAccessStore
+                    .attachmentID(forAbsolutePath: path),
+                let record = records.first(where: {
+                    $0.id == attachmentID
                         && $0.location == .external(reference)
-                  }) else {
+                })
+            else {
                 unavailable.append(path)
                 continue
             }
@@ -1241,19 +1276,21 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             case .vaultRelative(let path):
                 let repository = try repository(vaultID: record.vaultID)
                 let store = VaultAttachmentStore(vaultURL: await repository.vaultURL)
-                available = try await store.documentURLIfAvailable(
-                    relativePath: path
-                ) != nil
+                available =
+                    try await store.documentURLIfAvailable(
+                        relativePath: path
+                    ) != nil
             case .external(let reference):
                 available = try await services.indexedAttachmentAccessStore.isAvailable(
                     attachmentID: record.id,
                     expectedFilename: reference.filename
                 )
             }
-            snapshots.append(DocumentAttachmentSnapshot(
-                record: record,
-                availability: available ? .available : .unavailable
-            ))
+            snapshots.append(
+                DocumentAttachmentSnapshot(
+                    record: record,
+                    availability: available ? .available : .unavailable
+                ))
         }
         return snapshots
     }
@@ -1273,23 +1310,25 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
 
         let repository = try await verifiedDocumentAttachmentTarget(target)
         if management == .referenceOriginal {
-            let canonicalPath = sourceURL
+            let canonicalPath =
+                sourceURL
                 .resolvingSymlinksInPath()
                 .standardizedFileURL
                 .path
             if let existingID = try await services.indexedAttachmentAccessStore
                 .attachmentID(forAbsolutePath: canonicalPath),
-               let existing = try await services.controlStore.documentAttachmentRecords(
-                   noteID: target.noteID
-               ).first(where: {
-                   $0.id == existingID && $0.vaultID == target.vaultID
-                     && $0.location.filename == URL(fileURLWithPath: canonicalPath).lastPathComponent
-                     && $0.location.isExternal
-               }),
-               try await services.indexedAttachmentAccessStore.isAvailable(
-                   attachmentID: existing.id,
-                   expectedFilename: existing.filename
-               ) {
+                let existing = try await services.controlStore.documentAttachmentRecords(
+                    noteID: target.noteID
+                ).first(where: {
+                    $0.id == existingID && $0.vaultID == target.vaultID
+                        && $0.location.filename == URL(fileURLWithPath: canonicalPath).lastPathComponent
+                        && $0.location.isExternal
+                }),
+                try await services.indexedAttachmentAccessStore.isAvailable(
+                    attachmentID: existing.id,
+                    expectedFilename: existing.filename
+                )
+            {
                 return DocumentAttachmentSnapshot(
                     record: existing,
                     availability: .available
@@ -1313,9 +1352,11 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             )
         } catch {
             if let fingerprint = prepared.copiedFileFingerprint,
-               let relativePath = prepared.copiedRelativePath {
+                let relativePath = prepared.copiedRelativePath
+            {
                 if let attachmentError = error as? DocumentAttachmentError,
-                   case .catalogCommitUncertain = attachmentError {
+                    case .catalogCommitUncertain = attachmentError
+                {
                     throw error
                 }
                 do {
@@ -1338,7 +1379,8 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 _ = try await services.indexedAttachmentAccessStore.register(
                     attachmentID: registration.record.id,
                     selectedURL: sourceURL,
-                    expectedAbsolutePath: sourceURL
+                    expectedAbsolutePath:
+                        sourceURL
                         .resolvingSymlinksInPath()
                         .standardizedFileURL
                         .path
@@ -1371,20 +1413,24 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     ) async throws -> DocumentAttachmentPreviewLease {
         try requireActive()
         _ = try await verifiedDocumentAttachmentTarget(target)
-        guard let record = try await services.controlStore
-            .documentAttachmentRecords(noteID: target.noteID)
-            .first(where: {
-                $0.id == attachmentID && $0.vaultID == target.vaultID
-            }) else {
+        guard
+            let record = try await services.controlStore
+                .documentAttachmentRecords(noteID: target.noteID)
+                .first(where: {
+                    $0.id == attachmentID && $0.vaultID == target.vaultID
+                })
+        else {
             throw DocumentAttachmentError.unavailable(attachmentID.uuidString)
         }
         switch record.location {
         case .vaultRelative(let path):
             let repository = try repository(vaultID: record.vaultID)
             let store = VaultAttachmentStore(vaultURL: await repository.vaultURL)
-            guard let url = try await store.documentURLIfAvailable(
-                relativePath: path
-            ) else {
+            guard
+                let url = try await store.documentURLIfAvailable(
+                    relativePath: path
+                )
+            else {
                 throw DocumentAttachmentError.unavailable(record.filename)
             }
             return DocumentAttachmentPreviewLease(
@@ -1416,12 +1462,14 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     ) async throws -> VaultRepository {
         let repository = try repository(vaultID: target.vaultID)
         let document = try await repository.load(relativePath: target.relativePath)
-        guard let identity = try await services.controlStore.identity(
-            forVaultID: target.vaultID,
-            relativePath: target.relativePath,
-            fingerprint: document.fingerprint,
-            createIfMissing: false
-        ), identity.id == target.noteID else {
+        guard
+            let identity = try await services.controlStore.identity(
+                forVaultID: target.vaultID,
+                relativePath: target.relativePath,
+                fingerprint: document.fingerprint,
+                createIfMissing: false
+            ), identity.id == target.noteID
+        else {
             throw DocumentAttachmentError.noteIdentityChanged(target.relativePath)
         }
         return repository
@@ -1446,19 +1494,23 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         var committedDocument = document
         var identityRecoveryWarning: String?
         do {
-            guard try await services.controlStore.identity(
-                forVaultID: id.vaultID,
-                relativePath: id.relativePath,
-                fingerprint: document.fingerprint
-            ) != nil else {
+            guard
+                try await services.controlStore.identity(
+                    forVaultID: id.vaultID,
+                    relativePath: id.relativePath,
+                    fingerprint: document.fingerprint
+                ) != nil
+            else {
                 throw NoteIdentityRecoveryError.identityUnresolved(id.relativePath)
             }
         } catch let identityError {
-            guard let retained = try await retainedCreatedDocumentAfterIdentityFailure(
-                repository: repository,
-                document: document,
-                identityError: identityError
-            ) else {
+            guard
+                let retained = try await retainedCreatedDocumentAfterIdentityFailure(
+                    repository: repository,
+                    document: document,
+                    identityError: identityError
+                )
+            else {
                 throw identityError
             }
             committedDocument = retained.document
@@ -1481,9 +1533,11 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         _ request: ManagedNoteCreationRequest
     ) async throws -> WorkspaceMutationOutcome<WorkspaceManagedNoteCommit> {
         try requireActive()
-        guard let slot = services.manifest.vaultIDs.first(where: {
-            $0.value == request.vaultID
-        })?.key else {
+        guard
+            let slot = services.manifest.vaultIDs.first(where: {
+                $0.value == request.vaultID
+            })?.key
+        else {
             throw ScholiumApplicationError.vaultNotInWorkspace(request.vaultID)
         }
         if let barrier = managedCreationPreLeaseBarrierForTesting {
@@ -1517,16 +1571,17 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         var ordinal = 1
         while true {
             try Task.checkCancellation()
-            let relativePath: String = switch request.destination {
-            case .exact(let path):
-                path
-            case .untitled(let folderRelativePath):
-                if let folderRelativePath, !folderRelativePath.isEmpty {
-                    "\(folderRelativePath)/\(ordinal == 1 ? "Untitled.md" : "Untitled \(ordinal).md")"
-                } else {
-                    ordinal == 1 ? "Untitled.md" : "Untitled \(ordinal).md"
+            let relativePath: String =
+                switch request.destination {
+                case .exact(let path):
+                    path
+                case .untitled(let folderRelativePath):
+                    if let folderRelativePath, !folderRelativePath.isEmpty {
+                        "\(folderRelativePath)/\(ordinal == 1 ? "Untitled.md" : "Untitled \(ordinal).md")"
+                    } else {
+                        ordinal == 1 ? "Untitled.md" : "Untitled \(ordinal).md"
+                    }
                 }
-            }
             let id = VaultQualifiedNoteID(
                 vaultID: request.vaultID,
                 relativePath: relativePath
@@ -1557,12 +1612,14 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 var metadataSnapshot: NoteMetadataSnapshot?
                 var identityRecoveryWarning: String?
                 do {
-                    guard let identity = try await services.controlStore.identity(
-                        forVaultID: request.vaultID,
-                        relativePath: relativePath,
-                        fingerprint: document.fingerprint,
-                        preferredID: reservedIdentity
-                    ) else {
+                    guard
+                        let identity = try await services.controlStore.identity(
+                            forVaultID: request.vaultID,
+                            relativePath: relativePath,
+                            fingerprint: document.fingerprint,
+                            preferredID: reservedIdentity
+                        )
+                    else {
                         throw NoteIdentityRecoveryError.identityUnresolved(relativePath)
                     }
                     if identity.id != reservedIdentity {
@@ -1573,17 +1630,20 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 } catch let identityError {
                     let retained: RetainedCreatedDocument
                     do {
-                        guard let result = try await retainedCreatedDocumentAfterIdentityFailure(
-                            repository: repository,
-                            document: document,
-                            identityError: identityError
-                        ) else {
+                        guard
+                            let result = try await retainedCreatedDocumentAfterIdentityFailure(
+                                repository: repository,
+                                document: document,
+                                identityError: identityError
+                            )
+                        else {
                             throw identityError
                         }
                         retained = result
                     } catch let rollbackError as CreatedDocumentIdentityRollbackError {
                         if case .researcher = request.authority,
-                           case .sourcePresenceUncertain = rollbackError {
+                            case .sourcePresenceUncertain = rollbackError
+                        {
                             let record = try await recordManagedCreationRecovery(
                                 vaultID: request.vaultID,
                                 relativePath: relativePath,
@@ -1646,19 +1706,22 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                                 relativePath: relativePath
                             )
                         guard finalDocument.fingerprint == document.fingerprint,
-                              finalIdentity?.id == reservedIdentity,
-                              finalIdentity?.fingerprint == document.fingerprint,
-                              try await services.controlStore.noteMetadata(
+                            finalIdentity?.id == reservedIdentity,
+                            finalIdentity?.fingerprint == document.fingerprint,
+                            try await services.controlStore.noteMetadata(
                                 noteID: reservedIdentity
-                              )?.record.fields == initialMetadataFields else {
-                            throw ManagedCreationFinalVerificationError
+                            )?.record.fields == initialMetadataFields
+                        else {
+                            throw
+                                ManagedCreationFinalVerificationError
                                 .sourceAndIdentityNotJointlyProven(relativePath)
                         }
                         committedDocument = finalDocument
                         stableIdentity = .resolved(reservedIdentity)
                         createdIdentityRecord = finalIdentity
                     } catch {
-                        let verification = ManagedCreationFinalVerificationError
+                        let verification =
+                            ManagedCreationFinalVerificationError
                             .sourceAndIdentityNotJointlyProven(relativePath)
                         if case .researcher = request.authority {
                             let record = try await recordManagedCreationRecovery(
@@ -1715,13 +1778,15 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 throw DocumentCreationError.analysisMetadataRoleMismatch
             }
             var values: [String: YAMLValue] = [
-                "type": .string(metadata.sourceType.rawValue),
+                "type": .string(metadata.sourceType.rawValue)
             ]
             for input in metadata.fields {
-                guard catalog.isAnalysisFieldApplicable(
-                    input.key,
-                    sourceType: metadata.sourceType
-                ) else {
+                guard
+                    catalog.isAnalysisFieldApplicable(
+                        input.key,
+                        sourceType: metadata.sourceType
+                    )
+                else {
                     throw DocumentCreationError.inapplicableAnalysisProperty(
                         input.key,
                         metadata.sourceType
@@ -1734,9 +1799,10 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 profile: .analysis
             )
             guard issues.isEmpty,
-                  metadata.fields.allSatisfy({
-                      Self.isNonemptyManagedValue($0.value)
-                  }) else {
+                metadata.fields.allSatisfy({
+                    Self.isNonemptyManagedValue($0.value)
+                })
+            else {
                 throw DocumentCreationError.invalidMetadata(issues)
             }
             return values
@@ -1760,7 +1826,8 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         do {
             let document = try await repository.load(relativePath: relativePath)
             observed = document.fingerprint
-            state = document.fingerprint == intendedRevision
+            state =
+                document.fingerprint == intendedRevision
                 ? .intendedBytesRemain
                 : .externallyChanged
             sourceDetail = "The managed path currently has revision \(document.fingerprint.sha256)."
@@ -1790,16 +1857,18 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             triptychID: id,
             operation: .noteCreation,
             failure: failure,
-            files: [TriptychMutationRecoveryFile(
-                vaultID: vaultID,
-                path: relativePath,
-                role: .createdNote,
-                beforeRevision: nil,
-                intendedRevision: intendedRevision,
-                observedRevision: observed,
-                state: state,
-                detail: sourceDetail + identityDetail
-            )],
+            files: [
+                TriptychMutationRecoveryFile(
+                    vaultID: vaultID,
+                    path: relativePath,
+                    role: .createdNote,
+                    beforeRevision: nil,
+                    intendedRevision: intendedRevision,
+                    observedRevision: observed,
+                    state: state,
+                    detail: sourceDetail + identityDetail
+                )
+            ],
             managedCreation: ManagedCreationRecoveryReference(
                 target: VaultQualifiedNoteID(
                     vaultID: vaultID,
@@ -1860,22 +1929,24 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         while true {
             try Task.checkCancellation()
             let name = ordinal == 1 ? "Untitled Folder" : "Untitled Folder \(ordinal)"
-            let relativePath = if let parentRelativePath, !parentRelativePath.isEmpty {
-                parentRelativePath + "/" + name
-            } else {
-                name
-            }
+            let relativePath =
+                if let parentRelativePath, !parentRelativePath.isEmpty {
+                    parentRelativePath + "/" + name
+                } else {
+                    name
+                }
             do {
                 let folder = try await repository.createFolder(relativePath: relativePath)
-                scheduleCommittedMutationRefresh(WorkspaceRefreshPayload(
-                    publication: .explicit,
-                    failureDisposition: .staleAfterCommittedMutation(
-                        affectedVaultIDs: [vaultID]
-                    ),
-                    sourceCatalogPreparation: Self.catalogPreparation(
-                        refreshFolderVaultIDs: [vaultID]
-                    )
-                ))
+                scheduleCommittedMutationRefresh(
+                    WorkspaceRefreshPayload(
+                        publication: .explicit,
+                        failureDisposition: .staleAfterCommittedMutation(
+                            affectedVaultIDs: [vaultID]
+                        ),
+                        sourceCatalogPreparation: Self.catalogPreparation(
+                            refreshFolderVaultIDs: [vaultID]
+                        )
+                    ))
                 endSourceMutation(mutationLease)
                 ownsMutation = false
                 return WorkspaceMutationOutcome(committedValue: folder)
@@ -1971,15 +2042,18 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                         expectedRevision: nil
                     )
                 } catch {
-                    portableMetadataRecoveryWarning = "The duplicated source and stable identity are committed, but Scholium could not prove that its portable metadata was copied. Inspect Metadata before continuing: \(error.localizedDescription)"
+                    portableMetadataRecoveryWarning =
+                        "The duplicated source and stable identity are committed, but Scholium could not prove that its portable metadata was copied. Inspect Metadata before continuing: \(error.localizedDescription)"
                 }
             }
         } catch let identityError {
-            guard let retained = try await retainedCreatedDocumentAfterIdentityFailure(
-                repository: repository,
-                document: document,
-                identityError: identityError
-            ) else {
+            guard
+                let retained = try await retainedCreatedDocumentAfterIdentityFailure(
+                    repository: repository,
+                    document: document,
+                    identityError: identityError
+                )
+            else {
                 throw identityError
             }
             committedDocument = retained.document
@@ -2022,7 +2096,8 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 )
                 return RetainedCreatedDocument(
                     document: retained,
-                    identityRecoveryWarning: "The source remains at \(document.relativePath) because stable identity setup failed and exact rollback was refused. Do not create or import it again; recover its identity instead. Identity: \(identityError.localizedDescription) Rollback: \(rollbackError.localizedDescription)"
+                    identityRecoveryWarning:
+                        "The source remains at \(document.relativePath) because stable identity setup failed and exact rollback was refused. Do not create or import it again; recover its identity instead. Identity: \(identityError.localizedDescription) Rollback: \(rollbackError.localizedDescription)"
                 )
             } catch VaultRepositoryError.fileDoesNotExist {
                 // The delete may have committed before its own verification
@@ -2066,7 +2141,8 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 )
             )
             if identityRecoveryWarning != nil,
-               refreshed.document(id: id)?.stableIdentity.resolvedID != nil {
+                refreshed.document(id: id)?.stableIdentity.resolvedID != nil
+            {
                 identityRecoveryWarning = nil
             }
             derivedRefreshWarning = nil
@@ -2113,16 +2189,20 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     }
 
     /// Shared Metadata writer; callers hold the workspace source-mutation lease.
-    func commitNoteMetadata(_ id: VaultQualifiedNoteID, fields: [String: YAMLValue],
-                            expectedRevision: DocumentFingerprint?, agentTarget: (id: UUID, source: DocumentFingerprint)? = nil) async throws -> WorkspaceMutationOutcome<NoteMetadataSnapshot> {
+    func commitNoteMetadata(
+        _ id: VaultQualifiedNoteID, fields: [String: YAMLValue],
+        expectedRevision: DocumentFingerprint?, agentTarget: (id: UUID, source: DocumentFingerprint)? = nil
+    ) async throws -> WorkspaceMutationOutcome<NoteMetadataSnapshot> {
         let registeredVault = try vault(id: id.vaultID)
         let document = try await repository(vaultID: id.vaultID).load(
             relativePath: id.relativePath
         )
-        guard let identity = try await services.controlStore.identityRecord(
-            vaultID: id.vaultID,
-            relativePath: id.relativePath
-        ), identity.fingerprint == document.fingerprint else {
+        guard
+            let identity = try await services.controlStore.identityRecord(
+                vaultID: id.vaultID,
+                relativePath: id.relativePath
+            ), identity.fingerprint == document.fingerprint
+        else {
             throw NoteMetadataError.identityUnavailableAtPath(id.relativePath)
         }
         if let agentTarget {
@@ -2139,14 +2219,15 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             fields: fields,
             expectedRevision: expectedRevision
         )
-        scheduleCommittedMutationRefresh(WorkspaceRefreshPayload(
-            publication: .explicit,
-            failureDisposition: .staleAfterCommittedMutation(
-                affectedVaultIDs: [id.vaultID]
-            ),
-            sourceCatalogPreparation: .none,
-            metadataChanges: [identity.id: snapshot]
-        ))
+        scheduleCommittedMutationRefresh(
+            WorkspaceRefreshPayload(
+                publication: .explicit,
+                failureDisposition: .staleAfterCommittedMutation(
+                    affectedVaultIDs: [id.vaultID]
+                ),
+                sourceCatalogPreparation: .none,
+                metadataChanges: [identity.id: snapshot]
+            ))
         return WorkspaceMutationOutcome(committedValue: snapshot)
     }
 
@@ -2181,18 +2262,22 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     }
 
     func noteRecordDidChange(vaultID: UUID) {
-        scheduleCommittedMutationRefresh(WorkspaceRefreshPayload(publication: .explicit,
-            failureDisposition: .staleAfterCommittedMutation(affectedVaultIDs: [vaultID]), sourceCatalogPreparation: .none))
+        scheduleCommittedMutationRefresh(
+            WorkspaceRefreshPayload(
+                publication: .explicit,
+                failureDisposition: .staleAfterCommittedMutation(affectedVaultIDs: [vaultID]), sourceCatalogPreparation: .none))
     }
 
     func noteMetadata(
         _ id: VaultQualifiedNoteID
     ) async throws -> NoteMetadataSnapshot? {
         try requireActive()
-        guard let identity = try await services.controlStore.identityRecord(
-            vaultID: id.vaultID,
-            relativePath: id.relativePath
-        ) else { return nil }
+        guard
+            let identity = try await services.controlStore.identityRecord(
+                vaultID: id.vaultID,
+                relativePath: id.relativePath
+            )
+        else { return nil }
         return try await services.controlStore.noteMetadata(noteID: identity.id)
     }
 
@@ -2269,10 +2354,11 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                     derivedRefreshWarning = error.localizedDescription
                 }
             }
-            return .committed(WorkspaceMutationOutcome(
-                committedValue: result,
-                derivedRefreshWarning: derivedRefreshWarning
-            ))
+            return .committed(
+                WorkspaceMutationOutcome(
+                    committedValue: result,
+                    derivedRefreshWarning: derivedRefreshWarning
+                ))
         }
     }
 
@@ -2301,16 +2387,18 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             triptychID: self.id,
             operation: .noteSave,
             failure: failure,
-            files: [TriptychMutationRecoveryFile(
-                vaultID: id.vaultID,
-                path: id.relativePath,
-                role: .savedNote,
-                beforeRevision: expectedRevision,
-                intendedRevision: intendedRevision,
-                observedRevision: observed,
-                state: state,
-                detail: detail
-            )]
+            files: [
+                TriptychMutationRecoveryFile(
+                    vaultID: id.vaultID,
+                    path: id.relativePath,
+                    role: .savedNote,
+                    beforeRevision: expectedRevision,
+                    intendedRevision: intendedRevision,
+                    observedRevision: observed,
+                    state: state,
+                    detail: detail
+                )
+            ]
         )
         do {
             try await services.transactionRecoveryStore.record(record)
@@ -2405,7 +2493,8 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     ) async throws -> WorkspaceMutationOutcome<SystemTrashDeletionCommit> {
         try requireActive()
         guard let vaultID = preview.sources.first?.vaultID,
-              preview.sources.allSatisfy({ $0.vaultID == vaultID }) else {
+            preview.sources.allSatisfy({ $0.vaultID == vaultID })
+        else {
             throw TriptychTransactionError.invalidPlan(
                 "A system-Trash plan must belong to exactly one vault."
             )
@@ -2534,7 +2623,8 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 intendedRevision: sourceRecovery.candidateRevision,
                 repository: repository,
                 failure: failure,
-                detail: "Interrupted-save recovery could not prove both canonical and displaced bytes. The candidate and every available source revision remain machine-local for inspection."
+                detail:
+                    "Interrupted-save recovery could not prove both canonical and displaced bytes. The candidate and every available source revision remain machine-local for inspection."
             )
             throw TriptychTransactionError.recoveryRequired(record)
         }
@@ -2648,12 +2738,13 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         sourceCatalogPreparation: SourceCatalogPreparation? = nil
     ) async throws -> WorkspaceSnapshot {
         try requireActive()
-        return try await refreshCoordinator.request(WorkspaceRefreshPayload(
-            publication: publication,
-            failureDisposition: failureDisposition,
-            sourceCatalogPreparation: sourceCatalogPreparation
-                ?? .inferred(from: publication)
-        ))
+        return try await refreshCoordinator.request(
+            WorkspaceRefreshPayload(
+                publication: publication,
+                failureDisposition: failureDisposition,
+                sourceCatalogPreparation: sourceCatalogPreparation
+                    ?? .inferred(from: publication)
+            ))
     }
 
     private func performRefreshCycle(
@@ -2667,8 +2758,9 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         let measurement: WorkspaceRefreshMeasurement
         do {
             if mode == .live,
-               !currentSnapshot.phase.isComplete,
-               !didCompleteActivationReconciliation {
+                !currentSnapshot.phase.isComplete,
+                !didCompleteActivationReconciliation
+            {
                 await progressiveActivationReconciliationBarrierForTesting?()
                 try Task.checkCancellation()
                 try requireActive()
@@ -2709,7 +2801,8 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                         .flatMap(\.documents)
                         .compactMap { note -> (UUID, NoteMetadataSnapshot)? in
                             guard let noteID = note.stableIdentity.resolvedID,
-                                  let metadata = note.metadata else { return nil }
+                                let metadata = note.metadata
+                            else { return nil }
                             return (noteID, metadata)
                         }
                 )
@@ -2920,8 +3013,9 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         let moved = Set(previousLocations.keys).intersection(currentLocations.keys)
             .compactMap { stableID -> WorkspaceNoteMove? in
                 guard let oldLocation = previousLocations[stableID],
-                      let newLocation = currentLocations[stableID],
-                      oldLocation != newLocation else { return nil }
+                    let newLocation = currentLocations[stableID],
+                    oldLocation != newLocation
+                else { return nil }
                 return WorkspaceNoteMove(
                     stableNoteID: stableID,
                     previousLocation: oldLocation,
@@ -3173,11 +3267,12 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
 
     private func startLiveIndexRefreshIfNeeded() {
         guard !isShutDown,
-              currentSnapshot.phase.isComplete,
-              !sourceOperationGate.sourceMutationIsActive,
-              !pendingLiveEvents.isEmpty,
-              sourceCommitRefreshTask == nil,
-              liveIndexRefreshTask == nil else { return }
+            currentSnapshot.phase.isComplete,
+            !sourceOperationGate.sourceMutationIsActive,
+            !pendingLiveEvents.isEmpty,
+            sourceCommitRefreshTask == nil,
+            liveIndexRefreshTask == nil
+        else { return }
 
         let token = UUID()
         let task = Task(priority: .utility) { [weak self] in
@@ -3195,15 +3290,16 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         id: VaultQualifiedNoteID,
         kind: WorkspaceSourceCommitKind
     ) {
-        scheduleCommittedMutationRefresh(WorkspaceRefreshPayload(
-            publication: .sourceCommitted(id, kind),
-            failureDisposition: .staleAfterCommittedMutation(
-                affectedVaultIDs: [id.vaultID]
-            ),
-            sourceCatalogPreparation: .inferred(
-                from: .sourceCommitted(id, kind)
-            )
-        ))
+        scheduleCommittedMutationRefresh(
+            WorkspaceRefreshPayload(
+                publication: .sourceCommitted(id, kind),
+                failureDisposition: .staleAfterCommittedMutation(
+                    affectedVaultIDs: [id.vaultID]
+                ),
+                sourceCatalogPreparation: .inferred(
+                    from: .sourceCommitted(id, kind)
+                )
+            ))
     }
 
     /// Retains disposable projection work after a proven source mutation so
@@ -3226,7 +3322,8 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             startLiveIndexRefreshIfNeeded()
         }
         while !isShutDown, !Task.isCancelled,
-              !pendingSourceCommitRefreshes.isEmpty {
+            !pendingSourceCommitRefreshes.isEmpty
+        {
             let queued = pendingSourceCommitRefreshes
             pendingSourceCommitRefreshes.removeAll(keepingCapacity: true)
             do {
@@ -3256,8 +3353,9 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             await sourceCommitRefreshTask.value
         }
         if let note = currentSnapshot.document(id: id),
-           note.stableIdentity.resolvedID == stableIdentity,
-           note.fingerprint == fingerprint {
+            note.stableIdentity.resolvedID == stableIdentity,
+            note.fingerprint == fingerprint
+        {
             return note
         }
         do {
@@ -3274,8 +3372,9 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             )
         }
         guard let note = currentSnapshot.document(id: id),
-              note.stableIdentity.resolvedID == stableIdentity,
-              note.fingerprint == fingerprint else {
+            note.stableIdentity.resolvedID == stableIdentity,
+            note.fingerprint == fingerprint
+        else {
             throw ScholiumApplicationError.operationCommittedButRefreshFailed(
                 operation: "Agent Analysis creation",
                 reason: "The complete Workspace projection does not yet contain the committed Note identity and revision."
@@ -3328,7 +3427,8 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 }
                 guard !sourceOperationGate.sourceMutationIsActive else {
                     for vaultID in changedVaultIDs {
-                        var journal = pendingLiveEvents[vaultID]
+                        var journal =
+                            pendingLiveEvents[vaultID]
                             ?? VaultWatchEventJournal(capacity: 256)
                         journal.append(.reconciliationRequired(sequence: 0))
                         pendingLiveEvents[vaultID] = journal
@@ -3396,14 +3496,16 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         for (order, slot) in WorkspaceVaultSlot.allCases.enumerated() {
             try Task.checkCancellation()
             guard let vault = assignment.vault(for: slot),
-                  let catalog = sourceCatalogs[vault.id] else {
+                let catalog = sourceCatalogs[vault.id]
+            else {
                 throw ScholiumApplicationError.incompleteTriptych(assignment.id)
             }
-            inputs.append(WorkspaceSourceInventoryInput(
-                order: order,
-                vaultID: vault.id,
-                catalog: catalog
-            ))
+            inputs.append(
+                WorkspaceSourceInventoryInput(
+                    order: order,
+                    vaultID: vault.id,
+                    catalog: catalog
+                ))
         }
         let sources = try await withThrowingTaskGroup(
             of: WorkspaceSourceInventorySnapshot.self
@@ -3428,10 +3530,11 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         for source in sources {
             for document in source.snapshot.documents {
                 try Task.checkCancellation()
-                observed[VaultQualifiedNoteID(
-                    vaultID: source.vaultID,
-                    relativePath: document.relativePath
-                )] =
+                observed[
+                    VaultQualifiedNoteID(
+                        vaultID: source.vaultID,
+                        relativePath: document.relativePath
+                    )] =
                     document.fingerprint
             }
         }
@@ -3451,8 +3554,9 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
 
     var watcherReadinessEvidence: WorkspaceWatcherReadinessEvidence? {
         guard liveWatcherTask != nil,
-              currentSnapshot.phase.isComplete,
-              didCompleteActivationReconciliation else { return nil }
+            currentSnapshot.phase.isComplete,
+            didCompleteActivationReconciliation
+        else { return nil }
         return WorkspaceWatcherReadinessEvidence(
             watchedVaultIDs: Set(assignment.vaults.values.map(\.id)),
             activationReconciliationCompleted: true
@@ -3465,10 +3569,11 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             throw ScholiumApplicationError.workspaceStillLoading(id)
         }
         // Current registered membership, not index presence, authorizes the seed.
-        guard currentSnapshot.discovery.catalog.notes.contains(where: {
-            $0.reference.vaultID == request.seed.noteID.vaultID &&
-            $0.reference.relativePath == request.seed.noteID.relativePath
-        }) else { throw CocoaError(.fileReadNoSuchFile) }
+        guard
+            currentSnapshot.discovery.catalog.notes.contains(where: {
+                $0.reference.vaultID == request.seed.noteID.vaultID && $0.reference.relativePath == request.seed.noteID.relativePath
+            })
+        else { throw CocoaError(.fileReadNoSuchFile) }
         let response = try await services.searchIndex.relatedContent(request)
         try requireActive()
         try Task.checkCancellation()
@@ -3481,17 +3586,19 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             do {
                 let document = try await loadDocument(candidate.note)
                 guard document.fingerprint == candidate.fingerprint,
-                      document.rawContent.utf16.count <= RelatedContentContract.maximumSeedUTF16Count else {
-                    omitted += 1; continue
+                    document.rawContent.utf16.count <= RelatedContentContract.maximumSeedUTF16Count
+                else {
+                    omitted += 1
+                    continue
                 }
                 sources.append(.init(candidate: candidate, document: document))
-            } catch is CancellationError { throw CancellationError() }
-            catch { omitted += 1 }
+            } catch is CancellationError { throw CancellationError() } catch { omitted += 1 }
         }
         let passages = try TriptychSearchIndex.relatedPassages(request, sources: sources)
         try requireActive()
         try Task.checkCancellation()
-        return RelatedContentResponse(requestID: response.requestID, seedFingerprint: response.seedFingerprint,
+        return RelatedContentResponse(
+            requestID: response.requestID, seedFingerprint: response.seedFingerprint,
             freshnessToken: response.freshnessToken, availability: response.availability,
             state: omitted > 0 ? .partial : (passages.isEmpty ? .empty : .current),
             identityCandidates: response.identityCandidates, lexicalCandidates: response.lexicalCandidates,
@@ -3523,22 +3630,26 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             case .currentNote:
                 break
             case .currentVault:
-                guard ast.clauses.allSatisfy({ clause in
-                    if case .lexical = clause { return true }
-                    return false
-                }) else {
+                guard
+                    ast.clauses.allSatisfy({ clause in
+                        if case .lexical = clause { return true }
+                        return false
+                    })
+                else {
                     return await searchDiagnosticResponse(
                         request: request,
                         parsed: SearchQueryParseResult(
                             provider: .note,
                             providerWasExplicit: ast.providerWasExplicit,
                             ast: ast,
-                            diagnostics: [SearchQueryDiagnostic(
-                                code: .notApplicable,
-                                message: "While this Triptych is opening, This Vault Search supports words, phrases, and lexical fields only.",
-                                utf16LowerBound: 0,
-                                utf16UpperBound: request.query.utf16.count
-                            )]
+                            diagnostics: [
+                                SearchQueryDiagnostic(
+                                    code: .notApplicable,
+                                    message: "While this Triptych is opening, This Vault Search supports words, phrases, and lexical fields only.",
+                                    utf16LowerBound: 0,
+                                    utf16UpperBound: request.query.utf16.count
+                                )
+                            ]
                         )
                     )
                 }
@@ -3547,24 +3658,27 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             }
         }
         if case .currentNote = request.executionScope,
-           ast.clauses.contains(where: { clause in
-               switch clause {
-               case .structured, .property, .link: true
-               case .lexical: false
-               }
-           }) {
+            ast.clauses.contains(where: { clause in
+                switch clause {
+                case .structured, .property, .link: true
+                case .lexical: false
+                }
+            })
+        {
             return await searchDiagnosticResponse(
                 request: request,
                 parsed: SearchQueryParseResult(
                     provider: .note,
                     providerWasExplicit: ast.providerWasExplicit,
                     ast: ast,
-                    diagnostics: [SearchQueryDiagnostic(
-                        code: .notApplicable,
-                        message: "Structured fields, Metadata, and direct link clauses are not applicable to This Note occurrence Search.",
-                        utf16LowerBound: 0,
-                        utf16UpperBound: request.query.utf16.count
-                    )]
+                    diagnostics: [
+                        SearchQueryDiagnostic(
+                            code: .notApplicable,
+                            message: "Structured fields, Metadata, and direct link clauses are not applicable to This Note occurrence Search.",
+                            utf16LowerBound: 0,
+                            utf16UpperBound: request.query.utf16.count
+                        )
+                    ]
                 )
             )
         }
@@ -3607,8 +3721,9 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         }
         let authorizedVaultIDs = Set(assignment.vaults.values.map(\.id))
         if let includedVaultIDs = request.includedVaultIDs,
-           includedVaultIDs.isEmpty
-                || !Set(includedVaultIDs).isSubset(of: authorizedVaultIDs) {
+            includedVaultIDs.isEmpty
+                || !Set(includedVaultIDs).isSubset(of: authorizedVaultIDs)
+        {
             return SearchQueryDiagnostic(
                 code: .notApplicable,
                 message: "The selected Search vault subset is empty or outside this Triptych.",
@@ -3629,7 +3744,8 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 )
             }
             if case .opening(let availableSlot) = currentSnapshot.phase,
-               assignment.vault(for: availableSlot)?.id != vaultID {
+                assignment.vault(for: availableSlot)?.id != vaultID
+            {
                 return SearchQueryDiagnostic(
                     code: .notApplicable,
                     message: "Only the currently open vault can be searched while this Triptych finishes opening.",
@@ -3639,10 +3755,11 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             }
         case .currentNote(let source):
             guard authorizedVaultIDs.contains(source.noteID.vaultID),
-                  currentSnapshot.discovery.catalog.notes.contains(where: {
-                      $0.reference.vaultID == source.noteID.vaultID
-                          && $0.reference.relativePath == source.noteID.relativePath
-                  }) else {
+                currentSnapshot.discovery.catalog.notes.contains(where: {
+                    $0.reference.vaultID == source.noteID.vaultID
+                        && $0.reference.relativePath == source.noteID.relativePath
+                })
+            else {
                 return SearchQueryDiagnostic(
                     code: .notApplicable,
                     message: "The selected Search Note is not part of this Triptych.",
@@ -3693,21 +3810,23 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         for request: SearchRequest
     ) -> [VaultQualifiedNoteID: SearchIndexDocumentEligibility]? {
         guard case .opening = currentSnapshot.phase,
-              case .currentVault(let vaultID) = request.executionScope else {
+            case .currentVault(let vaultID) = request.executionScope
+        else {
             return nil
         }
-        return Dictionary(uniqueKeysWithValues: currentSnapshot.vaults
-            .filter { $0.vault.id == vaultID }
-            .flatMap(\.documents)
-            .map { note in
-                (
-                    note.id,
-                    SearchIndexDocumentEligibility(
-                        fingerprint: note.fingerprint,
-                        resolvedStableNoteID: note.stableIdentity.resolvedID
+        return Dictionary(
+            uniqueKeysWithValues: currentSnapshot.vaults
+                .filter { $0.vault.id == vaultID }
+                .flatMap(\.documents)
+                .map { note in
+                    (
+                        note.id,
+                        SearchIndexDocumentEligibility(
+                            fingerprint: note.fingerprint,
+                            resolvedStableNoteID: note.stableIdentity.resolvedID
+                        )
                     )
-                )
-            })
+                })
     }
 
     /// Opening never publishes a partial generation. The index has already
@@ -3718,18 +3837,20 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         request: SearchRequest
     ) -> SearchResponse {
         guard case .opening = currentSnapshot.phase,
-              case .currentVault = request.executionScope else {
+            case .currentVault = request.executionScope
+        else {
             return response
         }
         let availability = response.availability
-        let openingAvailability: SearchAvailability = switch availability {
-        case .current(let generation), .refreshing(let generation):
-            .limited(lastGood: generation)
-        case .unavailable:
-            .building(SearchBuildProgress(completed: 0, total: 0))
-        case .limited, .building, .stale, .failed:
-            availability
-        }
+        let openingAvailability: SearchAvailability =
+            switch availability {
+            case .current(let generation), .refreshing(let generation):
+                .limited(lastGood: generation)
+            case .unavailable:
+                .building(SearchBuildProgress(completed: 0, total: 0))
+            case .limited, .building, .stale, .failed:
+                availability
+            }
         return SearchResponse(
             contractVersion: response.contractVersion,
             requestID: response.requestID,
@@ -3748,7 +3869,6 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         try requireActive()
         return currentSnapshot.research
     }
-
 
     func triptychSettings() async throws -> TriptychSettingsSnapshot {
         try requireActive()
@@ -3789,10 +3909,12 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         } catch {
             let uncertaintyReason: String
             if let controlError = error as? TriptychControlError,
-               case .controlFileCommitUncertain(let reason) = controlError {
+                case .controlFileCommitUncertain(let reason) = controlError
+            {
                 uncertaintyReason = reason
             } else if let cocoaError = error as? CocoaError,
-                      cocoaError.code == .fileWriteUnknown {
+                cocoaError.code == .fileWriteUnknown
+            {
                 uncertaintyReason = cocoaError.localizedDescription
             } else {
                 throw error
@@ -3824,7 +3946,8 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             )
             return WorkspaceMutationOutcome(committedValue: snapshot)
         } catch let error as ScholiumApplicationError
-            where error.durableMutationWasCommitted {
+            where error.durableMutationWasCommitted
+        {
             return WorkspaceMutationOutcome(
                 committedValue: snapshot,
                 derivedRefreshWarning: error.refreshFailureReason
@@ -3866,7 +3989,8 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         if let undoAgentMoveID {
             let evidence = try await services.agentChangeStore.evidence(id: undoAgentMoveID)
             guard evidence.change.noteID == identity.id, evidence.change.state == .confirmed,
-                  evidence.change.afterFingerprint == expectedRevision else { throw AgentChangeError.undoUnavailable(undoAgentMoveID) }
+                evidence.change.afterFingerprint == expectedRevision
+            else { throw AgentChangeError.undoUnavailable(undoAgentMoveID) }
             plan = try await agentMoveInverse(evidence: evidence)
             guard plan.movedNote == source && plan.destination == destination else { throw AgentChangeError.mismatchedBinding(undoAgentMoveID) }
         } else {
@@ -3880,7 +4004,8 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         )
         if let agentMove {
             try await coordinator.validate(plan, expectedRevision: expectedRevision)
-            try await prepareAgentMoveEvidence(plan: plan, noteID: identity.id,
+            try await prepareAgentMoveEvidence(
+                plan: plan, noteID: identity.id,
                 expectedFingerprint: expectedRevision, authorization: agentMove)
         }
         let commit: TriptychMoveCommit
@@ -4029,10 +4154,11 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         }
         if identityFailure == nil {
             for record in movedIdentityRecords {
-                sourceAheadIdentityRecords[VaultQualifiedNoteID(
-                    vaultID: record.vaultID,
-                    relativePath: record.relativePath
-                )] = record
+                sourceAheadIdentityRecords[
+                    VaultQualifiedNoteID(
+                        vaultID: record.vaultID,
+                        relativePath: record.relativePath
+                    )] = record
             }
         }
 
@@ -4070,18 +4196,21 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         destinationFolder: VaultRelativeFolderPath,
         noteMoves: [FolderNoteMovePlan]
     ) async throws -> FolderIncomingLinkRewritePlan {
-        let snapshotCanAuthorizeFastPlan = !derivedStateRequiresRefresh
+        let snapshotCanAuthorizeFastPlan =
+            !derivedStateRequiresRefresh
             && pendingSourceCommitRefreshes.isEmpty
             && sourceCommitRefreshTask == nil
             && pendingLiveEvents.isEmpty
             && liveIndexRefreshTask == nil
             && sourceAheadIdentityRecords.isEmpty
         if snapshotCanAuthorizeFastPlan,
-           let graph = currentSnapshot.discovery.catalog.graph {
+            let graph = currentSnapshot.discovery.catalog.graph
+        {
             let activeSnapshots = currentSnapshot.vaults.flatMap(\.documents)
-            let documents = Dictionary(uniqueKeysWithValues: activeSnapshots.map {
-                ($0.id, $0.document)
-            })
+            let documents = Dictionary(
+                uniqueKeysWithValues: activeSnapshots.map {
+                    ($0.id, $0.document)
+                })
             var catalogNotesByID: [VaultQualifiedNoteID: WorkspaceCatalogNote] = [:]
             for note in currentSnapshot.discovery.catalog.notes {
                 let id = VaultQualifiedNoteID(
@@ -4096,29 +4225,32 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             }
             for note in activeSnapshots {
                 guard let cached = catalogNotesByID[note.id],
-                      cached.fingerprint == note.fingerprint else {
+                    cached.fingerprint == note.fingerprint
+                else {
                     snapshotIsCoherent = false
                     break
                 }
-                catalog.append(LinkCatalogNote(
-                    id: note.id,
-                    title: cached.title,
-                    aliases: cached.aliases,
-                    headings: note.headings
-                ))
+                catalog.append(
+                    LinkCatalogNote(
+                        id: note.id,
+                        title: cached.title,
+                        aliases: cached.aliases,
+                        headings: note.headings
+                    ))
             }
-            let sourceManifestHash = SearchSourceManifest.hash(documents.map {
-                id, document in
-                SearchSourceManifestEntry(
-                    vaultID: id.vaultID,
-                    relativePath: id.relativePath,
-                    fingerprint: document.fingerprint
-                )
-            })
+            let sourceManifestHash = SearchSourceManifest.hash(
+                documents.map {
+                    id, document in
+                    SearchSourceManifestEntry(
+                        vaultID: id.vaultID,
+                        relativePath: id.relativePath,
+                        fingerprint: document.fingerprint
+                    )
+                })
             if snapshotIsCoherent,
-               catalog.count == documents.count,
-               graph.sourceManifestHash == sourceManifestHash,
-               let plan = IncomingLinkRewriter.folderPlanUsingValidatedSnapshot(
+                catalog.count == documents.count,
+                graph.sourceManifestHash == sourceManifestHash,
+                let plan = IncomingLinkRewriter.folderPlanUsingValidatedSnapshot(
                     documents: documents,
                     catalog: catalog,
                     graph: graph,
@@ -4126,7 +4258,8 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                     sourceFolder: sourceFolder,
                     destinationFolder: destinationFolder,
                     noteMoves: noteMoves
-               ) {
+                )
+            {
                 return plan
             }
         }
@@ -4139,15 +4272,17 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             let repository = try repository(vaultID: registeredVault.id)
             for path in try await repository.markdownRelativePaths() {
                 let document = try await repository.load(relativePath: path)
-                documents[VaultQualifiedNoteID(
-                    vaultID: registeredVault.id,
-                    relativePath: path
-                )] = document
+                documents[
+                    VaultQualifiedNoteID(
+                        vaultID: registeredVault.id,
+                        relativePath: path
+                    )] = document
             }
         }
         for move in noteMoves {
             guard let current = documents[move.source],
-                  current.fingerprint == move.expectedRevision else {
+                current.fingerprint == move.expectedRevision
+            else {
                 throw VaultRepositoryError.conflict(
                     expected: move.expectedRevision,
                     current: documents[move.source]?.fingerprint ?? move.expectedRevision
@@ -4155,22 +4290,24 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             }
         }
         let semantics = documents.mapValues(MarkdownSemanticDocument.init(parsing:))
-        let vaultRoles = Dictionary(uniqueKeysWithValues: orderedVaults().map {
-            ($0.id, $0.role)
-        })
+        let vaultRoles = Dictionary(
+            uniqueKeysWithValues: orderedVaults().map {
+                ($0.id, $0.role)
+            })
         let catalog = try await exactLinkCatalog(
             documents: documents,
             semantics: semantics,
             vaultRoles: vaultRoles
         )
-        let sourceManifestHash = SearchSourceManifest.hash(documents.map {
-            id, document in
-            SearchSourceManifestEntry(
-                vaultID: id.vaultID,
-                relativePath: id.relativePath,
-                fingerprint: document.fingerprint
-            )
-        })
+        let sourceManifestHash = SearchSourceManifest.hash(
+            documents.map {
+                id, document in
+                SearchSourceManifestEntry(
+                    vaultID: id.vaultID,
+                    relativePath: id.relativePath,
+                    fingerprint: document.fingerprint
+                )
+            })
         let graph = LinkGraphBuilder.build(
             generation: (currentSnapshot.discovery.catalog.graph?.generation ?? 0) + 1,
             catalog: catalog,
@@ -4178,15 +4315,17 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             resolutionScope: .workspace,
             sourceManifestHash: sourceManifestHash
         )
-        guard let plan = IncomingLinkRewriter.folderPlanUsingValidatedSnapshot(
-            documents: documents,
-            catalog: catalog,
-            graph: graph,
-            vaultID: vaultID,
-            sourceFolder: sourceFolder,
-            destinationFolder: destinationFolder,
-            noteMoves: noteMoves
-        ) else {
+        guard
+            let plan = IncomingLinkRewriter.folderPlanUsingValidatedSnapshot(
+                documents: documents,
+                catalog: catalog,
+                graph: graph,
+                vaultID: vaultID,
+                sourceFolder: sourceFolder,
+                destinationFolder: destinationFolder,
+                noteMoves: noteMoves
+            )
+        else {
             throw VaultRepositoryError.writeFailed(
                 "The exact Metadata-aware Link catalog could not be proven for this folder move."
             )
@@ -4198,18 +4337,21 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         moving source: VaultQualifiedNoteID,
         to destination: VaultQualifiedNoteID
     ) async throws -> IncomingLinkRewritePlan {
-        let snapshotCanAuthorizeFastPlan = !derivedStateRequiresRefresh
+        let snapshotCanAuthorizeFastPlan =
+            !derivedStateRequiresRefresh
             && pendingSourceCommitRefreshes.isEmpty
             && sourceCommitRefreshTask == nil
             && pendingLiveEvents.isEmpty
             && liveIndexRefreshTask == nil
             && sourceAheadIdentityRecords.isEmpty
         if snapshotCanAuthorizeFastPlan,
-           let graph = currentSnapshot.discovery.catalog.graph {
+            let graph = currentSnapshot.discovery.catalog.graph
+        {
             let activeSnapshots = currentSnapshot.vaults.flatMap(\.documents)
-            let documents = Dictionary(uniqueKeysWithValues: activeSnapshots.map {
-                ($0.id, $0.document)
-            })
+            let documents = Dictionary(
+                uniqueKeysWithValues: activeSnapshots.map {
+                    ($0.id, $0.document)
+                })
             var catalogNotesByID: [VaultQualifiedNoteID: WorkspaceCatalogNote] = [:]
             for note in currentSnapshot.discovery.catalog.notes {
                 let id = VaultQualifiedNoteID(
@@ -4222,25 +4364,28 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             var snapshotIsCoherent = documents[source] != nil
             for note in activeSnapshots {
                 guard let cached = catalogNotesByID[note.id],
-                      cached.fingerprint == note.fingerprint else {
+                    cached.fingerprint == note.fingerprint
+                else {
                     snapshotIsCoherent = false
                     break
                 }
-                catalog.append(LinkCatalogNote(
-                    id: note.id,
-                    title: cached.title,
-                    aliases: cached.aliases,
-                    headings: note.headings
-                ))
+                catalog.append(
+                    LinkCatalogNote(
+                        id: note.id,
+                        title: cached.title,
+                        aliases: cached.aliases,
+                        headings: note.headings
+                    ))
             }
             if snapshotIsCoherent,
-               let plan = IncomingLinkRewriter.planUsingValidatedSnapshot(
-                   documents: documents,
-                   catalog: catalog,
-                   graph: graph,
-                   moving: source,
-                   to: destination
-               ) {
+                let plan = IncomingLinkRewriter.planUsingValidatedSnapshot(
+                    documents: documents,
+                    catalog: catalog,
+                    graph: graph,
+                    moving: source,
+                    to: destination
+                )
+            {
                 return plan
             }
         }
@@ -4250,13 +4395,15 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         // the complete filesystem read and graph re-derivation rather than
         // weakening exact-source validation.
         let context = try await freshMovePlanningContext()
-        guard let plan = IncomingLinkRewriter.planUsingValidatedSnapshot(
-            documents: context.documents,
-            catalog: context.catalog,
-            graph: context.graph,
-            moving: source,
-            to: destination
-        ) else {
+        guard
+            let plan = IncomingLinkRewriter.planUsingValidatedSnapshot(
+                documents: context.documents,
+                catalog: context.catalog,
+                graph: context.graph,
+                moving: source,
+                to: destination
+            )
+        else {
             throw VaultRepositoryError.writeFailed(
                 "The exact Metadata-aware Link catalog could not be proven for this Note move."
             )
@@ -4270,29 +4417,32 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             let repository = try repository(vaultID: registeredVault.id)
             for path in try await repository.markdownRelativePaths() {
                 let document = try await repository.load(relativePath: path)
-                documents[VaultQualifiedNoteID(
-                    vaultID: registeredVault.id,
-                    relativePath: path
-                )] = document
+                documents[
+                    VaultQualifiedNoteID(
+                        vaultID: registeredVault.id,
+                        relativePath: path
+                    )] = document
             }
         }
         let semantics = documents.mapValues(MarkdownSemanticDocument.init(parsing:))
-        let vaultRoles = Dictionary(uniqueKeysWithValues: orderedVaults().map {
-            ($0.id, $0.role)
-        })
+        let vaultRoles = Dictionary(
+            uniqueKeysWithValues: orderedVaults().map {
+                ($0.id, $0.role)
+            })
         let catalog = try await exactLinkCatalog(
             documents: documents,
             semantics: semantics,
             vaultRoles: vaultRoles
         )
-        let sourceManifestHash = SearchSourceManifest.hash(documents.map {
-            id, document in
-            SearchSourceManifestEntry(
-                vaultID: id.vaultID,
-                relativePath: id.relativePath,
-                fingerprint: document.fingerprint
-            )
-        })
+        let sourceManifestHash = SearchSourceManifest.hash(
+            documents.map {
+                id, document in
+                SearchSourceManifestEntry(
+                    vaultID: id.vaultID,
+                    relativePath: id.relativePath,
+                    fingerprint: document.fingerprint
+                )
+            })
         let graph = LinkGraphBuilder.build(
             generation: (currentSnapshot.discovery.catalog.graph?.generation ?? 0) + 1,
             catalog: catalog,
@@ -4309,10 +4459,11 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         vaultRoles: [UUID: VaultRole]
     ) async throws -> [LinkCatalogNote] {
         let metadataCatalog = try await services.controlStore.metadataCatalog()
-        let metadataByID = Dictionary(uniqueKeysWithValues:
-            try await services.controlStore.noteMetadataRecords(
-                catalog: metadataCatalog
-            ).map { ($0.record.noteID, $0) }
+        let metadataByID = Dictionary(
+            uniqueKeysWithValues:
+                try await services.controlStore.noteMetadataRecords(
+                    catalog: metadataCatalog
+                ).map { ($0.record.noteID, $0) }
         )
         var catalog: [LinkCatalogNote] = []
         catalog.reserveCapacity(documents.count)
@@ -4323,13 +4474,14 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 vaultID: id.vaultID,
                 relativePath: id.relativePath
             )
-            catalog.append(LinkCatalogNote(
-                vaultID: id.vaultID,
-                document: document,
-                profile: WorkflowProfileResolver.resolve(vaultRole: role),
-                metadata: identity.flatMap { metadataByID[$0.id] },
-                semantic: semantics[id]
-            ))
+            catalog.append(
+                LinkCatalogNote(
+                    vaultID: id.vaultID,
+                    document: document,
+                    profile: WorkflowProfileResolver.resolve(vaultRole: role),
+                    metadata: identity.flatMap { metadataByID[$0.id] },
+                    semantic: semantics[id]
+                ))
         }
         return catalog
     }
@@ -4357,20 +4509,24 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 current: current.fingerprint
             )
         }
-        guard let record = try await services.controlStore.identityRecord(
-                  vaultID: id.vaultID,
-                  relativePath: id.relativePath
-              ), record.fingerprint == expectedRevision else {
+        guard
+            let record = try await services.controlStore.identityRecord(
+                vaultID: id.vaultID,
+                relativePath: id.relativePath
+            ), record.fingerprint == expectedRevision
+        else {
             throw NoteIdentityRecoveryError.identityUnresolved(id.relativePath)
         }
         if let note = currentSnapshot.document(id: id),
-           note.fingerprint == expectedRevision,
-           note.stableIdentity.resolvedID == record.id {
+            note.fingerprint == expectedRevision,
+            note.stableIdentity.resolvedID == record.id
+        {
             return record
         }
         guard let sourceAhead = sourceAheadIdentityRecords[id],
-              sourceAhead.id == record.id,
-              sourceAhead.fingerprint == record.fingerprint else {
+            sourceAhead.id == record.id,
+            sourceAhead.fingerprint == record.fingerprint
+        else {
             throw NoteIdentityRecoveryError.identityUnresolved(id.relativePath)
         }
         return record
@@ -4382,9 +4538,11 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     ) async throws -> WorkspaceMutationOutcome<NoteIdentityRecord> {
         try requireActive()
         let repository = try repository(vaultID: ambiguity.vaultID)
-        guard WorkspaceVaultSlot.allCases.contains(where: {
-            assignment.vault(for: $0)?.id == ambiguity.vaultID
-        }) else {
+        guard
+            WorkspaceVaultSlot.allCases.contains(where: {
+                assignment.vault(for: $0)?.id == ambiguity.vaultID
+            })
+        else {
             throw ScholiumApplicationError.vaultNotInWorkspace(ambiguity.vaultID)
         }
         let record = try await services.identityRecoveryCoordinator.resolve(
@@ -4438,9 +4596,11 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     }
 
     private func requireRootAuthoritiesAvailable() throws {
-        guard let vaultID = WorkspaceVaultSlot.allCases.compactMap({ slot in
-            assignment.vault(for: slot)?.id
-        }).first(where: unavailableRootVaultIDs.contains) else {
+        guard
+            let vaultID = WorkspaceVaultSlot.allCases.compactMap({ slot in
+                assignment.vault(for: slot)?.id
+            }).first(where: unavailableRootVaultIDs.contains)
+        else {
             return
         }
         throw WorkspaceRegistryError.vaultAccessUnavailable(
@@ -4449,11 +4609,12 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     }
 
     private func unavailableRootPaths() -> [UUID: String] {
-        Dictionary(uniqueKeysWithValues: unavailableRootVaultIDs.compactMap { vaultID in
-            assignment.vaults.values.first(where: { $0.id == vaultID }).map {
-                (vaultID, $0.canonicalPath)
-            }
-        })
+        Dictionary(
+            uniqueKeysWithValues: unavailableRootVaultIDs.compactMap { vaultID in
+                assignment.vaults.values.first(where: { $0.id == vaultID }).map {
+                    (vaultID, $0.canonicalPath)
+                }
+            })
     }
 
     func requireCompleteWorkspace() throws {
@@ -4474,7 +4635,8 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         ).resolvingSymlinksInPath().standardizedFileURL
         let expectedContainer = worksURL.deletingLastPathComponent()
         guard let access,
-              access.canonicalContainerPath == expectedContainer.path else {
+            access.canonicalContainerPath == expectedContainer.path
+        else {
             throw WorkspaceRegistryError.portableControlAccessUnavailable(
                 expectedContainer.path
             )
@@ -4496,8 +4658,9 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         }
         let canonical = resolved.resolvingSymlinksInPath().standardizedFileURL
         guard !stale,
-              canonical.path == expectedContainer.path,
-              resolved.startAccessingSecurityScopedResource() else {
+            canonical.path == expectedContainer.path,
+            resolved.startAccessingSecurityScopedResource()
+        else {
             throw WorkspaceRegistryError.portableControlAccessUnavailable(
                 expectedContainer.path
             )

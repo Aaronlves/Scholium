@@ -5,7 +5,8 @@ import ScholiumApplication
 struct ScholiumAgentHelper {
     static func main() async {
         do {
-            let handler = try AgentMCPService.helperHandler(arguments: Array(CommandLine.arguments.dropFirst()),
+            let handler = try AgentMCPService.helperHandler(
+                arguments: Array(CommandLine.arguments.dropFirst()),
                 environment: ProcessInfo.processInfo.environment)
             try await AgentMCPService.serve(handler)
         } catch {

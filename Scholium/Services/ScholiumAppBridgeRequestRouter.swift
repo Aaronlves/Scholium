@@ -14,7 +14,9 @@ final class ScholiumAppBridgeRequestRouter {
         flushEditors: @escaping MCPAppBridgeRequestRouter.EditorFlusher,
         openTriptychs: @escaping MCPAppBridgeRequestRouter.OpenTriptychs,
         displayWindows: @escaping @MainActor (UUID) -> [MCPJSONValue] = { _ in [] },
-        displayNote: @escaping @MainActor (UUID, AgentNoteDisplayTarget, ScholiumMCPBridgeRequest) async throws -> Void = { _, _, _ in throw WorkspaceStore.displayUnavailable() },
+        displayNote: @escaping @MainActor (UUID, AgentNoteDisplayTarget, ScholiumMCPBridgeRequest) async throws -> Void = { _, _, _ in
+            throw WorkspaceStore.displayUnavailable()
+        },
         didConfirmChange: @escaping @MainActor (AgentChange) -> Void = { _ in },
         chatHandler: (@MainActor (ScholiumMCPBridgeRequest) async -> ScholiumMCPBridgeResponse)? = nil
     ) {
@@ -32,9 +34,11 @@ final class ScholiumAppBridgeRequestRouter {
     ) async -> ScholiumMCPBridgeResponse {
         if request.mcpRequest.conversationToken != nil {
             if let chatHandler { return await chatHandler(request.mcpRequest) }
-            return try! ScholiumMCPBridgeResponse(requestID: request.mcpRequest.requestID, error: ScholiumMCPFailure(
-                code: .workspaceNotReady, message: "The conversation is unavailable.", recovery: "Reconnect the conversation in Scholium."
-            ))
+            return try! ScholiumMCPBridgeResponse(
+                requestID: request.mcpRequest.requestID,
+                error: ScholiumMCPFailure(
+                    code: .workspaceNotReady, message: "The conversation is unavailable.", recovery: "Reconnect the conversation in Scholium."
+                ))
         }
         return await mcpRouter.handle(request.mcpRequest)
     }

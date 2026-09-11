@@ -44,10 +44,11 @@ struct WindowWorkspaceSessionState {
 
 @MainActor
 struct WindowWorkspaceDependencies {
-    let installSession: @MainActor (
-        WindowWorkspaceCapabilities,
-        WorkspaceSnapshot
-    ) async throws -> [String]
+    let installSession:
+        @MainActor (
+            WindowWorkspaceCapabilities,
+            WorkspaceSnapshot
+        ) async throws -> [String]
     let didRemoveRegistration: @MainActor (TriptychAssignment) -> Void
     let reportInformation: @MainActor (String) -> Void
 }
@@ -150,7 +151,8 @@ final class WindowWorkspaceController: ObservableObject {
                 if recordRecovery(for: error) {
                     return .recoveryRequired
                 }
-                let message = "Scholium could not activate this Triptych's shared files, search, and workspace state. The registered locations remain unchanged. \(error.localizedDescription)"
+                let message =
+                    "Scholium could not activate this Triptych's shared files, search, and workspace state. The registered locations remain unchanged. \(error.localizedDescription)"
                 state.recoveryMessage = message
                 return .failed(message)
             }
@@ -197,8 +199,9 @@ final class WindowWorkspaceController: ObservableObject {
             try await activate(assignment: assignment, openingVault: openingVault)
         }
         guard let capabilities = activeCapabilities,
-              capabilities.assignment.id == assignment.id,
-              let snapshot = workspaceStore.snapshot(for: capabilities.runtimeIdentity) else {
+            capabilities.assignment.id == assignment.id,
+            let snapshot = workspaceStore.snapshot(for: capabilities.runtimeIdentity)
+        else {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
         return WindowWorkspaceActiveSession(
@@ -217,12 +220,15 @@ final class WindowWorkspaceController: ObservableObject {
 
     func adopt(_ activation: WorkspaceActivation) -> WindowWorkspaceReplacement? {
         let previousRuntimeIdentity = activeCapabilities?.runtimeIdentity
-        let intendedID = state.assignment?.id
+        let intendedID =
+            state.assignment?.id
             ?? state.activeServicesID
             ?? requestedTriptychID
-        guard activation.workspaceID == intendedID
+        guard
+            activation.workspaceID == intendedID
                 || previousRuntimeIdentity.map(activation.replaces) == true,
-              previousRuntimeIdentity != activation.runtimeIdentity else {
+            previousRuntimeIdentity != activation.runtimeIdentity
+        else {
             return nil
         }
         let previousAssignment = state.assignment
@@ -251,7 +257,8 @@ final class WindowWorkspaceController: ObservableObject {
 
     private func install(capabilities: WindowWorkspaceCapabilities) async throws {
         guard let dependencies,
-              let snapshot = workspaceStore.snapshot(for: capabilities.runtimeIdentity) else {
+            let snapshot = workspaceStore.snapshot(for: capabilities.runtimeIdentity)
+        else {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
         let transactionRecoveryIssues = try await dependencies.installSession(
@@ -266,9 +273,10 @@ final class WindowWorkspaceController: ObservableObject {
         if transactionRecoveryIssues.isEmpty {
             state.recoveryMessage = nil
         } else {
-            state.recoveryMessage = ([
-                "An interrupted system Trash deletion still requires inspection.",
-            ] + transactionRecoveryIssues).joined(separator: "\n")
+            state.recoveryMessage =
+                ([
+                    "An interrupted system Trash deletion still requires inspection."
+                ] + transactionRecoveryIssues).joined(separator: "\n")
         }
     }
 
@@ -316,10 +324,11 @@ final class WindowWorkspaceController: ObservableObject {
     func restoreWorkspaceAccess(using selectedURL: URL) async throws {
         try await performRecovery { [self] in
             guard let recovery = state.accessRecovery,
-                  let assignment = state.assignment,
-                  let analyses = assignment.vault(for: .paperAnalysis),
-                  let topics = assignment.vault(for: .topicKnowledge),
-                  let works = assignment.vault(for: .output) else {
+                let assignment = state.assignment,
+                let analyses = assignment.vault(for: .paperAnalysis),
+                let topics = assignment.vault(for: .topicKnowledge),
+                let works = assignment.vault(for: .output)
+            else {
                 throw WorkspaceRegistryError.incompleteWorkspace
             }
 
@@ -330,17 +339,21 @@ final class WindowWorkspaceController: ObservableObject {
             let expected = URL(fileURLWithPath: recovery.expectedPath, isDirectory: true)
                 .resolvingSymlinksInPath().standardizedFileURL.path
 
-            let replacementAnalyses = analysesURL.resolvingSymlinksInPath()
-                .standardizedFileURL.path == expected ? selected : analysesURL
-            let replacementTopics = topicsURL.resolvingSymlinksInPath()
-                .standardizedFileURL.path == expected ? selected : topicsURL
-            let replacementWorks = worksURL.resolvingSymlinksInPath()
-                .standardizedFileURL.path == expected ? selected : worksURL
+            let replacementAnalyses =
+                analysesURL.resolvingSymlinksInPath()
+                    .standardizedFileURL.path == expected ? selected : analysesURL
+            let replacementTopics =
+                topicsURL.resolvingSymlinksInPath()
+                    .standardizedFileURL.path == expected ? selected : topicsURL
+            let replacementWorks =
+                worksURL.resolvingSymlinksInPath()
+                    .standardizedFileURL.path == expected ? selected : worksURL
             let portableURL: URL
             if recovery.kind == .portableControl {
                 portableURL = selected
             } else {
-                portableURL = await portableContainerURL(for: replacementWorks)
+                portableURL =
+                    await portableContainerURL(for: replacementWorks)
                     ?? replacementWorks.deletingLastPathComponent()
             }
             try await configureTriptych(
@@ -359,13 +372,14 @@ final class WindowWorkspaceController: ObservableObject {
     func rebuildUnsupportedPortableControl() async throws -> URL {
         try await performRecovery { [self] in
             guard let recovery = state.accessRecovery,
-                  recovery.kind == .unsupportedPortableControl,
-                  state.activeServicesID == nil,
-                  let assignment = state.assignment,
-                  let analyses = assignment.vault(for: .paperAnalysis),
-                  let topics = assignment.vault(for: .topicKnowledge),
-                  let works = assignment.vault(for: .output),
-                  let dependencies else {
+                recovery.kind == .unsupportedPortableControl,
+                state.activeServicesID == nil,
+                let assignment = state.assignment,
+                let analyses = assignment.vault(for: .paperAnalysis),
+                let topics = assignment.vault(for: .topicKnowledge),
+                let works = assignment.vault(for: .output),
+                let dependencies
+            else {
                 throw WorkspaceRegistryError.incompleteWorkspace
             }
             let analysesURL = URL(fileURLWithPath: analyses.canonicalPath, isDirectory: true)
@@ -401,14 +415,15 @@ final class WindowWorkspaceController: ObservableObject {
     func archiveInvalidNoteMetadataRecord() async throws -> URL {
         try await performRecovery { [self] in
             guard let recovery = state.accessRecovery,
-                  recovery.kind == .invalidNoteMetadataRecord,
-                  let issue = recovery.noteMetadataIssue,
-                  state.activeServicesID == nil,
-                  let assignment = state.assignment,
-                  let analyses = assignment.vault(for: .paperAnalysis),
-                  let topics = assignment.vault(for: .topicKnowledge),
-                  let works = assignment.vault(for: .output),
-                  let dependencies else {
+                recovery.kind == .invalidNoteMetadataRecord,
+                let issue = recovery.noteMetadataIssue,
+                state.activeServicesID == nil,
+                let assignment = state.assignment,
+                let analyses = assignment.vault(for: .paperAnalysis),
+                let topics = assignment.vault(for: .topicKnowledge),
+                let works = assignment.vault(for: .output),
+                let dependencies
+            else {
                 throw WorkspaceRegistryError.incompleteWorkspace
             }
             let analysesURL = URL(fileURLWithPath: analyses.canonicalPath, isDirectory: true)
@@ -444,9 +459,10 @@ final class WindowWorkspaceController: ObservableObject {
     func removeUnavailableTriptychRegistration() async throws {
         try await performRecovery { [self] in
             guard state.accessRecovery != nil,
-                  state.activeServicesID == nil,
-                  let assignment = state.assignment,
-                  let dependencies else {
+                state.activeServicesID == nil,
+                let assignment = state.assignment,
+                let dependencies
+            else {
                 throw WorkspaceRegistryError.incompleteWorkspace
             }
             try await workspaceStore.removeLocalTriptychRegistration(id: assignment.id)
@@ -509,11 +525,13 @@ final class WindowWorkspaceController: ObservableObject {
             }
         }
         if let repositoryError = error as? VaultRepositoryError,
-           case .rootUnavailable(let path) = repositoryError {
+            case .rootUnavailable(let path) = repositoryError
+        {
             return WorkspaceAccessRecovery(kind: .vault, expectedPath: path)
         }
         if let applicationError = error as? ScholiumApplicationError,
-           case .portableControlRecoveryRequired(let controlPath, let reason) = applicationError {
+            case .portableControlRecoveryRequired(let controlPath, let reason) = applicationError
+        {
             return WorkspaceAccessRecovery(
                 kind: .unsupportedPortableControl,
                 expectedPath: controlPath,
@@ -521,7 +539,8 @@ final class WindowWorkspaceController: ObservableObject {
             )
         }
         if let applicationError = error as? ScholiumApplicationError,
-           case .noteMetadataRecoveryRequired(let controlPath, let issue) = applicationError {
+            case .noteMetadataRecoveryRequired(let controlPath, let issue) = applicationError
+        {
             return WorkspaceAccessRecovery(
                 kind: .invalidNoteMetadataRecord,
                 expectedPath: controlPath,
@@ -593,7 +612,8 @@ final class WindowWorkspaceController: ObservableObject {
 
         do {
             let repaired = try await workspaceStore.reconcileTriptychIdentity(id: stored.id)
-            let refreshed = repaired == stored
+            let refreshed =
+                repaired == stored
                 ? assignments
                 : ((try? await workspaceStore.registeredTriptychs()) ?? assignments)
             return .selected(

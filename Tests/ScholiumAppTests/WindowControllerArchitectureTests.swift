@@ -1,7 +1,8 @@
-import ScholiumContracts
 import Combine
 import Foundation
+import ScholiumContracts
 import Testing
+
 @testable import ScholiumApp
 
 @Suite("Window controller architecture")
@@ -48,25 +49,29 @@ struct WindowControllerArchitectureTests {
             ),
             encoding: .utf8
         )
-        let moveStart = try #require(ownerSource.range(
-            of: "func moveFolder(\n        _ target: FolderMutationTarget,"
-        ))
-        let trashStart = try #require(ownerSource.range(
-            of: "func prepareFolderSystemTrash(_ target: FolderMutationTarget)",
-            range: moveStart.upperBound ..< ownerSource.endIndex
-        ))
-        let duplicateStart = try #require(ownerSource.range(
-            of: "func duplicateNote(",
-            range: trashStart.upperBound ..< ownerSource.endIndex
-        ))
-        let moveSource = ownerSource[moveStart.lowerBound ..< trashStart.lowerBound]
-        let trashSource = ownerSource[trashStart.lowerBound ..< duplicateStart.lowerBound]
+        let moveStart = try #require(
+            ownerSource.range(
+                of: "func moveFolder(\n        _ target: FolderMutationTarget,"
+            ))
+        let trashStart = try #require(
+            ownerSource.range(
+                of: "func prepareFolderSystemTrash(_ target: FolderMutationTarget)",
+                range: moveStart.upperBound..<ownerSource.endIndex
+            ))
+        let duplicateStart = try #require(
+            ownerSource.range(
+                of: "func duplicateNote(",
+                range: trashStart.upperBound..<ownerSource.endIndex
+            ))
+        let moveSource = ownerSource[moveStart.lowerBound..<trashStart.lowerBound]
+        let trashSource = ownerSource[trashStart.lowerBound..<duplicateStart.lowerBound]
 
         for source in [moveSource, trashSource] {
             #expect(source.contains("guard !isMutatingFolder else"))
-            #expect(source.contains(
-                "throw WindowLibraryMutationError.folderMutationInProgress"
-            ))
+            #expect(
+                source.contains(
+                    "throw WindowLibraryMutationError.folderMutationInProgress"
+                ))
             #expect(!source.contains("guard !isMutatingFolder else { return }"))
         }
         #expect(trashSource.contains("relativePath: target.relativePath"))
@@ -109,9 +114,10 @@ struct WindowControllerArchitectureTests {
         var invalidations = 0
         let observation = session.objectWillChange.sink { invalidations += 1 }
 
-        #expect(workspaceController.recordRecovery(
-            for: WorkspaceRegistryError.vaultAccessUnavailable("/unrelated/recovery")
-        ))
+        #expect(
+            workspaceController.recordRecovery(
+                for: WorkspaceRegistryError.vaultAccessUnavailable("/unrelated/recovery")
+            ))
         discoveryController.synchronizeLibrarySelection(
             workspaceSlot: .output,
             sourceScope: .library
@@ -188,9 +194,10 @@ struct WindowControllerArchitectureTests {
         #expect(!sessionSource.contains("WindowModel"))
         #expect(!sessionSource.contains("workspace.objectWillChange"))
         #expect(!sessionSource.contains("?? discoveryController.library.workspaceSlot"))
-        #expect(sessionSource.contains(
-            "if let workspaceSlot = presentation.workspaceSlot"
-        ))
+        #expect(
+            sessionSource.contains(
+                "if let workspaceSlot = presentation.workspaceSlot"
+            ))
         #expect(sessionSource.contains("workspaceController.$state"))
         #expect(sessionSource.contains("projectionController.$state"))
     }
@@ -208,11 +215,12 @@ struct WindowControllerArchitectureTests {
             encoding: .utf8
         )
         let start = try #require(source.range(of: "private func preferredAttentionRoute()"))
-        let end = try #require(source.range(
-            of: "private func registerQAFocusRequest()",
-            range: start.upperBound ..< source.endIndex
-        ))
-        let route = source[start.lowerBound ..< end.lowerBound]
+        let end = try #require(
+            source.range(
+                of: "private func registerQAFocusRequest()",
+                range: start.upperBound..<source.endIndex
+            ))
+        let route = source[start.lowerBound..<end.lowerBound]
 
         #expect(!route.contains("appState.sidebarVisible"))
         #expect(route.contains("anchor: .toolbar"))
@@ -249,12 +257,14 @@ struct WindowControllerArchitectureTests {
 
         #expect(app.contains("lazy var searchController = WindowSearchController("))
         #expect(!app.contains("searchController.objectWillChange"))
-        #expect(content.contains(
-            "@ObservedObject private var searchController: WindowSearchController"
-        ))
-        #expect(content.contains(
-            "@ObservedObject private var discoveryController: DiscoveryController"
-        ))
+        #expect(
+            content.contains(
+                "@ObservedObject private var searchController: WindowSearchController"
+            ))
+        #expect(
+            content.contains(
+                "@ObservedObject private var discoveryController: DiscoveryController"
+            ))
         for retiredRootOwner in [
             "@Published var savedSearches",
             "savedSearchMutationTail",
@@ -266,9 +276,10 @@ struct WindowControllerArchitectureTests {
         ] {
             #expect(!app.contains(retiredRootOwner))
         }
-        #expect(controller.contains(
-            "final class WindowSearchController: ObservableObject"
-        ))
+        #expect(
+            controller.contains(
+                "final class WindowSearchController: ObservableObject"
+            ))
         #expect(controller.contains("@Published private(set) var savedSearches"))
         #expect(controller.contains("private var executionTask"))
         #expect(controller.contains("private var savedSearchMutationTail"))
@@ -307,13 +318,15 @@ struct WindowControllerArchitectureTests {
             encoding: .utf8
         )
 
-        #expect(app.contains(
-            "lazy var workspaceProjectionController = WindowWorkspaceProjectionController("
-        ))
+        #expect(
+            app.contains(
+                "lazy var workspaceProjectionController = WindowWorkspaceProjectionController("
+            ))
         #expect(!app.contains("workspaceProjectionController.objectWillChange"))
-        #expect(content.contains(
-            "@ObservedObject private var workspaceProjectionController: WindowWorkspaceProjectionController"
-        ))
+        #expect(
+            content.contains(
+                "@ObservedObject private var workspaceProjectionController: WindowWorkspaceProjectionController"
+            ))
         #expect(app.contains("workspaceStore.$workspaceEvents"))
         for retiredRootOwner in [
             "@Published var notes:",
@@ -332,9 +345,10 @@ struct WindowControllerArchitectureTests {
         ] {
             #expect(!app.contains(retiredRootOwner))
         }
-        #expect(controller.contains(
-            "final class WindowWorkspaceProjectionController: ObservableObject"
-        ))
+        #expect(
+            controller.contains(
+                "final class WindowWorkspaceProjectionController: ObservableObject"
+            ))
         #expect(controller.contains("@Published private(set) var state = State()"))
         #expect(controller.contains("private var runtimeIdentity"))
         #expect(controller.contains("private var acceptedGeneration"))
@@ -376,12 +390,14 @@ struct WindowControllerArchitectureTests {
         discovery.requestOpen(reference, disposition: .newTab)
         document.requestFileOperation(.move(mutationTarget))
 
-        #expect(discoveryIntents == [
-            .openDocument(WindowDocumentRoute(
-                reference: reference,
-                disposition: .newTab
-            )),
-        ])
+        #expect(
+            discoveryIntents == [
+                .openDocument(
+                    WindowDocumentRoute(
+                        reference: reference,
+                        disposition: .newTab
+                    ))
+            ])
         #expect(documentIntents == [.presentNoteFileOperation(.move(mutationTarget))])
         #expect(document.selectedDocument == nil)
         #expect(discovery.library.sourceScope == .library)
@@ -566,10 +582,12 @@ struct WindowControllerArchitectureTests {
             vaultID: recoveryVaultID,
             relativePath: "Topics/Ambiguous.md"
         )
-        #expect(controller.selectedDocument == .unavailable(
-            vaultID: recoveryVaultID,
-            relativePath: "Topics/Ambiguous.md"
-        ))
+        #expect(
+            controller.selectedDocument
+                == .unavailable(
+                    vaultID: recoveryVaultID,
+                    relativePath: "Topics/Ambiguous.md"
+                ))
         #expect(controller.selectedDocumentPath == "Topics/Ambiguous.md")
         #expect(controller.selectedDocument?.vaultID == recoveryVaultID)
 
@@ -626,7 +644,7 @@ struct WindowControllerArchitectureTests {
             documentPresentations: [
                 reference.relativePath: WindowDocumentPresentationSnapshot(
                     scrollFraction: 0.64
-                ),
+                )
             ],
             vaultID: reference.vaultID
         )
@@ -662,14 +680,15 @@ struct WindowControllerArchitectureTests {
         #expect(controller.currentPresentationMode == .livePreview)
         #expect(session.scrollFraction == 0)
         #expect(session.scrollAnchor == nil)
-        #expect(controller.presentationSnapshot(vaultID: reference.vaultID) ==
-            DocumentPresentationSnapshot(
-                documents: [
-                    reference.relativePath: WindowDocumentPresentationSnapshot(
-                        scrollFraction: 0
-                    ),
-                ]
-            ))
+        #expect(
+            controller.presentationSnapshot(vaultID: reference.vaultID)
+                == DocumentPresentationSnapshot(
+                    documents: [
+                        reference.relativePath: WindowDocumentPresentationSnapshot(
+                            scrollFraction: 0
+                        )
+                    ]
+                ))
 
         controller.resetPresentationState()
         #expect(controller.currentPresentationMode == .livePreview)
@@ -744,14 +763,15 @@ struct WindowControllerArchitectureTests {
         }
 
         session.observeScrollFraction(0.41)
-        session.observeScrollAnchor(EditorScrollAnchor(
-            sourceFingerprint: "scroll-fixture",
-            sourceUTF16Offset: 8,
-            blockUTF16LowerBound: 4,
-            blockUTF16UpperBound: 16,
-            relativeBlockPosition: 0.25,
-            fallbackFraction: 0.41
-        ))
+        session.observeScrollAnchor(
+            EditorScrollAnchor(
+                sourceFingerprint: "scroll-fixture",
+                sourceUTF16Offset: 8,
+                blockUTF16LowerBound: 4,
+                blockUTF16UpperBound: 16,
+                relativeBlockPosition: 0.25,
+                fallbackFraction: 0.41
+            ))
 
         #expect(session.scrollRestoreRequest == nil)
         #expect(invalidationCount == 0)
@@ -817,7 +837,7 @@ struct WindowControllerArchitectureTests {
         let controller = DocumentController()
         controller.restorePresentationState(
             documentPresentations: [
-                path: WindowDocumentPresentationSnapshot(scrollFraction: 0.42),
+                path: WindowDocumentPresentationSnapshot(scrollFraction: 0.42)
             ],
             vaultID: nil
         )
@@ -928,14 +948,16 @@ struct WindowControllerArchitectureTests {
     @Test("Discovery rejects a stale Search completion")
     func staleSearchCompletion() {
         let controller = DiscoveryController()
-        let first = controller.beginSearch(SearchWorkspaceState(
-            query: "first",
-            scope: .triptych
-        ))
-        let second = controller.beginSearch(SearchWorkspaceState(
-            query: "second",
-            scope: .thisNote
-        ))
+        let first = controller.beginSearch(
+            SearchWorkspaceState(
+                query: "first",
+                scope: .triptych
+            ))
+        let second = controller.beginSearch(
+            SearchWorkspaceState(
+                query: "second",
+                scope: .thisNote
+            ))
 
         controller.failSearch(.failed("stale"), for: first)
         #expect(controller.search.executionIssue == nil)
@@ -961,9 +983,11 @@ struct WindowControllerArchitectureTests {
             )
         }
 
-        #expect(controller.search.executionIssue == .unavailable(
-            "Open a complete Triptych before searching."
-        ))
+        #expect(
+            controller.search.executionIssue
+                == .unavailable(
+                    "Open a complete Triptych before searching."
+                ))
         #expect(!controller.search.isRunning)
 
         await #expect(throws: DiscoverySearchExecutionError.currentNoteUnavailable) {
@@ -976,9 +1000,11 @@ struct WindowControllerArchitectureTests {
                 )
             )
         }
-        #expect(controller.search.executionIssue == .unavailable(
-            "Open a note before searching This Note."
-        ))
+        #expect(
+            controller.search.executionIssue
+                == .unavailable(
+                    "Open a note before searching This Note."
+                ))
 
         await #expect(throws: DiscoverySearchExecutionError.currentVaultUnavailable) {
             try await controller.executeSearch(
@@ -990,9 +1016,11 @@ struct WindowControllerArchitectureTests {
                 )
             )
         }
-        #expect(controller.search.executionIssue == .unavailable(
-            "Select an available vault before searching This Vault."
-        ))
+        #expect(
+            controller.search.executionIssue
+                == .unavailable(
+                    "Select an available vault before searching This Vault."
+                ))
     }
 
     @Test("Discovery rejects a stale Library completion for the same workspace")
@@ -1107,9 +1135,10 @@ struct WindowControllerArchitectureTests {
             source.components(separatedBy: "presentation: .stagedReplacement").count - 1 == 3
         )
         #expect(source.contains("private func currentWorkspaceVaultSnapshot("))
-        #expect(source.contains(
-            "workspaceProjectionController.vaultSnapshot(id: vaultID)"
-        ))
+        #expect(
+            source.contains(
+                "workspaceProjectionController.vaultSnapshot(id: vaultID)"
+            ))
     }
 
     @Test("Library requests in different workspaces remain independent")
@@ -1209,9 +1238,10 @@ struct WindowControllerArchitectureTests {
 
         #expect(controller.library.filters == DiscoveryFilterState())
         #expect(controller.library.sortOrder == .titleDescending)
-        #expect(controller.expandedFolders(in: scope) == [
-            "Existing", "Arguments", "Arguments/Agency",
-        ])
+        #expect(
+            controller.expandedFolders(in: scope) == [
+                "Existing", "Arguments", "Arguments/Agency",
+            ])
         let request = try #require(controller.libraryRevealRequest)
         #expect(request.scope == scope)
         #expect(request.relativePath == "Arguments/Agency/Untitled.md")
@@ -1242,9 +1272,10 @@ struct WindowControllerArchitectureTests {
 
         #expect(controller.library.filters == filters)
         #expect(controller.library.sortOrder == .titleAscending)
-        #expect(controller.expandedFolders(in: scope) == [
-            "Existing", "Arguments", "Arguments/Agency",
-        ])
+        #expect(
+            controller.expandedFolders(in: scope) == [
+                "Existing", "Arguments", "Arguments/Agency",
+            ])
         let first = try #require(controller.libraryRevealRequest)
         #expect(first.alignment == .nearest)
         controller.consumeLibraryRevealRequest(first)
@@ -1391,11 +1422,12 @@ struct WindowControllerArchitectureTests {
             "Scholium/Views",
             isDirectory: true
         )
-        let enumerator = try #require(FileManager.default.enumerator(
-            at: viewsRoot,
-            includingPropertiesForKeys: [.isRegularFileKey],
-            options: [.skipsHiddenFiles]
-        ))
+        let enumerator = try #require(
+            FileManager.default.enumerator(
+                at: viewsRoot,
+                includingPropertiesForKeys: [.isRegularFileKey],
+                options: [.skipsHiddenFiles]
+            ))
         var violations: [String] = []
         for case let file as URL in enumerator where file.pathExtension == "swift" {
             let source = try String(contentsOf: file, encoding: .utf8)
@@ -1455,10 +1487,11 @@ struct WindowControllerArchitectureTests {
             encoding: .utf8
         )
         let start = try #require(source.range(of: "final class WindowModel: ObservableObject"))
-        let end = try #require(source.range(
-            of: "private enum ClipboardWorkflowError",
-            range: start.upperBound..<source.endIndex
-        ))
+        let end = try #require(
+            source.range(
+                of: "private enum ClipboardWorkflowError",
+                range: start.upperBound..<source.endIndex
+            ))
         let windowModelSource = String(source[start.lowerBound..<end.lowerBound])
 
         for prohibited in [
@@ -1504,20 +1537,23 @@ struct WindowControllerArchitectureTests {
         #expect(libraryMutationSource.contains("try Task.checkCancellation()"))
         #expect(libraryMutationSource.contains("mutationTaskCancellations"))
         #expect(libraryMutationSource.contains("withOwnedMutation"))
-        #expect(libraryMutationSource.contains(
-            "mutationTaskCancellations.values.forEach { $0() }"
-        ))
+        #expect(
+            libraryMutationSource.contains(
+                "mutationTaskCancellations.values.forEach { $0() }"
+            ))
         #expect(windowModelSource.contains("private func publishCommittedNoteCreation("))
         #expect(windowModelSource.contains("guard isCurrent() else"))
         #expect(windowModelSource.contains("managedCreationBodyStartUTF16:"))
 
-        let searchSelectionStart = try #require(windowModelSource.range(
-            of: "private func openSearchSelection("
-        ))
-        let searchSelectionEnd = try #require(windowModelSource.range(
-            of: "func requestOpenNote(\n        _ path: String,",
-            range: searchSelectionStart.upperBound..<windowModelSource.endIndex
-        ))
+        let searchSelectionStart = try #require(
+            windowModelSource.range(
+                of: "private func openSearchSelection("
+            ))
+        let searchSelectionEnd = try #require(
+            windowModelSource.range(
+                of: "func requestOpenNote(\n        _ path: String,",
+                range: searchSelectionStart.upperBound..<windowModelSource.endIndex
+            ))
         let searchSelectionSource = windowModelSource[
             searchSelectionStart.lowerBound..<searchSelectionEnd.lowerBound
         ]
@@ -1525,57 +1561,69 @@ struct WindowControllerArchitectureTests {
         #expect(!searchSelectionSource.contains("isCurrentDocument"))
         #expect(!searchSelectionSource.contains("requestPresentationMode = .source"))
 
-        let selectedActivationStart = try #require(windowModelSource.range(
-            of: "private func activateWorkspaceReferenceInSelectedWorkspace("
-        ))
-        let selectedActivationEnd = try #require(windowModelSource.range(
-            of: "private func synchronizeDocumentTabs(",
-            range: selectedActivationStart.upperBound..<windowModelSource.endIndex
-        ))
+        let selectedActivationStart = try #require(
+            windowModelSource.range(
+                of: "private func activateWorkspaceReferenceInSelectedWorkspace("
+            ))
+        let selectedActivationEnd = try #require(
+            windowModelSource.range(
+                of: "private func synchronizeDocumentTabs(",
+                range: selectedActivationStart.upperBound..<windowModelSource.endIndex
+            ))
         let selectedActivationSource = windowModelSource[
             selectedActivationStart.lowerBound..<selectedActivationEnd.lowerBound
         ]
-        #expect(selectedActivationSource.contains(
-            "if managedCreationBodyStartUTF16 == nil"
-        ))
-        #expect(selectedActivationSource.contains(
-            "PerformanceProbe.shared.beginReadActivation("
-        ))
-        #expect(windowModelSource.contains(
-            "private func synchronizeSystemTrashPresentation("
-        ))
-        #expect(windowModelSource.contains(
-            "workspaceProjectionController.recordCommittedNoteMove("
-        ))
+        #expect(
+            selectedActivationSource.contains(
+                "if managedCreationBodyStartUTF16 == nil"
+            ))
+        #expect(
+            selectedActivationSource.contains(
+                "PerformanceProbe.shared.beginReadActivation("
+            ))
+        #expect(
+            windowModelSource.contains(
+                "private func synchronizeSystemTrashPresentation("
+            ))
+        #expect(
+            windowModelSource.contains(
+                "workspaceProjectionController.recordCommittedNoteMove("
+            ))
         #expect(windowModelSource.contains("private func publishCommittedNoteMove("))
         #expect(windowModelSource.contains("if outcome.identityRecoveryWarning == nil"))
         #expect(windowModelSource.contains("documentController.recordCommittedSnapshot("))
         #expect(windowModelSource.contains("revealCreatedNoteInLibrary("))
         #expect(windowModelSource.contains("currentDocumentCapabilities"))
-        #expect(libraryMutationSource.contains(
-            "func importMarkdownFiles("
-        ))
-        #expect(source.contains(
-            "appState.libraryMutationController.requestMarkdownImport(urls)"
-        ))
-        #expect(libraryMutationSource.contains(
-            "private var markdownImportTask: Task<Void, Never>?"
-        ))
+        #expect(
+            libraryMutationSource.contains(
+                "func importMarkdownFiles("
+            ))
+        #expect(
+            source.contains(
+                "appState.libraryMutationController.requestMarkdownImport(urls)"
+            ))
+        #expect(
+            libraryMutationSource.contains(
+                "private var markdownImportTask: Task<Void, Never>?"
+            ))
         #expect(libraryMutationSource.contains("func requestMarkdownImport(_ urls: [URL])"))
         #expect(libraryMutationSource.contains("failures.append(WindowMarkdownImportFailure("))
-        #expect(libraryMutationSource.contains(
-            "identityRecoveryWarnings.append(warning)"
-        ))
+        #expect(
+            libraryMutationSource.contains(
+                "identityRecoveryWarnings.append(warning)"
+            ))
         #expect(libraryMutationSource.contains("let context = dependencies.context()"))
         #expect(libraryMutationSource.contains("guard dependencies.context()?.assignmentID"))
         #expect(libraryMutationSource.contains("catch is CancellationError"))
-        #expect(windowModelSource.contains(
-            "The imported files are already committed; do not import them again."
-        ))
+        #expect(
+            windowModelSource.contains(
+                "The imported files are already committed; do not import them again."
+            ))
         #expect(!windowModelSource.contains("committedButRefreshFailed"))
-        #expect(windowModelSource.contains(
-            "identityResolved: outcome.identityRecoveryWarning == nil"
-        ))
+        #expect(
+            windowModelSource.contains(
+                "identityResolved: outcome.identityRecoveryWarning == nil"
+            ))
         #expect(windowModelSource.contains("searchController.open("))
         #expect(searchControllerSource.contains("discoveryController.executeSearch("))
     }
@@ -1588,35 +1636,39 @@ struct WindowControllerArchitectureTests {
             rawContent: "# Imported\n"
         )
 
-        window.presentMarkdownImportOutcome(.init(
-            destinationName: "Topics",
-            documents: [imported],
-            failures: [.init(sourceName: "Broken.md", reason: "Invalid UTF-8")],
-            derivedRefreshWarnings: [],
-            identityRecoveryWarnings: ["Identity registry is unavailable."],
-            presentationWarning: nil
-        ))
+        window.presentMarkdownImportOutcome(
+            .init(
+                destinationName: "Topics",
+                documents: [imported],
+                failures: [.init(sourceName: "Broken.md", reason: "Invalid UTF-8")],
+                derivedRefreshWarnings: [],
+                identityRecoveryWarnings: ["Identity registry is unavailable."],
+                presentationWarning: nil
+            ))
 
         #expect(window.vaultError == nil)
         #expect(window.shellState.operationIssues.last?.kind == .warning)
         #expect(window.shellState.operationIssues.last?.message.contains("already committed") == true)
         #expect(window.shellState.operationIssues.last?.message.contains("do not import them again") == true)
         #expect(window.shellState.operationIssues.last?.message.contains("Topics") == true)
-        #expect(window.shellState.operationIssues.last?.message.contains(
-            "stable note identity recovery is incomplete"
-        ) == true)
-        #expect(window.shellState.operationIssues.last?.message.contains(
-            "Identity registry is unavailable."
-        ) == true)
+        #expect(
+            window.shellState.operationIssues.last?.message.contains(
+                "stable note identity recovery is incomplete"
+            ) == true)
+        #expect(
+            window.shellState.operationIssues.last?.message.contains(
+                "Identity registry is unavailable."
+            ) == true)
 
-        window.presentMarkdownImportOutcome(.init(
-            destinationName: "Topics",
-            documents: [],
-            failures: [.init(sourceName: "Broken.md", reason: "Invalid UTF-8")],
-            derivedRefreshWarnings: [],
-            identityRecoveryWarnings: [],
-            presentationWarning: nil
-        ))
+        window.presentMarkdownImportOutcome(
+            .init(
+                destinationName: "Topics",
+                documents: [],
+                failures: [.init(sourceName: "Broken.md", reason: "Invalid UTF-8")],
+                derivedRefreshWarnings: [],
+                identityRecoveryWarnings: [],
+                presentationWarning: nil
+            ))
 
         #expect(window.vaultError?.contains("No Markdown files were imported") == true)
         #expect(window.vaultError?.contains("Broken.md") == true)
@@ -1669,10 +1721,11 @@ struct WindowControllerArchitectureTests {
             encoding: .utf8
         )
         let start = try #require(appSource.range(of: "final class WindowModel: ObservableObject"))
-        let end = try #require(appSource.range(
-            of: "private enum ClipboardWorkflowError",
-            range: start.upperBound..<appSource.endIndex
-        ))
+        let end = try #require(
+            appSource.range(
+                of: "private enum ClipboardWorkflowError",
+                range: start.upperBound..<appSource.endIndex
+            ))
         let windowModelSource = String(appSource[start.lowerBound..<end.lowerBound])
 
         #expect(windowModelSource.contains("workspaceStore: WorkspaceStore,"))
@@ -1707,12 +1760,14 @@ struct WindowControllerArchitectureTests {
         ] {
             #expect(!windowModelSource.contains(workspaceSessionState))
         }
-        #expect(workspaceControllerSource.contains(
-            "@Published private(set) var state = WindowWorkspaceSessionState()"
-        ))
-        #expect(workspaceControllerSource.contains(
-            "private(set) var activeCapabilities: WindowWorkspaceCapabilities?"
-        ))
+        #expect(
+            workspaceControllerSource.contains(
+                "@Published private(set) var state = WindowWorkspaceSessionState()"
+            ))
+        #expect(
+            workspaceControllerSource.contains(
+                "private(set) var activeCapabilities: WindowWorkspaceCapabilities?"
+            ))
         #expect(workspaceControllerSource.contains("func restoreWorkspaceAccess("))
         #expect(workspaceControllerSource.contains("func cancelAll()"))
         #expect(workspaceControllerSource.contains("func dismissAccessRecovery()"))
@@ -1782,23 +1837,27 @@ struct WindowControllerArchitectureTests {
             ),
             encoding: .utf8
         )
-        let restoreStart = try #require(appSource.range(
-            of: "func restoreInterruptedSaveRecovery("
-        ))
-        let restoreEnd = try #require(appSource.range(
-            of: "private func migrateAppOwnedState(",
-            range: restoreStart.upperBound..<appSource.endIndex
-        ))
+        let restoreStart = try #require(
+            appSource.range(
+                of: "func restoreInterruptedSaveRecovery("
+            ))
+        let restoreEnd = try #require(
+            appSource.range(
+                of: "private func migrateAppOwnedState(",
+                range: restoreStart.upperBound..<appSource.endIndex
+            ))
         let restoreSource = String(
             appSource[restoreStart.lowerBound..<restoreEnd.lowerBound]
         )
-        let flush = try #require(restoreSource.range(
-            of: "editorFlushCoordinator.flushAllEditors(in: assignment.id)"
-        ))
-        _ = try #require(restoreSource.range(
-            of: "researchController.restoreInterruptedSaveRecovery(recovery)",
-            range: flush.upperBound..<restoreSource.endIndex
-        ))
+        let flush = try #require(
+            restoreSource.range(
+                of: "editorFlushCoordinator.flushAllEditors(in: assignment.id)"
+            ))
+        _ = try #require(
+            restoreSource.range(
+                of: "researchController.restoreInterruptedSaveRecovery(recovery)",
+                range: flush.upperBound..<restoreSource.endIndex
+            ))
 
         #expect(contentSource.contains("case .transactionRecovery:"))
         #expect(contentSource.contains("interruptedSaves: appState.interruptedSaveRecoveries"))
@@ -1813,18 +1872,20 @@ struct WindowControllerArchitectureTests {
     func interruptedSaveRecoveryReset() {
         let controller = ResearchController()
         let expected = DocumentFingerprint(content: "expected")
-        controller.interruptedSaveRecoveries = [InterruptedSaveRecovery(
-            id: InterruptedSaveRecoveryID(
-                vaultID: UUID(),
-                transactionID: UUID()
-            ),
-            relativePath: "Note.md",
-            expectedRevision: expected,
-            candidateRevision: DocumentFingerprint(content: "candidate"),
-            createdAt: Date(),
-            retainedReason: "Interrupted",
-            sourceState: .expectedRevision
-        )]
+        controller.interruptedSaveRecoveries = [
+            InterruptedSaveRecovery(
+                id: InterruptedSaveRecoveryID(
+                    vaultID: UUID(),
+                    transactionID: UUID()
+                ),
+                relativePath: "Note.md",
+                expectedRevision: expected,
+                candidateRevision: DocumentFingerprint(content: "candidate"),
+                createdAt: Date(),
+                retainedReason: "Interrupted",
+                sourceState: .expectedRevision
+            )
+        ]
         controller.interruptedSaveRecoveryError = "Unavailable"
 
         controller.reset()
@@ -1864,15 +1925,17 @@ struct WindowControllerArchitectureTests {
             encoding: .utf8
         )
         let start = try #require(appSource.range(of: "final class WindowModel: ObservableObject"))
-        let end = try #require(appSource.range(
-            of: "private enum ClipboardWorkflowError",
-            range: start.upperBound..<appSource.endIndex
-        ))
+        let end = try #require(
+            appSource.range(
+                of: "private enum ClipboardWorkflowError",
+                range: start.upperBound..<appSource.endIndex
+            ))
         let windowModelSource = String(appSource[start.lowerBound..<end.lowerBound])
 
-        #expect(windowModelSource.contains(
-            "private let editorFlushCoordinator: WindowEditorFlushCoordinator"
-        ))
+        #expect(
+            windowModelSource.contains(
+                "private let editorFlushCoordinator: WindowEditorFlushCoordinator"
+            ))
         for retiredRootResponsibility in [
             "private struct EditorFlushRegistration",
             "stableEditorFlushToken",
@@ -1883,18 +1946,21 @@ struct WindowControllerArchitectureTests {
         ] {
             #expect(!windowModelSource.contains(retiredRootResponsibility))
         }
-        #expect(coordinatorSource.contains(
-            "final class WindowEditorFlushCoordinator"
-        ))
-        #expect(coordinatorSource.contains(
-            "protocol WorkspaceEditorFlushRegistry: AnyObject"
-        ))
+        #expect(
+            coordinatorSource.contains(
+                "final class WindowEditorFlushCoordinator"
+            ))
+        #expect(
+            coordinatorSource.contains(
+                "protocol WorkspaceEditorFlushRegistry: AnyObject"
+            ))
         #expect(coordinatorSource.contains("func activateTriptych("))
         #expect(coordinatorSource.contains("func updateWindowID("))
         #expect(coordinatorSource.contains("func shutdown()"))
-        #expect(windowModelSource.contains(
-            "lazy var windowCloseCoordinator = WindowCloseCoordinator("
-        ))
+        #expect(
+            windowModelSource.contains(
+                "lazy var windowCloseCoordinator = WindowCloseCoordinator("
+            ))
         #expect(!windowModelSource.contains("func prepareForWindowClose("))
         #expect(!windowModelSource.contains("func finalizeWindowClose("))
         #expect(!windowModelSource.contains("private var closeAttemptSequence"))
@@ -1908,9 +1974,10 @@ struct WindowControllerArchitectureTests {
         #expect(windowModelSource.contains("windowWorkspaceController.cancelAll()"))
         #expect(windowModelSource.contains("documentTransitionCoordinator.cancelAll()"))
         #expect(windowModelSource.contains("editorFlushCoordinator.shutdown()"))
-        #expect(storeSource.contains(
-            "WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry"
-        ))
+        #expect(
+            storeSource.contains(
+                "WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry"
+            ))
     }
 
     @Test("Main window uses explicit document restore and single native close ownership")
@@ -1943,23 +2010,27 @@ struct WindowControllerArchitectureTests {
             ),
             encoding: .utf8
         )
-        let restoreStart = try #require(appSource.range(
-            of: "func restoreWindowSession(id: UUID) async"
-        ))
-        let restoreEnd = try #require(appSource.range(
-            of: "func persistWindowSessionNow()",
-            range: restoreStart.upperBound..<appSource.endIndex
-        ))
+        let restoreStart = try #require(
+            appSource.range(
+                of: "func restoreWindowSession(id: UUID) async"
+            ))
+        let restoreEnd = try #require(
+            appSource.range(
+                of: "func persistWindowSessionNow()",
+                range: restoreStart.upperBound..<appSource.endIndex
+            ))
         let restoreSource = appSource[
             restoreStart.lowerBound..<restoreEnd.lowerBound
         ]
 
-        #expect(restoreSource.contains(
-            "let requestedWorkspace = requestedInitialDocument.flatMap"
-        ))
-        #expect(!restoreSource.contains(
-            "activateWorkspaceReferenceInSelectedWorkspace("
-        ))
+        #expect(
+            restoreSource.contains(
+                "let requestedWorkspace = requestedInitialDocument.flatMap"
+            ))
+        #expect(
+            !restoreSource.contains(
+                "activateWorkspaceReferenceInSelectedWorkspace("
+            ))
         #expect(!restoreSource.contains("documentTabController.restoreTabs"))
         #expect(!restoreSource.contains("restoredDocumentTab"))
         #expect(!restoreSource.contains("documentTabController.selectedTab"))
@@ -1972,19 +2043,21 @@ struct WindowControllerArchitectureTests {
                 separatedBy: "openRequestedInitialDocumentIfNeeded()"
             ).count - 1 == 2
         )
-        #expect(!appSource.contains(
-            ".onDisappear {\n                windowCoordinator.detach()\n                appState.persistWindowSessionNow()"
-        ))
+        #expect(
+            !appSource.contains(
+                ".onDisappear {\n                windowCoordinator.detach()\n                appState.persistWindowSessionNow()"
+            ))
         #expect(
             windowSource.components(
                 separatedBy: "appState.windowCloseCoordinator.finalize()"
             ).count - 1 == 1
         )
         let detachStart = try #require(windowSource.range(of: "    func detach() {"))
-        let terminalStart = try #require(windowSource.range(
-            of: "    private func finalizeWindowAttachments(",
-            range: detachStart.upperBound..<windowSource.endIndex
-        ))
+        let terminalStart = try #require(
+            windowSource.range(
+                of: "    private func finalizeWindowAttachments(",
+                range: detachStart.upperBound..<windowSource.endIndex
+            ))
         let detachSource = windowSource[
             detachStart.lowerBound..<terminalStart.lowerBound
         ]
@@ -1995,18 +2068,20 @@ struct WindowControllerArchitectureTests {
         ] {
             #expect(!detachSource.contains(terminalOperation))
         }
-        let terminalEnd = try #require(windowSource.range(
-            of: "    private func registerLifecycle()",
-            range: terminalStart.upperBound..<windowSource.endIndex
-        ))
+        let terminalEnd = try #require(
+            windowSource.range(
+                of: "    private func registerLifecycle()",
+                range: terminalStart.upperBound..<windowSource.endIndex
+            ))
         let terminalSource = windowSource[
             terminalStart.lowerBound..<terminalEnd.lowerBound
         ]
         #expect(terminalSource.contains("guard !didFinalizeWindowAttachments"))
         #expect(terminalSource.contains("lifecycleRegistry.unregister("))
-        #expect(terminalSource.contains(
-            "detachWindow(restoringPreviousDelegate: true)"
-        ))
+        #expect(
+            terminalSource.contains(
+                "detachWindow(restoringPreviousDelegate: true)"
+            ))
         #expect(windowSource.contains("scheduleAuthorizedClose(sender, attempt: attempt)"))
         #expect(windowSource.contains("DispatchQueue.main.async { @MainActor"))
         #expect(splitSource.contains("NSLayoutConstraint.Priority.defaultLow.rawValue + 1"))
@@ -2033,21 +2108,24 @@ struct WindowControllerArchitectureTests {
             encoding: .utf8
         )
         let start = try #require(appSource.range(of: "final class WindowModel: ObservableObject"))
-        let end = try #require(appSource.range(
-            of: "private enum ClipboardWorkflowError",
-            range: start.upperBound..<appSource.endIndex
-        ))
+        let end = try #require(
+            appSource.range(
+                of: "private enum ClipboardWorkflowError",
+                range: start.upperBound..<appSource.endIndex
+            ))
         let windowModelSource = String(appSource[start.lowerBound..<end.lowerBound])
-        let calls = windowModelSource
+        let calls =
+            windowModelSource
             .components(separatedBy: "workspaceStore.")
             .dropFirst()
             .map { fragment in
-                String(fragment.prefix { character in
-                    character.isLetter
-                        || character.isNumber
-                        || character == "_"
-                        || character == "$"
-                })
+                String(
+                    fragment.prefix { character in
+                        character.isLetter
+                            || character.isNumber
+                            || character == "_"
+                            || character == "$"
+                    })
             }
         let actual = Dictionary(grouping: calls, by: { $0 }).mapValues(\.count)
 
@@ -2083,9 +2161,10 @@ struct WindowControllerArchitectureTests {
         #expect(actual == approved)
         #expect(!windowModelSource.contains("workspaceStore.windowSession"))
         #expect(!windowModelSource.contains("workspaceStore.saveWindowSession"))
-        #expect(coordinatorSource.contains(
-            "protocol WindowSessionPersistenceStore: AnyObject"
-        ))
+        #expect(
+            coordinatorSource.contains(
+                "protocol WindowSessionPersistenceStore: AnyObject"
+            ))
         #expect(coordinatorSource.contains("func load(id: UUID)"))
         #expect(coordinatorSource.contains("store.saveWindowSession("))
     }
@@ -2127,20 +2206,23 @@ struct WindowControllerArchitectureTests {
             encoding: .utf8
         )
         let start = try #require(appSource.range(of: "final class WindowModel: ObservableObject"))
-        let end = try #require(appSource.range(
-            of: "private enum ClipboardWorkflowError",
-            range: start.upperBound..<appSource.endIndex
-        ))
+        let end = try #require(
+            appSource.range(
+                of: "private enum ClipboardWorkflowError",
+                range: start.upperBound..<appSource.endIndex
+            ))
         let windowModelSource = String(appSource[start.lowerBound..<end.lowerBound])
         let rootStart = try #require(appSource.range(of: "private struct ScholiumWindowRoot: View"))
-        let observedRootStart = try #require(appSource.range(
-            of: "private struct ScholiumWindowObservedRoot: View",
-            range: rootStart.upperBound..<appSource.endIndex
-        ))
-        let observedRootEnd = try #require(appSource.range(
-            of: "private struct ScholiumSettingsRoot: View",
-            range: observedRootStart.upperBound..<appSource.endIndex
-        ))
+        let observedRootStart = try #require(
+            appSource.range(
+                of: "private struct ScholiumWindowObservedRoot: View",
+                range: rootStart.upperBound..<appSource.endIndex
+            ))
+        let observedRootEnd = try #require(
+            appSource.range(
+                of: "private struct ScholiumSettingsRoot: View",
+                range: observedRootStart.upperBound..<appSource.endIndex
+            ))
         let stateObjectRootSource = String(
             appSource[rootStart.lowerBound..<observedRootStart.lowerBound]
         )
@@ -2149,31 +2231,38 @@ struct WindowControllerArchitectureTests {
         )
 
         #expect(!windowModelSource.contains("self?.objectWillChange.send()"))
-        #expect(windowModelSource.contains(
-            "lazy var commandObservation = WindowCommandObservation("
-        ))
-        #expect(appSource.contains(
-            ".focusedSceneObject(appState.commandObservation)"
-        ))
-        #expect(appSource.contains(
-            "@FocusedObject private var commandObservation: WindowCommandObservation?"
-        ))
+        #expect(
+            windowModelSource.contains(
+                "lazy var commandObservation = WindowCommandObservation("
+            ))
+        #expect(
+            appSource.contains(
+                ".focusedSceneObject(appState.commandObservation)"
+            ))
+        #expect(
+            appSource.contains(
+                "@FocusedObject private var commandObservation: WindowCommandObservation?"
+            ))
         #expect(stateObjectRootSource.contains("@StateObject private var appState: WindowModel"))
         #expect(stateObjectRootSource.contains("ScholiumWindowObservedRoot("))
         #expect(!stateObjectRootSource.contains("@ObservedObject"))
         #expect(observedRootSource.contains("let appState: WindowModel"))
-        #expect(observedRootSource.contains(
-            "@ObservedObject private var shellState: WindowShellState"
-        ))
-        #expect(observedRootSource.contains(
-            "_shellState = ObservedObject(wrappedValue: appState.shellState)"
-        ))
-        #expect(commandObservationSource.contains(
-            "final class WindowCommandObservation: ObservableObject"
-        ))
-        #expect(commandObservationSource.contains(
-            "changes(shellState.$libraryVisible)"
-        ))
+        #expect(
+            observedRootSource.contains(
+                "@ObservedObject private var shellState: WindowShellState"
+            ))
+        #expect(
+            observedRootSource.contains(
+                "_shellState = ObservedObject(wrappedValue: appState.shellState)"
+            ))
+        #expect(
+            commandObservationSource.contains(
+                "final class WindowCommandObservation: ObservableObject"
+            ))
+        #expect(
+            commandObservationSource.contains(
+                "changes(shellState.$libraryVisible)"
+            ))
         #expect(!contentSource.contains("@EnvironmentObject var appState: WindowModel"))
         for boundedOwner in [
             "@ObservedObject private var presentationRouter: WindowPresentationRouter",

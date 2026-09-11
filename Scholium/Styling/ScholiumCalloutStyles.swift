@@ -1,10 +1,11 @@
-import ScholiumContracts
 import Foundation
+import ScholiumContracts
 
 enum ScholiumCalloutStyles {
     static let css: String = {
         guard let url = Bundle.module.url(forResource: "callouts", withExtension: "css"),
-              let css = try? String(contentsOf: url, encoding: .utf8) else {
+            let css = try? String(contentsOf: url, encoding: .utf8)
+        else {
             return ""
         }
         return css

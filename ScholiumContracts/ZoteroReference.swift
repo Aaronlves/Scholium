@@ -12,12 +12,15 @@ public struct ZoteroReference: Codable, Hashable, Sendable {
     public let page: Int?
     public let annotationKey: String?
 
-    public init(library: ZoteroLibraryIdentity, kind: Kind = .item, itemKey: String,
-                page: Int? = nil, annotationKey: String? = nil) throws {
+    public init(
+        library: ZoteroLibraryIdentity, kind: Kind = .item, itemKey: String,
+        page: Int? = nil, annotationKey: String? = nil
+    ) throws {
         if case .group(let id) = library, id <= 0 { throw InvalidReference.invalid }
         guard let key = Self.normalizedKey(itemKey),
-              page == nil || page! > 0,
-              kind == .pdf || (page == nil && annotationKey == nil) else { throw InvalidReference.invalid }
+            page == nil || page! > 0,
+            kind == .pdf || (page == nil && annotationKey == nil)
+        else { throw InvalidReference.invalid }
         let annotation = annotationKey.flatMap(Self.normalizedKey)
         guard annotationKey == nil || annotation != nil else { throw InvalidReference.invalid }
         self.library = library
@@ -30,7 +33,8 @@ public struct ZoteroReference: Codable, Hashable, Sendable {
     public static func normalizedKey(_ value: String) -> String? {
         let key = value.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
         guard !key.isEmpty, key.utf8.count <= 128,
-              key.unicodeScalars.allSatisfy({ CharacterSet.alphanumerics.contains($0) || $0 == "-" || $0 == "_" }) else { return nil }
+            key.unicodeScalars.allSatisfy({ CharacterSet.alphanumerics.contains($0) || $0 == "-" || $0 == "_" })
+        else { return nil }
         return key
     }
 
@@ -52,9 +56,10 @@ public struct ZoteroReference: Codable, Hashable, Sendable {
 
     public init(url: URL) throws {
         guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
-              components.scheme == "zotero", components.user == nil, components.password == nil,
-              components.port == nil, components.fragment == nil,
-              components.host == "select" || components.host == "open-pdf" else { throw InvalidReference.invalid }
+            components.scheme == "zotero", components.user == nil, components.password == nil,
+            components.port == nil, components.fragment == nil,
+            components.host == "select" || components.host == "open-pdf"
+        else { throw InvalidReference.invalid }
         let path = components.path.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
         let library: ZoteroLibraryIdentity
         let key: String
@@ -62,40 +67,49 @@ public struct ZoteroReference: Codable, Hashable, Sendable {
             library = .user
             key = path[3]
         } else if path.count == 5, path[0].isEmpty, path[1] == "groups", path[3] == "items",
-                  let id = Self.positiveInteger(path[2]) {
+            let id = Self.positiveInteger(path[2])
+        {
             library = .group(id)
             key = path[4]
-        } else { throw InvalidReference.invalid }
+        } else {
+            throw InvalidReference.invalid
+        }
         let query = components.queryItems ?? []
         guard key == key.trimmingCharacters(in: .whitespacesAndNewlines),
-              Set(query.map(\.name)).count == query.count,
-              query.allSatisfy({ ["page", "annotation"].contains($0.name) && $0.value?.isEmpty == false }) else { throw InvalidReference.invalid }
+            Set(query.map(\.name)).count == query.count,
+            query.allSatisfy({ ["page", "annotation"].contains($0.name) && $0.value?.isEmpty == false })
+        else { throw InvalidReference.invalid }
         let pageValue = query.first { $0.name == "page" }?.value
         let page = pageValue.flatMap(Self.positiveInteger)
         let annotation = query.first { $0.name == "annotation" }?.value
         guard pageValue == nil || page != nil,
-              annotation == annotation?.trimmingCharacters(in: .whitespacesAndNewlines) else { throw InvalidReference.invalid }
-        try self.init(library: library, kind: components.host == "select" ? .item : .pdf,
-                      itemKey: key, page: page, annotationKey: annotation)
+            annotation == annotation?.trimmingCharacters(in: .whitespacesAndNewlines)
+        else { throw InvalidReference.invalid }
+        try self.init(
+            library: library, kind: components.host == "select" ? .item : .pdf,
+            itemKey: key, page: page, annotationKey: annotation)
     }
 
     private static func positiveInteger(_ value: String) -> Int? {
         guard !value.isEmpty, value.utf8.allSatisfy({ (48...57).contains($0) }),
-              let number = Int(value), number > 0 else { return nil }
+            let number = Int(value), number > 0
+        else { return nil }
         return number
     }
 
     private enum CodingKeys: String, CodingKey {
         case library, kind, page
-        case itemKey = "item_key", annotationKey = "annotation_key"
+        case itemKey = "item_key"
+        case annotationKey = "annotation_key"
     }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        try self.init(library: container.decode(ZoteroLibraryIdentity.self, forKey: .library),
-                      kind: container.decode(Kind.self, forKey: .kind),
-                      itemKey: container.decode(String.self, forKey: .itemKey),
-                      page: container.decodeIfPresent(Int.self, forKey: .page),
-                      annotationKey: container.decodeIfPresent(String.self, forKey: .annotationKey))
+        try self.init(
+            library: container.decode(ZoteroLibraryIdentity.self, forKey: .library),
+            kind: container.decode(Kind.self, forKey: .kind),
+            itemKey: container.decode(String.self, forKey: .itemKey),
+            page: container.decodeIfPresent(Int.self, forKey: .page),
+            annotationKey: container.decodeIfPresent(String.self, forKey: .annotationKey))
     }
 }

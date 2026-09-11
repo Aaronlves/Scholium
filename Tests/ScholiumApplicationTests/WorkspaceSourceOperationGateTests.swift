@@ -1,6 +1,7 @@
 import Foundation
 import ScholiumContracts
 import Testing
+
 @testable import ScholiumApplication
 
 @Suite("Workspace source operation gate")
@@ -117,10 +118,12 @@ struct WorkspaceSourceOperationGateTests {
     func cancelledWorkspaceSaveDoesNotWrite() async throws {
         let fixture = try await ApplicationFixture.make()
         defer { fixture.remove() }
-        let runtime = WorkspaceRuntime(configuration: .snapshot(.init(
-            applicationSupportURL: fixture.applicationSupportURL,
-            assignments: [fixture.assignment]
-        )))
+        let runtime = WorkspaceRuntime(
+            configuration: .snapshot(
+                .init(
+                    applicationSupportURL: fixture.applicationSupportURL,
+                    assignments: [fixture.assignment]
+                )))
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
         let original = try await handle.documents.load(fixture.analysisNoteID)
         let holder = try await handle.acquireWorkspaceSourceOperation(.refreshCycle)

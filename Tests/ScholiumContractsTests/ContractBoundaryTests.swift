@@ -30,18 +30,21 @@ struct ContractBoundaryTests {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
 
-        #expect(try JSONDecoder().decode(
-            VaultQualifiedNoteID.self,
-            from: encoder.encode(id)
-        ) == id)
-        #expect(try JSONDecoder().decode(
-            DocumentFingerprint.self,
-            from: encoder.encode(fingerprint)
-        ) == fingerprint)
-        #expect(try JSONDecoder().decode(
-            InterruptedSaveRecoveryID.self,
-            from: encoder.encode(recoveryID)
-        ) == recoveryID)
+        #expect(
+            try JSONDecoder().decode(
+                VaultQualifiedNoteID.self,
+                from: encoder.encode(id)
+            ) == id)
+        #expect(
+            try JSONDecoder().decode(
+                DocumentFingerprint.self,
+                from: encoder.encode(fingerprint)
+            ) == fingerprint)
+        #expect(
+            try JSONDecoder().decode(
+                InterruptedSaveRecoveryID.self,
+                from: encoder.encode(recoveryID)
+            ) == recoveryID)
     }
 
     @Test("Managed creation recovery freezes one reserved identity without Agent authority")
@@ -58,16 +61,18 @@ struct ContractBoundaryTests {
             triptychID: UUID(),
             operation: .noteCreation,
             failure: "Final joint readback was unavailable.",
-            files: [TriptychMutationRecoveryFile(
-                vaultID: target.vaultID,
-                path: target.relativePath,
-                role: .createdNote,
-                beforeRevision: nil,
-                intendedRevision: DocumentFingerprint(content: "created"),
-                observedRevision: nil,
-                state: .unreadable,
-                detail: "Fixture"
-            )],
+            files: [
+                TriptychMutationRecoveryFile(
+                    vaultID: target.vaultID,
+                    path: target.relativePath,
+                    role: .createdNote,
+                    beforeRevision: nil,
+                    intendedRevision: DocumentFingerprint(content: "created"),
+                    observedRevision: nil,
+                    state: .unreadable,
+                    detail: "Fixture"
+                )
+            ],
             managedCreation: reference
         )
 
@@ -129,9 +134,10 @@ struct ContractBoundaryTests {
     func interruptedSaveSourceState() {
         #expect(InterruptedSaveRecoverySourceState.expectedRevision.permitsRecovery)
         #expect(InterruptedSaveRecoverySourceState.candidateRevision.permitsRecovery)
-        #expect(!InterruptedSaveRecoverySourceState.changed(
-            DocumentFingerprint(content: "external")
-        ).permitsRecovery)
+        #expect(
+            !InterruptedSaveRecoverySourceState.changed(
+                DocumentFingerprint(content: "external")
+            ).permitsRecovery)
         #expect(!InterruptedSaveRecoverySourceState.missing.permitsRecovery)
         #expect(!InterruptedSaveRecoverySourceState.unavailable("permission").permitsRecovery)
     }

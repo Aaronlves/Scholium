@@ -55,19 +55,23 @@ enum ScholiumWebFontResources {
 
     static func resource(for url: URL) -> Resource? {
         guard url.scheme == scheme,
-              url.host == host,
-              url.pathComponents.count == 2,
-              let filename = url.pathComponents.last,
-              let mimeType = allowedResources[filename] else { return nil }
+            url.host == host,
+            url.pathComponents.count == 2,
+            let filename = url.pathComponents.last,
+            let mimeType = allowedResources[filename]
+        else { return nil }
         let resourceURL = URL(fileURLWithPath: filename)
         guard resourceURL.lastPathComponent == filename,
-              let extensionSeparator = filename.lastIndex(of: ".") else { return nil }
+            let extensionSeparator = filename.lastIndex(of: ".")
+        else { return nil }
         let name = String(filename[..<extensionSeparator])
         let fileExtension = String(filename[filename.index(after: extensionSeparator)...])
-        guard let bundledURL = Bundle.module.url(
-            forResource: name,
-            withExtension: fileExtension
-        ), let data = try? Data(contentsOf: bundledURL, options: .mappedIfSafe) else {
+        guard
+            let bundledURL = Bundle.module.url(
+                forResource: name,
+                withExtension: fileExtension
+            ), let data = try? Data(contentsOf: bundledURL, options: .mappedIfSafe)
+        else {
             return nil
         }
         return Resource(url: url, data: data, mimeType: mimeType)
@@ -82,21 +86,24 @@ enum ScholiumWebFontResources {
             start urlSchemeTask: any WKURLSchemeTask
         ) {
             guard let url = urlSchemeTask.request.url,
-                  let resource = cache[url]
-                    ?? ScholiumWebFontResources.resource(for: url) else {
-                urlSchemeTask.didFailWithError(NSError(
-                    domain: "ScholiumWebFontResources",
-                    code: 1
-                ))
+                let resource = cache[url]
+                    ?? ScholiumWebFontResources.resource(for: url)
+            else {
+                urlSchemeTask.didFailWithError(
+                    NSError(
+                        domain: "ScholiumWebFontResources",
+                        code: 1
+                    ))
                 return
             }
             cache[url] = resource
-            urlSchemeTask.didReceive(URLResponse(
-                url: resource.url,
-                mimeType: resource.mimeType,
-                expectedContentLength: resource.data.count,
-                textEncodingName: nil
-            ))
+            urlSchemeTask.didReceive(
+                URLResponse(
+                    url: resource.url,
+                    mimeType: resource.mimeType,
+                    expectedContentLength: resource.data.count,
+                    textEncodingName: nil
+                ))
             urlSchemeTask.didReceive(resource.data)
             urlSchemeTask.didFinish()
         }

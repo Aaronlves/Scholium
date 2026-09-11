@@ -83,10 +83,12 @@ public actor NoteSystemTrashDeletionCoordinator {
             relativePath: relativePath,
             expectedRevision: expectedRevision
         )
-        guard try await controlStore.identityRecord(
-            vaultID: vaultID,
-            relativePath: relativePath
-        )?.id == noteID else {
+        guard
+            try await controlStore.identityRecord(
+                vaultID: vaultID,
+                relativePath: relativePath
+            )?.id == noteID
+        else {
             throw TriptychTransactionError.invalidPlan(
                 "The selected source no longer matches its stable Note identity."
             )
@@ -97,12 +99,14 @@ public actor NoteSystemTrashDeletionCoordinator {
             relativePath: relativePath,
             expectedRevision: expectedRevision
         )
-        let sources = [SystemTrashDeletionSourceTarget(
-            vaultID: vaultID,
-            relativePath: relativePath,
-            kind: .note,
-            notes: [noteTarget]
-        )]
+        let sources = [
+            SystemTrashDeletionSourceTarget(
+                vaultID: vaultID,
+                relativePath: relativePath,
+                kind: .note,
+                notes: [noteTarget]
+            )
+        ]
         return try await makePreview(sources: sources)
     }
 
@@ -111,8 +115,9 @@ public actor NoteSystemTrashDeletionCoordinator {
         relativePath: String
     ) async throws -> SystemTrashDeletionPreview {
         guard repository.identity.id == vaultID,
-              let folder = try? VaultRelativeFolderPath(relativePath),
-              try await repository.folderRelativePaths().contains(folder) else {
+            let folder = try? VaultRelativeFolderPath(relativePath),
+            try await repository.folderRelativePaths().contains(folder)
+        else {
             throw TriptychTransactionError.invalidPlan(
                 "The selected folder is no longer an ordinary contained vault folder."
             )
@@ -123,28 +128,34 @@ public actor NoteSystemTrashDeletionCoordinator {
         var noteTargets: [SystemTrashDeletionNoteTarget] = []
         for path in paths {
             let document = try await repository.load(relativePath: path)
-            guard let identity = try await controlStore.identityRecord(
-                vaultID: vaultID,
-                relativePath: path
-            ) else {
+            guard
+                let identity = try await controlStore.identityRecord(
+                    vaultID: vaultID,
+                    relativePath: path
+                )
+            else {
                 throw TriptychTransactionError.invalidPlan(
                     "The folder descendant \(path) has no stable identity."
                 )
             }
-            noteTargets.append(SystemTrashDeletionNoteTarget(
-                noteID: identity.id,
-                relativePath: path,
-                expectedRevision: document.fingerprint
-            ))
+            noteTargets.append(
+                SystemTrashDeletionNoteTarget(
+                    noteID: identity.id,
+                    relativePath: path,
+                    expectedRevision: document.fingerprint
+                ))
         }
-        let sources = [SystemTrashDeletionSourceTarget(
-            vaultID: vaultID,
-            relativePath: relativePath,
-            kind: .folder,
-            notes: noteTargets,
-            expectedDirectoryManifest: try await repository
-                .systemTrashDirectoryManifest(relativePath: relativePath)
-        )]
+        let sources = [
+            SystemTrashDeletionSourceTarget(
+                vaultID: vaultID,
+                relativePath: relativePath,
+                kind: .folder,
+                notes: noteTargets,
+                expectedDirectoryManifest:
+                    try await repository
+                    .systemTrashDirectoryManifest(relativePath: relativePath)
+            )
+        ]
 
         return try await makePreview(sources: sources)
     }
@@ -153,7 +164,8 @@ public actor NoteSystemTrashDeletionCoordinator {
         _ preview: SystemTrashDeletionPreview
     ) async throws -> SystemTrashDeletionCommit {
         guard preview.triptychID == triptychID,
-              preview.sources.allSatisfy({ $0.vaultID == repository.identity.id }) else {
+            preview.sources.allSatisfy({ $0.vaultID == repository.identity.id })
+        else {
             throw TriptychTransactionError.invalidPlan(
                 "The prepared system-Trash operation belongs to another Triptych or vault."
             )
@@ -181,9 +193,11 @@ public actor NoteSystemTrashDeletionCoordinator {
         var commits: [SystemTrashDeletionCommit] = []
         for record in try await recoveryStore.pending()
         where record.operation == .systemTrashDeletion {
-            guard record.systemTrashDeletionPlan?.preview.sources.allSatisfy({
-                $0.vaultID == repository.identity.id
-            }) == true else { continue }
+            guard
+                record.systemTrashDeletionPlan?.preview.sources.allSatisfy({
+                    $0.vaultID == repository.identity.id
+                }) == true
+            else { continue }
             commits.append(try await perform(record))
         }
         return commits
@@ -196,9 +210,11 @@ public actor NoteSystemTrashDeletionCoordinator {
     public func resolveUnknownOutcome(
         recoveryRecordID: UUID
     ) async throws {
-        guard let record = try await recoveryStore.pending().first(where: {
-            $0.id == recoveryRecordID && $0.operation == .systemTrashDeletion
-        }), let plan = record.systemTrashDeletionPlan else {
+        guard
+            let record = try await recoveryStore.pending().first(where: {
+                $0.id == recoveryRecordID && $0.operation == .systemTrashDeletion
+            }), let plan = record.systemTrashDeletionPlan
+        else {
             throw TriptychTransactionError.invalidPlan(
                 "The selected system-Trash recovery record is unavailable."
             )
@@ -227,7 +243,8 @@ public actor NoteSystemTrashDeletionCoordinator {
             switch source.kind {
             case .note:
                 guard source.notes.count == 1, let note = source.notes.first,
-                      note.relativePath == source.relativePath else {
+                    note.relativePath == source.relativePath
+                else {
                     throw TriptychTransactionError.invalidPlan(
                         "A Note system-Trash source has an invalid inventory."
                     )
@@ -238,9 +255,10 @@ public actor NoteSystemTrashDeletionCoordinator {
                     bindingID: source.id
                 )
             case .folder:
-                let expected = Dictionary(uniqueKeysWithValues: source.notes.map {
-                    ($0.relativePath, $0.expectedRevision)
-                })
+                let expected = Dictionary(
+                    uniqueKeysWithValues: source.notes.map {
+                        ($0.relativePath, $0.expectedRevision)
+                    })
                 _ = try await repository.moveFolderToSystemTrashPreflight(
                     relativePath: source.relativePath,
                     expectedDocuments: expected,
@@ -249,10 +267,12 @@ public actor NoteSystemTrashDeletionCoordinator {
                 )
             }
             for note in source.notes {
-                guard try await controlStore.identityRecord(
-                    vaultID: source.vaultID,
-                    relativePath: note.relativePath
-                )?.id == note.noteID else {
+                guard
+                    try await controlStore.identityRecord(
+                        vaultID: source.vaultID,
+                        relativePath: note.relativePath
+                    )?.id == note.noteID
+                else {
                     throw TriptychTransactionError.invalidPlan(
                         "Stable identity changed for \(note.relativePath)."
                     )
@@ -275,9 +295,11 @@ public actor NoteSystemTrashDeletionCoordinator {
                 try await validate(plan.preview)
             }
             for source in plan.preview.sources {
-                guard let receipt = plan.sourceReceipts.first(where: {
-                    $0.targetID == source.id
-                }) else {
+                guard
+                    let receipt = plan.sourceReceipts.first(where: {
+                        $0.targetID == source.id
+                    })
+                else {
                     throw TriptychTransactionError.invalidPlan(
                         "A system-Trash source receipt is missing."
                     )
@@ -317,21 +339,24 @@ public actor NoteSystemTrashDeletionCoordinator {
                     try faultPlan.trigger(.afterSystemTrashMoveBeforeReceipt)
                 } catch {
                     let nativeOutcomeUnknown = error is SystemTrashMoveError
-                    let bindingExists = (try? await repository.systemTrashBindingExists(
-                        relativePath: source.relativePath,
-                        kind: source.kind,
-                        bindingID: source.id
-                    )) ?? true
+                    let bindingExists =
+                        (try? await repository.systemTrashBindingExists(
+                            relativePath: source.relativePath,
+                            kind: source.kind,
+                            bindingID: source.id
+                        )) ?? true
                     let sourceIsAbsent: Bool
                     switch source.kind {
                     case .note:
-                        sourceIsAbsent = (try? await repository.load(
-                            relativePath: source.relativePath
-                        )) == nil
+                        sourceIsAbsent =
+                            (try? await repository.load(
+                                relativePath: source.relativePath
+                            )) == nil
                     case .folder:
-                        sourceIsAbsent = !(await repository.folderExistsForDeletion(
-                            relativePath: source.relativePath
-                        ))
+                        sourceIsAbsent =
+                            !(await repository.folderExistsForDeletion(
+                                relativePath: source.relativePath
+                            ))
                     }
                     let unknown = nativeOutcomeUnknown || (sourceIsAbsent && !bindingExists)
                     if unknown {
@@ -433,10 +458,11 @@ public actor NoteSystemTrashDeletionCoordinator {
         let noteIDs = noteTargets.map(\.noteID)
         let notePaths = noteTargets.map(\.relativePath)
         guard !preview.sources.isEmpty,
-              Set(sourceIDs).count == sourceIDs.count,
-              Set(sourcePaths).count == sourcePaths.count,
-              Set(noteIDs).count == noteIDs.count,
-              Set(notePaths).count == notePaths.count else {
+            Set(sourceIDs).count == sourceIDs.count,
+            Set(sourcePaths).count == sourcePaths.count,
+            Set(noteIDs).count == noteIDs.count,
+            Set(notePaths).count == notePaths.count
+        else {
             throw TriptychTransactionError.invalidPlan(
                 "System-Trash source and Note identities must be unique."
             )
@@ -444,21 +470,23 @@ public actor NoteSystemTrashDeletionCoordinator {
         for source in preview.sources {
             let participantIDs = source.notes.map(\.noteID)
             let participantPaths = source.notes.map(\.relativePath)
-            let sourceShapeIsValid = switch source.kind {
-            case .note:
-                source.notes.count == 1
-                    && source.notes.first?.relativePath == source.relativePath
-                    && source.expectedDirectoryManifest == nil
-            case .folder:
-                !source.notes.isEmpty
-                    && source.expectedDirectoryManifest != nil
-                    && source.notes.allSatisfy {
-                        $0.relativePath.hasPrefix(source.relativePath + "/")
-                    }
-            }
+            let sourceShapeIsValid =
+                switch source.kind {
+                case .note:
+                    source.notes.count == 1
+                        && source.notes.first?.relativePath == source.relativePath
+                        && source.expectedDirectoryManifest == nil
+                case .folder:
+                    !source.notes.isEmpty
+                        && source.expectedDirectoryManifest != nil
+                        && source.notes.allSatisfy {
+                            $0.relativePath.hasPrefix(source.relativePath + "/")
+                        }
+                }
             guard sourceShapeIsValid,
-                  Set(participantIDs).count == participantIDs.count,
-                  Set(participantPaths).count == participantPaths.count else {
+                Set(participantIDs).count == participantIDs.count,
+                Set(participantPaths).count == participantPaths.count
+            else {
                 throw TriptychTransactionError.invalidPlan(
                     "A system-Trash source has an invalid or duplicate Note inventory."
                 )
@@ -474,12 +502,13 @@ public actor NoteSystemTrashDeletionCoordinator {
         let sourceIDs = plan.preview.sources.map(\.id)
         let receiptIDs = plan.sourceReceipts.map(\.targetID)
         guard recoveryRecord.id == plan.id,
-              recoveryRecord.triptychID == triptychID,
-              recoveryRecord.operation == .systemTrashDeletion,
-              plan.preview.triptychID == triptychID,
-              receiptIDs.count == sourceIDs.count,
-              Set(receiptIDs).count == receiptIDs.count,
-              Set(receiptIDs) == Set(sourceIDs) else {
+            recoveryRecord.triptychID == triptychID,
+            recoveryRecord.operation == .systemTrashDeletion,
+            plan.preview.triptychID == triptychID,
+            receiptIDs.count == sourceIDs.count,
+            Set(receiptIDs).count == receiptIDs.count,
+            Set(receiptIDs) == Set(sourceIDs)
+        else {
             throw TriptychTransactionError.invalidPlan(
                 "System-Trash recovery identities or progress receipts are inconsistent."
             )
@@ -491,12 +520,13 @@ public actor NoteSystemTrashDeletionCoordinator {
         replacing record: TriptychMutationRecoveryRecord,
         failure: String
     ) async throws {
-        try await recoveryStore.record(await makeRecord(
-            id: record.id,
-            createdAt: record.createdAt,
-            plan: plan,
-            failure: failure
-        ))
+        try await recoveryStore.record(
+            await makeRecord(
+                id: record.id,
+                createdAt: record.createdAt,
+                plan: plan,
+                failure: failure
+            ))
     }
 
     private func makeRecord(

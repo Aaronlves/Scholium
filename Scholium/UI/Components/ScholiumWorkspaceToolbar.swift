@@ -99,7 +99,9 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
     func invalidate() {
         guard !isInvalidated else { return }
         isInvalidated = true
-        chatObservation?.cancel(); chatObservation = nil; observedChat = nil
+        chatObservation?.cancel()
+        chatObservation = nil
+        observedChat = nil
         presentationCancellables.removeAll()
         responderBeforeSettlement = nil
         responderBeforeNotifications = nil
@@ -234,10 +236,11 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
                 systemImage: NotePresentationMode.livePreview.symbol,
                 action: #selector(toggleDocumentMode(_:))
             )
-            item.possibleLabels = Set(NotePresentationMode.allCases.map {
-                ScholiumDocumentModeToolbarButtonPresentation(mode: $0)
-                    .accessibilityLabel
-            })
+            item.possibleLabels = Set(
+                NotePresentationMode.allCases.map {
+                    ScholiumDocumentModeToolbarButtonPresentation(mode: $0)
+                        .accessibilityLabel
+                })
             return item
         case Item.settlement:
             let item = actionItem(
@@ -287,8 +290,11 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
     @objc private func showNotifications(_ sender: Any?) {
         guard isCommandEnabled(Item.notifications) else { return }
         let session = appState.attentionPopoverSession
-        if session.isPresented(from: .toolbar) { session.dismiss() }
-        else { windowActions.showAttention(.queue(anchor: .toolbar, workspaceSlot: nil, noteScope: nil)) }
+        if session.isPresented(from: .toolbar) {
+            session.dismiss()
+        } else {
+            windowActions.showAttention(.queue(anchor: .toolbar, workspaceSlot: nil, noteScope: nil))
+        }
     }
 
     private func refreshNotifications() {
@@ -296,27 +302,36 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
         let total = notificationTotal
         let value: String
         if let total {
-            value = total == 0 ? ScholiumL10n.string("No notifications")
+            value =
+                total == 0
+                ? ScholiumL10n.string("No notifications")
                 : String.localizedStringWithFormat(ScholiumL10n.string("%lld notifications"), Int64(total))
         } else {
-            value = notificationError == nil ? ScholiumL10n.string("Checking Notifications")
+            value =
+                notificationError == nil
+                ? ScholiumL10n.string("Checking Notifications")
                 : ScholiumL10n.string("Notifications Unavailable")
         }
         let label = ScholiumL10n.string("Open Triptych Notifications")
-        update(item, label: label, systemImage: (total ?? 0) > 0 ? "bell.badge" : "bell",
-               isEnabled: true, toolTip: "\(label) · \(value)", accessibilityValue: "\(label), \(value)")
+        update(
+            item, label: label, systemImage: (total ?? 0) > 0 ? "bell.badge" : "bell",
+            isEnabled: true, toolTip: "\(label) · \(value)", accessibilityValue: "\(label), \(value)")
         let session = appState.attentionPopoverSession
         if session.isPresented(from: .toolbar) {
             if !notificationsPopover.isShown {
-                notificationsPopover.contentViewController = NSHostingController(rootView:
-                    AttentionQueueView(presentation: session.presentation, session: session)
+                notificationsPopover.contentViewController = NSHostingController(
+                    rootView:
+                        AttentionQueueView(presentation: session.presentation, session: session)
                         .scholiumButtonStyle(.automatic)
-                        .frame(width: ScholiumMetrics.Attention.popoverWidth,
-                               height: ScholiumMetrics.Attention.popoverHeight))
+                        .frame(
+                            width: ScholiumMetrics.Attention.popoverWidth,
+                            height: ScholiumMetrics.Attention.popoverHeight))
                 responderBeforeNotifications = window?.firstResponder
                 notificationsPopover.show(relativeTo: item)
             }
-        } else if notificationsPopover.isShown { notificationsPopover.close() }
+        } else if notificationsPopover.isShown {
+            notificationsPopover.close()
+        }
     }
 
     private var notificationTotal: Int? {
@@ -328,7 +343,8 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
             dismissalLedgerData: UserDefaults.standard.data(forKey: AttentionPreferences.dismissalLedgerKey) ?? Data()
         )
         let agentChangeCount = appState.researchController.agentChanges?.count
-        let knownTotal = (settlementCount ?? 0)
+        let knownTotal =
+            (settlementCount ?? 0)
             + (issueCount ?? 0)
             + (agentChangeCount ?? 0)
         if knownTotal > 0 { return knownTotal }
@@ -343,11 +359,13 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
             return error
         }
         if appState.researchController.agentChanges == nil,
-           let error = appState.researchController.agentChangesError {
+            let error = appState.researchController.agentChangesError
+        {
             return error
         }
         if appState.researchController.researchSnapshot == nil,
-           let error = appState.researchController.errorMessage {
+            let error = appState.researchController.errorMessage
+        {
             return error
         }
         return nil
@@ -393,7 +411,8 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
         let modes = ResearchInspectorMode.allCases
         let control = NSSegmentedControl(
             images: modes.compactMap {
-                ScholiumNativeToolbarPresentation.symbol(named: $0.systemImage,
+                ScholiumNativeToolbarPresentation.symbol(
+                    named: $0.systemImage,
                     accessibilityDescription: ScholiumL10n.localized($0.interfaceTitleResource))
             },
             trackingMode: .selectOne,
@@ -481,7 +500,8 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
         let shellState = appState.shellState
         let chat = appState.chatController
         if observedChat !== chat {
-            chatObservation?.cancel(); observedChat = chat
+            chatObservation?.cancel()
+            observedChat = chat
             chatObservation = chat?.needsInputPublisher
                 .receive(on: DispatchQueue.main).sink { [weak self] _ in self?.refreshPresentation() }
         }
@@ -492,12 +512,15 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
             let unavailable = appState.workspaceAssignment == nil
             control.setEnabled(!unavailable, forSegment: SidebarContent.chat.rawValue)
             let awaitingInput = chat?.needsInput == true
-            let title = unavailable ? ScholiumL10n.string("No Triptych Open")
+            let title =
+                unavailable
+                ? ScholiumL10n.string("No Triptych Open")
                 : awaitingInput ? String(localized: "Chat Needs Your Input") : String(localized: "Chat")
             control.setToolTip(title, forSegment: SidebarContent.chat.rawValue)
-            control.setImage(ScholiumNativeToolbarPresentation.symbol(
-                named: awaitingInput ? "exclamationmark.bubble" : "bubble.left.and.bubble.right",
-                accessibilityDescription: title), forSegment: SidebarContent.chat.rawValue)
+            control.setImage(
+                ScholiumNativeToolbarPresentation.symbol(
+                    named: awaitingInput ? "exclamationmark.bubble" : "bubble.left.and.bubble.right",
+                    accessibilityDescription: title), forSegment: SidebarContent.chat.rawValue)
         }
 
         if let item = toolbarItem(Item.back) {
@@ -623,8 +646,10 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
         case Item.inspector: appState.canToggleResearchInspector
         case Item.inspectorModes: appState.currentNote != nil && appState.shellState.inspector.isVisible
         case Item.documentMode:
-            appState.currentNote != nil && !currentEditorIsComposing && (ScholiumDocumentModeToolbarButtonPresentation(
-                mode: appState.documentController.chromeProjection.mode).destination == .read || appState.canEditCurrentNote)
+            appState.currentNote != nil && !currentEditorIsComposing
+                && (ScholiumDocumentModeToolbarButtonPresentation(
+                    mode: appState.documentController.chromeProjection.mode
+                ).destination == .read || appState.canEditCurrentNote)
         default: true
         }
     }
@@ -680,8 +705,9 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
         let images = zip(symbols, labels).compactMap {
             ScholiumNativeToolbarPresentation.symbol(named: $0, accessibilityDescription: $1)
         }
-        let control = ScholiumSidebarModeControl(images: images, trackingMode: .selectOne,
-                                         target: self, action: #selector(selectSidebarMode(_:)))
+        let control = ScholiumSidebarModeControl(
+            images: images, trackingMode: .selectOne,
+            target: self, action: #selector(selectSidebarMode(_:)))
         control.enableNoteDrops()
         control.validateNotes = { [weak self] notes in
             guard let self, !self.isInvalidated else { return false }

@@ -1,5 +1,5 @@
-import ScholiumContracts
 import Foundation
+import ScholiumContracts
 
 enum AttentionPreferences {
     static let dismissalLedgerKey = "attention.dismissalLedger"
@@ -10,7 +10,8 @@ enum AttentionPreferences {
 
     static func decodeLedger(_ data: Data) -> AttentionDismissalLedger {
         guard !data.isEmpty,
-              let ledger = try? JSONDecoder().decode(AttentionDismissalLedger.self, from: data) else {
+            let ledger = try? JSONDecoder().decode(AttentionDismissalLedger.self, from: data)
+        else {
             return AttentionDismissalLedger()
         }
         return ledger

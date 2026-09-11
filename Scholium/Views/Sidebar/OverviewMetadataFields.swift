@@ -92,7 +92,7 @@ struct OverviewMetadataFields: NSViewRepresentable {
             grid.leadingAnchor.constraint(equalTo: leadingAnchor),
             grid.trailingAnchor.constraint(equalTo: trailingAnchor),
             grid.topAnchor.constraint(equalTo: topAnchor),
-            grid.bottomAnchor.constraint(equalTo: bottomAnchor)
+            grid.bottomAnchor.constraint(equalTo: bottomAnchor),
         ])
         setAccessibilityIdentifier("scholium.overview.fields")
         session.changed = { [weak self] in self?.refresh() }
@@ -115,14 +115,18 @@ struct OverviewMetadataFields: NSViewRepresentable {
     }
 
     func flush() async throws {
-        guard session.composing.isEmpty else { try await session.flush(); return }
+        guard session.composing.isEmpty else {
+            try await session.flush()
+            return
+        }
         window?.makeFirstResponder(self)
         try await session.flush()
     }
 
     func finishInput() {
         if let editor = window?.firstResponder as? NSTextView,
-           fields.values.contains(where: { $0.currentEditor() === editor }) {
+            fields.values.contains(where: { $0.currentEditor() === editor })
+        {
             window?.makeFirstResponder(self)
         }
         session.requestCommit()
@@ -148,33 +152,47 @@ struct OverviewMetadataFields: NSViewRepresentable {
                     var content: [NSView] = []
                     let names = creator.singleName ? ["literal"] : ["family", "given"]
                     for name in names {
-                        let title = name == "literal" ? String(localized: "Single Name") : name == "family" ? String(localized: "Family Name") : String(localized: "Given Name")
-                        content.append(input(prefix + "." + name, key: key,
-                            label: "\(field.label), \(index + 1), \(title)",
-                            placeholder: name == "family" ? String(localized: "Last name") : name == "given" ? String(localized: "First name") : title, value: creator.values[name] ?? "", multiline: false,
-                            changed: { [weak self] value in
-                                self?.session.edit(key) { draft in
-                                    guard let index = draft.creators.firstIndex(where: { $0.id == creator.id }) else { return }
-                                    draft.creators[index].values[name] = value
-                                }
-                            }))
+                        let title =
+                            name == "literal"
+                            ? String(localized: "Single Name") : name == "family" ? String(localized: "Family Name") : String(localized: "Given Name")
+                        content.append(
+                            input(
+                                prefix + "." + name, key: key,
+                                label: "\(field.label), \(index + 1), \(title)",
+                                placeholder: name == "family" ? String(localized: "Last name") : name == "given" ? String(localized: "First name") : title,
+                                value: creator.values[name] ?? "", multiline: false,
+                                changed: { [weak self] value in
+                                    self?.session.edit(key) { draft in
+                                        guard let index = draft.creators.firstIndex(where: { $0.id == creator.id }) else { return }
+                                        draft.creators[index].values[name] = value
+                                    }
+                                }))
                         fieldIDs.insert(prefix + "." + name)
                     }
-                    content.append(action(prefix + ".more", symbol: "ellipsis", title: String(localized: "Creator Options") + ", \(index + 1)") { [weak self] in
-                        self?.showCreatorMenu(key: key, creator: creator, index: index, anchor: prefix + ".more")
-                    })
+                    content.append(
+                        action(prefix + ".more", symbol: "ellipsis", title: String(localized: "Creator Options") + ", \(index + 1)") { [weak self] in
+                            self?.showCreatorMenu(key: key, creator: creator, index: index, anchor: prefix + ".more")
+                        })
                     let creatorRow = row(prefix, label: index == 0 ? rowLabel(field) : "", content: content)
                     let inputs = content.compactMap { $0 as? MetadataTextField }
-                    if inputs.count == 2, !creatorRow.constraints.contains(where: {
-                        $0.firstItem === inputs[0] && $0.secondItem === inputs[1] && $0.firstAttribute == .width
-                    }) {
+                    if inputs.count == 2,
+                        !creatorRow.constraints.contains(where: {
+                            $0.firstItem === inputs[0] && $0.secondItem === inputs[1] && $0.firstAttribute == .width
+                        })
+                    {
                         inputs[0].widthAnchor.constraint(equalTo: inputs[1].widthAnchor).isActive = true
                     }
                     wanted.append(creatorRow)
                     if expandedNames.contains(creator.id), !creator.singleName {
-                        for (name, title) in [("suffix", String(localized: "Suffix")), ("non_dropping_particle", String(localized: "Non-dropping Particle")), ("dropping_particle", String(localized: "Dropping Particle"))] {
+                        for (name, title) in [
+                            ("suffix", String(localized: "Suffix")), ("non_dropping_particle", String(localized: "Non-dropping Particle")),
+                            ("dropping_particle", String(localized: "Dropping Particle")),
+                        ] {
                             let id = prefix + "." + name
-                            let control = input(id, key: key, label: "\(field.label), \(index + 1), \(title)", placeholder: "", value: creator.values[name] ?? "", multiline: false) { [weak self] value in
+                            let control = input(
+                                id, key: key, label: "\(field.label), \(index + 1), \(title)", placeholder: "", value: creator.values[name] ?? "",
+                                multiline: false
+                            ) { [weak self] value in
                                 self?.session.edit(key) { draft in
                                     guard let index = draft.creators.firstIndex(where: { $0.id == creator.id }) else { return }
                                     draft.creators[index].values[name] = value
@@ -185,14 +203,17 @@ struct OverviewMetadataFields: NSViewRepresentable {
                         }
                     }
                 }
-                let add = action(key + ".add", symbol: "plus", title: key == "authors" ? String(localized: "Add Author") : String(localized: "Add Creator"), showsTitle: true) { [weak self] in
+                let add = action(
+                    key + ".add", symbol: "plus", title: key == "authors" ? String(localized: "Add Author") : String(localized: "Add Creator"), showsTitle: true
+                ) { [weak self] in
                     self?.addCreator(key: key)
                 }
                 wanted.append(row(key + ".add", label: "", content: [add]))
             } else if (field.valueKind == .textList || field.valueKind == .tags) && !field.isReadOnly {
                 for (index, item) in draft.list.enumerated() {
                     let id = key + "." + item.id.uuidString
-                    let control = input(id, key: key, label: "\(field.label), \(index + 1)", placeholder: field.label, value: item.text, multiline: true) { [weak self] value in
+                    let control = input(id, key: key, label: "\(field.label), \(index + 1)", placeholder: field.label, value: item.text, multiline: true) {
+                        [weak self] value in
                         self?.session.edit(key) { draft in
                             guard let index = draft.list.firstIndex(where: { $0.id == item.id }) else { return }
                             draft.list[index].text = value
@@ -206,13 +227,15 @@ struct OverviewMetadataFields: NSViewRepresentable {
                             draft.list.removeAll { $0.id == item.id }
                             if draft.list.isEmpty { draft.list = [OverviewMetadataListValue(text: "")] }
                         }
-                        self.refresh(); self.session.requestCommit()
+                        self.refresh()
+                        self.session.requestCommit()
                     }
                     let add = { [weak self] in
                         guard let self else { return }
                         let item = OverviewMetadataListValue(text: "")
                         self.session.edit(key) { $0.list.insert(item, at: min(index + 1, $0.list.count)) }
-                        self.refresh(); self.focus(key + "." + item.id.uuidString)
+                        self.refresh()
+                        self.focus(key + "." + item.id.uuidString)
                     }
                     let options = action(id + ".more", symbol: "ellipsis", title: field.label + ", \(index + 1)") { [weak self] in
                         guard let self, let button = self.actions[id + ".more"] else { return }
@@ -239,9 +262,11 @@ struct OverviewMetadataFields: NSViewRepresentable {
             } else if field.controlStyle == .choicePicker && !field.isReadOnly {
                 let control = choices[key] ?? MetadataChoiceButton()
                 choices[key] = control
-                let titles = [String(localized: "Not specified")] + (field.allowedValues ?? []).map {
-                    PropertyPresentationCatalog.choiceDisplayName(for: $0, fieldKey: key)
-                }
+                let titles =
+                    [String(localized: "Not specified")]
+                    + (field.allowedValues ?? []).map {
+                        PropertyPresentationCatalog.choiceDisplayName(for: $0, fieldKey: key)
+                    }
                 if control.itemTitles != titles {
                     control.removeAllItems()
                     control.addItems(withTitles: titles)
@@ -260,8 +285,11 @@ struct OverviewMetadataFields: NSViewRepresentable {
                 keyViews.append(control)
                 wanted.append(row(key, label: rowLabel(field), content: [control]))
             } else {
-                let control = input(key, key: key, label: field.label, placeholder: placeholder(for: field), value: field.isReadOnly ? (draft.original?.scalarString ?? String(localized: "Unsupported value")) : draft.text,
-                                    multiline: field.controlStyle == .multilineText || field.valueKind == .text) { [weak self] value in
+                let control = input(
+                    key, key: key, label: field.label, placeholder: placeholder(for: field),
+                    value: field.isReadOnly ? (draft.original?.scalarString ?? String(localized: "Unsupported value")) : draft.text,
+                    multiline: field.controlStyle == .multilineText || field.valueKind == .text
+                ) { [weak self] value in
                     self?.session.edit(key) { $0.text = value }
                 }
                 control.isEditable = !field.isReadOnly
@@ -276,18 +304,28 @@ struct OverviewMetadataFields: NSViewRepresentable {
                 label.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
                 label.textColor = .systemRed
                 label.setAccessibilityLabel(error.message)
-                wanted.append(row(id, label: "", content: [label, action(id + ".recover", symbol: "ellipsis", title: String(localized: "Resolve Metadata Error")) { [weak self] in self?.showRecoveryMenu(key, anchor: id + ".recover") }]))
+                wanted.append(
+                    row(
+                        id, label: "",
+                        content: [
+                            label,
+                            action(id + ".recover", symbol: "ellipsis", title: String(localized: "Resolve Metadata Error")) { [weak self] in
+                                self?.showRecoveryMenu(key, anchor: id + ".recover")
+                            },
+                        ]))
                 for field in fields.values where field.key == key { field.setAccessibilityHelp(error.message) }
             }
         }
         for (id, field) in fields where !fieldIDs.contains(id) {
-            field.delegate = nil; fields.removeValue(forKey: id)
+            field.delegate = nil
+            fields.removeValue(forKey: id)
         }
         // Reconcile rows by their retained native content. Ordinary typing never
         // removes/recreates a field, its editor, or the grid's shared columns.
         for index in (0..<grid.numberOfRows).reversed() {
             if let view = grid.cell(atColumnIndex: 1, rowIndex: index).contentView,
-               !wanted.contains(view) {
+                !wanted.contains(view)
+            {
                 let title = grid.cell(atColumnIndex: 0, rowIndex: index).contentView
                 grid.removeRow(at: index)
                 title?.removeFromSuperview()
@@ -299,7 +337,8 @@ struct OverviewMetadataFields: NSViewRepresentable {
                 let current = grid.index(of: row)
                 if current != index { grid.moveRow(at: current, to: index) }
             } else if let id = rows.first(where: { $0.value === view })?.key,
-                      let title = rowTitles[id] {
+                let title = rowTitles[id]
+            {
                 grid.insertRow(at: index, with: [title, view])
             }
         }
@@ -318,7 +357,9 @@ struct OverviewMetadataFields: NSViewRepresentable {
         if session.error?.message != previousError {
             previousError = session.error?.message
             if let message = previousError {
-                NSAccessibility.post(element: self, notification: .announcementRequested, userInfo: [.announcement: message, .priority: NSAccessibilityPriorityLevel.high.rawValue])
+                NSAccessibility.post(
+                    element: self, notification: .announcementRequested,
+                    userInfo: [.announcement: message, .priority: NSAccessibilityPriorityLevel.high.rawValue])
             }
         }
     }
@@ -363,7 +404,10 @@ struct OverviewMetadataFields: NSViewRepresentable {
 
     private func reconcile(_ stack: NSStackView, _ views: [NSView]) {
         guard stack.arrangedSubviews != views else { return }
-        for old in stack.arrangedSubviews where !views.contains(old) { stack.removeArrangedSubview(old); old.removeFromSuperview() }
+        for old in stack.arrangedSubviews where !views.contains(old) {
+            stack.removeArrangedSubview(old)
+            old.removeFromSuperview()
+        }
         for (index, view) in views.enumerated() {
             if stack.arrangedSubviews.indices.contains(index), stack.arrangedSubviews[index] === view { continue }
             if stack.arrangedSubviews.contains(view) { stack.removeArrangedSubview(view) }
@@ -371,13 +415,17 @@ struct OverviewMetadataFields: NSViewRepresentable {
         }
     }
 
-    private func input(_ id: String, key: String, label: String, placeholder: String, value: String,
-                       multiline: Bool, changed: @escaping (String) -> Void) -> MetadataTextField {
+    private func input(
+        _ id: String, key: String, label: String, placeholder: String, value: String,
+        multiline: Bool, changed: @escaping (String) -> Void
+    ) -> MetadataTextField {
         let field = fields[id] ?? MetadataTextField()
         fields[id] = field
-        field.key = key; field.identity = id
+        field.key = key
+        field.identity = id
         field.representedValue = value
-        field.host = self; field.changed = changed
+        field.host = self
+        field.changed = changed
         field.placeholderString = placeholder
         field.toolTip = value.isEmpty ? label : value
         field.setAccessibilityLabel(label)
@@ -405,7 +453,9 @@ struct OverviewMetadataFields: NSViewRepresentable {
 
     private func menuItem(_ title: String, enabled: Bool = true, action: @escaping () -> Void) -> NSMenuItem {
         let item = MetadataMenuItem(title: title, action: #selector(MetadataMenuItem.invoke), keyEquivalent: "")
-        item.target = item; item.perform = action; item.isEnabled = enabled
+        item.target = item
+        item.perform = action
+        item.isEnabled = enabled
         return item
     }
 
@@ -433,47 +483,55 @@ struct OverviewMetadataFields: NSViewRepresentable {
     }
 
     private func showCreatorMenu(key: String, creator: OverviewMetadataCreator, index: Int, anchor: String) {
-        let menu = NSMenu(); menu.autoenablesItems = false
-        menu.addItem(menuItem(String(localized: "Remove creator \(index + 1)")) { [weak self] in
-            guard let self else { return }
-            self.finishInput()
-            self.session.edit(key) { draft in
-                draft.creators.removeAll { $0.id == creator.id }
-                if draft.creators.isEmpty { draft.creators = [OverviewMetadataCreator()] }
-            }
-            self.refresh(); self.session.requestCommit()
-        })
-        menu.addItem(NSMenuItem.separator())
-        menu.addItem(menuItem(creator.singleName ? String(localized: "Use Family and Given Names") : String(localized: "Use Single Name")) { [weak self] in
-            guard let self else { return }
-            self.finishInput()
-            self.session.edit(key) { draft in
-                guard let index = draft.creators.firstIndex(where: { $0.id == creator.id }) else { return }
-                if creator.singleName {
-                    draft.creators[index].values = ["family": creator.values["literal"] ?? ""]
-                } else {
-                    let name = [creator.values["family"], creator.values["given"]].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: ", ")
-                    draft.creators[index].values = ["literal": name]
-                }
-                draft.creators[index].singleName.toggle()
-            }
-            self.refresh(); self.session.requestCommit()
-        })
-        if !creator.singleName {
-            menu.addItem(menuItem(String(localized: "Additional Name Fields")) { [weak self] in
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        menu.addItem(
+            menuItem(String(localized: "Remove creator \(index + 1)")) { [weak self] in
                 guard let self else { return }
-                if self.expandedNames.contains(creator.id) { self.expandedNames.remove(creator.id) } else { self.expandedNames.insert(creator.id) }
+                self.finishInput()
+                self.session.edit(key) { draft in
+                    draft.creators.removeAll { $0.id == creator.id }
+                    if draft.creators.isEmpty { draft.creators = [OverviewMetadataCreator()] }
+                }
                 self.refresh()
+                self.session.requestCommit()
             })
+        menu.addItem(NSMenuItem.separator())
+        menu.addItem(
+            menuItem(creator.singleName ? String(localized: "Use Family and Given Names") : String(localized: "Use Single Name")) { [weak self] in
+                guard let self else { return }
+                self.finishInput()
+                self.session.edit(key) { draft in
+                    guard let index = draft.creators.firstIndex(where: { $0.id == creator.id }) else { return }
+                    if creator.singleName {
+                        draft.creators[index].values = ["family": creator.values["literal"] ?? ""]
+                    } else {
+                        let name = [creator.values["family"], creator.values["given"]].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: ", ")
+                        draft.creators[index].values = ["literal": name]
+                    }
+                    draft.creators[index].singleName.toggle()
+                }
+                self.refresh()
+                self.session.requestCommit()
+            })
+        if !creator.singleName {
+            menu.addItem(
+                menuItem(String(localized: "Additional Name Fields")) { [weak self] in
+                    guard let self else { return }
+                    if self.expandedNames.contains(creator.id) { self.expandedNames.remove(creator.id) } else { self.expandedNames.insert(creator.id) }
+                    self.refresh()
+                })
         }
         for (offset, title) in [(-1, String(localized: "Move Up")), (1, String(localized: "Move Down"))] {
             let count = session.drafts[key]?.creators.count ?? 0
-            menu.addItem(menuItem(title, enabled: (0..<count).contains(index + offset)) { [weak self] in
-                guard let self else { return }
-                self.finishInput()
-                self.session.edit(key) { $0.creators.swapAt(index, index + offset) }
-                self.refresh(); self.session.requestCommit()
-            })
+            menu.addItem(
+                menuItem(title, enabled: (0..<count).contains(index + offset)) { [weak self] in
+                    guard let self else { return }
+                    self.finishInput()
+                    self.session.edit(key) { $0.creators.swapAt(index, index + offset) }
+                    self.refresh()
+                    self.session.requestCommit()
+                })
         }
         if let button = actions[anchor] { menu.popUp(positioning: nil, at: NSPoint(x: 0, y: button.bounds.maxY), in: button) }
     }
@@ -485,7 +543,10 @@ struct OverviewMetadataFields: NSViewRepresentable {
 
     private func focus(_ id: String) {
         layoutSubtreeIfNeeded()
-        if let field = fields[id] { window?.makeFirstResponder(field); field.scrollToVisible(field.bounds) }
+        if let field = fields[id] {
+            window?.makeFirstResponder(field)
+            field.scrollToVisible(field.bounds)
+        }
     }
 }
 
@@ -502,9 +563,11 @@ struct OverviewMetadataFields: NSViewRepresentable {
         super.init(frame: .zero)
         self.title = title ?? ""
         font = .systemFont(ofSize: NSFont.systemFontSize)
-        isBordered = false; imagePosition = title == nil ? .imageOnly : .imageLeading
+        isBordered = false
+        imagePosition = title == nil ? .imageOnly : .imageLeading
         bezelStyle = .accessoryBarAction
-        target = self; action = #selector(invoke)
+        target = self
+        action = #selector(invoke)
         translatesAutoresizingMaskIntoConstraints = false
         if title == nil { widthAnchor.constraint(equalToConstant: 28).isActive = true }
         heightAnchor.constraint(greaterThanOrEqualToConstant: 28).isActive = true
@@ -520,7 +583,8 @@ struct OverviewMetadataFields: NSViewRepresentable {
         super.init(frame: .zero, pullsDown: false)
         isBordered = true
         font = .systemFont(ofSize: NSFont.systemFontSize)
-        target = self; action = #selector(invoke)
+        target = self
+        action = #selector(invoke)
         setContentHuggingPriority(.defaultLow, for: .horizontal)
         setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
     }
@@ -535,7 +599,8 @@ struct OverviewMetadataFields: NSViewRepresentable {
         super.init(frame: .zero)
         setButtonType(.switch)
         title = ""
-        target = self; action = #selector(invoke)
+        target = self
+        action = #selector(invoke)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
     @objc private func invoke() { choose?() }

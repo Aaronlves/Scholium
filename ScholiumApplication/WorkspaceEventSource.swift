@@ -1,5 +1,5 @@
-import ScholiumContracts
 import Foundation
+import ScholiumContracts
 import ScholiumCore
 
 /// A bounded, cancellation-aware stream of typed workspace generations.
@@ -27,10 +27,12 @@ public actor WorkspaceEventSource {
         if let vaultAccessInvalidation {
             pair.continuation.yield(.vaultAccessInvalidated(vaultAccessInvalidation))
         } else {
-            pair.continuation.yield(.snapshot(WorkspaceSnapshotEvent(
-                generation: generation,
-                snapshot: currentSnapshot
-            )))
+            pair.continuation.yield(
+                .snapshot(
+                    WorkspaceSnapshotEvent(
+                        generation: generation,
+                        snapshot: currentSnapshot
+                    )))
         }
         guard !isFinished else {
             pair.continuation.finish()
@@ -51,12 +53,14 @@ public actor WorkspaceEventSource {
         note: WorkspaceNoteSnapshot,
         kind: WorkspaceSourceCommitKind
     ) {
-        publish(.sourceCommitted(WorkspaceSourceCommittedEvent(
-            generation: nextGeneration(),
-            note: note,
-            kind: kind,
-            snapshot: snapshot
-        )), snapshot: snapshot)
+        publish(
+            .sourceCommitted(
+                WorkspaceSourceCommittedEvent(
+                    generation: nextGeneration(),
+                    note: note,
+                    kind: kind,
+                    snapshot: snapshot
+                )), snapshot: snapshot)
     }
 
     func publishInventoryChanged(
@@ -66,46 +70,55 @@ public actor WorkspaceEventSource {
         changed: Set<VaultQualifiedNoteID>,
         moved: [WorkspaceNoteMove]
     ) {
-        publish(.inventoryChanged(WorkspaceInventoryChangedEvent(
-            generation: nextGeneration(),
-            added: added,
-            removed: removed,
-            changed: changed,
-            moved: moved,
-            snapshot: snapshot
-        )), snapshot: snapshot)
+        publish(
+            .inventoryChanged(
+                WorkspaceInventoryChangedEvent(
+                    generation: nextGeneration(),
+                    added: added,
+                    removed: removed,
+                    changed: changed,
+                    moved: moved,
+                    snapshot: snapshot
+                )), snapshot: snapshot)
     }
 
     func publishDerivedStateChanged(
         snapshot: WorkspaceSnapshot,
         status: WorkspaceDerivedRefreshStatus? = nil
     ) {
-        let resolvedStatus = status ?? (snapshot.phase.isComplete
-            ? .current(WorkspaceDerivedRefreshEvidence(snapshot: snapshot))
-            : .opening(WorkspaceDerivedRefreshEvidence(snapshot: snapshot)))
-        publish(.derivedStateChanged(WorkspaceDerivedStateChangedEvent(
-            generation: nextGeneration(),
-            status: resolvedStatus,
-            discovery: snapshot.discovery,
-            snapshot: snapshot
-        )), snapshot: snapshot)
+        let resolvedStatus =
+            status
+            ?? (snapshot.phase.isComplete
+                ? .current(WorkspaceDerivedRefreshEvidence(snapshot: snapshot))
+                : .opening(WorkspaceDerivedRefreshEvidence(snapshot: snapshot)))
+        publish(
+            .derivedStateChanged(
+                WorkspaceDerivedStateChangedEvent(
+                    generation: nextGeneration(),
+                    status: resolvedStatus,
+                    discovery: snapshot.discovery,
+                    snapshot: snapshot
+                )), snapshot: snapshot)
     }
 
     func publishResearchStateChanged(snapshot: WorkspaceSnapshot) {
-        publish(.researchStateChanged(WorkspaceResearchStateChangedEvent(
-            generation: nextGeneration(),
-            research: snapshot.research,
-            snapshot: snapshot
-        )), snapshot: snapshot)
+        publish(
+            .researchStateChanged(
+                WorkspaceResearchStateChangedEvent(
+                    generation: nextGeneration(),
+                    research: snapshot.research,
+                    snapshot: snapshot
+                )), snapshot: snapshot)
     }
 
     func publishResearchConfigurationInvalidated(snapshot: WorkspaceSnapshot) {
-        publish(.researchConfigurationInvalidated(
-            WorkspaceResearchConfigurationInvalidatedEvent(
-                generation: nextGeneration(),
-                snapshot: snapshot
-            )
-        ), snapshot: snapshot)
+        publish(
+            .researchConfigurationInvalidated(
+                WorkspaceResearchConfigurationInvalidatedEvent(
+                    generation: nextGeneration(),
+                    snapshot: snapshot
+                )
+            ), snapshot: snapshot)
     }
 
     func publishVaultAccessInvalidated(
@@ -129,11 +142,13 @@ public actor WorkspaceEventSource {
         runtimeIdentity: TriptychRuntimeIdentity,
         snapshot: WorkspaceSnapshot
     ) {
-        publish(.runtimeReloaded(WorkspaceRuntimeReloadedEvent(
-            generation: nextGeneration(),
-            runtimeIdentity: runtimeIdentity,
-            snapshot: snapshot
-        )), snapshot: snapshot, allowedDuringVaultAccessInvalidation: true)
+        publish(
+            .runtimeReloaded(
+                WorkspaceRuntimeReloadedEvent(
+                    generation: nextGeneration(),
+                    runtimeIdentity: runtimeIdentity,
+                    snapshot: snapshot
+                )), snapshot: snapshot, allowedDuringVaultAccessInvalidation: true)
     }
 
     func finish(finalSnapshot: WorkspaceSnapshot) {
@@ -159,7 +174,8 @@ public actor WorkspaceEventSource {
         allowedDuringVaultAccessInvalidation: Bool = false
     ) {
         guard !isFinished,
-              allowedDuringVaultAccessInvalidation || vaultAccessInvalidation == nil else {
+            allowedDuringVaultAccessInvalidation || vaultAccessInvalidation == nil
+        else {
             return
         }
         currentSnapshot = snapshot

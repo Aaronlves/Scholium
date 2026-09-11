@@ -1,6 +1,6 @@
+import Combine
 import Foundation
 import ScholiumContracts
-import Combine
 
 struct DocumentInformationDocumentID: Hashable, Sendable {
     let vaultID: UUID

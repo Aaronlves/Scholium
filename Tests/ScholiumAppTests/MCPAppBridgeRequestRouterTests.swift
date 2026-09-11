@@ -1,8 +1,9 @@
 import Foundation
 import ScholiumContracts
 import Testing
-@testable import ScholiumApplication
+
 @testable import ScholiumApp
+@testable import ScholiumApplication
 
 @Suite("Running App MCP router", .serialized)
 @MainActor
@@ -18,20 +19,29 @@ struct MCPAppBridgeRequestRouterTests {
         let controller = AgentChatController(triptychID: fixture.assignment.id, root: fixture.root.appendingPathComponent("Chat"), toolHandler: router.handle)
         func wait(_ predicate: () -> Bool) async throws {
             let deadline = ContinuousClock.now.advanced(by: .seconds(8))
-            while !predicate() { try #require(ContinuousClock.now < deadline); try await Task.sleep(for: .milliseconds(10)) }
+            while !predicate() {
+                try #require(ContinuousClock.now < deadline)
+                try await Task.sleep(for: .milliseconds(10))
+            }
         }
         try await wait { controller.isLoaded }
         let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         let runtime = repository.appendingPathComponent("Tests/Fixtures/agent-chat-runtime.py")
         controller.connect(executable: runtime, home: controller.runtimeHome, cli: runtime)
         try await wait { controller.state == .ready && controller.account != nil }
-        controller.editDraft("hold source comparison"); controller.send()
+        controller.editDraft("hold source comparison")
+        controller.send()
         try await wait { controller.state == .working && controller.selected?.pendingMessageID == nil }
         let token = try #require(controller.token)
-        let result = try result(await controller.handle(.init(tool: .previewMove, arguments: [
-            "note_id": .string(fixture.topicNoteID.uuidString), "relative_path": .string("Proposed.md"),
-            "expected_fingerprint": .object(["sha256": .string(topic.fingerprint.sha256), "byte_count": .integer(topic.fingerprint.byteCount)])],
-            conversationToken: token, runtimeContext: controller.runtimeContext(for: token))))
+        let result = try result(
+            await controller.handle(
+                .init(
+                    tool: .previewMove,
+                    arguments: [
+                        "note_id": .string(fixture.topicNoteID.uuidString), "relative_path": .string("Proposed.md"),
+                        "expected_fingerprint": .object(["sha256": .string(topic.fingerprint.sha256), "byte_count": .integer(topic.fingerprint.byteCount)]),
+                    ],
+                    conversationToken: token, runtimeContext: controller.runtimeContext(for: token))))
         #expect(result["can_move"]?.boolValue == true && controller.approvals.isEmpty)
         let activity = try #require(controller.selected?.messages.last(where: { $0.activity != nil })?.activity)
         #expect(activity.kind == .tool && activity.status == .completed)
@@ -52,14 +62,17 @@ struct MCPAppBridgeRequestRouterTests {
         let workURL = fixture.topicsURL.deletingLastPathComponent().appendingPathComponent("Works/Draft.md")
         let topicBytes = Data("# Topic\r\n\r\n[[Topic]]{{Self reference, no inferred support.}}\r\n".utf8)
         let workBytes = Data("---\nsummary: 'Keep exactly'\n---\n[[Topic|议题]]{{研究者说明。}}\n".utf8)
-        try topicBytes.write(to: topicURL); try workBytes.write(to: workURL)
+        try topicBytes.write(to: topicURL)
+        try workBytes.write(to: workURL)
         let analysisBytes = try Data(contentsOf: analysisURL)
         let snapshot = try await handle.discovery.refresh()
         let topic = try #require(snapshot.vaults.flatMap(\.documents).first { $0.stableIdentity.resolvedID == fixture.topicNoteID })
         let router = MCPAppBridgeRequestRouter(runtime: fixture.runtime, flushEditors: { _ in }, openTriptychs: { [fixture.assignment] })
-        var arguments: [String: MCPJSONValue] = ["triptych_id": .string(fixture.assignment.id.uuidString), "note_id": .string(fixture.topicNoteID.uuidString),
+        var arguments: [String: MCPJSONValue] = [
+            "triptych_id": .string(fixture.assignment.id.uuidString), "note_id": .string(fixture.topicNoteID.uuidString),
             "expected_fingerprint": .object(["sha256": .string(topic.fingerprint.sha256), "byte_count": .integer(topic.fingerprint.byteCount)]),
-            "relative_path": .string("Renamed.md"), "limit": .integer(1)]
+            "relative_path": .string("Renamed.md"), "limit": .integer(1),
+        ]
         let first = try result(await router.handle(.init(tool: .previewMove, arguments: arguments)))
         #expect(first["can_move"]?.boolValue == true && first["total"]?.intValue == 3 && first["has_more"]?.boolValue == true)
         let fingerprint = try #require(first["plan_fingerprint"])
@@ -67,7 +80,8 @@ struct MCPAppBridgeRequestRouterTests {
         #expect(repeated["plan_fingerprint"] == fingerprint)
         arguments["offset"] = .integer(1)
         #expect(await router.handle(.init(tool: .previewMove, arguments: arguments)).error?.code == .invalidRequest)
-        arguments["expected_plan_fingerprint"] = fingerprint; arguments["limit"] = .integer(100)
+        arguments["expected_plan_fingerprint"] = fingerprint
+        arguments["limit"] = .integer(100)
         let next = try result(await router.handle(.init(tool: .previewMove, arguments: arguments)))
         let rows = try #require(first["entries"]?.arrayValue) + (try #require(next["entries"]?.arrayValue))
         #expect(rows.count == 3 && next["has_more"]?.boolValue == false)
@@ -99,8 +113,11 @@ struct MCPAppBridgeRequestRouterTests {
         let snapshot = try await handle.discovery.refresh()
         let topic = try #require(snapshot.vaults.flatMap(\.documents).first { $0.stableIdentity.resolvedID == fixture.topicNoteID })
         let router = MCPAppBridgeRequestRouter(runtime: fixture.runtime, flushEditors: { _ in }, openTriptychs: { [fixture.assignment] })
-        var args: [String: MCPJSONValue] = ["triptych_id": .string(fixture.assignment.id.uuidString), "note_id": .string(fixture.topicNoteID.uuidString),
-            "expected_fingerprint": .object(["sha256": .string(topic.fingerprint.sha256), "byte_count": .integer(topic.fingerprint.byteCount)]), "relative_path": .string("Moved.md")]
+        var args: [String: MCPJSONValue] = [
+            "triptych_id": .string(fixture.assignment.id.uuidString), "note_id": .string(fixture.topicNoteID.uuidString),
+            "expected_fingerprint": .object(["sha256": .string(topic.fingerprint.sha256), "byte_count": .integer(topic.fingerprint.byteCount)]),
+            "relative_path": .string("Moved.md"),
+        ]
         let initial = try result(await router.handle(.init(tool: .previewMove, arguments: args)))
         let analysis = fixture.topicsURL.deletingLastPathComponent().appendingPathComponent("Analyses/Alpha.md")
         let later = Data("\u{feff}[[Topic]]{{Later researcher comment.}}\r\n".utf8)
@@ -129,7 +146,10 @@ struct MCPAppBridgeRequestRouterTests {
         let blocker = try #require(blocked["entries"]?.arrayValue?.first { $0.objectValue?["kind"]?.stringValue == "blocked" }?.objectValue)
         #expect(try decodedFingerprint(blocker["before_fingerprint"]) == DocumentFingerprint(data: later))
         #expect(blocker["note_id"]?.stringValue == fixture.analysisNoteID.uuidString.lowercased())
-        #expect(blocked["entries"]?.arrayValue?.contains { $0.objectValue?["kind"]?.stringValue == "blocked" && $0.objectValue?["source_locator"]?.objectValue != nil } == true)
+        #expect(
+            blocked["entries"]?.arrayValue?.contains {
+                $0.objectValue?["kind"]?.stringValue == "blocked" && $0.objectValue?["source_locator"]?.objectValue != nil
+            } == true)
         #expect(try Data(contentsOf: analysis) == later)
         #expect(try Data(contentsOf: occupied) == Data("Unrelated target".utf8))
         #expect(try await handle.agentCollaboration.agentChanges().isEmpty)
@@ -144,27 +164,44 @@ struct MCPAppBridgeRequestRouterTests {
         func call(_ tool: ScholiumMCPToolName, _ arguments: [String: MCPJSONValue]) async -> ScholiumMCPBridgeResponse {
             await router.handle(.init(tool: tool, arguments: base.merging(arguments) { _, new in new }))
         }
-        let creation = try result(await call(.createNote, ["role": .string("topics"), "relative_path": .string("Created Evidence.md"), "body": .string("Created source.")]))
+        let creation = try result(
+            await call(.createNote, ["role": .string("topics"), "relative_path": .string("Created Evidence.md"), "body": .string("Created source.")]))
         let receipt = try #require(creation["change_id"])
         let read = try result(await call(.readChange, ["change_id": receipt]))
         #expect(read["comparison"] == .null && read["can_undo"]?.boolValue == false)
-        #expect(await call(.undoChange, ["change_id": receipt, "note_id": try #require(creation["note_id"]), "expected_fingerprint": try #require(creation["fingerprint"])]).error?.code == .invalidRequest)
-        let update = try result(await call(.updateNote, ["note_id": .string(fixture.analysisNoteID.uuidString),
-            "expected_fingerprint": .object(["sha256": .string(fixture.analysisFingerprint.sha256), "byte_count": .integer(fixture.analysisFingerprint.byteCount)]),
-            "mode": .string("body"), "content": .string("Temporary ending")]))
-        let args = base.merging(["note_id": .string(fixture.analysisNoteID.uuidString), "change_id": try #require(update["change_id"]),
-            "expected_fingerprint": try #require(update["after_fingerprint"])]) { _, new in new }
+        #expect(
+            await call(
+                .undoChange,
+                ["change_id": receipt, "note_id": try #require(creation["note_id"]), "expected_fingerprint": try #require(creation["fingerprint"])]
+            ).error?.code == .invalidRequest)
+        let update = try result(
+            await call(
+                .updateNote,
+                [
+                    "note_id": .string(fixture.analysisNoteID.uuidString),
+                    "expected_fingerprint": .object([
+                        "sha256": .string(fixture.analysisFingerprint.sha256), "byte_count": .integer(fixture.analysisFingerprint.byteCount),
+                    ]),
+                    "mode": .string("body"), "content": .string("Temporary ending"),
+                ]))
+        let args = base.merging([
+            "note_id": .string(fixture.analysisNoteID.uuidString), "change_id": try #require(update["change_id"]),
+            "expected_fingerprint": try #require(update["after_fingerprint"]),
+        ]) { _, new in new }
         let request = ScholiumMCPBridgeRequest(tool: .undoChange, arguments: args)
         _ = try await router.previewUpdate(request)
         let file = fixture.topicsURL.deletingLastPathComponent().appendingPathComponent("Analyses/Alpha.md")
         let ending = try Data(contentsOf: file)
-        let cancelled = Task { await router.handle(request) }; cancelled.cancel()
+        let cancelled = Task { await router.handle(request) }
+        cancelled.cancel()
         #expect(await cancelled.value.error != nil)
         #expect(try Data(contentsOf: file) == ending)
-        let closed = MCPAppBridgeRequestRouter(runtime: fixture.runtime, flushEditors: { _ in Issue.record("Closed scope must not flush") }, openTriptychs: { [] })
+        let closed = MCPAppBridgeRequestRouter(
+            runtime: fixture.runtime, flushEditors: { _ in Issue.record("Closed scope must not flush") }, openTriptychs: { [] })
         #expect(await closed.handle(request).error != nil)
         let later = Data("The saved dirty buffer must survive Undo.".utf8)
-        let dirty = MCPAppBridgeRequestRouter(runtime: fixture.runtime, flushEditors: { _ in try later.write(to: file) }, openTriptychs: { [fixture.assignment] })
+        let dirty = MCPAppBridgeRequestRouter(
+            runtime: fixture.runtime, flushEditors: { _ in try later.write(to: file) }, openTriptychs: { [fixture.assignment] })
         #expect(await dirty.handle(request).error?.code == .staleRevision)
         #expect(try Data(contentsOf: file) == later)
         let review = try result(await call(.readChange, ["change_id": try #require(update["change_id"])]))
@@ -182,22 +219,36 @@ struct MCPAppBridgeRequestRouterTests {
         let file = fixture.topicsURL.deletingLastPathComponent().appendingPathComponent("Analyses/Alpha.md")
         let original = try Data(contentsOf: file)
         func call(_ tool: ScholiumMCPToolName, _ arguments: [String: MCPJSONValue] = [:]) async -> ScholiumMCPBridgeResponse {
-            var args = arguments; args["triptych_id"] = .string(fixture.assignment.id.uuidString)
+            var args = arguments
+            args["triptych_id"] = .string(fixture.assignment.id.uuidString)
             return await router.handle(.init(tool: tool, arguments: args))
         }
         let empty = try result(await call(.listChanges))
         #expect(empty["total"]?.intValue == 0 && flushes == 0)
-        let fingerprint: MCPJSONValue = .object(["sha256": .string(fixture.analysisFingerprint.sha256), "byte_count": .integer(fixture.analysisFingerprint.byteCount)])
-        let changed = try result(await call(.updateNote, ["note_id": .string(fixture.analysisNoteID.uuidString),
-            "expected_fingerprint": fingerprint, "mode": .string("edits"), "edits": .array([.object([
-                "start_utf8": .integer(3), "end_utf8": .integer(original.count),
-                "expected_text": .string(String(decoding: original.dropFirst(3), as: UTF8.self)), "replacement": .string("Changed\r\n第二行\r\n")])])]))
+        let fingerprint: MCPJSONValue = .object([
+            "sha256": .string(fixture.analysisFingerprint.sha256), "byte_count": .integer(fixture.analysisFingerprint.byteCount),
+        ])
+        let changed = try result(
+            await call(
+                .updateNote,
+                [
+                    "note_id": .string(fixture.analysisNoteID.uuidString),
+                    "expected_fingerprint": fingerprint, "mode": .string("edits"),
+                    "edits": .array([
+                        .object([
+                            "start_utf8": .integer(3), "end_utf8": .integer(original.count),
+                            "expected_text": .string(String(decoding: original.dropFirst(3), as: UTF8.self)), "replacement": .string("Changed\r\n第二行\r\n"),
+                        ])
+                    ]),
+                ]))
         let changeID = try #require(changed["change_id"])
         let after = try #require(changed["after_fingerprint"])
         let list = try result(await call(.listChanges, ["note_id": .string(fixture.analysisNoteID.uuidString), "limit": .integer(1)]))
         #expect(list["total"]?.intValue == 1 && list["has_more"]?.boolValue == false)
         #expect(await call(.listChanges, ["offset": .integer(1)]).error?.code == .invalidRequest)
-        #expect(await call(.listChanges, ["offset": .integer(1), "expected_listing_fingerprint": try #require(empty["listing_fingerprint"])]).error?.code == .staleRevision)
+        #expect(
+            await call(.listChanges, ["offset": .integer(1), "expected_listing_fingerprint": try #require(empty["listing_fingerprint"])]).error?.code
+                == .staleRevision)
         let review = try result(await call(.readChange, ["change_id": changeID, "limit": .integer(1)]))
         #expect(review["can_undo"]?.boolValue == true && review["ending_revision_state"]?.stringValue == "current")
         let comparison = try #require(review["comparison"]?.objectValue)
@@ -207,8 +258,10 @@ struct MCPAppBridgeRequestRouterTests {
         let tail = try result(await call(.readChange, ["change_id": changeID, "offset": .integer(1)]))
         #expect(tail["comparison"]?.objectValue?["has_more"]?.boolValue == false)
         #expect(tail["comparison"]?.objectValue?["rows"]?.arrayValue?.contains { $0.objectValue?["line_ending"]?.stringValue == "CRLF" } == true)
-        var undoArgs: [String: MCPJSONValue] = ["triptych_id": .string(fixture.assignment.id.uuidString),
-            "note_id": .string(fixture.analysisNoteID.uuidString), "change_id": changeID, "expected_fingerprint": after]
+        var undoArgs: [String: MCPJSONValue] = [
+            "triptych_id": .string(fixture.assignment.id.uuidString),
+            "note_id": .string(fixture.analysisNoteID.uuidString), "change_id": changeID, "expected_fingerprint": after,
+        ]
         let beforePreviewFlushes = flushes
         let preview = try await router.previewUpdate(.init(tool: .undoChange, arguments: undoArgs))
         #expect(flushes == beforePreviewFlushes)
@@ -238,27 +291,43 @@ struct MCPAppBridgeRequestRouterTests {
         let router = MCPAppBridgeRequestRouter(runtime: fixture.runtime, flushEditors: { _ in }, openTriptychs: { [fixture.assignment] })
         let file = fixture.topicsURL.deletingLastPathComponent().appendingPathComponent("Analyses/Alpha.md")
         let original = try Data(contentsOf: file)
-        let updated = try result(await router.handle(.init(tool: .updateNote, arguments: [
-            "triptych_id": .string(fixture.assignment.id.uuidString), "note_id": .string(fixture.analysisNoteID.uuidString),
-            "expected_fingerprint": .object(["sha256": .string(fixture.analysisFingerprint.sha256), "byte_count": .integer(fixture.analysisFingerprint.byteCount)]),
-            "mode": .string("body"), "content": .string("Agent ending\r\n") ])))
+        let updated = try result(
+            await router.handle(
+                .init(
+                    tool: .updateNote,
+                    arguments: [
+                        "triptych_id": .string(fixture.assignment.id.uuidString), "note_id": .string(fixture.analysisNoteID.uuidString),
+                        "expected_fingerprint": .object([
+                            "sha256": .string(fixture.analysisFingerprint.sha256), "byte_count": .integer(fixture.analysisFingerprint.byteCount),
+                        ]),
+                        "mode": .string("body"), "content": .string("Agent ending\r\n"),
+                    ])))
         let ending = try Data(contentsOf: file)
-        let controller = AgentChatController(triptychID: fixture.assignment.id, root: fixture.root.appendingPathComponent("Chat"),
+        let controller = AgentChatController(
+            triptychID: fixture.assignment.id, root: fixture.root.appendingPathComponent("Chat"),
             previewUpdate: router.previewUpdate, toolHandler: router.handle)
         func wait(_ predicate: () -> Bool) async throws {
             let deadline = ContinuousClock.now.advanced(by: .seconds(8))
-            while !predicate() { try #require(ContinuousClock.now < deadline); try await Task.sleep(for: .milliseconds(10)) }
+            while !predicate() {
+                try #require(ContinuousClock.now < deadline)
+                try await Task.sleep(for: .milliseconds(10))
+            }
         }
         try await wait { controller.isLoaded }
         let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         let runtime = repository.appendingPathComponent("Tests/Fixtures/agent-chat-runtime.py")
         controller.connect(executable: runtime, home: controller.runtimeHome, cli: runtime)
         try await wait { controller.state == .ready && controller.account != nil }
-        controller.editDraft("hold source comparison"); controller.send()
+        controller.editDraft("hold source comparison")
+        controller.send()
         try await wait { controller.state == .working && controller.selected?.pendingMessageID == nil }
         let token = try #require(controller.token)
-        let request = ScholiumMCPBridgeRequest(tool: .undoChange, arguments: ["note_id": .string(fixture.analysisNoteID.uuidString),
-            "change_id": try #require(updated["change_id"]), "expected_fingerprint": try #require(updated["after_fingerprint"])],
+        let request = ScholiumMCPBridgeRequest(
+            tool: .undoChange,
+            arguments: [
+                "note_id": .string(fixture.analysisNoteID.uuidString),
+                "change_id": try #require(updated["change_id"]), "expected_fingerprint": try #require(updated["after_fingerprint"]),
+            ],
             conversationToken: token, runtimeContext: controller.runtimeContext(for: token))
         let declined = Task { await controller.handle(request) }
         try await wait { !controller.approvals.isEmpty }
@@ -290,7 +359,8 @@ struct MCPAppBridgeRequestRouterTests {
         try FileManager.default.createDirectory(at: folder.appendingPathComponent("Empty"), withIntermediateDirectories: true)
         for name in ["A", "B", "C"] { try Data((name + " exact source").utf8).write(to: folder.appendingPathComponent(name + ".md")) }
         func call(_ arguments: [String: MCPJSONValue] = [:]) async -> ScholiumMCPBridgeResponse {
-            var args = arguments; args["triptych_id"] = .string(fixture.assignment.id.uuidString)
+            var args = arguments
+            args["triptych_id"] = .string(fixture.assignment.id.uuidString)
             return await router.handle(.init(tool: .browse, arguments: args))
         }
         let roots = try result(await call())
@@ -302,24 +372,32 @@ struct MCPAppBridgeRequestRouterTests {
         let firstRows = try #require(first["entries"]?.arrayValue)
         #expect(firstRows.count == 2 && firstRows[0].objectValue?["kind"]?.stringValue == "directory")
         let originalID = try #require(firstRows[1].objectValue?["note_id"]?.stringValue)
-        var continuation = scope; continuation["offset"] = .integer(2)
+        var continuation = scope
+        continuation["offset"] = .integer(2)
         #expect(await call(continuation).error?.code == .invalidRequest)
         continuation["expected_listing_fingerprint"] = first["listing_fingerprint"]
         let next = try result(await call(continuation))
         #expect(next["has_more"]?.boolValue == false)
-        #expect(try #require(next["entries"]?.arrayValue).compactMap { $0.objectValue?["relative_path"]?.stringValue } == ["Agent Browse/B.md", "Agent Browse/C.md"])
+        #expect(
+            try #require(next["entries"]?.arrayValue).compactMap { $0.objectValue?["relative_path"]?.stringValue } == [
+                "Agent Browse/B.md", "Agent Browse/C.md",
+            ])
         let snapshot = try await handle.discovery.refresh()
         let note = try #require(snapshot.vaults.flatMap(\.documents).first { $0.id.relativePath == "Agent Browse/A.md" })
         _ = try await handle.documents.move(note.id, to: "Agent Browse/Renamed.md", expectedRevision: note.fingerprint)
         #expect(await call(continuation).error?.code == .staleRevision)
-        var all = scope; all["limit"] = .integer(100)
+        var all = scope
+        all["limit"] = .integer(100)
         let renamed = try result(await call(all))
-        let renamedRow = try #require(renamed["entries"]?.arrayValue?.first { $0.objectValue?["relative_path"]?.stringValue == "Agent Browse/Renamed.md" }?.objectValue)
+        let renamedRow = try #require(
+            renamed["entries"]?.arrayValue?.first { $0.objectValue?["relative_path"]?.stringValue == "Agent Browse/Renamed.md" }?.objectValue)
         #expect(renamedRow["note_id"]?.stringValue == originalID)
         #expect(try decodedFingerprint(renamedRow["fingerprint"]) == note.fingerprint)
         let empty = try result(await call(["role": .string("topics"), "directory": .string("Agent Browse/Empty")]))
         #expect(empty["total"]?.intValue == 0 && empty["has_more"]?.boolValue == false)
-        var beyond = all; beyond["offset"] = .integer(Int.max); beyond["expected_listing_fingerprint"] = renamed["listing_fingerprint"]
+        var beyond = all
+        beyond["offset"] = .integer(Int.max)
+        beyond["expected_listing_fingerprint"] = renamed["listing_fingerprint"]
         #expect(try result(await call(beyond))["entries"]?.arrayValue?.isEmpty == true)
         for path in ["../works", "/tmp", "Agent Browse/../Empty", "Attachments", "Absent"] {
             #expect(await call(["role": .string("topics"), "directory": .string(path)]).error != nil)
@@ -327,7 +405,8 @@ struct MCPAppBridgeRequestRouterTests {
         #expect(await call(["directory": .string("Agent Browse")]).error?.code == .invalidRequest)
         #expect(await call(["role": .string("other")]).error?.code == .invalidRequest)
         #expect(await call(["limit": .integer(101)]).error?.code == .invalidRequest)
-        let closed = MCPAppBridgeRequestRouter(runtime: fixture.runtime, flushEditors: { _ in Issue.record("Closed workspace must not flush") }, openTriptychs: { [] })
+        let closed = MCPAppBridgeRequestRouter(
+            runtime: fixture.runtime, flushEditors: { _ in Issue.record("Closed workspace must not flush") }, openTriptychs: { [] })
         #expect(await closed.handle(.init(tool: .browse, arguments: ["triptych_id": .string(fixture.assignment.id.uuidString)])).error != nil)
         // Empty one disposable copied role; no original fixture or real vault is touched.
         for entry in try FileManager.default.contentsOfDirectory(at: fixture.topicsURL, includingPropertiesForKeys: nil) {
@@ -348,29 +427,43 @@ struct MCPAppBridgeRequestRouterTests {
         let handle = try await fixture.runtime.openWorkspace(id: fixture.assignment.id)
         var flushes = 0
         var receipts: [AgentChange] = []
-        let router = MCPAppBridgeRequestRouter(runtime: fixture.runtime,
+        let router = MCPAppBridgeRequestRouter(
+            runtime: fixture.runtime,
             flushEditors: { _ in flushes += 1 }, openTriptychs: { [fixture.assignment] },
             didConfirmChange: { receipts.append($0) })
         let start = envelope.utf8.count
-        let slice = try result(await router.handle(.init(tool: .readNote, arguments: [
-            "triptych_id": .string(fixture.assignment.id.uuidString), "note_id": .string(fixture.analysisNoteID.uuidString),
-            "start_line": .integer(4), "line_count": .integer(2)])))
+        let slice = try result(
+            await router.handle(
+                .init(
+                    tool: .readNote,
+                    arguments: [
+                        "triptych_id": .string(fixture.assignment.id.uuidString), "note_id": .string(fixture.analysisNoteID.uuidString),
+                        "start_line": .integer(4), "line_count": .integer(2),
+                    ])))
         #expect(slice["start_utf8"]?.intValue == start && slice["end_utf8"]?.intValue == start + 16)
         #expect(slice["source"]?.stringValue == "重复\r\n重复\r\n")
         flushes = 0
         func edit(_ start: Int, _ end: Int, _ expected: String, _ replacement: String) -> MCPJSONValue {
-            .object(["start_utf8": .integer(start), "end_utf8": .integer(end),
-                     "expected_text": .string(expected), "replacement": .string(replacement)])
+            .object([
+                "start_utf8": .integer(start), "end_utf8": .integer(end),
+                "expected_text": .string(expected), "replacement": .string(replacement),
+            ])
         }
-        let request = ScholiumMCPBridgeRequest(tool: .updateNote, arguments: [
-            "triptych_id": .string(fixture.assignment.id.uuidString), "note_id": .string(fixture.analysisNoteID.uuidString),
-            "expected_fingerprint": .object(["sha256": .string(fixture.analysisFingerprint.sha256),
-                                            "byte_count": .integer(fixture.analysisFingerprint.byteCount)]),
-            "mode": .string("edits"), "edits": .array([
-                edit(source.utf8.count, source.utf8.count, "", "!"),
-                edit(start + 8, start + 16, "重复\r\n", ""),
-                edit(start, start + 6, "重复", "改写"),
-            ])])
+        let request = ScholiumMCPBridgeRequest(
+            tool: .updateNote,
+            arguments: [
+                "triptych_id": .string(fixture.assignment.id.uuidString), "note_id": .string(fixture.analysisNoteID.uuidString),
+                "expected_fingerprint": .object([
+                    "sha256": .string(fixture.analysisFingerprint.sha256),
+                    "byte_count": .integer(fixture.analysisFingerprint.byteCount),
+                ]),
+                "mode": .string("edits"),
+                "edits": .array([
+                    edit(source.utf8.count, source.utf8.count, "", "!"),
+                    edit(start + 8, start + 16, "重复\r\n", ""),
+                    edit(start, start + 6, "重复", "改写"),
+                ]),
+            ])
         let expected = Data((envelope + "改写\r\n👩🏽‍🔬 e\u{301}!").utf8)
         let preview = try await router.previewUpdate(request)
         #expect(flushes == 0 && receipts.isEmpty)
@@ -411,13 +504,20 @@ struct MCPAppBridgeRequestRouterTests {
         let router = MCPAppBridgeRequestRouter(runtime: fixture.runtime, flushEditors: { _ in }, openTriptychs: { [fixture.assignment] })
         let base: [String: MCPJSONValue] = [
             "triptych_id": .string(fixture.assignment.id.uuidString), "note_id": .string(fixture.analysisNoteID.uuidString),
-            "expected_fingerprint": .object(["sha256": .string(fixture.analysisFingerprint.sha256),
-                                            "byte_count": .integer(fixture.analysisFingerprint.byteCount)]),
-            "mode": .string("edits")]
+            "expected_fingerprint": .object([
+                "sha256": .string(fixture.analysisFingerprint.sha256),
+                "byte_count": .integer(fixture.analysisFingerprint.byteCount),
+            ]),
+            "mode": .string("edits"),
+        ]
         func request(start: Int, end: Int, expected: String, replacement: String) -> ScholiumMCPBridgeRequest {
             var arguments = base
-            arguments["edits"] = .array([.object(["start_utf8": .integer(start), "end_utf8": .integer(end),
-                "expected_text": .string(expected), "replacement": .string(replacement)])])
+            arguments["edits"] = .array([
+                .object([
+                    "start_utf8": .integer(start), "end_utf8": .integer(end),
+                    "expected_text": .string(expected), "replacement": .string(replacement),
+                ])
+            ])
             return .init(tool: .updateNote, arguments: arguments)
         }
         let noop = request(start: 0, end: 0, expected: "", replacement: "")
@@ -426,13 +526,15 @@ struct MCPAppBridgeRequestRouterTests {
         #expect(await router.handle(request(start: 0, end: 3, expected: "abc", replacement: "")).error?.code == .invalidRequest)
         let summaryStart = "\u{feff}---\r\nsummary: ".utf8.count
         #expect(await router.handle(request(start: summaryStart, end: summaryStart + 7, expected: "'exact'", replacement: "[")).error?.code == .invalidRequest)
-        var mixed = noop.arguments; mixed["content"] = .string("forbidden mixed payload")
+        var mixed = noop.arguments
+        mixed["content"] = .string("forbidden mixed payload")
         #expect(await router.handle(.init(tool: .updateNote, arguments: mixed)).error?.code == .invalidRequest)
         #expect(try Data(contentsOf: file) == Data(source.utf8))
         let valid = request(start: source.utf8.count, end: source.utf8.count, expected: "", replacement: "!")
         _ = try await router.previewUpdate(valid)
         let cancelled = Task {
-            try await handle.agentCollaboration.updateNote(noteID: fixture.analysisNoteID,
+            try await handle.agentCollaboration.updateNote(
+                noteID: fixture.analysisNoteID,
                 expectedFingerprint: fixture.analysisFingerprint,
                 update: .edits([.init(startUTF8: source.utf8.count, endUTF8: source.utf8.count, expectedText: "", replacement: "!")]))
         }
@@ -440,7 +542,8 @@ struct MCPAppBridgeRequestRouterTests {
         await #expect(throws: CancellationError.self) { try await cancelled.value }
         #expect(try Data(contentsOf: file) == Data(source.utf8))
         let dirtyBytes = Data((source + " researcher draft").utf8)
-        let dirtyRouter = MCPAppBridgeRequestRouter(runtime: fixture.runtime,
+        let dirtyRouter = MCPAppBridgeRequestRouter(
+            runtime: fixture.runtime,
             flushEditors: { _ in try dirtyBytes.write(to: file) }, openTriptychs: { [fixture.assignment] })
         #expect(await dirtyRouter.handle(valid).error?.code == .staleRevision)
         #expect(try Data(contentsOf: file) == dirtyBytes)
@@ -452,16 +555,22 @@ struct MCPAppBridgeRequestRouterTests {
         let fixture = try await Fixture.make()
         defer { fixture.dispose() }
         var flushes = 0
-        let router = MCPAppBridgeRequestRouter(runtime: fixture.runtime,
+        let router = MCPAppBridgeRequestRouter(
+            runtime: fixture.runtime,
             flushEditors: { _ in flushes += 1 }, openTriptychs: { [fixture.assignment] })
         let handle = try await fixture.runtime.openWorkspace(id: fixture.assignment.id)
         let file = fixture.topicsURL.deletingLastPathComponent().appendingPathComponent("Analyses/Alpha.md")
         let source = try Data(contentsOf: file)
-        let fingerprint: MCPJSONValue = .object(["sha256": .string(fixture.analysisFingerprint.sha256),
-            "byte_count": .integer(fixture.analysisFingerprint.byteCount)])
-        let request = ScholiumMCPBridgeRequest(tool: .updateNote, arguments: [
-            "triptych_id": .string(fixture.assignment.id.uuidString), "note_id": .string(fixture.analysisNoteID.uuidString),
-            "expected_fingerprint": fingerprint, "mode": .string("body"), "content": .string("# Revised\r\n\r\nExact new body.\r\n")])
+        let fingerprint: MCPJSONValue = .object([
+            "sha256": .string(fixture.analysisFingerprint.sha256),
+            "byte_count": .integer(fixture.analysisFingerprint.byteCount),
+        ])
+        let request = ScholiumMCPBridgeRequest(
+            tool: .updateNote,
+            arguments: [
+                "triptych_id": .string(fixture.assignment.id.uuidString), "note_id": .string(fixture.analysisNoteID.uuidString),
+                "expected_fingerprint": fingerprint, "mode": .string("body"), "content": .string("# Revised\r\n\r\nExact new body.\r\n"),
+            ])
         let preview = try await router.previewUpdate(request)
         #expect(preview.noteID == fixture.analysisNoteID && preview.relativePath == "Alpha.md")
         #expect(preview.comparison.startingRevision == fixture.analysisFingerprint && preview.comparison.startingHasUTF8BOM)
@@ -482,7 +591,8 @@ struct MCPAppBridgeRequestRouterTests {
         #expect(try await handle.agentCollaboration.agentChanges().count == 1)
         await #expect(throws: ScholiumMCPFailure.self) { try await router.previewUpdate(request) }
         #expect(flushes == 1)
-        let closed = MCPAppBridgeRequestRouter(runtime: fixture.runtime,
+        let closed = MCPAppBridgeRequestRouter(
+            runtime: fixture.runtime,
             flushEditors: { _ in Issue.record("Preview must not flush") }, openTriptychs: { [] })
         await #expect(throws: ScholiumMCPFailure.self) { try await closed.previewUpdate(request) }
     }
@@ -491,9 +601,11 @@ struct MCPAppBridgeRequestRouterTests {
     func chatComparisonAdmission() async throws {
         let fixture = try await Fixture.make()
         defer { fixture.dispose() }
-        let router = MCPAppBridgeRequestRouter(runtime: fixture.runtime,
+        let router = MCPAppBridgeRequestRouter(
+            runtime: fixture.runtime,
             flushEditors: { _ in }, openTriptychs: { [fixture.assignment] })
-        let controller = AgentChatController(triptychID: fixture.assignment.id,
+        let controller = AgentChatController(
+            triptychID: fixture.assignment.id,
             root: fixture.root.appendingPathComponent("Chat"), previewUpdate: router.previewUpdate, toolHandler: router.handle)
         func wait(_ predicate: () -> Bool) async throws {
             let deadline = ContinuousClock.now.advanced(by: .seconds(8))
@@ -507,16 +619,23 @@ struct MCPAppBridgeRequestRouterTests {
         let executable = repository.appendingPathComponent("Tests/Fixtures/agent-chat-runtime.py")
         controller.connect(executable: executable, home: controller.runtimeHome, cli: executable)
         try await wait { controller.account != nil && controller.state == .ready }
-        controller.editDraft("hold source comparison"); controller.send()
+        controller.editDraft("hold source comparison")
+        controller.send()
         try await wait { controller.state == .working && controller.selected?.pendingMessageID == nil }
         let token = try #require(controller.token)
         let arguments: [String: MCPJSONValue] = [
             "note_id": .string(fixture.analysisNoteID.uuidString), "mode": .string("body"),
-            "content": .string("Proposed source from the Agent."), "expected_fingerprint": .object([
-                "sha256": .string(fixture.analysisFingerprint.sha256), "byte_count": .integer(fixture.analysisFingerprint.byteCount)])]
+            "content": .string("Proposed source from the Agent."),
+            "expected_fingerprint": .object([
+                "sha256": .string(fixture.analysisFingerprint.sha256), "byte_count": .integer(fixture.analysisFingerprint.byteCount),
+            ]),
+        ]
         let file = fixture.topicsURL.deletingLastPathComponent().appendingPathComponent("Analyses/Alpha.md")
         let original = try Data(contentsOf: file)
-        let declined = Task { await controller.handle(.init(tool: .updateNote, arguments: arguments, conversationToken: token, runtimeContext: controller.runtimeContext(for: token))) }
+        let declined = Task {
+            await controller.handle(
+                .init(tool: .updateNote, arguments: arguments, conversationToken: token, runtimeContext: controller.runtimeContext(for: token)))
+        }
         try await wait { !controller.approvals.isEmpty }
         let approval = try #require(controller.approvals.first)
         #expect(approval.updatePreview?.comparison.startingRevision == fixture.analysisFingerprint)
@@ -525,7 +644,10 @@ struct MCPAppBridgeRequestRouterTests {
         #expect(await declined.value.error != nil)
         #expect(try Data(contentsOf: file) == original)
         #expect(!controller.isAwaitingDecision(approval.id))
-        let stale = Task { await controller.handle(.init(tool: .updateNote, arguments: arguments, conversationToken: token, runtimeContext: controller.runtimeContext(for: token))) }
+        let stale = Task {
+            await controller.handle(
+                .init(tool: .updateNote, arguments: arguments, conversationToken: token, runtimeContext: controller.runtimeContext(for: token)))
+        }
         try await wait { !controller.approvals.isEmpty }
         let pending = try #require(controller.approvals.first)
         let external = Data("External revision must survive.\r\n".utf8)
@@ -551,29 +673,30 @@ struct MCPAppBridgeRequestRouterTests {
             openTriptychs: { [fixture] in [fixture.assignment] }
         )
 
-        let status = try result(await router.handle(ScholiumMCPBridgeRequest(
-            tool: .workspaceStatus
-        )))
+        let status = try result(
+            await router.handle(
+                ScholiumMCPBridgeRequest(
+                    tool: .workspaceStatus
+                )))
         #expect(status["status"]?.stringValue == "ok")
         #expect(status["current"]?.boolValue == true)
-        #expect(status["triptych_id"]?.stringValue ==
-            fixture.assignment.id.uuidString.lowercased())
+        #expect(status["triptych_id"]?.stringValue == fixture.assignment.id.uuidString.lowercased())
         let sourceGeneration = try object(status["source_generation"])
         let searchGeneration = try object(status["search_generation"])
         let graphGeneration = try object(status["graph_generation"])
-        #expect(sourceGeneration["manifest_sha256"]?.stringValue ==
-            searchGeneration["manifest_sha256"]?.stringValue)
-        #expect(sourceGeneration["manifest_sha256"]?.stringValue ==
-            graphGeneration["manifest_sha256"]?.stringValue)
+        #expect(sourceGeneration["manifest_sha256"]?.stringValue == searchGeneration["manifest_sha256"]?.stringValue)
+        #expect(sourceGeneration["manifest_sha256"]?.stringValue == graphGeneration["manifest_sha256"]?.stringValue)
 
-        let search = try result(await router.handle(ScholiumMCPBridgeRequest(
-            tool: .search,
-            arguments: [
-                "triptych_id": .string(fixture.assignment.id.uuidString),
-                "query": .string("agency"),
-                "roles": .array([.string("topics")]),
-            ]
-        )))
+        let search = try result(
+            await router.handle(
+                ScholiumMCPBridgeRequest(
+                    tool: .search,
+                    arguments: [
+                        "triptych_id": .string(fixture.assignment.id.uuidString),
+                        "query": .string("agency"),
+                        "roles": .array([.string("topics")]),
+                    ]
+                )))
         let noteGroup = try object(search["notes"])
         let hits = try array(noteGroup["results"])
         #expect(hits.count == 1)
@@ -581,23 +704,27 @@ struct MCPAppBridgeRequestRouterTests {
         #expect(hit["note_id"]?.stringValue == fixture.topicNoteID.uuidString.lowercased())
         #expect(hit["role"]?.stringValue == "topics")
 
-        let firstPage = try result(await router.handle(ScholiumMCPBridgeRequest(
-            tool: .search,
-            arguments: [
-                "triptych_id": .string(fixture.assignment.id.uuidString),
-                "query": .string("agency"),
-                "limit": .integer(1),
-            ]
-        )))
-        let secondPage = try result(await router.handle(ScholiumMCPBridgeRequest(
-            tool: .search,
-            arguments: [
-                "triptych_id": .string(fixture.assignment.id.uuidString),
-                "query": .string("agency"),
-                "limit": .integer(1),
-                "offset": .integer(1),
-            ]
-        )))
+        let firstPage = try result(
+            await router.handle(
+                ScholiumMCPBridgeRequest(
+                    tool: .search,
+                    arguments: [
+                        "triptych_id": .string(fixture.assignment.id.uuidString),
+                        "query": .string("agency"),
+                        "limit": .integer(1),
+                    ]
+                )))
+        let secondPage = try result(
+            await router.handle(
+                ScholiumMCPBridgeRequest(
+                    tool: .search,
+                    arguments: [
+                        "triptych_id": .string(fixture.assignment.id.uuidString),
+                        "query": .string("agency"),
+                        "limit": .integer(1),
+                        "offset": .integer(1),
+                    ]
+                )))
         let firstNoteGroup = try object(firstPage["notes"])
         let secondNoteGroup = try object(secondPage["notes"])
         let firstPageHits = try array(firstNoteGroup["results"])
@@ -608,47 +735,47 @@ struct MCPAppBridgeRequestRouterTests {
         #expect(secondNoteGroup["has_more"]?.boolValue == false)
         #expect(firstPageHits.count == 1)
         #expect(secondPageHits.count == 1)
-        #expect(try object(firstPageHits[0])["note_id"]?.stringValue
-            != object(secondPageHits[0])["note_id"]?.stringValue)
+        #expect(
+            try object(firstPageHits[0])["note_id"]?.stringValue
+                != object(secondPageHits[0])["note_id"]?.stringValue)
 
-        let read = try result(await router.handle(ScholiumMCPBridgeRequest(
-            tool: .readNote,
-            arguments: [
-                "triptych_id": .string(fixture.assignment.id.uuidString),
-                "note_id": .string(fixture.analysisNoteID.uuidString),
-                "start_line": .integer(1),
-                "line_count": .integer(2),
-            ]
-        )))
+        let read = try result(
+            await router.handle(
+                ScholiumMCPBridgeRequest(
+                    tool: .readNote,
+                    arguments: [
+                        "triptych_id": .string(fixture.assignment.id.uuidString),
+                        "note_id": .string(fixture.analysisNoteID.uuidString),
+                        "start_line": .integer(1),
+                        "line_count": .integer(2),
+                    ]
+                )))
         #expect(read["source"]?.stringValue == "\u{FEFF}# Alpha\r\n\r\n")
         #expect(read["complete"]?.boolValue == false)
         #expect(read["next_line"]?.intValue == 3)
         let readFingerprint = try object(read["fingerprint"])
-        #expect(readFingerprint["sha256"]?.stringValue ==
-            fixture.analysisFingerprint.sha256)
-        #expect(readFingerprint["byte_count"]?.intValue ==
-            fixture.analysisFingerprint.byteCount)
+        #expect(readFingerprint["sha256"]?.stringValue == fixture.analysisFingerprint.sha256)
+        #expect(readFingerprint["byte_count"]?.intValue == fixture.analysisFingerprint.byteCount)
 
-        let links = try result(await router.handle(ScholiumMCPBridgeRequest(
-            tool: .listLinks,
-            arguments: [
-                "triptych_id": .string(fixture.assignment.id.uuidString),
-                "note_id": .string(fixture.analysisNoteID.uuidString),
-                "direction": .string("outgoing"),
-            ]
-        )))
+        let links = try result(
+            await router.handle(
+                ScholiumMCPBridgeRequest(
+                    tool: .listLinks,
+                    arguments: [
+                        "triptych_id": .string(fixture.assignment.id.uuidString),
+                        "note_id": .string(fixture.analysisNoteID.uuidString),
+                        "direction": .string("outgoing"),
+                    ]
+                )))
         let occurrences = try array(links["links"])
         #expect(occurrences.count == 1)
         let occurrence = try object(occurrences[0])
-        #expect(occurrence["occurrence_markup"]?.stringValue ==
-            "[[Topic]]{{A scoped reason.}}")
+        #expect(occurrence["occurrence_markup"]?.stringValue == "[[Topic]]{{A scoped reason.}}")
         #expect(occurrence["link_markup"]?.stringValue == "[[Topic]]")
         #expect(occurrence["annotation_markup"]?.stringValue == "{{A scoped reason.}}")
         #expect(occurrence["annotation_text"]?.stringValue == "A scoped reason.")
-        #expect(occurrence["source_note_id"]?.stringValue ==
-            fixture.analysisNoteID.uuidString.lowercased())
-        #expect(occurrence["destination_note_id"]?.stringValue ==
-            fixture.topicNoteID.uuidString.lowercased())
+        #expect(occurrence["source_note_id"]?.stringValue == fixture.analysisNoteID.uuidString.lowercased())
+        #expect(occurrence["destination_note_id"]?.stringValue == fixture.topicNoteID.uuidString.lowercased())
     }
 
     @Test("Several open Triptychs require explicit scope without using window recency")
@@ -666,15 +793,16 @@ struct MCPAppBridgeRequestRouterTests {
                 [second.assignment, first.assignment]
             }
         )
-        let value = try result(await router.handle(ScholiumMCPBridgeRequest(
-            tool: .workspaceStatus
-        )))
+        let value = try result(
+            await router.handle(
+                ScholiumMCPBridgeRequest(
+                    tool: .workspaceStatus
+                )))
         #expect(value["current"]?.boolValue == false)
         #expect(value["selection_required"]?.boolValue == true)
         let candidates = try array(value["triptychs"])
         #expect(candidates.count == 2)
-        #expect(try object(candidates[0])["triptych_id"]?.stringValue ==
-            min(first.assignment.id.uuidString, second.assignment.id.uuidString).lowercased())
+        #expect(try object(candidates[0])["triptych_id"]?.stringValue == min(first.assignment.id.uuidString, second.assignment.id.uuidString).lowercased())
     }
 
     @Test("Sequential updates retain noncumulative exact review and direct Undo")
@@ -690,15 +818,17 @@ struct MCPAppBridgeRequestRouterTests {
         )
         let triptychID = fixture.assignment.id.uuidString
 
-        let created = try result(await router.handle(ScholiumMCPBridgeRequest(
-            tool: .createNote,
-            arguments: [
-                "triptych_id": .string(triptychID),
-                "role": .string("topics"),
-                "relative_path": .string("Nested/Exact.md"),
-                "body": .string("\n# Line 1\r\nLine 2\r\n"),
-            ]
-        )))
+        let created = try result(
+            await router.handle(
+                ScholiumMCPBridgeRequest(
+                    tool: .createNote,
+                    arguments: [
+                        "triptych_id": .string(triptychID),
+                        "role": .string("topics"),
+                        "relative_path": .string("Nested/Exact.md"),
+                        "body": .string("\n# Line 1\r\nLine 2\r\n"),
+                    ]
+                )))
         let noteIDString = try #require(created["note_id"]?.stringValue)
         let noteID = try #require(UUID(uuidString: noteIDString))
         let createChangeIDString = try #require(
@@ -711,50 +841,56 @@ struct MCPAppBridgeRequestRouterTests {
         let initialSource = "\n# Line 1\r\nLine 2\r\n"
         #expect(try Data(contentsOf: createdURL) == Data(initialSource.utf8))
 
-        let unchanged = await router.handle(ScholiumMCPBridgeRequest(
-            tool: .updateNote,
-            arguments: [
-                "triptych_id": .string(triptychID),
-                "note_id": .string(noteID.uuidString),
-                "expected_fingerprint": fingerprintJSON(initialFingerprint),
-                "mode": .string("source"),
-                "content": .string(initialSource),
-            ]
-        ))
+        let unchanged = await router.handle(
+            ScholiumMCPBridgeRequest(
+                tool: .updateNote,
+                arguments: [
+                    "triptych_id": .string(triptychID),
+                    "note_id": .string(noteID.uuidString),
+                    "expected_fingerprint": fingerprintJSON(initialFingerprint),
+                    "mode": .string("source"),
+                    "content": .string(initialSource),
+                ]
+            ))
         #expect(unchanged.error?.code == .noChanges)
         #expect(deliveredChanges.map(\.id) == [createChangeID])
         #expect(try Data(contentsOf: createdURL) == Data(initialSource.utf8))
 
-        let updated = try result(await router.handle(ScholiumMCPBridgeRequest(
-            tool: .updateNote,
-            arguments: [
-                "triptych_id": .string(triptychID),
-                "note_id": .string(noteID.uuidString),
-                "expected_fingerprint": fingerprintJSON(initialFingerprint),
-                "mode": .string("body"),
-                "content": .string("Revised A\r\nRevised B\r\n"),
-            ]
-        )))
+        let updated = try result(
+            await router.handle(
+                ScholiumMCPBridgeRequest(
+                    tool: .updateNote,
+                    arguments: [
+                        "triptych_id": .string(triptychID),
+                        "note_id": .string(noteID.uuidString),
+                        "expected_fingerprint": fingerprintJSON(initialFingerprint),
+                        "mode": .string("body"),
+                        "content": .string("Revised A\r\nRevised B\r\n"),
+                    ]
+                )))
         let updateChangeIDString = try #require(
             updated["change_id"]?.stringValue
         )
         let updateChangeID = try #require(UUID(uuidString: updateChangeIDString))
         let afterFingerprint = try decodedFingerprint(updated["after_fingerprint"])
         #expect(updated["readback_verified"]?.boolValue == true)
-        #expect(try Data(contentsOf: createdURL) == Data(
-            "Revised A\r\nRevised B\r\n".utf8
-        ))
+        #expect(
+            try Data(contentsOf: createdURL)
+                == Data(
+                    "Revised A\r\nRevised B\r\n".utf8
+                ))
 
-        let stale = await router.handle(ScholiumMCPBridgeRequest(
-            tool: .updateNote,
-            arguments: [
-                "triptych_id": .string(triptychID),
-                "note_id": .string(noteID.uuidString),
-                "expected_fingerprint": fingerprintJSON(initialFingerprint),
-                "mode": .string("body"),
-                "content": .string("Must not commit"),
-            ]
-        ))
+        let stale = await router.handle(
+            ScholiumMCPBridgeRequest(
+                tool: .updateNote,
+                arguments: [
+                    "triptych_id": .string(triptychID),
+                    "note_id": .string(noteID.uuidString),
+                    "expected_fingerprint": fingerprintJSON(initialFingerprint),
+                    "mode": .string("body"),
+                    "content": .string("Must not commit"),
+                ]
+            ))
         #expect(deliveredChanges.map(\.id) == [createChangeID, updateChangeID])
         #expect(deliveredChanges.allSatisfy { $0.state == .confirmed })
         #expect(stale.error?.code == .staleRevision)
@@ -776,22 +912,26 @@ struct MCPAppBridgeRequestRouterTests {
         let comparison = try #require(currentReview.comparison)
         #expect(comparison.startingRevision == initialFingerprint)
         #expect(comparison.endingRevision == afterFingerprint)
-        #expect(comparison.lines.contains {
-            $0.kind == .startingOnly && $0.text.isEmpty
-        })
-        #expect(comparison.lines.contains {
-            $0.kind == .endingOnly && $0.text == "Revised A"
-        })
-        let secondUpdated = try result(await router.handle(ScholiumMCPBridgeRequest(
-            tool: .updateNote,
-            arguments: [
-                "triptych_id": .string(triptychID),
-                "note_id": .string(noteID.uuidString),
-                "expected_fingerprint": fingerprintJSON(afterFingerprint),
-                "mode": .string("body"),
-                "content": .string("Revised A\r\nRevised C\r\n"),
-            ]
-        )))
+        #expect(
+            comparison.lines.contains {
+                $0.kind == .startingOnly && $0.text.isEmpty
+            })
+        #expect(
+            comparison.lines.contains {
+                $0.kind == .endingOnly && $0.text == "Revised A"
+            })
+        let secondUpdated = try result(
+            await router.handle(
+                ScholiumMCPBridgeRequest(
+                    tool: .updateNote,
+                    arguments: [
+                        "triptych_id": .string(triptychID),
+                        "note_id": .string(noteID.uuidString),
+                        "expected_fingerprint": fingerprintJSON(afterFingerprint),
+                        "mode": .string("body"),
+                        "content": .string("Revised A\r\nRevised C\r\n"),
+                    ]
+                )))
         let secondChangeIDString = try #require(
             secondUpdated["change_id"]?.stringValue
         )
@@ -814,21 +954,25 @@ struct MCPAppBridgeRequestRouterTests {
         #expect(secondReview.isDirectUndoAvailable)
         #expect(secondReview.comparison?.startingRevision == afterFingerprint)
         #expect(secondReview.comparison?.endingRevision == secondFingerprint)
-        #expect(secondReview.comparison?.lines.contains {
-            $0.kind == .startingOnly && $0.text == "Revised B"
-        } == true)
-        #expect(secondReview.comparison?.lines.contains {
-            $0.kind == .endingOnly && $0.text == "Revised C"
-        } == true)
+        #expect(
+            secondReview.comparison?.lines.contains {
+                $0.kind == .startingOnly && $0.text == "Revised B"
+            } == true)
+        #expect(
+            secondReview.comparison?.lines.contains {
+                $0.kind == .endingOnly && $0.text == "Revised C"
+            } == true)
 
         let secondUndone = try await handle.agentCollaboration.undoAgentChange(
             id: secondChangeID,
             expectedAfterFingerprint: secondFingerprint
         )
         #expect(secondUndone.restoredFingerprint == afterFingerprint)
-        #expect(try Data(contentsOf: createdURL) == Data(
-            "Revised A\r\nRevised B\r\n".utf8
-        ))
+        #expect(
+            try Data(contentsOf: createdURL)
+                == Data(
+                    "Revised A\r\nRevised B\r\n".utf8
+                ))
         let firstCurrentAgain = try await handle.agentCollaboration.agentChangeReview(
             id: updateChangeID
         )
@@ -853,7 +997,6 @@ struct MCPAppBridgeRequestRouterTests {
         #expect(createReview.comparison == nil)
         #expect(createReview.currentCreatedSource == initialSource)
     }
-
 
     func result(_ response: ScholiumMCPBridgeResponse) throws
         -> [String: MCPJSONValue]
@@ -905,7 +1048,8 @@ struct MCPAppBridgeRequestRouterTests {
                 .deletingLastPathComponent()
                 .deletingLastPathComponent()
                 .deletingLastPathComponent()
-            let root = repositoryRoot
+            let root =
+                repositoryRoot
                 .appendingPathComponent(".build/app-unit-state", isDirectory: true)
                 .appendingPathComponent(UUID().uuidString.lowercased(), isDirectory: true)
             let support = root.appendingPathComponent("ApplicationSupport", isDirectory: true)
@@ -929,9 +1073,10 @@ struct MCPAppBridgeRequestRouterTests {
                 }
             }
             let analysisBytes = Data(
-                [0xEF, 0xBB, 0xBF] + Array(
-                    "# Alpha\r\n\r\n[[Topic]]{{A scoped reason.}}\r\n".utf8
-                )
+                [0xEF, 0xBB, 0xBF]
+                    + Array(
+                        "# Alpha\r\n\r\n[[Topic]]{{A scoped reason.}}\r\n".utf8
+                    )
             )
             let initialBytes = exactAnalysis.map { Data($0.utf8) } ?? analysisBytes
             try initialBytes.write(to: analyses.appendingPathComponent("Alpha.md"))
@@ -942,10 +1087,12 @@ struct MCPAppBridgeRequestRouterTests {
                 to: works.appendingPathComponent("Draft.md")
             )
 
-            let runtime = WorkspaceRuntime(configuration: .live(.init(
-                applicationSupportURL: support,
-                workspaceRegistryStorageURL: registry
-            )))
+            let runtime = WorkspaceRuntime(
+                configuration: .live(
+                    .init(
+                        applicationSupportURL: support,
+                        workspaceRegistryStorageURL: registry
+                    )))
             let handle = try await runtime.configureTriptych(
                 paperAnalysisURL: analyses,
                 topicKnowledgeURL: topics,
@@ -954,12 +1101,14 @@ struct MCPAppBridgeRequestRouterTests {
                 triptychName: name
             )
             let snapshot = try await handle.discovery.refresh()
-            let analysis = try #require(snapshot.vaults.flatMap(\.documents).first {
-                $0.id.relativePath == "Alpha.md"
-            })
-            let topic = try #require(snapshot.vaults.flatMap(\.documents).first {
-                $0.id.relativePath == "Topic.md"
-            })
+            let analysis = try #require(
+                snapshot.vaults.flatMap(\.documents).first {
+                    $0.id.relativePath == "Alpha.md"
+                })
+            let topic = try #require(
+                snapshot.vaults.flatMap(\.documents).first {
+                    $0.id.relativePath == "Topic.md"
+                })
             return Fixture(
                 root: root,
                 runtime: runtime,

@@ -1,5 +1,5 @@
-import ScholiumContracts
 import Foundation
+import ScholiumContracts
 
 /// The one Library projection owned by a window. The type keeps asynchronous
 /// projection requests scoped without introducing alternate source locations.
@@ -45,7 +45,8 @@ struct WorkspaceAccessRecovery: Identifiable, Hashable, Sendable {
 extension NoteMutationTarget {
     init?(_ location: WindowDocumentLocation) {
         guard let snapshot = location.workspaceSnapshot,
-              let stableNoteID = snapshot.stableIdentity.resolvedID else {
+            let stableNoteID = snapshot.stableIdentity.resolvedID
+        else {
             return nil
         }
         self.init(
@@ -158,8 +159,6 @@ struct WindowDocumentRoute: Hashable, Sendable {
         self.disposition = disposition
     }
 }
-
-
 
 /// The complete set of cross-feature requests understood by one window.
 /// Commands and application operations remain direct calls; this is not a

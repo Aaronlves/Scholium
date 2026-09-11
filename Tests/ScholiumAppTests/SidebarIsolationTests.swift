@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import Testing
+
 @testable import ScholiumApp
 
 @Suite("Native Sidebar isolation", .serialized)
@@ -30,9 +31,10 @@ struct SidebarIsolationTests {
         sidebar.minimumThickness = 260
         split.addSplitViewItem(sidebar)
         split.addSplitViewItem(NSSplitViewItem(viewController: NSViewController()))
-        let window = NSWindow(contentRect: .init(x: 0, y: 0, width: 1000, height: 700),
-                              styleMask: [.titled, .resizable, .fullSizeContentView],
-                              backing: .buffered, defer: false)
+        let window = NSWindow(
+            contentRect: .init(x: 0, y: 0, width: 1000, height: 700),
+            styleMask: [.titled, .resizable, .fullSizeContentView],
+            backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         window.contentViewController = split
         defer { window.close() }
@@ -41,8 +43,9 @@ struct SidebarIsolationTests {
         let libraryView = controller.libraryHost.view
         let chatView = controller.chatHost.view
         for expanded in [true, false, true, false, true, false] {
-            controller.update(library: TextField("Library search", text: .constant("")),
-                              chat: Page(expanded: expanded), selection: .chat)
+            controller.update(
+                library: TextField("Library search", text: .constant("")),
+                chat: Page(expanded: expanded), selection: .chat)
             window.contentView?.layoutSubtreeIfNeeded()
             #expect(window.frame == original)
             #expect(libraryView.isHidden && !chatView.isHidden)
@@ -51,8 +54,9 @@ struct SidebarIsolationTests {
             #expect(controller.view.safeAreaRect.contains(chatView.frame))
         }
         window.makeFirstResponder(chatView)
-        controller.update(library: TextField("Library search", text: .constant("")),
-                          chat: Page(expanded: false), selection: .triptych)
+        controller.update(
+            library: TextField("Library search", text: .constant("")),
+            chat: Page(expanded: false), selection: .triptych)
         #expect(!libraryView.isHidden && chatView.isHidden)
         #expect(window.firstResponder !== chatView)
         window.setContentSize(.init(width: 1400, height: 900))

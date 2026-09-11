@@ -81,7 +81,8 @@ public struct VaultAboutConfiguration: Codable, Hashable, Sendable {
         var seen: Set<String> = []
         return fields.compactMap { field in
             guard let normalized = normalized(field),
-                  seen.insert(normalized).inserted else { return nil }
+                seen.insert(normalized).inserted
+            else { return nil }
             return normalized
         }
     }
@@ -145,7 +146,8 @@ public struct TriptychSettings: Codable, Hashable, Sendable {
             forKey: .about
         )
         guard Set(metadataFields.keys) == Set(WorkspaceVaultSlot.allCases),
-              Set(about.keys) == Set(WorkspaceVaultSlot.allCases) else {
+            Set(about.keys) == Set(WorkspaceVaultSlot.allCases)
+        else {
             throw DecodingError.dataCorruptedError(
                 forKey: .metadataFields,
                 in: container,

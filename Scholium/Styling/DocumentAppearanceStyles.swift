@@ -13,72 +13,73 @@ enum DocumentAppearanceStyles {
         let fontStyle = headings.style == .italic ? "italic" : "normal"
         let fontVariantCaps = headings.style == .smallCaps ? "small-caps" : "normal"
         let bodyFont = cssFontFamily(body.fontFamily)
-        let headingFont = headings.fontFamily == .body
+        let headingFont =
+            headings.fontFamily == .body
             ? bodyFont
             : cssFontFamily(headings.fontFamily)
         let headingLevelDeclarations = headings.levels.enumerated().map { index, level in
             let levelNumber = index + 1
             return """
-              --scholium-document-h\(levelNumber)-size: \(number(level.scale * 100))%;
-              --scholium-appearance-h\(levelNumber)-before: \(number(level.spaceBeforeEm))em;
-              --scholium-appearance-h\(levelNumber)-after: \(number(level.spaceAfterEm))em;
-              --scholium-appearance-h\(levelNumber)-align: \(level.alignment.rawValue);
-            """
+                  --scholium-document-h\(levelNumber)-size: \(number(level.scale * 100))%;
+                  --scholium-appearance-h\(levelNumber)-before: \(number(level.spaceBeforeEm))em;
+                  --scholium-appearance-h\(levelNumber)-after: \(number(level.spaceAfterEm))em;
+                  --scholium-appearance-h\(levelNumber)-align: \(level.alignment.rawValue);
+                """
         }.joined(separator: "\n")
         let headingLevelRules = headings.levels.enumerated().map { index, _ in
             let levelNumber = index + 1
             return """
-            .scholium-document h\(levelNumber),
-            .scholium-live-mode .cm-live-h\(levelNumber) {
-              font-size: var(--scholium-document-h\(levelNumber)-size);
-              padding-block: var(--scholium-appearance-h\(levelNumber)-before) var(--scholium-appearance-h\(levelNumber)-after);
-              text-align: var(--scholium-appearance-h\(levelNumber)-align);
-            }
-            """
+                .scholium-document h\(levelNumber),
+                .scholium-live-mode .cm-live-h\(levelNumber) {
+                  font-size: var(--scholium-document-h\(levelNumber)-size);
+                  padding-block: var(--scholium-appearance-h\(levelNumber)-before) var(--scholium-appearance-h\(levelNumber)-after);
+                  text-align: var(--scholium-appearance-h\(levelNumber)-align);
+                }
+                """
         }.joined(separator: "\n")
 
         var rules = """
-        :root {
-          --scholium-document-line-width: \(number(settings.lineWidthCharacterUnits))ch;
-          --scholium-document-half-line-width: \(number(settings.lineWidthCharacterUnits / 2))ch;
-          --scholium-document-prose-font-size: \(number(body.fontSizePoints))pt;
-          --scholium-document-source-font-family: \(quotedCSSString(settings.source.fontFamily)), ui-monospace, monospace;
-          --scholium-document-source-font-size: \(number(settings.source.fontSizePoints))pt;
-          --scholium-rhythm-prose-line-height: \(number(body.lineHeight));
-          --scholium-rhythm-paragraph-gap: \(number(body.paragraphSpacingEm))em;
-          \(headingLevelDeclarations)
-          --scholium-rhythm-heading-line-height: \(number(headings.lineHeight));
-        }
-        .scholium-document,
-        .cm-editor.scholium-live-mode .cm-content {
-          font-family: \(bodyFont);
-          line-height: var(--scholium-rhythm-prose-line-height);
-          text-align: \(body.alignment.rawValue);
-          font-size: calc(var(--scholium-document-prose-font-size) * var(--scholium-document-text-scale-factor));
-        }
-        .scholium-document p {
-          margin: 0;
-          padding-block: 0 var(--scholium-rhythm-paragraph-gap);
-          text-indent: \(number(body.firstLineIndentEm))em;
-        }
-        .cm-editor.scholium-live-mode .cm-live-paragraph-start {
-          text-indent: \(number(body.firstLineIndentEm))em;
-        }
-        .scholium-document h1,
-        .scholium-document h2,
-        .scholium-document h3,
-        .scholium-document h4,
-        .scholium-document h5,
-        .scholium-document h6,
-        .scholium-live-mode .cm-live-heading {
-          font-family: \(headingFont);
-          font-style: \(fontStyle);
-          font-variant-caps: \(fontVariantCaps);
-          font-weight: \(headings.weight);
-          line-height: var(--scholium-rhythm-heading-line-height);
-        }
-        \(headingLevelRules)
-        """
+            :root {
+              --scholium-document-line-width: \(number(settings.lineWidthCharacterUnits))ch;
+              --scholium-document-half-line-width: \(number(settings.lineWidthCharacterUnits / 2))ch;
+              --scholium-document-prose-font-size: \(number(body.fontSizePoints))pt;
+              --scholium-document-source-font-family: \(quotedCSSString(settings.source.fontFamily)), ui-monospace, monospace;
+              --scholium-document-source-font-size: \(number(settings.source.fontSizePoints))pt;
+              --scholium-rhythm-prose-line-height: \(number(body.lineHeight));
+              --scholium-rhythm-paragraph-gap: \(number(body.paragraphSpacingEm))em;
+              \(headingLevelDeclarations)
+              --scholium-rhythm-heading-line-height: \(number(headings.lineHeight));
+            }
+            .scholium-document,
+            .cm-editor.scholium-live-mode .cm-content {
+              font-family: \(bodyFont);
+              line-height: var(--scholium-rhythm-prose-line-height);
+              text-align: \(body.alignment.rawValue);
+              font-size: calc(var(--scholium-document-prose-font-size) * var(--scholium-document-text-scale-factor));
+            }
+            .scholium-document p {
+              margin: 0;
+              padding-block: 0 var(--scholium-rhythm-paragraph-gap);
+              text-indent: \(number(body.firstLineIndentEm))em;
+            }
+            .cm-editor.scholium-live-mode .cm-live-paragraph-start {
+              text-indent: \(number(body.firstLineIndentEm))em;
+            }
+            .scholium-document h1,
+            .scholium-document h2,
+            .scholium-document h3,
+            .scholium-document h4,
+            .scholium-document h5,
+            .scholium-document h6,
+            .scholium-live-mode .cm-live-heading {
+              font-family: \(headingFont);
+              font-style: \(fontStyle);
+              font-variant-caps: \(fontVariantCaps);
+              font-weight: \(headings.weight);
+              line-height: var(--scholium-rhythm-heading-line-height);
+            }
+            \(headingLevelRules)
+            """
 
         for callout in settings.callouts {
             rules += "\n" + calloutCSS(callout)
@@ -95,18 +96,19 @@ enum DocumentAppearanceStyles {
     ) -> String {
         let bodyFont = cssFontFamily(settings.body.fontFamily)
         let headings = settings.headings
-        let headingFont = headings.fontFamily == .body
+        let headingFont =
+            headings.fontFamily == .body
             ? bodyFont
             : cssFontFamily(headings.fontFamily)
         let fontStyle = headings.style == .italic ? "italic" : "normal"
         let fontVariantCaps = headings.style == .smallCaps ? "small-caps" : "normal"
 
         return """
-        --scholium-document-heading-font-family: \(headingFont);
-        --scholium-document-heading-font-style: \(fontStyle);
-        --scholium-document-heading-font-variant-caps: \(fontVariantCaps);
-        --scholium-document-heading-weight: \(headings.weight);
-        """
+            --scholium-document-heading-font-family: \(headingFont);
+            --scholium-document-heading-font-style: \(fontStyle);
+            --scholium-document-heading-font-variant-caps: \(fontVariantCaps);
+            --scholium-document-heading-weight: \(headings.weight);
+            """
     }
 
     /// Keeps semantic font choices script-aware while exposing only general
@@ -116,7 +118,8 @@ enum DocumentAppearanceStyles {
     /// family. An empty configured value explicitly disables that fallback.
     static func semanticTypographyCSS(for settings: DocumentAppearanceSettings) -> String {
         let bodyFont = cssFontFamily(settings.body.fontFamily)
-        let headingFont = settings.headings.fontFamily == .body
+        let headingFont =
+            settings.headings.fontFamily == .body
             ? bodyFont
             : cssFontFamily(settings.headings.fontFamily)
         let bodyEmphasis = cjkFontFamily(
@@ -211,7 +214,8 @@ enum DocumentAppearanceStyles {
                 )
             }
         } else if settings.headings.cjkEmphasisFontFamily?.isEmpty == true {
-            let inlineSelectors = staticSelector(headingContainers, "em")
+            let inlineSelectors =
+                staticSelector(headingContainers, "em")
                 + liveSelector([".cm-editor.scholium-live-mode .cm-line.cm-live-heading"], ".cm-live-emphasis")
             addRule(
                 inlineSelectors,
@@ -255,85 +259,85 @@ enum DocumentAppearanceStyles {
             with: "#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-role-"
         )
         var css = """
-        \(liveSelector) {
-          font-size: \(number(callout.fontScale))em;
-          line-height: \(callout.lineHeight.map(number) ?? "inherit");
-        }
-        \(liveSelector) .scholium-callout-title {
-          font-family: inherit;
-          font-weight: \(callout.titleWeight);
-        }
-        \(selector) {
-          --scholium-callout-block-gap: \(number(callout.blockGapEm))em;
-          margin-block: var(--scholium-callout-block-gap);
-          font-size: \(number(callout.fontScale))em;
-        }
-        \(selector) .scholium-callout-body {
-          line-height: \(callout.lineHeight.map(number) ?? "inherit");
-        }
-        \(selector) .scholium-callout-body p {
-          margin-block: 0;
-        }
-        \(selector) .scholium-callout-body p + p {
-          margin-block-start: \(number(callout.paragraphSpacingEm))em;
-        }
-        \(selector) .scholium-callout-title {
-          font-family: inherit;
-          font-weight: \(callout.titleWeight);
-        }
-        """
+            \(liveSelector) {
+              font-size: \(number(callout.fontScale))em;
+              line-height: \(callout.lineHeight.map(number) ?? "inherit");
+            }
+            \(liveSelector) .scholium-callout-title {
+              font-family: inherit;
+              font-weight: \(callout.titleWeight);
+            }
+            \(selector) {
+              --scholium-callout-block-gap: \(number(callout.blockGapEm))em;
+              margin-block: var(--scholium-callout-block-gap);
+              font-size: \(number(callout.fontScale))em;
+            }
+            \(selector) .scholium-callout-body {
+              line-height: \(callout.lineHeight.map(number) ?? "inherit");
+            }
+            \(selector) .scholium-callout-body p {
+              margin-block: 0;
+            }
+            \(selector) .scholium-callout-body p + p {
+              margin-block-start: \(number(callout.paragraphSpacingEm))em;
+            }
+            \(selector) .scholium-callout-title {
+              font-family: inherit;
+              font-weight: \(callout.titleWeight);
+            }
+            """
 
         switch callout.role {
         case .orientation:
             css += """
 
-            \(selector) {
-              margin-inline-start: \(number(callout.startInsetEm ?? defaults.startInsetEm ?? callout.inlineInsetEm))em;
-              margin-inline-end: \(number(callout.endInsetEm ?? defaults.endInsetEm ?? callout.inlineInsetEm))em;
-            }
-            \(selector) .scholium-callout-body { margin-block-start: 0; }
-            """
+                \(selector) {
+                  margin-inline-start: \(number(callout.startInsetEm ?? defaults.startInsetEm ?? callout.inlineInsetEm))em;
+                  margin-inline-end: \(number(callout.endInsetEm ?? defaults.endInsetEm ?? callout.inlineInsetEm))em;
+                }
+                \(selector) .scholium-callout-body { margin-block-start: 0; }
+                """
         case .connections:
             css += """
 
-            \(selector) {
-              --scholium-callout-connect-content-indent: \(number(callout.contentIndentEm ?? defaults.contentIndentEm ?? 0))em;
-              margin-inline: \(number(callout.inlineInsetEm))em;
-            }
-            """
+                \(selector) {
+                  --scholium-callout-connect-content-indent: \(number(callout.contentIndentEm ?? defaults.contentIndentEm ?? 0))em;
+                  margin-inline: \(number(callout.inlineInsetEm))em;
+                }
+                """
         case .statement:
             css += "\n\(selector) .scholium-callout-heading { margin-inline-end: \(number(callout.titleGapEm ?? defaults.titleGapEm ?? 0))em; }"
         case .illustration:
             css += """
 
-            \(selector) {
-              grid-template-columns: \(number(callout.titleColumnEm ?? defaults.titleColumnEm ?? 6.4))em minmax(0, 1fr);
-              column-gap: \(number(callout.columnGapEm ?? defaults.columnGapEm ?? 0.85))em;
-              margin-inline: \(number(callout.inlineInsetEm))em;
-            }
-            """
+                \(selector) {
+                  grid-template-columns: \(number(callout.titleColumnEm ?? defaults.titleColumnEm ?? 6.4))em minmax(0, 1fr);
+                  column-gap: \(number(callout.columnGapEm ?? defaults.columnGapEm ?? 0.85))em;
+                  margin-inline: \(number(callout.inlineInsetEm))em;
+                }
+                """
         case .caution, .source:
             css += """
 
-            \(selector) {
-              margin-inline: \(number(callout.inlineInsetEm))em;
-              padding-block: \(number(callout.paddingBlockEm ?? defaults.paddingBlockEm ?? 0.72))em;
-              padding-inline: \(number(callout.paddingInlineEm ?? defaults.paddingInlineEm ?? 0.88))em;
-            }
-            """
+                \(selector) {
+                  margin-inline: \(number(callout.inlineInsetEm))em;
+                  padding-block: \(number(callout.paddingBlockEm ?? defaults.paddingBlockEm ?? 0.72))em;
+                  padding-inline: \(number(callout.paddingInlineEm ?? defaults.paddingInlineEm ?? 0.88))em;
+                }
+                """
         case .folded:
             css += """
 
-            \(selector) { margin-inline: \(number(callout.inlineInsetEm))em; }
-            details.scholium-callout > .scholium-callout-body { margin-inline-start: \(number(callout.contentIndentEm ?? defaults.contentIndentEm ?? 0.5))em; }
-            """
+                \(selector) { margin-inline: \(number(callout.inlineInsetEm))em; }
+                details.scholium-callout > .scholium-callout-body { margin-inline-start: \(number(callout.contentIndentEm ?? defaults.contentIndentEm ?? 0.5))em; }
+                """
         case .quotation:
             css += """
 
-            \(selector) { margin-inline: \(number(callout.inlineInsetEm))em; }
-            \(selector) .scholium-callout-quotation { font-size: \(number(callout.quotationScale ?? defaults.quotationScale ?? 1.03))em; }
-            \(selector) .scholium-callout-title { font-size: \(number(callout.attributionScale ?? defaults.attributionScale ?? 0.82))em; }
-            """
+                \(selector) { margin-inline: \(number(callout.inlineInsetEm))em; }
+                \(selector) .scholium-callout-quotation { font-size: \(number(callout.quotationScale ?? defaults.quotationScale ?? 1.03))em; }
+                \(selector) .scholium-callout-title { font-size: \(number(callout.attributionScale ?? defaults.attributionScale ?? 0.82))em; }
+                """
         }
         return css
     }
@@ -383,13 +387,14 @@ enum DocumentAppearanceStyles {
     /// characters, and controls. Keep ordinary family names readable while
     /// hex-escaping everything that could terminate or escape the string.
     private static func quotedCSSString(_ value: String) -> String {
-        "\"" + value.unicodeScalars.map { scalar -> String in
-            switch scalar.value {
-            case 0x30...0x39, 0x41...0x5a, 0x61...0x7a, 0x20, 0x2d, 0x2e, 0x5f:
-                String(scalar)
-            default:
-                "\\" + String(scalar.value, radix: 16) + " "
-            }
-        }.joined() + "\""
+        "\""
+            + value.unicodeScalars.map { scalar -> String in
+                switch scalar.value {
+                case 0x30...0x39, 0x41...0x5a, 0x61...0x7a, 0x20, 0x2d, 0x2e, 0x5f:
+                    String(scalar)
+                default:
+                    "\\" + String(scalar.value, radix: 16) + " "
+                }
+            }.joined() + "\""
     }
 }

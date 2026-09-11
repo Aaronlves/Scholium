@@ -1,6 +1,6 @@
-import ScholiumContracts
 import Combine
 import Foundation
+import ScholiumContracts
 
 enum AttentionIssueGroup: String, CaseIterable, Identifiable, Sendable {
     case identityAndMetadata

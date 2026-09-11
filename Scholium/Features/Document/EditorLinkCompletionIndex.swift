@@ -97,11 +97,14 @@ actor EditorLinkCompletionIndex {
         for candidate in notes {
             try Task.checkCancellation()
             if kind == .analysisReference,
-               candidate.note.reference.vaultRole != .sourceCorpus {
+                candidate.note.reference.vaultRole != .sourceCorpus
+            {
                 continue
             }
-            guard normalizedQuery.isEmpty
-                    || candidate.normalizedSearchText.contains(normalizedQuery) else {
+            guard
+                normalizedQuery.isEmpty
+                    || candidate.normalizedSearchText.contains(normalizedQuery)
+            else {
                 continue
             }
             let sameFolderMatches = stemGroups[candidate.normalizedStem, default: []].filter {
@@ -117,19 +120,22 @@ actor EditorLinkCompletionIndex {
             let insertion: String
             let isAmbiguous: Bool
             if candidate.note.reference.vaultID == currentVaultID,
-               candidate.folder == sourceFolder,
-               sameFolderMatches.count == 1 {
+                candidate.folder == sourceFolder,
+                sameFolderMatches.count == 1
+            {
                 insertion = candidate.stem
                 isAmbiguous = false
             } else if candidate.note.reference.vaultID == currentVaultID,
-                      currentVaultMatches.count == 1 {
+                currentVaultMatches.count == 1
+            {
                 insertion = candidate.stem
                 isAmbiguous = false
             } else if allStemMatches.count == 1 {
                 insertion = candidate.stem
                 isAmbiguous = false
             } else if candidate.note.reference.vaultID == currentVaultID
-                        || allPathMatches.count == 1 {
+                || allPathMatches.count == 1
+            {
                 insertion = candidate.pathWithoutExtension
                 isAmbiguous = false
             } else {
@@ -137,10 +143,12 @@ actor EditorLinkCompletionIndex {
                 isAmbiguous = true
             }
 
-            let ambiguity = isAmbiguous
+            let ambiguity =
+                isAmbiguous
                 ? " — Ambiguous: no unique Obsidian-compatible target"
                 : ""
-            let alias = kind == .wikilink
+            let alias =
+                kind == .wikilink
                 ? candidate.normalizedAliases.first(where: {
                     !normalizedQuery.isEmpty
                         && !candidate.normalizedCanonicalSearchText.contains(normalizedQuery)
@@ -155,16 +163,17 @@ actor EditorLinkCompletionIndex {
                 candidate.note.publicationDate ?? "",
                 "\(candidate.note.reference.vaultName)/\(candidate.note.reference.relativePath)",
             ].filter { !$0.isEmpty }.joined(separator: " — ")
-            results.append(EditorLinkCompletion(
-                label: alias ?? candidate.note.title,
-                insertion: insertion,
-                detail: kind == .analysisReference
-                    ? "\(referenceDetail)\(ambiguity)"
-                    : "\(candidate.note.title) — \(candidate.note.reference.vaultName) — \(candidate.note.reference.vaultRole.displayName) — \(candidate.note.reference.relativePath)\(ambiguity)",
-                path: "\(candidate.note.reference.vaultName)/\(candidate.note.reference.relativePath)",
-                displayText: alias,
-                isAmbiguous: isAmbiguous
-            ))
+            results.append(
+                EditorLinkCompletion(
+                    label: alias ?? candidate.note.title,
+                    insertion: insertion,
+                    detail: kind == .analysisReference
+                        ? "\(referenceDetail)\(ambiguity)"
+                        : "\(candidate.note.title) — \(candidate.note.reference.vaultName) — \(candidate.note.reference.vaultRole.displayName) — \(candidate.note.reference.relativePath)\(ambiguity)",
+                    path: "\(candidate.note.reference.vaultName)/\(candidate.note.reference.relativePath)",
+                    displayText: alias,
+                    isAmbiguous: isAmbiguous
+                ))
             if results.count == boundedLimit { break }
         }
         return results

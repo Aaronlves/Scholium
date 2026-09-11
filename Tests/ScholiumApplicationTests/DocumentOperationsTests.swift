@@ -1,7 +1,8 @@
-import ScholiumContracts
 import Foundation
-@testable import ScholiumApplication
+import ScholiumContracts
 import Testing
+
+@testable import ScholiumApplication
 
 @Suite("Application document operations")
 struct DocumentOperationsTests {
@@ -19,14 +20,19 @@ struct DocumentOperationsTests {
         let runtime = fixture.runtime()
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
         let source = "\u{FEFF}---\r\ncustom: 'preserve'\r\n---\r\n# Assessment\r\n"
-        let note = try await handle.documents.importMarkdownSource(source, at: .init(
-            vaultID: works.id, relativePath: "Critiques/Assessment.md"
-        )).committedValue
+        let note = try await handle.documents.importMarkdownSource(
+            source,
+            at: .init(
+                vaultID: works.id, relativePath: "Critiques/Assessment.md"
+            )
+        ).committedValue
         #expect(note.rawContent == source)
         let snapshot = try await handle.refresh()
-        let state = try #require(snapshot.document(id: .init(
-            vaultID: works.id, relativePath: note.relativePath
-        )))
+        let state = try #require(
+            snapshot.document(
+                id: .init(
+                    vaultID: works.id, relativePath: note.relativePath
+                )))
         #expect(state.capabilities.canEditSource)
         #expect(state.capabilities.allows(.duplicate))
         let identity = try #require(state.stableIdentity.resolvedID)
@@ -40,9 +46,10 @@ struct DocumentOperationsTests {
         let preview = try await handle.documents.prepareSystemTrash(target)
         #expect(preview.sources.map(\.relativePath) == ["Critiques/Assessment.md"])
         _ = try await handle.documents.move(target, to: "Assessment.md")
-        let moved = try await handle.documents.load(.init(
-            vaultID: works.id, relativePath: "Assessment.md"
-        ))
+        let moved = try await handle.documents.load(
+            .init(
+                vaultID: works.id, relativePath: "Assessment.md"
+            ))
         #expect(moved.rawContent == source)
         #expect(try Data(contentsOf: orphan) == orphanBytes)
         await runtime.shutdown()
@@ -63,10 +70,12 @@ struct DocumentOperationsTests {
             expectedRevision: source.fingerprint
         ).committedValue
 
-        #expect(commit.destination == VaultQualifiedNoteID(
-            vaultID: fixture.targetID.vaultID,
-            relativePath: destinationPath
-        ))
+        #expect(
+            commit.destination
+                == VaultQualifiedNoteID(
+                    vaultID: fixture.targetID.vaultID,
+                    relativePath: destinationPath
+                ))
         #expect(commit.rewrites.count == 1)
         #expect(commit.rewrites[0].rewrittenOccurrences == 1)
         let referringDocument = try await handle.documents.load(fixture.referenceID)
@@ -224,9 +233,10 @@ struct DocumentOperationsTests {
         #expect(attached.record.noteID == stableID)
         #expect(attached.availability == .available)
         #expect(
-            try Data(contentsOf: fixture.analysesURL.appendingPathComponent(
-                copiedPath.rawValue
-            )) == attachmentBytes
+            try Data(
+                contentsOf: fixture.analysesURL.appendingPathComponent(
+                    copiedPath.rawValue
+                )) == attachmentBytes
         )
         let afterAttach = try await handle.documents.load(fixture.targetID)
         #expect(afterAttach.rawContent == original.rawContent)
@@ -272,7 +282,8 @@ struct DocumentOperationsTests {
             vaultID: fixture.targetID.vaultID,
             relativePath: "Managed Metadata.md"
         )
-        let exactSource = "\u{FEFF}---\r\ntitle: Retired YAML title\r\nsummary: Exact source summary\r\nkeywords: [one, two]\r\ncustom: 'keep'\r\n---\r\n# Authored heading\r\n"
+        let exactSource =
+            "\u{FEFF}---\r\ntitle: Retired YAML title\r\nsummary: Exact source summary\r\nkeywords: [one, two]\r\ncustom: 'keep'\r\n---\r\n# Authored heading\r\n"
         let imported = try await handle.documents.importMarkdownSource(exactSource, at: id)
             .committedValue
         let stableID = try #require(
@@ -322,8 +333,9 @@ struct DocumentOperationsTests {
         let refreshed = try await handle.refresh()
         let projected = try #require(refreshed.document(id: id))
         #expect(projected.metadata == second)
-        #expect(ResearchNoteTitleResolver.resolve(document: projected.document)
-            == "Managed Metadata")
+        #expect(
+            ResearchNoteTitleResolver.resolve(document: projected.document)
+                == "Managed Metadata")
         await runtime.shutdown()
     }
 
@@ -367,11 +379,13 @@ struct DocumentOperationsTests {
             relativePath: destinationPath
         )
         let duplicateProjection = try #require(refreshed.document(id: duplicateID))
-        #expect(duplicateProjection.stableIdentity.resolvedID
-            != sourceProjection.stableIdentity.resolvedID)
+        #expect(
+            duplicateProjection.stableIdentity.resolvedID
+                != sourceProjection.stableIdentity.resolvedID)
         #expect(duplicateProjection.metadata?.record.fields == metadata.record.fields)
-        #expect(duplicateProjection.metadata?.record.noteID
-            == duplicateProjection.stableIdentity.resolvedID)
+        #expect(
+            duplicateProjection.metadata?.record.noteID
+                == duplicateProjection.stableIdentity.resolvedID)
         await runtime.shutdown()
     }
 
@@ -397,8 +411,9 @@ struct DocumentOperationsTests {
                 body: "# Optional\n"
             )
         ).committedValue.document
-        #expect(optional.rawContent
-            == "# Optional\n")
+        #expect(
+            optional.rawContent
+                == "# Optional\n")
         #expect(!optional.rawContent.contains("research_unit"))
         _ = try await handle.refresh()
 
@@ -411,16 +426,17 @@ struct DocumentOperationsTests {
 
         let declared = try await handle.documents.save(
             optionalID,
-            changeSet: .exactContent("""
-                ---
-                research_unit:
-                  completion: "6/11"
-                  limitations:
-                    - "Only one translation was consulted."
-                ---
-                # Optional
+            changeSet: .exactContent(
+                """
+                    ---
+                    research_unit:
+                      completion: "6/11"
+                      limitations:
+                        - "Only one translation was consulted."
+                    ---
+                    # Optional
 
-            """),
+                """),
             expectedRevision: optional.fingerprint
         ).committedValue
         #expect(declared.document.fingerprint != settlement.fingerprint)
@@ -432,8 +448,9 @@ struct DocumentOperationsTests {
                 body: "# Analysis\n"
             )
         ).committedValue.document
-        #expect(created.rawContent
-            == "# Analysis\n")
+        #expect(
+            created.rawContent
+                == "# Analysis\n")
 
         let worksID = try #require(fixture.assignment.vault(for: .output)?.id)
         let untitledWork = try await handle.documents.createManagedNote(
@@ -442,8 +459,9 @@ struct DocumentOperationsTests {
                 destination: .exact(relativePath: "Untitled.md")
             )
         ).committedValue.document
-        #expect(untitledWork.rawContent
-            == "")
+        #expect(
+            untitledWork.rawContent
+                == "")
         await runtime.shutdown()
     }
 
@@ -471,8 +489,9 @@ struct DocumentOperationsTests {
         ).committedValue
 
         #expect(created.document.relativePath == "Sources/Untitled 3.md")
-        #expect(created.document.rawContent
-            == "")
+        #expect(
+            created.document.rawContent
+                == "")
         #expect(created.sourceAheadSnapshot.derivedProjectionState == .sourceAhead)
         let publication = try #require(await iterator.next())
         guard case .sourceCommitted(let event) = publication else {
@@ -482,14 +501,16 @@ struct DocumentOperationsTests {
         }
         #expect(event.note.id == created.id)
         #expect(event.kind == .creation)
-        let first = try await handle.documents.load(VaultQualifiedNoteID(
-            vaultID: vaultID,
-            relativePath: "Sources/Untitled.md"
-        ))
-        let second = try await handle.documents.load(VaultQualifiedNoteID(
-            vaultID: vaultID,
-            relativePath: "Sources/Untitled 2.md"
-        ))
+        let first = try await handle.documents.load(
+            VaultQualifiedNoteID(
+                vaultID: vaultID,
+                relativePath: "Sources/Untitled.md"
+            ))
+        let second = try await handle.documents.load(
+            VaultQualifiedNoteID(
+                vaultID: vaultID,
+                relativePath: "Sources/Untitled 2.md"
+            ))
         #expect(first.rawContent == "Existing source at Sources/Untitled.md\n")
         #expect(second.rawContent == "Existing source at Sources/Untitled 2.md\n")
         await runtime.shutdown()
@@ -527,11 +548,14 @@ struct DocumentOperationsTests {
             folderRelativePath: "Sources"
         ).committedValue
         #expect(created.id.relativePath == "Sources/Untitled 2.md")
-        #expect(!FileManager.default.fileExists(
-            atPath: URL(fileURLWithPath: try #require(
-                fixture.assignment.vaults.values.first { $0.id == vaultID }
-            ).canonicalPath).appendingPathComponent(occupiedPath).path
-        ))
+        #expect(
+            !FileManager.default.fileExists(
+                atPath: URL(
+                    fileURLWithPath: try #require(
+                        fixture.assignment.vaults.values.first { $0.id == vaultID }
+                    ).canonicalPath
+                ).appendingPathComponent(occupiedPath).path
+            ))
         await #expect(
             throws: DocumentCreationError.portableIdentityAlreadyExists
         ) {
@@ -542,12 +566,14 @@ struct DocumentOperationsTests {
                 )
             )
         }
-        #expect(try await handle.services.controlStore.identityRecord(
-            vaultID: vaultID,
-            relativePath: occupiedPath
-        ) == oldIdentity)
-        #expect(try await handle.services.controlStore.zoteroBindings()
-            .binding(for: oldIdentity.id) == oldBinding)
+        #expect(
+            try await handle.services.controlStore.identityRecord(
+                vaultID: vaultID,
+                relativePath: occupiedPath
+            ) == oldIdentity)
+        #expect(
+            try await handle.services.controlStore.zoteroBindings()
+                .binding(for: oldIdentity.id) == oldBinding)
         await runtime.shutdown()
     }
 
@@ -596,10 +622,12 @@ struct DocumentOperationsTests {
         )
         let authors = try CanonicalPropertyInput(
             key: "authors",
-            value: .array([.object([
-                "family": .string("Scanlon"),
-                "given": .string("T. M."),
-            ])])
+            value: .array([
+                .object([
+                    "family": .string("Scanlon"),
+                    "given": .string("T. M."),
+                ])
+            ])
         )
         let metadata = try AnalysisCreationMetadata(
             sourceType: .journalArticle,
@@ -624,10 +652,12 @@ struct DocumentOperationsTests {
         ).committedValue
 
         #expect(created.stableIdentity.resolvedID == reservedIdentity)
-        #expect(created.document.parsedFrontmatter["summary"]
-            == .string("A focused analysis"))
-        #expect(created.document.parsedFrontmatter["keywords"]
-            == .array([.string("reasons"), .string("persons")]))
+        #expect(
+            created.document.parsedFrontmatter["summary"]
+                == .string("A focused analysis"))
+        #expect(
+            created.document.parsedFrontmatter["keywords"]
+                == .array([.string("reasons"), .string("persons")]))
         #expect(created.document.parsedFrontmatter["type"] == nil)
         #expect(created.document.parsedFrontmatter["title"] == nil)
         #expect(created.document.parsedFrontmatter["authors"] == nil)
@@ -645,11 +675,13 @@ struct DocumentOperationsTests {
                 authority: .mcp(reservedIdentity: UUID())
             )
         ).committedValue
-        #expect(optional.document.rawContent
-            == "")
-        #expect(optional.metadata?.record.fields == [
-            "type": .string("journal_article"),
-        ])
+        #expect(
+            optional.document.rawContent
+                == "")
+        #expect(
+            optional.metadata?.record.fields == [
+                "type": .string("journal_article")
+            ])
 
         // Researcher and MCP creation share the same optional managed shape.
         let researcher = try await handle.documents.createManagedNote(
@@ -663,8 +695,9 @@ struct DocumentOperationsTests {
             )
         ).committedValue
         #expect(researcher.document.parsedFrontmatter["title"] == nil)
-        #expect(researcher.metadata?.record.fields["title"]
-            == .string("Reasons and Persons"))
+        #expect(
+            researcher.metadata?.record.fields["title"]
+                == .string("Reasons and Persons"))
         #expect(researcher.metadata?.record.fields["authors"] == nil)
 
         await runtime.shutdown()
@@ -804,8 +837,9 @@ struct DocumentOperationsTests {
             inVault: analysesVault.id,
             folderRelativePath: nil
         ).committedValue
-        #expect(created.document.rawContent
-            == "")
+        #expect(
+            created.document.rawContent
+                == "")
         await runtime.shutdown()
     }
 
@@ -834,11 +868,12 @@ struct DocumentOperationsTests {
                 )
             }
         }
-        #expect(try ManagedNoteCreationRequest(
-            vaultID: vaultID,
-            destination: .exact(relativePath: "Safe.md"),
-            body: "# Body\n\n---\nNested thematic break.\n"
-        ).body.hasPrefix("# Body"))
+        #expect(
+            try ManagedNoteCreationRequest(
+                vaultID: vaultID,
+                destination: .exact(relativePath: "Safe.md"),
+                body: "# Body\n\n---\nNested thematic break.\n"
+            ).body.hasPrefix("# Body"))
     }
 
     @Test("Optional Settings changes cannot invalidate MCP creation")
@@ -874,11 +909,13 @@ struct DocumentOperationsTests {
         await gate.release()
         let committed = try await creation.value.committedValue
         await handle.setManagedCreationPreLeaseBarrierForTesting(nil)
-        #expect(committed.document.rawContent
-            == "# Must not commit\n")
-        #expect(try await handle.services.controlStore.identityRecord(
-            id: reservedID
-        )?.relativePath == "Stale Settings.md")
+        #expect(
+            committed.document.rawContent
+                == "# Must not commit\n")
+        #expect(
+            try await handle.services.controlStore.identityRecord(
+                id: reservedID
+            )?.relativePath == "Stale Settings.md")
         await runtime.shutdown()
     }
 
@@ -931,14 +968,16 @@ struct DocumentOperationsTests {
         #expect(try await handle.research.recoveryRecords().count == 1)
         try await handle.research.resolveRecoveryRecord(try #require(recoveryID))
         #expect(try await handle.research.recoveryRecords().isEmpty)
-        #expect(try await handle.services.controlStore.identityRecord(
-            vaultID: topic.id,
-            relativePath: path
-        ) == nil)
-        #expect(!FileManager.default.fileExists(
-            atPath: URL(fileURLWithPath: topic.canonicalPath)
-                .appendingPathComponent(path).path
-        ))
+        #expect(
+            try await handle.services.controlStore.identityRecord(
+                vaultID: topic.id,
+                relativePath: path
+            ) == nil)
+        #expect(
+            !FileManager.default.fileExists(
+                atPath: URL(fileURLWithPath: topic.canonicalPath)
+                    .appendingPathComponent(path).path
+            ))
         await runtime.shutdown()
     }
 
@@ -974,11 +1013,12 @@ struct DocumentOperationsTests {
             let repositories = await handle.services.repositories
             let repository = try #require(repositories[topic.id])
             let created = try await repository.load(relativePath: item.path)
-            let foreign = try #require(try await handle.services.controlStore.identity(
-                forVaultID: topic.id,
-                relativePath: item.path,
-                fingerprint: created.fingerprint
-            ))
+            let foreign = try #require(
+                try await handle.services.controlStore.identity(
+                    forVaultID: topic.id,
+                    relativePath: item.path,
+                    fingerprint: created.fingerprint
+                ))
             foreignIdentities[item.path] = foreign
             let sourceURL = URL(fileURLWithPath: topic.canonicalPath)
                 .appendingPathComponent(item.path)
@@ -1006,28 +1046,32 @@ struct DocumentOperationsTests {
                 }
                 #expect(record.managedCreation?.target.relativePath == item.path)
                 #expect(record.managedCreation?.reservedIdentityID != foreign.id)
-                #expect(record.files.first?.state
-                    == (item.unreadable ? .unreadable : .externallyChanged))
+                #expect(
+                    record.files.first?.state
+                        == (item.unreadable ? .unreadable : .externallyChanged))
                 recoveryIDs.insert(record.id)
             }
             await handle.setManagedCreationPostSourceBarrierForTesting(nil)
         }
 
-        #expect(Set(try await handle.research.recoveryRecords().map(\.id))
-            == recoveryIDs)
+        #expect(
+            Set(try await handle.research.recoveryRecords().map(\.id))
+                == recoveryIDs)
         await runtime.shutdown()
 
         let reopenedRuntime = fixture.runtime()
         let reopened = try await reopenedRuntime.openWorkspace(
             id: fixture.assignment.id
         )
-        #expect(Set(try await reopened.research.recoveryRecords().map(\.id))
-            == recoveryIDs)
+        #expect(
+            Set(try await reopened.research.recoveryRecords().map(\.id))
+                == recoveryIDs)
         for item in cases {
-            #expect(try await reopened.services.controlStore.identityRecord(
-                vaultID: topic.id,
-                relativePath: item.path
-            )?.id == foreignIdentities[item.path]?.id)
+            #expect(
+                try await reopened.services.controlStore.identityRecord(
+                    vaultID: topic.id,
+                    relativePath: item.path
+                )?.id == foreignIdentities[item.path]?.id)
         }
         await reopenedRuntime.shutdown()
     }
@@ -1095,11 +1139,13 @@ struct DocumentOperationsTests {
             try await handle.research.resolveRecoveryRecord(recovery.id)
         }
         #expect(try await handle.research.recoveryRecords().map(\.id) == [recovery.id])
-        #expect(try await handle.services.controlStore.identityRecord(
-            id: reservedID
-        ) != nil)
-        #expect(try await handle.services.controlStore.zoteroBindings()
-            .binding(for: reservedID) == binding)
+        #expect(
+            try await handle.services.controlStore.identityRecord(
+                id: reservedID
+            ) != nil)
+        #expect(
+            try await handle.services.controlStore.zoteroBindings()
+                .binding(for: reservedID) == binding)
         await runtime.shutdown()
     }
 
@@ -1127,8 +1173,9 @@ struct DocumentOperationsTests {
             to: "First Classification"
         ).committedValue
         #expect(first.noteMoves.map(\.stableNoteID) == [stableNoteID])
-        #expect(first.noteMoves.map(\.destination.relativePath)
-            == ["First Classification/Untitled.md"])
+        #expect(
+            first.noteMoves.map(\.destination.relativePath)
+                == ["First Classification/Untitled.md"])
 
         let second = try await handle.documents.moveFolder(
             inVault: vaultID,
@@ -1136,14 +1183,17 @@ struct DocumentOperationsTests {
             to: "Second Classification"
         ).committedValue
         #expect(second.noteMoves.map(\.stableNoteID) == [stableNoteID])
-        #expect(second.noteMoves.map(\.destination.relativePath)
-            == ["Second Classification/Untitled.md"])
-        let moved = try await handle.documents.load(VaultQualifiedNoteID(
-            vaultID: vaultID,
-            relativePath: "Second Classification/Untitled.md"
-        ))
-        #expect(moved.rawContent
-            == "")
+        #expect(
+            second.noteMoves.map(\.destination.relativePath)
+                == ["Second Classification/Untitled.md"])
+        let moved = try await handle.documents.load(
+            VaultQualifiedNoteID(
+                vaultID: vaultID,
+                relativePath: "Second Classification/Untitled.md"
+            ))
+        #expect(
+            moved.rawContent
+                == "")
         await runtime.shutdown()
     }
 
@@ -1155,9 +1205,10 @@ struct DocumentOperationsTests {
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
         let snapshot = try await handle.snapshot()
         let vault = try #require(snapshot.vault(id: fixture.targetID.vaultID))
-        let target = try #require(vault.documents.first {
-            $0.id == fixture.targetID
-        })
+        let target = try #require(
+            vault.documents.first {
+                $0.id == fixture.targetID
+            })
         let targetID = try #require(target.stableIdentity.resolvedID)
         let movedLocation = VaultQualifiedNoteID(
             vaultID: fixture.targetID.vaultID,
@@ -1197,14 +1248,16 @@ struct DocumentOperationsTests {
             $0.uuidString < $1.uuidString
         }
         #expect(plannedIDs == expectedIDs)
-        #expect(moves.map(\.source.relativePath) == [
-            "First Classification/Target.md",
-            "First Classification/Untitled.md",
-        ])
-        #expect(moves.map(\.destination.relativePath) == [
-            "Second Classification/Target.md",
-            "Second Classification/Untitled.md",
-        ])
+        #expect(
+            moves.map(\.source.relativePath) == [
+                "First Classification/Target.md",
+                "First Classification/Untitled.md",
+            ])
+        #expect(
+            moves.map(\.destination.relativePath) == [
+                "Second Classification/Target.md",
+                "Second Classification/Untitled.md",
+            ])
         await runtime.shutdown()
     }
 
@@ -1228,8 +1281,9 @@ struct DocumentOperationsTests {
         ).committedValue
         #expect(firstFolder.rawValue == "Untitled Folder")
         #expect(secondFolder.rawValue == "Untitled Folder 2")
-        #expect(try await handle.snapshot().discovery.searchGeneration
-            == searchGenerationBeforeFolders)
+        #expect(
+            try await handle.snapshot().discovery.searchGeneration
+                == searchGenerationBeforeFolders)
 
         let firstID = VaultQualifiedNoteID(
             vaultID: vaultID,
@@ -1280,9 +1334,10 @@ struct DocumentOperationsTests {
 
         #expect(commit.noteMoves.count == 2)
         #expect(commit.rewrites.count == 2)
-        #expect(commit.noteMoves.first(where: {
-            $0.destination.relativePath == "Sources/First.md"
-        })?.committedRawContent.contains("[[Sources/Nested/Second]]") == true)
+        #expect(
+            commit.noteMoves.first(where: {
+                $0.destination.relativePath == "Sources/First.md"
+            })?.committedRawContent.contains("[[Sources/Nested/Second]]") == true)
         let movedFirstID = VaultQualifiedNoteID(
             vaultID: vaultID,
             relativePath: "Sources/First.md"
@@ -1295,7 +1350,8 @@ struct DocumentOperationsTests {
         for _ in 0..<3 where publishedMove == nil {
             let event = try #require(await iterator.next())
             if event.snapshot.document(id: movedFirstID) != nil,
-               event.snapshot.document(id: movedSecondID) != nil {
+                event.snapshot.document(id: movedSecondID) != nil
+            {
                 publishedMove = event.snapshot
             }
         }
@@ -1303,19 +1359,23 @@ struct DocumentOperationsTests {
         #expect(after.document(id: movedFirstID)?.stableIdentity.resolvedID == firstStableID)
         #expect(after.document(id: movedSecondID)?.stableIdentity.resolvedID == secondStableID)
         #expect(after.document(id: firstID) == nil)
-        #expect(after.vault(id: vaultID)?.folders.contains(
-            try VaultRelativeFolderPath("Untitled Folder 2")
-        ) == true)
-        #expect(after.vault(id: vaultID)?.folders.contains(
-            try VaultRelativeFolderPath("Sources/Nested")
-        ) == true)
+        #expect(
+            after.vault(id: vaultID)?.folders.contains(
+                try VaultRelativeFolderPath("Untitled Folder 2")
+            ) == true)
+        #expect(
+            after.vault(id: vaultID)?.folders.contains(
+                try VaultRelativeFolderPath("Sources/Nested")
+            ) == true)
         let reference = try await handle.documents.load(referenceID)
         #expect(reference.rawContent.contains("[[Sources/First]]"))
         let movedFirst = try await handle.documents.load(movedFirstID)
         #expect(movedFirst.rawContent.contains("[[Sources/Nested/Second]]"))
-        #expect(try Data(contentsOf: fixture.analysesURL.appendingPathComponent(
-            "Sources/Nested/source.bin"
-        )) == attachmentBytes)
+        #expect(
+            try Data(
+                contentsOf: fixture.analysesURL.appendingPathComponent(
+                    "Sources/Nested/source.bin"
+                )) == attachmentBytes)
 
         await runtime.shutdown()
     }
@@ -1405,10 +1465,12 @@ struct DocumentOperationsTests {
         let recovery = try #require(
             try await handle.documents.interruptedSaveRecoveries().first
         )
-        #expect(recovery.id == InterruptedSaveRecoveryID(
-            vaultID: fixture.targetID.vaultID,
-            transactionID: transactionID
-        ))
+        #expect(
+            recovery.id
+                == InterruptedSaveRecoveryID(
+                    vaultID: fixture.targetID.vaultID,
+                    transactionID: transactionID
+                ))
         #expect(recovery.relativePath == fixture.targetID.relativePath)
         #expect(recovery.sourceState == .expectedRevision)
         let content = try await handle.documents.interruptedSaveRecoveryContent(recovery)
@@ -1437,12 +1499,14 @@ struct DocumentOperationsTests {
         #expect(outcome.committedValue.didReplaceSource)
         #expect(outcome.derivedRefreshWarning == nil)
         #expect(outcome.committedValue.document.sourceBytes == candidate)
-        #expect(try Data(
-            contentsOf: fixture.analysesURL.appendingPathComponent("Target.md")
-        ) == candidate)
+        #expect(
+            try Data(
+                contentsOf: fixture.analysesURL.appendingPathComponent("Target.md")
+            ) == candidate)
         #expect(try await handle.documents.interruptedSaveRecoveries().isEmpty)
-        #expect(try await handle.snapshot().document(id: fixture.targetID)?.document.sourceBytes
-            == candidate)
+        #expect(
+            try await handle.snapshot().document(id: fixture.targetID)?.document.sourceBytes
+                == candidate)
         await runtime.shutdown()
     }
 }
@@ -1496,9 +1560,11 @@ private struct LifecycleFixture: Sendable {
                 "ScholiumApplicationLifecycleTests-\(UUID().uuidString)",
                 isDirectory: true
             )
-        let applicationSupportURL = rootURL
+        let applicationSupportURL =
+            rootURL
             .appendingPathComponent("Application Support", isDirectory: true)
-        let registryStorageURL = rootURL
+        let registryStorageURL =
+            rootURL
             .appendingPathComponent("Registry", isDirectory: true)
         let analysesURL = rootURL.appendingPathComponent("Analyses", isDirectory: true)
         let topicsURL = rootURL.appendingPathComponent("Topics", isDirectory: true)
@@ -1526,10 +1592,12 @@ private struct LifecycleFixture: Sendable {
             options: .atomic
         )
 
-        let runtime = WorkspaceRuntime(configuration: .live(.init(
-            applicationSupportURL: applicationSupportURL,
-            workspaceRegistryStorageURL: registryStorageURL
-        )))
+        let runtime = WorkspaceRuntime(
+            configuration: .live(
+                .init(
+                    applicationSupportURL: applicationSupportURL,
+                    workspaceRegistryStorageURL: registryStorageURL
+                )))
         let handle = try await runtime.configureTriptych(
             paperAnalysisURL: analysesURL,
             topicKnowledgeURL: topicsURL,
@@ -1558,10 +1626,12 @@ private struct LifecycleFixture: Sendable {
     }
 
     func runtime() -> WorkspaceRuntime {
-        WorkspaceRuntime(configuration: .snapshot(.init(
-            applicationSupportURL: applicationSupportURL,
-            assignments: [assignment]
-        )))
+        WorkspaceRuntime(
+            configuration: .snapshot(
+                .init(
+                    applicationSupportURL: applicationSupportURL,
+                    assignments: [assignment]
+                )))
     }
 
     func remove() {

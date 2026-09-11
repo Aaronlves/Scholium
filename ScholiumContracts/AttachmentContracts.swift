@@ -22,18 +22,21 @@ public struct AttachmentRelativePath: Codable, Hashable, Sendable,
 
     public init(_ rawValue: String) throws {
         guard !rawValue.isEmpty,
-              !rawValue.hasPrefix("/"),
-              !rawValue.hasSuffix("/"),
-              !rawValue.contains("\0") else {
+            !rawValue.hasPrefix("/"),
+            !rawValue.hasSuffix("/"),
+            !rawValue.contains("\0")
+        else {
             throw AttachmentRelativePathError.invalid(rawValue)
         }
         let components = rawValue.split(
             separator: "/",
             omittingEmptySubsequences: false
         )
-        guard !components.contains(where: {
-            $0.isEmpty || $0 == "." || $0 == ".."
-        }) else {
+        guard
+            !components.contains(where: {
+                $0.isEmpty || $0 == "." || $0 == ".."
+            })
+        else {
             throw AttachmentRelativePathError.invalid(rawValue)
         }
         self.rawValue = rawValue
@@ -78,10 +81,11 @@ public struct ExternalAttachmentReference: Codable, Hashable, Sendable {
 
     public init(filename: String) throws {
         guard !filename.isEmpty,
-              !filename.contains("\0"),
-              URL(fileURLWithPath: filename).lastPathComponent == filename,
-              filename != ".",
-              filename != ".." else {
+            !filename.contains("\0"),
+            URL(fileURLWithPath: filename).lastPathComponent == filename,
+            filename != ".",
+            filename != ".."
+        else {
             throw ExternalAttachmentReferenceError.invalidFilename(filename)
         }
         self.filename = filename
@@ -129,13 +133,15 @@ public enum AttachmentLocation: Codable, Hashable, Sendable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         switch try container.decode(Kind.self, forKey: .kind) {
         case .vaultRelative:
-            self = .vaultRelative(try AttachmentRelativePath(
-                container.decode(String.self, forKey: .path)
-            ))
+            self = .vaultRelative(
+                try AttachmentRelativePath(
+                    container.decode(String.self, forKey: .path)
+                ))
         case .external:
-            self = .external(try ExternalAttachmentReference(
-                filename: container.decode(String.self, forKey: .filename)
-            ))
+            self = .external(
+                try ExternalAttachmentReference(
+                    filename: container.decode(String.self, forKey: .filename)
+                ))
         }
     }
 
@@ -227,10 +233,12 @@ public struct PreparedImageAttachment: Hashable, Sendable {
             "alt": altText,
             "destination": markdownDestination,
         ]
-        guard let data = try? JSONSerialization.data(
-            withJSONObject: object,
-            options: [.sortedKeys]
-        ) else { return "" }
+        guard
+            let data = try? JSONSerialization.data(
+                withJSONObject: object,
+                options: [.sortedKeys]
+            )
+        else { return "" }
         return String(decoding: data, as: UTF8.self)
     }
 }
@@ -468,9 +476,10 @@ private struct AbsoluteImagePathCollector: MarkupWalker {
 
     mutating func visitImage(_ image: Image) {
         guard let destination = image.source,
-              let decoded = destination.removingPercentEncoding,
-              decoded.hasPrefix("/"),
-              URL(fileURLWithPath: decoded).standardizedFileURL.path == decoded else { return }
+            let decoded = destination.removingPercentEncoding,
+            decoded.hasPrefix("/"),
+            URL(fileURLWithPath: decoded).standardizedFileURL.path == decoded
+        else { return }
         paths.insert(decoded)
     }
 }

@@ -49,7 +49,8 @@ struct VaultPathResolver: Sendable {
     }
 
     func unresolvedURL(for path: MarkdownRelativePath) throws -> URL {
-        let candidate = canonicalRoot
+        let candidate =
+            canonicalRoot
             .appendingPathComponent(path.rawValue, isDirectory: false)
             .standardizedFileURL
         guard contains(candidate) else {
@@ -59,7 +60,8 @@ struct VaultPathResolver: Sendable {
     }
 
     func unresolvedURL(for path: VaultRelativeFolderPath) throws -> URL {
-        let candidate = canonicalRoot
+        let candidate =
+            canonicalRoot
             .appendingPathComponent(path.rawValue, isDirectory: true)
             .standardizedFileURL
         guard contains(candidate) else {
@@ -73,17 +75,20 @@ struct VaultPathResolver: Sendable {
         fileManager: FileManager = .default
     ) throws {
         let requestedKey = comparisonKey(for: requested)
-        guard let enumerator = fileManager.enumerator(
-            at: canonicalRoot,
-            includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey],
-            options: [.skipsHiddenFiles, .skipsPackageDescendants]
-        ) else { return }
+        guard
+            let enumerator = fileManager.enumerator(
+                at: canonicalRoot,
+                includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey],
+                options: [.skipsHiddenFiles, .skipsPackageDescendants]
+            )
+        else { return }
         for case let url as URL in enumerator {
             let values = try url.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
             guard values.isSymbolicLink != true, values.isRegularFile == true,
-                  let relative = VaultPath.relativePath(for: url, in: canonicalRoot),
-                  let existing = try? MarkdownRelativePath(relative),
-                  comparisonKey(for: existing) == requestedKey else { continue }
+                let relative = VaultPath.relativePath(for: url, in: canonicalRoot),
+                let existing = try? MarkdownRelativePath(relative),
+                comparisonKey(for: existing) == requestedKey
+            else { continue }
             throw VaultRepositoryError.pathCollision(
                 existing: existing.rawValue,
                 requested: requested.rawValue
@@ -98,11 +103,13 @@ struct VaultPathResolver: Sendable {
     ) throws {
         let requestedKey = comparisonKey(for: requested)
         let ignoredKey = ignored.map(comparisonKey(for:))
-        guard let enumerator = fileManager.enumerator(
-            at: canonicalRoot,
-            includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey],
-            options: [.skipsHiddenFiles, .skipsPackageDescendants]
-        ) else { return }
+        guard
+            let enumerator = fileManager.enumerator(
+                at: canonicalRoot,
+                includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey],
+                options: [.skipsHiddenFiles, .skipsPackageDescendants]
+            )
+        else { return }
         for case let url as URL in enumerator {
             let values = try url.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
             if values.isSymbolicLink == true {
@@ -110,8 +117,9 @@ struct VaultPathResolver: Sendable {
                 continue
             }
             guard values.isDirectory == true,
-                  let relative = VaultPath.relativePath(for: url, in: canonicalRoot),
-                  let existing = try? VaultRelativeFolderPath(relative) else { continue }
+                let relative = VaultPath.relativePath(for: url, in: canonicalRoot),
+                let existing = try? VaultRelativeFolderPath(relative)
+            else { continue }
             let existingKey = comparisonKey(for: existing)
             guard existingKey == requestedKey, existingKey != ignoredKey else { continue }
             throw VaultRepositoryError.pathCollision(
@@ -122,7 +130,8 @@ struct VaultPathResolver: Sendable {
     }
 
     private func contains(_ candidate: URL) -> Bool {
-        let rootPath = canonicalRoot.path.hasSuffix("/")
+        let rootPath =
+            canonicalRoot.path.hasSuffix("/")
             ? canonicalRoot.path
             : canonicalRoot.path + "/"
         return candidate.path.hasPrefix(rootPath)

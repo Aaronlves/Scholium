@@ -1,5 +1,5 @@
-import ScholiumContracts
 import Foundation
+import ScholiumContracts
 import ScholiumCore
 
 /// Runtime-owned, delivery-neutral access to Scholium's first-party Zotero
@@ -35,12 +35,14 @@ public actor ZoteroOperations: ZoteroUseCases {
         init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
             let payload = try container.decodeIfPresent(Payload.self, forKey: .data)
-            guard let id = try container.decodeIfPresent(Int.self, forKey: .id)
+            guard
+                let id = try container.decodeIfPresent(Int.self, forKey: .id)
                     ?? payload?.id,
-                  let name = try container.decodeIfPresent(String.self, forKey: .name)
+                let name = try container.decodeIfPresent(String.self, forKey: .name)
                     ?? payload?.name,
-                  id > 0,
-                  !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                id > 0,
+                !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            else {
                 throw DecodingError.dataCorrupted(
                     .init(
                         codingPath: decoder.codingPath,
@@ -66,8 +68,11 @@ public actor ZoteroOperations: ZoteroUseCases {
             server = ZoteroMCPServer(client: client)
             loadRequest = { request in
                 let result = try await client.send(request)
-                guard let url = request.url, let response = HTTPURLResponse(url: url, statusCode: result.statusCode,
-                    httpVersion: "HTTP/1.1", headerFields: result.headers) else { throw ZoteroUseCaseError.invalidResponse }
+                guard let url = request.url,
+                    let response = HTTPURLResponse(
+                        url: url, statusCode: result.statusCode,
+                        httpVersion: "HTTP/1.1", headerFields: result.headers)
+                else { throw ZoteroUseCaseError.invalidResponse }
                 return (result.body, response)
             }
         }
@@ -104,10 +109,12 @@ public actor ZoteroOperations: ZoteroUseCases {
 
     public func libraryInfo() async -> ZoteroLibraryInfo {
         do {
-            _ = try await request(path: "items", query: [
-                URLQueryItem(name: "limit", value: "1"),
-                URLQueryItem(name: "itemType", value: "-attachment"),
-            ])
+            _ = try await request(
+                path: "items",
+                query: [
+                    URLQueryItem(name: "limit", value: "1"),
+                    URLQueryItem(name: "itemType", value: "-attachment"),
+                ])
             return ZoteroLibraryInfo(
                 status: .available,
                 lastSuccessfulConnection: lastSuccessfulConnection
@@ -126,10 +133,12 @@ public actor ZoteroOperations: ZoteroUseCases {
     }
 
     public func refreshLibraryInfo() async throws -> ZoteroLibraryInfo {
-        _ = try await request(path: "items", query: [
-            URLQueryItem(name: "limit", value: "1"),
-            URLQueryItem(name: "itemType", value: "-attachment"),
-        ])
+        _ = try await request(
+            path: "items",
+            query: [
+                URLQueryItem(name: "limit", value: "1"),
+                URLQueryItem(name: "itemType", value: "-attachment"),
+            ])
         return ZoteroLibraryInfo(
             status: .available,
             lastSuccessfulConnection: lastSuccessfulConnection
@@ -149,7 +158,8 @@ public actor ZoteroOperations: ZoteroUseCases {
             throw ZoteroUseCaseError.invalidResponse
         }
         guard groups.count <= 50,
-              Set(groups.map(\.id)).count == groups.count else {
+            Set(groups.map(\.id)).count == groups.count
+        else {
             throw ZoteroUseCaseError.invalidResponse
         }
         return [ZoteroLibraryMetadata(identity: .user, name: "My Library")]
@@ -164,7 +174,8 @@ public actor ZoteroOperations: ZoteroUseCases {
     ) async throws -> [ZoteroSearchHit] {
         let query = rawQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty, query.utf8.count <= 512,
-              (1...25).contains(limit) else {
+            (1...25).contains(limit)
+        else {
             throw ZoteroUseCaseError.invalidResponse
         }
         let libraries = try await libraries()
@@ -180,9 +191,10 @@ public actor ZoteroOperations: ZoteroUseCases {
                     let items = try decodedParentItems(response.data).filter {
                         normalizedItemKey($0.key) == exactKey
                     }
-                    hits.append(contentsOf: items.map {
-                        ZoteroSearchHit(library: library, item: $0)
-                    })
+                    hits.append(
+                        contentsOf: items.map {
+                            ZoteroSearchHit(library: library, item: $0)
+                        })
                 } catch ZoteroUseCaseError.itemMissing {
                     continue
                 } catch is DecodingError {
@@ -209,9 +221,10 @@ public actor ZoteroOperations: ZoteroUseCases {
             } catch {
                 throw ZoteroUseCaseError.invalidResponse
             }
-            hits.append(contentsOf: items.map {
-                ZoteroSearchHit(library: library, item: $0)
-            })
+            hits.append(
+                contentsOf: items.map {
+                    ZoteroSearchHit(library: library, item: $0)
+                })
         }
         return sortedSearchHits(hits, limit: limit)
     }
@@ -277,7 +290,6 @@ public actor ZoteroOperations: ZoteroUseCases {
         }
     }
 
-
     private func request(
         library: ZoteroLibraryIdentity = .user,
         path: String,
@@ -295,11 +307,13 @@ public actor ZoteroOperations: ZoteroUseCases {
         path: String,
         query: [URLQueryItem]
     ) async throws -> LocalReadResponse {
-        guard let request = ZoteroLocalRequestPolicy.makeReadRequest(
-            library: library,
-            path: path,
-            query: query
-        ) else {
+        guard
+            let request = ZoteroLocalRequestPolicy.makeReadRequest(
+                library: library,
+                path: path,
+                query: query
+            )
+        else {
             throw ZoteroUseCaseError.invalidResponse
         }
         let data: Data
@@ -310,7 +324,8 @@ public actor ZoteroOperations: ZoteroUseCases {
             throw ZoteroUseCaseError.appUnavailable
         }
         guard let http = response as? HTTPURLResponse,
-              http.url == request.url else {
+            http.url == request.url
+        else {
             throw ZoteroUseCaseError.invalidResponse
         }
         switch http.statusCode {
@@ -337,11 +352,12 @@ public actor ZoteroOperations: ZoteroUseCases {
 
     private func normalizedObjectKey(_ key: String?) -> String? {
         guard let key = normalizedItemKey(key),
-              key.utf8.count <= 128,
-              key.unicodeScalars.allSatisfy({ scalar in
-                  CharacterSet.alphanumerics.contains(scalar)
-                      || scalar == "-" || scalar == "_"
-              }) else { return nil }
+            key.utf8.count <= 128,
+            key.unicodeScalars.allSatisfy({ scalar in
+                CharacterSet.alphanumerics.contains(scalar)
+                    || scalar == "-" || scalar == "_"
+            })
+        else { return nil }
         return key
     }
 
@@ -354,15 +370,17 @@ public actor ZoteroOperations: ZoteroUseCases {
 
     private func normalizedServerID(_ value: String?) -> String? {
         guard let value = nonempty(value), value.utf8.count <= 256,
-              value.unicodeScalars.allSatisfy({
-                  !CharacterSet.controlCharacters.contains($0)
-              }) else { return nil }
+            value.unicodeScalars.allSatisfy({
+                !CharacterSet.controlCharacters.contains($0)
+            })
+        else { return nil }
         return value
     }
 
     private func nonempty(_ value: String?) -> String? {
         guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !value.isEmpty else { return nil }
+            !value.isEmpty
+        else { return nil }
         return value
     }
 }
@@ -374,7 +392,8 @@ private struct ZoteroRequestLoaderClient: ZoteroMCPHTTPClient {
     func send(_ request: URLRequest) async throws -> ZoteroMCPHTTPResponse {
         let (body, response) = try await load(request)
         guard let expectedURL = request.url, let response = response as? HTTPURLResponse,
-              response.url == expectedURL else { throw ZoteroUseCaseError.invalidResponse }
+            response.url == expectedURL
+        else { throw ZoteroUseCaseError.invalidResponse }
         let headers = response.allHeaderFields.reduce(into: [String: String]()) { result, entry in
             result[String(describing: entry.key)] = String(describing: entry.value)
         }

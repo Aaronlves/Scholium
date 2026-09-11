@@ -1,6 +1,7 @@
 import Foundation
-import Testing
 import ScholiumContracts
+import Testing
+
 @testable import ScholiumCore
 
 @Suite("Safe Markdown Read renderer")
@@ -47,11 +48,11 @@ struct SafeMarkdownRendererTests {
     @Test("Mermaid remains escaped source-located fenced code before projection")
     func mermaidIsAnInertSourceProjectionInput() {
         let source = """
-        ```mermaid
-        flowchart LR
-        A[<script>attack()</script>] --> B
-        ```
-        """
+            ```mermaid
+            flowchart LR
+            A[<script>attack()</script>] --> B
+            ```
+            """
         let rendered = SafeMarkdownRenderer.render(
             NoteDocument(relativePath: "diagram.md", rawContent: source)
         ).htmlBody
@@ -65,12 +66,12 @@ struct SafeMarkdownRendererTests {
     @Test("Raw HTML and remote media remain inert")
     func hostileHTMLIsInert() {
         let source = """
-        <script>alert('research')</script>
+            <script>alert('research')</script>
 
-        <img src="https://example.com/private.png" onerror="alert(1)">
+            <img src="https://example.com/private.png" onerror="alert(1)">
 
-        ![Remote](https://example.com/image.png)
-        """
+            ![Remote](https://example.com/image.png)
+            """
         let rendered = SafeMarkdownRenderer.render(
             NoteDocument(relativePath: "hostile.md", rawContent: source)
         ).htmlBody
@@ -85,22 +86,22 @@ struct SafeMarkdownRendererTests {
     @Test("Semantic text owns automatic direction while technical source stays isolated")
     func semanticWritingDirection() {
         let source = """
-        # عنوان عربي
+            # عنوان عربي
 
-        هذه فقرة عربية مع Scholium والعدد 2026.
+            هذه فقرة عربية مع Scholium والعدد 2026.
 
-        > اقتباس عربي.
+            > اقتباس عربي.
 
-        - عنصر عربي.
+            - عنصر عربي.
 
-        | حقل | قيمة |
-        |:---|---:|
-        | عربي | 2 |
+            | حقل | قيمة |
+            |:---|---:|
+            | عربي | 2 |
 
-        `exact_code()`
+            `exact_code()`
 
-        <section dir="rtl">يبقى HTML الخام نصًا حرفيًا.</section>
-        """
+            <section dir="rtl">يبقى HTML الخام نصًا حرفيًا.</section>
+            """
         let rendered = SafeMarkdownRenderer.render(
             NoteDocument(relativePath: "direction.md", rawContent: source)
         ).htmlBody
@@ -155,9 +156,9 @@ struct SafeMarkdownRendererTests {
     @Test("Callouts render as protected semantic components")
     func callouts() {
         let source = """
-        > [!state] *Fittingness*
-        > A response is fitting when **correct**.
-        """
+            > [!state] *Fittingness*
+            > A response is fitting when **correct**.
+            """
         let rendered = SafeMarkdownRenderer.render(
             NoteDocument(relativePath: "callout.md", rawContent: source)
         ).htmlBody
@@ -181,21 +182,22 @@ struct SafeMarkdownRendererTests {
     @Test("Links inside callouts retain document-level source locations")
     func calloutLinkSourceLocations() {
         let source = """
-        Prelude.
+            Prelude.
 
-        > [!connect] Curated connections
-        > - [[Target]]
-        > - [[Support]]{{Why this source links to Support.}}
-        """
+            > [!connect] Curated connections
+            > - [[Target]]
+            > - [[Support]]{{Why this source links to Support.}}
+            """
         let document = NoteDocument(relativePath: "callout-links.md", rawContent: source)
         let result = SafeMarkdownRenderer.render(document)
 
         #expect(result.semanticDocument.links.count == 2)
         for link in result.semanticDocument.links {
-            #expect(result.htmlBody.contains(
-                "data-source-utf16-start=\"\(link.linkSpan.utf16LowerBound)\" "
-                    + "data-source-utf16-end=\"\(link.linkSpan.utf16UpperBound)\""
-            ))
+            #expect(
+                result.htmlBody.contains(
+                    "data-source-utf16-start=\"\(link.linkSpan.utf16LowerBound)\" "
+                        + "data-source-utf16-end=\"\(link.linkSpan.utf16UpperBound)\""
+                ))
         }
         #expect(result.htmlBody.contains("href=\"scholium-note:Target\""))
         #expect(result.htmlBody.contains("href=\"scholium-note:Support\""))
@@ -300,31 +302,31 @@ struct SafeMarkdownRendererTests {
     @Test("Footnote definitions render owned nested blocks without absorbing following prose")
     func nestedBlockFootnotes() {
         let source = """
-        Claim[^blocks].
+            Claim[^blocks].
 
-        [^blocks]: First paragraph.
+            [^blocks]: First paragraph.
 
-          - Outer item
-            - Nested item
+              - Outer item
+                - Nested item
 
-          > Quoted reason.
+              > Quoted reason.
 
-          > [!state] Nested claim
-          > Body with $z$.
+              > [!state] Nested claim
+              > Body with $z$.
 
-          | Term | Value |
-          |:---|---:|
-          | $z$ | 3 |
+              | Term | Value |
+              |:---|---:|
+              | $z$ | 3 |
 
-          $$
-          z^2
-          $$
+              $$
+              z^2
+              $$
 
-          ```swift
-          let value = 1
-          ```
-        Following paragraph.
-        """
+              ```swift
+              let value = 1
+              ```
+            Following paragraph.
+            """
         let rendered = SafeMarkdownRenderer.render(
             NoteDocument(relativePath: "nested-footnote.md", rawContent: source)
         ).htmlBody
@@ -362,10 +364,10 @@ struct SafeMarkdownRendererTests {
     @Test("Tables expose column headers, alignment, and a bounded shared scroll container")
     func tableSemantics() {
         let source = """
-        | Claim | Status | Count |
-        |:---|:---:|---:|
-        | Fittingness | Open | 2 |
-        """
+            | Claim | Status | Count |
+            |:---|:---:|---:|
+            | Fittingness | Open | 2 |
+            """
         let rendered = SafeMarkdownRenderer.render(
             NoteDocument(relativePath: "table.md", rawContent: source)
         ).htmlBody
@@ -432,18 +434,18 @@ struct SafeMarkdownRendererTests {
     @Test("Headings, callouts, and footnotes expose exact read-mode source anchors")
     func sourceAnchors() {
         let source = """
-        ---
-        title: Anchors
-        ---
-        # First heading
+            ---
+            title: Anchors
+            ---
+            # First heading
 
-        > [!state] Claim
-        > Body.
+            > [!state] Claim
+            > Body.
 
-        Text[^one].
+            Text[^one].
 
-        [^one]: Note.
-        """
+            [^one]: Note.
+            """
         let document = NoteDocument(relativePath: "anchors.md", rawContent: source)
         let semantic = MarkdownSemanticDocument(parsing: document)
         let rendered = SafeMarkdownRenderer.render(document).htmlBody
@@ -474,9 +476,10 @@ struct SafeMarkdownRendererTests {
         #expect(paragraphs.count == 2)
         #expect(paragraphs[0].span.utf16Range != paragraphs[1].span.utf16Range)
         for paragraph in paragraphs {
-            #expect(rendered.contains(
-                "data-source-utf16-start=\"\(paragraph.span.utf16LowerBound)\" data-source-utf16-end=\"\(paragraph.span.utf16UpperBound)\""
-            ))
+            #expect(
+                rendered.contains(
+                    "data-source-utf16-start=\"\(paragraph.span.utf16LowerBound)\" data-source-utf16-end=\"\(paragraph.span.utf16UpperBound)\""
+                ))
         }
     }
 }

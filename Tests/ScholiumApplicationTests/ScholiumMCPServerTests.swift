@@ -1,6 +1,7 @@
 import Foundation
 import ScholiumContracts
 import Testing
+
 @testable import ScholiumApplication
 
 @Suite("Scholium stdio MCP")
@@ -20,12 +21,18 @@ struct ScholiumMCPServerTests {
 
     @Test("Partial move recovery returns bounded per-file outcomes without claiming successful mutation")
     func moveRecoveryIsStructured() async throws {
-        let before = DocumentFingerprint(content: "Before"), intended = DocumentFingerprint(content: "After")
-        let record = TriptychMutationRecoveryRecord(triptychID: UUID(), operation: .noteMove, failure: "Synthetic rollback interruption",
-            files: (0..<101).map { index in .init(vaultID: UUID(), path: "Note\(index).md", alternatePath: index == 0 ? "Moved.md" : nil,
-                role: index == 0 ? .movedNote : .incomingLinkRewrite, beforeRevision: before, intendedRevision: intended,
-                observedRevision: index == 0 ? intended : before, state: index == 0 ? .intendedBytesRemain : .restored, detail: "Synthetic readback") })
-        let failure = ScholiumMCPFailure(code: .operationUncertain, message: record.failure,
+        let before = DocumentFingerprint(content: "Before")
+        let intended = DocumentFingerprint(content: "After")
+        let record = TriptychMutationRecoveryRecord(
+            triptychID: UUID(), operation: .noteMove, failure: "Synthetic rollback interruption",
+            files: (0..<101).map { index in
+                .init(
+                    vaultID: UUID(), path: "Note\(index).md", alternatePath: index == 0 ? "Moved.md" : nil,
+                    role: index == 0 ? .movedNote : .incomingLinkRewrite, beforeRevision: before, intendedRevision: intended,
+                    observedRevision: index == 0 ? intended : before, state: index == 0 ? .intendedBytesRemain : .restored, detail: "Synthetic readback")
+            })
+        let failure = ScholiumMCPFailure(
+            code: .operationUncertain, message: record.failure,
             recovery: "Inspect the retained Recovery record before another mutation.", recoveryDetails: .init(record: record))
         let transported = try JSONDecoder().decode(ScholiumMCPFailure.self, from: JSONEncoder().encode(failure))
         let server = ScholiumMCPServer { _ in throw transported }
@@ -67,8 +74,7 @@ struct ScholiumMCPServerTests {
         let listResult = try object(listed["result"])
         let tools = try #require(listResult["tools"] as? [[String: Any]])
         let externalTools = ScholiumMCPToolName.allCases.filter { !$0.isChatControl }
-        #expect(tools.compactMap { $0["name"] as? String } ==
-            externalTools.map(\.rawValue))
+        #expect(tools.compactMap { $0["name"] as? String } == externalTools.map(\.rawValue))
         #expect(tools.count == externalTools.count)
         let read = try #require(tools.first { $0["name"] as? String == "scholium_read_note" })
         let readProperties = try object(object(read["inputSchema"])["properties"])
@@ -83,9 +89,10 @@ struct ScholiumMCPServerTests {
                 outputSchema["oneOf"] as? [[String: Any]]
             )
             #expect(!variants.isEmpty)
-            #expect(variants.allSatisfy {
-                $0["additionalProperties"] as? Bool == false
-            })
+            #expect(
+                variants.allSatisfy {
+                    $0["additionalProperties"] as? Bool == false
+                })
             let annotations = try object(tool["annotations"])
             #expect(annotations["openWorldHint"] as? Bool == false)
         }
@@ -125,21 +132,24 @@ struct ScholiumMCPServerTests {
         let tools = try #require(try object(listed["result"])["tools"] as? [[String: Any]])
         let names = tools.compactMap { $0["name"] as? String }
         #expect(names == ScholiumMCPToolName.allCases.map(\.rawValue))
-        #expect(Array(names.suffix(4)) == [
-            ScholiumMCPToolName.capabilities.rawValue,
-            ScholiumMCPToolName.configureSkill.rawValue,
-            ScholiumMCPToolName.configureTool.rawValue,
-            ScholiumMCPToolName.configureChat.rawValue,
-        ])
+        #expect(
+            Array(names.suffix(4)) == [
+                ScholiumMCPToolName.capabilities.rawValue,
+                ScholiumMCPToolName.configureSkill.rawValue,
+                ScholiumMCPToolName.configureTool.rawValue,
+                ScholiumMCPToolName.configureChat.rawValue,
+            ])
         for tool in tools.suffix(4) {
             let schema = try object(tool["inputSchema"])
             #expect(schema["additionalProperties"] as? Bool == false)
             #expect(try object(tool["outputSchema"])["oneOf"] as? [[String: Any]] != nil)
         }
-        _ = try await rpc(server, id: 2, method: "tools/call", params: [
-            "name": ScholiumMCPToolName.capabilities.rawValue,
-            "arguments": [:],
-        ])
+        _ = try await rpc(
+            server, id: 2, method: "tools/call",
+            params: [
+                "name": ScholiumMCPToolName.capabilities.rawValue,
+                "arguments": [:],
+            ])
         let requests = await recorder.requests()
         #expect(requests.last?.conversationToken == token && requests.last?.tool == .capabilities)
     }
@@ -181,16 +191,20 @@ struct ScholiumMCPServerTests {
             await recorder.record(request)
             return .object(["status": .string("ok")])
         }
-        _ = try await rpc(server, id: 1, method: "tools/call", params: [
-            "name": ScholiumMCPToolName.workspaceStatus.rawValue,
-            "arguments": [:],
-            "_meta": ["x-codex-turn-metadata": ["thread_id": "thread-1", "turn_id": "turn-1"]],
-        ])
-        _ = try await rpc(server, id: 2, method: "tools/call", params: [
-            "name": ScholiumMCPToolName.workspaceStatus.rawValue,
-            "arguments": [:],
-            "_meta": ["x-codex-turn-metadata": ["thread_id": "thread-1", "turn_id": ""]],
-        ])
+        _ = try await rpc(
+            server, id: 1, method: "tools/call",
+            params: [
+                "name": ScholiumMCPToolName.workspaceStatus.rawValue,
+                "arguments": [:],
+                "_meta": ["x-codex-turn-metadata": ["thread_id": "thread-1", "turn_id": "turn-1"]],
+            ])
+        _ = try await rpc(
+            server, id: 2, method: "tools/call",
+            params: [
+                "name": ScholiumMCPToolName.workspaceStatus.rawValue,
+                "arguments": [:],
+                "_meta": ["x-codex-turn-metadata": ["thread_id": "thread-1", "turn_id": ""]],
+            ])
         let requests = await recorder.requests()
         #expect(requests[0].runtimeContext == .init(threadID: "thread-1", turnID: "turn-1"))
         #expect(requests.allSatisfy { $0.arguments.isEmpty && $0.conversationToken == nil })

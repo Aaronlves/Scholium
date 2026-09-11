@@ -2,6 +2,7 @@ import Combine
 import Foundation
 import ScholiumContracts
 import Testing
+
 @testable import ScholiumApp
 
 @MainActor
@@ -33,15 +34,16 @@ struct WindowSearchControllerTests {
             sequence: 1,
             sourceManifestHash: "manifest"
         )
-        discovery.receiveSearchResponse(SearchResponse(
-            requestID: request.id,
-            scope: .triptych,
-            explanation: explanation(provider: .note),
-            freshnessToken: .triptych(generation),
-            availability: .current(generation),
-            results: [],
-            hasMore: false
-        ), for: request)
+        discovery.receiveSearchResponse(
+            SearchResponse(
+                requestID: request.id,
+                scope: .triptych,
+                explanation: explanation(provider: .note),
+                freshnessToken: .triptych(generation),
+                availability: .current(generation),
+                results: [],
+                hasMore: false
+            ), for: request)
 
         #expect(invalidations == 1)
         #expect(!discovery.search.isRunning)
@@ -65,10 +67,11 @@ struct WindowSearchControllerTests {
         var invalidations = 0
         let observation = controller.objectWillChange.sink { invalidations += 1 }
 
-        discovery.replaceSearchCriteria(SearchWorkspaceState(
-            query: "visible projection",
-            scope: .currentVault
-        ))
+        discovery.replaceSearchCriteria(
+            SearchWorkspaceState(
+                query: "visible projection",
+                scope: .currentVault
+            ))
         #expect(invalidations == 0)
 
         controller.loadSavedSearches()
@@ -227,19 +230,21 @@ struct WindowSearchControllerTests {
             evidentialLayer: .paperAnalysis,
             classification: .retrievalLead
         )
-        let request = discovery.beginSearch(SearchWorkspaceState(
-            query: "current",
-            scope: .triptych
-        ))
-        discovery.receiveSearchResponse(SearchResponse(
-            requestID: request.id,
-            scope: .triptych,
-            explanation: explanation(provider: .note),
-            freshnessToken: freshness,
-            availability: .current(generation),
-            results: [.note(hit)],
-            hasMore: false
-        ), for: request)
+        let request = discovery.beginSearch(
+            SearchWorkspaceState(
+                query: "current",
+                scope: .triptych
+            ))
+        discovery.receiveSearchResponse(
+            SearchResponse(
+                requestID: request.id,
+                scope: .triptych,
+                explanation: explanation(provider: .note),
+                freshnessToken: freshness,
+                availability: .current(generation),
+                results: [.note(hit)],
+                hasMore: false
+            ), for: request)
 
         let probe = WindowSearchPresentationProbe()
         let controller = WindowSearchController(
@@ -362,35 +367,39 @@ struct WindowSearchControllerTests {
                 $0.name == "property"
             } == true
         )
-        #expect(capabilities.completions(
-            for: "kind:unsupported part",
-            scope: .triptych
-        ).isEmpty)
+        #expect(
+            capabilities.completions(
+                for: "kind:unsupported part",
+                scope: .triptych
+            ).isEmpty)
     }
 
     private func dependencies(
         loadSavedSearches: @escaping @MainActor () async throws -> [SavedSearch] = { [] },
         saveSavedSearches: @escaping @MainActor ([SavedSearch]) async throws -> Void = { _ in },
         recoverSavedSearches: @escaping @MainActor () async throws -> URL? = { nil },
-        executionContext: @escaping @MainActor (
-            SearchWorkspaceState
-        ) async throws -> DiscoverySearchExecutionContext = { _ in
-            DiscoverySearchExecutionContext(
-                workspaceIsAvailable: false,
-                currentNoteSnapshot: nil,
-                currentVaultID: nil
-            )
-        },
-        resultEvidence: @escaping @MainActor (
-            SearchResult,
-            SearchPresentationScope
-        ) async -> WindowSearchResultEvidence = { _, _ in
-            WindowSearchResultEvidence(freshness: nil, fingerprint: nil)
-        },
-        open: @escaping @MainActor (
-            SearchResultSelection,
-            WindowOpenDisposition
-        ) async -> Void = { _, _ in },
+        executionContext:
+            @escaping @MainActor (
+                SearchWorkspaceState
+            ) async throws -> DiscoverySearchExecutionContext = { _ in
+                DiscoverySearchExecutionContext(
+                    workspaceIsAvailable: false,
+                    currentNoteSnapshot: nil,
+                    currentVaultID: nil
+                )
+            },
+        resultEvidence:
+            @escaping @MainActor (
+                SearchResult,
+                SearchPresentationScope
+            ) async -> WindowSearchResultEvidence = { _, _ in
+                WindowSearchResultEvidence(freshness: nil, fingerprint: nil)
+            },
+        open:
+            @escaping @MainActor (
+                SearchResultSelection,
+                WindowOpenDisposition
+            ) async -> Void = { _, _ in },
         hasCurrentNote: @escaping @MainActor () -> Bool = { true },
         reportInformation: @escaping @MainActor (String) -> Void = { _ in }
     ) -> WindowSearchController.Dependencies {

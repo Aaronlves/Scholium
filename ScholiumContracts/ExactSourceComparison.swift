@@ -121,7 +121,8 @@ public enum ExactSourceComparisonBuilder {
 
         let operations: [(ExactSourceComparisonLineKind, RawLine, Int?, Int?)]
         if starting.count + ending.count <= 4_000,
-           startingData.count + endingData.count <= 512 * 1_024 {
+            startingData.count + endingData.count <= 512 * 1_024
+        {
             operations = try collectionDifference(starting: starting, ending: ending)
         } else {
             operations = try boundedDifference(starting: starting, ending: ending)
@@ -130,14 +131,15 @@ public enum ExactSourceComparisonBuilder {
         lines.reserveCapacity(operations.count)
         for (offset, operation) in operations.enumerated() {
             if offset.isMultiple(of: 1_024) { try Task.checkCancellation() }
-            lines.append(ExactSourceComparisonLine(
-                id: offset,
-                kind: operation.0,
-                startingLineNumber: operation.2,
-                endingLineNumber: operation.3,
-                text: String(decoding: operation.1.bytes, as: UTF8.self),
-                lineEnding: operation.1.ending
-            ))
+            lines.append(
+                ExactSourceComparisonLine(
+                    id: offset,
+                    kind: operation.0,
+                    startingLineNumber: operation.2,
+                    endingLineNumber: operation.3,
+                    text: String(decoding: operation.1.bytes, as: UTF8.self),
+                    lineEnding: operation.1.ending
+                ))
         }
         return ExactSourceComparison(
             startingRevision: startingRevision,
@@ -163,10 +165,11 @@ public enum ExactSourceComparisonBuilder {
             if data[index] == 0x0A {
                 let hasCR = index > start && data[data.index(before: index)] == 0x0D
                 let contentEnd = hasCR ? data.index(before: index) : index
-                result.append(RawLine(
-                    bytes: data[start..<contentEnd],
-                    ending: hasCR ? .crlf : .lf
-                ))
+                result.append(
+                    RawLine(
+                        bytes: data[start..<contentEnd],
+                        ending: hasCR ? .crlf : .lf
+                    ))
                 start = data.index(after: index)
             }
             index = data.index(after: index)
@@ -218,8 +221,9 @@ public enum ExactSourceComparisonBuilder {
                 length = 2
             case 0xE0:
                 guard remaining >= 3,
-                      (0xA0...0xBF).contains(data[index + 1]),
-                      isContinuation(data[index + 2]) else {
+                    (0xA0...0xBF).contains(data[index + 1]),
+                    isContinuation(data[index + 2])
+                else {
                     throw ExactSourceComparisonError.nonUTF8Revision(revision)
                 }
                 index += 3
@@ -228,17 +232,19 @@ public enum ExactSourceComparisonBuilder {
                 length = 3
             case 0xED:
                 guard remaining >= 3,
-                      (0x80...0x9F).contains(data[index + 1]),
-                      isContinuation(data[index + 2]) else {
+                    (0x80...0x9F).contains(data[index + 1]),
+                    isContinuation(data[index + 2])
+                else {
                     throw ExactSourceComparisonError.nonUTF8Revision(revision)
                 }
                 index += 3
                 continue
             case 0xF0:
                 guard remaining >= 4,
-                      (0x90...0xBF).contains(data[index + 1]),
-                      isContinuation(data[index + 2]),
-                      isContinuation(data[index + 3]) else {
+                    (0x90...0xBF).contains(data[index + 1]),
+                    isContinuation(data[index + 2]),
+                    isContinuation(data[index + 3])
+                else {
                     throw ExactSourceComparisonError.nonUTF8Revision(revision)
                 }
                 index += 4
@@ -247,9 +253,10 @@ public enum ExactSourceComparisonBuilder {
                 length = 4
             case 0xF4:
                 guard remaining >= 4,
-                      (0x80...0x8F).contains(data[index + 1]),
-                      isContinuation(data[index + 2]),
-                      isContinuation(data[index + 3]) else {
+                    (0x80...0x8F).contains(data[index + 1]),
+                    isContinuation(data[index + 2]),
+                    isContinuation(data[index + 3])
+                else {
                     throw ExactSourceComparisonError.nonUTF8Revision(revision)
                 }
                 index += 4
@@ -260,8 +267,10 @@ public enum ExactSourceComparisonBuilder {
             guard remaining >= length else {
                 throw ExactSourceComparisonError.nonUTF8Revision(revision)
             }
-            for continuationIndex in 1..<length where
-                !isContinuation(data[index + continuationIndex]) {
+            for continuationIndex in 1..<length
+            where
+                !isContinuation(data[index + continuationIndex])
+            {
                 throw ExactSourceComparisonError.nonUTF8Revision(revision)
             }
             index += length
@@ -279,14 +288,16 @@ public enum ExactSourceComparisonBuilder {
         try Task.checkCancellation()
         let difference = ending.difference(from: starting)
         try Task.checkCancellation()
-        let removals = Set(difference.compactMap { change -> Int? in
-            guard case .remove(let offset, _, _) = change else { return nil }
-            return offset
-        })
-        let insertions = Set(difference.compactMap { change -> Int? in
-            guard case .insert(let offset, _, _) = change else { return nil }
-            return offset
-        })
+        let removals = Set(
+            difference.compactMap { change -> Int? in
+                guard case .remove(let offset, _, _) = change else { return nil }
+                return offset
+            })
+        let insertions = Set(
+            difference.compactMap { change -> Int? in
+                guard case .insert(let offset, _, _) = change else { return nil }
+                return offset
+            })
         var result: [(ExactSourceComparisonLineKind, RawLine, Int?, Int?)] = []
         var startIndex = 0
         var endIndex = 0
@@ -323,13 +334,15 @@ public enum ExactSourceComparisonBuilder {
     ) throws -> [(ExactSourceComparisonLineKind, RawLine, Int?, Int?)] {
         var prefix = 0
         while prefix < starting.count, prefix < ending.count,
-              starting[prefix] == ending[prefix] {
+            starting[prefix] == ending[prefix]
+        {
             if prefix.isMultiple(of: 1_024) { try Task.checkCancellation() }
             prefix += 1
         }
         var suffix = 0
         while suffix < starting.count - prefix, suffix < ending.count - prefix,
-              starting[starting.count - suffix - 1] == ending[ending.count - suffix - 1] {
+            starting[starting.count - suffix - 1] == ending[ending.count - suffix - 1]
+        {
             if suffix.isMultiple(of: 1_024) { try Task.checkCancellation() }
             suffix += 1
         }
@@ -351,12 +364,13 @@ public enum ExactSourceComparisonBuilder {
                 if offset.isMultiple(of: 1_024) { try Task.checkCancellation() }
                 let startIndex = starting.count - offset - 1
                 let endIndex = ending.count - offset - 1
-                result.append((
-                    .unchanged,
-                    starting[startIndex],
-                    startIndex + 1,
-                    endIndex + 1
-                ))
+                result.append(
+                    (
+                        .unchanged,
+                        starting[startIndex],
+                        startIndex + 1,
+                        endIndex + 1
+                    ))
             }
         }
         return result

@@ -1,6 +1,7 @@
 import Foundation
 import Synchronization
 import Testing
+
 @testable import ScholiumCore
 
 @Suite("Bounded Zotero HTTP responses")
@@ -83,13 +84,15 @@ private final class HTTPFixtureProtocol: URLProtocol {
 
     override func startLoading() {
         guard let url = request.url,
-              let fixture = Self.fixtures.withLock({ $0[url.lastPathComponent] }) else {
+            let fixture = Self.fixtures.withLock({ $0[url.lastPathComponent] })
+        else {
             client?.urlProtocol(self, didFailWithError: URLError(.badURL))
             return
         }
         let maximum = 4 * 1_024 * 1_024
         let headers = fixture.mode == .declaredOversize ? ["Content-Length": String(maximum + 1)] : [:]
-        client?.urlProtocol(self, didReceive: HTTPURLResponse(url: url, statusCode: 200, httpVersion: "HTTP/1.1", headerFields: headers)!, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(
+            self, didReceive: HTTPURLResponse(url: url, statusCode: 200, httpVersion: "HTTP/1.1", headerFields: headers)!, cacheStoragePolicy: .notAllowed)
         fixture.started.yield()
         switch fixture.mode {
         case .small:
@@ -108,7 +111,6 @@ private final class HTTPFixtureProtocol: URLProtocol {
     override func stopLoading() {}
 }
 
-
 extension ZoteroMCPHTTPClientTests {
     @Test("The default Zotero transport declines redirects before following them")
     func redirectDelegateDeclinesRedirect() async throws {
@@ -117,12 +119,13 @@ extension ZoteroMCPHTTPClientTests {
         let session = URLSession(configuration: .ephemeral)
         defer { session.invalidateAndCancel() }
         let task = session.dataTask(with: original)
-        let response = try #require(HTTPURLResponse(
-            url: original,
-            statusCode: 302,
-            httpVersion: "HTTP/1.1",
-            headerFields: ["Location": remote.absoluteString]
-        ))
+        let response = try #require(
+            HTTPURLResponse(
+                url: original,
+                statusCode: 302,
+                httpVersion: "HTTP/1.1",
+                headerFields: ["Location": remote.absoluteString]
+            ))
         let decision: URLRequest? = await withCheckedContinuation { continuation in
             ZoteroNoRedirectDelegate().urlSession(
                 session,

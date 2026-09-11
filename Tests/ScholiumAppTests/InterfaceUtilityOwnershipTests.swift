@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import Testing
+
 @testable import ScholiumApp
 
 @Suite("Interface utility ownership")

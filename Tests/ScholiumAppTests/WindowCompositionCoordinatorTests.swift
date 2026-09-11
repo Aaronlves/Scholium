@@ -1,15 +1,17 @@
 import Foundation
 import ScholiumContracts
 import Testing
+
 @testable import ScholiumApp
 
 @MainActor
 private final class WindowSessionPersistenceStoreProbe: WindowSessionPersistenceStore {
     var loadedSnapshot: WindowSessionSnapshot?
-    var save: @MainActor (
-        WindowSessionSnapshot,
-        LifecycleAttemptID
-    ) async throws -> Void = { _, _ in }
+    var save:
+        @MainActor (
+            WindowSessionSnapshot,
+            LifecycleAttemptID
+        ) async throws -> Void = { _, _ in }
 
     func windowSession(id: UUID) async throws -> WindowSessionSnapshot? {
         guard loadedSnapshot?.id == id else { return nil }
@@ -48,9 +50,10 @@ struct WindowCompositionCoordinatorTests {
         )
 
         await coordinator.waitForIdle()
-        #expect(events == [
-            "obsolete finish", "prepare", "operation", "success", "finish",
-        ])
+        #expect(
+            events == [
+                "obsolete finish", "prepare", "operation", "success", "finish",
+            ])
     }
 
     @Test("A failed document transition finishes cleanup without reporting success")
@@ -350,13 +353,14 @@ struct WindowCompositionCoordinatorTests {
         #expect(saveCount == 1)
         #expect(persistence.isClosed)
         #expect(coordinator.isFinalized)
-        #expect(events == [
-            "flush content",
-            "snapshot presentation",
-            "save presentation",
-            "clear persistence failure",
-            "finalize dependencies",
-        ])
+        #expect(
+            events == [
+                "flush content",
+                "snapshot presentation",
+                "save presentation",
+                "clear persistence failure",
+                "finalize dependencies",
+            ])
     }
 
     @Test("Overlapping close requests share one final snapshot")

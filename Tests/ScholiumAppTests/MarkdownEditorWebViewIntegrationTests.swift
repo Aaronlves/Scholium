@@ -4,6 +4,7 @@ import ScholiumContracts
 import SwiftUI
 import Testing
 import WebKit
+
 @testable import ScholiumApp
 
 @Suite("Markdown editor WKWebView integration", .serialized)
@@ -17,7 +18,8 @@ struct MarkdownEditorWebViewIntegrationTests {
         try await harness.waitUntilReady()
         let range = (source as NSString).range(of: "原文 😀。")
         let web = try #require(harness.session.webView)
-        let operation = MarkdownEditorOperation.replacePassage(expectedText: source,
+        let operation = MarkdownEditorOperation.replacePassage(
+            expectedText: source,
             fromUTF16: range.location, toUTF16: NSMaxRange(range), replacement: "新的原文 😀。")
         let encoded = try JSONEncoder().encode(operation)
         #expect(try JSONDecoder().decode(MarkdownEditorOperation.self, from: encoded) == operation)
@@ -28,7 +30,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         do {
             _ = try await harness.session.send(operation, in: web)
             Issue.record("An old source revision must not replace later writing")
-        } catch { }
+        } catch {}
         #expect(try await harness.session.currentText() == expected)
         await harness.closeAndDrain()
     }
@@ -41,9 +43,11 @@ struct MarkdownEditorWebViewIntegrationTests {
         defer { harness.close() }
         try await harness.waitUntilReady()
         let expected = (source as NSString).range(of: excerpt)
-        let request = DocumentSourceLocationRequest(id: UUID(),
+        let request = DocumentSourceLocationRequest(
+            id: UUID(),
             target: .unavailable(vaultID: UUID(), relativePath: "Fixture.md"), line: 7,
-            range: SearchSourceRange(utf16LowerBound: expected.location,
+            range: SearchSourceRange(
+                utf16LowerBound: expected.location,
                 utf16UpperBound: NSMaxRange(expected), line: 7, column: 5, endLine: 7, endColumn: 12),
             requiresExactSelection: true, sourceFingerprint: DocumentFingerprint(content: source).sha256)
         for mode in [MarkdownEditorMode.livePreview, .source] {
@@ -69,9 +73,11 @@ struct MarkdownEditorWebViewIntegrationTests {
         harness.session.setMode(.source)
         try await harness.waitUntilPresentedMode(.source)
         let match = (source as NSString).range(of: "same", options: .backwards)
-        let range = SearchSourceRange(utf16LowerBound: match.location, utf16UpperBound: NSMaxRange(match),
+        let range = SearchSourceRange(
+            utf16LowerBound: match.location, utf16UpperBound: NSMaxRange(match),
             line: 3, column: 1, endLine: 3, endColumn: 1)
-        let request = DocumentSourceLocationRequest(id: UUID(), target: .unavailable(vaultID: UUID(), relativePath: "Fixture.md"),
+        let request = DocumentSourceLocationRequest(
+            id: UUID(), target: .unavailable(vaultID: UUID(), relativePath: "Fixture.md"),
             line: 3, range: range, requiresExactSelection: true, sourceFingerprint: DocumentFingerprint(content: source).sha256)
         let webView = try #require(harness.session.webView)
         let window = try #require(webView.window)
@@ -116,7 +122,8 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(unsaved.contains("未保存 "))
         let excerpt = "中文 😀 passage\r\nnext"
         let range = try #require(unsaved.range(of: excerpt))
-        let lower = range.lowerBound.utf16Offset(in: unsaved), upper = range.upperBound.utf16Offset(in: unsaved)
+        let lower = range.lowerBound.utf16Offset(in: unsaved)
+        let upper = range.upperBound.utf16Offset(in: unsaved)
         let map = EditorSourceOffsetMap(source: unsaved)
         let expectedHead = try #require(map.editorUTF16Offset(forSourceUTF16Offset: upper))
         harness.session.revealSourceRange(fromUTF16: try #require(map.editorUTF16Offset(forSourceUTF16Offset: lower)), toUTF16: expectedHead)
@@ -133,7 +140,8 @@ struct MarkdownEditorWebViewIntegrationTests {
 
     @Test("Syntax families retain exact source and Callout geometry through entry and exit")
     func syntaxFamiliesRetainSourceAndCalloutGeometry() async throws {
-        let source = "Lead.\r\n\r\n## 标题 Heading\r\n\r\n**Bold** and *emphasis* and ~~strike~~ and ==mark== and `code`.\r\n\r\n> [!state] Stable Callout\r\n> 中文正文 **reason**.\r\n> Second paragraph.\r\n\r\n> A quotation.\r\n\r\n- [ ] A task\r\n\r\n| A | B |\r\n|---|---|\r\n| 1 | 2 |\r\n\r\n$$\r\nx^2\r\n$$\r\n\r\nAfter.\r\n"
+        let source =
+            "Lead.\r\n\r\n## 标题 Heading\r\n\r\n**Bold** and *emphasis* and ~~strike~~ and ==mark== and `code`.\r\n\r\n> [!state] Stable Callout\r\n> 中文正文 **reason**.\r\n> Second paragraph.\r\n\r\n> A quotation.\r\n\r\n- [ ] A task\r\n\r\n| A | B |\r\n|---|---|\r\n| 1 | 2 |\r\n\r\n$$\r\nx^2\r\n$$\r\n\r\nAfter.\r\n"
         let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
         defer { harness.close() }
         harness.resize(width: 700)
@@ -145,15 +153,17 @@ struct MarkdownEditorWebViewIntegrationTests {
             try await harness.waitUntilSelection(head: offset, stage: text)
             #expect(try await harness.session.currentText(for: harness.documentID) == source)
         }
-        let unchanged = try await harness.callPageJavaScript("""
-            await new Promise(resolve => { requestAnimationFrame(() => requestAnimationFrame(resolve)); setTimeout(resolve, 200); });
-            const lines = [...document.querySelectorAll('.cm-line.cm-live-callout')];
-            const body = lines.find(line => line.textContent.includes('Second paragraph.'));
-            const scroller = document.querySelector('.cm-scroller');
-            return lines.length === 3 && !!body
-                && !document.querySelector('.cm-live-callout-widget')
-                && scroller.scrollWidth <= scroller.clientWidth + 1;
-            """) as? Bool
+        let unchanged =
+            try await harness.callPageJavaScript(
+                """
+                await new Promise(resolve => { requestAnimationFrame(() => requestAnimationFrame(resolve)); setTimeout(resolve, 200); });
+                const lines = [...document.querySelectorAll('.cm-line.cm-live-callout')];
+                const body = lines.find(line => line.textContent.includes('Second paragraph.'));
+                const scroller = document.querySelector('.cm-scroller');
+                return lines.length === 3 && !!body
+                    && !document.querySelector('.cm-live-callout-widget')
+                    && scroller.scrollWidth <= scroller.clientWidth + 1;
+                """) as? Bool
         #expect(unchanged == true)
         #expect(!harness.session.isDirty)
         await harness.closeAndDrain()
@@ -175,7 +185,8 @@ struct MarkdownEditorWebViewIntegrationTests {
     @Test("Line arrival expires and repeats in Edit and Source without changing content")
     func lineArrivalFeedback() async throws {
         let source = "# First\n\n中文 😀 passage.\n\nSecond passage.\n"
-        let harness = EditorHarness(source: source,
+        let harness = EditorHarness(
+            source: source,
             initialPresentationCSS: ScholiumDocumentPresentationConfiguration(textScale: 1).css,
             laysOutForPointerTesting: true)
         defer { harness.close() }
@@ -207,13 +218,29 @@ struct MarkdownEditorWebViewIntegrationTests {
         try await harness.waitUntilReady()
         let webView = try #require(harness.session.webView)
         try await Task.sleep(for: .milliseconds(200))
-        let titleOffset = try await harness.callPageJavaScript("return document.querySelector('.scholium-note-title-input').getBoundingClientRect().top - document.querySelector('.cm-scroller').getBoundingClientRect().top;") as? Double
-        let yamlBottom = try await harness.callPageJavaScript("return Math.max(...Array.from(document.querySelectorAll('.scholium-frontmatter-line:not(.scholium-frontmatter-delimiter-line)'), e => e.getBoundingClientRect().bottom - document.querySelector('.cm-scroller').getBoundingClientRect().top));") as? Double
-        let yamlTop = try await harness.callPageJavaScript("return Math.min(...Array.from(document.querySelectorAll('.scholium-frontmatter-line:not(.scholium-frontmatter-delimiter-line)'), e => e.getBoundingClientRect().top - document.querySelector('.cm-scroller').getBoundingClientRect().top));") as? Double
-        let headingTop = try await harness.callPageJavaScript("return document.querySelector('.cm-line.cm-live-h1')?.getBoundingClientRect().top - document.querySelector('.cm-scroller').getBoundingClientRect().top;") as? Double
+        let titleOffset =
+            try await harness.callPageJavaScript(
+                "return document.querySelector('.scholium-note-title-input').getBoundingClientRect().top - document.querySelector('.cm-scroller').getBoundingClientRect().top;"
+            ) as? Double
+        let yamlBottom =
+            try await harness.callPageJavaScript(
+                "return Math.max(...Array.from(document.querySelectorAll('.scholium-frontmatter-line:not(.scholium-frontmatter-delimiter-line)'), e => e.getBoundingClientRect().bottom - document.querySelector('.cm-scroller').getBoundingClientRect().top));"
+            ) as? Double
+        let yamlTop =
+            try await harness.callPageJavaScript(
+                "return Math.min(...Array.from(document.querySelectorAll('.scholium-frontmatter-line:not(.scholium-frontmatter-delimiter-line)'), e => e.getBoundingClientRect().top - document.querySelector('.cm-scroller').getBoundingClientRect().top));"
+            ) as? Double
+        let headingTop =
+            try await harness.callPageJavaScript(
+                "return document.querySelector('.cm-line.cm-live-h1')?.getBoundingClientRect().top - document.querySelector('.cm-scroller').getBoundingClientRect().top;"
+            ) as? Double
         let delimiterCount = try await harness.callPageJavaScript("return document.querySelectorAll('.cm-live-yaml-delimiter').length;") as? Int
-        let delimitersQuiet = try await harness.callPageJavaScript("return Array.from(document.querySelectorAll('.scholium-frontmatter-delimiter-line')).every(line => line.getBoundingClientRect().height > 0.5 && getComputedStyle(line).opacity === '0');") as? Bool
-        let renderedLineCount = try await harness.callPageJavaScript("return document.querySelectorAll('[data-scholium-yaml-rendered=\\\"true\\\"]').length;") as? Int
+        let delimitersQuiet =
+            try await harness.callPageJavaScript(
+                "return Array.from(document.querySelectorAll('.scholium-frontmatter-delimiter-line')).every(line => line.getBoundingClientRect().height > 0.5 && getComputedStyle(line).opacity === '0');"
+            ) as? Bool
+        let renderedLineCount =
+            try await harness.callPageJavaScript("return document.querySelectorAll('[data-scholium-yaml-rendered=\\\"true\\\"]').length;") as? Int
         #expect((yamlTop ?? -1) >= 0)
         #expect((titleOffset ?? .greatestFiniteMagnitude) < (yamlTop ?? -1))
         #expect((yamlBottom ?? .greatestFiniteMagnitude) <= (headingTop ?? -1))
@@ -223,7 +250,10 @@ struct MarkdownEditorWebViewIntegrationTests {
         _ = try await harness.session.send(.goToLine(2, focusesEditor: true), in: webView)
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
         let activeDelimiterCount = try await harness.callPageJavaScript("return document.querySelectorAll('.cm-live-yaml-delimiter').length;") as? Int
-        let activeDelimitersVisible = try await harness.callPageJavaScript("return Array.from(document.querySelectorAll('.scholium-frontmatter-delimiter-line')).every(line => line.getBoundingClientRect().height > 0.5 && getComputedStyle(line).fontSize !== '0px');") as? Bool
+        let activeDelimitersVisible =
+            try await harness.callPageJavaScript(
+                "return Array.from(document.querySelectorAll('.scholium-frontmatter-delimiter-line')).every(line => line.getBoundingClientRect().height > 0.5 && getComputedStyle(line).fontSize !== '0px');"
+            ) as? Bool
         #expect(activeDelimiterCount == 2)
         #expect(activeDelimitersVisible == true)
         let controls = try await harness.callPageJavaScript("return document.querySelectorAll('.scholium-frontmatter-entry').length;") as? Int
@@ -232,7 +262,9 @@ struct MarkdownEditorWebViewIntegrationTests {
         try await harness.session.perform(.pastePlain, argument: "# 新注释 ")
         let edited = source.replacingOccurrences(of: "# 注释", with: "# 新注释 # 注释")
         #expect(try await harness.session.currentText(for: harness.documentID) == edited)
-        _ = try await harness.callPageJavaScript("document.querySelector('.cm-content').dispatchEvent(new KeyboardEvent('keydown', {key:'z', code:'KeyZ', metaKey:true, bubbles:true, cancelable:true}));")
+        _ = try await harness.callPageJavaScript(
+            "document.querySelector('.cm-content').dispatchEvent(new KeyboardEvent('keydown', {key:'z', code:'KeyZ', metaKey:true, bubbles:true, cancelable:true}));"
+        )
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
         _ = try await harness.session.send(.goToLine(2, focusesEditor: true), in: webView)
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
@@ -241,24 +273,28 @@ struct MarkdownEditorWebViewIntegrationTests {
     @Test("Mathematics opening keeps title, YAML, and H1 order after rendering settles")
     func mathematicsOpeningPreservesFrontmatterOrder() async throws {
         let source = "---\nsummary: QA\nkeywords: [test]\n---\n# Mathematics\n\nInline $a^2+b^2=c^2$.\n\n$$\n\\int_0^1 x^2\\,dx = \\frac{1}{3}\n$$\n\nEnd.\n"
-        let harness = EditorHarness(documentTitle: "Mathematics", source: source,
+        let harness = EditorHarness(
+            documentTitle: "Mathematics", source: source,
             initialPresentationCSS: ScholiumDocumentPresentationConfiguration(textScale: 1).css,
             laysOutForPointerTesting: true)
         defer { harness.close() }
         try await harness.waitUntilReady()
         for _ in 0..<5 {
-            let geometry = try await harness.callPageJavaScript("""
-                const top = document.querySelector('.cm-scroller').getBoundingClientRect().top;
-                const title = document.querySelector('.scholium-note-title-input').getBoundingClientRect().top - top;
-                const yamlLines = Array.from(document.querySelectorAll('.scholium-frontmatter-line:not(.scholium-frontmatter-delimiter-line)'));
-                const yamlTop = Math.min(...yamlLines.map(e => e.getBoundingClientRect().top - top));
-                const yamlBottom = Math.max(...yamlLines.map(e => e.getBoundingClientRect().bottom - top));
-                const heading = document.querySelector('.cm-line.cm-live-h1').getBoundingClientRect().top - top;
-                return JSON.stringify({title, yamlTop, yamlBottom, heading});
-                """) as? String
-            let payload = try #require(geometry?.data(using: .utf8).flatMap {
-                try? JSONSerialization.jsonObject(with: $0) as? [String: Double]
-            })
+            let geometry =
+                try await harness.callPageJavaScript(
+                    """
+                    const top = document.querySelector('.cm-scroller').getBoundingClientRect().top;
+                    const title = document.querySelector('.scholium-note-title-input').getBoundingClientRect().top - top;
+                    const yamlLines = Array.from(document.querySelectorAll('.scholium-frontmatter-line:not(.scholium-frontmatter-delimiter-line)'));
+                    const yamlTop = Math.min(...yamlLines.map(e => e.getBoundingClientRect().top - top));
+                    const yamlBottom = Math.max(...yamlLines.map(e => e.getBoundingClientRect().bottom - top));
+                    const heading = document.querySelector('.cm-line.cm-live-h1').getBoundingClientRect().top - top;
+                    return JSON.stringify({title, yamlTop, yamlBottom, heading});
+                    """) as? String
+            let payload = try #require(
+                geometry?.data(using: .utf8).flatMap {
+                    try? JSONSerialization.jsonObject(with: $0) as? [String: Double]
+                })
             #expect((payload["title"] ?? .greatestFiniteMagnitude) < (payload["yamlTop"] ?? -1))
             #expect((payload["yamlBottom"] ?? .greatestFiniteMagnitude) <= (payload["heading"] ?? -1))
             try await Task.sleep(for: .milliseconds(100))
@@ -268,18 +304,21 @@ struct MarkdownEditorWebViewIntegrationTests {
         try await harness.reconstructEditorView()
         try await harness.waitUntilReady()
         try await Task.sleep(for: .milliseconds(200))
-        let reopenedGeometry = try await harness.callPageJavaScript("""
-            const top = document.querySelector('.cm-scroller').getBoundingClientRect().top;
-            const title = document.querySelector('.scholium-note-title-input').getBoundingClientRect().top - top;
-            const yamlLines = Array.from(document.querySelectorAll('.scholium-frontmatter-line:not(.scholium-frontmatter-delimiter-line)'));
-            const yamlTop = Math.min(...yamlLines.map(e => e.getBoundingClientRect().top - top));
-            const yamlBottom = Math.max(...yamlLines.map(e => e.getBoundingClientRect().bottom - top));
-            const heading = document.querySelector('.cm-line.cm-live-h1').getBoundingClientRect().top - top;
-            return JSON.stringify({title, yamlTop, yamlBottom, heading});
-            """) as? String
-        let reopenedPayload = try #require(reopenedGeometry?.data(using: .utf8).flatMap {
-            try? JSONSerialization.jsonObject(with: $0) as? [String: Double]
-        })
+        let reopenedGeometry =
+            try await harness.callPageJavaScript(
+                """
+                const top = document.querySelector('.cm-scroller').getBoundingClientRect().top;
+                const title = document.querySelector('.scholium-note-title-input').getBoundingClientRect().top - top;
+                const yamlLines = Array.from(document.querySelectorAll('.scholium-frontmatter-line:not(.scholium-frontmatter-delimiter-line)'));
+                const yamlTop = Math.min(...yamlLines.map(e => e.getBoundingClientRect().top - top));
+                const yamlBottom = Math.max(...yamlLines.map(e => e.getBoundingClientRect().bottom - top));
+                const heading = document.querySelector('.cm-line.cm-live-h1').getBoundingClientRect().top - top;
+                return JSON.stringify({title, yamlTop, yamlBottom, heading});
+                """) as? String
+        let reopenedPayload = try #require(
+            reopenedGeometry?.data(using: .utf8).flatMap {
+                try? JSONSerialization.jsonObject(with: $0) as? [String: Double]
+            })
         #expect((reopenedPayload["title"] ?? .greatestFiniteMagnitude) < (reopenedPayload["yamlTop"] ?? -1))
         #expect((reopenedPayload["yamlBottom"] ?? .greatestFiniteMagnitude) <= (reopenedPayload["heading"] ?? -1))
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
@@ -296,31 +335,36 @@ struct MarkdownEditorWebViewIntegrationTests {
         defer { harness.close() }
         try await harness.waitUntilReady()
 
-        let languages = try await harness.callPageJavaScript("""
-            return JSON.stringify([...document.querySelectorAll('.cm-line')]
-                .map(line => line.getAttribute('lang')));
-            """) as? String
-        let values = try #require(languages?.data(using: .utf8).flatMap {
-            try? JSONSerialization.jsonObject(with: $0) as? [Any?]
-        })
+        let languages =
+            try await harness.callPageJavaScript(
+                """
+                return JSON.stringify([...document.querySelectorAll('.cm-line')]
+                    .map(line => line.getAttribute('lang')));
+                """) as? String
+        let values = try #require(
+            languages?.data(using: .utf8).flatMap {
+                try? JSONSerialization.jsonObject(with: $0) as? [Any?]
+            })
         #expect(values.contains { ($0 as? String) == "zh-Hans" })
         #expect(values.contains { ($0 as? String) == "en" })
-        let spacing = try #require(try await harness.callPageJavaScript(
-            """
-            const content = document.querySelector('.cm-content');
-            const style = content ? getComputedStyle(content) : null;
-            return JSON.stringify({
-              supportsAutoSpace: CSS.supports('text-autospace', 'normal'),
-              autoSpace: style?.getPropertyValue('text-autospace').trim() || '',
-              supportsPunctuationTrim: CSS.supports('text-spacing-trim', 'trim-both'),
-              punctuationTrim: style?.getPropertyValue('text-spacing-trim').trim() || '',
-              wrapStyle: style?.getPropertyValue('text-wrap-style').trim() || ''
-            });
-            """
-        ) as? String)
-        let spacingValues = try #require(spacing.data(using: .utf8).flatMap {
-            try? JSONSerialization.jsonObject(with: $0) as? [String: Any]
-        })
+        let spacing = try #require(
+            try await harness.callPageJavaScript(
+                """
+                const content = document.querySelector('.cm-content');
+                const style = content ? getComputedStyle(content) : null;
+                return JSON.stringify({
+                  supportsAutoSpace: CSS.supports('text-autospace', 'normal'),
+                  autoSpace: style?.getPropertyValue('text-autospace').trim() || '',
+                  supportsPunctuationTrim: CSS.supports('text-spacing-trim', 'trim-both'),
+                  punctuationTrim: style?.getPropertyValue('text-spacing-trim').trim() || '',
+                  wrapStyle: style?.getPropertyValue('text-wrap-style').trim() || ''
+                });
+                """
+            ) as? String)
+        let spacingValues = try #require(
+            spacing.data(using: .utf8).flatMap {
+                try? JSONSerialization.jsonObject(with: $0) as? [String: Any]
+            })
         if spacingValues["supportsAutoSpace"] as? Bool == true {
             #expect(spacingValues["autoSpace"] as? String == "normal")
         }
@@ -348,33 +392,35 @@ struct MarkdownEditorWebViewIntegrationTests {
         defer { harness.close() }
         try await harness.waitUntilReady()
 
-        let typography = try #require(try await harness.callPageJavaScript(
-            """
-            const emphasis = document.querySelector(
-              '.cm-live-emphasis .cm-live-cjk, .cm-live-cjk .cm-live-emphasis, .cm-live-emphasis.cm-live-cjk'
-            );
-            const strong = document.querySelector(
-              '.cm-live-strong .cm-live-cjk, .cm-live-cjk .cm-live-strong, .cm-live-strong.cm-live-cjk'
-            );
-            const heading = document.querySelector(
-              '.cm-line.cm-live-heading .cm-live-cjk, .cm-live-cjk .cm-line.cm-live-heading'
-            );
-            const style = element => element ? getComputedStyle(element) : null;
-            const emphasisStyle = style(emphasis);
-            const strongStyle = style(strong);
-            const headingStyle = style(heading);
-            return JSON.stringify({
-              emphasisFont: emphasisStyle?.fontFamily || '',
-              emphasisStyle: emphasisStyle?.fontStyle || '',
-              strongFont: strongStyle?.fontFamily || '',
-              headingFont: headingStyle?.fontFamily || '',
-              headingStyle: headingStyle?.fontStyle || ''
-            });
-            """
-        ) as? String)
-        let values = try #require(typography.data(using: .utf8).flatMap {
-            try? JSONSerialization.jsonObject(with: $0) as? [String: String]
-        })
+        let typography = try #require(
+            try await harness.callPageJavaScript(
+                """
+                const emphasis = document.querySelector(
+                  '.cm-live-emphasis .cm-live-cjk, .cm-live-cjk .cm-live-emphasis, .cm-live-emphasis.cm-live-cjk'
+                );
+                const strong = document.querySelector(
+                  '.cm-live-strong .cm-live-cjk, .cm-live-cjk .cm-live-strong, .cm-live-strong.cm-live-cjk'
+                );
+                const heading = document.querySelector(
+                  '.cm-line.cm-live-heading .cm-live-cjk, .cm-live-cjk .cm-line.cm-live-heading'
+                );
+                const style = element => element ? getComputedStyle(element) : null;
+                const emphasisStyle = style(emphasis);
+                const strongStyle = style(strong);
+                const headingStyle = style(heading);
+                return JSON.stringify({
+                  emphasisFont: emphasisStyle?.fontFamily || '',
+                  emphasisStyle: emphasisStyle?.fontStyle || '',
+                  strongFont: strongStyle?.fontFamily || '',
+                  headingFont: headingStyle?.fontFamily || '',
+                  headingStyle: headingStyle?.fontStyle || ''
+                });
+                """
+            ) as? String)
+        let values = try #require(
+            typography.data(using: .utf8).flatMap {
+                try? JSONSerialization.jsonObject(with: $0) as? [String: String]
+            })
         #expect(values["emphasisFont"]?.contains("LXGW WenKai") == true)
         #expect(values["emphasisStyle"] == "normal")
         #expect(values["strongFont"]?.contains("Noto Sans CJK SC") == true)
@@ -388,7 +434,8 @@ struct MarkdownEditorWebViewIntegrationTests {
         let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
             .deletingLastPathComponent().deletingLastPathComponent()
         let source = try String(contentsOf: root.appendingPathComponent("TestVaults/01-analyses/示例材料.md"), encoding: .utf8)
-        let harness = EditorHarness(documentID: "示例材料.md", documentTitle: "示例材料", source: source,
+        let harness = EditorHarness(
+            documentID: "示例材料.md", documentTitle: "示例材料", source: source,
             initialPresentationCSS: ScholiumDocumentPresentationConfiguration(textScale: 1).css,
             laysOutForPointerTesting: true)
         defer { harness.close() }
@@ -400,22 +447,24 @@ struct MarkdownEditorWebViewIntegrationTests {
             }
             try await harness.waitUntilReady()
             print("EXAMPLE_OPENING_MS", opening, Date().timeIntervalSince(started) * 1000)
-            let samples = try await harness.callPageJavaScript("""
-                const samples = [];
-                for (let i = 0; i < 20; i++) {
-                  const top = document.querySelector('.cm-scroller').getBoundingClientRect().top;
-                  const title = document.querySelector('.scholium-note-title-input').getBoundingClientRect().top - top;
-                  const yamlLines = Array.from(document.querySelectorAll('.scholium-frontmatter-line:not(.scholium-frontmatter-delimiter-line)'));
-                  const yamlTop = Math.min(...yamlLines.map(e => e.getBoundingClientRect().top - top));
-                  const yamlBottom = Math.max(...yamlLines.map(e => e.getBoundingClientRect().bottom - top));
-                  const heading = document.querySelector('.cm-line.cm-live-h1')?.getBoundingClientRect().top - top;
-                  const renderedYaml = document.querySelectorAll('[data-scholium-yaml-rendered="true"]').length;
-                  const renderedKeys = document.querySelectorAll('.cm-live-yaml-key').length;
-                  samples.push({title, yamlTop, yamlBottom, heading, renderedYaml, renderedKeys});
-                  await Promise.race([new Promise(resolve => requestAnimationFrame(resolve)), new Promise(resolve => setTimeout(resolve, 50))]);
-                }
-                return JSON.stringify(samples.filter(s => s.yamlTop < 0 || s.title >= s.yamlTop || typeof s.heading !== "number" || s.yamlBottom > s.heading || s.renderedYaml === 0 || s.renderedKeys === 0));
-                """) as? String
+            let samples =
+                try await harness.callPageJavaScript(
+                    """
+                    const samples = [];
+                    for (let i = 0; i < 20; i++) {
+                      const top = document.querySelector('.cm-scroller').getBoundingClientRect().top;
+                      const title = document.querySelector('.scholium-note-title-input').getBoundingClientRect().top - top;
+                      const yamlLines = Array.from(document.querySelectorAll('.scholium-frontmatter-line:not(.scholium-frontmatter-delimiter-line)'));
+                      const yamlTop = Math.min(...yamlLines.map(e => e.getBoundingClientRect().top - top));
+                      const yamlBottom = Math.max(...yamlLines.map(e => e.getBoundingClientRect().bottom - top));
+                      const heading = document.querySelector('.cm-line.cm-live-h1')?.getBoundingClientRect().top - top;
+                      const renderedYaml = document.querySelectorAll('[data-scholium-yaml-rendered="true"]').length;
+                      const renderedKeys = document.querySelectorAll('.cm-live-yaml-key').length;
+                      samples.push({title, yamlTop, yamlBottom, heading, renderedYaml, renderedKeys});
+                      await Promise.race([new Promise(resolve => requestAnimationFrame(resolve)), new Promise(resolve => setTimeout(resolve, 50))]);
+                    }
+                    return JSON.stringify(samples.filter(s => s.yamlTop < 0 || s.title >= s.yamlTop || typeof s.heading !== "number" || s.yamlBottom > s.heading || s.renderedYaml === 0 || s.renderedKeys === 0));
+                    """) as? String
             #expect(samples == "[]", "Opening \(opening): \(samples ?? "missing geometry")")
             #expect(try await harness.session.currentText(for: harness.documentID) == source)
         }
@@ -495,10 +544,12 @@ struct MarkdownEditorWebViewIntegrationTests {
         let selection = harness.session.context?.selections
         let undo = harness.session.context?.undoLabel
         let rect = list.table.rect(ofRow: 1)
-        let movement = try #require(NSEvent.mouseEvent(with: .mouseMoved,
-            location: list.table.convert(NSPoint(x: rect.midX, y: rect.midY), to: nil),
-            modifierFlags: [], timestamp: 0, windowNumber: owner.window?.windowNumber ?? 0,
-            context: nil, eventNumber: 0, clickCount: 0, pressure: 0))
+        let movement = try #require(
+            NSEvent.mouseEvent(
+                with: .mouseMoved,
+                location: list.table.convert(NSPoint(x: rect.midX, y: rect.midY), to: nil),
+                modifierFlags: [], timestamp: 0, windowNumber: owner.window?.windowNumber ?? 0,
+                context: nil, eventNumber: 0, clickCount: 0, pressure: 0))
         list.table.mouseMoved(with: movement)
         let selectionDeadline = ContinuousClock.now.advanced(by: .seconds(3))
         while list.table.selectedRow != 1 && ContinuousClock.now < selectionDeadline {
@@ -514,7 +565,9 @@ struct MarkdownEditorWebViewIntegrationTests {
         // The command-line test host need not own the desktop's key window.
         // Emphasis follows the originating window, not the table's responder.
         #expect(nativeRow.isEmphasized == (owner.window?.isKeyWindow == true))
-        _ = try await harness.callPageJavaScript("document.querySelector('.cm-content').dispatchEvent(new KeyboardEvent('keydown', {key: 'ArrowDown', code: 'ArrowDown', keyCode: 40, bubbles: true}));")
+        _ = try await harness.callPageJavaScript(
+            "document.querySelector('.cm-content').dispatchEvent(new KeyboardEvent('keydown', {key: 'ArrowDown', code: 'ArrowDown', keyCode: 40, bubbles: true}));"
+        )
         let keyboardDeadline = ContinuousClock.now.advanced(by: .seconds(3))
         while list.table.selectedRow != 2 && ContinuousClock.now < keyboardDeadline {
             try await Task.sleep(for: .milliseconds(20))
@@ -529,8 +582,9 @@ struct MarkdownEditorWebViewIntegrationTests {
     @Test("Edit previews use native glass without changing source, selection, or document geometry")
     func nativeEditPreviewPreservesDocument() async throws {
         let source = "[[Target]]\n\n" + String(repeating: "Synthetic paragraph.\n\n", count: 24)
-        let harness = EditorHarness(source: source, linkPreviews: [Self.linkPreview(atUTF16: 0)],
-                                    laysOutForPointerTesting: true)
+        let harness = EditorHarness(
+            source: source, linkPreviews: [Self.linkPreview(atUTF16: 0)],
+            laysOutForPointerTesting: true)
         defer { harness.close() }
         try await harness.waitUntilReady()
         harness.session.goToLine(1)
@@ -587,15 +641,17 @@ struct MarkdownEditorWebViewIntegrationTests {
             """
         _ = try await harness.callPageJavaScript("document.querySelector('.cm-scroller').scrollTop = 300;")
         let scrollBefore = try await harness.callPageJavaScript(scrollScript) as? Double
-        _ = try await harness.session.performDocumentFind(.init(
-            query: "findtarget", replacement: "", caseSensitive: false, wholeWord: false,
-            action: .present
-        ))
+        _ = try await harness.session.performDocumentFind(
+            .init(
+                query: "findtarget", replacement: "", caseSensitive: false, wholeWord: false,
+                action: .present
+            ))
         #expect(try await harness.callPageJavaScript(scrollScript) as? Double == scrollBefore)
-        _ = try await harness.session.performDocumentFind(.init(
-            query: "findtarget", replacement: "", caseSensitive: false, wholeWord: false,
-            action: .update
-        ))
+        _ = try await harness.session.performDocumentFind(
+            .init(
+                query: "findtarget", replacement: "", caseSensitive: false, wholeWord: false,
+                action: .update
+            ))
         #expect(try await harness.callPageJavaScript(geometryScript) as? String == before)
         #expect(harness.session.context?.selections.first?.anchor == 0)
         #expect(harness.session.context?.selections.first?.head == 10)
@@ -770,7 +826,8 @@ struct MarkdownEditorWebViewIntegrationTests {
         let clock = ContinuousClock()
         let reportDeadline = clock.now.advanced(by: .seconds(3))
         while harness.session.errorMessage == nil,
-              clock.now < reportDeadline {
+            clock.now < reportDeadline
+        {
             try await Task.sleep(for: .milliseconds(10))
         }
         #expect(dispatcher.didFailQueryText)
@@ -790,7 +847,8 @@ struct MarkdownEditorWebViewIntegrationTests {
 
         let resetDeadline = clock.now.advanced(by: .seconds(3))
         while harness.session.errorMessage != nil,
-              clock.now < resetDeadline {
+            clock.now < resetDeadline
+        {
             try await Task.sleep(for: .milliseconds(10))
         }
         #expect(harness.session.errorMessage == nil)
@@ -849,41 +907,42 @@ struct MarkdownEditorWebViewIntegrationTests {
     @Test("Edit renders Mermaid only after the caret leaves its exact fenced source")
     func mermaidRendersAtFencedBlockExit() async throws {
         let source = """
-        # Diagram
+            # Diagram
 
-        ```mermaid
-        flowchart LR
-        accTitle: Argument structure
-        accDescr: A reason supports a conclusion.
-        A --> B
-        ```
+            ```mermaid
+            flowchart LR
+            accTitle: Argument structure
+            accDescr: A reason supports a conclusion.
+            A --> B
+            ```
 
-        After diagram.
-        """
+            After diagram.
+            """
         let harness = EditorHarness(source: source)
         defer { harness.close() }
         try await harness.waitUntilReady()
 
         func snapshot() async throws -> [String: Any] {
-            try #require(try await harness.callPageJavaScript(
-                """
-                return {
-                  runtime: window.scholiumMermaid?.version || 0,
-                  widgets: document.querySelectorAll('.cm-live-mermaid-widget').length,
-                  rendered: [...document.querySelectorAll('.cm-live-mermaid-widget .scholium-mermaid-output')]
-                    .filter(output => output.shadowRoot?.querySelector('svg')).length,
-                  sourceLines: [...document.querySelectorAll('.cm-line')]
-                    .filter(line => (line.textContent || '').includes('flowchart LR')).length,
-                  openingFenceVisible: [...document.querySelectorAll('.cm-line')]
-                    .some(line => (line.textContent || '').trim() === '```mermaid'
-                      && line.getBoundingClientRect().height > 0.5),
-                  closingFenceVisible: [...document.querySelectorAll('.cm-line')]
-                    .some(line => (line.textContent || '').trim() === '```'
-                      && line.getBoundingClientRect().height > 0.5),
-                  collapsedFenceLines: document.querySelectorAll('.cm-live-code-fence-line').length
-                };
-                """
-            ) as? [String: Any])
+            try #require(
+                try await harness.callPageJavaScript(
+                    """
+                    return {
+                      runtime: window.scholiumMermaid?.version || 0,
+                      widgets: document.querySelectorAll('.cm-live-mermaid-widget').length,
+                      rendered: [...document.querySelectorAll('.cm-live-mermaid-widget .scholium-mermaid-output')]
+                        .filter(output => output.shadowRoot?.querySelector('svg')).length,
+                      sourceLines: [...document.querySelectorAll('.cm-line')]
+                        .filter(line => (line.textContent || '').includes('flowchart LR')).length,
+                      openingFenceVisible: [...document.querySelectorAll('.cm-line')]
+                        .some(line => (line.textContent || '').trim() === '```mermaid'
+                          && line.getBoundingClientRect().height > 0.5),
+                      closingFenceVisible: [...document.querySelectorAll('.cm-line')]
+                        .some(line => (line.textContent || '').trim() === '```'
+                          && line.getBoundingClientRect().height > 0.5),
+                      collapsedFenceLines: document.querySelectorAll('.cm-live-code-fence-line').length
+                    };
+                    """
+                ) as? [String: Any])
         }
 
         let clock = ContinuousClock()
@@ -961,10 +1020,11 @@ struct MarkdownEditorWebViewIntegrationTests {
         let selectedBodyTo = selectedBody.upperBound.utf16Offset(in: source)
         harness.session.revealSourceRange(fromUTF16: selectedBodyFrom, toUTF16: selectedBodyTo)
         try await harness.waitUntilSelection(head: selectedBodyTo, stage: "exact Mermaid source selection")
-        let exactSelection = try #require(try await harness.session.currentSelection(
-            for: harness.documentID,
-            in: source
-        ))
+        let exactSelection = try #require(
+            try await harness.session.currentSelection(
+                for: harness.documentID,
+                in: source
+            ))
         #expect(exactSelection.excerpt == "A --> B")
         let selectedActive = try await snapshot()
         #expect(selectedActive["widgets"] as? Int == 0)
@@ -991,7 +1051,8 @@ struct MarkdownEditorWebViewIntegrationTests {
     @Test("Active fenced code has one block surface and no visual blank after its closing fence")
     func activeFencedCodeUsesOneSurface() async throws {
         let source = "Before `inline`.\n\n```swift\nstruct Fixture {}\n```\n\nAfter.\n"
-        let codeCaret = try #require(source.range(of: "struct Fixture")?.lowerBound)
+        let codeCaret =
+            try #require(source.range(of: "struct Fixture")?.lowerBound)
             .utf16Offset(in: source) + 3
         let harness = EditorHarness(source: source)
         defer { harness.close() }
@@ -999,43 +1060,44 @@ struct MarkdownEditorWebViewIntegrationTests {
 
         harness.session.revealSourceRange(fromUTF16: codeCaret, toUTF16: codeCaret)
         try await harness.waitUntilSelection(head: codeCaret, stage: "active fenced code")
-        let snapshot = try #require(try await harness.callPageJavaScript(
-            """
-            const allLines = Array.from(document.querySelectorAll('.cm-line'));
-            const blockLines = allLines.filter(line => line.classList.contains('cm-live-codeblock'));
-            const closingFence = blockLines.find(
-                line => (line.textContent || '').trim() === '```'
-            );
-            const closingIndex = closingFence ? allLines.indexOf(closingFence) : -1;
-            const authoredBlank = closingIndex >= 0 ? allLines[closingIndex + 1] : null;
-            return {
-              blockLineCount: blockLines.length,
-              activeBlockLineCount: blockLines.filter(
-                line => line.classList.contains('cm-live-codeblock-active')
-              ).length,
-              fencedInlineCodeCount: blockLines.reduce(
-                (count, line) => count + line.querySelectorAll('.cm-live-code').length,
-                0
-              ),
-              totalInlineCodeCount: document.querySelectorAll('.cm-live-code').length,
-              closingPaddingBottom: closingFence
-                ? Number.parseFloat(getComputedStyle(closingFence).paddingBottom) || 0
-                : -1,
-              authoredBlankIsSourceLine: Boolean(
-                authoredBlank?.classList.contains('cm-live-blank-line')
-              ),
-              authoredBlankUsesCodeSurface: Boolean(
-                authoredBlank?.classList.contains('cm-live-codeblock')
-              ),
-              closingBackground: closingFence
-                ? getComputedStyle(closingFence).backgroundColor
-                : '',
-              authoredBlankBackground: authoredBlank
-                ? getComputedStyle(authoredBlank).backgroundColor
-                : ''
-            };
-            """
-        ) as? [String: Any])
+        let snapshot = try #require(
+            try await harness.callPageJavaScript(
+                """
+                const allLines = Array.from(document.querySelectorAll('.cm-line'));
+                const blockLines = allLines.filter(line => line.classList.contains('cm-live-codeblock'));
+                const closingFence = blockLines.find(
+                    line => (line.textContent || '').trim() === '```'
+                );
+                const closingIndex = closingFence ? allLines.indexOf(closingFence) : -1;
+                const authoredBlank = closingIndex >= 0 ? allLines[closingIndex + 1] : null;
+                return {
+                  blockLineCount: blockLines.length,
+                  activeBlockLineCount: blockLines.filter(
+                    line => line.classList.contains('cm-live-codeblock-active')
+                  ).length,
+                  fencedInlineCodeCount: blockLines.reduce(
+                    (count, line) => count + line.querySelectorAll('.cm-live-code').length,
+                    0
+                  ),
+                  totalInlineCodeCount: document.querySelectorAll('.cm-live-code').length,
+                  closingPaddingBottom: closingFence
+                    ? Number.parseFloat(getComputedStyle(closingFence).paddingBottom) || 0
+                    : -1,
+                  authoredBlankIsSourceLine: Boolean(
+                    authoredBlank?.classList.contains('cm-live-blank-line')
+                  ),
+                  authoredBlankUsesCodeSurface: Boolean(
+                    authoredBlank?.classList.contains('cm-live-codeblock')
+                  ),
+                  closingBackground: closingFence
+                    ? getComputedStyle(closingFence).backgroundColor
+                    : '',
+                  authoredBlankBackground: authoredBlank
+                    ? getComputedStyle(authoredBlank).backgroundColor
+                    : ''
+                };
+                """
+            ) as? [String: Any])
         #expect(snapshot["blockLineCount"] as? Int == 3)
         #expect(snapshot["activeBlockLineCount"] as? Int == 3)
         #expect(snapshot["fencedInlineCodeCount"] as? Int == 0)
@@ -1043,8 +1105,9 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(snapshot["closingPaddingBottom"] as? Double == 0)
         #expect(snapshot["authoredBlankIsSourceLine"] as? Bool == true)
         #expect(snapshot["authoredBlankUsesCodeSurface"] as? Bool == false)
-        #expect((snapshot["authoredBlankBackground"] as? String)
-            != (snapshot["closingBackground"] as? String))
+        #expect(
+            (snapshot["authoredBlankBackground"] as? String)
+                != (snapshot["closingBackground"] as? String))
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
         await harness.closeAndDrain()
     }
@@ -1057,38 +1120,40 @@ struct MarkdownEditorWebViewIntegrationTests {
         try await harness.waitUntilReady()
 
         func typography() async throws -> [String: Any] {
-            try #require(try await harness.callPageJavaScript(
-                """
-                const style = element => element ? getComputedStyle(element) : null;
-                const yaml = [...document.querySelectorAll('.cm-line.scholium-frontmatter-line')]
-                  .find(line => (line.textContent || '').includes('summary:'));
-                const code = [...document.querySelectorAll('.cm-line.cm-live-codeblock')]
-                  .find(line => (line.textContent || '').includes('let value'));
-                const math = document.querySelector('.cm-line.cm-live-math-source');
-                const yamlStyle = style(yaml);
-                const codeStyle = style(code);
-                const mathStyle = style(math);
-                return {
-                  yamlFont: yamlStyle?.fontFamily || '',
-                  yamlSize: yamlStyle?.fontSize || '',
-                  yamlLineHeight: yamlStyle?.lineHeight || '',
-                  codeFont: codeStyle?.fontFamily || '',
-                  codeSize: codeStyle?.fontSize || '',
-                  codeLineHeight: codeStyle?.lineHeight || '',
-                  codeAnimation: code?.getAnimations().length || 0,
-                  mathFont: mathStyle?.fontFamily || '',
-                  mathSize: mathStyle?.fontSize || '',
-                  mathLineHeight: mathStyle?.lineHeight || ''
-                };
-                """
-            ) as? [String: Any])
+            try #require(
+                try await harness.callPageJavaScript(
+                    """
+                    const style = element => element ? getComputedStyle(element) : null;
+                    const yaml = [...document.querySelectorAll('.cm-line.scholium-frontmatter-line')]
+                      .find(line => (line.textContent || '').includes('summary:'));
+                    const code = [...document.querySelectorAll('.cm-line.cm-live-codeblock')]
+                      .find(line => (line.textContent || '').includes('let value'));
+                    const math = document.querySelector('.cm-line.cm-live-math-source');
+                    const yamlStyle = style(yaml);
+                    const codeStyle = style(code);
+                    const mathStyle = style(math);
+                    return {
+                      yamlFont: yamlStyle?.fontFamily || '',
+                      yamlSize: yamlStyle?.fontSize || '',
+                      yamlLineHeight: yamlStyle?.lineHeight || '',
+                      codeFont: codeStyle?.fontFamily || '',
+                      codeSize: codeStyle?.fontSize || '',
+                      codeLineHeight: codeStyle?.lineHeight || '',
+                      codeAnimation: code?.getAnimations().length || 0,
+                      mathFont: mathStyle?.fontFamily || '',
+                      mathSize: mathStyle?.fontSize || '',
+                      mathLineHeight: mathStyle?.lineHeight || ''
+                    };
+                    """
+                ) as? [String: Any])
         }
 
         let inactive = try await typography()
         #expect(inactive["codeFont"] as? String == inactive["yamlFont"] as? String)
         #expect(inactive["codeSize"] as? String == inactive["yamlSize"] as? String)
 
-        let codeCaret = try #require(source.range(of: "let value")?.lowerBound)
+        let codeCaret =
+            try #require(source.range(of: "let value")?.lowerBound)
             .utf16Offset(in: source) + 3
         harness.session.revealSourceRange(fromUTF16: codeCaret, toUTF16: codeCaret)
         try await harness.waitUntilSelection(head: codeCaret, stage: "active code typography")
@@ -1097,7 +1162,8 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(activeCode["codeSize"] as? String == inactive["codeSize"] as? String)
         #expect(activeCode["codeLineHeight"] as? String == inactive["codeLineHeight"] as? String)
 
-        let mathCaret = try #require(source.range(of: "x + y")?.lowerBound)
+        let mathCaret =
+            try #require(source.range(of: "x + y")?.lowerBound)
             .utf16Offset(in: source) + 2
         harness.session.revealSourceRange(fromUTF16: mathCaret, toUTF16: mathCaret)
         try await harness.waitUntilSelection(head: mathCaret, stage: "active math typography")
@@ -1118,9 +1184,10 @@ struct MarkdownEditorWebViewIntegrationTests {
         )
         defer { harness.close() }
         try await harness.waitUntilReady()
-        let mermaidRuntime = try await harness.callPageJavaScript(
-            "return window.scholiumMermaid?.version || 0"
-        ) as? Int
+        let mermaidRuntime =
+            try await harness.callPageJavaScript(
+                "return window.scholiumMermaid?.version || 0"
+            ) as? Int
         #expect(mermaidRuntime == 0)
         #expect(harness.session.presentedMode == .livePreview)
         var presentationPublications: [MarkdownEditorPresentationState] = []
@@ -1226,10 +1293,10 @@ struct MarkdownEditorWebViewIntegrationTests {
     @Test("Source mode preserves exact Markdown without semantic typography")
     func sourceModeUsesExactSourceTypography() async throws {
         let source = """
-        # Exact heading
+            # Exact heading
 
-        **Bold source** and *italic source* and ~~struck source~~ and [linked source](https://example.test).
-        """
+            **Bold source** and *italic source* and ~~struck source~~ and [linked source](https://example.test).
+            """
         let harness = EditorHarness(source: source, initialMode: .source)
         defer { harness.close() }
         try await harness.waitUntilReady()
@@ -1282,35 +1349,36 @@ struct MarkdownEditorWebViewIntegrationTests {
     @Test("Edit and Source derive bidi direction without executing raw HTML")
     func bidiDirectionUsesTheVisibleLineAndKeepsRawHTMLInert() async throws {
         let source = """
-        # Direction boundary
+            # Direction boundary
 
-        هذا نص عربي مع **دليل عربي** و[مرجع عربي](https://example.test) والعدد 2026.
+            هذا نص عربي مع **دليل عربي** و[مرجع عربي](https://example.test) والعدد 2026.
 
-        זהו טקסט עברי עם Scholium והמספר 2026.
+            זהו טקסט עברי עם Scholium והמספר 2026.
 
-        <section dir="rtl">يبقى HTML الخام نصًا حرفيًا.</section>
-        """
+            <section dir="rtl">يبقى HTML الخام نصًا حرفيًا.</section>
+            """
         let harness = EditorHarness(source: source)
         defer { harness.close() }
         try await harness.waitUntilReady()
 
-        let edit = try #require(try await harness.callPageJavaScript(
-            """
-            const lines = [...document.querySelectorAll('.cm-line')];
-            const find = token => lines.find(line => (line.textContent || '').includes(token));
-            const arabic = find('هذا نص عربي');
-            const hebrew = find('זהו טקסט עברי');
-            const raw = document.querySelector('.cm-line.cm-live-raw-html');
-            return {
-              arabicAttribute: arabic?.getAttribute('dir') || '',
-              arabicDirection: arabic ? getComputedStyle(arabic).direction : '',
-              hebrewAttribute: hebrew?.getAttribute('dir') || '',
-              hebrewDirection: hebrew ? getComputedStyle(hebrew).direction : '',
-              rawDirection: raw ? getComputedStyle(raw).direction : '',
-              executableSectionCount: document.querySelectorAll('section[dir="rtl"]').length,
-            };
-            """
-        ) as? [String: Any])
+        let edit = try #require(
+            try await harness.callPageJavaScript(
+                """
+                const lines = [...document.querySelectorAll('.cm-line')];
+                const find = token => lines.find(line => (line.textContent || '').includes(token));
+                const arabic = find('هذا نص عربي');
+                const hebrew = find('זהו טקסט עברי');
+                const raw = document.querySelector('.cm-line.cm-live-raw-html');
+                return {
+                  arabicAttribute: arabic?.getAttribute('dir') || '',
+                  arabicDirection: arabic ? getComputedStyle(arabic).direction : '',
+                  hebrewAttribute: hebrew?.getAttribute('dir') || '',
+                  hebrewDirection: hebrew ? getComputedStyle(hebrew).direction : '',
+                  rawDirection: raw ? getComputedStyle(raw).direction : '',
+                  executableSectionCount: document.querySelectorAll('section[dir="rtl"]').length,
+                };
+                """
+            ) as? [String: Any])
         #expect(edit["arabicAttribute"] as? String == "auto")
         #expect(edit["arabicDirection"] as? String == "rtl")
         #expect(edit["hebrewAttribute"] as? String == "auto")
@@ -1320,32 +1388,33 @@ struct MarkdownEditorWebViewIntegrationTests {
 
         harness.session.setMode(.source)
         try await harness.waitUntilPresentedMode(.source)
-        let sourceMode = try #require(try await harness.callPageJavaScript(
-            """
-            const lines = [...document.querySelectorAll('.cm-line')];
-            const find = token => lines.find(line => (line.textContent || '').includes(token));
-            const isolates = [...document.querySelectorAll('.cm-iso')];
-            const result = token => {
-              const line = find(token);
-              return {
-                attribute: line?.getAttribute('dir') || '',
-                direction: line ? getComputedStyle(line).direction : '',
-              };
-            };
-            return {
-              arabic: result('هذا نص عربي'),
-              hebrew: result('זהו טקסט עברי'),
-              raw: result('<section dir="rtl">'),
-              autoMarkdownIsolate: isolates.some(element =>
-                element.getAttribute('dir') === 'auto'
-                  && (element.textContent || '').includes('**دليل عربي**')),
-              ltrMarkdownIsolate: isolates.some(element =>
-                element.getAttribute('dir') === 'ltr'
-                  && (element.textContent || '').includes('[مرجع عربي](https://example.test)')),
-              liveProjectionCount: document.querySelectorAll('[class*="cm-live-"]').length,
-            };
-            """
-        ) as? [String: Any])
+        let sourceMode = try #require(
+            try await harness.callPageJavaScript(
+                """
+                const lines = [...document.querySelectorAll('.cm-line')];
+                const find = token => lines.find(line => (line.textContent || '').includes(token));
+                const isolates = [...document.querySelectorAll('.cm-iso')];
+                const result = token => {
+                  const line = find(token);
+                  return {
+                    attribute: line?.getAttribute('dir') || '',
+                    direction: line ? getComputedStyle(line).direction : '',
+                  };
+                };
+                return {
+                  arabic: result('هذا نص عربي'),
+                  hebrew: result('זהו טקסט עברי'),
+                  raw: result('<section dir="rtl">'),
+                  autoMarkdownIsolate: isolates.some(element =>
+                    element.getAttribute('dir') === 'auto'
+                      && (element.textContent || '').includes('**دليل عربي**')),
+                  ltrMarkdownIsolate: isolates.some(element =>
+                    element.getAttribute('dir') === 'ltr'
+                      && (element.textContent || '').includes('[مرجع عربي](https://example.test)')),
+                  liveProjectionCount: document.querySelectorAll('[class*="cm-live-"]').length,
+                };
+                """
+            ) as? [String: Any])
         let sourceArabic = try #require(sourceMode["arabic"] as? [String: Any])
         let sourceHebrew = try #require(sourceMode["hebrew"] as? [String: Any])
         let sourceRaw = try #require(sourceMode["raw"] as? [String: Any])
@@ -1365,10 +1434,10 @@ struct MarkdownEditorWebViewIntegrationTests {
     @Test("RTL pointer placement and exact insertion remain writable in Source and Edit")
     func rtlTextRemainsWritableAcrossEditorModes() async throws {
         let source = """
-        هذا نص عربي للاختبار.
+            هذا نص عربي للاختبار.
 
-        זהו טקסט עברי לבדיקה.
-        """
+            זהו טקסט עברי לבדיקה.
+            """
         let harness = EditorHarness(source: source, initialMode: .source, laysOutForPointerTesting: true)
         defer { harness.close() }
         try await harness.waitUntilReady()
@@ -1642,10 +1711,11 @@ struct MarkdownEditorWebViewIntegrationTests {
     @Test("A plain Editor loads mathematics only after the first authored expression")
     func plainEditorLoadsMathRuntimeOnDemand() async throws {
         let plainSource = "Other paragraph.\n\nInline "
-        #expect(!MarkdownEditorWebView.requiresMathRuntime(
-            source: plainSource,
-            linkPreviews: []
-        ))
+        #expect(
+            !MarkdownEditorWebView.requiresMathRuntime(
+                source: plainSource,
+                linkPreviews: []
+            ))
         let end = plainSource.utf16.count
         let harness = EditorHarness(
             source: plainSource,
@@ -1691,10 +1761,11 @@ struct MarkdownEditorWebViewIntegrationTests {
         )
         try await harness.waitUntilSelection(head: NSMaxRange(range))
 
-        let selection = try #require(try await harness.session.currentSelection(
-            for: harness.documentID,
-            in: source
-        ))
+        let selection = try #require(
+            try await harness.session.currentSelection(
+                for: harness.documentID,
+                in: source
+            ))
         #expect(selection.excerpt == "autonomy")
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
         #expect(harness.session.generation == generation)
@@ -1707,10 +1778,10 @@ struct MarkdownEditorWebViewIntegrationTests {
     func editInlineSyntaxActivationIsConstructScoped() async throws {
         let probe = "INLINE_SYNTAX_PROBE"
         let source = """
-        # Inline projection
+            # Inline projection
 
-        \(probe) before **First** between **Second**, *Third* or *Fourth*, ~~Fifth~~, ==Sixth==, `Seventh`, and [Eighth](https://example.test).
-        """
+            \(probe) before **First** between **Second**, *Third* or *Fourth*, ~~Fifth~~, ==Sixth==, `Seventh`, and [Eighth](https://example.test).
+            """
         let harness = EditorHarness(source: source)
         defer { harness.close() }
         try await harness.waitUntilReady()
@@ -1802,9 +1873,10 @@ struct MarkdownEditorWebViewIntegrationTests {
         let deadline = clock.now.advanced(by: .seconds(3))
         while true {
             if let selection = harness.session.context?.selections.first,
-               selection.anchor == selection.head,
-               selection.head >= from,
-               selection.head < to {
+                selection.anchor == selection.head,
+                selection.head >= from,
+                selection.head < to
+            {
                 break
             }
             if clock.now >= deadline {
@@ -1916,10 +1988,10 @@ struct MarkdownEditorWebViewIntegrationTests {
     @Test("Source triple-click does not paint the next logical line as active")
     func sourceTripleClickDoesNotActivateFollowingLine() async throws {
         let source = """
-        This is deterministic, disposable, nonprivate test material. It contains no real
-        source claims and makes no philosophical attribution.
-        > [!orient] Reading route
-        """
+            This is deterministic, disposable, nonprivate test material. It contains no real
+            source claims and makes no philosophical attribution.
+            > [!orient] Reading route
+            """
         let harness = EditorHarness(
             source: source,
             initialMode: .source,
@@ -1970,9 +2042,9 @@ struct MarkdownEditorWebViewIntegrationTests {
     @Test("Callout content boundaries and annotated links share one source projection")
     func calloutContentBoundaryAndNestedLinksShareOneProjection() async throws {
         let calloutSource = """
-        > [!cite]+ Synthetic source boundary
-        > [[analysis-001|support]]{{A source reason.}}; body ends with [[work-031|linked note]].
-        """
+            > [!cite]+ Synthetic source boundary
+            > [[analysis-001|support]]{{A source reason.}}; body ends with [[work-031|linked note]].
+            """
         let source = "Lead.\n\n\(calloutSource)\n\nAfter.\n"
         let range = try #require(source.range(of: calloutSource))
         let calloutFrom = range.lowerBound.utf16Offset(in: source)
@@ -2140,17 +2212,21 @@ struct MarkdownEditorWebViewIntegrationTests {
             containing: "Reading route"
         )
         #expect(activeProjection.activeSourceLineTexts.count == 2)
-        #expect(activeProjection.activeSourceLineClassNames[0]
-            .contains("cm-live-callout-projected-line"))
-        #expect(activeProjection.activeSourceLineClassNames[1]
-            .contains("cm-live-callout-active-line"))
-        #expect(activeProjection.activeSourceLineTexts[0]
-            .trimmingCharacters(in: .whitespaces) == "Reading route")
+        #expect(
+            activeProjection.activeSourceLineClassNames[0]
+                .contains("cm-live-callout-projected-line"))
+        #expect(
+            activeProjection.activeSourceLineClassNames[1]
+                .contains("cm-live-callout-active-line"))
+        #expect(
+            activeProjection.activeSourceLineTexts[0]
+                .trimmingCharacters(in: .whitespaces) == "Reading route")
         #expect(activeProjection.activeSourceLineTexts[1].trimmingCharacters(in: .whitespaces) == ">")
         #expect(Set(activeProjection.activeSourceLineBackgrounds).count == 1)
-        #expect(activeProjection.activeSourceLineBackgrounds.allSatisfy {
-            $0 != "transparent" && $0 != "rgba(0, 0, 0, 0)"
-        })
+        #expect(
+            activeProjection.activeSourceLineBackgrounds.allSatisfy {
+                $0 != "transparent" && $0 != "rgba(0, 0, 0, 0)"
+            })
         try await harness.session.testingPressEnter()
         let exitedSource = source + "\n"
         try await harness.waitUntilSelection(
@@ -2195,10 +2271,12 @@ struct MarkdownEditorWebViewIntegrationTests {
         let bodyActive = try await harness.session.testingCalloutProjectionSnapshot(
             containing: "Claims"
         )
-        #expect(bodyActive.activeSourceLineClassNames[0]
-            .contains("cm-live-callout-projected-line"))
-        #expect(bodyActive.activeSourceLineClassNames[1]
-            .contains("cm-live-callout-active-line"))
+        #expect(
+            bodyActive.activeSourceLineClassNames[0]
+                .contains("cm-live-callout-projected-line"))
+        #expect(
+            bodyActive.activeSourceLineClassNames[1]
+                .contains("cm-live-callout-active-line"))
         try await harness.session.testingPressEnter()
 
         let clock = ContinuousClock()
@@ -2206,7 +2284,9 @@ struct MarkdownEditorWebViewIntegrationTests {
         while try await harness.session.currentText(for: harness.documentID) != expected {
             if clock.now >= deadline {
                 let actual = try await harness.session.currentText(for: harness.documentID)
-                Issue.record("Return did not retain the Callout quote and list prefixes. Actual source: \(String(reflecting: actual)); selections: \(String(describing: harness.session.context?.selections)); undo label: \(harness.session.context?.undoLabel ?? "nil")")
+                Issue.record(
+                    "Return did not retain the Callout quote and list prefixes. Actual source: \(String(reflecting: actual)); selections: \(String(describing: harness.session.context?.selections)); undo label: \(harness.session.context?.undoLabel ?? "nil")"
+                )
                 throw MarkdownEditorSession.SessionError.unavailable
             }
             try await Task.sleep(for: .milliseconds(20))
@@ -2246,41 +2326,53 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(inactive.renderedTitleFontWeight == "550")
         #expect(inactive.renderedTitleFontStyle == "italic")
 
-        let bodyCaret = try #require(source.range(of: "First claim")?.lowerBound)
+        let bodyCaret =
+            try #require(source.range(of: "First claim")?.lowerBound)
             .utf16Offset(in: source) + 2
         harness.session.revealSourceRange(fromUTF16: bodyCaret, toUTF16: bodyCaret)
         try await harness.waitUntilSelection(head: bodyCaret)
         let bodyActive = try await harness.session.testingCalloutProjectionSnapshot(
             containing: "Curated connections"
         )
-        #expect(bodyActive.activeSourceLineClassNames[0]
-            .contains("cm-live-callout-projected-line"))
-        #expect(bodyActive.activeSourceLineClassNames[0]
-            .contains("cm-live-callout-role-connect"))
-        #expect(bodyActive.activeSourceTitleFontFamilies[0]
-            == inactive.renderedTitleFontFamily)
-        #expect(bodyActive.activeSourceTitleFontSizes[0]
-            == inactive.renderedTitleFontSize)
-        #expect(bodyActive.activeSourceTitleFontWeights[0]
-            == inactive.renderedTitleFontWeight)
-        #expect(bodyActive.activeSourceTitleFontStyles[0]
-            == inactive.renderedTitleFontStyle)
+        #expect(
+            bodyActive.activeSourceLineClassNames[0]
+                .contains("cm-live-callout-projected-line"))
+        #expect(
+            bodyActive.activeSourceLineClassNames[0]
+                .contains("cm-live-callout-role-connect"))
+        #expect(
+            bodyActive.activeSourceTitleFontFamilies[0]
+                == inactive.renderedTitleFontFamily)
+        #expect(
+            bodyActive.activeSourceTitleFontSizes[0]
+                == inactive.renderedTitleFontSize)
+        #expect(
+            bodyActive.activeSourceTitleFontWeights[0]
+                == inactive.renderedTitleFontWeight)
+        #expect(
+            bodyActive.activeSourceTitleFontStyles[0]
+                == inactive.renderedTitleFontStyle)
 
-        let titleCaret = try #require(source.range(of: "Curated connections")?.lowerBound)
+        let titleCaret =
+            try #require(source.range(of: "Curated connections")?.lowerBound)
             .utf16Offset(in: source) + 2
         harness.session.revealSourceRange(fromUTF16: titleCaret, toUTF16: titleCaret)
         try await harness.waitUntilSelection(head: titleCaret)
         let titleActive = try await harness.session.testingCalloutProjectionSnapshot(
             containing: "Curated connections"
         )
-        #expect(titleActive.activeSourceLineClassNames[0]
-            .contains("cm-live-callout-active-line"))
-        #expect(titleActive.activeSourceLineFontWeights[0]
-            == bodyActive.activeSourceLineFontWeights[1])
-        #expect(titleActive.activeSourceTitleFontWeights[0]
-            == inactive.renderedTitleFontWeight)
-        #expect(titleActive.activeSourceTitleFontStyles[0]
-            == inactive.renderedTitleFontStyle)
+        #expect(
+            titleActive.activeSourceLineClassNames[0]
+                .contains("cm-live-callout-active-line"))
+        #expect(
+            titleActive.activeSourceLineFontWeights[0]
+                == bodyActive.activeSourceLineFontWeights[1])
+        #expect(
+            titleActive.activeSourceTitleFontWeights[0]
+                == inactive.renderedTitleFontWeight)
+        #expect(
+            titleActive.activeSourceTitleFontStyles[0]
+                == inactive.renderedTitleFontStyle)
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
         await harness.closeAndDrain()
     }
@@ -2324,7 +2416,8 @@ struct MarkdownEditorWebViewIntegrationTests {
         let owner = try #require(harness.session.webView)
         let frame = owner.frame
         for (index, text, tag) in [(0, "Basis for the claim", "strong"), (1, "Inline qualification", "em")] {
-            _ = try await harness.callPageJavaScript("""
+            _ = try await harness.callPageJavaScript(
+                """
                 const marker = document.querySelectorAll('.cm-live-footnote-reference-widget .footnote-reference')[index];
                 marker.dispatchEvent(new PointerEvent('pointermove', {bubbles: true, pointerType: 'mouse'}));
                 """, arguments: ["index": index])
@@ -2335,11 +2428,13 @@ struct MarkdownEditorWebViewIntegrationTests {
             #expect(try await preview.evaluateJavaScript("document.body.textContent.includes('\(text)')") as? Bool == true)
             #expect(try await preview.evaluateJavaScript("document.querySelector('\(tag)') !== null") as? Bool == true)
             #expect(owner.frame == frame)
-            #expect(try await harness.callPageJavaScript("""
-                const marker = document.querySelectorAll('.cm-live-footnote-reference-widget .footnote-reference')[index];
-                return marker.tagName === 'BUTTON' && marker.getAttribute('aria-expanded') === 'true'
-                    && !marker.hasAttribute('aria-controls');
-                """, arguments: ["index": index]) as? Bool == true)
+            #expect(
+                try await harness.callPageJavaScript(
+                    """
+                    const marker = document.querySelectorAll('.cm-live-footnote-reference-widget .footnote-reference')[index];
+                    return marker.tagName === 'BUTTON' && marker.getAttribute('aria-expanded') === 'true'
+                        && !marker.hasAttribute('aria-controls');
+                    """, arguments: ["index": index]) as? Bool == true)
         }
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
         #expect(!harness.session.isDirty)
@@ -2360,9 +2455,10 @@ struct MarkdownEditorWebViewIntegrationTests {
             try await harness.session.currentText(for: harness.documentID)
                 == "^[Claim] remains."
         )
-        #expect(harness.session.context?.selections == [
-            MarkdownEditorSelectionRange(anchor: 2, head: 7)
-        ])
+        #expect(
+            harness.session.context?.selections == [
+                MarkdownEditorSelectionRange(anchor: 2, head: 7)
+            ])
         #expect(harness.session.context?.undoLabel == "Insert Inline Footnote")
         #expect(harness.session.generation == 1)
         #expect(harness.session.isDirty)
@@ -2509,20 +2605,21 @@ struct MarkdownEditorWebViewIntegrationTests {
         defer { harness.close() }
         try await harness.waitUntilReady()
 
-        let live = try #require(try await harness.callPageJavaScript(
-            """
-            const title = document.querySelector('.cm-live-note-title');
-            const section = document.querySelector('.cm-live-h1');
-            return {
-              titleCount: document.querySelectorAll('.cm-live-note-title').length,
-              titleText: title?.querySelector('textarea')?.value || '',
-              titleEditable: !title?.querySelector('textarea')?.disabled,
-              titleRole: title?.getAttribute('role') || '',
-              titleLevel: title?.getAttribute('aria-level') || '',
-              sectionLevel: section?.getAttribute('aria-level') || ''
-            };
-            """
-        ) as? [String: Any])
+        let live = try #require(
+            try await harness.callPageJavaScript(
+                """
+                const title = document.querySelector('.cm-live-note-title');
+                const section = document.querySelector('.cm-live-h1');
+                return {
+                  titleCount: document.querySelectorAll('.cm-live-note-title').length,
+                  titleText: title?.querySelector('textarea')?.value || '',
+                  titleEditable: !title?.querySelector('textarea')?.disabled,
+                  titleRole: title?.getAttribute('role') || '',
+                  titleLevel: title?.getAttribute('aria-level') || '',
+                  sectionLevel: section?.getAttribute('aria-level') || ''
+                };
+                """
+            ) as? [String: Any])
         #expect(live["titleCount"] as? Int == 1)
         #expect(live["titleText"] as? String == "Reasons & Emotion")
         #expect(live["titleEditable"] as? Bool == true)
@@ -2538,9 +2635,10 @@ struct MarkdownEditorWebViewIntegrationTests {
             horizontalFraction: 0.7,
             verticalFraction: 0.95
         )
-        #expect(try await harness.callPageJavaScript(
-            "return document.activeElement?.matches('.scholium-note-title-input') === true"
-        ) as? Bool == true)
+        #expect(
+            try await harness.callPageJavaScript(
+                "return document.activeElement?.matches('.scholium-note-title-input') === true"
+            ) as? Bool == true)
 
         _ = try await harness.callPageJavaScript(
             """
@@ -2552,9 +2650,10 @@ struct MarkdownEditorWebViewIntegrationTests {
             """
         )
         #expect(renameRequests.isEmpty)
-        #expect(try await harness.callPageJavaScript(
-            "return document.querySelector('.scholium-note-title-input')?.value || ''"
-        ) as? String == "Reasons & Emotion")
+        #expect(
+            try await harness.callPageJavaScript(
+                "return document.querySelector('.scholium-note-title-input')?.value || ''"
+            ) as? String == "Reasons & Emotion")
 
         _ = try await harness.callPageJavaScript(
             """
@@ -2597,13 +2696,13 @@ struct MarkdownEditorWebViewIntegrationTests {
 
         harness.session.setMode(.source)
         try await harness.waitUntilPresentedMode(.source)
-        #expect(try await harness.callPageJavaScript(
-            "return document.querySelectorAll('.cm-live-note-title').length"
-        ) as? Int == 0)
+        #expect(
+            try await harness.callPageJavaScript(
+                "return document.querySelectorAll('.cm-live-note-title').length"
+            ) as? Int == 0)
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
         await harness.closeAndDrain()
     }
-
 
     @Test("Programmatic title focus collapses at the end and recovery records the active surface")
     func titleFocusAndBodyFocusAreRecoverable() async throws {
@@ -2614,33 +2713,36 @@ struct MarkdownEditorWebViewIntegrationTests {
         try await harness.waitUntilReady()
 
         try await harness.session.focusTitleAndWait()
-        let titleState = try #require(try await harness.callPageJavaScript(
-            """
-            const input = document.querySelector('.scholium-note-title-input');
-            return {
-              focused: document.activeElement === input,
-              start: input?.selectionStart ?? -1,
-              end: input?.selectionEnd ?? -1
-            };
-            """
-        ) as? [String: Any])
+        let titleState = try #require(
+            try await harness.callPageJavaScript(
+                """
+                const input = document.querySelector('.scholium-note-title-input');
+                return {
+                  focused: document.activeElement === input,
+                  start: input?.selectionStart ?? -1,
+                  end: input?.selectionEnd ?? -1
+                };
+                """
+            ) as? [String: Any])
         #expect(titleState["focused"] as? Bool == true)
         #expect(titleState["start"] as? Int == title.utf16.count)
         #expect(titleState["end"] as? Int == title.utf16.count)
 
         try await harness.session.captureStateForViewReconstruction()
-        #expect(harness.session.windowPresentationSnapshot(
-            scrollFraction: 0
-        ).focusTarget == .title)
+        #expect(
+            harness.session.windowPresentationSnapshot(
+                scrollFraction: 0
+            ).focusTarget == .title)
 
         harness.session.revealSourceRange(fromUTF16: 18, toUTF16: 18)
         try await harness.waitUntilSelection(head: 18)
         try await harness.session.captureStateForViewReconstruction()
         let restored = harness.session.windowPresentationSnapshot(scrollFraction: 0)
         #expect(restored.focusTarget == .editor)
-        #expect(restored.selections == [
-            WindowDocumentSelectionRange(anchor: 18, head: 18),
-        ])
+        #expect(
+            restored.selections == [
+                WindowDocumentSelectionRange(anchor: 18, head: 18)
+            ])
         await harness.closeAndDrain()
     }
 
@@ -2679,16 +2781,17 @@ struct MarkdownEditorWebViewIntegrationTests {
             }
             try await Task.sleep(for: .milliseconds(20))
         }
-        let state = try #require(try await harness.callPageJavaScript(
-            """
-            const input = document.querySelector('.scholium-note-title-input');
-            return {
-              value: input?.value || '',
-              invalid: input?.getAttribute('aria-invalid') || '',
-              focused: document.activeElement === input
-            };
-            """
-        ) as? [String: Any])
+        let state = try #require(
+            try await harness.callPageJavaScript(
+                """
+                const input = document.querySelector('.scholium-note-title-input');
+                return {
+                  value: input?.value || '',
+                  invalid: input?.getAttribute('aria-invalid') || '',
+                  focused: document.activeElement === input
+                };
+                """
+            ) as? [String: Any])
         #expect(state["value"] as? String == "Existing")
         #expect(state["invalid"] as? String == "true")
         #expect(state["focused"] as? Bool == true)
@@ -2762,7 +2865,8 @@ struct MarkdownEditorWebViewIntegrationTests {
         let secondHeadingTo = secondHeading.upperBound.utf16Offset(in: source)
         let finalParagraphFrom = try #require(source.range(of: "Final paragraph."))
             .lowerBound.utf16Offset(in: source)
-        let authoredBlank = try #require(source.range(of: "\n\n"))
+        let authoredBlank =
+            try #require(source.range(of: "\n\n"))
             .lowerBound.utf16Offset(in: source) + 1
         let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
         defer { harness.close() }
@@ -2832,26 +2936,27 @@ struct MarkdownEditorWebViewIntegrationTests {
         harness.session.goToLine(2)
         try await harness.waitUntilSelection(head: paragraphFrom, stage: "inactive heading")
 
-        let clickPoint = try #require(try await harness.callPageJavaScript(
-            """
-            const heading = document.querySelector('.cm-line.cm-live-h1');
-            if (!heading) return null;
-            const walker = document.createTreeWalker(heading, NodeFilter.SHOW_TEXT);
-            let node;
-            while ((node = walker.nextNode())) {
-              if (node.parentElement?.closest('[data-syntax-open="false"]')) continue;
-              const index = node.textContent?.indexOf(title) ?? -1;
-              if (index < 0) continue;
-              const range = document.createRange();
-              range.setStart(node, index);
-              range.setEnd(node, index + title.length);
-              const rect = range.getBoundingClientRect();
-              return {x: rect.right + 2, y: (rect.top + rect.bottom) / 2};
-            }
-            return null;
-            """,
-            arguments: ["title": title]
-        ) as? [String: Any])
+        let clickPoint = try #require(
+            try await harness.callPageJavaScript(
+                """
+                const heading = document.querySelector('.cm-line.cm-live-h1');
+                if (!heading) return null;
+                const walker = document.createTreeWalker(heading, NodeFilter.SHOW_TEXT);
+                let node;
+                while ((node = walker.nextNode())) {
+                  if (node.parentElement?.closest('[data-syntax-open="false"]')) continue;
+                  const index = node.textContent?.indexOf(title) ?? -1;
+                  if (index < 0) continue;
+                  const range = document.createRange();
+                  range.setStart(node, index);
+                  range.setEnd(node, index + title.length);
+                  const rect = range.getBoundingClientRect();
+                  return {x: rect.right + 2, y: (rect.top + rect.bottom) / 2};
+                }
+                return null;
+                """,
+                arguments: ["title": title]
+            ) as? [String: Any])
         _ = try await harness.callPageJavaScript(
             """
             const target = document.elementFromPoint(x, y) || document.querySelector('.cm-line.cm-live-h1');
@@ -2871,30 +2976,31 @@ struct MarkdownEditorWebViewIntegrationTests {
         try await harness.waitUntilFocused()
         try await Task.sleep(for: .milliseconds(180))
 
-        let geometry = try #require(try await harness.callPageJavaScript(
-            """
-            const heading = document.querySelector('.cm-line.cm-live-h1');
-            const cursor = document.querySelector('.cm-cursor-primary');
-            const scroller = document.querySelector('.cm-scroller');
-            if (!heading || !cursor || !scroller) return null;
-            const walker = document.createTreeWalker(heading, NodeFilter.SHOW_TEXT);
-            let node;
-            while ((node = walker.nextNode())) {
-              const index = node.textContent?.indexOf(title) ?? -1;
-              if (index < 0) continue;
-              const range = document.createRange();
-              range.setStart(node, index);
-              range.setEnd(node, index + title.length);
-              const textRect = range.getBoundingClientRect();
-              const scrollerRect = scroller.getBoundingClientRect();
-              const expectedLeft = textRect.right - scrollerRect.left + scroller.scrollLeft;
-              return {distance: String(Math.abs(parseFloat(cursor.style.left) - expectedLeft)),
-                markerVisible: heading.textContent?.startsWith('#') === true};
-            }
-            return null;
-            """,
-            arguments: ["title": title]
-        ) as? [String: Any])
+        let geometry = try #require(
+            try await harness.callPageJavaScript(
+                """
+                const heading = document.querySelector('.cm-line.cm-live-h1');
+                const cursor = document.querySelector('.cm-cursor-primary');
+                const scroller = document.querySelector('.cm-scroller');
+                if (!heading || !cursor || !scroller) return null;
+                const walker = document.createTreeWalker(heading, NodeFilter.SHOW_TEXT);
+                let node;
+                while ((node = walker.nextNode())) {
+                  const index = node.textContent?.indexOf(title) ?? -1;
+                  if (index < 0) continue;
+                  const range = document.createRange();
+                  range.setStart(node, index);
+                  range.setEnd(node, index + title.length);
+                  const textRect = range.getBoundingClientRect();
+                  const scrollerRect = scroller.getBoundingClientRect();
+                  const expectedLeft = textRect.right - scrollerRect.left + scroller.scrollLeft;
+                  return {distance: String(Math.abs(parseFloat(cursor.style.left) - expectedLeft)),
+                    markerVisible: heading.textContent?.startsWith('#') === true};
+                }
+                return null;
+                """,
+                arguments: ["title": title]
+            ) as? [String: Any])
         #expect((geometry["markerVisible"] as? Bool) == true)
         let cursorDistance = try #require(Double(geometry["distance"] as? String ?? ""))
         #expect(cursorDistance < 4)
@@ -2904,31 +3010,33 @@ struct MarkdownEditorWebViewIntegrationTests {
 
     @Test("Edit callout roles use styling without duplicate visible labels")
     func editCalloutRolesUseStylingWithoutVisibleLabels() async throws {
-        let source = "> [!warning] Limitation\n> First body.\n\n"
+        let source =
+            "> [!warning] Limitation\n> First body.\n\n"
             + "> [!state] Claim\n> Second body.\n\n"
             + "> [!quote] Source\n> Third body.\n"
         let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
         defer { harness.close() }
         try await harness.waitUntilReady()
 
-        let result = try #require(try await harness.callPageJavaScript(
-            """
-            const labels = [...document.querySelectorAll('.cm-live-callout-role-label')];
-            const roleClasses = ['flag', 'state', 'quote'].map(role =>
-              !!document.querySelector(`.cm-live-callout-role-${role}`));
-            const visuallyHidden = labels.every(label => {
-              const rect = label.getBoundingClientRect();
-              const style = getComputedStyle(label);
-              return rect.width <= 1.5 && rect.height <= 1.5
-                && style.position === 'absolute';
-            });
-            return {
-              labelCount: labels.length,
-              visuallyHidden,
-              roleClasses,
-            };
-            """
-        ) as? [String: Any])
+        let result = try #require(
+            try await harness.callPageJavaScript(
+                """
+                const labels = [...document.querySelectorAll('.cm-live-callout-role-label')];
+                const roleClasses = ['flag', 'state', 'quote'].map(role =>
+                  !!document.querySelector(`.cm-live-callout-role-${role}`));
+                const visuallyHidden = labels.every(label => {
+                  const rect = label.getBoundingClientRect();
+                  const style = getComputedStyle(label);
+                  return rect.width <= 1.5 && rect.height <= 1.5
+                    && style.position === 'absolute';
+                });
+                return {
+                  labelCount: labels.length,
+                  visuallyHidden,
+                  roleClasses,
+                };
+                """
+            ) as? [String: Any])
         #expect((result["labelCount"] as? NSNumber)?.intValue == 3)
         #expect(result["visuallyHidden"] as? Bool == true)
         #expect(result["roleClasses"] as? [Bool] == [true, true, true])
@@ -2966,28 +3074,28 @@ struct MarkdownEditorWebViewIntegrationTests {
     @Test("Two-hundred-percent Edit projections remain measured and pointer-addressable")
     func enlargedEditProjectionRemainsStableAcrossFocusAndBlockActivation() async throws {
         let source = """
-        ---
-        title: Projection stability
-        ---
-        # First-level body heading
+            ---
+            title: Projection stability
+            ---
+            # First-level body heading
 
-        ## Stable second-level heading
+            ## Stable second-level heading
 
-        > Ordinary quotation keeps the Review inset.
+            > Ordinary quotation keeps the Review inset.
 
-        ```swift
-        let deliberatelyLongLine = "code remains one semantic block"
-        ```
+            ```swift
+            let deliberatelyLongLine = "code remains one semantic block"
+            ```
 
-        | Claim | Status |
-        |:---|:---:|
-        | Fittingness | Open |
+            | Claim | Status |
+            |:---|:---:|
+            | Fittingness | Open |
 
-        AFTER_TABLE_TARGET remains pointer-addressable.
+            AFTER_TABLE_TARGET remains pointer-addressable.
 
-        1. First ordered item.
-        2. SECOND_LIST_TARGET remains pointer-addressable.
-        """
+            1. First ordered item.
+            2. SECOND_LIST_TARGET remains pointer-addressable.
+            """
         let targetRange = try #require(source.range(of: "AFTER_TABLE_TARGET"))
         let targetFrom = targetRange.lowerBound.utf16Offset(in: source)
         let targetTo = targetRange.upperBound.utf16Offset(in: source)
@@ -3073,19 +3181,20 @@ struct MarkdownEditorWebViewIntegrationTests {
     @Test("Fresh Edit and Source-to-Edit publish the same semantic projection before acknowledgement")
     func freshAndRetainedEditEntryHaveProjectionParity() async throws {
         let source = """
-        # QA Autosave A
+            # QA Autosave A
 
-        ## Fixture boundary
+            ## Fixture boundary
 
-        First paragraph remains independently editable.
+            First paragraph remains independently editable.
 
-        > [!orient] Reading route
-        > This synthetic note exercises the complete Scholium editing dialect.
+            > [!orient] Reading route
+            > This synthetic note exercises the complete Scholium editing dialect.
 
-        > [!cite]- Synthetic source boundary
-        > No real publication or quotation is represented here.
-        """
-        let presentationCSS = ScholiumDocumentPresentationConfiguration(textScale: 1).css
+            > [!cite]- Synthetic source boundary
+            > No real publication or quotation is represented here.
+            """
+        let presentationCSS =
+            ScholiumDocumentPresentationConfiguration(textScale: 1).css
             + "\n"
             + DocumentAppearanceStyles.css(for: DocumentAppearanceProfile(name: "Default"))
         let harness = EditorHarness(
@@ -3134,13 +3243,14 @@ struct MarkdownEditorWebViewIntegrationTests {
     @Test("Losing editor focus preserves the complete heading projection")
     func focusLossPreservesHeadingProjection() async throws {
         let source = """
-        # Focus-stable first-level heading
+            # Focus-stable first-level heading
 
-        ## Focus-stable section heading
+            ## Focus-stable section heading
 
-        Ordinary paragraph.
-        """
-        let presentationCSS = ScholiumDocumentPresentationConfiguration(textScale: 2).css
+            Ordinary paragraph.
+            """
+        let presentationCSS =
+            ScholiumDocumentPresentationConfiguration(textScale: 2).css
             + "\n"
             + DocumentAppearanceStyles.css(for: DocumentAppearanceProfile(name: "Default"))
         let harness = EditorHarness(
@@ -3169,21 +3279,21 @@ struct MarkdownEditorWebViewIntegrationTests {
     @Test("Inactive Edit lists mirror Review rhythm, markers, and task projection")
     func inactiveEditListsMirrorReviewPresentation() async throws {
         let source = """
-        # List parity
+            # List parity
 
-        - Unordered item one
-        - Unordered item two
-          - Nested unordered item
+            - Unordered item one
+            - Unordered item two
+              - Nested unordered item
 
-        1. Ordered item one
-        2. Ordered item two
-           1. Nested ordered item
+            1. Ordered item one
+            2. Ordered item two
+               1. Nested ordered item
 
-        - [ ] Open task fixture
-        - [x] Completed task fixture
+            - [ ] Open task fixture
+            - [x] Completed task fixture
 
-        Following paragraph.
-        """
+            Following paragraph.
+            """
         let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
         defer { harness.close() }
         try await harness.waitUntilReady()
@@ -3198,17 +3308,18 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(inactive.liveListMarkerText == "•|•|◦|1.|2.|1.")
         #expect(inactive.liveListMarkerTextGap > 0)
         #expect(inactive.liveListMarkerTextGap < 8)
-        let rhythm = try #require(try await harness.callPageJavaScript(
-            """
-            const lines = [...document.querySelectorAll('.cm-line.cm-live-list')].slice(0, 3);
-            return {
-              count: lines.length,
-              paddingEnds: lines.map(line => getComputedStyle(line).paddingBlockEnd),
-              gaps: lines.slice(1).map((line, index) =>
-                line.getBoundingClientRect().top - lines[index].getBoundingClientRect().bottom),
-            };
-            """
-        ) as? [String: Any])
+        let rhythm = try #require(
+            try await harness.callPageJavaScript(
+                """
+                const lines = [...document.querySelectorAll('.cm-line.cm-live-list')].slice(0, 3);
+                return {
+                  count: lines.length,
+                  paddingEnds: lines.map(line => getComputedStyle(line).paddingBlockEnd),
+                  gaps: lines.slice(1).map((line, index) =>
+                    line.getBoundingClientRect().top - lines[index].getBoundingClientRect().bottom),
+                };
+                """
+            ) as? [String: Any])
         #expect(rhythm["count"] as? Int == 3)
         #expect((rhythm["paddingEnds"] as? [String]) == ["0px", "0px", "0px"])
         let internalGaps = try #require(rhythm["gaps"] as? [Double])
@@ -3236,22 +3347,23 @@ struct MarkdownEditorWebViewIntegrationTests {
         try await harness.waitUntilReady()
 
         func pressTab(shift: Bool = false) async throws {
-            let handled = try await harness.callPageJavaScript(
-                """
-                const content = document.querySelector('.cm-content');
-                if (!content) return false;
-                const event = new KeyboardEvent('keydown', {
-                  key: 'Tab',
-                  code: 'Tab',
-                  shiftKey,
-                  bubbles: true,
-                  cancelable: true
-                });
-                content.dispatchEvent(event);
-                return event.defaultPrevented;
-                """,
-                arguments: ["shiftKey": shift]
-            ) as? Bool
+            let handled =
+                try await harness.callPageJavaScript(
+                    """
+                    const content = document.querySelector('.cm-content');
+                    if (!content) return false;
+                    const event = new KeyboardEvent('keydown', {
+                      key: 'Tab',
+                      code: 'Tab',
+                      shiftKey,
+                      bubbles: true,
+                      cancelable: true
+                    });
+                    content.dispatchEvent(event);
+                    return event.defaultPrevented;
+                    """,
+                    arguments: ["shiftKey": shift]
+                ) as? Bool
             #expect(handled == true)
         }
 
@@ -3262,9 +3374,10 @@ struct MarkdownEditorWebViewIntegrationTests {
         try await pressTab()
         let indented = "  - first\n  - second\n\n```swift\n- code\n```\n"
         #expect(try await harness.session.currentText(for: harness.documentID) == indented)
-        #expect(harness.session.context?.selections == [
-            MarkdownEditorSelectionRange(anchor: 2, head: 20),
-        ])
+        #expect(
+            harness.session.context?.selections == [
+                MarkdownEditorSelectionRange(anchor: 2, head: 20)
+            ])
         #expect(harness.session.context?.undoLabel == "Indent List")
 
         let indentedSelectionEnd = try #require(indented.range(of: "- second")?.upperBound)
@@ -3273,12 +3386,14 @@ struct MarkdownEditorWebViewIntegrationTests {
         try await harness.waitUntilSelection(head: indentedSelectionEnd, stage: "indented list selection")
         try await pressTab(shift: true)
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
-        #expect(harness.session.context?.selections == [
-            MarkdownEditorSelectionRange(anchor: 0, head: 16),
-        ])
+        #expect(
+            harness.session.context?.selections == [
+                MarkdownEditorSelectionRange(anchor: 0, head: 16)
+            ])
         #expect(harness.session.context?.undoLabel == "Outdent List")
 
-        let codeCaret = try #require(source.range(of: "- code")?.lowerBound)
+        let codeCaret =
+            try #require(source.range(of: "- code")?.lowerBound)
             .utf16Offset(in: source) + 2
         harness.session.revealSourceRange(fromUTF16: codeCaret, toUTF16: codeCaret)
         try await harness.waitUntilSelection(head: codeCaret, stage: "fenced code caret")
@@ -3294,15 +3409,15 @@ struct MarkdownEditorWebViewIntegrationTests {
     @Test("Projected task checkbox toggles only its exact marker bytes")
     func projectedTaskCheckboxTogglesExactMarkerBytes() async throws {
         let source = """
-        Before the tasks.
+            Before the tasks.
 
-        - [ ] OPEN_TASK_BODY
-        - [x] COMPLETED_TASK_BODY
-        * [ ] ALTERNATE_TASK_BODY
-          ALTERNATE_CONTINUATION
+            - [ ] OPEN_TASK_BODY
+            - [x] COMPLETED_TASK_BODY
+            * [ ] ALTERNATE_TASK_BODY
+              ALTERNATE_CONTINUATION
 
-        After the tasks.
-        """
+            After the tasks.
+            """
         let expected = source.replacingOccurrences(
             of: "- [ ] OPEN_TASK_BODY",
             with: "- [x] OPEN_TASK_BODY"
@@ -3325,19 +3440,20 @@ struct MarkdownEditorWebViewIntegrationTests {
                 && $0.liveTaskSourceTokenCount == 0
         }
         #expect(inactive.isFocused)
-        let controls = try #require(try await harness.callPageJavaScript(
-            """
-            return Array.from(document.querySelectorAll('.cm-live-task-checkbox')).map(checkbox => ({
-              tag: checkbox.tagName,
-              type: checkbox.type,
-              label: checkbox.getAttribute('aria-label'),
-              tabIndex: checkbox.tabIndex,
-              checked: checkbox.checked,
-              width: checkbox.getBoundingClientRect().width,
-              height: checkbox.getBoundingClientRect().height
-            }));
-            """
-        ) as? [[String: Any]])
+        let controls = try #require(
+            try await harness.callPageJavaScript(
+                """
+                return Array.from(document.querySelectorAll('.cm-live-task-checkbox')).map(checkbox => ({
+                  tag: checkbox.tagName,
+                  type: checkbox.type,
+                  label: checkbox.getAttribute('aria-label'),
+                  tabIndex: checkbox.tabIndex,
+                  checked: checkbox.checked,
+                  width: checkbox.getBoundingClientRect().width,
+                  height: checkbox.getBoundingClientRect().height
+                }));
+                """
+            ) as? [[String: Any]])
         #expect(controls.count == 3)
         #expect(controls.allSatisfy { $0["tag"] as? String == "INPUT" })
         #expect(controls.allSatisfy { $0["type"] as? String == "checkbox" })
@@ -3348,24 +3464,25 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(controls.allSatisfy { ($0["height"] as? Double ?? 0) >= 20 })
 
         func taskBodyLeadingX(_ body: String) async throws -> Double {
-            let value = try #require(try await harness.callPageJavaScript(
-                """
-                const target = '\(body)';
-                for (const line of document.querySelectorAll('.cm-line.cm-live-task-list')) {
-                  const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
-                  let node;
-                  while ((node = walker.nextNode())) {
-                    const offset = (node.textContent || '').indexOf(target);
-                    if (offset < 0) continue;
-                    const range = document.createRange();
-                    range.setStart(node, offset);
-                    range.setEnd(node, offset + 1);
-                    return range.getBoundingClientRect().left;
-                  }
-                }
-                return null;
-                """
-            ) as? NSNumber)
+            let value = try #require(
+                try await harness.callPageJavaScript(
+                    """
+                    const target = '\(body)';
+                    for (const line of document.querySelectorAll('.cm-line.cm-live-task-list')) {
+                      const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+                      let node;
+                      while ((node = walker.nextNode())) {
+                        const offset = (node.textContent || '').indexOf(target);
+                        if (offset < 0) continue;
+                        const range = document.createRange();
+                        range.setStart(node, offset);
+                        range.setEnd(node, offset + 1);
+                        return range.getBoundingClientRect().left;
+                      }
+                    }
+                    return null;
+                    """
+                ) as? NSNumber)
             return value.doubleValue
         }
         let initialOpenTaskX = try await taskBodyLeadingX("OPEN_TASK_BODY")
@@ -3422,7 +3539,8 @@ struct MarkdownEditorWebViewIntegrationTests {
                 <= 0.5
         )
 
-        let commandCaret = try #require(expectedAfterUncheck.range(of: "ALTERNATE_CONTINUATION"))
+        let commandCaret =
+            try #require(expectedAfterUncheck.range(of: "ALTERNATE_CONTINUATION"))
             .lowerBound.utf16Offset(in: expectedAfterUncheck) + 2
         harness.session.revealSourceRange(fromUTF16: commandCaret, toUTF16: commandCaret)
         try await harness.waitUntilSelection(head: commandCaret)
@@ -3452,15 +3570,15 @@ struct MarkdownEditorWebViewIntegrationTests {
     @Test("List prefix arrows move one source position at a time")
     func leftArrowEntersProjectedListPrefixAtTrailingEdge() async throws {
         let source = """
-        Before the lists.
+            Before the lists.
 
-        - BULLET_LIST_BODY
-          - NESTED_LIST_BODY
-        10. ORDERED_LIST_BODY
-        - [ ] TASK_LIST_BODY
+            - BULLET_LIST_BODY
+              - NESTED_LIST_BODY
+            10. ORDERED_LIST_BODY
+            - [ ] TASK_LIST_BODY
 
-        After the lists.
-        """
+            After the lists.
+            """
         let cases = [
             (prefix: "- ", body: "BULLET_LIST_BODY"),
             (prefix: "  - ", body: "NESTED_LIST_BODY"),
@@ -3484,13 +3602,14 @@ struct MarkdownEditorWebViewIntegrationTests {
                     stage: "source prefix step \(step) for \(testCase.body)"
                 )
             }
-            let lineText = try #require(try await harness.callPageJavaScript(
-                """
-                return Array.from(document.querySelectorAll('.cm-line'))
-                  .find(line => (line.textContent || '').includes('\(testCase.body)'))
-                  ?.textContent || '';
-                """
-            ) as? String)
+            let lineText = try #require(
+                try await harness.callPageJavaScript(
+                    """
+                    return Array.from(document.querySelectorAll('.cm-line'))
+                      .find(line => (line.textContent || '').includes('\(testCase.body)'))
+                      ?.textContent || '';
+                    """
+                ) as? String)
             #expect(lineText.contains(testCase.prefix + testCase.body))
 
             for step in stride(from: testCase.prefix.utf16.count - 1, through: 0, by: -1) {
@@ -3500,13 +3619,14 @@ struct MarkdownEditorWebViewIntegrationTests {
                     stage: "right-arrow prefix step \(step) for \(testCase.body)"
                 )
             }
-            let rightLineText = try #require(try await harness.callPageJavaScript(
-                """
-                return Array.from(document.querySelectorAll('.cm-line'))
-                  .find(line => (line.textContent || '').includes('\(testCase.body)'))
-                  ?.textContent || '';
-                """
-            ) as? String)
+            let rightLineText = try #require(
+                try await harness.callPageJavaScript(
+                    """
+                    return Array.from(document.querySelectorAll('.cm-line'))
+                      .find(line => (line.textContent || '').includes('\(testCase.body)'))
+                      ?.textContent || '';
+                    """
+                ) as? String)
             #expect(rightLineText.contains(testCase.prefix + testCase.body))
         }
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
@@ -3516,17 +3636,17 @@ struct MarkdownEditorWebViewIntegrationTests {
     @Test("List source reveal is marker scoped and preserves content geometry")
     func listSourceRevealIsMarkerScopedAndPreservesContentGeometry() async throws {
         let source = """
-        Before the list.
+            Before the list.
 
-        - ROOT_LIST_BODY
-          - NESTED_LIST_BODY
+            - ROOT_LIST_BODY
+              - NESTED_LIST_BODY
 
-        10. ORDERED_LIST_BODY
+            10. ORDERED_LIST_BODY
 
-        - [ ] TASK_LIST_BODY
+            - [ ] TASK_LIST_BODY
 
-        After the list.
-        """
+            After the list.
+            """
         let afterFrom = try #require(source.range(of: "After the list."))
             .lowerBound.utf16Offset(in: source)
         let cases = [
@@ -3540,25 +3660,26 @@ struct MarkdownEditorWebViewIntegrationTests {
         try await harness.waitUntilReady()
 
         func bodyLeadingX(_ target: String) async throws -> Double {
-            let value = try #require(try await harness.callPageJavaScript(
-                """
-                const target = '\(target)';
-                for (const line of document.querySelectorAll('.cm-line')) {
-                  const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
-                  let node;
-                  while ((node = walker.nextNode())) {
-                    const text = node.textContent || '';
-                    const offset = text.indexOf(target);
-                    if (offset < 0) continue;
-                    const range = document.createRange();
-                    range.setStart(node, offset);
-                    range.setEnd(node, offset + 1);
-                    return range.getBoundingClientRect().left;
-                  }
-                }
-                return null;
-                """
-            ) as? NSNumber)
+            let value = try #require(
+                try await harness.callPageJavaScript(
+                    """
+                    const target = '\(target)';
+                    for (const line of document.querySelectorAll('.cm-line')) {
+                      const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+                      let node;
+                      while ((node = walker.nextNode())) {
+                        const text = node.textContent || '';
+                        const offset = text.indexOf(target);
+                        if (offset < 0) continue;
+                        const range = document.createRange();
+                        range.setStart(node, offset);
+                        range.setEnd(node, offset + 1);
+                        return range.getBoundingClientRect().left;
+                      }
+                    }
+                    return null;
+                    """
+                ) as? NSNumber)
             return value.doubleValue
         }
 
@@ -3606,9 +3727,9 @@ struct MarkdownEditorWebViewIntegrationTests {
     @Test("A nested list prefix never consumes its active Callout marker")
     func nestedListPrefixPreservesActiveCalloutMarker() async throws {
         let source = """
-        > [!state] Callout list
-        > - CALLOUT_LIST_BODY
-        """
+            > [!state] Callout list
+            > - CALLOUT_LIST_BODY
+            """
         let bodyFrom = try #require(source.range(of: "CALLOUT_LIST_BODY"))
             .lowerBound.utf16Offset(in: source)
         let markerFrom = try #require(source.range(of: "- CALLOUT_LIST_BODY"))
@@ -3618,18 +3739,19 @@ struct MarkdownEditorWebViewIntegrationTests {
         try await harness.waitUntilReady()
 
         func listLinePresentation() async throws -> [String: Any] {
-            try #require(try await harness.callPageJavaScript(
-                """
-                const line = Array.from(document.querySelectorAll('.cm-line'))
-                  .find(candidate => (candidate.textContent || '').includes('CALLOUT_LIST_BODY'));
-                if (!line) return null;
-                return {
-                  text: line.textContent || '',
-                  projected: line.querySelectorAll('.cm-live-list-marker').length,
-                  exactPrefix: line.querySelectorAll('.cm-live-list-source-prefix').length
-                };
-                """
-            ) as? [String: Any])
+            try #require(
+                try await harness.callPageJavaScript(
+                    """
+                    const line = Array.from(document.querySelectorAll('.cm-line'))
+                      .find(candidate => (candidate.textContent || '').includes('CALLOUT_LIST_BODY'));
+                    if (!line) return null;
+                    return {
+                      text: line.textContent || '',
+                      projected: line.querySelectorAll('.cm-live-list-marker').length,
+                      exactPrefix: line.querySelectorAll('.cm-live-list-source-prefix').length
+                    };
+                    """
+                ) as? [String: Any])
         }
 
         let bodyCaret = bodyFrom + 4
@@ -3659,7 +3781,8 @@ struct MarkdownEditorWebViewIntegrationTests {
     @Test("Edit blank separators remain stable prose rows without overlap")
     func editParagraphSeparatorsRemainEditableSourceLines() async throws {
         let source = "First paragraph.\n\nSecond paragraph.\n"
-        let blankOffset = try #require(source.range(of: "\n\n"))
+        let blankOffset =
+            try #require(source.range(of: "\n\n"))
             .lowerBound.utf16Offset(in: source) + 1
         let secondFrom = try #require(source.range(of: "Second paragraph."))
             .lowerBound.utf16Offset(in: source)
@@ -3674,25 +3797,26 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(abs(presentation.editBlankLineMinimumHeight - expectedBlankLineHeight) < 0.5)
 
         func transitionGeometry(lineIndex: Int) async throws -> [String: Double] {
-            let value = try #require(try await harness.callPageJavaScript(
-                """
-                const lines = Array.from(document.querySelectorAll('.cm-line'));
-                const line = lines[lineIndex] || null;
-                const following = lines[lineIndex + 1] || null;
-                const scroller = document.querySelector('.cm-scroller');
-                const cursor = document.querySelector('.cm-cursor-primary');
-                return line && following && scroller ? {
-                  lineTop: line.getBoundingClientRect().top,
-                  lineBottom: line.getBoundingClientRect().bottom,
-                  height: line.getBoundingClientRect().height,
-                  followingTop: following.getBoundingClientRect().top,
-                  lineHeight: Number.parseFloat(getComputedStyle(line).lineHeight),
-                  scrollHeight: scroller.scrollHeight,
-                  cursorTop: cursor?.getBoundingClientRect().top || 0
-                } : null;
-                """,
-                arguments: ["lineIndex": lineIndex]
-            ) as? [String: Any])
+            let value = try #require(
+                try await harness.callPageJavaScript(
+                    """
+                    const lines = Array.from(document.querySelectorAll('.cm-line'));
+                    const line = lines[lineIndex] || null;
+                    const following = lines[lineIndex + 1] || null;
+                    const scroller = document.querySelector('.cm-scroller');
+                    const cursor = document.querySelector('.cm-cursor-primary');
+                    return line && following && scroller ? {
+                      lineTop: line.getBoundingClientRect().top,
+                      lineBottom: line.getBoundingClientRect().bottom,
+                      height: line.getBoundingClientRect().height,
+                      followingTop: following.getBoundingClientRect().top,
+                      lineHeight: Number.parseFloat(getComputedStyle(line).lineHeight),
+                      scrollHeight: scroller.scrollHeight,
+                      cursorTop: cursor?.getBoundingClientRect().top || 0
+                    } : null;
+                    """,
+                    arguments: ["lineIndex": lineIndex]
+                ) as? [String: Any])
             return [
                 "lineTop": try #require(value["lineTop"] as? NSNumber).doubleValue,
                 "lineBottom": try #require(value["lineBottom"] as? NSNumber).doubleValue,
@@ -3800,25 +3924,27 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(try await harness.callPageJavaScript("return document.querySelectorAll('.cm-live-syntax-marker').length") as? Int == 0)
         _ = try await harness.callPageJavaScript("document.execCommand('insertText', false, '*')")
         func checkMutedMarkers() async throws {
-            #expect(try await harness.callPageJavaScript("""
-                await new Promise(resolve => { requestAnimationFrame(() => requestAnimationFrame(resolve)); setTimeout(resolve, 200); });
-                // This probe asserts final geometry/color, not animation timing.
-                // Background WebKit windows may suspend their animation clock.
-                for (const node of document.querySelectorAll('.cm-syntax-token')) {
-                    for (const animation of node.getAnimations()) animation.finish();
-                }
-                const markers = [...document.querySelectorAll('.cm-live-syntax-marker')];
-                const probe = document.createElement('span');
-                probe.style.color = 'var(--scholium-color-secondary-text)';
-                document.body.appendChild(probe);
-                const muted = getComputedStyle(probe).color;
-                probe.remove();
-                const emphasis = document.querySelector('.cm-live-emphasis');
-                return markers.length === 2 && markers.every(marker => marker.textContent === '*'
-                    && getComputedStyle(marker).color === muted)
-                    && !!emphasis && getComputedStyle(emphasis).fontStyle === 'italic'
-                    && getComputedStyle(emphasis).color !== muted;
-                """) as? Bool == true)
+            #expect(
+                try await harness.callPageJavaScript(
+                    """
+                    await new Promise(resolve => { requestAnimationFrame(() => requestAnimationFrame(resolve)); setTimeout(resolve, 200); });
+                    // This probe asserts final geometry/color, not animation timing.
+                    // Background WebKit windows may suspend their animation clock.
+                    for (const node of document.querySelectorAll('.cm-syntax-token')) {
+                        for (const animation of node.getAnimations()) animation.finish();
+                    }
+                    const markers = [...document.querySelectorAll('.cm-live-syntax-marker')];
+                    const probe = document.createElement('span');
+                    probe.style.color = 'var(--scholium-color-secondary-text)';
+                    document.body.appendChild(probe);
+                    const muted = getComputedStyle(probe).color;
+                    probe.remove();
+                    const emphasis = document.querySelector('.cm-live-emphasis');
+                    return markers.length === 2 && markers.every(marker => marker.textContent === '*'
+                        && getComputedStyle(marker).color === muted)
+                        && !!emphasis && getComputedStyle(emphasis).fontStyle === 'italic'
+                        && getComputedStyle(emphasis).color !== muted;
+                    """) as? Bool == true)
         }
         try await checkMutedMarkers()
         harness.session.revealSourceRange(fromUTF16: 5, toUTF16: 5)
@@ -3843,15 +3969,17 @@ struct MarkdownEditorWebViewIntegrationTests {
         harness.session.revealSourceRange(fromUTF16: 0, toUTF16: 0)
         try await harness.waitUntilSelection(head: 0, stage: "new heading")
         func presentation() async throws -> [String: Any] {
-            try #require(try await harness.callPageJavaScript("""
-                const line = document.querySelector('.cm-content .cm-line');
-                const marker = line?.querySelector('.cm-live-heading-source-marker');
-                return {level: line?.getAttribute('aria-level') || '',
-                    fontSize: line ? getComputedStyle(line).fontSize : '',
-                    marker: marker?.textContent || '',
-                    markerVisible: !!marker && marker.getBoundingClientRect().width > 0
-                        && getComputedStyle(line).overflow !== 'hidden'};
-                """) as? [String: Any])
+            try #require(
+                try await harness.callPageJavaScript(
+                    """
+                    const line = document.querySelector('.cm-content .cm-line');
+                    const marker = line?.querySelector('.cm-live-heading-source-marker');
+                    return {level: line?.getAttribute('aria-level') || '',
+                        fontSize: line ? getComputedStyle(line).fontSize : '',
+                        marker: marker?.textContent || '',
+                        markerVisible: !!marker && marker.getBoundingClientRect().width > 0
+                            && getComputedStyle(line).overflow !== 'hidden'};
+                    """) as? [String: Any])
         }
         for character in String(repeating: "#", count: level) + " " {
             _ = try await harness.callPageJavaScript("document.execCommand('insertText', false, text)", arguments: ["text": String(character)])
@@ -3871,7 +3999,10 @@ struct MarkdownEditorWebViewIntegrationTests {
             let selectionDeadline = ContinuousClock.now.advanced(by: .seconds(3))
             while true {
                 if let selected = try await harness.session.currentSelection(for: harness.documentID),
-                   selected.utf16LowerBound == 0 && selected.utf16UpperBound == 1 { break }
+                    selected.utf16LowerBound == 0 && selected.utf16UpperBound == 1
+                {
+                    break
+                }
                 guard ContinuousClock.now < selectionDeadline else { throw MarkdownEditorSession.SessionError.unavailable }
                 try await Task.sleep(for: .milliseconds(20))
             }
@@ -3897,7 +4028,8 @@ struct MarkdownEditorWebViewIntegrationTests {
         try await harness.waitUntilSelection(head: end, stage: "heading keyboard initial selection")
         try await harness.session.testingPressArrow("ArrowUp")
         try await harness.waitUntilSelection(head: 15, stage: "heading keyboard entry")
-        _ = try await harness.callPageJavaScript("""
+        _ = try await harness.callPageJavaScript(
+            """
             const content = document.querySelector('.cm-content');
             const event = new KeyboardEvent('keydown', {
                 key: 'ArrowLeft', code: 'ArrowLeft', keyCode: 37, which: 37,
@@ -3929,57 +4061,58 @@ struct MarkdownEditorWebViewIntegrationTests {
         try await harness.waitUntilReady()
 
         func geometry() async throws -> [String: Double] {
-            let value = try #require(try await harness.callPageJavaScript(
-                """
-                await new Promise(resolve => { requestAnimationFrame(() => requestAnimationFrame(resolve)); setTimeout(resolve, 200); });
-                // This probe asserts final geometry/color, not animation timing.
-                // Background WebKit windows may suspend their animation clock.
-                for (const node of document.querySelectorAll('.cm-syntax-token')) {
-                    for (const animation of node.getAnimations()) animation.finish();
-                }
-                const heading = document.querySelector('.cm-live-h1');
-                const following = Array.from(document.querySelectorAll('.cm-line'))
-                  .find(line => (line.textContent || '').includes('Following paragraph.'));
-                if (!heading || !following) return null;
-                const walker = document.createTreeWalker(heading, NodeFilter.SHOW_TEXT);
-                let node = null;
-                while (walker.nextNode()) {
-                  if ((walker.currentNode.nodeValue || '').includes(headingText)) {
-                    node = walker.currentNode;
-                    break;
-                  }
-                }
-                if (!node) return null;
-                const offset = node.nodeValue.indexOf(headingText);
-                const range = document.createRange();
-                range.setStart(node, offset);
-                range.setEnd(node, offset + 1);
-                const followingWalker = document.createTreeWalker(following, NodeFilter.SHOW_TEXT);
-                let followingNode = null;
-                while (followingWalker.nextNode()) {
-                  if ((followingWalker.currentNode.nodeValue || '').includes('Following')) {
-                    followingNode = followingWalker.currentNode;
-                    break;
-                  }
-                }
-                if (!followingNode) return null;
-                const followingRange = document.createRange();
-                followingRange.setStart(followingNode, followingNode.nodeValue.indexOf('Following'));
-                followingRange.setEnd(followingNode, followingNode.nodeValue.indexOf('Following') + 1);
-                return {
-                  headingTop: heading.getBoundingClientRect().top,
-                  headingHeight: heading.getBoundingClientRect().height,
-                  titleLeft: range.getBoundingClientRect().left,
-                  followingTop: following.getBoundingClientRect().top,
-                  followingLeft: followingRange.getBoundingClientRect().left,
-                  markerLeft: heading.querySelector('.cm-live-heading-source-marker')
-                    ?.getBoundingClientRect().left ?? -1,
-                  markerRight: heading.querySelector('.cm-live-heading-source-marker')
-                    ?.getBoundingClientRect().right ?? -1
-                };
-                """,
-                arguments: ["headingText": heading]
-            ) as? [String: Any])
+            let value = try #require(
+                try await harness.callPageJavaScript(
+                    """
+                    await new Promise(resolve => { requestAnimationFrame(() => requestAnimationFrame(resolve)); setTimeout(resolve, 200); });
+                    // This probe asserts final geometry/color, not animation timing.
+                    // Background WebKit windows may suspend their animation clock.
+                    for (const node of document.querySelectorAll('.cm-syntax-token')) {
+                        for (const animation of node.getAnimations()) animation.finish();
+                    }
+                    const heading = document.querySelector('.cm-live-h1');
+                    const following = Array.from(document.querySelectorAll('.cm-line'))
+                      .find(line => (line.textContent || '').includes('Following paragraph.'));
+                    if (!heading || !following) return null;
+                    const walker = document.createTreeWalker(heading, NodeFilter.SHOW_TEXT);
+                    let node = null;
+                    while (walker.nextNode()) {
+                      if ((walker.currentNode.nodeValue || '').includes(headingText)) {
+                        node = walker.currentNode;
+                        break;
+                      }
+                    }
+                    if (!node) return null;
+                    const offset = node.nodeValue.indexOf(headingText);
+                    const range = document.createRange();
+                    range.setStart(node, offset);
+                    range.setEnd(node, offset + 1);
+                    const followingWalker = document.createTreeWalker(following, NodeFilter.SHOW_TEXT);
+                    let followingNode = null;
+                    while (followingWalker.nextNode()) {
+                      if ((followingWalker.currentNode.nodeValue || '').includes('Following')) {
+                        followingNode = followingWalker.currentNode;
+                        break;
+                      }
+                    }
+                    if (!followingNode) return null;
+                    const followingRange = document.createRange();
+                    followingRange.setStart(followingNode, followingNode.nodeValue.indexOf('Following'));
+                    followingRange.setEnd(followingNode, followingNode.nodeValue.indexOf('Following') + 1);
+                    return {
+                      headingTop: heading.getBoundingClientRect().top,
+                      headingHeight: heading.getBoundingClientRect().height,
+                      titleLeft: range.getBoundingClientRect().left,
+                      followingTop: following.getBoundingClientRect().top,
+                      followingLeft: followingRange.getBoundingClientRect().left,
+                      markerLeft: heading.querySelector('.cm-live-heading-source-marker')
+                        ?.getBoundingClientRect().left ?? -1,
+                      markerRight: heading.querySelector('.cm-live-heading-source-marker')
+                        ?.getBoundingClientRect().right ?? -1
+                    };
+                    """,
+                    arguments: ["headingText": heading]
+                ) as? [String: Any])
             return [
                 "headingTop": try #require(value["headingTop"] as? NSNumber).doubleValue,
                 "headingHeight": try #require(value["headingHeight"] as? NSNumber).doubleValue,
@@ -4032,34 +4165,36 @@ struct MarkdownEditorWebViewIntegrationTests {
         try await harness.waitUntilReady()
 
         func geometry() async throws -> [String: Double] {
-            let value = try #require(try await harness.callPageJavaScript(
-                """
-                const quote = document.querySelector('.cm-live-quote');
-                const following = Array.from(document.querySelectorAll('.cm-line'))
-                  .find(line => (line.textContent || '').includes('Following paragraph.'));
-                if (!quote || !following) return null;
-                const textNode = Array.from(quote.childNodes)
-                  .find(node => (node.textContent || '').includes(quotationText));
-                if (!textNode) return null;
-                const textRange = document.createRange();
-                const textOffset = textNode.textContent.indexOf(quotationText);
-                textRange.setStart(textNode, textOffset);
-                textRange.setEnd(textNode, textOffset + 1);
-                const marker = quote.querySelector('.cm-live-quote-source-marker');
-                return {
-                  quoteTop: quote.getBoundingClientRect().top,
-                  quoteHeight: quote.getBoundingClientRect().height,
-                  textLeft: textRange.getBoundingClientRect().left,
-                  followingTop: following.getBoundingClientRect().top,
-                  markerLeft: marker?.getBoundingClientRect().left ?? -1,
-                  markerRight: marker?.getBoundingClientRect().right ?? -1
-                };
-                """,
-                arguments: ["quotationText": quotation]
-            ) as? [String: Any])
-            return try Dictionary(uniqueKeysWithValues: value.map { key, rawValue in
-                (key, try #require(rawValue as? NSNumber).doubleValue)
-            })
+            let value = try #require(
+                try await harness.callPageJavaScript(
+                    """
+                    const quote = document.querySelector('.cm-live-quote');
+                    const following = Array.from(document.querySelectorAll('.cm-line'))
+                      .find(line => (line.textContent || '').includes('Following paragraph.'));
+                    if (!quote || !following) return null;
+                    const textNode = Array.from(quote.childNodes)
+                      .find(node => (node.textContent || '').includes(quotationText));
+                    if (!textNode) return null;
+                    const textRange = document.createRange();
+                    const textOffset = textNode.textContent.indexOf(quotationText);
+                    textRange.setStart(textNode, textOffset);
+                    textRange.setEnd(textNode, textOffset + 1);
+                    const marker = quote.querySelector('.cm-live-quote-source-marker');
+                    return {
+                      quoteTop: quote.getBoundingClientRect().top,
+                      quoteHeight: quote.getBoundingClientRect().height,
+                      textLeft: textRange.getBoundingClientRect().left,
+                      followingTop: following.getBoundingClientRect().top,
+                      markerLeft: marker?.getBoundingClientRect().left ?? -1,
+                      markerRight: marker?.getBoundingClientRect().right ?? -1
+                    };
+                    """,
+                    arguments: ["quotationText": quotation]
+                ) as? [String: Any])
+            return try Dictionary(
+                uniqueKeysWithValues: value.map { key, rawValue in
+                    (key, try #require(rawValue as? NSNumber).doubleValue)
+                })
         }
 
         harness.session.revealSourceRange(fromUTF16: followingFrom, toUTF16: followingFrom)
@@ -4107,19 +4242,20 @@ struct MarkdownEditorWebViewIntegrationTests {
                 stage: "active H\(level) source"
             )
 
-            let activePresentation = try #require(try await harness.callPageJavaScript(
-                """
-                const line = Array.from(document.querySelectorAll(selector))
-                  .find(candidate => (candidate.textContent || '').includes(label));
-                const sourceMarker = line?.querySelector('.cm-live-heading-source-marker');
-                return line && sourceMarker ? {
-                  text: line.textContent || '',
-                  headingFontSize: Number.parseFloat(getComputedStyle(line).fontSize),
-                  markerFontSize: Number.parseFloat(getComputedStyle(sourceMarker).fontSize)
-                } : null;
-                """,
-                arguments: ["selector": ".cm-live-h\(level)", "label": label]
-            ) as? [String: Any])
+            let activePresentation = try #require(
+                try await harness.callPageJavaScript(
+                    """
+                    const line = Array.from(document.querySelectorAll(selector))
+                      .find(candidate => (candidate.textContent || '').includes(label));
+                    const sourceMarker = line?.querySelector('.cm-live-heading-source-marker');
+                    return line && sourceMarker ? {
+                      text: line.textContent || '',
+                      headingFontSize: Number.parseFloat(getComputedStyle(line).fontSize),
+                      markerFontSize: Number.parseFloat(getComputedStyle(sourceMarker).fontSize)
+                    } : null;
+                    """,
+                    arguments: ["selector": ".cm-live-h\(level)", "label": label]
+                ) as? [String: Any])
             #expect(activePresentation["text"] as? String == marker + label)
             let headingFontSize = try #require(
                 activePresentation["headingFontSize"] as? NSNumber
@@ -4130,19 +4266,21 @@ struct MarkdownEditorWebViewIntegrationTests {
             #expect(abs(headingFontSize - markerFontSize) < 0.02)
 
             try await harness.session.focusTitleAndWait()
-            #expect(try await harness.callPageJavaScript(
-                "return document.activeElement?.matches('.scholium-note-title-input') === true"
-            ) as? Bool == true)
-            let inactiveText = try await harness.callPageJavaScript(
-                """
-                const line = Array.from(document.querySelectorAll(selector))
-                  .find(candidate => (candidate.textContent || '').includes(label));
-                const copy = line?.cloneNode(true);
-                copy?.querySelectorAll('[data-syntax-open="false"]').forEach(node => node.remove());
-                return copy?.textContent || '';
-                """,
-                arguments: ["selector": ".cm-live-h\(level)", "label": label]
-            ) as? String
+            #expect(
+                try await harness.callPageJavaScript(
+                    "return document.activeElement?.matches('.scholium-note-title-input') === true"
+                ) as? Bool == true)
+            let inactiveText =
+                try await harness.callPageJavaScript(
+                    """
+                    const line = Array.from(document.querySelectorAll(selector))
+                      .find(candidate => (candidate.textContent || '').includes(label));
+                    const copy = line?.cloneNode(true);
+                    copy?.querySelectorAll('[data-syntax-open="false"]').forEach(node => node.remove());
+                    return copy?.textContent || '';
+                    """,
+                    arguments: ["selector": ".cm-live-h\(level)", "label": label]
+                ) as? String
             #expect(inactiveText == label)
         }
 
@@ -4154,7 +4292,8 @@ struct MarkdownEditorWebViewIntegrationTests {
     @Test("Edit whitespace occupies exact width and prose uses editorial line breaking")
     func editWhitespaceAndLineBreakingFollowEditorialRules() async throws {
         let source = "Reasons, fittingness, motivation, and value remain distinct as neutral vocabulary.\n"
-        let insertion = try #require(source.range(of: " neutral"))
+        let insertion =
+            try #require(source.range(of: " neutral"))
             .lowerBound.utf16Offset(in: source) + 1
         let harness = EditorHarness(
             source: source,
@@ -4165,28 +4304,29 @@ struct MarkdownEditorWebViewIntegrationTests {
         try await harness.waitUntilReady()
 
         func neutralPosition() async throws -> (left: Double, top: Double) {
-            let value = try #require(try await harness.callPageJavaScript(
-                """
-                const line = Array.from(document.querySelectorAll('.cm-line'))
-                  .find(candidate => (candidate.textContent || '').includes('neutral vocabulary'));
-                if (!line) return null;
-                const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
-                let node = null;
-                while (walker.nextNode()) {
-                  if ((walker.currentNode.nodeValue || '').includes('neutral')) {
-                    node = walker.currentNode;
-                    break;
-                  }
-                }
-                if (!node) return null;
-                const offset = node.nodeValue.indexOf('neutral');
-                const range = document.createRange();
-                range.setStart(node, offset);
-                range.setEnd(node, offset + 1);
-                const rect = range.getBoundingClientRect();
-                return {left: rect.left, top: rect.top};
-                """
-            ) as? [String: Any])
+            let value = try #require(
+                try await harness.callPageJavaScript(
+                    """
+                    const line = Array.from(document.querySelectorAll('.cm-line'))
+                      .find(candidate => (candidate.textContent || '').includes('neutral vocabulary'));
+                    if (!line) return null;
+                    const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+                    let node = null;
+                    while (walker.nextNode()) {
+                      if ((walker.currentNode.nodeValue || '').includes('neutral')) {
+                        node = walker.currentNode;
+                        break;
+                      }
+                    }
+                    if (!node) return null;
+                    const offset = node.nodeValue.indexOf('neutral');
+                    const range = document.createRange();
+                    range.setStart(node, offset);
+                    range.setEnd(node, offset + 1);
+                    const rect = range.getBoundingClientRect();
+                    return {left: rect.left, top: rect.top};
+                    """
+                ) as? [String: Any])
             return (
                 try #require(value["left"] as? NSNumber).doubleValue,
                 try #require(value["top"] as? NSNumber).doubleValue
@@ -4194,47 +4334,49 @@ struct MarkdownEditorWebViewIntegrationTests {
         }
 
         let before = try await neutralPosition()
-        let alignmentBefore = try await harness.callPageJavaScript(
-            "return getComputedStyle(document.querySelector('.cm-content')).textAlign"
-        ) as? String
+        let alignmentBefore =
+            try await harness.callPageJavaScript(
+                "return getComputedStyle(document.querySelector('.cm-content')).textAlign"
+            ) as? String
         #expect(alignmentBefore == "start")
 
         try await harness.session.perform(.pastePlain, argument: " ")
         try await harness.waitUntilSelection(head: insertion + 1, stage: "second exact space")
-        let result = try #require(try await harness.callPageJavaScript(
-            """
-            const content = document.querySelector('.cm-content');
-            const line = Array.from(document.querySelectorAll('.cm-line'))
-              .find(candidate => (candidate.textContent || '').includes('neutral vocabulary'));
-            if (!content || !line) return null;
-            const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
-            let node = null;
-            while (walker.nextNode()) {
-              if ((walker.currentNode.nodeValue || '').includes('  neutral')) {
-                node = walker.currentNode;
-                break;
-              }
-            }
-            if (!node) return null;
-            const offset = node.nodeValue.indexOf('  neutral') + 1;
-            const range = document.createRange();
-            range.setStart(node, offset);
-            range.setEnd(node, offset + 1);
-            const rect = range.getBoundingClientRect();
-            const style = getComputedStyle(content);
-            return {
-              whiteSpace: style.whiteSpace,
-              wordBreak: style.wordBreak,
-              overflowWrap: style.overflowWrap,
-              lineBreak: style.lineBreak,
-              insertedSpaceWidth: rect.width,
-              insertedSpaceHeight: rect.height,
-              visibleSpaceMarkerCount: document.querySelectorAll(
-                '.cm-live-authored-extra-space'
-              ).length
-            };
-            """
-        ) as? [String: Any])
+        let result = try #require(
+            try await harness.callPageJavaScript(
+                """
+                const content = document.querySelector('.cm-content');
+                const line = Array.from(document.querySelectorAll('.cm-line'))
+                  .find(candidate => (candidate.textContent || '').includes('neutral vocabulary'));
+                if (!content || !line) return null;
+                const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+                let node = null;
+                while (walker.nextNode()) {
+                  if ((walker.currentNode.nodeValue || '').includes('  neutral')) {
+                    node = walker.currentNode;
+                    break;
+                  }
+                }
+                if (!node) return null;
+                const offset = node.nodeValue.indexOf('  neutral') + 1;
+                const range = document.createRange();
+                range.setStart(node, offset);
+                range.setEnd(node, offset + 1);
+                const rect = range.getBoundingClientRect();
+                const style = getComputedStyle(content);
+                return {
+                  whiteSpace: style.whiteSpace,
+                  wordBreak: style.wordBreak,
+                  overflowWrap: style.overflowWrap,
+                  lineBreak: style.lineBreak,
+                  insertedSpaceWidth: rect.width,
+                  insertedSpaceHeight: rect.height,
+                  visibleSpaceMarkerCount: document.querySelectorAll(
+                    '.cm-live-authored-extra-space'
+                  ).length
+                };
+                """
+            ) as? [String: Any])
         #expect(result["whiteSpace"] as? String == "break-spaces")
         #expect(result["wordBreak"] as? String == "normal")
         #expect(result["overflowWrap"] as? String == "break-word")
@@ -4244,8 +4386,9 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(result["visibleSpaceMarkerCount"] as? Int == 0)
         let after = try await neutralPosition()
         #expect(abs(after.left - before.left) > 1 || abs(after.top - before.top) > 1)
-        #expect(try await harness.session.currentText(for: harness.documentID)
-            == source.replacingOccurrences(of: " neutral", with: "  neutral"))
+        #expect(
+            try await harness.session.currentText(for: harness.documentID)
+                == source.replacingOccurrences(of: " neutral", with: "  neutral"))
 
         harness.session.revealSourceRange(
             fromUTF16: insertion,
@@ -4266,12 +4409,14 @@ struct MarkdownEditorWebViewIntegrationTests {
         let restored = try await neutralPosition()
         #expect(abs(restored.left - before.left) < 0.5)
         #expect(abs(restored.top - before.top) < 0.5)
-        #expect(try await harness.callPageJavaScript(
-            "return document.querySelectorAll('.cm-live-authored-extra-space').length"
-        ) as? Int == 0)
-        #expect(try await harness.callPageJavaScript(
-            "return getComputedStyle(document.querySelector('.cm-content')).textAlign"
-        ) as? String == alignmentBefore)
+        #expect(
+            try await harness.callPageJavaScript(
+                "return document.querySelectorAll('.cm-live-authored-extra-space').length"
+            ) as? Int == 0)
+        #expect(
+            try await harness.callPageJavaScript(
+                "return getComputedStyle(document.querySelector('.cm-content')).textAlign"
+            ) as? String == alignmentBefore)
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
         await harness.closeAndDrain()
     }
@@ -4279,57 +4424,59 @@ struct MarkdownEditorWebViewIntegrationTests {
     @Test("Inactive Edit keeps punctuation with a projected footnote locator")
     func editFootnoteLocatorDoesNotOrphanPunctuation() async throws {
         let source = "A philosophical claim[^note].\n\n[^note]: Supporting qualification.\n"
-        let punctuationOffset = try #require(source.range(of: "[^note]."))
+        let punctuationOffset =
+            try #require(source.range(of: "[^note]."))
             .lowerBound.utf16Offset(in: source) + "[^note]".utf16.count
         let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
         defer { harness.close() }
         try await harness.waitUntilReady()
 
-        let result = try #require(try await harness.callPageJavaScript(
-            """
-            const line = Array.from(document.querySelectorAll('.cm-line'))
-              .find(candidate => candidate.querySelector('.cm-live-footnote-reference-widget'));
-            const reference = line?.querySelector('.cm-live-footnote-reference-widget');
-            const cluster = reference?.closest('.footnote-reference-cluster');
-            if (!line || !reference || !cluster) return {
-              orphanWidth: -1,
-              clusterWhiteSpace: '',
-              html: line?.innerHTML || ''
-            };
-            const walker = document.createTreeWalker(cluster, NodeFilter.SHOW_TEXT);
-            let punctuationNode = null;
-            while (walker.nextNode()) {
-              if ((walker.currentNode.nodeValue || '').includes('.')) {
-                punctuationNode = walker.currentNode;
-                break;
-              }
-            }
-            if (!punctuationNode) return null;
-            const punctuationOffset = punctuationNode.nodeValue.indexOf('.');
-            const punctuationRange = document.createRange();
-            punctuationRange.setStart(punctuationNode, punctuationOffset);
-            punctuationRange.setEnd(punctuationNode, punctuationOffset + 1);
-            line.style.inlineSize = '360px';
-            const sameLineOffset = punctuationRange.getBoundingClientRect().top
-              - reference.getBoundingClientRect().top;
-            const lineHeight = Number.parseFloat(getComputedStyle(line).lineHeight) || 20;
-            let orphanWidth = 0;
-            for (let width = 48; width <= 360; width += 1) {
-              line.style.inlineSize = width + 'px';
-              const referenceTop = reference.getBoundingClientRect().top;
-              const punctuationTop = punctuationRange.getBoundingClientRect().top;
-              if (punctuationTop - referenceTop > sameLineOffset + lineHeight / 2) {
-                orphanWidth = width;
-                break;
-              }
-            }
-            line.style.inlineSize = '';
-            return {
-              orphanWidth,
-              clusterWhiteSpace: getComputedStyle(cluster).whiteSpace
-            };
-            """
-        ) as? [String: Any])
+        let result = try #require(
+            try await harness.callPageJavaScript(
+                """
+                const line = Array.from(document.querySelectorAll('.cm-line'))
+                  .find(candidate => candidate.querySelector('.cm-live-footnote-reference-widget'));
+                const reference = line?.querySelector('.cm-live-footnote-reference-widget');
+                const cluster = reference?.closest('.footnote-reference-cluster');
+                if (!line || !reference || !cluster) return {
+                  orphanWidth: -1,
+                  clusterWhiteSpace: '',
+                  html: line?.innerHTML || ''
+                };
+                const walker = document.createTreeWalker(cluster, NodeFilter.SHOW_TEXT);
+                let punctuationNode = null;
+                while (walker.nextNode()) {
+                  if ((walker.currentNode.nodeValue || '').includes('.')) {
+                    punctuationNode = walker.currentNode;
+                    break;
+                  }
+                }
+                if (!punctuationNode) return null;
+                const punctuationOffset = punctuationNode.nodeValue.indexOf('.');
+                const punctuationRange = document.createRange();
+                punctuationRange.setStart(punctuationNode, punctuationOffset);
+                punctuationRange.setEnd(punctuationNode, punctuationOffset + 1);
+                line.style.inlineSize = '360px';
+                const sameLineOffset = punctuationRange.getBoundingClientRect().top
+                  - reference.getBoundingClientRect().top;
+                const lineHeight = Number.parseFloat(getComputedStyle(line).lineHeight) || 20;
+                let orphanWidth = 0;
+                for (let width = 48; width <= 360; width += 1) {
+                  line.style.inlineSize = width + 'px';
+                  const referenceTop = reference.getBoundingClientRect().top;
+                  const punctuationTop = punctuationRange.getBoundingClientRect().top;
+                  if (punctuationTop - referenceTop > sameLineOffset + lineHeight / 2) {
+                    orphanWidth = width;
+                    break;
+                  }
+                }
+                line.style.inlineSize = '';
+                return {
+                  orphanWidth,
+                  clusterWhiteSpace: getComputedStyle(cluster).whiteSpace
+                };
+                """
+            ) as? [String: Any])
         #expect(result["orphanWidth"] as? Int == 0, Comment(rawValue: "\(result)"))
         #expect(result["clusterWhiteSpace"] as? String == "nowrap")
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
@@ -4343,21 +4490,23 @@ struct MarkdownEditorWebViewIntegrationTests {
             head: punctuationOffset,
             stage: "footnote punctuation source reveal"
         )
-        let revealed = try await harness.callPageJavaScript(
-            """
-            const line = Array.from(document.querySelectorAll('.cm-line'))
-              .find(candidate => (candidate.textContent || '').includes('[^note].'));
-            return Boolean(line)
-              && !line.querySelector('.cm-live-footnote-reference-widget');
-            """
-        ) as? Bool
+        let revealed =
+            try await harness.callPageJavaScript(
+                """
+                const line = Array.from(document.querySelectorAll('.cm-line'))
+                  .find(candidate => (candidate.textContent || '').includes('[^note].'));
+                return Boolean(line)
+                  && !line.querySelector('.cm-live-footnote-reference-widget');
+                """
+            ) as? Bool
         #expect(revealed == true)
         await harness.closeAndDrain()
     }
 
     @Test("A document-start editor anchor keeps the projected title visible")
     func documentStartEditorAnchorKeepsTitleVisible() async throws {
-        let source = (1...80).map { "Research paragraph \($0) remains available." }
+        let source =
+            (1...80).map { "Research paragraph \($0) remains available." }
             .joined(separator: "\n") + "\n"
         let harness = EditorHarness(
             documentTitle: "Reasons and Emotional Attitudes",
@@ -4367,32 +4516,34 @@ struct MarkdownEditorWebViewIntegrationTests {
         defer { harness.close() }
         try await harness.waitUntilReady()
         let firstLineUpperBound = source.firstIndex(of: "\n")?.utf16Offset(in: source) ?? 0
-        try await harness.session.testingApplyScrollAnchor(EditorScrollAnchor(
-            sourceFingerprint: DocumentFingerprint(content: source).sha256,
-            sourceUTF16Offset: 0,
-            blockUTF16LowerBound: 0,
-            blockUTF16UpperBound: firstLineUpperBound,
-            relativeBlockPosition: 0,
-            fallbackFraction: 0
-        ))
+        try await harness.session.testingApplyScrollAnchor(
+            EditorScrollAnchor(
+                sourceFingerprint: DocumentFingerprint(content: source).sha256,
+                sourceUTF16Offset: 0,
+                blockUTF16LowerBound: 0,
+                blockUTF16UpperBound: firstLineUpperBound,
+                relativeBlockPosition: 0,
+                fallbackFraction: 0
+            ))
         try await Task.sleep(for: .milliseconds(150))
 
-        let result = try #require(try await harness.callPageJavaScript(
-            """
-            const scroller = document.querySelector('.cm-scroller');
-            const title = document.querySelector('.scholium-note-title');
-            if (!scroller || !title) return null;
-            const scrollerRect = scroller.getBoundingClientRect();
-            const titleRect = title.getBoundingClientRect();
-            return {
-              scrollTop: scroller.scrollTop,
-              titleTop: titleRect.top,
-              titleBottom: titleRect.bottom,
-              viewportTop: scrollerRect.top,
-              viewportBottom: scrollerRect.bottom
-            };
-            """
-        ) as? [String: Any])
+        let result = try #require(
+            try await harness.callPageJavaScript(
+                """
+                const scroller = document.querySelector('.cm-scroller');
+                const title = document.querySelector('.scholium-note-title');
+                if (!scroller || !title) return null;
+                const scrollerRect = scroller.getBoundingClientRect();
+                const titleRect = title.getBoundingClientRect();
+                return {
+                  scrollTop: scroller.scrollTop,
+                  titleTop: titleRect.top,
+                  titleBottom: titleRect.bottom,
+                  viewportTop: scrollerRect.top,
+                  viewportBottom: scrollerRect.bottom
+                };
+                """
+            ) as? [String: Any])
         let scrollTop = (result["scrollTop"] as? NSNumber)?.doubleValue ?? 100
         let titleTop = (result["titleTop"] as? NSNumber)?.doubleValue ?? 10_000
         let titleBottom = (result["titleBottom"] as? NSNumber)?.doubleValue ?? 0
@@ -4407,7 +4558,8 @@ struct MarkdownEditorWebViewIntegrationTests {
     @Test("An authored separator line owns semantic block spacing and pointer entry")
     func authoredSeparatorLineOwnsSemanticBlockGap() async throws {
         let source = "Lead paragraph.\n\n> Quoted paragraph.\n> Continued quotation.\n\nFollowing paragraph.\n"
-        let blankOffset = try #require(source.range(of: "\n\n"))
+        let blankOffset =
+            try #require(source.range(of: "\n\n"))
             .lowerBound.utf16Offset(in: source) + 1
         let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
         defer { harness.close() }
@@ -4427,12 +4579,12 @@ struct MarkdownEditorWebViewIntegrationTests {
     @Test("Raw HTML switches between an inert projection and exact editable source")
     func rawHTMLProjectionRevealsExactSourceOnlyWhileActive() async throws {
         let source = """
-        # Raw HTML boundary
+            # Raw HTML boundary
 
-        <section data-fixture="raw-html">Literal source.</section>
+            <section data-fixture="raw-html">Literal source.</section>
 
-        Following paragraph.
-        """
+            Following paragraph.
+            """
         let htmlFrom = try #require(source.range(of: "<section"))
             .lowerBound.utf16Offset(in: source)
         let harness = EditorHarness(source: source)
@@ -4460,18 +4612,18 @@ struct MarkdownEditorWebViewIntegrationTests {
     @Test("A Callout click edits the requested passage before Backspace")
     func calloutPointerBackspaceCannotDeleteThePrecedingBlock() async throws {
         let source = """
-        # Interaction boundary
+            # Interaction boundary
 
-        > [!orient] Reading route
-        > This synthetic note exercises the complete Scholium editing dialect.
+            > [!orient] Reading route
+            > This synthetic note exercises the complete Scholium editing dialect.
 
-        > [!cite]- Synthetic source boundary
-        > No real publication or quotation is represented here.
-        """
+            > [!cite]- Synthetic source boundary
+            > No real publication or quotation is represented here.
+            """
         let firstCalloutSource = """
-        > [!orient] Reading route
-        > This synthetic note exercises the complete Scholium editing dialect.
-        """
+            > [!orient] Reading route
+            > This synthetic note exercises the complete Scholium editing dialect.
+            """
         let calloutRange = try #require(source.range(of: firstCalloutSource))
         let calloutFrom = calloutRange.lowerBound.utf16Offset(in: source)
         let calloutTo = calloutRange.upperBound.utf16Offset(in: source)
@@ -4502,7 +4654,8 @@ struct MarkdownEditorWebViewIntegrationTests {
 
     @Test("Source soft-wraps exact logical lines without changing their text or numbering")
     func sourceSoftWrapPreservesExactLogicalLines() async throws {
-        let longLine = "SOFT_WRAP_PROBE "
+        let longLine =
+            "SOFT_WRAP_PROBE "
             + Array(repeating: "exact-source-token", count: 80).joined(separator: " ")
         let source = "---\r\ntitle: Soft Wrap\r\n---\r\n\(longLine)\r\nFinal logical line.\r\n"
         let normalizedSource = source.replacingOccurrences(of: "\r\n", with: "\n")
@@ -4521,9 +4674,10 @@ struct MarkdownEditorWebViewIntegrationTests {
                 && $0.lineWrappingEnabled
                 && $0.softWrapProbeHeight > 0
         }
-        let sourceLineHeight = Double(
-            sourceMode.presentation.documentLineHeight.replacingOccurrences(of: "px", with: "")
-        ) ?? 0
+        let sourceLineHeight =
+            Double(
+                sourceMode.presentation.documentLineHeight.replacingOccurrences(of: "px", with: "")
+            ) ?? 0
         #expect(sourceLineHeight > 0)
         #expect(sourceMode.softWrapProbeHeight > sourceLineHeight * 2)
 
@@ -4555,21 +4709,23 @@ struct MarkdownEditorWebViewIntegrationTests {
         let catalogBody = String(catalogSource[catalogStart.upperBound..<catalogEnd.lowerBound])
         let catalogExpression = try NSRegularExpression(pattern: #""([^"]+)""#)
         let catalogNSString = catalogBody as NSString
-        let webTokens = Set<String>(catalogExpression.matches(
-            in: catalogBody,
-            range: NSRange(location: 0, length: catalogNSString.length)
-        ).compactMap { match in
-            guard match.numberOfRanges == 2 else { return nil }
-            return catalogNSString.substring(with: match.range(at: 1))
-        })
+        let webTokens = Set<String>(
+            catalogExpression.matches(
+                in: catalogBody,
+                range: NSRange(location: 0, length: catalogNSString.length)
+            ).compactMap { match in
+                guard match.numberOfRanges == 2 else { return nil }
+                return catalogNSString.substring(with: match.range(at: 1))
+            })
         #expect(webTokens == Set(ScholiumSystemSymbol.allCases.map(\.webToken)))
 
         let css = ScholiumWebSymbolAssets.cssVariables
         for symbol in ScholiumSystemSymbol.allCases {
-            let image = try #require(NSImage(
-                systemSymbolName: symbol.systemName,
-                accessibilityDescription: nil
-            )?.withSymbolConfiguration(.init(pointSize: 16, weight: .regular)))
+            let image = try #require(
+                NSImage(
+                    systemSymbolName: symbol.systemName,
+                    accessibilityDescription: nil
+                )?.withSymbolConfiguration(.init(pointSize: 16, weight: .regular)))
             let prefix = "data:image/png;base64,"
             let dataURI = ScholiumWebSymbolAssets.dataURI(for: symbol)
             #expect(dataURI.hasPrefix(prefix))
@@ -4586,7 +4742,8 @@ struct MarkdownEditorWebViewIntegrationTests {
         let source = "Intro.\n\n> [!state] Related\n> [[Target]]\n\n[[Support]]{{First **reason**.\n\n- Second reason.}}\n"
         let targetOffset = try #require(source.range(of: "[[Target]]")?.lowerBound)
             .utf16Offset(in: source)
-        let harness = EditorHarness(source: source,
+        let harness = EditorHarness(
+            source: source,
             linkPreviews: [Self.linkPreview(atUTF16: targetOffset)], laysOutForPointerTesting: true)
         defer { harness.close() }
         try await harness.waitUntilReady()
@@ -4600,45 +4757,53 @@ struct MarkdownEditorWebViewIntegrationTests {
             const button = document.querySelector('.scholium-link-annotation-button');
             """
         #expect(try await harness.callPageJavaScript(anchors + "return !!targetLink && !!button;") as? Bool == true)
-        _ = try await harness.callPageJavaScript(anchors + """
-            targetLink.dispatchEvent(new PointerEvent('pointermove', {bubbles: true}));
-            await new Promise(resolve => setTimeout(resolve, 350));
-            """)
+        _ = try await harness.callPageJavaScript(
+            anchors + """
+                targetLink.dispatchEvent(new PointerEvent('pointermove', {bubbles: true}));
+                await new Promise(resolve => setTimeout(resolve, 350));
+                """)
         #expect(harness.session.floatingSurfaces.previewWebView == nil)
-        _ = try await harness.callPageJavaScript("""
+        _ = try await harness.callPageJavaScript(
+            """
             document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Meta', metaKey: true, bubbles: true}));
             """)
         _ = try await harness.waitUntilPresentation(stage: "Command after pointer entry") {
             !$0.previewPopoverHidden && $0.previewTitle == "Target note"
         }
-        #expect(try await harness.callPageJavaScript(anchors + """
-            const style = getComputedStyle(targetLink);
-            return targetLink.classList.contains('scholium-link-preview-armed')
-              && style.cursor === 'pointer' && style.textDecorationLine.includes('underline');
-            """) as? Bool == true)
-        _ = try await harness.callPageJavaScript("""
+        #expect(
+            try await harness.callPageJavaScript(
+                anchors + """
+                    const style = getComputedStyle(targetLink);
+                    return targetLink.classList.contains('scholium-link-preview-armed')
+                      && style.cursor === 'pointer' && style.textDecorationLine.includes('underline');
+                    """) as? Bool == true)
+        _ = try await harness.callPageJavaScript(
+            """
             document.dispatchEvent(new KeyboardEvent('keyup', {key: 'Meta', bubbles: true}));
             document.body.dispatchEvent(new PointerEvent('pointermove', {bubbles: true}));
             """)
         _ = try await harness.waitUntilPresentation(stage: "released Command") { $0.previewPopoverHidden }
-        _ = try await harness.callPageJavaScript(anchors + """
-            document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Meta', metaKey: true, bubbles: true}));
-            targetLink.dispatchEvent(new PointerEvent('pointermove', {bubbles: true}));
-            """)
+        _ = try await harness.callPageJavaScript(
+            anchors + """
+                document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Meta', metaKey: true, bubbles: true}));
+                targetLink.dispatchEvent(new PointerEvent('pointermove', {bubbles: true}));
+                """)
         _ = try await harness.waitUntilPresentation(stage: "Command before pointer entry") {
             !$0.previewPopoverHidden && $0.previewTitle == "Target note"
         }
-        _ = try await harness.callPageJavaScript(anchors + """
-            document.dispatchEvent(new KeyboardEvent('keyup', {key: 'Meta', bubbles: true}));
-            button.dispatchEvent(new MouseEvent('click', {bubbles: true}));
-            """)
+        _ = try await harness.callPageJavaScript(
+            anchors + """
+                document.dispatchEvent(new KeyboardEvent('keyup', {key: 'Meta', bubbles: true}));
+                button.dispatchEvent(new MouseEvent('click', {bubbles: true}));
+                """)
         _ = try await harness.waitUntilPresentation(stage: "pinned native annotation") {
             !$0.previewPopoverHidden && $0.previewTitle == "Support"
         }
         let preview = try #require(harness.session.floatingSurfaces.previewWebView)
         #expect(try await preview.evaluateJavaScript("document.body.textContent.includes('Second reason.')") as? Bool == true)
         #expect(try await preview.evaluateJavaScript("document.querySelector('strong')?.textContent") as? String == "reason")
-        _ = try await harness.callPageJavaScript("""
+        _ = try await harness.callPageJavaScript(
+            """
             document.body.dispatchEvent(new PointerEvent('pointermove', {bubbles: true}));
             await new Promise(resolve => setTimeout(resolve, 220));
             """)
@@ -4651,9 +4816,11 @@ struct MarkdownEditorWebViewIntegrationTests {
         }
         _ = try await harness.callPageJavaScript(anchors + "button.blur();")
         _ = try await harness.waitUntilPresentation(stage: "annotation focus exit") { $0.previewPopoverHidden }
-        #expect(try await harness.callPageJavaScript("""
-            return document.querySelectorAll('#scholium-preview-popover, .scholium-link-annotation-panel').length;
-            """) as? Int == 0)
+        #expect(
+            try await harness.callPageJavaScript(
+                """
+                return document.querySelectorAll('#scholium-preview-popover, .scholium-link-annotation-panel').length;
+                """) as? Int == 0)
         #expect(owner.frame == frame)
         #expect(harness.session.context?.selections == selection)
         #expect(harness.session.context?.undoLabel == undo)
@@ -4685,10 +4852,11 @@ struct MarkdownEditorWebViewIntegrationTests {
             title: "Embedded note",
             syntax: .embed,
             fragment: nil,
-            htmlBody: "<h1>Embedded note</h1>" + String(
-                repeating: "<p>Complete projected paragraph.</p>",
-                count: 90
-            ) + "<p>Complete editor embedded tail</p>"
+            htmlBody: "<h1>Embedded note</h1>"
+                + String(
+                    repeating: "<p>Complete projected paragraph.</p>",
+                    count: 90
+                ) + "<p>Complete editor embedded tail</p>"
         )
         let harness = EditorHarness(
             source: source,
@@ -4702,34 +4870,35 @@ struct MarkdownEditorWebViewIntegrationTests {
         let deadline = clock.now.advanced(by: .seconds(5))
         var snapshot: [String: Any] = [:]
         while true {
-            snapshot = try #require(try await harness.callPageJavaScript(
-                """
-                const shell = document.querySelector('.cm-live-embedded-note-widget');
-                const viewport = shell?.querySelector('.scholium-embedded-note-viewport');
-                const body = shell?.querySelector('.scholium-embedded-note-body');
-                const open = shell?.querySelector('.scholium-embedded-note-open');
-                if (!shell || !viewport || !body || !open) {
-                  return {
-                    ready: false,
-                    contentText: document.querySelector('.cm-content')?.textContent || '',
-                    embedFallbacks: document.querySelectorAll('.cm-live-embed').length,
-                    replacementWidgets: document.querySelectorAll('.cm-widgetBuffer').length
-                  };
-                }
-                viewport.scrollTop = 160;
-                return {
-                  ready: true,
-                  bodyOwnsDocumentStyle: body.classList.contains('scholium-document'),
-                  duplicateTitleCount: [...body.querySelectorAll('h1')]
-                    .filter(heading => (heading.textContent || '').trim() === 'Embedded note').length,
-                  hasTail: (body.textContent || '').includes('Complete editor embedded tail'),
-                  scrolls: viewport.scrollHeight > viewport.clientHeight && viewport.scrollTop > 0,
-                  openBadgeCount: open.querySelectorAll('.scholium-system-symbol').length,
-                  viewportTabIndex: viewport.tabIndex,
-                  sourceLocatorCount: body.querySelectorAll('[data-source-utf16-start]').length
-                };
-                """
-            ) as? [String: Any])
+            snapshot = try #require(
+                try await harness.callPageJavaScript(
+                    """
+                    const shell = document.querySelector('.cm-live-embedded-note-widget');
+                    const viewport = shell?.querySelector('.scholium-embedded-note-viewport');
+                    const body = shell?.querySelector('.scholium-embedded-note-body');
+                    const open = shell?.querySelector('.scholium-embedded-note-open');
+                    if (!shell || !viewport || !body || !open) {
+                      return {
+                        ready: false,
+                        contentText: document.querySelector('.cm-content')?.textContent || '',
+                        embedFallbacks: document.querySelectorAll('.cm-live-embed').length,
+                        replacementWidgets: document.querySelectorAll('.cm-widgetBuffer').length
+                      };
+                    }
+                    viewport.scrollTop = 160;
+                    return {
+                      ready: true,
+                      bodyOwnsDocumentStyle: body.classList.contains('scholium-document'),
+                      duplicateTitleCount: [...body.querySelectorAll('h1')]
+                        .filter(heading => (heading.textContent || '').trim() === 'Embedded note').length,
+                      hasTail: (body.textContent || '').includes('Complete editor embedded tail'),
+                      scrolls: viewport.scrollHeight > viewport.clientHeight && viewport.scrollTop > 0,
+                      openBadgeCount: open.querySelectorAll('.scholium-system-symbol').length,
+                      viewportTabIndex: viewport.tabIndex,
+                      sourceLocatorCount: body.querySelectorAll('[data-source-utf16-start]').length
+                    };
+                    """
+                ) as? [String: Any])
             if snapshot["ready"] as? Bool == true { break }
             if clock.now >= deadline {
                 Issue.record("Edit did not install the finite embedded Note widget: \(snapshot).")
@@ -4770,8 +4939,9 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(harness.session.generation == 0)
 
         try await harness.session.perform(.bold)
-        #expect(try await harness.session.currentText(for: harness.documentID)
-            == "**Selected 中文 claim** remains exact.\n")
+        #expect(
+            try await harness.session.currentText(for: harness.documentID)
+                == "**Selected 中文 claim** remains exact.\n")
         #expect(harness.session.context?.undoLabel == "Bold")
         #expect(harness.session.generation == 1)
         try await harness.waitUntilFocused()
@@ -4780,8 +4950,9 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
         #expect(harness.session.generation == 2)
         try await harness.session.perform(.markdownComment)
-        #expect(try await harness.session.currentText(for: harness.documentID)
-            == "%% Selected 中文 claim %% remains exact.\n")
+        #expect(
+            try await harness.session.currentText(for: harness.documentID)
+                == "%% Selected 中文 claim %% remains exact.\n")
         #expect(harness.session.context?.undoLabel == "Markdown Comment")
         #expect(harness.session.generation == 3)
         #expect(try await harness.session.testingAccessibilitySnapshot().selectionActionsCount == 0)
@@ -4818,13 +4989,14 @@ struct MarkdownEditorWebViewIntegrationTests {
             mode: .livePreview,
             canPaste: true
         )
-        #expect(Array(selectedMenu.items.prefix(5)).map(\.identifier?.rawValue) == [
-            "scholium.editor.cut",
-            "scholium.editor.copy",
-            "scholium.editor.paste",
-            nil,
-            "scholium.editor.selectAll",
-        ])
+        #expect(
+            Array(selectedMenu.items.prefix(5)).map(\.identifier?.rawValue) == [
+                "scholium.editor.cut",
+                "scholium.editor.copy",
+                "scholium.editor.paste",
+                nil,
+                "scholium.editor.selectAll",
+            ])
         #expect(selectedMenu.item(withTitle: ScholiumL10n.string("Cut"))?.isEnabled == true)
         #expect(selectedMenu.item(withTitle: ScholiumL10n.string("Copy"))?.isEnabled == true)
         #expect(selectedMenu.item(withTitle: ScholiumL10n.string("Paste"))?.isEnabled == true)
@@ -4870,13 +5042,17 @@ struct MarkdownEditorWebViewIntegrationTests {
             name: NSPasteboard.Name("scholium-image-paste-\(UUID().uuidString)")
         )
         pasteboard.clearContents()
-        let png = try #require(Data(base64Encoded:
-            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
-        ))
+        let png = try #require(
+            Data(
+                base64Encoded:
+                    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+            ))
         #expect(pasteboard.setData(png, forType: .init("public.png")))
 
-        guard case .data(let data, let preferredFilename) =
-                WindowAttachedWebView.pastedImageSource(in: pasteboard) else {
+        guard
+            case .data(let data, let preferredFilename) =
+                WindowAttachedWebView.pastedImageSource(in: pasteboard)
+        else {
             Issue.record("Expected native PNG pasteboard bytes.")
             return
         }
@@ -4973,7 +5149,11 @@ struct MarkdownEditorWebViewIntegrationTests {
         try await Task.sleep(for: .seconds(2))
         let frontmatter = "---\r\ntitle: Fixture\r\n---\r\n"
         let longTail = (1...40).map { "Research paragraph \($0)." }.joined(separator: "\r\n") + "\r\n"
-        let original = frontmatter + "[[Target]]\r\nThesis\r\nSecond\r\n\r\n| **Claim** | Status | Count |\r\n|:---|:---:|---:|\r\n| Fittingness | Open | 2 |\r\n\r\nInline $x^2 + y^2$.\r\n\r\n$$\r\n\\int_0^1 x\\,dx\r\n$$\r\nClaim[^note] and inline ^[Inline note].\r\n\r\n[^note]: **Named** note\r\n  continued\r\n\r\n  - Outer item\r\n    - Nested item\r\n\r\n  > Quoted reason.\r\n\r\n  > [!state] Nested claim\r\n  > Body with $z$.\r\n\r\n  | Term | Value |\r\n  |:---|---:|\r\n  | $z$ | 3 |\r\n\r\n  $$\r\n  z^2\r\n  $$\r\n\r\n  ```swift\r\n  let value = 1\r\n  ```\r\n" + longTail + "\r\n## Shared heading\r\n\r\nA shared paragraph establishes the editorial measure.\r\n\r\n> [!state] Shared claim\r\n> The same callout must retain its typographic hierarchy.\r\n\r\nAfter shared callout.\r\n"
+        let original =
+            frontmatter
+            + "[[Target]]\r\nThesis\r\nSecond\r\n\r\n| **Claim** | Status | Count |\r\n|:---|:---:|---:|\r\n| Fittingness | Open | 2 |\r\n\r\nInline $x^2 + y^2$.\r\n\r\n$$\r\n\\int_0^1 x\\,dx\r\n$$\r\nClaim[^note] and inline ^[Inline note].\r\n\r\n[^note]: **Named** note\r\n  continued\r\n\r\n  - Outer item\r\n    - Nested item\r\n\r\n  > Quoted reason.\r\n\r\n  > [!state] Nested claim\r\n  > Body with $z$.\r\n\r\n  | Term | Value |\r\n  |:---|---:|\r\n  | $z$ | 3 |\r\n\r\n  $$\r\n  z^2\r\n  $$\r\n\r\n  ```swift\r\n  let value = 1\r\n  ```\r\n"
+            + longTail
+            + "\r\n## Shared heading\r\n\r\nA shared paragraph establishes the editorial measure.\r\n\r\n> [!state] Shared claim\r\n> The same callout must retain its typographic hierarchy.\r\n\r\nAfter shared callout.\r\n"
         let linkOffset = frontmatter.utf16.count
         let harness = EditorHarness(
             source: original,
@@ -4984,225 +5164,156 @@ struct MarkdownEditorWebViewIntegrationTests {
 
         var diagnosticStage = "initial readiness"
         do {
-        try await harness.waitUntilReady()
-        #expect(harness.session.isReady)
-        #expect(harness.session.isLoaded)
-        #expect(harness.session.documentID == harness.documentID)
-        #expect(harness.session.hasAttachedWebView)
-        let initial: String
-        do {
-            initial = try await harness.session.currentText(for: harness.documentID)
-        } catch {
-            Issue.record(Comment(rawValue: "Initial bridge query failed: \(error.localizedDescription)"))
-            return
-        }
-        #expect(initial == original)
+            try await harness.waitUntilReady()
+            #expect(harness.session.isReady)
+            #expect(harness.session.isLoaded)
+            #expect(harness.session.documentID == harness.documentID)
+            #expect(harness.session.hasAttachedWebView)
+            let initial: String
+            do {
+                initial = try await harness.session.currentText(for: harness.documentID)
+            } catch {
+                Issue.record(Comment(rawValue: "Initial bridge query failed: \(error.localizedDescription)"))
+                return
+            }
+            #expect(initial == original)
 
-        diagnosticStage = "initial focus handoff"
-        await harness.session.resignFocusAndWait()
-        do {
-            #expect(!(try await harness.session.testingAccessibilitySnapshot()).isFocused)
-        } catch {
-            Issue.record("The resigned-focus accessibility snapshot failed: \(error).")
-            throw error
-        }
-        harness.session.focus()
-        try await harness.waitUntilFocused()
+            diagnosticStage = "initial focus handoff"
+            await harness.session.resignFocusAndWait()
+            do {
+                #expect(!(try await harness.session.testingAccessibilitySnapshot()).isFocused)
+            } catch {
+                Issue.record("The resigned-focus accessibility snapshot failed: \(error).")
+                throw error
+            }
+            harness.session.focus()
+            try await harness.waitUntilFocused()
 
-        diagnosticStage = "initial semantic presentation"
-        let accessibility: MarkdownEditorSession.TestingAccessibilitySnapshot
-        do {
-            accessibility = try await harness.session.testingAccessibilitySnapshot()
-        } catch {
-            Issue.record("The initial accessibility snapshot failed: \(error).")
-            throw error
-        }
-        #expect(accessibility.contentEditableCount == 1)
-        #expect(accessibility.textboxCount == 1)
-        #expect(accessibility.label == "Markdown editor, Edit mode")
-        #expect(accessibility.multiline == "true")
-        #expect(!accessibility.hasValueText)
-        #expect(accessibility.spellcheck == "true")
-        #expect(accessibility.mathRuntimeVersion == 1)
-        #expect(accessibility.mathErrorCount == 0)
-        #expect(accessibility.displayMathOverflowX == "auto")
-        #expect(accessibility.frontmatterLineCount > 0)
-        #expect(accessibility.frontmatterVisibleHeight > 0)
-        #expect(accessibility.semanticTableCount == 1)
-        #expect(accessibility.liveTableSourceLineCount == 0)
-        #expect(accessibility.tableHeaderCount == 3)
-        #expect(accessibility.tableBodyCellCount == 3)
-        #expect(accessibility.tableStrongCount == 1)
-        #expect(accessibility.tableFirstHeaderText == "Claim")
-        #expect(accessibility.tableOverflowX == "auto")
-        #expect(accessibility.footnoteReferenceCount == 2)
-        #expect(accessibility.footnoteDefinitionSourceCount == 1)
-        #expect(accessibility.exactWikilinkSourceCount == 1)
-        #expect(accessibility.incompleteWikilinkSourceCount == 0)
-        let normalizedOriginal = original.replacingOccurrences(of: "\r\n", with: "\n")
-        let normalizedLines = normalizedOriginal.split(
-            separator: "\n",
-            omittingEmptySubsequences: false
-        )
-        let displayMathLine = try #require(
-            normalizedLines.firstIndex(where: { $0 == "$$" }).map { $0 + 1 }
-        )
-        harness.session.goToLine(displayMathLine)
-        let activeMath = try await harness.waitUntilPresentation(stage: "active mathematics source") {
-            $0.renderedMathCount > 0 && $0.mathErrorCount == 0
-        }
-        #expect(activeMath.mathErrorCount == 0)
-        #expect(try await harness.session.currentText(for: harness.documentID) == initial)
+            diagnosticStage = "initial semantic presentation"
+            let accessibility: MarkdownEditorSession.TestingAccessibilitySnapshot
+            do {
+                accessibility = try await harness.session.testingAccessibilitySnapshot()
+            } catch {
+                Issue.record("The initial accessibility snapshot failed: \(error).")
+                throw error
+            }
+            #expect(accessibility.contentEditableCount == 1)
+            #expect(accessibility.textboxCount == 1)
+            #expect(accessibility.label == "Markdown editor, Edit mode")
+            #expect(accessibility.multiline == "true")
+            #expect(!accessibility.hasValueText)
+            #expect(accessibility.spellcheck == "true")
+            #expect(accessibility.mathRuntimeVersion == 1)
+            #expect(accessibility.mathErrorCount == 0)
+            #expect(accessibility.displayMathOverflowX == "auto")
+            #expect(accessibility.frontmatterLineCount > 0)
+            #expect(accessibility.frontmatterVisibleHeight > 0)
+            #expect(accessibility.semanticTableCount == 1)
+            #expect(accessibility.liveTableSourceLineCount == 0)
+            #expect(accessibility.tableHeaderCount == 3)
+            #expect(accessibility.tableBodyCellCount == 3)
+            #expect(accessibility.tableStrongCount == 1)
+            #expect(accessibility.tableFirstHeaderText == "Claim")
+            #expect(accessibility.tableOverflowX == "auto")
+            #expect(accessibility.footnoteReferenceCount == 2)
+            #expect(accessibility.footnoteDefinitionSourceCount == 1)
+            #expect(accessibility.exactWikilinkSourceCount == 1)
+            #expect(accessibility.incompleteWikilinkSourceCount == 0)
+            let normalizedOriginal = original.replacingOccurrences(of: "\r\n", with: "\n")
+            let normalizedLines = normalizedOriginal.split(
+                separator: "\n",
+                omittingEmptySubsequences: false
+            )
+            let displayMathLine = try #require(
+                normalizedLines.firstIndex(where: { $0 == "$$" }).map { $0 + 1 }
+            )
+            harness.session.goToLine(displayMathLine)
+            let activeMath = try await harness.waitUntilPresentation(stage: "active mathematics source") {
+                $0.renderedMathCount > 0 && $0.mathErrorCount == 0
+            }
+            #expect(activeMath.mathErrorCount == 0)
+            #expect(try await harness.session.currentText(for: harness.documentID) == initial)
 
-        let sharedCalloutLine = try #require(
-            normalizedLines.firstIndex(where: { $0 == "> [!state] Shared claim" }).map { $0 + 1 }
-        )
-        let calloutFrom = try #require(normalizedOriginal.range(of: "> [!state] Shared claim")?.lowerBound)
-            .utf16Offset(in: normalizedOriginal)
-        let calloutSource = "> [!state] Shared claim\n> The same callout must retain its typographic hierarchy."
-        let calloutTo = try #require(normalizedOriginal.range(of: calloutSource)?.upperBound)
-            .utf16Offset(in: normalizedOriginal)
-        diagnosticStage = "projected Callout interaction"
-        harness.session.goToLine(sharedCalloutLine)
-        _ = try await harness.waitUntilPresentation(stage: "shared callout visible") {
-            $0.liveCalloutBlockCount > 0
-        }
-        try await harness.session.testingClickVisibleText("same callout")
-        _ = try await harness.waitUntilSelection(in: calloutFrom..<calloutTo)
-        let activeCallout = try await harness.waitUntilPresentation(stage: "active callout source") {
-            $0.activeLiveBlockKind == "callout"
-        }
-        #expect(activeCallout.liveCalloutSourceLineCount >= 2)
-        #expect(try await harness.session.currentText(for: harness.documentID) == initial)
+            let sharedCalloutLine = try #require(
+                normalizedLines.firstIndex(where: { $0 == "> [!state] Shared claim" }).map { $0 + 1 }
+            )
+            let calloutFrom = try #require(normalizedOriginal.range(of: "> [!state] Shared claim")?.lowerBound)
+                .utf16Offset(in: normalizedOriginal)
+            let calloutSource = "> [!state] Shared claim\n> The same callout must retain its typographic hierarchy."
+            let calloutTo = try #require(normalizedOriginal.range(of: calloutSource)?.upperBound)
+                .utf16Offset(in: normalizedOriginal)
+            diagnosticStage = "projected Callout interaction"
+            harness.session.goToLine(sharedCalloutLine)
+            _ = try await harness.waitUntilPresentation(stage: "shared callout visible") {
+                $0.liveCalloutBlockCount > 0
+            }
+            try await harness.session.testingClickVisibleText("same callout")
+            _ = try await harness.waitUntilSelection(in: calloutFrom..<calloutTo)
+            let activeCallout = try await harness.waitUntilPresentation(stage: "active callout source") {
+                $0.activeLiveBlockKind == "callout"
+            }
+            #expect(activeCallout.liveCalloutSourceLineCount >= 2)
+            #expect(try await harness.session.currentText(for: harness.documentID) == initial)
 
-        let tableLine = try #require(
-            normalizedLines.firstIndex(where: { $0 == "| **Claim** | Status | Count |" }).map { $0 + 1 }
-        )
-        harness.session.goToLine(tableLine)
-        _ = try await harness.waitUntilPresentation(stage: "active table source") {
-            $0.semanticTableCount == 0
-                && $0.liveTableSourceLineCount > 0
-        }
-        let namedDefinitionLine = try #require(
-            normalizedLines.firstIndex(where: { $0.hasPrefix("[^note]:") }).map { $0 + 1 }
-        )
-        harness.session.goToLine(namedDefinitionLine)
-        let namedDefinitionOffset = try #require(normalizedOriginal.range(of: "[^note]:")?.lowerBound)
-            .utf16Offset(in: normalizedOriginal)
-        try await harness.waitUntilSelection(
-            head: namedDefinitionOffset,
-            stage: "named footnote definition"
-        )
-        let directFootnote = try await harness.waitUntilPresentation(stage: "direct footnote source") {
-            $0.footnoteDefinitionSourceCount == 1
-        }
-        #expect(directFootnote.footnoteReferenceCount == 2)
-        harness.session.goToLine(4)
-        try await harness.waitUntilPreviewIsAvailable()
-        #expect(harness.session.canShowPreviewAtSelection)
-        harness.session.showPreview()
-        // Native preview visibility is covered by nativeEditPreviewPreservesDocument
-        // in a laid-out native host. This unconstrained bridge fixture verifies
-        // the request and source/session state, not floating-window geometry.
-        try await Task.sleep(for: .milliseconds(200))
-        let presentationPerformance = try await harness.session.queryPerformanceSamples()
-        #expect(presentationPerformance.contains { $0.name == "mode-toggle-work" })
-        #expect(presentationPerformance.contains { $0.name == "cached-preview-work" })
+            let tableLine = try #require(
+                normalizedLines.firstIndex(where: { $0 == "| **Claim** | Status | Count |" }).map { $0 + 1 }
+            )
+            harness.session.goToLine(tableLine)
+            _ = try await harness.waitUntilPresentation(stage: "active table source") {
+                $0.semanticTableCount == 0
+                    && $0.liveTableSourceLineCount > 0
+            }
+            let namedDefinitionLine = try #require(
+                normalizedLines.firstIndex(where: { $0.hasPrefix("[^note]:") }).map { $0 + 1 }
+            )
+            harness.session.goToLine(namedDefinitionLine)
+            let namedDefinitionOffset = try #require(normalizedOriginal.range(of: "[^note]:")?.lowerBound)
+                .utf16Offset(in: normalizedOriginal)
+            try await harness.waitUntilSelection(
+                head: namedDefinitionOffset,
+                stage: "named footnote definition"
+            )
+            let directFootnote = try await harness.waitUntilPresentation(stage: "direct footnote source") {
+                $0.footnoteDefinitionSourceCount == 1
+            }
+            #expect(directFootnote.footnoteReferenceCount == 2)
+            harness.session.goToLine(4)
+            try await harness.waitUntilPreviewIsAvailable()
+            #expect(harness.session.canShowPreviewAtSelection)
+            harness.session.showPreview()
+            // Native preview visibility is covered by nativeEditPreviewPreservesDocument
+            // in a laid-out native host. This unconstrained bridge fixture verifies
+            // the request and source/session state, not floating-window geometry.
+            try await Task.sleep(for: .milliseconds(200))
+            let presentationPerformance = try await harness.session.queryPerformanceSamples()
+            #expect(presentationPerformance.contains { $0.name == "mode-toggle-work" })
+            #expect(presentationPerformance.contains { $0.name == "cached-preview-work" })
 
-        let initialSelection = try #require(harness.session.context?.selections)
-        let configuredTopInset: CGFloat = 36
-        let expectedPadding = "\(Int(configuredTopInset))px"
-        harness.setPresentationCSS(ScholiumDocumentPresentationConfiguration(
-            textScale: ScholiumMetrics.Document.defaultTextScale,
-            contentTopInsetCSSPixels: configuredTopInset
-        ).css)
+            let initialSelection = try #require(harness.session.context?.selections)
+            let configuredTopInset: CGFloat = 36
+            let expectedPadding = "\(Int(configuredTopInset))px"
+            harness.setPresentationCSS(
+                ScholiumDocumentPresentationConfiguration(
+                    textScale: ScholiumMetrics.Document.defaultTextScale,
+                    contentTopInsetCSSPixels: configuredTopInset
+                ).css)
 
-        let live = try await harness.waitUntilPresentation(stage: "configured Live Preview") {
-            $0.label == "Markdown editor, Edit mode"
-                && $0.contentPaddingTop == expectedPadding
-        }
-        #expect(live.gutterCount == 0)
-        #expect(live.lineNumberCount == 0)
-        #expect(live.activeLineCount == 0)
-        #expect(live.liveProjectionDOMCount > 0)
-        #expect(live.selectionActionsCount == 0)
-        #expect(live.previewPopoverCount == 0)
-        #expect(Double(live.contentPaddingInlineStart.dropLast(2)) ?? 0 > 0)
-        #expect(live.isFocused)
+            let live = try await harness.waitUntilPresentation(stage: "configured Live Preview") {
+                $0.label == "Markdown editor, Edit mode"
+                    && $0.contentPaddingTop == expectedPadding
+            }
+            #expect(live.gutterCount == 0)
+            #expect(live.lineNumberCount == 0)
+            #expect(live.activeLineCount == 0)
+            #expect(live.liveProjectionDOMCount > 0)
+            #expect(live.selectionActionsCount == 0)
+            #expect(live.previewPopoverCount == 0)
+            #expect(Double(live.contentPaddingInlineStart.dropLast(2)) ?? 0 > 0)
+            #expect(live.isFocused)
 
-        diagnosticStage = "Source and Live Preview transitions"
-        harness.session.setMode(.source)
-        let sourceMode = try await harness.waitUntilPresentation(stage: "Source mode") {
-            $0.label == "Markdown source editor"
-                && $0.gutterCount > 0
-                && $0.lineNumberCount > 0
-                && $0.liveProjectionDOMCount == 0
-                && $0.selectionActionsCount == 0
-                && $0.previewPopoverCount == 0
-        }
-        #expect(sourceMode.activeLineCount > 0)
-        #expect(sourceMode.renderedMathCount == 0)
-        #expect(sourceMode.semanticTableCount == 0)
-        #expect(sourceMode.footnoteReferenceCount == 0)
-        #expect(sourceMode.previewPopoverHidden)
-        #expect(sourceMode.contentPaddingTop == expectedPadding)
-        #expect(Double(sourceMode.contentPaddingInlineStart.dropLast(2)) ?? 0 > 0)
-        #expect(sourceMode.isFocused)
-        #expect(harness.session.context?.selections == initialSelection)
-        harness.session.goToLine(2)
-        try await harness.waitUntilSelection(head: 4, stage: "Source frontmatter line")
-        harness.session.setMode(.livePreview)
-        _ = try await harness.waitUntilPresentation(stage: "frontmatter remains editable in Live Preview") {
-            $0.label == "Markdown editor, Edit mode" && $0.frontmatterLineCount > 0
-        }
-        try await harness.waitUntilSelection(
-            head: 4,
-            stage: "Edit preserves YAML selection"
-        )
-        harness.session.setMode(.source)
-        _ = try await harness.waitUntilPresentation(stage: "frontmatter selection restored Source") {
-            $0.label == "Markdown source editor" && $0.lineNumberCount > 0
-        }
-        try await harness.waitUntilSelection(head: 4, stage: "restored Source frontmatter")
-        let bodyEditorOffset = (frontmatter.replacingOccurrences(of: "\r\n", with: "\n") + "[[Target]]\n").utf16.count
-        let bodySourceOffset = (frontmatter + "[[Target]]\r\n").utf16.count
-        harness.session.goToLine(5)
-        try await harness.waitUntilSelection(head: bodyEditorOffset, stage: "Source body line")
-
-        harness.session.setMode(.livePreview)
-        let restoredLive = try await harness.waitUntilPresentation(stage: "restored Live Preview") {
-            $0.label == "Markdown editor, Edit mode"
-                && $0.gutterCount == 0
-                && $0.semanticTableCount == 1
-                && $0.footnoteReferenceCount == 2
-        }
-        #expect(restoredLive.lineNumberCount == 0)
-        #expect(restoredLive.activeLineCount == 0)
-        #expect(restoredLive.contentPaddingTop == expectedPadding)
-        #expect(restoredLive.isFocused)
-        #expect(restoredLive.semanticTableCount == 1)
-        #expect(restoredLive.footnoteReferenceCount == 2)
-        #expect(try await harness.session.currentText(for: harness.documentID) == initial)
-        #expect(harness.session.context?.selections.first?.head == bodyEditorOffset)
-
-        diagnosticStage = "exact formatting and mode stress"
-        do {
-            try await harness.session.perform(.bold)
-        } catch {
-            Issue.record(Comment(rawValue: "Formatting command failed: \(error.localizedDescription)"))
-            return
-        }
-
-        let updated = try await harness.session.currentText(for: harness.documentID)
-        let expectedUpdated = try inserting("****", atUTF16: bodySourceOffset, in: original)
-        #expect(updated == expectedUpdated)
-        #expect(harness.latestSource == expectedUpdated)
-        #expect(harness.session.generation == 1)
-        #expect(harness.session.isDirty)
-
-        for _ in 0..<25 {
+            diagnosticStage = "Source and Live Preview transitions"
             harness.session.setMode(.source)
-            _ = try await harness.waitUntilPresentation(stage: "stress Source mode") {
+            let sourceMode = try await harness.waitUntilPresentation(stage: "Source mode") {
                 $0.label == "Markdown source editor"
                     && $0.gutterCount > 0
                     && $0.lineNumberCount > 0
@@ -5210,242 +5321,314 @@ struct MarkdownEditorWebViewIntegrationTests {
                     && $0.selectionActionsCount == 0
                     && $0.previewPopoverCount == 0
             }
+            #expect(sourceMode.activeLineCount > 0)
+            #expect(sourceMode.renderedMathCount == 0)
+            #expect(sourceMode.semanticTableCount == 0)
+            #expect(sourceMode.footnoteReferenceCount == 0)
+            #expect(sourceMode.previewPopoverHidden)
+            #expect(sourceMode.contentPaddingTop == expectedPadding)
+            #expect(Double(sourceMode.contentPaddingInlineStart.dropLast(2)) ?? 0 > 0)
+            #expect(sourceMode.isFocused)
+            #expect(harness.session.context?.selections == initialSelection)
+            harness.session.goToLine(2)
+            try await harness.waitUntilSelection(head: 4, stage: "Source frontmatter line")
             harness.session.setMode(.livePreview)
-            _ = try await harness.waitUntilPresentation(stage: "stress Live Preview") {
+            _ = try await harness.waitUntilPresentation(stage: "frontmatter remains editable in Live Preview") {
+                $0.label == "Markdown editor, Edit mode" && $0.frontmatterLineCount > 0
+            }
+            try await harness.waitUntilSelection(
+                head: 4,
+                stage: "Edit preserves YAML selection"
+            )
+            harness.session.setMode(.source)
+            _ = try await harness.waitUntilPresentation(stage: "frontmatter selection restored Source") {
+                $0.label == "Markdown source editor" && $0.lineNumberCount > 0
+            }
+            try await harness.waitUntilSelection(head: 4, stage: "restored Source frontmatter")
+            let bodyEditorOffset = (frontmatter.replacingOccurrences(of: "\r\n", with: "\n") + "[[Target]]\n").utf16.count
+            let bodySourceOffset = (frontmatter + "[[Target]]\r\n").utf16.count
+            harness.session.goToLine(5)
+            try await harness.waitUntilSelection(head: bodyEditorOffset, stage: "Source body line")
+
+            harness.session.setMode(.livePreview)
+            let restoredLive = try await harness.waitUntilPresentation(stage: "restored Live Preview") {
                 $0.label == "Markdown editor, Edit mode"
                     && $0.gutterCount == 0
-                    && $0.lineNumberCount == 0
+                    && $0.semanticTableCount == 1
+                    && $0.footnoteReferenceCount == 2
             }
-        }
-        #expect(try await harness.session.currentText(for: harness.documentID) == expectedUpdated)
-        #expect(harness.session.isDirty)
-        #expect(harness.session.hasAttachedWebView)
-        let modeStressSamples = try await harness.session.queryPerformanceSamples()
-        let latestModeTransition = try #require(
-            modeStressSamples.last { $0.name == "mode-toggle-work" }
-        )
-        #expect((latestModeTransition.observed["transitionSequence"] ?? 0) >= 50)
+            #expect(restoredLive.lineNumberCount == 0)
+            #expect(restoredLive.activeLineCount == 0)
+            #expect(restoredLive.contentPaddingTop == expectedPadding)
+            #expect(restoredLive.isFocused)
+            #expect(restoredLive.semanticTableCount == 1)
+            #expect(restoredLive.footnoteReferenceCount == 2)
+            #expect(try await harness.session.currentText(for: harness.documentID) == initial)
+            #expect(harness.session.context?.selections.first?.head == bodyEditorOffset)
 
-        let pastePayload = #"{"plainText":"Reason","html":"<strong>Reason</strong>"}"#
-        try await harness.session.perform(.pasteMarkdown, argument: pastePayload)
-        let pasted = try await harness.session.currentText(for: harness.documentID)
-        let expectedPasted = try inserting("****Reason****", atUTF16: bodySourceOffset, in: original)
-        #expect(pasted == expectedPasted)
-        #expect(harness.session.generation == 2)
-
-        let unicode = "e\u{301} | é | 👩🏽‍💻️ | العربية، Markdown | עברית (LTR)"
-        let unicodeInsertionOffset = try #require(harness.session.context?.selections.first?.head)
-        try await harness.session.perform(.pastePlain, argument: unicode)
-        let beforeTermination = try await harness.session.currentText(for: harness.documentID)
-        let expectedBeforeTermination = try insertingAtEditorOffset(
-            unicode,
-            editorUTF16: unicodeInsertionOffset,
-            in: pasted
-        )
-        #expect(Data(beforeTermination.utf8) == Data(expectedBeforeTermination.utf8))
-        #expect(Array(beforeTermination.utf16) == Array(expectedBeforeTermination.utf16))
-        #expect(harness.session.isDirty)
-        let insertionOffset = try #require(harness.session.context?.selections.first?.head)
-
-        diagnosticStage = "Web content process recovery"
-        // Terminate before the bounded EditorState capture can replace the
-        // delta-checked mirror fallback. Recovery must retain the last context
-        // selection so the next insertion remains at the end of the source.
-        #expect(harness.session.testingSimulateWebContentProcessTermination())
-        try await harness.waitUntilReady()
-        let recovered = try await harness.session.currentText(for: harness.documentID)
-        #expect(Data(recovered.utf8) == Data(beforeTermination.utf8))
-        #expect(Array(recovered.utf16) == Array(beforeTermination.utf16))
-        #expect(harness.session.isDirty)
-
-        try await harness.session.perform(.pastePlain, argument: "!")
-        let afterSelectionRestore = try await harness.session.currentText(for: harness.documentID)
-        let expectedAfterSelectionRestore = try insertingAtEditorOffset(
-            "!",
-            editorUTF16: insertionOffset,
-            in: recovered
-        )
-        #expect(Data(afterSelectionRestore.utf8) == Data(expectedAfterSelectionRestore.utf8))
-        #expect(Array(afterSelectionRestore.utf16) == Array(expectedAfterSelectionRestore.utf16))
-
-        diagnosticStage = "view reconstruction"
-        // Collapse/reopen uses the same explicit recovery capture before
-        // SwiftUI dismantles the WKWebView. The retained session must restore
-        // exact bytes, selection, bounded undo history, focus, and scroll.
-        let selectionBeforeReconstruction = try #require(harness.session.context?.selections.first)
-        _ = try #require(harness.session.context?.undoLabel)
-        let beforeScroll = try await harness.session.testingAccessibilitySnapshot()
-        #expect(beforeScroll.scrollExtent > 0)
-        diagnosticStage = "view reconstruction anchor preparation"
-        try await harness.session.testingApplyScrollFraction(0.65)
-        let fractionScrollAnchor = try await harness.waitUntilScrollAnchor()
-        #expect(fractionScrollAnchor.fallbackFraction > 0.2)
-        let anchorText = "Research paragraph 30."
-        let anchorRange = try #require(afterSelectionRestore.range(of: anchorText))
-        let anchorLowerBound = anchorRange.lowerBound.utf16Offset(in: afterSelectionRestore)
-        let requestedAnchor = EditorScrollAnchor(
-            sourceFingerprint: DocumentFingerprint(content: afterSelectionRestore).sha256,
-            sourceUTF16Offset: anchorLowerBound,
-            blockUTF16LowerBound: anchorLowerBound,
-            blockUTF16UpperBound: anchorLowerBound + anchorText.utf16.count,
-            relativeBlockPosition: 0,
-            fallbackFraction: 0.65
-        )
-        try await harness.session.testingApplyScrollAnchor(requestedAnchor)
-        let semanticScrollAnchor = try #require(
-            try await harness.waitUntilCurrentScrollAnchor {
-                abs($0.sourceUTF16Offset - anchorLowerBound) < 4
+            diagnosticStage = "exact formatting and mode stress"
+            do {
+                try await harness.session.perform(.bold)
+            } catch {
+                Issue.record(Comment(rawValue: "Formatting command failed: \(error.localizedDescription)"))
+                return
             }
-        )
-        #expect(semanticScrollAnchor.fallbackFraction > 0.2)
-        #expect(abs(semanticScrollAnchor.sourceUTF16Offset - anchorLowerBound) < 4)
-        #expect(semanticScrollAnchor.sourceUTF16Offset >= semanticScrollAnchor.blockUTF16LowerBound)
-        #expect(semanticScrollAnchor.sourceUTF16Offset <= semanticScrollAnchor.blockUTF16UpperBound)
 
-        #expect(harness.session.testingRetainedScrollAnchor?.blockUTF16LowerBound == semanticScrollAnchor.blockUTF16LowerBound)
-        diagnosticStage = "view reconstruction state capture"
-        try await harness.session.captureStateForViewReconstruction()
-        #expect(harness.session.testingRetainedScrollAnchor?.blockUTF16LowerBound == semanticScrollAnchor.blockUTF16LowerBound)
-        diagnosticStage = "view reconstruction detach"
-        try await harness.reconstructEditorView()
-        diagnosticStage = "view reconstruction readiness"
-        try await harness.waitUntilReady()
-        #expect(harness.session.testingRetainedScrollAnchor?.blockUTF16LowerBound == semanticScrollAnchor.blockUTF16LowerBound)
+            let updated = try await harness.session.currentText(for: harness.documentID)
+            let expectedUpdated = try inserting("****", atUTF16: bodySourceOffset, in: original)
+            #expect(updated == expectedUpdated)
+            #expect(harness.latestSource == expectedUpdated)
+            #expect(harness.session.generation == 1)
+            #expect(harness.session.isDirty)
 
-        diagnosticStage = "view reconstruction exact source"
-        let afterReopen = try await harness.session.currentText(for: harness.documentID)
-        #expect(Data(afterReopen.utf8) == Data(afterSelectionRestore.utf8))
-        #expect(harness.session.context?.selections.first == selectionBeforeReconstruction)
-        #expect(harness.session.context?.undoLabel != nil)
-        diagnosticStage = "view reconstruction focus"
-        try await harness.waitUntilFocused()
-        diagnosticStage = "view reconstruction scroll restoration"
-        let restoredScrollAnchor = try await harness.waitUntilCurrentScrollAnchor {
-            $0.sourceFingerprint == semanticScrollAnchor.sourceFingerprint
-                && $0.blockUTF16LowerBound == semanticScrollAnchor.blockUTF16LowerBound
-                && $0.blockUTF16UpperBound == semanticScrollAnchor.blockUTF16UpperBound
-        }
-        #expect(restoredScrollAnchor?.sourceFingerprint == semanticScrollAnchor.sourceFingerprint)
-        #expect(restoredScrollAnchor?.sourceUTF16Offset == semanticScrollAnchor.sourceUTF16Offset)
-        #expect(restoredScrollAnchor?.blockUTF16LowerBound == semanticScrollAnchor.blockUTF16LowerBound)
-        #expect(restoredScrollAnchor?.blockUTF16UpperBound == semanticScrollAnchor.blockUTF16UpperBound)
-        #expect((harness.session.testingRetainedScrollFraction ?? 0) > 0.2)
-        let restoredAccessibility = try await harness.session.testingAccessibilitySnapshot()
-        #expect(restoredAccessibility.isFocused)
+            for _ in 0..<25 {
+                harness.session.setMode(.source)
+                _ = try await harness.waitUntilPresentation(stage: "stress Source mode") {
+                    $0.label == "Markdown source editor"
+                        && $0.gutterCount > 0
+                        && $0.lineNumberCount > 0
+                        && $0.liveProjectionDOMCount == 0
+                        && $0.selectionActionsCount == 0
+                        && $0.previewPopoverCount == 0
+                }
+                harness.session.setMode(.livePreview)
+                _ = try await harness.waitUntilPresentation(stage: "stress Live Preview") {
+                    $0.label == "Markdown editor, Edit mode"
+                        && $0.gutterCount == 0
+                        && $0.lineNumberCount == 0
+                }
+            }
+            #expect(try await harness.session.currentText(for: harness.documentID) == expectedUpdated)
+            #expect(harness.session.isDirty)
+            #expect(harness.session.hasAttachedWebView)
+            let modeStressSamples = try await harness.session.queryPerformanceSamples()
+            let latestModeTransition = try #require(
+                modeStressSamples.last { $0.name == "mode-toggle-work" }
+            )
+            #expect((latestModeTransition.observed["transitionSequence"] ?? 0) >= 50)
 
-        diagnosticStage = "view reconstruction editing and performance"
-        try await harness.session.perform(.pastePlain, argument: "?")
-        let afterInsertion = try await harness.session.currentText(for: harness.documentID)
-        let expectedAfterInsertion = try insertingAtEditorOffset(
-            "?",
-            editorUTF16: selectionBeforeReconstruction.head,
-            in: afterSelectionRestore
-        )
-        #expect(afterInsertion == expectedAfterInsertion)
-        let performanceSamples = try await harness.session.queryPerformanceSamples()
-        #expect(!performanceSamples.isEmpty)
-        #expect(performanceSamples.count <= 256)
-        #expect(performanceSamples.contains { $0.name == "startup" })
-        #expect(performanceSamples.contains { $0.name == "document-load" })
-        #expect(performanceSamples.contains { $0.name == "projection" })
-        #expect(performanceSamples.contains { $0.name == "bridge-request" })
-        #expect(performanceSamples.allSatisfy {
-            $0.durationMilliseconds.isFinite && $0.durationMilliseconds >= 0
-                && $0.observed.values.allSatisfy { $0.isFinite && $0 >= 0 }
-        })
-        diagnosticStage = "Source presentation geometry"
-        harness.resize(width: 1_080)
-        harness.session.setMode(.source)
-        let regularSourceGrid = try await harness.waitUntilPresentation(
-            stage: "regular-width Source grid"
-        ) {
-            $0.label == "Markdown source editor"
-                && $0.presentation.viewportWidth > 704
-                && $0.presentation.rootLineWidth
-                    == "\(Int(DocumentAppearanceSettings.defaultLineWidthCharacterUnits))ch"
-                && (Double($0.contentPaddingInlineStart.dropLast(2)) ?? 0) > 40
-        }
-        #expect(regularSourceGrid.presentation.rootInlineSource == "40.000000px")
-        #expect(regularSourceGrid.presentation.documentFontFamily.contains("Courier"))
-        #expect(try await harness.session.currentText(for: harness.documentID) == afterInsertion)
+            let pastePayload = #"{"plainText":"Reason","html":"<strong>Reason</strong>"}"#
+            try await harness.session.perform(.pasteMarkdown, argument: pastePayload)
+            let pasted = try await harness.session.currentText(for: harness.documentID)
+            let expectedPasted = try inserting("****Reason****", atUTF16: bodySourceOffset, in: original)
+            #expect(pasted == expectedPasted)
+            #expect(harness.session.generation == 2)
 
-        let regularSourceInset = try #require(
-            Double(regularSourceGrid.contentPaddingInlineStart.dropLast(2))
-        )
-        let selectionBeforeLineWidthChange = harness.session.context?.selections
-        let undoBeforeLineWidthChange = harness.session.context?.undoLabel
-        let scrollAnchorBeforeLineWidthChange = try await harness.session.currentScrollAnchor()
-        let narrowMeasureProfile = DocumentAppearanceProfile(
-            name: "Narrow Measure",
-            settings: .init(lineWidthCharacterUnits: 48)
-        )
-        diagnosticStage = "line-width scroll continuity"
-        harness.setPresentationCSS(
-            ScholiumDocumentPresentationConfiguration(
-                textScale: ScholiumMetrics.Document.defaultTextScale,
-                contentTopInsetCSSPixels: configuredTopInset
-            ).css
-                + "\n"
-                + DocumentAppearanceStyles.css(for: narrowMeasureProfile)
-        )
-        let customSourceGrid = try await harness.waitUntilPresentation(
-            stage: "custom Source line width"
-        ) {
-            $0.label == "Markdown source editor"
-                && $0.presentation.rootLineWidth == "48ch"
-                && (Double($0.contentPaddingInlineStart.dropLast(2)) ?? 0) > regularSourceInset
-        }
-        #expect(customSourceGrid.presentation.documentFontFamily.contains("Courier"))
-        #expect(customSourceGrid.isFocused)
-        #expect(harness.session.context?.selections == selectionBeforeLineWidthChange)
-        #expect(harness.session.context?.undoLabel == undoBeforeLineWidthChange)
-        #expect(try await harness.session.currentText(for: harness.documentID) == afterInsertion)
-        let scrollAnchorAfterLineWidthChange = try await harness.session.currentScrollAnchor()
-        let anchorBefore = try #require(scrollAnchorBeforeLineWidthChange)
-        let anchorAfter = try #require(scrollAnchorAfterLineWidthChange)
-        #expect(anchorAfter.sourceFingerprint == anchorBefore.sourceFingerprint)
-        // Soft wrapping changes visual block heights. Preserve the same
-        // nearby semantic source location while allowing the viewport probe
-        // to cross at most one neighboring logical line at a line boundary.
-        let sourceDistance = abs(
-            anchorAfter.sourceUTF16Offset - anchorBefore.sourceUTF16Offset
-        )
-        let neighboringLineBound = max(
-            anchorBefore.blockUTF16UpperBound - anchorBefore.blockUTF16LowerBound,
-            anchorAfter.blockUTF16UpperBound - anchorAfter.blockUTF16LowerBound
-        ) + 2
-        #expect(sourceDistance <= neighboringLineBound)
-        await harness.closeAndDrain()
+            let unicode = "e\u{301} | é | 👩🏽‍💻️ | العربية، Markdown | עברית (LTR)"
+            let unicodeInsertionOffset = try #require(harness.session.context?.selections.first?.head)
+            try await harness.session.perform(.pastePlain, argument: unicode)
+            let beforeTermination = try await harness.session.currentText(for: harness.documentID)
+            let expectedBeforeTermination = try insertingAtEditorOffset(
+                unicode,
+                editorUTF16: unicodeInsertionOffset,
+                in: pasted
+            )
+            #expect(Data(beforeTermination.utf8) == Data(expectedBeforeTermination.utf8))
+            #expect(Array(beforeTermination.utf16) == Array(expectedBeforeTermination.utf16))
+            #expect(harness.session.isDirty)
+            let insertionOffset = try #require(harness.session.context?.selections.first?.head)
 
-        diagnosticStage = "unclosed frontmatter presentation"
-        let unclosedSource = "\u{FEFF}---\ntitle: Unclosed\n[[Not a body link]]\n\n| A | B |\n|---|---|\n| $x$ | [^n] |\n\n[^n]: Note\n"
-        let unclosedHarness = EditorHarness(source: unclosedSource)
-        defer { unclosedHarness.close() }
-        try await unclosedHarness.waitUntilReady()
-        let unclosedLive = try await unclosedHarness.waitUntilPresentation(stage: "unclosed frontmatter") {
-            $0.frontmatterLineCount > 0
-        }
-        #expect(unclosedLive.gutterCount == 0)
-        #expect(unclosedLive.lineNumberCount == 0)
-        #expect(unclosedLive.frontmatterLineCount > 0)
-        #expect(unclosedLive.semanticTableCount == 0)
-        #expect(unclosedLive.renderedMathCount == 0)
-        #expect(unclosedLive.previewAnchorCount == 0)
-        let unclosedLiveSource = try await unclosedHarness.session.currentText(
-            for: unclosedHarness.documentID
-        )
-        #expect(Data(unclosedLiveSource.utf8) == Data(unclosedSource.utf8))
-        #expect(Array(unclosedLiveSource.utf16) == Array(unclosedSource.utf16))
-        unclosedHarness.session.setMode(.source)
-        _ = try await unclosedHarness.waitUntilPresentation(stage: "unclosed frontmatter Source") {
-            $0.gutterCount > 0 && $0.lineNumberCount > 0
-        }
-        let unclosedSourceModeSource = try await unclosedHarness.session.currentText(
-            for: unclosedHarness.documentID
-        )
-        #expect(Data(unclosedSourceModeSource.utf8) == Data(unclosedSource.utf8))
-        #expect(Array(unclosedSourceModeSource.utf16) == Array(unclosedSource.utf16))
-        await unclosedHarness.closeAndDrain()
+            diagnosticStage = "Web content process recovery"
+            // Terminate before the bounded EditorState capture can replace the
+            // delta-checked mirror fallback. Recovery must retain the last context
+            // selection so the next insertion remains at the end of the source.
+            #expect(harness.session.testingSimulateWebContentProcessTermination())
+            try await harness.waitUntilReady()
+            let recovered = try await harness.session.currentText(for: harness.documentID)
+            #expect(Data(recovered.utf8) == Data(beforeTermination.utf8))
+            #expect(Array(recovered.utf16) == Array(beforeTermination.utf16))
+            #expect(harness.session.isDirty)
+
+            try await harness.session.perform(.pastePlain, argument: "!")
+            let afterSelectionRestore = try await harness.session.currentText(for: harness.documentID)
+            let expectedAfterSelectionRestore = try insertingAtEditorOffset(
+                "!",
+                editorUTF16: insertionOffset,
+                in: recovered
+            )
+            #expect(Data(afterSelectionRestore.utf8) == Data(expectedAfterSelectionRestore.utf8))
+            #expect(Array(afterSelectionRestore.utf16) == Array(expectedAfterSelectionRestore.utf16))
+
+            diagnosticStage = "view reconstruction"
+            // Collapse/reopen uses the same explicit recovery capture before
+            // SwiftUI dismantles the WKWebView. The retained session must restore
+            // exact bytes, selection, bounded undo history, focus, and scroll.
+            let selectionBeforeReconstruction = try #require(harness.session.context?.selections.first)
+            _ = try #require(harness.session.context?.undoLabel)
+            let beforeScroll = try await harness.session.testingAccessibilitySnapshot()
+            #expect(beforeScroll.scrollExtent > 0)
+            diagnosticStage = "view reconstruction anchor preparation"
+            try await harness.session.testingApplyScrollFraction(0.65)
+            let fractionScrollAnchor = try await harness.waitUntilScrollAnchor()
+            #expect(fractionScrollAnchor.fallbackFraction > 0.2)
+            let anchorText = "Research paragraph 30."
+            let anchorRange = try #require(afterSelectionRestore.range(of: anchorText))
+            let anchorLowerBound = anchorRange.lowerBound.utf16Offset(in: afterSelectionRestore)
+            let requestedAnchor = EditorScrollAnchor(
+                sourceFingerprint: DocumentFingerprint(content: afterSelectionRestore).sha256,
+                sourceUTF16Offset: anchorLowerBound,
+                blockUTF16LowerBound: anchorLowerBound,
+                blockUTF16UpperBound: anchorLowerBound + anchorText.utf16.count,
+                relativeBlockPosition: 0,
+                fallbackFraction: 0.65
+            )
+            try await harness.session.testingApplyScrollAnchor(requestedAnchor)
+            let semanticScrollAnchor = try #require(
+                try await harness.waitUntilCurrentScrollAnchor {
+                    abs($0.sourceUTF16Offset - anchorLowerBound) < 4
+                }
+            )
+            #expect(semanticScrollAnchor.fallbackFraction > 0.2)
+            #expect(abs(semanticScrollAnchor.sourceUTF16Offset - anchorLowerBound) < 4)
+            #expect(semanticScrollAnchor.sourceUTF16Offset >= semanticScrollAnchor.blockUTF16LowerBound)
+            #expect(semanticScrollAnchor.sourceUTF16Offset <= semanticScrollAnchor.blockUTF16UpperBound)
+
+            #expect(harness.session.testingRetainedScrollAnchor?.blockUTF16LowerBound == semanticScrollAnchor.blockUTF16LowerBound)
+            diagnosticStage = "view reconstruction state capture"
+            try await harness.session.captureStateForViewReconstruction()
+            #expect(harness.session.testingRetainedScrollAnchor?.blockUTF16LowerBound == semanticScrollAnchor.blockUTF16LowerBound)
+            diagnosticStage = "view reconstruction detach"
+            try await harness.reconstructEditorView()
+            diagnosticStage = "view reconstruction readiness"
+            try await harness.waitUntilReady()
+            #expect(harness.session.testingRetainedScrollAnchor?.blockUTF16LowerBound == semanticScrollAnchor.blockUTF16LowerBound)
+
+            diagnosticStage = "view reconstruction exact source"
+            let afterReopen = try await harness.session.currentText(for: harness.documentID)
+            #expect(Data(afterReopen.utf8) == Data(afterSelectionRestore.utf8))
+            #expect(harness.session.context?.selections.first == selectionBeforeReconstruction)
+            #expect(harness.session.context?.undoLabel != nil)
+            diagnosticStage = "view reconstruction focus"
+            try await harness.waitUntilFocused()
+            diagnosticStage = "view reconstruction scroll restoration"
+            let restoredScrollAnchor = try await harness.waitUntilCurrentScrollAnchor {
+                $0.sourceFingerprint == semanticScrollAnchor.sourceFingerprint
+                    && $0.blockUTF16LowerBound == semanticScrollAnchor.blockUTF16LowerBound
+                    && $0.blockUTF16UpperBound == semanticScrollAnchor.blockUTF16UpperBound
+            }
+            #expect(restoredScrollAnchor?.sourceFingerprint == semanticScrollAnchor.sourceFingerprint)
+            #expect(restoredScrollAnchor?.sourceUTF16Offset == semanticScrollAnchor.sourceUTF16Offset)
+            #expect(restoredScrollAnchor?.blockUTF16LowerBound == semanticScrollAnchor.blockUTF16LowerBound)
+            #expect(restoredScrollAnchor?.blockUTF16UpperBound == semanticScrollAnchor.blockUTF16UpperBound)
+            #expect((harness.session.testingRetainedScrollFraction ?? 0) > 0.2)
+            let restoredAccessibility = try await harness.session.testingAccessibilitySnapshot()
+            #expect(restoredAccessibility.isFocused)
+
+            diagnosticStage = "view reconstruction editing and performance"
+            try await harness.session.perform(.pastePlain, argument: "?")
+            let afterInsertion = try await harness.session.currentText(for: harness.documentID)
+            let expectedAfterInsertion = try insertingAtEditorOffset(
+                "?",
+                editorUTF16: selectionBeforeReconstruction.head,
+                in: afterSelectionRestore
+            )
+            #expect(afterInsertion == expectedAfterInsertion)
+            let performanceSamples = try await harness.session.queryPerformanceSamples()
+            #expect(!performanceSamples.isEmpty)
+            #expect(performanceSamples.count <= 256)
+            #expect(performanceSamples.contains { $0.name == "startup" })
+            #expect(performanceSamples.contains { $0.name == "document-load" })
+            #expect(performanceSamples.contains { $0.name == "projection" })
+            #expect(performanceSamples.contains { $0.name == "bridge-request" })
+            #expect(
+                performanceSamples.allSatisfy {
+                    $0.durationMilliseconds.isFinite && $0.durationMilliseconds >= 0
+                        && $0.observed.values.allSatisfy { $0.isFinite && $0 >= 0 }
+                })
+            diagnosticStage = "Source presentation geometry"
+            harness.resize(width: 1_080)
+            harness.session.setMode(.source)
+            let regularSourceGrid = try await harness.waitUntilPresentation(
+                stage: "regular-width Source grid"
+            ) {
+                $0.label == "Markdown source editor"
+                    && $0.presentation.viewportWidth > 704
+                    && $0.presentation.rootLineWidth
+                        == "\(Int(DocumentAppearanceSettings.defaultLineWidthCharacterUnits))ch"
+                    && (Double($0.contentPaddingInlineStart.dropLast(2)) ?? 0) > 40
+            }
+            #expect(regularSourceGrid.presentation.rootInlineSource == "40.000000px")
+            #expect(regularSourceGrid.presentation.documentFontFamily.contains("Courier"))
+            #expect(try await harness.session.currentText(for: harness.documentID) == afterInsertion)
+
+            let regularSourceInset = try #require(
+                Double(regularSourceGrid.contentPaddingInlineStart.dropLast(2))
+            )
+            let selectionBeforeLineWidthChange = harness.session.context?.selections
+            let undoBeforeLineWidthChange = harness.session.context?.undoLabel
+            let scrollAnchorBeforeLineWidthChange = try await harness.session.currentScrollAnchor()
+            let narrowMeasureProfile = DocumentAppearanceProfile(
+                name: "Narrow Measure",
+                settings: .init(lineWidthCharacterUnits: 48)
+            )
+            diagnosticStage = "line-width scroll continuity"
+            harness.setPresentationCSS(
+                ScholiumDocumentPresentationConfiguration(
+                    textScale: ScholiumMetrics.Document.defaultTextScale,
+                    contentTopInsetCSSPixels: configuredTopInset
+                ).css
+                    + "\n"
+                    + DocumentAppearanceStyles.css(for: narrowMeasureProfile)
+            )
+            let customSourceGrid = try await harness.waitUntilPresentation(
+                stage: "custom Source line width"
+            ) {
+                $0.label == "Markdown source editor"
+                    && $0.presentation.rootLineWidth == "48ch"
+                    && (Double($0.contentPaddingInlineStart.dropLast(2)) ?? 0) > regularSourceInset
+            }
+            #expect(customSourceGrid.presentation.documentFontFamily.contains("Courier"))
+            #expect(customSourceGrid.isFocused)
+            #expect(harness.session.context?.selections == selectionBeforeLineWidthChange)
+            #expect(harness.session.context?.undoLabel == undoBeforeLineWidthChange)
+            #expect(try await harness.session.currentText(for: harness.documentID) == afterInsertion)
+            let scrollAnchorAfterLineWidthChange = try await harness.session.currentScrollAnchor()
+            let anchorBefore = try #require(scrollAnchorBeforeLineWidthChange)
+            let anchorAfter = try #require(scrollAnchorAfterLineWidthChange)
+            #expect(anchorAfter.sourceFingerprint == anchorBefore.sourceFingerprint)
+            // Soft wrapping changes visual block heights. Preserve the same
+            // nearby semantic source location while allowing the viewport probe
+            // to cross at most one neighboring logical line at a line boundary.
+            let sourceDistance = abs(
+                anchorAfter.sourceUTF16Offset - anchorBefore.sourceUTF16Offset
+            )
+            let neighboringLineBound =
+                max(
+                    anchorBefore.blockUTF16UpperBound - anchorBefore.blockUTF16LowerBound,
+                    anchorAfter.blockUTF16UpperBound - anchorAfter.blockUTF16LowerBound
+                ) + 2
+            #expect(sourceDistance <= neighboringLineBound)
+            await harness.closeAndDrain()
+
+            diagnosticStage = "unclosed frontmatter presentation"
+            let unclosedSource = "\u{FEFF}---\ntitle: Unclosed\n[[Not a body link]]\n\n| A | B |\n|---|---|\n| $x$ | [^n] |\n\n[^n]: Note\n"
+            let unclosedHarness = EditorHarness(source: unclosedSource)
+            defer { unclosedHarness.close() }
+            try await unclosedHarness.waitUntilReady()
+            let unclosedLive = try await unclosedHarness.waitUntilPresentation(stage: "unclosed frontmatter") {
+                $0.frontmatterLineCount > 0
+            }
+            #expect(unclosedLive.gutterCount == 0)
+            #expect(unclosedLive.lineNumberCount == 0)
+            #expect(unclosedLive.frontmatterLineCount > 0)
+            #expect(unclosedLive.semanticTableCount == 0)
+            #expect(unclosedLive.renderedMathCount == 0)
+            #expect(unclosedLive.previewAnchorCount == 0)
+            let unclosedLiveSource = try await unclosedHarness.session.currentText(
+                for: unclosedHarness.documentID
+            )
+            #expect(Data(unclosedLiveSource.utf8) == Data(unclosedSource.utf8))
+            #expect(Array(unclosedLiveSource.utf16) == Array(unclosedSource.utf16))
+            unclosedHarness.session.setMode(.source)
+            _ = try await unclosedHarness.waitUntilPresentation(stage: "unclosed frontmatter Source") {
+                $0.gutterCount > 0 && $0.lineNumberCount > 0
+            }
+            let unclosedSourceModeSource = try await unclosedHarness.session.currentText(
+                for: unclosedHarness.documentID
+            )
+            #expect(Data(unclosedSourceModeSource.utf8) == Data(unclosedSource.utf8))
+            #expect(Array(unclosedSourceModeSource.utf16) == Array(unclosedSource.utf16))
+            await unclosedHarness.closeAndDrain()
 
         } catch {
             Issue.record(
@@ -5472,8 +5655,9 @@ struct MarkdownEditorWebViewIntegrationTests {
         var editorOffset = 0
         while sourceOffset < units.count, editorOffset < requestedOffset {
             if units[sourceOffset] == 13,
-               sourceOffset + 1 < units.count,
-               units[sourceOffset + 1] == 10 {
+                sourceOffset + 1 < units.count,
+                units[sourceOffset + 1] == 10
+            {
                 sourceOffset += 2
             } else {
                 sourceOffset += 1
@@ -5538,12 +5722,13 @@ struct MarkdownEditorWebViewIntegrationTests {
             }
         ) {
             _ = NSApplication.shared
-            session = bridgeDispatcher.map {
-                MarkdownEditorSession(
-                    bridgeDispatcher: $0,
-                    lifecyclePolicy: lifecyclePolicy
-                )
-            } ?? MarkdownEditorSession()
+            session =
+                bridgeDispatcher.map {
+                    MarkdownEditorSession(
+                        bridgeDispatcher: $0,
+                        lifecyclePolicy: lifecyclePolicy
+                    )
+                } ?? MarkdownEditorSession()
             session.authorizeAutomaticFocus()
             if let initialSourceRange {
                 session.revealSourceRange(
@@ -5590,10 +5775,13 @@ struct MarkdownEditorWebViewIntegrationTests {
             let clock = ContinuousClock()
             let deadline = clock.now.advanced(by: .seconds(10))
             while !session.isReady || !session.isLoaded
-                    || !session.hasAttachedWebView {
+                || !session.hasAttachedWebView
+            {
                 if clock.now >= deadline {
-                    Issue.record(Comment(rawValue: session.errorMessage
-                        ?? "The WKWebView editor did not become ready with an attached view."))
+                    Issue.record(
+                        Comment(
+                            rawValue: session.errorMessage
+                                ?? "The WKWebView editor did not become ready with an attached view."))
                     throw MarkdownEditorSession.SessionError.unavailable
                 }
                 try await Task.sleep(for: .milliseconds(25))
@@ -5710,7 +5898,8 @@ struct MarkdownEditorWebViewIntegrationTests {
             let deadline = clock.now.advanced(by: .seconds(3))
             while true {
                 if let head = session.context?.selections.first?.head,
-                   expectedRange.contains(head) {
+                    expectedRange.contains(head)
+                {
                     return head
                 }
                 if clock.now >= deadline {
@@ -5784,7 +5973,9 @@ struct MarkdownEditorWebViewIntegrationTests {
                 let snapshot = try await session.testingAccessibilitySnapshot()
                 if predicate(snapshot) { return snapshot }
                 if clock.now >= deadline {
-                    Issue.record("The editor did not apply \(stage); label=\(snapshot.label), top=\(snapshot.contentPaddingTop), inline=\(snapshot.contentPaddingInlineStart), rootRegular=\(snapshot.presentation.rootInlineRegular), rootNarrow=\(snapshot.presentation.rootInlineNarrow), rootLineWidth=\(snapshot.presentation.rootLineWidth), preview=\(snapshot.previewTitle), previewHidden=\(snapshot.previewPopoverHidden), tables=\(snapshot.semanticTableCount), footnoteReferences=\(snapshot.footnoteReferenceCount), footnoteDefinitions=\(snapshot.footnoteDefinitionSourceCount), callouts=\(snapshot.liveCalloutBlockCount), h1=\(snapshot.liveH1Count), h2=\(snapshot.liveH2Count), fences=\(snapshot.collapsedCodeFenceLineCount), fenceHeight=\(snapshot.collapsedCodeFenceVisibleHeight), listMarkers=\(snapshot.liveListMarkerCount), lines=\(snapshot.visibleLineClassSummary).")
+                    Issue.record(
+                        "The editor did not apply \(stage); label=\(snapshot.label), top=\(snapshot.contentPaddingTop), inline=\(snapshot.contentPaddingInlineStart), rootRegular=\(snapshot.presentation.rootInlineRegular), rootNarrow=\(snapshot.presentation.rootInlineNarrow), rootLineWidth=\(snapshot.presentation.rootLineWidth), preview=\(snapshot.previewTitle), previewHidden=\(snapshot.previewPopoverHidden), tables=\(snapshot.semanticTableCount), footnoteReferences=\(snapshot.footnoteReferenceCount), footnoteDefinitions=\(snapshot.footnoteDefinitionSourceCount), callouts=\(snapshot.liveCalloutBlockCount), h1=\(snapshot.liveH1Count), h2=\(snapshot.liveH2Count), fences=\(snapshot.collapsedCodeFenceLineCount), fenceHeight=\(snapshot.collapsedCodeFenceVisibleHeight), listMarkers=\(snapshot.liveListMarkerCount), lines=\(snapshot.visibleLineClassSummary)."
+                    )
                     throw MarkdownEditorSession.SessionError.unavailable
                 }
                 try await Task.sleep(for: .milliseconds(20))
@@ -5797,7 +5988,8 @@ struct MarkdownEditorWebViewIntegrationTests {
         ) async throws -> [(TestingPresentationScenario, MarkdownEditorSession.TestingPresentationSnapshot)] {
             var snapshots: [(TestingPresentationScenario, MarkdownEditorSession.TestingPresentationSnapshot)] = []
             let requiresCallout = sourceBox.source.contains("> [!")
-            let requiresTable = sourceBox.source.contains("|:---")
+            let requiresTable =
+                sourceBox.source.contains("|:---")
                 || sourceBox.source.contains("| ---")
             let requiresMath = sourceBox.source.contains("$$")
             let requiresFootnote = sourceBox.source.contains("[^")
@@ -5898,7 +6090,8 @@ struct MarkdownEditorWebViewIntegrationTests {
                 in: webView
             )
             if !didSuspend,
-               case .initialize(_, _, _, .some) = request.operation {
+                case .initialize(_, _, _, .some) = request.operation
+            {
                 didSuspend = true
                 await withCheckedContinuation { continuation = $0 }
             }
@@ -5942,7 +6135,8 @@ struct MarkdownEditorWebViewIntegrationTests {
                 in: webView
             )
             guard case .initialize(_, _, _, .some) = request.operation,
-                  var object = result as? [String: Any] else {
+                var object = result as? [String: Any]
+            else {
                 return result
             }
             object["selections"] = [["anchor": 0, "head": 0]]
@@ -6027,7 +6221,8 @@ struct MarkdownEditorWebViewIntegrationTests {
                 from: Data(requestJSON.utf8)
             )
             if shouldFailQueryText,
-               case .queryText = request.operation {
+                case .queryText = request.operation
+            {
                 didFailQueryText = true
                 throw ProbeError.queryTextFailure
             }
@@ -6068,8 +6263,9 @@ struct MarkdownEditorWebViewIntegrationTests {
                 from: Data(requestJSON.utf8)
             )
             if !didSuspend,
-               request.documentID == targetDocumentID,
-               case .queryText = request.operation {
+                request.documentID == targetDocumentID,
+                case .queryText = request.operation
+            {
                 didSuspend = true
                 await withCheckedContinuation { continuation = $0 }
                 if outcome == .failure {
@@ -6253,35 +6449,39 @@ struct MarkdownEditorWebViewIntegrationTests {
                 presentsEditor: true,
                 retainsEditor: true,
                 editorIsReady: session.isLoaded
-            ) { Color.clear } editor: { editorWebView }
+            ) {
+                Color.clear
+            } editor: {
+                editorWebView
+            }
         }
 
         private var editorWebView: some View {
             MarkdownEditorWebView(
-                    session: session,
-                    documentID: documentID,
-                    documentTitle: sourceBox.documentTitle,
-                    performanceDocumentID: documentID,
+                session: session,
+                documentID: documentID,
+                documentTitle: sourceBox.documentTitle,
+                performanceDocumentID: documentID,
+                source: sourceBox.source,
+                mode: sourceBox.mode,
+                presentationCSS: sourceBox.presentationCSS,
+                userCSS: sourceBox.userCSS,
+                requiresMathRuntime: MarkdownEditorWebView.requiresMathRuntime(
                     source: sourceBox.source,
-                    mode: sourceBox.mode,
-                    presentationCSS: sourceBox.presentationCSS,
-                    userCSS: sourceBox.userCSS,
-                    requiresMathRuntime: MarkdownEditorWebView.requiresMathRuntime(
-                        source: sourceBox.source,
-                        linkPreviews: linkPreviews
-                    ),
-                    linkCompletionQuery: { _, _ in [] },
-                    linkPreviews: linkPreviews,
-                    initialScrollFraction: 0,
-                    initialScrollAnchor: sourceBox.scrollAnchor,
-                    onDocumentActivity: {},
-                    onRequestSave: {},
-                    onRequestFind: { _ in },
-                    onRequestDocumentTitleRename: onTitleRename,
-                    onPasteImage: { _ in false },
-                    onLinkActivation: { sourceBox.activatedLinks.append($0) },
-                    onScrollFractionChange: { _ in },
-                    onScrollAnchorChange: { sourceBox.scrollAnchor = $0 }
+                    linkPreviews: linkPreviews
+                ),
+                linkCompletionQuery: { _, _ in [] },
+                linkPreviews: linkPreviews,
+                initialScrollFraction: 0,
+                initialScrollAnchor: sourceBox.scrollAnchor,
+                onDocumentActivity: {},
+                onRequestSave: {},
+                onRequestFind: { _ in },
+                onRequestDocumentTitleRename: onTitleRename,
+                onPasteImage: { _ in false },
+                onLinkActivation: { sourceBox.activatedLinks.append($0) },
+                onScrollFractionChange: { _ in },
+                onScrollAnchorChange: { sourceBox.scrollAnchor = $0 }
             )
         }
     }

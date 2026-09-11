@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+
 @testable import ScholiumApp
 
 struct ScholiumLocalizationTests {
@@ -40,9 +41,6 @@ struct ScholiumLocalizationTests {
             ScholiumL10n.string("No Agent Changes", locale: simplifiedChinese)
                 == "没有智能体更改"
         )
-
-
-
 
         #expect(ScholiumL10n.string("Undo", locale: simplifiedChinese) == "撤销")
         #expect(

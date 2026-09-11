@@ -1,6 +1,7 @@
 import Foundation
 import ScholiumApplication
 import Testing
+
 @testable import ScholiumApp
 
 @Suite("Application storage bootstrap", .serialized)
@@ -87,9 +88,11 @@ struct ApplicationBootstrapControllerTests {
             environment: environment
         )
 
-        #expect(cliRegistry.standardizedFileURL == appSupport
-            .appendingPathComponent("Workspace", isDirectory: true)
-            .standardizedFileURL)
+        #expect(
+            cliRegistry.standardizedFileURL
+                == appSupport
+                .appendingPathComponent("Workspace", isDirectory: true)
+                .standardizedFileURL)
     }
 
     @Test("WorkspaceStore refuses an Application Support path below a regular file")
@@ -114,7 +117,8 @@ struct ApplicationBootstrapControllerTests {
     func damagedRegistryRequiresExplicitRelinking() async throws {
         let supportURL = testRoot()
             .appendingPathComponent("ApplicationSupport", isDirectory: true)
-        let registryURL = supportURL
+        let registryURL =
+            supportURL
             .appendingPathComponent("Workspace", isDirectory: true)
             .appendingPathComponent("workspace-registration-v3.json")
         try FileManager.default.createDirectory(
@@ -151,9 +155,10 @@ struct ApplicationBootstrapControllerTests {
             at: registryURL.deletingLastPathComponent(),
             includingPropertiesForKeys: nil
         )
-        let backup = try #require(contents.first(where: {
-            $0.lastPathComponent.hasPrefix("workspace-registration-v3.corrupt-")
-        }))
+        let backup = try #require(
+            contents.first(where: {
+                $0.lastPathComponent.hasPrefix("workspace-registration-v3.corrupt-")
+            }))
         #expect(try Data(contentsOf: backup) == damaged)
         #expect(!FileManager.default.fileExists(atPath: registryURL.path))
         await store.shutdownApplicationRuntime()
@@ -163,7 +168,8 @@ struct ApplicationBootstrapControllerTests {
     func relinkFailureUpdatesRegistryHealth() async throws {
         let supportURL = testRoot()
             .appendingPathComponent("ApplicationSupport", isDirectory: true)
-        let registryURL = supportURL
+        let registryURL =
+            supportURL
             .appendingPathComponent("Workspace", isDirectory: true)
             .appendingPathComponent("workspace-registration-v3.json")
         try FileManager.default.createDirectory(
@@ -188,7 +194,8 @@ struct ApplicationBootstrapControllerTests {
             return
         }
         guard case .triptych(let health, _) = recovery.source,
-              case .ioFailure = health else {
+            case .ioFailure = health
+        else {
             Issue.record("A failed relink retained the stale malformed health and Relink action.")
             return
         }

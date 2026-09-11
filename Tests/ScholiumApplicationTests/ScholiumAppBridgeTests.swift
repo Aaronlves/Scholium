@@ -1,6 +1,7 @@
 import Foundation
 import ScholiumContracts
 import Testing
+
 @testable import ScholiumApplication
 
 @Suite("Scholium App bridge", .serialized)
@@ -18,7 +19,7 @@ struct ScholiumAppBridgeTests {
         let first = Task { try await Self.send(.updateNote, root: root) }
         await gate.waitForEntry()
         var second: ScholiumAppBridgeResponse?
-        do { second = try await Self.send(.search, root: root, timeout: 0.5) } catch { }
+        do { second = try await Self.send(.search, root: root, timeout: 0.5) } catch {}
         await gate.release()
         _ = try await first.value
         #expect(second?.mcpResponse?.result?.objectValue?["status"] == .string("ok"))
@@ -51,7 +52,8 @@ struct ScholiumAppBridgeTests {
     }
 
     private static func send(_ tool: ScholiumMCPToolName, root: URL, timeout: TimeInterval = 2)
-        async throws -> ScholiumAppBridgeResponse {
+        async throws -> ScholiumAppBridgeResponse
+    {
         try await withCheckedThrowingContinuation { continuation in
             DispatchQueue.global(qos: .utility).async {
                 do {
@@ -80,9 +82,10 @@ struct ScholiumAppBridgeTests {
         defer { server.stop() }
 
         let client = try ScholiumAppBridgeClient(applicationSupportURL: root)
-        let response = try client.send(ScholiumAppBridgeRequest(
-            mcpRequest: ScholiumMCPBridgeRequest(tool: .search)
-        ))
+        let response = try client.send(
+            ScholiumAppBridgeRequest(
+                mcpRequest: ScholiumMCPBridgeRequest(tool: .search)
+            ))
 
         #expect(response.mcpResponse?.result?.objectValue?["status"] == .string("ok"))
     }
@@ -96,9 +99,10 @@ struct ScholiumAppBridgeTests {
             try Self.success(for: $0)
         }
         let firstClient = try ScholiumAppBridgeClient(applicationSupportURL: root)
-        _ = try firstClient.send(ScholiumAppBridgeRequest(
-            mcpRequest: ScholiumMCPBridgeRequest(tool: .workspaceStatus)
-        ))
+        _ = try firstClient.send(
+            ScholiumAppBridgeRequest(
+                mcpRequest: ScholiumMCPBridgeRequest(tool: .workspaceStatus)
+            ))
         #expect(await first.stopAndWait(timeout: 1))
 
         let second = try ScholiumAppBridgeServer(applicationSupportURL: root) {
@@ -106,9 +110,10 @@ struct ScholiumAppBridgeTests {
         }
         defer { second.stop() }
         let secondClient = try ScholiumAppBridgeClient(applicationSupportURL: root)
-        let response = try secondClient.send(ScholiumAppBridgeRequest(
-            mcpRequest: ScholiumMCPBridgeRequest(tool: .workspaceStatus)
-        ))
+        let response = try secondClient.send(
+            ScholiumAppBridgeRequest(
+                mcpRequest: ScholiumMCPBridgeRequest(tool: .workspaceStatus)
+            ))
 
         #expect(response.mcpResponse?.result?.objectValue?["status"] == .string("ok"))
     }
@@ -130,7 +135,8 @@ struct ScholiumAppBridgeTests {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let root = repositoryRoot
+        let root =
+            repositoryRoot
             .appendingPathComponent(".build/app-bridge-tests", isDirectory: true)
             .appendingPathComponent("\(name)-\(UUID().uuidString.lowercased())", isDirectory: true)
         try FileManager.default.createDirectory(

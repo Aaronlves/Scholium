@@ -151,7 +151,8 @@ public enum ZoteroMetadataPlanner {
         mode: ZoteroMetadataFillMode = .linkAndFill
     ) throws -> ZoteroMetadataPlan {
         if let metadataSnapshot,
-           metadataSnapshot.record.noteID != noteID {
+            metadataSnapshot.record.noteID != noteID
+        {
             throw ZoteroMetadataOperationError.invalidMetadataProposal
         }
         let intendedBinding = try AnalysisZoteroBinding(
@@ -163,7 +164,8 @@ public enum ZoteroMetadataPlanner {
         let importedType = sourceType(for: source.item.itemType)
         let effectiveType: AnalysisSourceType
         if case .string(let rawType)? = existing["type"],
-           let retainedType = AnalysisSourceType(rawValue: rawType) {
+            let retainedType = AnalysisSourceType(rawValue: rawType)
+        {
             effectiveType = retainedType
         } else {
             effectiveType = importedType
@@ -199,10 +201,12 @@ public enum ZoteroMetadataPlanner {
                 toFill.append(field)
             }
         }
-        guard metadataCatalog.validate(
-            fields: resultFields,
-            profile: .analysis
-        ).isEmpty else {
+        guard
+            metadataCatalog.validate(
+                fields: resultFields,
+                profile: .analysis
+            ).isEmpty
+        else {
             throw ZoteroMetadataOperationError.invalidMetadataProposal
         }
         return ZoteroMetadataPlan(
@@ -240,7 +244,8 @@ public enum ZoteroMetadataPlanner {
         case "computerprogram": .software
         case "letter", "email", "instantmessage": .correspondence
         case "audiorecording", "film", "interview", "podcast",
-             "radiobroadcast", "tvbroadcast", "videorecording": .audiovisual
+            "radiobroadcast", "tvbroadcast", "videorecording":
+            .audiovisual
         default: .other
         }
     }
@@ -250,7 +255,7 @@ public enum ZoteroMetadataPlanner {
         sourceType: AnalysisSourceType
     ) -> [String: YAMLValue] {
         var values: [String: YAMLValue] = [
-            "type": .string(sourceType.rawValue),
+            "type": .string(sourceType.rawValue)
         ]
         insert(item.title, as: "title", into: &values)
         insert(item.date, as: "publication_date", into: &values)
@@ -288,7 +293,8 @@ public enum ZoteroMetadataPlanner {
         into values: inout [String: YAMLValue]
     ) {
         guard let value = rawValue?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !value.isEmpty else { return }
+            !value.isEmpty
+        else { return }
         values[key] = .string(value)
     }
 
@@ -321,7 +327,8 @@ public enum ZoteroMetadataPlanner {
 
     private static func nonempty(_ rawValue: String?) -> String? {
         guard let value = rawValue?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !value.isEmpty else { return nil }
+            !value.isEmpty
+        else { return nil }
         return value
     }
 

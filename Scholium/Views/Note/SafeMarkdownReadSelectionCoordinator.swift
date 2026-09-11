@@ -68,9 +68,10 @@ final class SafeMarkdownReadSelectionCoordinator {
                 contentWorld: SafeMarkdownReadWebView.bridgeContentWorld
             )
             guard !Task.isCancelled,
-                  result as? Bool == true,
-                  isCurrent(),
-                  self.isActive == requestedActive else { return }
+                result as? Bool == true,
+                isCurrent(),
+                self.isActive == requestedActive
+            else { return }
             self.appliedIsActive = requestedActive
         }
     }

@@ -1,6 +1,6 @@
 import AppKit
-import WebKit
 import SwiftUI
+import WebKit
 
 /// A bounded read-only projection, never an editor/source operation.
 struct DocumentFloatingSurface: Codable, Equatable, Sendable {
@@ -21,18 +21,19 @@ struct DocumentFloatingSurface: Codable, Equatable, Sendable {
 
     static func decode(_ value: Any?) -> Self? {
         guard let value = value as? [String: Any],
-              Set(value.keys) == ["id", "kind", "left", "top", "bottom", "html", "css", "items", "selected"],
-              JSONSerialization.isValidJSONObject(value),
-              let data = try? JSONSerialization.data(withJSONObject: value),
-              data.count <= 1_500_000,
-              let result = try? JSONDecoder().decode(Self.self, from: data),
-              result.id > 0,
-              [result.left, result.top, result.bottom].allSatisfy({ $0.isFinite && abs($0) <= 100_000 }),
-              result.bottom >= result.top,
-              result.html.utf8.count <= 500_000, result.css.utf8.count <= 900_000,
-              result.items.count <= 100,
-              result.items.allSatisfy({ $0.label.utf16.count <= 512 && $0.detail.utf16.count <= 1_024 }),
-              result.selected >= -1, result.selected < max(1, result.items.count) else { return nil }
+            Set(value.keys) == ["id", "kind", "left", "top", "bottom", "html", "css", "items", "selected"],
+            JSONSerialization.isValidJSONObject(value),
+            let data = try? JSONSerialization.data(withJSONObject: value),
+            data.count <= 1_500_000,
+            let result = try? JSONDecoder().decode(Self.self, from: data),
+            result.id > 0,
+            [result.left, result.top, result.bottom].allSatisfy({ $0.isFinite && abs($0) <= 100_000 }),
+            result.bottom >= result.top,
+            result.html.utf8.count <= 500_000, result.css.utf8.count <= 900_000,
+            result.items.count <= 100,
+            result.items.allSatisfy({ $0.label.utf16.count <= 512 && $0.detail.utf16.count <= 1_024 }),
+            result.selected >= -1, result.selected < max(1, result.items.count)
+        else { return nil }
         switch result.kind {
         case .preview:
             guard !result.html.isEmpty, result.items.isEmpty, result.selected == -1 else { return nil }
@@ -75,14 +76,17 @@ final class DocumentFloatingSurfaceController: NSObject, WKNavigationDelegate {
             return
         }
         guard webView.window != nil, webView.bounds.width > 24, webView.bounds.height > 24,
-              let viewport = webView.superview as? DocumentWebViewContainer else { return }
+            let viewport = webView.superview as? DocumentWebViewContainer
+        else { return }
         if let surface, value.id <= surface.id { return }
         if value.kind == .selection,
-           value.bottom + 52 > webView.bounds.height - 12, value.top < 64 {
+            value.bottom + 52 > webView.bounds.height - 12, value.top < 64
+        {
             dismiss()
             return
         }
-        let isSamePreview = surface?.kind == .preview && value.kind == .preview
+        let isSamePreview =
+            surface?.kind == .preview && value.kind == .preview
             && surface?.html == value.html && surface?.css == value.css
         self.event = event
         self.owner = webView
@@ -95,25 +99,32 @@ final class DocumentFloatingSurfaceController: NSObject, WKNavigationDelegate {
             container.onPointerPresence = { [weak self] entered in self?.send(entered ? "enter" : "leave") }
             glass = container
             viewport.addSubview(container, positioned: .above, relativeTo: webView)
-            observers.append(NotificationCenter.default.addObserver(
-                forName: NSWindow.didUpdateNotification, object: webView.window, queue: .main
-            ) { [weak self] _ in
-                MainActor.assumeIsolated {
-                    guard let self, self.resultPopover == nil, let owner = self.owner,
-                          let firstResponder = owner.window?.firstResponder as? NSView else { return }
-                    let responder = (firstResponder as? NSTextView)?.delegate as? NSView ?? firstResponder
-                    guard responder !== owner, !responder.isDescendant(of: owner),
-                          self.glass.map({ !responder.isDescendant(of: $0) }) == true else { return }
-                    self.send("dismiss")
-                    self.dismiss()
-                }
-            })
-            for name in [NSWindow.didResignKeyNotification, NSWindow.willCloseNotification, NSWindow.didResizeNotification] {
-                observers.append(NotificationCenter.default.addObserver(
-                    forName: name, object: webView.window, queue: .main
+            observers.append(
+                NotificationCenter.default.addObserver(
+                    forName: NSWindow.didUpdateNotification, object: webView.window, queue: .main
                 ) { [weak self] _ in
-                    MainActor.assumeIsolated { self?.send("dismiss"); self?.dismiss() }
+                    MainActor.assumeIsolated {
+                        guard let self, self.resultPopover == nil, let owner = self.owner,
+                            let firstResponder = owner.window?.firstResponder as? NSView
+                        else { return }
+                        let responder = (firstResponder as? NSTextView)?.delegate as? NSView ?? firstResponder
+                        guard responder !== owner, !responder.isDescendant(of: owner),
+                            self.glass.map({ !responder.isDescendant(of: $0) }) == true
+                        else { return }
+                        self.send("dismiss")
+                        self.dismiss()
+                    }
                 })
+            for name in [NSWindow.didResignKeyNotification, NSWindow.willCloseNotification, NSWindow.didResizeNotification] {
+                observers.append(
+                    NotificationCenter.default.addObserver(
+                        forName: name, object: webView.window, queue: .main
+                    ) { [weak self] _ in
+                        MainActor.assumeIsolated {
+                            self?.send("dismiss")
+                            self?.dismiss()
+                        }
+                    })
             }
         }
         guard let glass else { return }
@@ -176,19 +187,26 @@ final class DocumentFloatingSurfaceController: NSObject, WKNavigationDelegate {
             suggestions = nil
             let bar = SelectionActionBar(actions: SelectionActionPreferences.shared.actions)
             selectionBar = bar
-            bar.onDismiss = { [weak self] in self?.send("dismiss"); self?.dismiss() }
+            bar.onDismiss = { [weak self] in
+                self?.send("dismiss")
+                self?.dismiss()
+            }
             bar.onInquiry = { [weak self] inquiry in
                 guard let self, self.inquiryTask == nil, self.resultPopover == nil,
-                      let surface = self.surface, let event = self.event else { return }
+                    let surface = self.surface, let event = self.event
+                else { return }
                 self.inquiryTask = Task { @MainActor [weak self] in
                     defer { self?.inquiryTask = nil }
                     guard await event(surface.id, "choose", 0), !Task.isCancelled,
-                          let self, self.surface?.id == surface.id else { return }
+                        let self, self.surface?.id == surface.id
+                    else { return }
                     guard let result = await inquire?(inquiry, { await event(surface.id, "choose", 0) }), !Task.isCancelled,
-                          self.surface?.id == surface.id else { return }
+                        self.surface?.id == surface.id
+                    else { return }
                     let popover = NSPopover()
                     popover.behavior = .transient
-                    popover.contentViewController = NSHostingController(rootView: AgentSelectionResultView(result: result, close: { [weak self] in self?.resultPopover?.close() }))
+                    popover.contentViewController = NSHostingController(
+                        rootView: AgentSelectionResultView(result: result, close: { [weak self] in self?.resultPopover?.close() }))
                     self.resultPopover = popover
                     popover.delegate = self
                     popover.show(relativeTo: bar.bounds, of: bar, preferredEdge: .maxY)
@@ -206,14 +224,17 @@ final class DocumentFloatingSurfaceController: NSObject, WKNavigationDelegate {
     }
 
     func dismiss() {
-        inquiryTask?.cancel(); inquiryTask = nil
-        resultPopover?.close(); resultPopover = nil
+        inquiryTask?.cancel()
+        inquiryTask = nil
+        resultPopover?.close()
+        resultPopover = nil
         selectionBar = nil
         preview?.stopLoading()
         preview?.navigationDelegate = nil
         if let preview, let owner,
-           let responder = owner.window?.firstResponder as? NSView,
-           responder.isDescendant(of: preview) {
+            let responder = owner.window?.firstResponder as? NSView,
+            responder.isDescendant(of: preview)
+        {
             owner.window?.makeFirstResponder(owner)
         }
         preview = nil
@@ -239,10 +260,12 @@ final class DocumentFloatingSurfaceController: NSObject, WKNavigationDelegate {
         let anchorX = surface.kind == .selection ? surface.left - width / 2 : surface.left
         let x = min(max(12, anchorX), bounds.width - width - 12)
         let below = surface.bottom + 8
-        let top = below + height <= bounds.height - 12
+        let top =
+            below + height <= bounds.height - 12
             ? below : max(12, surface.top - height - 8)
-        let rect = NSRect(x: x, y: owner.isFlipped ? top : bounds.height - top - height,
-                          width: width, height: height)
+        let rect = NSRect(
+            x: x, y: owner.isFlipped ? top : bounds.height - top - height,
+            width: width, height: height)
         glass.frame = owner.convert(rect, to: glass.superview)
         glass.contentView?.frame = glass.bounds
     }
@@ -252,28 +275,32 @@ final class DocumentFloatingSurfaceController: NSObject, WKNavigationDelegate {
         let id = surface?.id
         webView.evaluateJavaScript("document.body.scrollHeight") { [weak self, weak webView] result, _ in
             guard let self, webView === self.preview, self.surface?.id == id,
-                  let height = result as? Double, height.isFinite else { return }
+                let height = result as? Double, height.isFinite
+            else { return }
             self.layout(height: height)
         }
     }
 
-    func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
-                 decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void) {
-        decisionHandler(action.navigationType == .other && action.request.url?.absoluteString == "about:blank"
-                        ? .allow : .cancel)
+    func webView(
+        _ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
+        decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void
+    ) {
+        decisionHandler(
+            action.navigationType == .other && action.request.url?.absoluteString == "about:blank"
+                ? .allow : .cancel)
     }
 
     private static func previewHTML(_ value: DocumentFloatingSurface) -> String {
         let css = value.css.replacingOccurrences(of: "</style", with: "<\\/style", options: .caseInsensitive)
         return """
-        <!doctype html><html><head><meta charset="utf-8">
-        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src scholium-font: data:; connect-src 'none'; base-uri 'none'; form-action 'none'">
-        <style>\(css)</style><style>
-        html, body { margin: 0 !important; min-height: 0 !important; height: auto !important; background: transparent !important; }
-        body { padding: 14px 16px !important; box-sizing: border-box; color: var(--scholium-color-primary-text); overflow-wrap: anywhere; }
-        .scholium-preview-body.scholium-document { padding: 0 !important; margin: 0 !important; min-height: 0 !important; max-width: none !important; }
-        </style></head><body>\(value.html)</body></html>
-        """
+            <!doctype html><html><head><meta charset="utf-8">
+            <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src scholium-font: data:; connect-src 'none'; base-uri 'none'; form-action 'none'">
+            <style>\(css)</style><style>
+            html, body { margin: 0 !important; min-height: 0 !important; height: auto !important; background: transparent !important; }
+            body { padding: 14px 16px !important; box-sizing: border-box; color: var(--scholium-color-primary-text); overflow-wrap: anywhere; }
+            .scholium-preview-body.scholium-document { padding: 0 !important; margin: 0 !important; min-height: 0 !important; max-width: none !important; }
+            </style></head><body>\(value.html)</body></html>
+            """
     }
 }
 
@@ -297,7 +324,6 @@ private final class FloatingPreviewWebView: WKWebView {
         if event.keyCode == 53 { onDismiss?() } else { super.keyDown(with: event) }
     }
 }
-
 
 extension DocumentFloatingSurfaceController: NSPopoverDelegate {
     func popoverDidClose(_ notification: Notification) { resultPopover = nil }

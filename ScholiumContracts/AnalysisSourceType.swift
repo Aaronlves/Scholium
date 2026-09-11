@@ -77,20 +77,21 @@ public enum AnalysisSourceTypeProfileCatalog {
     }
 
     private static let profiles: [AnalysisSourceType: AnalysisSourceTypeProfile] =
-        Dictionary(uniqueKeysWithValues: AnalysisSourceType.allCases.map { sourceType in
-            let recommended = recommendedFields(for: sourceType)
-            let applicable = unique(recommended + conditionalFields(for: sourceType))
-            let serialization = BuiltInNoteMetadataCatalog.analysisCanonicalKeys.filter(applicable.contains)
-            return (
-                sourceType,
-                AnalysisSourceTypeProfile(
-                    sourceType: sourceType,
-                    applicableFields: applicable,
-                    recommendedFieldOrder: recommended,
-                    serializationFieldOrder: serialization
+        Dictionary(
+            uniqueKeysWithValues: AnalysisSourceType.allCases.map { sourceType in
+                let recommended = recommendedFields(for: sourceType)
+                let applicable = unique(recommended + conditionalFields(for: sourceType))
+                let serialization = BuiltInNoteMetadataCatalog.analysisCanonicalKeys.filter(applicable.contains)
+                return (
+                    sourceType,
+                    AnalysisSourceTypeProfile(
+                        sourceType: sourceType,
+                        applicableFields: applicable,
+                        recommendedFieldOrder: recommended,
+                        serializationFieldOrder: serialization
+                    )
                 )
-            )
-        })
+            })
 
     private static func recommendedFields(for type: AnalysisSourceType) -> [String] {
         switch type {
@@ -124,9 +125,15 @@ public enum AnalysisSourceTypeProfileCatalog {
         case .journalArticle:
             ["doi", "issn", "url", "accessed_date", "container_title_short", "publication_status", "language", "pmid", "pmcid"]
         case .book:
-            ["edition", "translators", "isbn", "series_title", "series_number", "volume", "volume_title", "number_of_volumes", "original_title", "original_authors", "original_publication_date", "original_publisher", "original_publisher_place", "language", "doi", "url"]
+            [
+                "edition", "translators", "isbn", "series_title", "series_number", "volume", "volume_title", "number_of_volumes", "original_title",
+                "original_authors", "original_publication_date", "original_publisher", "original_publisher_place", "language", "doi", "url",
+            ]
         case .chapter, .encyclopediaEntry:
-            ["chapter_number", "edition", "volume", "volume_title", "isbn", "translators", "container_authors", "collection_editors", "series_title", "series_number", "language", "doi", "url"]
+            [
+                "chapter_number", "edition", "volume", "volume_title", "isbn", "translators", "container_authors", "collection_editors", "series_title",
+                "series_number", "language", "doi", "url",
+            ]
         case .thesis:
             ["url", "accessed_date", "doi", "language", "publisher_place"]
         case .manuscript, .report, .preprint:

@@ -1,6 +1,7 @@
 import Foundation
-import Testing
 import ScholiumContracts
+import Testing
+
 @testable import ScholiumCore
 
 @Suite("Shared Markdown semantic document")
@@ -8,13 +9,13 @@ struct MarkdownSemanticDocumentTests {
     @Test("Adjacent link annotations own exact multiline Markdown and distinct source spans")
     func annotatedLinkSourceOwnership() throws {
         let source = """
-        # Claim
+            # Claim
 
-        [[Inference A#Step|the inference]]{{First **reason**.
+            [[Inference A#Step|the inference]]{{First **reason**.
 
-        - escaped \\}} text
-        - second reason}}
-        """
+            - escaped \\}} text
+            - second reason}}
+            """
         let semantic = MarkdownSemanticDocument(parsing: NoteDocument(relativePath: "claim.md", rawContent: source))
         let occurrence = try #require(semantic.links.first)
         let annotation = try #require(occurrence.annotation)
@@ -26,12 +27,15 @@ struct MarkdownSemanticDocumentTests {
         #expect(annotation.markdown.contains("First **reason**."))
         #expect(annotation.markdown.contains("\\}} text"))
         #expect(annotation.text.contains("First reason."))
-        #expect((source as NSString).substring(with: occurrence.linkSpan.nsRange)
-            == "[[Inference A#Step|the inference]]")
-        #expect((source as NSString).substring(with: occurrence.span.nsRange)
-            == "[[Inference A#Step|the inference]]{{\(annotation.markdown)}}")
-        #expect((source as NSString).substring(with: annotation.contentSpan.nsRange)
-            == annotation.markdown)
+        #expect(
+            (source as NSString).substring(with: occurrence.linkSpan.nsRange)
+                == "[[Inference A#Step|the inference]]")
+        #expect(
+            (source as NSString).substring(with: occurrence.span.nsRange)
+                == "[[Inference A#Step|the inference]]{{\(annotation.markdown)}}")
+        #expect(
+            (source as NSString).substring(with: annotation.contentSpan.nsRange)
+                == annotation.markdown)
         #expect(semantic.diagnostics.isEmpty)
     }
 
@@ -44,14 +48,16 @@ struct MarkdownSemanticDocumentTests {
             "[[Nested]]{{outer {{inner}} tail}}",
             "[[Unclosed]]{{reason",
         ] {
-            let semantic = MarkdownSemanticDocument(parsing: NoteDocument(
-                relativePath: "Malformed.md",
-                rawContent: source
-            ))
+            let semantic = MarkdownSemanticDocument(
+                parsing: NoteDocument(
+                    relativePath: "Malformed.md",
+                    rawContent: source
+                ))
             #expect(semantic.links.count == 1)
             #expect(semantic.links[0].annotation == nil)
-            #expect((source as NSString).substring(with: semantic.links[0].span.nsRange)
-                == (source as NSString).substring(with: semantic.links[0].linkSpan.nsRange))
+            #expect(
+                (source as NSString).substring(with: semantic.links[0].span.nsRange)
+                    == (source as NSString).substring(with: semantic.links[0].linkSpan.nsRange))
             #expect(semantic.diagnostics.contains { $0.code == .malformedLinkAnnotation })
         }
     }
@@ -59,10 +65,11 @@ struct MarkdownSemanticDocumentTests {
     @Test("Detached and escaped annotation openers remain ordinary source")
     func nonAnnotationOpeners() {
         for source in ["[[Detached]] {{reason}}", "[[Escaped]]\\{{reason}}"] {
-            let semantic = MarkdownSemanticDocument(parsing: NoteDocument(
-                relativePath: "Ordinary.md",
-                rawContent: source
-            ))
+            let semantic = MarkdownSemanticDocument(
+                parsing: NoteDocument(
+                    relativePath: "Ordinary.md",
+                    rawContent: source
+                ))
             #expect(semantic.links.first?.annotation == nil)
             #expect(semantic.diagnostics.isEmpty)
         }
@@ -71,20 +78,20 @@ struct MarkdownSemanticDocumentTests {
     @Test("Annotated links parse everywhere ordinary Wikilinks are valid")
     func annotatedLinks() {
         let source = """
-        ---
-        title: Annotation Fixture
-        hidden: "[[YAML Literal]]{{Hidden}}"
-        ---
-        A [[First]]{{A reason.}} and [[Second]]{{Another **reason**.}}.
-        ![[Embedded]]
-        `[[Inline Code]]{{Hidden}}`
-        ``[[Long Inline Code]]{{Hidden}}``
-        ```md
-        [[Fenced Code]]{{Hidden}}
-        ```
-        %% [[Commented]]{{Hidden}} %%
-        <!-- [[HTML Commented]]{{Hidden}} -->
-        """
+            ---
+            title: Annotation Fixture
+            hidden: "[[YAML Literal]]{{Hidden}}"
+            ---
+            A [[First]]{{A reason.}} and [[Second]]{{Another **reason**.}}.
+            ![[Embedded]]
+            `[[Inline Code]]{{Hidden}}`
+            ``[[Long Inline Code]]{{Hidden}}``
+            ```md
+            [[Fenced Code]]{{Hidden}}
+            ```
+            %% [[Commented]]{{Hidden}} %%
+            <!-- [[HTML Commented]]{{Hidden}} -->
+            """
         let semantic = MarkdownSemanticDocument(parsing: NoteDocument(relativePath: "Annotations.md", rawContent: source))
         let byTarget = Dictionary(uniqueKeysWithValues: semantic.links.map { ($0.target, $0) })
 
@@ -106,16 +113,18 @@ struct MarkdownSemanticDocumentTests {
             (source: "Visible.\n%%\n[[Hidden]]{{Hidden annotation.}} $x$ [^hidden]", opener: "%%"),
             (source: "Visible.\n<!--\n[[Hidden]]{{Hidden annotation.}} $x$ [^hidden]", opener: "<!--"),
         ] {
-            let semantic = MarkdownSemanticDocument(parsing: NoteDocument(
-                relativePath: "comment.md",
-                rawContent: fixture.source
-            ))
+            let semantic = MarkdownSemanticDocument(
+                parsing: NoteDocument(
+                    relativePath: "comment.md",
+                    rawContent: fixture.source
+                ))
             #expect(semantic.links.isEmpty)
             #expect(semantic.mathExpressions.isEmpty)
             #expect(semantic.footnoteReferences.isEmpty)
-            let diagnostic = try #require(semantic.diagnostics.first {
-                $0.code == .malformedComment
-            })
+            let diagnostic = try #require(
+                semantic.diagnostics.first {
+                    $0.code == .malformedComment
+                })
             let span = try #require(diagnostic.span)
             #expect((fixture.source as NSString).substring(with: span.nsRange) == fixture.opener)
         }
@@ -124,19 +133,20 @@ struct MarkdownSemanticDocumentTests {
     @Test("Incomplete inline extension markers remain exact ordinary source")
     func incompleteInlineExtensionMarkers() {
         let source = """
-        [^unclosed
-        [^]: empty identifier
-        ^[unclosed
-        ^[]
-        [[unclosed
-        ==unclosed
-        $unclosed
-        > [!unclosed
-        """
-        let semantic = MarkdownSemanticDocument(parsing: NoteDocument(
-            relativePath: "Incomplete.md",
-            rawContent: source
-        ))
+            [^unclosed
+            [^]: empty identifier
+            ^[unclosed
+            ^[]
+            [[unclosed
+            ==unclosed
+            $unclosed
+            > [!unclosed
+            """
+        let semantic = MarkdownSemanticDocument(
+            parsing: NoteDocument(
+                relativePath: "Incomplete.md",
+                rawContent: source
+            ))
 
         #expect(semantic.callouts.isEmpty)
         #expect(semantic.links.isEmpty)
@@ -169,67 +179,70 @@ struct MarkdownSemanticDocumentTests {
     @Test("Obsidian callouts are typed without parsing literal regions")
     func callouts() {
         let source = """
-        ```md
-        > [!flag] Not a callout
-        ```
+            ```md
+            > [!flag] Not a callout
+            ```
 
-        > [!orient] Scope
-        > This note maps the issue.
+            > [!orient] Scope
+            > This note maps the issue.
 
-        > [!cite]- Sources
-        > Checked source.
+            > [!cite]- Sources
+            > Checked source.
 
-        > [!connect] Neighboring notes
-        > [[Related Note]]
+            > [!connect] Neighboring notes
+            > [[Related Note]]
 
-        > [!state] Normative reason
-        > A reason that counts in favour.
+            > [!state] Normative reason
+            > A reason that counts in favour.
 
-        > [!illustrate] Evil Demon
-        > A concrete test case.
+            > [!illustrate] Evil Demon
+            > A concrete test case.
 
-        > [!quote] Author (2026, p. 1)
-        > “Exact wording.”
+            > [!quote] Author (2026, p. 1)
+            > “Exact wording.”
 
-        > [!flag]+ Source-status limit
-        > Verification remains incomplete.
+            > [!flag]+ Source-status limit
+            > Verification remains incomplete.
 
-        > [!mini] Legacy orientation
-        > Preserved legacy source.
+            > [!mini] Legacy orientation
+            > Preserved legacy source.
 
-        > [!bibli:] Legacy sources
-        > Preserved legacy source.
+            > [!bibli:] Legacy sources
+            > Preserved legacy source.
 
-        > [!project:] Legacy connections
-        > Preserved legacy source.
+            > [!project:] Legacy connections
+            > Preserved legacy source.
 
-        > [!theorem] Legacy statement
-        > Preserved legacy source.
+            > [!theorem] Legacy statement
+            > Preserved legacy source.
 
-        > [!dialogue] Legacy illustration
-        > Preserved legacy source.
+            > [!dialogue] Legacy illustration
+            > Preserved legacy source.
 
-        > [!author] Legacy quotation
-        > Preserved legacy source.
+            > [!author] Legacy quotation
+            > Preserved legacy source.
 
-        > [!torn] Legacy caution
-        > Preserved legacy source.
+            > [!torn] Legacy caution
+            > Preserved legacy source.
 
-        > [!bespoke] Preserved
-        > Unknown kinds remain readable.
-        """
+            > [!bespoke] Preserved
+            > Unknown kinds remain readable.
+            """
         let semantic = MarkdownSemanticDocument(parsing: NoteDocument(relativePath: "callouts.md", rawContent: source))
 
         #expect(semantic.callouts.count == 15)
-        #expect(Array(semantic.callouts.prefix(7).map(\.kind)) == [
-            "orient", "cite", "connect", "state", "illustrate", "quote", "flag",
-        ])
-        #expect(Array(semantic.callouts.prefix(7).map(\.role)) == [
-            .orient, .cite, .connect, .state, .illustrate, .quote, .flag,
-        ])
-        #expect(Array(semantic.callouts.dropFirst(7).prefix(7).map(\.kind)) == [
-            "orient", "cite", "connect", "state", "illustrate", "quote", "flag",
-        ])
+        #expect(
+            Array(semantic.callouts.prefix(7).map(\.kind)) == [
+                "orient", "cite", "connect", "state", "illustrate", "quote", "flag",
+            ])
+        #expect(
+            Array(semantic.callouts.prefix(7).map(\.role)) == [
+                .orient, .cite, .connect, .state, .illustrate, .quote, .flag,
+            ])
+        #expect(
+            Array(semantic.callouts.dropFirst(7).prefix(7).map(\.kind)) == [
+                "orient", "cite", "connect", "state", "illustrate", "quote", "flag",
+            ])
         #expect(semantic.callouts[7].rawKind == "mini")
         #expect(semantic.callouts[1].foldState == .collapsed)
         #expect(semantic.callouts[6].foldState == .expanded)
@@ -242,12 +255,12 @@ struct MarkdownSemanticDocumentTests {
     @Test("Named, repeated, inline, missing, and unused footnotes stay distinct")
     func footnotes() {
         let source = """
-        First[^reason], repeated[^reason], missing[^missing], inline^[Inline *content*].
+            First[^reason], repeated[^reason], missing[^missing], inline^[Inline *content*].
 
-        [^reason]: First line
-          second line
-        [^unused]: Not cited.
-        """
+            [^reason]: First line
+              second line
+            [^unused]: Not cited.
+            """
         let semantic = MarkdownSemanticDocument(parsing: NoteDocument(relativePath: "footnotes.md", rawContent: source))
         let named = semantic.footnoteReferences.filter { $0.identifier == "reason" }
         let inline = semantic.footnoteReferences.first { $0.isInline }
@@ -263,33 +276,34 @@ struct MarkdownSemanticDocumentTests {
     @Test("Footnote continuations preserve nested block indentation and exact ownership")
     func nestedBlockFootnote() throws {
         let source = """
-        Claim[^blocks].
+            Claim[^blocks].
 
-        [^blocks]: First paragraph.
+            [^blocks]: First paragraph.
 
-          - Outer item
-            - Nested item
+              - Outer item
+                - Nested item
 
-          ```swift
-          let value = 1
-          ```
-        Following paragraph.
-        """
+              ```swift
+              let value = 1
+              ```
+            Following paragraph.
+            """
         let semantic = MarkdownSemanticDocument(
             parsing: NoteDocument(relativePath: "nested-footnote.md", rawContent: source)
         )
         let definition = try #require(semantic.footnoteDefinitions.first)
 
-        #expect(definition.content == """
-        First paragraph.
+        #expect(
+            definition.content == """
+                First paragraph.
 
-        - Outer item
-          - Nested item
+                - Outer item
+                  - Nested item
 
-        ```swift
-        let value = 1
-        ```
-        """)
+                ```swift
+                let value = 1
+                ```
+                """)
         let exactSource = (source as NSString).substring(with: definition.span.nsRange)
         #expect(exactSource.hasPrefix("[^blocks]: First paragraph."))
         #expect(exactSource.hasSuffix("  ```\n"))
@@ -299,11 +313,11 @@ struct MarkdownSemanticDocumentTests {
     @Test("Links share one syntax-aware source-location contract")
     func links() {
         let source = """
-        前置 🧭 [[Paper#Claim|visible alias]]{{Why **this** matters.}} and [Topic](topics/Topic%20Name.md#Scope).
-        `[[Ignored]]`
-        %% [[Commented]] %%
-        ![[figure.png|320]]
-        """
+            前置 🧭 [[Paper#Claim|visible alias]]{{Why **this** matters.}} and [Topic](topics/Topic%20Name.md#Scope).
+            `[[Ignored]]`
+            %% [[Commented]] %%
+            ![[figure.png|320]]
+            """
         let semantic = MarkdownSemanticDocument(parsing: NoteDocument(relativePath: "links.md", rawContent: source))
 
         #expect(semantic.links.count == 3)
@@ -313,10 +327,12 @@ struct MarkdownSemanticDocumentTests {
         #expect(annotated.alias == "visible alias")
         #expect(annotated.annotation?.markdown == "Why **this** matters.")
         #expect(annotated.span.start.line == 1)
-        #expect((source as NSString).substring(with: annotated.span.nsRange)
-            == "[[Paper#Claim|visible alias]]{{Why **this** matters.}}")
-        #expect((source as NSString).substring(with: annotated.linkSpan.nsRange)
-            == "[[Paper#Claim|visible alias]]")
+        #expect(
+            (source as NSString).substring(with: annotated.span.nsRange)
+                == "[[Paper#Claim|visible alias]]{{Why **this** matters.}}")
+        #expect(
+            (source as NSString).substring(with: annotated.linkSpan.nsRange)
+                == "[[Paper#Claim|visible alias]]")
         #expect(semantic.diagnostics.isEmpty)
 
         #expect(semantic.links[1].target == "topics/Topic Name.md")
@@ -336,32 +352,34 @@ struct MarkdownSemanticDocumentTests {
     @Test("Dollar mathematics is source-located and excludes literal regions")
     func mathematics() throws {
         let source = """
-        ---
-        title: "$YAML$"
-        ---
-        Inline $x + 范围$ and double-inline $$C_L$$.
+            ---
+            title: "$YAML$"
+            ---
+            Inline $x + 范围$ and double-inline $$C_L$$.
 
-        $$
-        \\int_0^1 x^2 \\, dx
-        $$
+            $$
+            \\int_0^1 x^2 \\, dx
+            $$
 
-        Escaped \\$literal$ and `code $ignored$`.
-        %% $commented$ %%
-        <!-- $hidden$ -->
+            Escaped \\$literal$ and `code $ignored$`.
+            %% $commented$ %%
+            <!-- $hidden$ -->
 
-        <div>
-        $raw$
-        </div>
-        """
-        let semantic = MarkdownSemanticDocument(parsing: NoteDocument(
-            relativePath: "Math.md",
-            rawContent: source
-        ))
+            <div>
+            $raw$
+            </div>
+            """
+        let semantic = MarkdownSemanticDocument(
+            parsing: NoteDocument(
+                relativePath: "Math.md",
+                rawContent: source
+            ))
 
         #expect(semantic.mathExpressions.map(\.kind) == [.inline, .inline, .display])
-        #expect(semantic.mathExpressions.map(\.content) == [
-            "x + 范围", "C_L", "\\int_0^1 x^2 \\, dx",
-        ])
+        #expect(
+            semantic.mathExpressions.map(\.content) == [
+                "x + 范围", "C_L", "\\int_0^1 x^2 \\, dx",
+            ])
         #expect(semantic.mathExpressions.map(\.delimiterLength) == [1, 2, 2])
         for expression in semantic.mathExpressions {
             let exact = (source as NSString).substring(with: expression.span.nsRange)
@@ -377,15 +395,17 @@ struct MarkdownSemanticDocumentTests {
     @Test("Unclosed display mathematics remains exact source with a diagnostic")
     func malformedDisplayMathematics() {
         let source = "Before\n\n$$\nx + y\n"
-        let semantic = MarkdownSemanticDocument(parsing: NoteDocument(
-            relativePath: "Malformed Math.md",
-            rawContent: source
-        ))
+        let semantic = MarkdownSemanticDocument(
+            parsing: NoteDocument(
+                relativePath: "Malformed Math.md",
+                rawContent: source
+            ))
 
         #expect(semantic.mathExpressions.isEmpty)
-        #expect(semantic.diagnostics.contains { diagnostic in
-            diagnostic.code == .malformedMath
-                && diagnostic.span.map { (source as NSString).substring(with: $0.nsRange) } == "$$"
-        })
+        #expect(
+            semantic.diagnostics.contains { diagnostic in
+                diagnostic.code == .malformedMath
+                    && diagnostic.span.map { (source as NSString).substring(with: $0.nsRange) } == "$$"
+            })
     }
 }

@@ -6,13 +6,15 @@ import Foundation
 enum ScholiumDocumentWebResources {
     private static func url(named name: String, extension fileExtension: String) -> URL? {
         if let resourceURL = Bundle.main.resourceURL {
-            let packagedBundleURL = resourceURL
+            let packagedBundleURL =
+                resourceURL
                 .appendingPathComponent("Scholium_ScholiumApp.bundle", isDirectory: true)
             if let packagedBundle = Bundle(url: packagedBundleURL),
-               let packagedURL = packagedBundle.url(
-                forResource: name,
-                withExtension: fileExtension
-               ) {
+                let packagedURL = packagedBundle.url(
+                    forResource: name,
+                    withExtension: fileExtension
+                )
+            {
                 return packagedURL
             }
         }

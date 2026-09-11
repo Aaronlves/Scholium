@@ -54,8 +54,9 @@ final class ReviewDocumentStatisticsModel: ObservableObject {
                 )
             }.value
             guard let self,
-                  !Task.isCancelled,
-                  self.identity == nextIdentity else { return }
+                !Task.isCancelled,
+                self.identity == nextIdentity
+            else { return }
             self.value = statistics
         }
     }

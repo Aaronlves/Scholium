@@ -10,10 +10,16 @@ public struct AgentNoteMoveEffect: Codable, Hashable, Sendable {
     public let afterFingerprint: DocumentFingerprint
     public let rewrittenOccurrences: Int
 
-    public init(noteID: UUID, role: VaultRole, source: VaultQualifiedNoteID, destination: VaultQualifiedNoteID,
-                beforeFingerprint: DocumentFingerprint, afterFingerprint: DocumentFingerprint, rewrittenOccurrences: Int) {
-        self.noteID = noteID; self.role = role; self.source = source; self.destination = destination
-        self.beforeFingerprint = beforeFingerprint; self.afterFingerprint = afterFingerprint
+    public init(
+        noteID: UUID, role: VaultRole, source: VaultQualifiedNoteID, destination: VaultQualifiedNoteID,
+        beforeFingerprint: DocumentFingerprint, afterFingerprint: DocumentFingerprint, rewrittenOccurrences: Int
+    ) {
+        self.noteID = noteID
+        self.role = role
+        self.source = source
+        self.destination = destination
+        self.beforeFingerprint = beforeFingerprint
+        self.afterFingerprint = afterFingerprint
         self.rewrittenOccurrences = rewrittenOccurrences
     }
     private enum CodingKeys: String, CodingKey, CaseIterable {
@@ -22,9 +28,11 @@ public struct AgentNoteMoveEffect: Codable, Hashable, Sendable {
     public init(from decoder: Decoder) throws {
         try requireClosedMoveFields(decoder, allowed: CodingKeys.allCases.map(\.stringValue))
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        self.init(noteID: try c.decode(UUID.self, forKey: .noteID), role: try c.decode(VaultRole.self, forKey: .role),
+        self.init(
+            noteID: try c.decode(UUID.self, forKey: .noteID), role: try c.decode(VaultRole.self, forKey: .role),
             source: try c.decode(VaultQualifiedNoteID.self, forKey: .source), destination: try c.decode(VaultQualifiedNoteID.self, forKey: .destination),
-            beforeFingerprint: try c.decode(DocumentFingerprint.self, forKey: .beforeFingerprint), afterFingerprint: try c.decode(DocumentFingerprint.self, forKey: .afterFingerprint),
+            beforeFingerprint: try c.decode(DocumentFingerprint.self, forKey: .beforeFingerprint),
+            afterFingerprint: try c.decode(DocumentFingerprint.self, forKey: .afterFingerprint),
             rewrittenOccurrences: try c.decode(Int.self, forKey: .rewrittenOccurrences))
     }
 }
@@ -34,7 +42,9 @@ public struct AgentNoteMoveBlockedLink: Codable, Hashable, Sendable {
     public let role: VaultRole
     public let link: IncomingLinkRewriteBlock
     public init(noteID: UUID, role: VaultRole, link: IncomingLinkRewriteBlock) {
-        self.noteID = noteID; self.role = role; self.link = link
+        self.noteID = noteID
+        self.role = role
+        self.link = link
     }
 }
 
@@ -48,12 +58,19 @@ public struct AgentNoteMovePreview: Sendable {
     public let blockers: [AgentNoteMoveBlockedLink]
     public let planFingerprint: DocumentFingerprint
 
-    public init(noteID: UUID, role: VaultRole, source: VaultQualifiedNoteID, destination: VaultQualifiedNoteID,
-                expectedFingerprint: DocumentFingerprint, effects: [AgentNoteMoveEffect], blockers: [AgentNoteMoveBlockedLink]) throws {
-        self.noteID = noteID; self.role = role; self.source = source; self.destination = destination
+    public init(
+        noteID: UUID, role: VaultRole, source: VaultQualifiedNoteID, destination: VaultQualifiedNoteID,
+        expectedFingerprint: DocumentFingerprint, effects: [AgentNoteMoveEffect], blockers: [AgentNoteMoveBlockedLink]
+    ) throws {
+        self.noteID = noteID
+        self.role = role
+        self.source = source
+        self.destination = destination
         self.expectedFingerprint = expectedFingerprint
         self.effects = effects.sorted { $0.source < $1.source }
-        self.blockers = blockers.sorted { $0.link.source != $1.link.source ? $0.link.source < $1.link.source : $0.link.span.utf16LowerBound < $1.link.span.utf16LowerBound }
+        self.blockers = blockers.sorted {
+            $0.link.source != $1.link.source ? $0.link.source < $1.link.source : $0.link.span.utf16LowerBound < $1.link.span.utf16LowerBound
+        }
         struct Manifest: Encodable {
             let noteID: UUID
             let source: VaultQualifiedNoteID
@@ -62,9 +79,13 @@ public struct AgentNoteMovePreview: Sendable {
             let effects: [AgentNoteMoveEffect]
             let blockers: [AgentNoteMoveBlockedLink]
         }
-        let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
-        planFingerprint = DocumentFingerprint(data: try encoder.encode(Manifest(noteID: noteID, source: source, destination: destination,
-            expectedFingerprint: expectedFingerprint, effects: self.effects, blockers: self.blockers)))
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        planFingerprint = DocumentFingerprint(
+            data: try encoder.encode(
+                Manifest(
+                    noteID: noteID, source: source, destination: destination,
+                    expectedFingerprint: expectedFingerprint, effects: self.effects, blockers: self.blockers)))
     }
 }
 
@@ -73,14 +94,17 @@ public struct AgentMoveLinkedSource: Codable, Hashable, Sendable {
     public let beforeData: Data
     public let afterData: Data
     public init(effect: AgentNoteMoveEffect, beforeData: Data, afterData: Data) {
-        self.effect = effect; self.beforeData = beforeData; self.afterData = afterData
+        self.effect = effect
+        self.beforeData = beforeData
+        self.afterData = afterData
     }
     private enum CodingKeys: String, CodingKey, CaseIterable { case effect, beforeData, afterData }
     public init(from decoder: Decoder) throws {
         try requireClosedMoveFields(decoder, allowed: CodingKeys.allCases.map(\.stringValue))
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        self.init(effect: try c.decode(AgentNoteMoveEffect.self, forKey: .effect), beforeData: try c.decode(Data.self, forKey: .beforeData),
-                  afterData: try c.decode(Data.self, forKey: .afterData))
+        self.init(
+            effect: try c.decode(AgentNoteMoveEffect.self, forKey: .effect), beforeData: try c.decode(Data.self, forKey: .beforeData),
+            afterData: try c.decode(Data.self, forKey: .afterData))
     }
 }
 
@@ -92,13 +116,16 @@ public struct AgentMoveEvidence: Codable, Hashable, Sendable {
     public let linkedSources: [AgentMoveLinkedSource]
     public var effects: [AgentNoteMoveEffect] { [primary] + linkedSources.map(\.effect) }
     public init(primary: AgentNoteMoveEffect, linkedSources: [AgentMoveLinkedSource]) {
-        self.primary = primary; self.linkedSources = linkedSources
+        self.primary = primary
+        self.linkedSources = linkedSources
     }
     private enum CodingKeys: String, CodingKey, CaseIterable { case primary, linkedSources }
     public init(from decoder: Decoder) throws {
         try requireClosedMoveFields(decoder, allowed: CodingKeys.allCases.map(\.stringValue))
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        self.init(primary: try c.decode(AgentNoteMoveEffect.self, forKey: .primary), linkedSources: try c.decode([AgentMoveLinkedSource].self, forKey: .linkedSources))
+        self.init(
+            primary: try c.decode(AgentNoteMoveEffect.self, forKey: .primary), linkedSources: try c.decode([AgentMoveLinkedSource].self, forKey: .linkedSources)
+        )
     }
 }
 
@@ -106,7 +133,8 @@ public struct AgentMoveSourceComparison: Sendable {
     public let effect: AgentNoteMoveEffect
     public let comparison: ExactSourceComparison
     public init(effect: AgentNoteMoveEffect, comparison: ExactSourceComparison) {
-        self.effect = effect; self.comparison = comparison
+        self.effect = effect
+        self.comparison = comparison
     }
 }
 
@@ -115,7 +143,9 @@ public struct AgentNoteMoveResult: Sendable {
     public let commit: TriptychMoveCommit
     public let derivedRefreshWarning: String?
     public init(change: AgentChange, commit: TriptychMoveCommit, derivedRefreshWarning: String?) {
-        self.change = change; self.commit = commit; self.derivedRefreshWarning = derivedRefreshWarning
+        self.change = change
+        self.commit = commit
+        self.derivedRefreshWarning = derivedRefreshWarning
     }
 }
 

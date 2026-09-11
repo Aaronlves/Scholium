@@ -2,372 +2,455 @@ import Foundation
 import ScholiumContracts
 
 extension WindowModel {
-  @MainActor
-  func openSystemNotification(_ route: SystemNotificationRoute) async -> SidebarContent? {
-    switch route {
-    case .agentChange(let change):
-      await openNotifiedAgentChange(change)
-      return nil
-    case .chat(let destination):
-      guard workspaceAssignment?.id == destination.triptychID, let chat = chatController else { return nil }
-      let opened = await chat.selectNotification(destination)
-      guard chatController === chat, workspaceAssignment?.id == destination.triptychID else { return nil }
-      if opened {
-        return .chat
-      } else {
-        reportOperationIssue(ScholiumL10n.string("This conversation is no longer available."), kind: .information)
-        return nil
-      }
-    }
-  }
-
-  @MainActor @discardableResult
-  func addCurrentSelectionToChat(inquiry: AgentChatSelectionInquiry = .ask) async -> Bool {
-    guard let chat = chatController else { return false }
-    let selected = chat.selectedID
-    do {
-      let attachment = try await currentSelectionAttachment()
-      guard chatController === chat, selected == chat.selectedID else { return false }
-      if chat.selected == nil || chat.selected?.archivedAt != nil { chat.newConversation() }
-      guard let conversationID = chat.selectedID else { return false }
-      return chat.prepareSelectionInquiry([attachment], inquiry: inquiry, to: conversationID)
-    } catch {
-      reportOperationIssue(error.localizedDescription, kind: .information)
-      return false
-    }
-  }
-
-  @MainActor
-  func runSelectionInquiry(_ inquiry: AgentChatSelectionInquiry, validate: AgentSelectionValidation, continueInChat: @escaping () -> Void) async -> AgentSelectionResult? {
-    guard let chat = chatController, let descriptor = currentDocumentDescriptor else { return nil }
-    do {
-      let attachment = try await currentSelectionAttachment()
-      guard chatController === chat, currentDocumentDescriptor?.sessionKey == descriptor.sessionKey,
-            await validate(), !Task.isCancelled else { return nil }
-      if inquiry.question == nil {
-        if chat.attachContext([attachment]) { continueInChat() }
-        return nil
-      }
-      guard let id = chat.beginSelectionInquiry(inquiry, attachment: attachment) else { return nil }
-      let adopt: ((String) async throws -> Void)?
-      if inquiry.resultKind == .replacement, presentedDocumentMode != .read {
-        adopt = { [weak self, weak chat] replacement in
-          guard let self, let chat, self.chatController === chat,
-            self.currentDocumentDescriptor?.sessionKey == descriptor.sessionKey,
-            self.presentedDocumentMode != .read,
-            self.currentNote?.workspaceSnapshot?.capabilities.canEditSource == true,
-            let range = attachment.sourceRange else { throw AgentChatNoteMaterialError.changedSource }
-          let session = self.documentController.session(for: descriptor)
-          guard session.conflict == nil else { throw AgentChatNoteMaterialError.changedSource }
-          guard !session.editorSession.isComposing else { throw AgentChatNoteMaterialError.composing }
-          let snapshot = try await session.editorSession.currentTextSnapshot()
-          guard self.currentDocumentDescriptor?.sessionKey == descriptor.sessionKey,
-            self.presentedDocumentMode != .read, session.conflict == nil,
-            DocumentFingerprint(content: snapshot.text) == attachment.fingerprint,
-            let webView = session.editorSession.webView else { throw AgentChatNoteMaterialError.changedSource }
-          _ = try await session.editorSession.send(.replacePassage(expectedText: snapshot.text,
-            fromUTF16: range.utf16LowerBound, toUTF16: range.utf16UpperBound, replacement: replacement), in: webView)
-        }
-      } else { adopt = nil }
-      return AgentSelectionResult(chat: chat, conversationID: id, title: inquiry.title,
-        original: attachment.text, adopt: adopt, openReference: { [weak self, weak chat] url in
-          guard let self, let chat, self.chatController === chat else { return false }
-          return self.openChatReference(url)
-        }, continueInChat: { [weak self, weak chat] in
-          guard let self, let chat, self.chatController === chat else { return }
-          chat.select(id); chat.presentContext(in: id); continueInChat()
-        })
-    } catch {
-      reportOperationIssue(error.localizedDescription, kind: .information)
-      return nil
-    }
-  }
-
-  @MainActor
-  private func currentSelectionAttachment() async throws -> AgentChatAttachment {
-    guard let note = currentNote, let descriptor = currentDocumentDescriptor,
-      let noteID = note.workspaceSnapshot?.stableIdentity.resolvedID else { throw AgentChatNoteMaterialError.selectionUnavailable }
-    let session = documentController.session(for: descriptor)
-    let mode = presentedDocumentMode
-    let snapshot: MarkdownSourceSelectionSnapshot
-    if mode == .read {
-      guard !session.hasUnsavedChanges,
-        session.renderedReadFingerprint == note.document.fingerprint.sha256,
-        let selection = session.readSelection,
-        let captured = MarkdownReviewSourceSelection.review(selection, source: note.rawContent)
-      else { throw AgentChatNoteMaterialError.selectionUnavailable }
-      snapshot = captured
-    } else { snapshot = try await session.editorSession.selectedSourceSnapshot() }
-    guard currentDocumentDescriptor?.sessionKey == descriptor.sessionKey, presentedDocumentMode == mode else {
-      throw AgentChatNoteMaterialError.selectionUnavailable
-    }
-    return .init(noteID: noteID, vaultID: descriptor.reference.vaultID,
-      relativePath: note.relativePath, text: snapshot.excerpt, fingerprint: DocumentFingerprint(content: snapshot.source),
-      sourceLine: snapshot.line, sourceRange: snapshot.sourceRange,
-      source: mode == .read ? .savedSource : .editorSnapshot, vaultRole: descriptor.reference.vaultRole)
-  }
-
-  @MainActor
-  func canAddLibraryNoteToChat(_ note: WindowDocumentLocation) -> Bool {
-    guard let target = NoteMutationTarget(note) else { return false }
-    return canAddNotesToChat([SidebarNoteDragItem(target)])
-  }
-
-  @MainActor @discardableResult
-  func addLibraryNoteToChat(_ note: WindowDocumentLocation) -> Bool {
-    guard let target = NoteMutationTarget(note), addNotesToChat([SidebarNoteDragItem(target)]) else {
-      reportOperationIssue(AgentChatNoteMaterialError.unavailable.localizedDescription, kind: .information)
-      return false
-    }
-    return true
-  }
-
-  @MainActor
-  func canAddNotesToChat(_ items: [SidebarNoteDragItem]) -> Bool {
-    guard !items.isEmpty, let chat = chatController, chat.isLoaded,
-      workspaceAssignment?.id == chat.triptychID,
-      windowWorkspaceController.activeCapabilities != nil,
-      let notes = workspaceCatalog?.notes,
-      chat.selectedID.map({ !chat.preparingMaterials.contains($0) }) ?? true else { return false }
-    return items.allSatisfy { (try? AgentChatPasteboardSnapshot.resolve($0, in: notes)) != nil }
-  }
-
-  @MainActor @discardableResult
-  func addNotesToChat(_ items: [SidebarNoteDragItem]) -> Bool {
-    guard canAddNotesToChat(items), let chat = chatController,
-      let runtime = windowWorkspaceController.activeCapabilities?.runtimeIdentity else { return false }
-    if chat.selected == nil || chat.selected?.archivedAt != nil { chat.newConversation() }
-    guard let conversationID = chat.selectedID else { return false }
-    chat.presentContext(in: conversationID)
-    Task { @MainActor [weak self, weak chat] in
-      guard let self, let chat, self.chatController === chat,
-        self.windowWorkspaceController.activeCapabilities?.runtimeIdentity == runtime else { return }
-      await chat.addTransferredMaterials(items.map(AgentChatTransferredMaterial.note), origin: .drop,
-        to: conversationID) { [weak self] item in
-          guard let self, self.chatController === chat,
-            self.windowWorkspaceController.activeCapabilities?.runtimeIdentity == runtime else { throw CancellationError() }
-          let note = try AgentChatPasteboardSnapshot.resolve(item, in: self.workspaceCatalog?.notes ?? [])
-          try await self.addNoteToChat(note, conversationID: conversationID)
+    @MainActor
+    func openSystemNotification(_ route: SystemNotificationRoute) async -> SidebarContent? {
+        switch route {
+        case .agentChange(let change):
+            await openNotifiedAgentChange(change)
+            return nil
+        case .chat(let destination):
+            guard workspaceAssignment?.id == destination.triptychID, let chat = chatController else { return nil }
+            let opened = await chat.selectNotification(destination)
+            guard chatController === chat, workspaceAssignment?.id == destination.triptychID else { return nil }
+            if opened {
+                return .chat
+            } else {
+                reportOperationIssue(ScholiumL10n.string("This conversation is no longer available."), kind: .information)
+                return nil
+            }
         }
     }
-    return true
-  }
 
-  @MainActor
-  func addNoteToChat(_ note: WorkspaceCatalogNote, conversationID: UUID) async throws {
-    guard let chat = chatController,
-      chat.conversations.contains(where: { $0.id == conversationID && $0.archivedAt == nil }),
-      let capabilities = windowWorkspaceController.activeCapabilities,
-      let noteID = note.reference.stableNoteID.flatMap(UUID.init(uuidString:)),
-      workspaceCatalog?.notes.contains(where: { $0.reference == note.reference }) == true
-    else { throw AgentChatNoteMaterialError.unavailable }
-    let reference = note.reference
-    let key = DocumentSessionKey(vaultID: reference.vaultID, noteID: noteID)
-    let document = try await capabilities.documents.load(.init(vaultID: reference.vaultID, relativePath: reference.relativePath))
-    try Task.checkCancellation()
-    guard chatController === chat,
-      windowWorkspaceController.activeCapabilities?.runtimeIdentity == capabilities.runtimeIdentity,
-      workspaceCatalog?.notes.contains(where: { $0.reference == reference && $0.fingerprint == document.fingerprint }) == true
-    else { throw AgentChatNoteMaterialError.changedSource }
-    let retained = documentController.retainedSession(for: key)
-    let text: String
-    let source: AgentChatAttachment.Source
-    if let retained, retained.hasUnsavedChanges || retained.retainsEditorSurface {
-      guard !retained.editorSession.isComposing else { throw AgentChatNoteMaterialError.composing }
-      do { text = try await retained.editorSession.currentTextSnapshot().text }
-      catch is CancellationError { throw CancellationError() }
-      catch { throw AgentChatNoteMaterialError.editorUnavailable }
-      guard documentController.retainedSession(for: key) === retained,
-        !retained.editorSession.isComposing else { throw AgentChatNoteMaterialError.editorUnavailable }
-      source = .editorSnapshot
-    } else {
-      text = document.rawContent; source = .savedSource
-    }
-    try Task.checkCancellation()
-    guard chatController === chat,
-      windowWorkspaceController.activeCapabilities?.runtimeIdentity == capabilities.runtimeIdentity,
-      workspaceCatalog?.notes.contains(where: { $0.reference == reference }) == true
-    else { throw AgentChatNoteMaterialError.changedSource }
-    guard chat.attachContext([.init(noteID: noteID, vaultID: reference.vaultID,
-      relativePath: reference.relativePath, text: text, fingerprint: DocumentFingerprint(content: text),
-      sourceLine: 1, extent: .wholeNote, source: source, vaultRole: reference.vaultRole)], to: conversationID)
-    else { throw AgentChatNoteMaterialError.unavailable }
-  }
-
-  @MainActor
-  func agentNoteDisplayState(canDisplay: Bool) -> AgentNoteDisplayWindow.State? {
-    guard let triptych = workspaceAssignment?.id else { return nil }
-    let visibleConversation = shellState.libraryVisible && shellState.sidebarContent == .chat ? chatController?.selectedID : nil
-    return .init(triptychID: triptych, canDisplay: canDisplay && shellState.hasCompletedInitialRestore, visibleConversationID: visibleConversation)
-  }
-
-  @MainActor
-  func displayAgentNote(_ display: AgentNoteDisplayTarget, admitted: @escaping @MainActor () -> Bool) async throws {
-    guard workspaceAssignment?.id == display.triptychID,
-      let runtime = windowWorkspaceController.activeCapabilities?.runtimeIdentity,
-      let capabilities = windowWorkspaceController.activeCapabilities else { throw WorkspaceStore.displayUnavailable() }
-    let matches = workspaceCatalog?.notes.filter { $0.reference.stableNoteID.flatMap(UUID.init(uuidString:)) == display.noteID
-      && $0.reference.vaultID == display.note.vaultID && $0.reference.relativePath == display.note.relativePath } ?? []
-    guard matches.count == 1, let candidate = matches.first, candidate.fingerprint == display.fingerprint else { throw AgentChatNoteMaterialError.changedSource }
-    let reference = candidate.reference
-    let target = DocumentSessionKey(vaultID: display.note.vaultID, noteID: display.noteID)
-    let origin = currentDocumentDescriptor?.sessionKey
-    let mode = presentedDocumentMode
-    let cancellation = AgentNoteDisplayCancellation()
-    let validate: @MainActor @Sendable () throws -> Void = { [self] in
-      guard !cancellation.cancelled, admitted(), workspaceAssignment?.id == display.triptychID,
-        windowWorkspaceController.activeCapabilities?.runtimeIdentity == runtime,
-        currentDocumentDescriptor?.sessionKey == origin, presentedDocumentMode == mode else { throw WorkspaceStore.displayUnavailable() }
-      for key in Set([origin, target].compactMap { $0 }) {
-        if let session = documentController.retainedSession(for: key), session.hasUnsavedChanges || session.editorSession.isComposing || session.conflict != nil {
-          throw AgentChatNoteMaterialError.editorUnavailable
+    @MainActor @discardableResult
+    func addCurrentSelectionToChat(inquiry: AgentChatSelectionInquiry = .ask) async -> Bool {
+        guard let chat = chatController else { return false }
+        let selected = chat.selectedID
+        do {
+            let attachment = try await currentSelectionAttachment()
+            guard chatController === chat, selected == chat.selectedID else { return false }
+            if chat.selected == nil || chat.selected?.archivedAt != nil { chat.newConversation() }
+            guard let conversationID = chat.selectedID else { return false }
+            return chat.prepareSelectionInquiry([attachment], inquiry: inquiry, to: conversationID)
+        } catch {
+            reportOperationIssue(error.localizedDescription, kind: .information)
+            return false
         }
-      }
     }
-    try Task.checkCancellation(); try validate()
-    try await withTaskCancellationHandler {
-      try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-        cancellation.continuation = continuation
-        enqueueCurrencyAwareDocumentTransition(retainingCurrentDocument: target, validateBeforePreparation: validate, { isCurrent in
-          try validate(); guard isCurrent() else { throw CancellationError() }
-          let source = try await capabilities.documents.load(display.note)
-          try validate(); guard isCurrent() else { throw CancellationError() }
-          guard source.fingerprint == display.fingerprint else { throw AgentChatNoteMaterialError.changedSource }
-          if let range = display.range, let excerpt = display.excerpt {
-            guard let exact = Range(NSRange(location: range.utf16LowerBound, length: range.utf16UpperBound - range.utf16LowerBound), in: source.rawContent),
-              source.rawContent[exact].utf8.elementsEqual(excerpt.utf8) else { throw AgentChatNoteMaterialError.changedSource }
-          }
-          if origin != target { try await self.activateWorkspaceReference(reference, tabActivation: .place(.newTab), validateDisplay: { try validate(); guard isCurrent() else { throw CancellationError() } }) }
-          guard isCurrent(), !cancellation.cancelled, admitted(), self.windowWorkspaceController.activeCapabilities?.runtimeIdentity == runtime,
-            self.currentDocumentDescriptor?.sessionKey == target else { throw WorkspaceStore.displayUnavailable() }
-          let status = try await self.chatSourceLocationStatus(reference: reference, target: target, line: display.range?.line,
-            revision: display.fingerprint.sha256, mode: mode, sourceRange: display.range, excerpt: display.excerpt)
-          guard status == .current, isCurrent(), !cancellation.cancelled, admitted(), self.currentDocumentDescriptor?.sessionKey == target else { throw AgentChatNoteMaterialError.changedSource }
-          self.documentController.requestSourceLocation(line: display.range?.line, range: display.range,
-            requiresExactSelection: display.range != nil, sourceFingerprint: display.fingerprint.sha256)
-          if origin != target { self.requestPresentationMode = self.currentNote?.workspaceSnapshot?.capabilities.canEditSource == true ? mode : nil }
-        }, didFail: { cancellation.finish(.failure($0)) }, didSucceed: { cancellation.finish(.success(())) },
-           didFinish: { cancellation.finish(.failure(CancellationError())) })
-      }
-    } onCancel: { Task { @MainActor in cancellation.cancelled = true; cancellation.finish(.failure(CancellationError())) } }
-  }
 
-  @MainActor
-  func openChatAttachment(_ attachment: AgentChatAttachment) async {
-    _ = openChatSource(noteID: attachment.noteID, vaultID: attachment.vaultID,
-      line: attachment.sourceLine, revision: attachment.fingerprint.sha256, sourceRange: attachment.sourceRange, excerpt: attachment.text)
-  }
+    @MainActor
+    func runSelectionInquiry(_ inquiry: AgentChatSelectionInquiry, validate: AgentSelectionValidation, continueInChat: @escaping () -> Void) async
+        -> AgentSelectionResult?
+    {
+        guard let chat = chatController, let descriptor = currentDocumentDescriptor else { return nil }
+        do {
+            let attachment = try await currentSelectionAttachment()
+            guard chatController === chat, currentDocumentDescriptor?.sessionKey == descriptor.sessionKey,
+                await validate(), !Task.isCancelled
+            else { return nil }
+            if inquiry.question == nil {
+                if chat.attachContext([attachment]) { continueInChat() }
+                return nil
+            }
+            guard let id = chat.beginSelectionInquiry(inquiry, attachment: attachment) else { return nil }
+            let adopt: ((String) async throws -> Void)?
+            if inquiry.resultKind == .replacement, presentedDocumentMode != .read {
+                adopt = { [weak self, weak chat] replacement in
+                    guard let self, let chat, self.chatController === chat,
+                        self.currentDocumentDescriptor?.sessionKey == descriptor.sessionKey,
+                        self.presentedDocumentMode != .read,
+                        self.currentNote?.workspaceSnapshot?.capabilities.canEditSource == true,
+                        let range = attachment.sourceRange
+                    else { throw AgentChatNoteMaterialError.changedSource }
+                    let session = self.documentController.session(for: descriptor)
+                    guard session.conflict == nil else { throw AgentChatNoteMaterialError.changedSource }
+                    guard !session.editorSession.isComposing else { throw AgentChatNoteMaterialError.composing }
+                    let snapshot = try await session.editorSession.currentTextSnapshot()
+                    guard self.currentDocumentDescriptor?.sessionKey == descriptor.sessionKey,
+                        self.presentedDocumentMode != .read, session.conflict == nil,
+                        DocumentFingerprint(content: snapshot.text) == attachment.fingerprint,
+                        let webView = session.editorSession.webView
+                    else { throw AgentChatNoteMaterialError.changedSource }
+                    _ = try await session.editorSession.send(
+                        .replacePassage(
+                            expectedText: snapshot.text,
+                            fromUTF16: range.utf16LowerBound, toUTF16: range.utf16UpperBound, replacement: replacement), in: webView)
+                }
+            } else {
+                adopt = nil
+            }
+            return AgentSelectionResult(
+                chat: chat, conversationID: id, title: inquiry.title,
+                original: attachment.text, adopt: adopt,
+                openReference: { [weak self, weak chat] url in
+                    guard let self, let chat, self.chatController === chat else { return false }
+                    return self.openChatReference(url)
+                },
+                continueInChat: { [weak self, weak chat] in
+                    guard let self, let chat, self.chatController === chat else { return }
+                    chat.select(id)
+                    chat.presentContext(in: id)
+                    continueInChat()
+                })
+        } catch {
+            reportOperationIssue(error.localizedDescription, kind: .information)
+            return nil
+        }
+    }
 
-  @MainActor @discardableResult
-  func openChatReference(_ url: URL) -> Bool {
-    guard let reference = AgentChatReference.parse(url) else { return false }
-    return openChatSource(noteID: reference.noteID, vaultID: reference.vaultID,
-      line: reference.line, revision: reference.revision)
-  }
+    @MainActor
+    private func currentSelectionAttachment() async throws -> AgentChatAttachment {
+        guard let note = currentNote, let descriptor = currentDocumentDescriptor,
+            let noteID = note.workspaceSnapshot?.stableIdentity.resolvedID
+        else { throw AgentChatNoteMaterialError.selectionUnavailable }
+        let session = documentController.session(for: descriptor)
+        let mode = presentedDocumentMode
+        let snapshot: MarkdownSourceSelectionSnapshot
+        if mode == .read {
+            guard !session.hasUnsavedChanges,
+                session.renderedReadFingerprint == note.document.fingerprint.sha256,
+                let selection = session.readSelection,
+                let captured = MarkdownReviewSourceSelection.review(selection, source: note.rawContent)
+            else { throw AgentChatNoteMaterialError.selectionUnavailable }
+            snapshot = captured
+        } else {
+            snapshot = try await session.editorSession.selectedSourceSnapshot()
+        }
+        guard currentDocumentDescriptor?.sessionKey == descriptor.sessionKey, presentedDocumentMode == mode else {
+            throw AgentChatNoteMaterialError.selectionUnavailable
+        }
+        return .init(
+            noteID: noteID, vaultID: descriptor.reference.vaultID,
+            relativePath: note.relativePath, text: snapshot.excerpt, fingerprint: DocumentFingerprint(content: snapshot.source),
+            sourceLine: snapshot.line, sourceRange: snapshot.sourceRange,
+            source: mode == .read ? .savedSource : .editorSnapshot, vaultRole: descriptor.reference.vaultRole)
+    }
 
-  @MainActor private func openChatSource(noteID: UUID, vaultID: UUID?, line: Int?, revision: String?, sourceRange: SearchSourceRange? = nil, excerpt: String? = nil) -> Bool {
-    let matches = workspaceCatalog?.notes.filter {
-      $0.reference.stableNoteID.flatMap(UUID.init(uuidString:)) == noteID
-        && (vaultID == nil || $0.reference.vaultID == vaultID)
-    } ?? []
-    guard matches.count == 1, let reference = matches.first?.reference,
-      let runtime = windowWorkspaceController.activeCapabilities?.runtimeIdentity else {
-      reportOperationIssue(String(localized: "This note cannot be located in the current Triptych."), kind: .information)
-      return false
+    @MainActor
+    func canAddLibraryNoteToChat(_ note: WindowDocumentLocation) -> Bool {
+        guard let target = NoteMutationTarget(note) else { return false }
+        return canAddNotesToChat([SidebarNoteDragItem(target)])
     }
-    let target = DocumentSessionKey(vaultID: reference.vaultID, noteID: noteID)
-    let navigationMode = presentedDocumentMode
-    enqueueDocumentTransition(preservingCurrentEditorState: false, retainingCurrentDocument: target) { [weak self] in
-      guard let self, self.windowWorkspaceController.activeCapabilities?.runtimeIdentity == runtime else {
-        throw CancellationError()
-      }
-      let alreadyCurrent = self.currentDocumentDescriptor?.sessionKey == target
-      if !alreadyCurrent {
-        try await self.activateWorkspaceReference(reference, tabActivation: .place(.newTab))
-      }
-      let canEdit = self.currentNote?.workspaceSnapshot?.capabilities.canEditSource == true
-      let status = try await self.chatSourceLocationStatus(reference: reference, target: target,
-        line: line, revision: revision, mode: canEdit ? navigationMode : .read, sourceRange: sourceRange, excerpt: excerpt)
-      try Task.checkCancellation()
-      guard self.windowWorkspaceController.activeCapabilities?.runtimeIdentity == runtime,
-        self.currentDocumentDescriptor?.sessionKey == target else { throw CancellationError() }
-      self.documentController.requestSourceLocation(line: status == .current ? line : nil,
-        range: status == .current ? sourceRange : nil, requiresExactSelection: sourceRange != nil,
-        sourceFingerprint: status == .current ? revision : nil)
-      if !alreadyCurrent { self.requestPresentationMode = canEdit ? navigationMode : nil }
-      switch status {
-      case .current, .identity: break
-      case .changed:
-        self.reportOperationIssue(String(localized: "This reference is from a different version. The Note was opened without selecting a passage.", bundle: .module), kind: .information)
-      case .unverified:
-        self.reportOperationIssue(String(localized: "This reference location could not be verified. The Note was opened without selecting a passage.", bundle: .module), kind: .information)
-      }
-    }
-    return true
-  }
 
-  @MainActor private func chatSourceLocationStatus(reference: VaultNoteReference, target: DocumentSessionKey,
-    line: Int?, revision: String?, mode: NotePresentationMode, sourceRange: SearchSourceRange?, excerpt: String?) async throws -> ChatSourceLocationStatus {
-    guard let revision else { return line == nil ? .identity : .unverified }
-    let session = documentController.session(for: target)
-    guard !session.editorSession.isComposing else { return .unverified }
-    let text: String
-    if mode != .read, session.retainsEditorSurface, session.editorSession.isReady, session.editorSession.isLoaded {
-      do {
-        let snapshot = try await session.editorSession.currentTextSnapshot()
-        guard documentController.retainedSession(for: target) === session,
-          snapshot.generation == session.editorSession.generation, !session.editorSession.isComposing else { return .unverified }
-        text = snapshot.text
-      } catch is CancellationError { throw CancellationError() }
-      catch { return .unverified }
-    } else {
-      guard !session.hasUnsavedChanges else { return .unverified }
-      do {
-        let document = try await documentController.load(.init(vaultID: reference.vaultID, relativePath: reference.relativePath))
-        guard !session.hasUnsavedChanges, !session.editorSession.isComposing else { return .unverified }
-        if document.fingerprint.sha256 != revision { return .changed }
-        guard currentNote?.workspaceSnapshot?.fingerprint == document.fingerprint else { return .unverified }
-        text = document.rawContent
-      } catch is CancellationError { throw CancellationError() }
-      catch { return .unverified }
+    @MainActor @discardableResult
+    func addLibraryNoteToChat(_ note: WindowDocumentLocation) -> Bool {
+        guard let target = NoteMutationTarget(note), addNotesToChat([SidebarNoteDragItem(target)]) else {
+            reportOperationIssue(AgentChatNoteMaterialError.unavailable.localizedDescription, kind: .information)
+            return false
+        }
+        return true
     }
-    guard DocumentFingerprint(content: text).sha256 == revision else { return .changed }
-    if let sourceRange {
-      let lower = sourceRange.utf16LowerBound, upper = sourceRange.utf16UpperBound
-      guard lower >= 0, upper > lower, upper <= text.utf16.count,
-        let range = Range(NSRange(location: lower, length: upper - lower), in: text),
-        let excerpt, text[range].utf8.elementsEqual(excerpt.utf8) else { return .unverified }
+
+    @MainActor
+    func canAddNotesToChat(_ items: [SidebarNoteDragItem]) -> Bool {
+        guard !items.isEmpty, let chat = chatController, chat.isLoaded,
+            workspaceAssignment?.id == chat.triptychID,
+            windowWorkspaceController.activeCapabilities != nil,
+            let notes = workspaceCatalog?.notes,
+            chat.selectedID.map({ !chat.preparingMaterials.contains($0) }) ?? true
+        else { return false }
+        return items.allSatisfy { (try? AgentChatPasteboardSnapshot.resolve($0, in: notes)) != nil }
     }
-    let lineCount = text.reduce(1) { count, character in
-      count + (character == "\n" || character == "\r\n" || character == "\r" ? 1 : 0)
+
+    @MainActor @discardableResult
+    func addNotesToChat(_ items: [SidebarNoteDragItem]) -> Bool {
+        guard canAddNotesToChat(items), let chat = chatController,
+            let runtime = windowWorkspaceController.activeCapabilities?.runtimeIdentity
+        else { return false }
+        if chat.selected == nil || chat.selected?.archivedAt != nil { chat.newConversation() }
+        guard let conversationID = chat.selectedID else { return false }
+        chat.presentContext(in: conversationID)
+        Task { @MainActor [weak self, weak chat] in
+            guard let self, let chat, self.chatController === chat,
+                self.windowWorkspaceController.activeCapabilities?.runtimeIdentity == runtime
+            else { return }
+            await chat.addTransferredMaterials(
+                items.map(AgentChatTransferredMaterial.note), origin: .drop,
+                to: conversationID
+            ) { [weak self] item in
+                guard let self, self.chatController === chat,
+                    self.windowWorkspaceController.activeCapabilities?.runtimeIdentity == runtime
+                else { throw CancellationError() }
+                let note = try AgentChatPasteboardSnapshot.resolve(item, in: self.workspaceCatalog?.notes ?? [])
+                try await self.addNoteToChat(note, conversationID: conversationID)
+            }
+        }
+        return true
     }
-    if let line, line < 1 || line > lineCount { return .unverified }
-    return .current
-  }
+
+    @MainActor
+    func addNoteToChat(_ note: WorkspaceCatalogNote, conversationID: UUID) async throws {
+        guard let chat = chatController,
+            chat.conversations.contains(where: { $0.id == conversationID && $0.archivedAt == nil }),
+            let capabilities = windowWorkspaceController.activeCapabilities,
+            let noteID = note.reference.stableNoteID.flatMap(UUID.init(uuidString:)),
+            workspaceCatalog?.notes.contains(where: { $0.reference == note.reference }) == true
+        else { throw AgentChatNoteMaterialError.unavailable }
+        let reference = note.reference
+        let key = DocumentSessionKey(vaultID: reference.vaultID, noteID: noteID)
+        let document = try await capabilities.documents.load(.init(vaultID: reference.vaultID, relativePath: reference.relativePath))
+        try Task.checkCancellation()
+        guard chatController === chat,
+            windowWorkspaceController.activeCapabilities?.runtimeIdentity == capabilities.runtimeIdentity,
+            workspaceCatalog?.notes.contains(where: { $0.reference == reference && $0.fingerprint == document.fingerprint }) == true
+        else { throw AgentChatNoteMaterialError.changedSource }
+        let retained = documentController.retainedSession(for: key)
+        let text: String
+        let source: AgentChatAttachment.Source
+        if let retained, retained.hasUnsavedChanges || retained.retainsEditorSurface {
+            guard !retained.editorSession.isComposing else { throw AgentChatNoteMaterialError.composing }
+            do { text = try await retained.editorSession.currentTextSnapshot().text } catch is CancellationError { throw CancellationError() } catch {
+                throw AgentChatNoteMaterialError.editorUnavailable
+            }
+            guard documentController.retainedSession(for: key) === retained,
+                !retained.editorSession.isComposing
+            else { throw AgentChatNoteMaterialError.editorUnavailable }
+            source = .editorSnapshot
+        } else {
+            text = document.rawContent
+            source = .savedSource
+        }
+        try Task.checkCancellation()
+        guard chatController === chat,
+            windowWorkspaceController.activeCapabilities?.runtimeIdentity == capabilities.runtimeIdentity,
+            workspaceCatalog?.notes.contains(where: { $0.reference == reference }) == true
+        else { throw AgentChatNoteMaterialError.changedSource }
+        guard
+            chat.attachContext(
+                [
+                    .init(
+                        noteID: noteID, vaultID: reference.vaultID,
+                        relativePath: reference.relativePath, text: text, fingerprint: DocumentFingerprint(content: text),
+                        sourceLine: 1, extent: .wholeNote, source: source, vaultRole: reference.vaultRole)
+                ], to: conversationID)
+        else { throw AgentChatNoteMaterialError.unavailable }
+    }
+
+    @MainActor
+    func agentNoteDisplayState(canDisplay: Bool) -> AgentNoteDisplayWindow.State? {
+        guard let triptych = workspaceAssignment?.id else { return nil }
+        let visibleConversation = shellState.libraryVisible && shellState.sidebarContent == .chat ? chatController?.selectedID : nil
+        return .init(triptychID: triptych, canDisplay: canDisplay && shellState.hasCompletedInitialRestore, visibleConversationID: visibleConversation)
+    }
+
+    @MainActor
+    func displayAgentNote(_ display: AgentNoteDisplayTarget, admitted: @escaping @MainActor () -> Bool) async throws {
+        guard workspaceAssignment?.id == display.triptychID,
+            let runtime = windowWorkspaceController.activeCapabilities?.runtimeIdentity,
+            let capabilities = windowWorkspaceController.activeCapabilities
+        else { throw WorkspaceStore.displayUnavailable() }
+        let matches =
+            workspaceCatalog?.notes.filter {
+                $0.reference.stableNoteID.flatMap(UUID.init(uuidString:)) == display.noteID
+                    && $0.reference.vaultID == display.note.vaultID && $0.reference.relativePath == display.note.relativePath
+            } ?? []
+        guard matches.count == 1, let candidate = matches.first, candidate.fingerprint == display.fingerprint else {
+            throw AgentChatNoteMaterialError.changedSource
+        }
+        let reference = candidate.reference
+        let target = DocumentSessionKey(vaultID: display.note.vaultID, noteID: display.noteID)
+        let origin = currentDocumentDescriptor?.sessionKey
+        let mode = presentedDocumentMode
+        let cancellation = AgentNoteDisplayCancellation()
+        let validate: @MainActor @Sendable () throws -> Void = { [self] in
+            guard !cancellation.cancelled, admitted(), workspaceAssignment?.id == display.triptychID,
+                windowWorkspaceController.activeCapabilities?.runtimeIdentity == runtime,
+                currentDocumentDescriptor?.sessionKey == origin, presentedDocumentMode == mode
+            else { throw WorkspaceStore.displayUnavailable() }
+            for key in Set([origin, target].compactMap { $0 }) {
+                if let session = documentController.retainedSession(for: key),
+                    session.hasUnsavedChanges || session.editorSession.isComposing || session.conflict != nil
+                {
+                    throw AgentChatNoteMaterialError.editorUnavailable
+                }
+            }
+        }
+        try Task.checkCancellation()
+        try validate()
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                cancellation.continuation = continuation
+                enqueueCurrencyAwareDocumentTransition(
+                    retainingCurrentDocument: target, validateBeforePreparation: validate,
+                    { isCurrent in
+                        try validate()
+                        guard isCurrent() else { throw CancellationError() }
+                        let source = try await capabilities.documents.load(display.note)
+                        try validate()
+                        guard isCurrent() else { throw CancellationError() }
+                        guard source.fingerprint == display.fingerprint else { throw AgentChatNoteMaterialError.changedSource }
+                        if let range = display.range, let excerpt = display.excerpt {
+                            guard
+                                let exact = Range(
+                                    NSRange(location: range.utf16LowerBound, length: range.utf16UpperBound - range.utf16LowerBound), in: source.rawContent),
+                                source.rawContent[exact].utf8.elementsEqual(excerpt.utf8)
+                            else { throw AgentChatNoteMaterialError.changedSource }
+                        }
+                        if origin != target {
+                            try await self.activateWorkspaceReference(
+                                reference, tabActivation: .place(.newTab),
+                                validateDisplay: {
+                                    try validate()
+                                    guard isCurrent() else { throw CancellationError() }
+                                })
+                        }
+                        guard isCurrent(), !cancellation.cancelled, admitted(), self.windowWorkspaceController.activeCapabilities?.runtimeIdentity == runtime,
+                            self.currentDocumentDescriptor?.sessionKey == target
+                        else { throw WorkspaceStore.displayUnavailable() }
+                        let status = try await self.chatSourceLocationStatus(
+                            reference: reference, target: target, line: display.range?.line,
+                            revision: display.fingerprint.sha256, mode: mode, sourceRange: display.range, excerpt: display.excerpt)
+                        guard status == .current, isCurrent(), !cancellation.cancelled, admitted(), self.currentDocumentDescriptor?.sessionKey == target else {
+                            throw AgentChatNoteMaterialError.changedSource
+                        }
+                        self.documentController.requestSourceLocation(
+                            line: display.range?.line, range: display.range,
+                            requiresExactSelection: display.range != nil, sourceFingerprint: display.fingerprint.sha256)
+                        if origin != target {
+                            self.requestPresentationMode = self.currentNote?.workspaceSnapshot?.capabilities.canEditSource == true ? mode : nil
+                        }
+                    }, didFail: { cancellation.finish(.failure($0)) }, didSucceed: { cancellation.finish(.success(())) },
+                    didFinish: { cancellation.finish(.failure(CancellationError())) })
+            }
+        } onCancel: {
+            Task { @MainActor in
+                cancellation.cancelled = true
+                cancellation.finish(.failure(CancellationError()))
+            }
+        }
+    }
+
+    @MainActor
+    func openChatAttachment(_ attachment: AgentChatAttachment) async {
+        _ = openChatSource(
+            noteID: attachment.noteID, vaultID: attachment.vaultID,
+            line: attachment.sourceLine, revision: attachment.fingerprint.sha256, sourceRange: attachment.sourceRange, excerpt: attachment.text)
+    }
+
+    @MainActor @discardableResult
+    func openChatReference(_ url: URL) -> Bool {
+        guard let reference = AgentChatReference.parse(url) else { return false }
+        return openChatSource(
+            noteID: reference.noteID, vaultID: reference.vaultID,
+            line: reference.line, revision: reference.revision)
+    }
+
+    @MainActor private func openChatSource(
+        noteID: UUID, vaultID: UUID?, line: Int?, revision: String?, sourceRange: SearchSourceRange? = nil, excerpt: String? = nil
+    ) -> Bool {
+        let matches =
+            workspaceCatalog?.notes.filter {
+                $0.reference.stableNoteID.flatMap(UUID.init(uuidString:)) == noteID
+                    && (vaultID == nil || $0.reference.vaultID == vaultID)
+            } ?? []
+        guard matches.count == 1, let reference = matches.first?.reference,
+            let runtime = windowWorkspaceController.activeCapabilities?.runtimeIdentity
+        else {
+            reportOperationIssue(String(localized: "This note cannot be located in the current Triptych."), kind: .information)
+            return false
+        }
+        let target = DocumentSessionKey(vaultID: reference.vaultID, noteID: noteID)
+        let navigationMode = presentedDocumentMode
+        enqueueDocumentTransition(preservingCurrentEditorState: false, retainingCurrentDocument: target) { [weak self] in
+            guard let self, self.windowWorkspaceController.activeCapabilities?.runtimeIdentity == runtime else {
+                throw CancellationError()
+            }
+            let alreadyCurrent = self.currentDocumentDescriptor?.sessionKey == target
+            if !alreadyCurrent {
+                try await self.activateWorkspaceReference(reference, tabActivation: .place(.newTab))
+            }
+            let canEdit = self.currentNote?.workspaceSnapshot?.capabilities.canEditSource == true
+            let status = try await self.chatSourceLocationStatus(
+                reference: reference, target: target,
+                line: line, revision: revision, mode: canEdit ? navigationMode : .read, sourceRange: sourceRange, excerpt: excerpt)
+            try Task.checkCancellation()
+            guard self.windowWorkspaceController.activeCapabilities?.runtimeIdentity == runtime,
+                self.currentDocumentDescriptor?.sessionKey == target
+            else { throw CancellationError() }
+            self.documentController.requestSourceLocation(
+                line: status == .current ? line : nil,
+                range: status == .current ? sourceRange : nil, requiresExactSelection: sourceRange != nil,
+                sourceFingerprint: status == .current ? revision : nil)
+            if !alreadyCurrent { self.requestPresentationMode = canEdit ? navigationMode : nil }
+            switch status {
+            case .current, .identity: break
+            case .changed:
+                self.reportOperationIssue(
+                    String(localized: "This reference is from a different version. The Note was opened without selecting a passage.", bundle: .module),
+                    kind: .information)
+            case .unverified:
+                self.reportOperationIssue(
+                    String(localized: "This reference location could not be verified. The Note was opened without selecting a passage.", bundle: .module),
+                    kind: .information)
+            }
+        }
+        return true
+    }
+
+    @MainActor private func chatSourceLocationStatus(
+        reference: VaultNoteReference, target: DocumentSessionKey,
+        line: Int?, revision: String?, mode: NotePresentationMode, sourceRange: SearchSourceRange?, excerpt: String?
+    ) async throws -> ChatSourceLocationStatus {
+        guard let revision else { return line == nil ? .identity : .unverified }
+        let session = documentController.session(for: target)
+        guard !session.editorSession.isComposing else { return .unverified }
+        let text: String
+        if mode != .read, session.retainsEditorSurface, session.editorSession.isReady, session.editorSession.isLoaded {
+            do {
+                let snapshot = try await session.editorSession.currentTextSnapshot()
+                guard documentController.retainedSession(for: target) === session,
+                    snapshot.generation == session.editorSession.generation, !session.editorSession.isComposing
+                else { return .unverified }
+                text = snapshot.text
+            } catch is CancellationError { throw CancellationError() } catch { return .unverified }
+        } else {
+            guard !session.hasUnsavedChanges else { return .unverified }
+            do {
+                let document = try await documentController.load(.init(vaultID: reference.vaultID, relativePath: reference.relativePath))
+                guard !session.hasUnsavedChanges, !session.editorSession.isComposing else { return .unverified }
+                if document.fingerprint.sha256 != revision { return .changed }
+                guard currentNote?.workspaceSnapshot?.fingerprint == document.fingerprint else { return .unverified }
+                text = document.rawContent
+            } catch is CancellationError { throw CancellationError() } catch { return .unverified }
+        }
+        guard DocumentFingerprint(content: text).sha256 == revision else { return .changed }
+        if let sourceRange {
+            let lower = sourceRange.utf16LowerBound
+            let upper = sourceRange.utf16UpperBound
+            guard lower >= 0, upper > lower, upper <= text.utf16.count,
+                let range = Range(NSRange(location: lower, length: upper - lower), in: text),
+                let excerpt, text[range].utf8.elementsEqual(excerpt.utf8)
+            else { return .unverified }
+        }
+        let lineCount = text.reduce(1) { count, character in
+            count + (character == "\n" || character == "\r\n" || character == "\r" ? 1 : 0)
+        }
+        if let line, line < 1 || line > lineCount { return .unverified }
+        return .current
+    }
 
 }
 
 enum AgentChatNoteMaterialError: LocalizedError {
-  case unavailable, changedSource, editorUnavailable, composing, selectionUnavailable
-  var errorDescription: String? {
-    switch self {
-    case .unavailable: String(localized: "The Note or conversation is no longer available.")
-    case .changedSource: String(localized: "The Note changed while it was being read. Choose it again after the Library refreshes.")
-    case .editorUnavailable: String(localized: "The current editor snapshot is unavailable. Keep the Note open and try again.")
-    case .selectionUnavailable: String(localized: "Select an exact passage in Edit or Source if the reading selection cannot be located.")
-    case .composing: String(localized: "Finish editing with the input method, then try adding the Note again.")
+    case unavailable, changedSource, editorUnavailable, composing, selectionUnavailable
+    var errorDescription: String? {
+        switch self {
+        case .unavailable: String(localized: "The Note or conversation is no longer available.")
+        case .changedSource: String(localized: "The Note changed while it was being read. Choose it again after the Library refreshes.")
+        case .editorUnavailable: String(localized: "The current editor snapshot is unavailable. Keep the Note open and try again.")
+        case .selectionUnavailable: String(localized: "Select an exact passage in Edit or Source if the reading selection cannot be located.")
+        case .composing: String(localized: "Finish editing with the input method, then try adding the Note again.")
+        }
     }
-  }
 }
 
 private enum ChatSourceLocationStatus { case identity, current, changed, unverified }
 
 @MainActor private final class AgentNoteDisplayCancellation {
-  var cancelled = false
-  var continuation: CheckedContinuation<Void, Error>?
-  func finish(_ result: Result<Void, Error>) {
-    guard let continuation else { return }
-    self.continuation = nil
-    continuation.resume(with: result)
-  }
+    var cancelled = false
+    var continuation: CheckedContinuation<Void, Error>?
+    func finish(_ result: Result<Void, Error>) {
+        guard let continuation else { return }
+        self.continuation = nil
+        continuation.resume(with: result)
+    }
 }

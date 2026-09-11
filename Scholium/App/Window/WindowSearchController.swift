@@ -23,17 +23,20 @@ final class WindowSearchController: ObservableObject {
         let loadSavedSearches: @MainActor () async throws -> [SavedSearch]
         let saveSavedSearches: @MainActor ([SavedSearch]) async throws -> Void
         let recoverSavedSearches: @MainActor () async throws -> URL?
-        let executionContext: @MainActor (
-            SearchWorkspaceState
-        ) async throws -> DiscoverySearchExecutionContext
-        let resultEvidence: @MainActor (
-            SearchResult,
-            SearchPresentationScope
-        ) async -> WindowSearchResultEvidence
-        let open: @MainActor (
-            SearchResultSelection,
-            WindowOpenDisposition
-        ) async -> Void
+        let executionContext:
+            @MainActor (
+                SearchWorkspaceState
+            ) async throws -> DiscoverySearchExecutionContext
+        let resultEvidence:
+            @MainActor (
+                SearchResult,
+                SearchPresentationScope
+            ) async -> WindowSearchResultEvidence
+        let open:
+            @MainActor (
+                SearchResultSelection,
+                WindowOpenDisposition
+            ) async -> Void
         let hasCurrentNote: @MainActor () -> Bool
         let reportInformation: @MainActor (String) -> Void
         let reportLoadFailure: @MainActor (String) -> Void
@@ -180,7 +183,8 @@ final class WindowSearchController: ObservableObject {
             discoveryController.search.criteria.scope
         )
         guard evidence.freshness == searchResult.freshnessToken,
-              evidence.fingerprint == searchResult.fingerprint else {
+            evidence.fingerprint == searchResult.fingerprint
+        else {
             await refreshAfterStaleResult(searchResult)
             return false
         }
@@ -191,9 +195,10 @@ final class WindowSearchController: ObservableObject {
 
     func searchGenerationDidChange() {
         guard presentation != .inactive,
-              !criteria.query.trimmingCharacters(
-                  in: .whitespacesAndNewlines
-              ).isEmpty else { return }
+            !criteria.query.trimmingCharacters(
+                in: .whitespacesAndNewlines
+            ).isEmpty
+        else { return }
         executionTask?.cancel()
         Task { [weak self] in await self?.refresh() }
     }
@@ -203,29 +208,31 @@ final class WindowSearchController: ObservableObject {
     }
 
     #if DEBUG
-    func waitForPendingWorkForTesting() async {
-        await loadTask?.value
-        await savedSearchMutationTail?.value
-        await executionTask?.value
-    }
+        func waitForPendingWorkForTesting() async {
+            await loadTask?.value
+            await savedSearchMutationTail?.value
+            await executionTask?.value
+        }
     #endif
 
     func saveCurrent(named requestedName: String) {
         let name = requestedName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty,
-              !criteria.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            !criteria.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else {
             return
         }
         let state = criteria
         enqueueSavedSearchMutation { searches in
             var searches = searches
-            searches.insert(SavedSearch(
-                name: name,
-                definition: SearchDefinition(
-                    query: state.query,
-                    presentationScope: state.scope
-                )
-            ), at: 0)
+            searches.insert(
+                SavedSearch(
+                    name: name,
+                    definition: SearchDefinition(
+                        query: state.query,
+                        presentationScope: state.scope
+                    )
+                ), at: 0)
             return searches
         }
     }
@@ -313,12 +320,15 @@ final class WindowSearchController: ObservableObject {
             return executionError.searchIssue
         }
         if let applicationError = error as? ScholiumApplicationError,
-           case .workspaceStillLoading(_) = applicationError {
-            return .unavailable(String(
-                localized: "This Note and the currently open vault support bounded text Search while the Triptych opens. Triptych Search and direct links remain unavailable until loading finishes.",
-                table: "Localizable",
-                bundle: .module
-            ))
+            case .workspaceStillLoading(_) = applicationError
+        {
+            return .unavailable(
+                String(
+                    localized:
+                        "This Note and the currently open vault support bounded text Search while the Triptych opens. Triptych Search and direct links remain unavailable until loading finishes.",
+                    table: "Localizable",
+                    bundle: .module
+                ))
         }
         return .failed(error.localizedDescription)
     }

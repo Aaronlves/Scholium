@@ -31,7 +31,7 @@ enum ScholiumHotkeyCommand: String, CaseIterable, Codable, Identifiable, Sendabl
     var category: ScholiumHotkeyCategory {
         switch self {
         case .searchResearch, .toggleLibrary, .toggleResearchInspector,
-             .showAttention:
+            .showAttention:
             .workspace
         case .toggleReviewEdit, .showSource, .insertFootnote, .insertInlineFootnote:
             .document
@@ -128,8 +128,9 @@ struct ScholiumHotkeyBinding: Codable, Hashable, Sendable {
     init?(key: String, modifiers: ScholiumHotkeyModifiers) {
         let normalized = key.lowercased()
         guard normalized.count == 1,
-              let character = normalized.first,
-              Self.allowedCharacters.contains(character) else { return nil }
+            let character = normalized.first,
+            Self.allowedCharacters.contains(character)
+        else { return nil }
         self.key = normalized
         self.modifiers = modifiers
     }
@@ -239,7 +240,7 @@ enum ScholiumHotkeyPreferences {
 
     private static func decode(_ data: Data) -> Payload {
         guard !data.isEmpty,
-              let payload = try? JSONDecoder().decode(Payload.self, from: data)
+            let payload = try? JSONDecoder().decode(Payload.self, from: data)
         else { return Payload() }
 
         let validOverrides = payload.overrides.filter { rawCommand, binding in

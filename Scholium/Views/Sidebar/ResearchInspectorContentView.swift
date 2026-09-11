@@ -115,9 +115,10 @@ struct AboutSettlementPresentation: Hashable, Sendable {
         settlements: [SettlementRecord]
     ) -> AboutSettlementPresentation {
         guard let noteID, let currentRevision else { return .unavailable }
-        let latest = requirement?.previousSettlement
+        let latest =
+            requirement?.previousSettlement
             ?? settlements.filter { $0.noteID == noteID }
-                .max { $0.settledAt < $1.settledAt }
+            .max { $0.settledAt < $1.settledAt }
         guard let latest else {
             return AboutSettlementPresentation(
                 state: .notYetSettled,
@@ -169,26 +170,28 @@ enum AboutFactPresentation {
                 id: "settlement-status",
                 label: String(localized: "Settlement"),
                 value: settlementStatus(settlement.state)
-            ),
+            )
         ]
         if settlement.state == .settled
             || settlement.state == .changedSinceSettlement
         {
-            facts.append(ScholiumApparatusFact(
-                id: "settled-at",
-                label: settlement.state == .changedSinceSettlement
-                    ? String(localized: "Last Settled")
-                    : String(localized: "Settled"),
-                value: formatDate(settlement.settledAt),
-                monospacedDigits: true
-            ))
+            facts.append(
+                ScholiumApparatusFact(
+                    id: "settled-at",
+                    label: settlement.state == .changedSinceSettlement
+                        ? String(localized: "Last Settled")
+                        : String(localized: "Settled"),
+                    value: formatDate(settlement.settledAt),
+                    monospacedDigits: true
+                ))
         }
         if let researcher = settlement.researcher, !researcher.isEmpty {
-            facts.append(ScholiumApparatusFact(
-                id: "settled-by",
-                label: String(localized: "Researcher"),
-                value: researcher
-            ))
+            facts.append(
+                ScholiumApparatusFact(
+                    id: "settled-by",
+                    label: String(localized: "Researcher"),
+                    value: researcher
+                ))
         }
         return facts
     }
@@ -244,7 +247,8 @@ struct ResearchOverviewView: View {
                 spacing: ResearchInspectorLayout.sectionSpacing
             ) {
                 if let session = context.attentionPopoverSession,
-                   let scope = context.presentation.notificationScope {
+                    let scope = context.presentation.notificationScope
+                {
                     OverviewNotificationsView(session: session, scope: scope, open: context.openAttention)
                 }
                 aboutSection
@@ -348,7 +352,6 @@ struct ResearchOverviewView: View {
         guard let date else { return String(localized: "Unavailable") }
         return date.formatted(date: .abbreviated, time: .shortened)
     }
-
 
 }
 

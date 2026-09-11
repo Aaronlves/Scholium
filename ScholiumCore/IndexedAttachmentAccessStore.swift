@@ -97,14 +97,16 @@ public actor IndexedAttachmentAccessStore {
                 )
             }
             var stale = false
-            guard let resolved = try? URL(
-                resolvingBookmarkData: bookmark,
-                options: [.withSecurityScope, .withoutUI],
-                relativeTo: nil,
-                bookmarkDataIsStale: &stale
-            ), !stale,
-                  resolved.resolvingSymlinksInPath().standardizedFileURL.path
-                    == expectedAbsolutePath else {
+            guard
+                let resolved = try? URL(
+                    resolvingBookmarkData: bookmark,
+                    options: [.withSecurityScope, .withoutUI],
+                    relativeTo: nil,
+                    bookmarkDataIsStale: &stale
+                ), !stale,
+                resolved.resolvingSymlinksInPath().standardizedFileURL.path
+                    == expectedAbsolutePath
+            else {
                 throw IndexedAttachmentAccessError.bookmarkUnavailable(
                     expectedAbsolutePath
                 )
@@ -118,7 +120,8 @@ public actor IndexedAttachmentAccessStore {
                 .isSymbolicLinkKey,
             ])
             guard resolvedValues.isRegularFile == true,
-                  resolvedValues.isSymbolicLink != true else {
+                resolvedValues.isSymbolicLink != true
+            else {
                 throw IndexedAttachmentAccessError.bookmarkUnavailable(
                     expectedAbsolutePath
                 )
@@ -129,11 +132,12 @@ public actor IndexedAttachmentAccessStore {
                 $0.attachmentID == attachmentID
             }
             payload.bindings.removeAll { $0.attachmentID == attachmentID }
-            payload.bindings.append(Binding(
-                attachmentID: attachmentID,
-                absolutePath: expectedAbsolutePath,
-                bookmarkData: bookmark
-            ))
+            payload.bindings.append(
+                Binding(
+                    attachmentID: attachmentID,
+                    absolutePath: expectedAbsolutePath,
+                    bookmarkData: bookmark
+                ))
             payload.bindings.sort {
                 $0.attachmentID.uuidString < $1.attachmentID.uuidString
             }
@@ -162,31 +166,38 @@ public actor IndexedAttachmentAccessStore {
         expectedFilename: String? = nil
     ) throws -> Bool {
         try lock.withSharedLock {
-            guard let binding = try load().bindings.first(where: {
-                $0.attachmentID == attachmentID
-            }) else { return false }
+            guard
+                let binding = try load().bindings.first(where: {
+                    $0.attachmentID == attachmentID
+                })
+            else { return false }
             if let expectedFilename,
-               URL(fileURLWithPath: binding.absolutePath).lastPathComponent
-                != expectedFilename {
+                URL(fileURLWithPath: binding.absolutePath).lastPathComponent
+                    != expectedFilename
+            {
                 return false
             }
             var stale = false
-            guard let resolved = try? URL(
-                resolvingBookmarkData: binding.bookmarkData,
-                options: [.withSecurityScope, .withoutUI],
-                relativeTo: nil,
-                bookmarkDataIsStale: &stale
-            ), !stale,
-                  resolved.resolvingSymlinksInPath().standardizedFileURL.path
-                    == binding.absolutePath else { return false }
+            guard
+                let resolved = try? URL(
+                    resolvingBookmarkData: binding.bookmarkData,
+                    options: [.withSecurityScope, .withoutUI],
+                    relativeTo: nil,
+                    bookmarkDataIsStale: &stale
+                ), !stale,
+                resolved.resolvingSymlinksInPath().standardizedFileURL.path
+                    == binding.absolutePath
+            else { return false }
             let started = resolved.startAccessingSecurityScopedResource()
             defer {
                 if started { resolved.stopAccessingSecurityScopedResource() }
             }
-            guard let values = try? resolved.resourceValues(forKeys: [
-                .isRegularFileKey,
-                .isSymbolicLinkKey,
-            ]) else { return false }
+            guard
+                let values = try? resolved.resourceValues(forKeys: [
+                    .isRegularFileKey,
+                    .isSymbolicLinkKey,
+                ])
+            else { return false }
             return values.isRegularFile == true && values.isSymbolicLink != true
         }
     }
@@ -199,29 +210,34 @@ public actor IndexedAttachmentAccessStore {
         expectedFilename: String? = nil
     ) throws -> (token: UUID, url: URL) {
         try lock.withSharedLock {
-            guard let binding = try load().bindings.first(where: {
-                $0.attachmentID == attachmentID
-            }) else {
+            guard
+                let binding = try load().bindings.first(where: {
+                    $0.attachmentID == attachmentID
+                })
+            else {
                 throw IndexedAttachmentAccessError.bookmarkUnavailable(
                     attachmentID.uuidString
                 )
             }
             if let expectedFilename,
-               URL(fileURLWithPath: binding.absolutePath).lastPathComponent
-                != expectedFilename {
+                URL(fileURLWithPath: binding.absolutePath).lastPathComponent
+                    != expectedFilename
+            {
                 throw IndexedAttachmentAccessError.bookmarkUnavailable(
                     binding.absolutePath
                 )
             }
             var stale = false
-            guard let resolved = try? URL(
-                resolvingBookmarkData: binding.bookmarkData,
-                options: [.withSecurityScope, .withoutUI],
-                relativeTo: nil,
-                bookmarkDataIsStale: &stale
-            ), !stale,
-                  resolved.resolvingSymlinksInPath().standardizedFileURL.path
-                    == binding.absolutePath else {
+            guard
+                let resolved = try? URL(
+                    resolvingBookmarkData: binding.bookmarkData,
+                    options: [.withSecurityScope, .withoutUI],
+                    relativeTo: nil,
+                    bookmarkDataIsStale: &stale
+                ), !stale,
+                resolved.resolvingSymlinksInPath().standardizedFileURL.path
+                    == binding.absolutePath
+            else {
                 throw IndexedAttachmentAccessError.bookmarkUnavailable(
                     binding.absolutePath
                 )
@@ -233,7 +249,8 @@ public actor IndexedAttachmentAccessStore {
                     .isSymbolicLinkKey,
                 ])
                 guard values.isRegularFile == true,
-                      values.isSymbolicLink != true else {
+                    values.isSymbolicLink != true
+                else {
                     throw IndexedAttachmentAccessError.bookmarkUnavailable(
                         binding.absolutePath
                     )
@@ -289,10 +306,11 @@ public actor IndexedAttachmentAccessStore {
             )
         }
         guard let payload = try? JSONDecoder().decode(Payload.self, from: data),
-              payload.schemaVersion == Self.currentSchemaVersion,
-              payload.triptychID == triptychID,
-              Set(payload.bindings.map(\.attachmentID)).count
-                == payload.bindings.count else {
+            payload.schemaVersion == Self.currentSchemaVersion,
+            payload.triptychID == triptychID,
+            Set(payload.bindings.map(\.attachmentID)).count
+                == payload.bindings.count
+        else {
             throw IndexedAttachmentAccessError.damaged(
                 "The stored JSON is invalid or uses an unsupported schema."
             )

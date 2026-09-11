@@ -1,6 +1,7 @@
 import Foundation
-import Testing
 import ScholiumContracts
+import Testing
+
 @testable import ScholiumCore
 
 @Suite("Read-only Zotero metadata matching")
@@ -8,56 +9,57 @@ struct ZoteroMetadataTests {
     @Test("Zotero JSON decoding preserves compact and expanded bibliographic metadata")
     func metadataDecoding() throws {
         let json = #"""
-        {
-          "key": "META0001",
-          "data": {
-            "key": "META0001",
-            "itemType": "journalArticle",
-            "title": "Fittingness",
-            "creators": [
-              {"creatorType":"author","firstName":"Richard","lastName":"Chappell"},
-              {"creatorType":"editor","firstName":"Ignored","lastName":"Editor"}
-            ],
-            "date": "2012",
-            "language": "en",
-            "publicationTitle": "The Philosophical Quarterly",
-            "volume": "62",
-            "issue": "249",
-            "pages": "684-704",
-            "series": "Values and Reasons",
-            "DOI": "10.1111/example",
-            "ISBN": "978-1-2345-6789-0",
-            "ISSN": "0031-8094",
-            "citationKey": "ChappellFittingness2012",
-            "abstractNote": "A source abstract.",
-            "publisher": "Example Press",
-            "place": "Oxford",
-            "edition": "2",
-            "url": "https://example.test/item",
-            "tags": [{"tag":"fittingness"},{"tag":"value"}],
-            "collections": ["COLL0001"],
-            "dateModified": "2026-07-12T10:30:00Z"
-          }
-        }
-        """#
+            {
+              "key": "META0001",
+              "data": {
+                "key": "META0001",
+                "itemType": "journalArticle",
+                "title": "Fittingness",
+                "creators": [
+                  {"creatorType":"author","firstName":"Richard","lastName":"Chappell"},
+                  {"creatorType":"editor","firstName":"Ignored","lastName":"Editor"}
+                ],
+                "date": "2012",
+                "language": "en",
+                "publicationTitle": "The Philosophical Quarterly",
+                "volume": "62",
+                "issue": "249",
+                "pages": "684-704",
+                "series": "Values and Reasons",
+                "DOI": "10.1111/example",
+                "ISBN": "978-1-2345-6789-0",
+                "ISSN": "0031-8094",
+                "citationKey": "ChappellFittingness2012",
+                "abstractNote": "A source abstract.",
+                "publisher": "Example Press",
+                "place": "Oxford",
+                "edition": "2",
+                "url": "https://example.test/item",
+                "tags": [{"tag":"fittingness"},{"tag":"value"}],
+                "collections": ["COLL0001"],
+                "dateModified": "2026-07-12T10:30:00Z"
+              }
+            }
+            """#
         let result = try #require(ZoteroMetadataDecoder.decodeItems(from: Data(json.utf8)).first)
         #expect(result.key == "META0001")
         #expect(result.itemType == "journalArticle")
         #expect(result.title == "Fittingness")
-        #expect(result.creators == [
-            ZoteroCreatorMetadata(
-                role: "author",
-                name: "Richard Chappell",
-                givenName: "Richard",
-                familyName: "Chappell"
-            ),
-            ZoteroCreatorMetadata(
-                role: "editor",
-                name: "Ignored Editor",
-                givenName: "Ignored",
-                familyName: "Editor"
-            ),
-        ])
+        #expect(
+            result.creators == [
+                ZoteroCreatorMetadata(
+                    role: "author",
+                    name: "Richard Chappell",
+                    givenName: "Richard",
+                    familyName: "Chappell"
+                ),
+                ZoteroCreatorMetadata(
+                    role: "editor",
+                    name: "Ignored Editor",
+                    givenName: "Ignored",
+                    familyName: "Editor"
+                ),
+            ])
         #expect(result.authors == ["Richard Chappell"])
         #expect(result.date == "2012")
         #expect(result.year == 2012)
@@ -84,21 +86,22 @@ struct ZoteroMetadataTests {
     @Test("Citation key in Extra remains readable")
     func compatibilityMetadataDecoding() throws {
         let itemJSON = #"""
-        {"data":{"key":"EXTRA001","itemType":"book","title":"Book","extra":"Citation Key: LegacyKey"}}
-        """#
+            {"data":{"key":"EXTRA001","itemType":"book","title":"Book","extra":"Citation Key: LegacyKey"}}
+            """#
         #expect(try ZoteroMetadataDecoder.decodeItems(from: Data(itemJSON.utf8)).first?.citationKey == "LegacyKey")
     }
 
     @Test("The transport policy permits only bodyless loopback GET reads")
     func readOnlyRequestPolicy() throws {
-        let request = try #require(ZoteroLocalRequestPolicy.makeReadRequest(
-            path: "items",
-            query: [
-                URLQueryItem(name: "q", value: "10.1000/example"),
-                URLQueryItem(name: "qmode", value: "everything"),
-                URLQueryItem(name: "limit", value: "50"),
-            ]
-        ))
+        let request = try #require(
+            ZoteroLocalRequestPolicy.makeReadRequest(
+                path: "items",
+                query: [
+                    URLQueryItem(name: "q", value: "10.1000/example"),
+                    URLQueryItem(name: "qmode", value: "everything"),
+                    URLQueryItem(name: "limit", value: "50"),
+                ]
+            ))
         #expect(request.httpMethod == "GET")
         #expect(request.httpBody == nil)
         #expect(request.url?.scheme == "http")
@@ -111,35 +114,41 @@ struct ZoteroMetadataTests {
             ZoteroLocalRequestPolicy.makeReadRequest(path: "items/FXS00026")
         )
         #expect(itemRequest.url?.path == "/api/users/0/items/FXS00026")
-        let groupRequest = try #require(ZoteroLocalRequestPolicy.makeReadRequest(
-            library: .group(42),
-            path: "items/FXS00026"
-        ))
+        let groupRequest = try #require(
+            ZoteroLocalRequestPolicy.makeReadRequest(
+                library: .group(42),
+                path: "items/FXS00026"
+            ))
         #expect(groupRequest.url?.path == "/api/groups/42/items/FXS00026")
-        let groupsRequest = try #require(ZoteroLocalRequestPolicy.makeReadRequest(
-            path: "groups"
-        ))
+        let groupsRequest = try #require(
+            ZoteroLocalRequestPolicy.makeReadRequest(
+                path: "groups"
+            ))
         #expect(groupsRequest.url?.path == "/api/users/0/groups")
-        #expect(ZoteroLocalRequestPolicy.makeReadRequest(
-            library: .group(42),
-            path: "groups"
-        ) == nil)
-        #expect(ZoteroLocalRequestPolicy.makeReadRequest(
-            library: .group(0),
-            path: "items/FXS00026"
-        ) == nil)
+        #expect(
+            ZoteroLocalRequestPolicy.makeReadRequest(
+                library: .group(42),
+                path: "groups"
+            ) == nil)
+        #expect(
+            ZoteroLocalRequestPolicy.makeReadRequest(
+                library: .group(0),
+                path: "items/FXS00026"
+            ) == nil)
         #expect(ZoteroLocalRequestPolicy.makeReadRequest(path: "collections/COLL0001") == nil)
         #expect(ZoteroLocalRequestPolicy.makeReadRequest(path: "items/ATTACH02/file/view/url") == nil)
         #expect(ZoteroLocalRequestPolicy.makeReadRequest(path: "items/FXS00026/children") == nil)
         #expect(ZoteroLocalRequestPolicy.makeReadRequest(path: "attachments/FXS00026") == nil)
-        #expect(ZoteroLocalRequestPolicy.makeReadRequest(
-            path: "items/../file/view/url"
-        ) == nil)
+        #expect(
+            ZoteroLocalRequestPolicy.makeReadRequest(
+                path: "items/../file/view/url"
+            ) == nil)
         #expect(ZoteroLocalRequestPolicy.makeReadRequest(path: "../items") == nil)
-        #expect(ZoteroLocalRequestPolicy.makeReadRequest(
-            path: "items",
-            query: [URLQueryItem(name: "include", value: "bib")]
-        ) == nil)
+        #expect(
+            ZoteroLocalRequestPolicy.makeReadRequest(
+                path: "items",
+                query: [URLQueryItem(name: "include", value: "bib")]
+            ) == nil)
     }
 
     @Test("The external Zotero MCP descriptor remains separate from the built-in read-only UI")
