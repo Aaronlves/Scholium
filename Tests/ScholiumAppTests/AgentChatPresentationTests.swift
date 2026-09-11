@@ -14,7 +14,7 @@ enum NativeChatSourceScope {
     "Scholium/Views/Sidebar/AgentChatDiagnosticsView.swift",
     "Scholium/Views/Sidebar/AgentChatActivityDetails.swift",
     "Scholium/Views/Sidebar/AgentChatDisclosureStyle.swift",
-    "Scholium/Views/Sidebar/AgentChatActivityGroup.swift",
+    "Scholium/Views/Sidebar/AgentChatActivityIssues.swift",
     "Scholium/Views/Sidebar/AgentChatSourceEvidenceView.swift",
     "Scholium/Views/Note/AgentSelectionResultView.swift",
     "Scholium/Views/Sidebar/AgentChatMarkdown.swift",

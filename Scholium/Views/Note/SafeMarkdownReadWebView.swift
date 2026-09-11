@@ -597,9 +597,12 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                   let type = payload["type"] as? String else { return }
 
             switch type {
-            case "replyHeight":
+            case "replyLayout":
                 if let height = payload["height"] as? Double, height.isFinite, height > 0, height < 1_000_000 {
-                    onReplyEvent?(.height(height))
+                    let width = payload["intrinsicWidth"] as? Double
+                    guard payload["intrinsicWidth"] is NSNull
+                        || width.map({ $0.isFinite && $0 > 0 && $0 < 1_000_000 }) == true else { return }
+                    onReplyEvent?(.layout(height: height, intrinsicWidth: width.map { CGFloat($0) }))
                 }
             case "replyQuote":
                 if let text = payload["text"] as? String, !text.isEmpty, text.utf8.count <= 65_536 {
@@ -1478,7 +1481,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
 }
 
 enum ReadReplyEvent {
-    case height(CGFloat)
+    case layout(height: CGFloat, intrinsicWidth: CGFloat?)
     case quote(String)
     case object(Int, copy: Bool, size: CGSize, anchor: NSRect, view: NSView)
 }

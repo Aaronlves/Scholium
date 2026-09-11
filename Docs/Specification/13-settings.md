@@ -36,7 +36,8 @@ document-content appearance profile, including reading and typography controls.
 Metadata contains
 Triptych field definitions and About ordering; Notifications contains reminder
 timing and the local dismissal ledger.
-Interaction groups machine-local Keyboard Shortcuts and Selection Actions.
+Interaction groups machine-local Keyboard Shortcuts, Selection Actions and Chat.
+Chat owns the running-turn Return behavior; the composer reflects that preference.
 Integrations groups Agents & Chat and Zotero because both are connection or
 external-tool configuration; each child retains its own owner and scope.
 Category grouping does not imply storage or sharing scope. Pages identify This

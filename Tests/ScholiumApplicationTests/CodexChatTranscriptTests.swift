@@ -5,6 +5,18 @@ import Foundation
 
 @Suite("Unified public transcript decoding")
 struct CodexChatTranscriptTests {
+  @Test("Command execution facts retain zero exit codes and duration through persistence")
+  func commandFacts() throws {
+    let item: [String: MCPJSONValue] = ["id": .string("command"), "type": .string("commandExecution"),
+      "command": .string("inspect fixture"), "cwd": .string("/fixture"), "exitCode": .integer(0),
+      "durationMs": .integer(123), "status": .string("completed")]
+    let activity = try #require(CodexChatActivity.parse(item, completed: true))
+    let restored = try JSONDecoder().decode(AgentChatActivity.self, from: JSONEncoder().encode(activity))
+    #expect(restored.commandExecution?.workingDirectory == "/fixture")
+    #expect(restored.commandExecution?.exitCode == 0 && restored.commandExecution?.durationMilliseconds == 123)
+    #expect(restored.status == .completed)
+  }
+
   @Test("Activity descriptions use public command actions without interpreting shell text")
   func commandActions() throws {
     let raw: [String: MCPJSONValue] = ["type": .string("commandExecution"), "status": .string("inProgress"),

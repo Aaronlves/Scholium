@@ -1041,6 +1041,24 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
     }
   }
 
+  func submitDraft(whileWorking action: AgentChatInputBehavior) {
+    if state == .working && currentTurnID != nil && action == .queue { _ = queue() }
+    else { send() }
+  }
+
+  func editQueuedMessage(_ id: String, text: String, in conversationID: UUID) -> Bool {
+    guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+      let conversation = conversation(conversationID), conversation.archivedAt == nil,
+      conversation.queuedMessages.contains(where: { $0.id == id }) else { return false }
+    update(in: conversationID) { conversation in
+      if let index = conversation.queuedMessages.firstIndex(where: { $0.id == id }) {
+        conversation.queuedMessages[index].text = text
+      }
+    }
+    persist()
+    return true
+  }
+
   func send() {
     guard canSend, let selected else { return }
     send(draftMessage(selected), in: selected, consumesDraft: true)

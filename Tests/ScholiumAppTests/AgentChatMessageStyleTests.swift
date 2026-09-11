@@ -99,6 +99,73 @@ struct AgentChatMessageStyleTests {
     }
   }
 
+  @Test("User paragraphs fit their rendered text and reflow; both speakers keep the same compact Markdown rhythm")
+  @MainActor
+  func speakerTypography() async throws {
+    func content(_ source: String, user: Bool) -> some View {
+      ScrollView {
+        AgentChatMessageSurface(isUser: user) {
+          AgentChatMarkdown(text: source, expandsToFillWidth: !user)
+        }.padding(24)
+      }
+    }
+    let host = NSHostingView(rootView: content("好的。", user: true))
+    let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 300, height: 700),
+      styleMask: [.titled], backing: .buffered, defer: false)
+    window.isReleasedWhenClosed = false; window.contentView = host
+    defer { window.contentView = nil; window.close() }
+    func readers(_ view: NSView) -> [WKWebView] {
+      (view as? WKWebView).map { [$0] } ?? view.subviews.flatMap { readers($0) }
+    }
+    let long = "请比较 `works` 和 **topics**，保留中文、English 与引用的原始含义，不把解释混同于文献证据。"
+    let rich = "## 阅读方向\n\n先澄清问题。\n\n- 核对 **原文**。\n- 比较 `works` 与 `topics`。\n  - 保留出处。\n\n> 这是一段引用。\n\n最后区分解释与评价。"
+    var narrowHeight = 0.0
+    for (source, user, width, contrast) in [("好的。", true, 300.0, ColorSchemeContrast.standard),
+      (long, true, 240.0, .standard), (long, true, 480.0, .increased),
+      (rich, false, 300.0, .standard), (rich, true, 300.0, .increased)] {
+      host.rootView = content(source, user: user)
+      window.appearance = NSAppearance(named: contrast == .increased ? .accessibilityHighContrastAqua : .aqua)
+      window.setContentSize(NSSize(width: width, height: 700))
+      let deadline = ContinuousClock.now.advanced(by: .seconds(10))
+      var result: [String: Any]?
+      while ContinuousClock.now < deadline {
+        window.layoutIfNeeded(); host.layoutSubtreeIfNeeded()
+        if let reader = readers(host).first, let value = try? await reader.evaluateJavaScript("""
+          (() => {
+            const root = document.getElementById('scholium-document');
+            if (!root) return null;
+            const p = root.querySelector('p'), h = root.querySelector('h2');
+            return {text: root.innerText, height: Math.ceil(root.getBoundingClientRect().height),
+              paragraphPadding: p ? getComputedStyle(p).paddingBottom : null,
+              headingPadding: h ? getComputedStyle(h).paddingTop : null,
+              headingFont: h ? parseFloat(getComputedStyle(h).fontSize) : 0,
+              bodyFont: parseFloat(getComputedStyle(root).fontSize),
+              overflow: root.scrollWidth > window.innerWidth + 1};
+          })()
+          """) as? [String: Any], let height = value["height"] as? Double,
+          abs(reader.frame.height - height) <= 1,
+          (value["text"] as? String)?.contains(source == "好的。" ? "好的。" : source == long ? "原始含义" : "阅读方向") == true,
+          (source != "好的。" || reader.frame.width < 60) {
+          result = value
+          if source == "好的。" { #expect(reader.frame.width > 20 && reader.frame.width < 60) }
+          if source == long && width == 240 { narrowHeight = height }
+          if source == long && width == 480 { #expect(height < narrowHeight && reader.frame.width > 300) }
+          break
+        }
+        try await Task.sleep(for: .milliseconds(20))
+      }
+      let actual = try #require(result)
+      #expect(actual["paragraphPadding"] as? String == "0px")
+      #expect(actual["overflow"] as? Bool == false)
+      if source == rich {
+        #expect(actual["headingPadding"] as? String == "0px")
+        let heading = try #require(actual["headingFont"] as? Double)
+        let body = try #require(actual["bodyFont"] as? Double)
+        #expect(heading > body && heading < body * 1.3)
+      }
+    }
+  }
+
   @Test("Native object previews retain the shared body font and semantic ink")
   @MainActor
   func sharedBodyStyle() {

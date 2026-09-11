@@ -126,6 +126,16 @@ public struct AgentChatActivity: Codable, Equatable, Sendable {
     public let target: String
     public init(kind: Kind, target: String) { self.kind = kind; self.target = target }
   }
+  public struct CommandExecution: Codable, Equatable, Sendable {
+    public let workingDirectory: String?
+    public let exitCode: Int?
+    public let durationMilliseconds: Int?
+    public init(workingDirectory: String?, exitCode: Int?, durationMilliseconds: Int?) {
+      self.workingDirectory = workingDirectory; self.exitCode = exitCode
+      self.durationMilliseconds = durationMilliseconds
+    }
+  }
+  public var commandExecution: CommandExecution?
   public var commandAction: CommandAction?
   public var kind: Kind
   public var status: Status

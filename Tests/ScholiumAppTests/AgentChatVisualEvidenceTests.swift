@@ -20,7 +20,7 @@ struct AgentChatVisualEvidenceTests {
     let process = [AgentChatMessage(role: .assistant, text: "已读取三篇材料，正在核对引用。", phase: .commentary)]
     for scheme in [ColorScheme.light, .dark] {
       let content = VStack(alignment: .leading, spacing: 20) {
-        AgentChatProcessView(messages: process, isActive: false, hasFinalAnswer: true, forceExpanded: false,
+        AgentChatProcessView(messages: process, isActive: false, forceExpanded: false,
           status: .init(state: .completed, timing: .init(durationMilliseconds: 38_500)), animates: false) {
           AgentChatMarkdown(text: $0.text)
         }

@@ -5,7 +5,6 @@ import SwiftUI
 struct AgentChatProcessView<Row: View>: View {
   let messages: [AgentChatMessage]
   let isActive: Bool
-  let hasFinalAnswer: Bool
   let forceExpanded: Bool
   var status: AgentChatTurnPresentation? = nil
   var preservesReading = false
@@ -21,7 +20,7 @@ struct AgentChatProcessView<Row: View>: View {
     messages.contains {
       $0.activity?.status == .uncertain || $0.activity?.status == .interrupted || $0.activity?.status == .waitingForApproval
         || $0.activity?.status == .waitingForInput
-        || ($0.activity?.status == .failed && !hasFinalAnswer)
+        || $0.activity?.status == .failed
     }
   }
 
@@ -31,20 +30,16 @@ struct AgentChatProcessView<Row: View>: View {
       userExpansion = $0; isExpanded = $0
     })) {
       VStack(alignment: .leading, spacing: 12) {
-        ForEach(AgentChatProcessSlice.collect(messages)) { slice in
-          if slice.isTools {
-            AgentChatActivityGroup(messages: slice.messages,
-              isActive: isActive && animates && slice.messages.contains { $0.id == messages.last(where: { $0.activity?.status == .running })?.id },
-              forceExpanded: forceExpanded, inspect: { inspect(); userExpansion = true }, row: row)
-          } else if let message = slice.messages.first { row(message) }
-        }
+        ForEach(messages) { row($0) }
       }.padding(.top, 6)
     } label: {
-      if let status {
-        AgentChatTurnStatus(presentation: status, animates: animates)
-      } else {
-        Label("Process", systemImage: "ellipsis")
-          .font(.callout).foregroundStyle(.secondary)
+      VStack(alignment: .leading, spacing: 4) {
+        if let status {
+          AgentChatTurnStatus(presentation: status, animates: animates)
+        } else {
+          Text("Process", bundle: .module).font(.callout).foregroundStyle(.secondary)
+        }
+        AgentChatActivityIssues(messages: messages)
       }
     }
     .disclosureGroupStyle(AgentChatDisclosureStyle())

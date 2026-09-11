@@ -21,7 +21,9 @@ struct AgentChatView: View {
   let showConversationChanges: ([UUID]) -> Void
   var changes: [AgentChange]? = nil
   var changesError: String? = nil
+  @AppStorage(AgentChatInputBehavior.key) private var inputBehavior = AgentChatInputBehavior.steer
   @AppStorage(AgentChangeViewedLedger.key) private var viewedChangeData = Data()
+  @State private var queueEditTarget: AgentChatQueueEditTarget?
   @State private var showsArchived = false
   @State private var isSelectingChats = false
   @State private var selectedChatIDs: Set<UUID> = []
@@ -73,6 +75,11 @@ struct AgentChatView: View {
     .popover(isPresented: $showsDiagnostics) {
       AgentChatDiagnosticsView(messages: controller.selected?.messages ?? [], selectedID: diagnosticMessageID,
         error: diagnosticError ?? controller.error, close: { showsDiagnostics = false })
+    }
+    .sheet(item: $queueEditTarget) { target in
+      AgentChatQueuedMessageEditor(message: target.message,
+        save: { controller.editQueuedMessage(target.message.id, text: $0, in: target.conversationID) },
+        close: { queueEditTarget = nil })
     }
     .sheet(item: $inspectedAgent) { child in
       AgentChatChildInspector(child: child, openReference: openReference)
@@ -524,7 +531,7 @@ struct AgentChatView: View {
         ScrollView {
           // Transcript geometry must describe the loaded messages, rather than
           // LazyVStack's changing estimates as long replies enter the viewport.
-          VStack(alignment: .leading, spacing: 20) {
+          VStack(alignment: .leading, spacing: ScholiumChatAppearance.messageSpacing) {
             if controller.selected?.messages.isEmpty != false {
               Text("Discuss your research here. Add a passage or name a note to begin.")
                 .foregroundStyle(.secondary).padding(.vertical, 12)
@@ -643,7 +650,6 @@ struct AgentChatView: View {
     if item.isProcess {
       AgentChatProcessView(messages: item.messages,
         isActive: controller.isBusy && controller.currentTurnID != nil && item.messages.first?.turnID == controller.currentTurnID,
-        hasFinalAnswer: timelineMessages.contains { $0.phase == .finalAnswer && $0.turnID == item.messages.first?.turnID },
         forceExpanded: showsFind && item.messages.contains { $0.id == find.selectedID },
         status: item.carriesTurnStatus(in: timelineMessages) ? turnPresentation(item.messages.first?.turnID) : nil,
         preservesReading: isAwayFromLatest || transcriptIsScrolling,
@@ -667,8 +673,8 @@ struct AgentChatView: View {
 
   private func messageView(_ message: AgentChatMessage) -> some View {
     let conversationID = controller.selectedID
-    return VStack(alignment: message.role == .user ? .trailing : .leading, spacing: 6) {
-      VStack(alignment: .leading, spacing: 6) {
+    return AgentChatMessageSurface(isUser: message.role == .user) {
+      VStack(alignment: .leading, spacing: ScholiumChatAppearance.contentSpacing) {
         quoteCards(message.replyQuotes ?? [], editable: false)
         if let target = message.coordinationTarget {
           coordinationReference(target)
@@ -705,18 +711,7 @@ struct AgentChatView: View {
             .accessibilityLabel("Requested Skill: \(method.title)")
         }
       }
-      .font(ScholiumChatAppearance.messageFont)
-      .foregroundStyle(ScholiumChatAppearance.messageForeground)
-      .padding(message.role == .user ? 12 : 0)
-      .background {
-        if message.role == .user {
-          RoundedRectangle(cornerRadius: 18)
-            .fill(ScholiumChatAppearance.userMessageBackground)
-        }
-      }
     }
-    .padding(.leading, message.role == .user ? 24 : 0)
-    .frame(maxWidth: .infinity, alignment: message.role == .user ? .trailing : .leading)
     .accessibilityElement(children: .contain)
     .accessibilityLabel(message.role == .user ? ScholiumL10n.string("You", locale: locale) : "Codex")
     .contextMenu {
@@ -829,9 +824,14 @@ struct AgentChatView: View {
               Image(systemName: activity.status.isActive || activity.status == .completed ? activity.kind.symbol : activity.status.symbol)
                 .chatAccessory()
                 .accessibilityHidden(true)
-              AgentChatActivityText(text: activitySummary(activity),
-                isCurrent: isVisible && currentActivityID == message.id)
-                .lineLimit(1)
+              VStack(alignment: .leading, spacing: 2) {
+                AgentChatActivityText(text: activitySummary(activity),
+                  isCurrent: isVisible && currentActivityID == message.id).lineLimit(2)
+                if activity.kind == .command && activity.commandAction == nil {
+                  Text(verbatim: activity.subject.split(whereSeparator: \.isNewline).first.map(String.init) ?? "")
+                    .font(.caption.monospaced()).foregroundStyle(.secondary).lineLimit(1)
+                }
+              }
               if activity.status != .running && activity.status != .completed {
                 Text(activity.status.label(locale: locale)).foregroundStyle(.secondary)
               }
@@ -873,7 +873,13 @@ struct AgentChatView: View {
             switch activity.kind {
             case .read, .readAttachment: state = .reading
             case .search, .webSearch: state = .searching
-            case .create, .update: state = .writing
+            case .create, .update, .files: state = .writing
+            case .command:
+              switch activity.commandAction?.kind {
+              case .read: state = .reading
+              case .search, .listFiles: state = .searching
+              case nil: state = .executing
+              }
             case .compaction: state = .organizing
             default: state = .working
             }
@@ -888,7 +894,8 @@ struct AgentChatView: View {
       default: break
       }
     }
-    return .init(state: state, timing: record?.timing ?? .init())
+    return .init(state: state, timing: record?.timing ?? .init(),
+      pendingAnswers: messages.reduce(0) { $0 + ($1.asyncQuestion?.isPending == true ? $1.asyncQuestion?.remaining.count ?? 0 : 0) })
   }
 
   @ViewBuilder
@@ -1091,6 +1098,7 @@ struct AgentChatView: View {
   }
 
   private var inputDock: some View {
+    let conversationID = controller.selectedID
     let pending = pendingRequest
     let asyncMessage = pending == nil ? controller.pendingAsyncQuestion : nil
     let title = pending?.toolQuestionContext != nil
@@ -1106,7 +1114,11 @@ struct AgentChatView: View {
           send: { _ = controller.sendQueuedMessage($0) },
           canSteer: { controller.canSteerQueuedMessage($0.id) },
           steer: { id in if let turnID { _ = controller.steerQueuedMessage(id, expectedTurnID: turnID) } },
-          remove: { controller.removeQueuedMessage($0) })
+          remove: { controller.removeQueuedMessage($0) },
+          edit: { message in
+            guard let conversationID else { return }
+            queueEditTarget = .init(conversationID: conversationID, message: message)
+          })
       }
       AgentChatInputDock(requestID: pending.map { "approval:\($0.id)" } ?? asyncMessage.map { "question:\($0.id)" }, requestTitle: title,
         requestCount: controller.approvals.count + (asyncMessage == nil ? 0 : 1), isActive: isVisible && !showsConversationList,
@@ -1198,7 +1210,7 @@ struct AgentChatView: View {
         isFocused: Binding(get: { messageIsFocused }, set: { messageIsFocused = $0 }),
         conversationID: conversationID,
         isEnabled: controller.isLoaded,
-        submit: { if controller.canSend { controller.send() } },
+        submit: { controller.submitDraft(whileWorking: inputBehavior) },
         completion: completion, candidates: completionCandidates, candidateQuery: completion.query,
         chooseCompletion: { candidate in chooseCompletion(candidate, in: conversationID) },
         transferMaterials: { materials, origin in
@@ -1270,10 +1282,6 @@ struct AgentChatView: View {
             }
           }.disabled(controller.isBusy)
           Button("Context and Usage") { showsContext = true }
-          if controller.canQueue {
-            Divider()
-            Button("Queue for Next Turn") { _ = controller.queue() }
-          }
         } label: {
           Label("Chat Actions", systemImage: "plus").labelStyle(.iconOnly)
             .foregroundStyle(.primary)
@@ -1292,9 +1300,9 @@ struct AgentChatView: View {
         }
         if !controller.isBusy || controller.selected?.draft.isEmpty == false {
         Button {
-          controller.send()
+          controller.submitDraft(whileWorking: inputBehavior)
         } label: {
-          Image(systemName: "arrow.up")
+          Image(systemName: controller.state == .working && inputBehavior == .queue ? "text.badge.plus" : "arrow.up")
         }
         .buttonStyle(.borderedProminent)
         .buttonBorderShape(.circle)
@@ -1304,10 +1312,10 @@ struct AgentChatView: View {
         .help(controller.state == .disconnected
           ? String(localized: "Connect an agent before sending.", bundle: .module)
           : controller.state == .working && controller.currentTurnID != nil
-            ? String(localized: "Add this message to the current turn.", bundle: .module)
+            ? String(localized: inputBehavior == .queue ? "Queue for Next Turn" : "Add this message to the current turn.", bundle: .module)
             : String(localized: "Send", bundle: .module))
         .accessibilityLabel(controller.state == .working && controller.currentTurnID != nil
-          ? String(localized: "Send Now", bundle: .module) : String(localized: "Send", bundle: .module))
+          ? String(localized: inputBehavior == .queue ? "Queue for Next Turn" : "Send Now", bundle: .module) : String(localized: "Send", bundle: .module))
         }
       }
       .controlSize(.regular)

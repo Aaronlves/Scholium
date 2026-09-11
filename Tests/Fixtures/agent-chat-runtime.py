@@ -414,7 +414,9 @@ for line in sys.stdin:
             event('item/started', {'threadId': tid, 'turnId': turn['id'], 'item': activity})
             event('item/commandExecution/outputDelta', {'threadId': tid, 'turnId': turn['id'], 'itemId': activity['id'], 'delta': 'Reading public fixture data.'})
             if 'hold' not in text and 'background' not in text:
-                activity['status'] = 'completed'
+                activity.update(status='completed', cwd='/fixture', durationMs=123, exitCode=7 if 'failed-activity' in text else 0)
+                if 'long-output' in text:
+                    activity['aggregatedOutput'] = '\n'.join('Output line ' + str(n) for n in range(120))
                 event('item/completed', {'threadId': tid, 'turnId': turn['id'], 'item': activity})
         if 'hold' not in text:
             mid = str(uuid.uuid4())
@@ -430,6 +432,12 @@ for line in sys.stdin:
 
 1. 先说明正在讨论的问题。
 2. 再展开理由与尚未解决的疑问。
+   - 区分 `works` 的原文与 `topics` 中的问题。
+   - 保留中文与 English 混排的出处。
+
+```text
+source → interpretation → objection
+```
 
 | 讨论内容 | 后续工作 |
 |---|---|

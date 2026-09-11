@@ -1,10 +1,11 @@
 import SwiftUI
 
-/// The two related, machine-local interaction settings share one top-level
+/// Related machine-local interaction settings share one top-level
 /// preference page. Their underlying owners remain separate.
 enum SettingsInteractionCategory: String, CaseIterable, Identifiable {
     case keyboardShortcuts = "keyboard-shortcuts"
     case selectionActions = "selection-actions"
+    case chat = "chat"
 
     var id: String { rawValue }
 
@@ -12,6 +13,8 @@ enum SettingsInteractionCategory: String, CaseIterable, Identifiable {
         switch self {
         case .keyboardShortcuts:
             LocalizedStringResource("Keyboard Shortcuts", table: "Localizable", bundle: .module)
+        case .chat:
+            LocalizedStringResource("Chat", table: "Localizable", bundle: .module)
         case .selectionActions:
             LocalizedStringResource("Selection Actions", table: "Localizable", bundle: .module)
         }
@@ -70,6 +73,8 @@ struct SettingsInteractionView: View {
                     HotkeySettingsView(searchQuery: searchQuery)
                 case .selectionActions:
                     SelectionActionsSettingsView()
+                case .chat:
+                    AgentChatInputSettingsView()
                 }
             }
             .frame(
@@ -100,7 +105,9 @@ struct SettingsInteractionView: View {
             .localizedLowercase
         guard !query.isEmpty else { return }
 
-        if ["selection", "action", "prompt", "instruction", "选段", "操作"]
+        if ["chat", "queue", "steer", "return", "聊天", "回车", "排队"].contains(where: query.contains) {
+            category = .chat
+        } else if ["selection", "action", "prompt", "instruction", "选段", "操作"]
             .contains(where: query.contains) {
             category = .selectionActions
         } else if ["keyboard", "hotkey", "shortcut", "command", "menu", "快捷键"]

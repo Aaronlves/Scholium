@@ -58,7 +58,7 @@ private enum ScholiumSettingsDestination: String, CaseIterable, Identifiable, Eq
         case .notifications:
             ["Notifications", "activities", "reminders", "dismissed items", "timing", "This Mac", "This Triptych"]
         case .interaction:
-            ["Interaction", "Keyboard Shortcuts", "Selection Actions", "shortcuts", "commands", "prompt", "instruction", "选段操作"]
+            ["Interaction", "Keyboard Shortcuts", "Selection Actions", "Chat", "queue", "steer", "return", "聊天", "回车", "排队", "shortcuts", "commands", "prompt", "instruction", "选段操作"]
                 + ScholiumHotkeyCommand.allCases.flatMap {
                     [String(localized: $0.title), String(localized: $0.menuPath)]
                 }

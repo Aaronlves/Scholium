@@ -51,7 +51,24 @@ export function installChatReply(
       element.before(wrapper); wrapper.append(controls, scroller); scroller.append(element);
     }
   });
-  const reportSize = () => post('replyHeight', {height: Math.ceil(root.getBoundingClientRect().height)});
+  const reportSize = () => {
+    // Measure a single paragraph with the same browser fonts and inline markup
+    // that are painted. Restore layout before reporting its wrapped height;
+    // no cloned content, alternate parser, or selection replacement is needed.
+    let intrinsicWidth: number | null = null;
+    const paragraph = root.firstElementChild;
+    if (root.children.length === 1 && paragraph instanceof HTMLElement
+        && paragraph.tagName === 'P' && !paragraph.querySelector('img, svg, .katex, br')) {
+      const width = paragraph.style.width;
+      const maximum = paragraph.style.maxWidth;
+      paragraph.style.width = 'max-content';
+      paragraph.style.maxWidth = 'none';
+      intrinsicWidth = Math.ceil(paragraph.getBoundingClientRect().width);
+      paragraph.style.width = width;
+      paragraph.style.maxWidth = maximum;
+    }
+    post('replyLayout', {height: Math.ceil(root.getBoundingClientRect().height), intrinsicWidth});
+  };
   const observer = new ResizeObserver(reportSize); observer.observe(root); reportSize();
   (window as Window & {scholiumQuoteReplySelection?: () => void}).scholiumQuoteReplySelection = quote;
   return () => { observer.disconnect(); root.removeEventListener('keydown', keydown); };

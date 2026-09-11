@@ -2872,6 +2872,49 @@ enum ScholiumChatAppearance {
     static var messageNSForeground: NSColor { ScholiumColorRole.primaryText.nsColor }
     static var messageLinkNSForeground: NSColor { ScholiumColorRole.accent.nsColor }
     static let messageLineHeight: CGFloat = 1.55
+    static let messageSpacing: CGFloat = 20
+    static let contentSpacing: CGFloat = 8
+    static let userLeadingInset: CGFloat = 16
+    static let bubbleHorizontalInset: CGFloat = 12
+    static let bubbleVerticalInset: CGFloat = 10
+    static let bubbleRadius: CGFloat = 16
+
+    /// A complete chat rhythm overrides document-reading padding as well as
+    /// margins. Em units keep structure proportional to the native body font.
+    static var messageBodyCSS: String {
+        """
+        .scholium-document {
+            padding: 0; margin: 0; max-width: none; display: flow-root;
+            font: \(messageNSFont.pointSize)px/\(messageLineHeight) -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+            color: var(--scholium-color-primary-text); text-align: start;
+            overflow-wrap: anywhere;
+        }
+        .scholium-document p { margin: 0 0 .75em; padding: 0; }
+        .scholium-document :is(h1, h2, h3, h4, h5, h6) {
+            font-family: inherit; font-style: normal; font-variant-caps: normal;
+            font-weight: 600; line-height: 1.35; text-align: start;
+            margin: 1.15em 0 .5em; padding: 0; text-wrap: wrap;
+        }
+        .scholium-document h1 { font-size: 1.3em; }
+        .scholium-document h2 { font-size: 1.15em; }
+        .scholium-document :is(h3, h4, h5, h6) { font-size: 1em; }
+        .scholium-document :is(ul, ol) { margin: 0 0 .75em; padding-inline-start: 1.5em; }
+        .scholium-document li { margin-block: .3em; }
+        .scholium-document li > p { margin-block: .35em; padding: 0; }
+        .scholium-document li > :is(ul, ol) { margin-block: .35em 0; }
+        .scholium-document blockquote {
+            margin: .85em 0; padding-block: 0;
+            padding-inline: .85em 0;
+            border-inline-start: 2px solid var(--scholium-color-separator);
+            color: inherit;
+        }
+        .scholium-document blockquote > :last-child { margin-bottom: 0; }
+        .scholium-document pre { font-family: 'SFMono-Regular', ui-monospace, monospace; font-size: 1em; line-height: 1.5; }
+        .scholium-document hr { margin-block: 1.1em; }
+        .scholium-document > :first-child { margin-top: 0; padding-top: 0; }
+        .scholium-document > :last-child { margin-bottom: 0; padding-bottom: 0; }
+        """
+    }
     static var inlineCodeBackground: NSColor { .quaternaryLabelColor }
     static func inlineCodeCSS(dark: Bool, increasedContrast: Bool) -> String {
         let name: NSAppearance.Name = increasedContrast
@@ -2894,5 +2937,5 @@ enum ScholiumChatAppearance {
         """
     }
 
-    static var userMessageBackground: Color { ScholiumColorRole.accent.color.opacity(0.3) }
+    static var userMessageBackground: Color { ScholiumColorRole.accent.color.opacity(0.14) }
 }

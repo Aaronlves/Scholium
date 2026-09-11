@@ -477,21 +477,20 @@ Missing phase metadata never justifies hiding an
 Agent message as presumed reasoning. The client does not expose raw reasoning
 items or reinterpret ordinary answer text as a private reasoning trace.
 Default progress names the action and outcome in ordinary research language.
-Each tool's commands, identifiers, paths, parameters and raw failure output remain
-in collapsed details, including after failure. A visible status still identifies
+Full commands, paths, parameters and raw failure output stay in details;
+literal command identifiers may appear as secondary activity text. A visible status still identifies
 failure or an uncertain outcome; required questions, permission scope and recovery
 actions cannot be hidden as technical detail. Native activity indicators reflect
 actual running state and use a static alternative under Reduce Motion.
-Live delivery, restored history and inspected Agent history interpret the same
-public item consistently: exact text, phase, turn identity and tool outcome must
-agree. Missing or unknown phase remains unclassified. Invalid attributed history
-cannot partially replace retained messages or confirm delivery; keep it unchanged
-and report the unavailable history. Private reasoning never enters public history.
-Turn acknowledgements may confirm lifecycle identity without containing message
-history. Such metadata never claims that missing items were read or restored.
+Live, restored and inspected Agent history share exact text, phase, turn identity
+and outcomes. Unknown phase stays unclassified. Invalid history preserves retained
+messages and cannot confirm delivery; report unavailability. Private reasoning
+never enters history. Metadata-only acknowledgements confirm identity, never
+loaded message history.
 
 Command output reconciles streams and final aggregates without loss or duplication.
-Retention is bounded; truncation is explicit in disclosure, Copy and reopened history.
+Reported command exit codes, duration and working directory survive restoration.
+Retention stays bounded; truncation is explicit in details, Copy and history.
 
 A reply or turn ending does not end a background tool operation. Each operation
 retains its own runtime item identity and reported outcome, including updates

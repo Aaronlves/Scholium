@@ -81,6 +81,8 @@ and accessible speaker names retain authorship. Agent replies support natural lo
 One quiet status above each attributed Agent turn replaces its speaker label and
 serves as the process disclosure when process items exist. It describes observed
 research activity, followed by elapsed time only when runtime timing is known.
+A pending asynchronous answer count remains beside the turn status even after
+runtime completion; it does not change that recorded outcome.
 Completion shows total turn duration, including waits, never private thinking time;
 missing timing stays unnumbered. Waiting, interruption, uncertainty and failure
 have distinct text. The top status has no decorative symbol or pulse; only its
@@ -98,20 +100,19 @@ Body text uses native primary text; history and supporting labels use secondary
 text. The collapsed process shows only its single status/timing row, without an
 operation inventory. Disclosure follows distance from research: answers, source
 navigation and necessary decisions are direct; operation history is secondary;
-raw technical records are deeper. Consecutive tools between public commentary
-form one collapsed, single-line activity row whose current action updates in
-place. Expanding reveals individual operations; each discloses
-its retained command, parameters, output and errors in a native grouped card,
-with text selection. Copy appears beside the section title on pointer hover or
-keyboard focus, with an additional context-menu route. The card omits redundant
-success labels. Long details scroll within that bounded card. Missing output is
-explicit, never reconstructed. Diagnostics provides an additional overview,
-never the sole detail route. Failure remains identifiable on the collapsed row.
+raw technical records are deeper. Each activity has one row and one disclosure for its retained command,
+parameters, output and errors. Single calls have no extra grouping layer.
+Unknown commands may show their literal identifier as secondary text without
+inferring purpose. Details expose reported exit code, duration and directory;
+missing values stay absent. Long output opens in a resizable native read-only
+window with selection and copying. Failure and unconfirmed-outcome counts remain
+visible when the process is collapsed, regardless of a final answer or later
+successful calls. They report evidence, not an inferred need for intervention.
+Diagnostics remains an additional overview.
 Public progress commentary and individual
 tool calls form a leading-aligned Agent process group, separate from the final answer.
 Each call retains its own target and outcome rather than being replaced by counts
-by tool type. During execution public commentary remains readable while tool
-groups stay collapsed unless opened. Accessory symbols share size and semantic
+by tool type. During execution public commentary remains readable while individual tool details stay collapsed unless opened. Accessory symbols share size and semantic
 secondary color; disclosure controls trail their labels and reveal on demand.
 After completion it collapses while the final answer remains visible, unless the
 user is reading earlier content or has explicitly expanded the process or an
@@ -143,7 +144,12 @@ Sources and conversation file-operation history have distinct scopes. Ratings an
 export actions are not part of this initial reply-action surface.
 Reply prose wraps normally. User messages, public commentary and final answers
 share one Markdown presentation; adding a table or other rich object does not
-change existing prose or inline-code styling. Inline code has a semantic system-gray background.
+change existing prose or inline-code styling. Paragraphs, headings, lists and
+quotations share a compact, font-relative rhythm without inheriting Document
+Appearance spacing. Headings stay subordinate to the conversation; quoted prose
+retains full text contrast. Short user paragraphs fit their rendered content;
+long requests reflow within the same trailing bubble. Inline code has a semantic
+system-gray background.
 Tables and code retain bounded horizontal scrolling; Mermaid reuses the local
 safe renderer with visible failure fallback. Diagrams omit developer hints,
 format labels and a separate source disclosure; Copy returns exact diagram code.
@@ -323,8 +329,10 @@ text or sends the message on selection. Literal punctuation outside an active
 candidate query remains ordinary prose. Selection replaces only that query and
 preserves surrounding text, native Undo and the captured conversation. A single
 discoverable actions entry offers the same routes without requiring memorized
-syntax. During an active turn, Send is named Send Now and explains that it adds
-to the current turn; Queue for Next Turn retains its separate consequence.
+syntax. Interaction > Chat chooses whether Return during work adds to the current turn
+or queues the next one. The send button follows the same preference and exposes
+its effective action. Idle Return sends normally; newline and IME behavior remain
+unchanged. The default is immediate input. Queue is not an Add-menu action.
 Queued input appears in a native Liquid Glass surface behind the input surface.
 Each queued message has one visible summary row and a direct Steer action; idle
 input exposes Send Next. Multiple messages expand into rows in a bounded scrolling
@@ -333,7 +341,10 @@ clear of the front input surface. Selecting a summary opens a native popover sho
 full text once, with retained Note snapshots, file representation labels, quotations
 and requested Skills available in its material disclosure. Add to Current Turn explicitly sends the selected item as
 additional input to its bound running turn; Send Next retains queue order while
-idle. Inspection cannot dispatch, edit or reorder input. The composer shows only
+idle. Inspection cannot dispatch or reorder input. Edit Message opens a native editor
+for the queued text without replacing the composer draft or its materials.
+Saving preserves queue identity, position and attached context. If already sent,
+the edit is not applied and remains available to copy. The composer shows only
 its text and necessary delivery controls. Chat Actions groups materials, Skills,
 web search, model/reasoning, permissions and context; these do not occupy permanent
 rows or separate icons. Native menus and named pickers expose selected values;

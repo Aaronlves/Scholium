@@ -70,6 +70,11 @@ public enum CodexChatActivity {
     var activity = AgentChatActivity(
       kind: kind, status: status, source: .runtime, subject: subject,
       detail: String(detail.suffix(16_000)), files: files)
+    if kind == .command {
+      activity.commandExecution = .init(workingDirectory: item["cwd"]?.stringValue,
+        exitCode: item["exitCode"]?.intValue,
+        durationMilliseconds: item["durationMs"]?.intValue.flatMap { $0 >= 0 ? $0 : nil })
+    }
     if kind == .command, let actions = item["commandActions"]?.arrayValue, actions.count == 1,
       let action = actions.first?.objectValue,
       let raw = action["type"]?.stringValue, let kind = AgentChatActivity.CommandAction.Kind(rawValue: raw) {

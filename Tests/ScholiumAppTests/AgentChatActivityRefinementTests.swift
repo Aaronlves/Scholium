@@ -5,16 +5,15 @@ import Testing
 
 @Suite("Quiet activity and context presentation")
 struct AgentChatActivityRefinementTests {
-  @Test("Compact tool groups preserve every item and public commentary boundary")
-  func toolGrouping() {
-    let first = AgentChatMessage(id: "a", role: .operation, text: "", activity: .init(kind: .search, source: .runtime))
-    let second = AgentChatMessage(id: "b", role: .operation, text: "", activity: .init(kind: .read, source: .runtime))
-    let commentary = AgentChatMessage(id: "c", role: .assistant, text: "已找到原文，继续核对。", phase: .commentary)
-    let third = AgentChatMessage(id: "d", role: .operation, text: "", activity: .init(kind: .read, source: .runtime))
-    let groups = AgentChatProcessSlice.collect([first, second, commentary, third])
-    #expect(groups.map { $0.messages.map(\.id) } == [["a", "b"], ["c"], ["d"]])
-    #expect(groups.map(\.isTools) == [true, false, true])
-    #expect(AgentChatProcessSlice.collect([first, second]).first?.id == "a")
+  @Test("Final answers and later successful operations never erase failure or uncertainty counts")
+  func retainedIssues() {
+    let failed = AgentChatMessage(role: .operation, text: "", activity: .init(kind: .command, status: .failed, source: .runtime))
+    let unknown = AgentChatMessage(role: .operation, text: "", activity: .init(kind: .command, status: .uncertain, source: .runtime))
+    let success = AgentChatMessage(role: .operation, text: "", activity: .init(kind: .read, status: .completed, source: .runtime))
+    let final = AgentChatMessage(role: .assistant, text: "Finished", phase: .finalAnswer)
+    let counts = AgentChatActivityIssueCounts([failed, unknown, success, final])
+    #expect(counts.failed == 1 && counts.uncertain == 1)
+    #expect(AgentChatActivityIssueCounts([success, final]).failed == 0)
   }
   @Test("A completed operation keeps its object without a repeated Completed label")
   func summary() {

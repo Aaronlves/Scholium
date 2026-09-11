@@ -467,6 +467,13 @@ observations. Item events and restored item statuses own tool outcomes; an ended
 turn cannot manufacture an interruption. Connection invalidation marks running
 runtime observations uncertain while revoking all execution admission.
 
+`AgentChatInputBehavior` stores the machine-local Return preference. Native
+Return and the composer button share `submitDraft`; explicit queued-item steering
+keeps its exact-turn checks. Queue edits change only retained text in place.
+`AgentChatActivityIssues` keeps failure/unknown counts visible above individual
+activity rows. `CommandExecution` retains runtime facts; expanded output uses a
+read-only native window owned and closed by its originating details view.
+
 `AgentChatActivityProjection` supplies action/target wording from existing receipts
 and optional public command-action metadata; it never parses shell text for intent.
 `AgentChatActivityText` owns only a visibility/adaptation-bound text shimmer.

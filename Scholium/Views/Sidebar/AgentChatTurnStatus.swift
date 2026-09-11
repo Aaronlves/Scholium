@@ -4,21 +4,23 @@ import SwiftUI
 /// A presentation of observed work, not an interpretation of private reasoning.
 struct AgentChatTurnPresentation: Equatable {
   enum State: Equatable {
-    case working, responding, reading, searching, writing, organizing
+    case working, responding, reading, searching, writing, organizing, executing
     case waitingForInput, waitingForApproval, stopping, completed, interrupted, failed, uncertain
   }
   let state: State
   var timing = AgentChatTurnTiming()
+  var pendingAnswers = 0
 
   var isWorking: Bool {
     switch state {
-    case .working, .responding, .reading, .searching, .writing, .organizing: true
+    case .working, .responding, .reading, .searching, .writing, .organizing, .executing: true
     default: false
     }
   }
   var titleKey: String.LocalizationValue {
     switch state {
     case .working: "Considering your question…"
+    case .executing: "Executing a command…"
     case .responding: "Composing a reply…"
     case .reading: "Reading material…"
     case .searching: "Looking through material…"
@@ -58,6 +60,7 @@ struct AgentChatTurnStatus: View {
 
   var body: some View {
     TimelineView(.animation(minimumInterval: 1, paused: !presentation.isWorking || !animates || activeState == .inactive)) { context in
+      VStack(alignment: .leading, spacing: 2) {
       HStack(spacing: 6) {
         if presentation.state == .completed, let elapsed = presentation.elapsedLabel(at: context.date, locale: locale) {
           Text(elapsed)
@@ -69,10 +72,16 @@ struct AgentChatTurnStatus: View {
           }
         }
       }
+      if presentation.pendingAnswers > 0 {
+        Text("\(presentation.pendingAnswers) answers pending", bundle: .module)
+      }
+      }
       .font(.callout).monospacedDigit().foregroundStyle(.secondary)
       .accessibilityElement(children: .ignore)
       .accessibilityLabel(ScholiumL10n.string(presentation.titleKey, locale: locale))
-      .accessibilityValue(presentation.elapsedLabel(at: context.date, locale: locale) ?? "")
+      .accessibilityValue([presentation.elapsedLabel(at: context.date, locale: locale),
+        presentation.pendingAnswers > 0 ? String(format: ScholiumL10n.string("%lld answers pending", locale: locale), presentation.pendingAnswers) : nil]
+        .compactMap { $0 }.joined(separator: ", "))
       .help("Elapsed time for this turn, including tools and waits.")
     }
   }

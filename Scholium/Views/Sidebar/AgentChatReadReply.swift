@@ -8,11 +8,13 @@ struct AgentChatReadReply: View {
     let source: String
     let quote: ((AgentChatReplySelection) -> Void)?
     let openLink: (URL) -> Void
+    var fitsContent = false
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.colorSchemeContrast) private var contrast
     @State private var projection: Projection?
     @State private var ready = false
     @State private var height: CGFloat = 120
+    @State private var intrinsicWidth: CGFloat?
     @State private var failure: String?
     @State private var preview = AgentChatRichPreviewController()
     @State private var quoteRequest: UUID?
@@ -41,7 +43,7 @@ struct AgentChatReadReply: View {
                     selectionSurfaceIsActive: false, renderingReadinessIsAcknowledged: ready,
                     onRenderingFailure: { failure = $0 }, onRenderingLoading: { ready = false },
                     onRenderingReady: { ready = true }, onReplyEvent: { receive($0, expectedSource: projection.document.rawContent) }, replyQuoteRequest: quoteRequest)
-                    .frame(maxWidth: .infinity)
+                    .frame(maxWidth: fitsContent ? intrinsicWidth ?? .infinity : .infinity)
                     .frame(height: height)
                     .contextMenu {
                         if quote != nil {
@@ -57,7 +59,7 @@ struct AgentChatReadReply: View {
     private func receive(_ event: ReadReplyEvent, expectedSource: String) {
         guard expectedSource == source else { return }
         switch event {
-        case .height(let value): height = value
+        case .layout(let value, let width): height = value; intrinsicWidth = width
         case .quote(let text): quote?(.reader(source: source, excerpt: text))
         case .object(let index, let copy, let size, let anchor, let view):
             let layout = AgentChatObjectProjection.layoutReply(source)
@@ -77,14 +79,11 @@ struct AgentChatReadReply: View {
 
     private var css: String {
         AgentChatDiagram.presentationCSS(dark: colorScheme == .dark, increasedContrast: contrast == .increased)
+        + ScholiumChatAppearance.messageBodyCSS
         + ScholiumChatAppearance.inlineCodeCSS(dark: colorScheme == .dark, increasedContrast: contrast == .increased) + """
         html, body { overflow: hidden; }
-        .scholium-document { padding: 0; margin: 0; font: \(ScholiumChatAppearance.messageNSFont.pointSize)px/\(ScholiumChatAppearance.messageLineHeight) -apple-system, BlinkMacSystemFont, system-ui, sans-serif; color: var(--scholium-color-primary-text); }
-        .scholium-document > :first-child { margin-top: 0; }
-        .scholium-document > :last-child { margin-bottom: 0; }
-        .scholium-document p { margin: 0 0 12px; }
         .scholium-document a { color: var(--scholium-color-accent); text-decoration-color: var(--scholium-color-accent); }
-        .scholium-reply-object { margin-block: 12px; }
+        .scholium-reply-object { margin-block: .85em; }
         .scholium-reply-controls { display: flex; justify-content: end; gap: 8px; user-select: none; }
         .scholium-reply-controls button { border: 0; background: transparent; color: var(--scholium-color-secondary-text); width: 24px; height: 24px; font: inherit; cursor: pointer; }
         .scholium-reply-controls button span { display: block; width: 16px; height: 16px; background: currentColor; -webkit-mask: var(--reply-symbol) center / contain no-repeat; mask: var(--reply-symbol) center / contain no-repeat; }

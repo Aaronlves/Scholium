@@ -92,7 +92,7 @@ struct AgentChatMarkdown: View {
   @Environment(\.openURL) private var openURL
 
   var body: some View {
-    AgentChatReadReply(source: text, quote: quoteSelection, openLink: { openURL($0) })
+    AgentChatReadReply(source: text, quote: quoteSelection, openLink: { openURL($0) }, fitsContent: !expandsToFillWidth)
     .font(ScholiumChatAppearance.messageFont)
     .foregroundStyle(ScholiumChatAppearance.messageForeground)
     .frame(maxWidth: expandsToFillWidth ? .infinity : nil, alignment: .leading)

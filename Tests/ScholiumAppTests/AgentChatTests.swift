@@ -254,6 +254,43 @@ struct AgentChatTests {
     }
   }
 
+  @Test("Return preference chooses steer or queue; queued editing preserves current draft, materials and identity", arguments: [AgentChatInputBehavior.steer, .queue])
+  func inputPreferenceAndQueueEditing(behavior: AgentChatInputBehavior) async throws {
+    let root = try root()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let controller = AgentChatController(triptychID: UUID(), root: root, toolHandler: success)
+    try await connect(controller)
+    controller.editDraft("hold activity")
+    controller.submitDraft(whileWorking: behavior) // Idle always starts a turn.
+    try await eventually { controller.isBusy && controller.currentTurnID != nil }
+    let turn = controller.currentTurnID
+    let attachment = AgentChatAttachment(noteID: UUID(), vaultID: UUID(), relativePath: "QA.md", text: "Exact fixture", fingerprint: .init(content: "Exact fixture"))
+    _ = controller.attachContext([attachment])
+    controller.editDraft("hold retained follow-up")
+    controller.submitDraft(whileWorking: behavior)
+    if behavior == .queue {
+      let queued = try #require(controller.queuedMessages.first)
+      let owner = try #require(controller.selectedID)
+      controller.editDraft("unrelated draft")
+      #expect(controller.editQueuedMessage(queued.id, text: "edited follow-up", in: owner))
+      #expect(controller.selected?.draft == "unrelated draft")
+      #expect(controller.queuedMessages.first?.id == queued.id)
+      #expect(controller.queuedMessages.first?.attachments == [attachment])
+      #expect(controller.queuedMessages.first?.text == "edited follow-up")
+      #expect(!controller.editQueuedMessage(queued.id, text: " ", in: owner))
+      controller.removeQueuedMessage(queued.id)
+      #expect(!controller.editQueuedMessage(queued.id, text: "late edit", in: owner))
+    } else {
+      try await eventually { controller.selected?.pendingMessageID == nil && controller.selected?.draft.isEmpty == true }
+      #expect(controller.queuedMessages.isEmpty)
+      #expect(controller.selected?.messages.last { $0.role == .user }?.attachments == [attachment])
+    }
+    #expect(controller.currentTurnID == turn)
+    controller.stop()
+    try await eventually { !controller.isBusy }
+    await controller.disconnect()
+  }
+
   private func root() throws -> URL {
     let root = repository.appendingPathComponent(".build/agent-chat-tests/\(UUID())")
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
