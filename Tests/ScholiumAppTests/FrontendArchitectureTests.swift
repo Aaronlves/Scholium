@@ -2976,7 +2976,7 @@ struct FrontendArchitectureTests {
         )
         #expect(
             ScholiumWebDesignTokens.documentPresentationCSS.contains(
-                ScholiumWebDesignTokens.fixedDocumentSyntaxCSSDeclarations
+                ScholiumWebDesignTokens.documentMarkupCSSDeclarations
             )
         )
     }
@@ -4191,7 +4191,7 @@ struct FrontendArchitectureTests {
         #expect(defaults.headings.level2.scale == 1.22)
 
         let sharedCSS = ScholiumWebDesignTokens.documentPresentationCSS
-        let fixedDocumentSyntax = ScholiumWebDesignTokens.fixedDocumentSyntaxCSSDeclarations
+        let documentMarkup = ScholiumWebDesignTokens.documentMarkupCSSDeclarations
         let editorHTML = try #require(MarkdownEditorWebView.editorHTML)
         for declaration in ScholiumWebDesignTokens.rhythmCSSDeclarations.split(separator: "\n") {
             let normalized = declaration.trimmingCharacters(in: .whitespaces)
@@ -4199,11 +4199,27 @@ struct FrontendArchitectureTests {
         }
         #expect(editorHTML.contains(sharedCSS))
         #expect(SafeMarkdownReadWebView.Coordinator.baseCSS.contains(sharedCSS))
-        #expect(fixedDocumentSyntax.contains("--scholium-mark-highlight-background: #ff9a00"))
-        #expect(fixedDocumentSyntax.contains("--scholium-mark-highlight-text: #28241d"))
-        #expect(sharedCSS.contains(fixedDocumentSyntax))
-        #expect(sharedCSS.contains("background: var(--scholium-mark-highlight-background)"))
-        #expect(sharedCSS.contains("color: var(--scholium-mark-highlight-text)"))
+        #expect(
+            documentMarkup.contains(
+                "--scholium-mark-highlight-background: color-mix(in srgb, var(--scholium-color-attention) 20%, transparent)"
+            ))
+        #expect(
+            documentMarkup.contains(
+                "--scholium-document-accent: color-mix(in srgb, var(--scholium-color-accent) 66%, var(--scholium-color-primary-text))"
+            ))
+        #expect(
+            documentMarkup.contains(
+                "--scholium-mark-highlight-edge: color-mix(in srgb, var(--scholium-color-attention) 52%, transparent)"
+            ))
+        #expect(sharedCSS.contains(documentMarkup))
+        #expect(sharedCSS.contains("box-decoration-break: clone"))
+        #expect(sharedCSS.contains("-webkit-box-decoration-break: clone"))
+        #expect(sharedCSS.contains("color: inherit"))
+        #expect(sharedCSS.contains("background-color: var(--scholium-mark-highlight-background)"))
+        #expect(sharedCSS.contains("box-shadow: inset 0 -0.16em 0 var(--scholium-mark-highlight-edge)"))
+        #expect(sharedCSS.contains("var(--scholium-color-attention) 30%"))
+        #expect(sharedCSS.contains("color: var(--scholium-document-accent);"))
+        #expect(sharedCSS.contains("--scholium-content-focus-ring: var(--scholium-color-accent);"))
         #expect(sharedCSS.contains("--scholium-document-line-width: 66ch"))
         #expect(sharedCSS.contains("--scholium-document-half-line-width: 33ch"))
         #expect(sharedCSS.contains("text-autospace: normal;"))
@@ -4262,7 +4278,7 @@ struct FrontendArchitectureTests {
             ))
         #expect(
             calloutCSS.contains(
-                ".scholium-callout-state {\n  padding-block: .14rem .18rem;\n  padding-inline-start: .9rem;\n  border-inline-start: 3px solid var(--scholium-color-accent);"
+                ".scholium-callout-state {\n  padding-block: .14rem .18rem;\n  padding-inline-start: .9rem;\n  border-inline-start: 3px solid var(--scholium-document-accent, var(--scholium-color-accent));"
             ))
         #expect(calloutCSS.contains("--scholium-callout-connect-content-indent: .72em;"))
         #expect(
@@ -4295,8 +4311,8 @@ struct FrontendArchitectureTests {
         #expect(!calloutCSS.contains("text-align-last:"))
     }
 
-    @Test("Ordinary quotation uses the semantic Accent in Read and Live Preview")
-    func ordinaryQuotationUsesSemanticAccent() throws {
+    @Test("Ordinary quotation uses the document Accent alias in Read and Live Preview")
+    func ordinaryQuotationUsesDocumentAccentAlias() throws {
         let sharedCSS = ScholiumWebDesignTokens.documentPresentationCSS
         let editorHTML = MarkdownEditorWebView.editorHTML ?? ""
         let repository = URL(fileURLWithPath: #filePath)
@@ -4314,7 +4330,7 @@ struct FrontendArchitectureTests {
         #expect(sharedCSS.contains(".cm-editor.scholium-live-mode .cm-live-quote"))
         #expect(
             sharedCSS.contains(
-                "border-inline-start: 3px solid var(--scholium-color-accent);"
+                "border-inline-start: 3px solid var(--scholium-document-accent);"
             ))
         #expect(
             !sharedCSS.contains(

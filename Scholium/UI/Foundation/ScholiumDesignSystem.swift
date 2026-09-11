@@ -516,15 +516,17 @@ struct ScholiumColorResolver: Sendable {
 /// Custom properties transport resolved semantic roles into WebKit; they are
 /// not a second set of configurable color Variables.
 enum ScholiumWebDesignTokens {
-    /// Fixed document-markup colors are not Appearance inputs and do not
-    /// participate in the Paper resolver. They are shared verbatim by Review
-    /// and Edit so Markdown semantics cannot drift by mode or theme.
-    static let fixedDocumentSyntaxCSSDeclarations = """
-        --scholium-mark-highlight-background: #ff9a00;
-        --scholium-mark-highlight-text: #28241d;
+    /// Document-markup appearance aliases are shared by Review and Edit. The
+    /// document accent preserves the system Accent hue while mixing it toward
+    /// document ink; controls, focus, selection, and transient arrival states
+    /// continue to use the raw system Accent.
+    static let documentMarkupCSSDeclarations = """
+        --scholium-document-accent: color-mix(in srgb, var(--scholium-color-accent) 66%, var(--scholium-color-primary-text));
+        --scholium-mark-highlight-background: color-mix(in srgb, var(--scholium-color-attention) 20%, transparent);
+        --scholium-mark-highlight-edge: color-mix(in srgb, var(--scholium-color-attention) 52%, transparent);
         """
-    /// WebKit's macOS system color keeps document Accent consumers live with
-    /// the user's current System Settings choice.
+    /// WebKit's macOS system color keeps raw Accent consumers live with the
+    /// user's current System Settings choice.
     static let systemAccentCSSValue = "-apple-system-control-accent"
     static let resolvedColorRoleCSSVariableNames = Set(
         ScholiumColorRole.allCases.map(\.cssVariableName)
@@ -663,7 +665,7 @@ enum ScholiumWebDesignTokens {
           \(elevationCSSDeclarations)
           \(ScholiumShape.webCSSDeclarations)
           \(ScholiumContentInteractionSurface.webCSSDeclarations)
-          \(fixedDocumentSyntaxCSSDeclarations)
+          \(documentMarkupCSSDeclarations)
           \(rhythmCSSDeclarations)
         }
         .scholium-document,
@@ -846,7 +848,7 @@ enum ScholiumWebDesignTokens {
           .scholium-document .scholium-frontmatter-source,
           #editor .cm-editor.scholium-live-mode .cm-content
         ) .cm-live-yaml-string {
-          color: var(--scholium-color-accent);
+          color: var(--scholium-document-accent);
         }
         .scholium-note-title {
           box-sizing: border-box;
@@ -996,7 +998,7 @@ enum ScholiumWebDesignTokens {
           box-sizing: border-box;
           margin-inline: 0;
           padding-inline-start: var(--scholium-rhythm-quote-inset);
-          border-inline-start: 3px solid var(--scholium-color-accent);
+          border-inline-start: 3px solid var(--scholium-document-accent);
           color: color-mix(in srgb, var(--scholium-color-primary-text) 78%, transparent);
         }
         .scholium-document pre,
@@ -1078,10 +1080,20 @@ enum ScholiumWebDesignTokens {
         }
         .scholium-document .scholium-highlight,
         .scholium-live-mode .cm-live-highlight {
-          padding-inline: 0.06em;
-          color: var(--scholium-mark-highlight-text);
-          background: var(--scholium-mark-highlight-background);
+          box-decoration-break: clone;
+          -webkit-box-decoration-break: clone;
+          padding-inline: 0.08em;
+          color: inherit;
+          background-color: var(--scholium-mark-highlight-background);
+          box-shadow: inset 0 -0.16em 0 var(--scholium-mark-highlight-edge);
           border-radius: var(--scholium-corner-document-mark-highlight);
+        }
+        @media (prefers-contrast: more) {
+          .scholium-document .scholium-highlight,
+          .scholium-live-mode .cm-live-highlight {
+            background-color: color-mix(in srgb, var(--scholium-color-attention) 30%, transparent);
+            box-shadow: inset 0 -0.18em 0 var(--scholium-color-attention);
+          }
         }
         .scholium-document :not(pre) > code,
         .scholium-live-mode .cm-live-code {
@@ -1093,9 +1105,9 @@ enum ScholiumWebDesignTokens {
         }
         .scholium-document a:not(.wiki-link),
         .scholium-live-mode .cm-live-link {
-          color: var(--scholium-color-accent);
+          color: var(--scholium-document-accent);
           text-decoration: underline;
-          text-decoration-color: color-mix(in srgb, var(--scholium-color-accent) 42%, transparent);
+          text-decoration-color: color-mix(in srgb, var(--scholium-document-accent) 42%, transparent);
           text-underline-offset: 0.15em;
         }
         .scholium-document .wiki-link,
@@ -1103,17 +1115,17 @@ enum ScholiumWebDesignTokens {
           display: inline-block;
           max-inline-size: 100%;
           vertical-align: baseline;
-          color: var(--scholium-color-accent);
+          color: var(--scholium-document-accent);
           line-height: 1.2;
           text-decoration-line: underline;
-          text-decoration-color: color-mix(in srgb, var(--scholium-color-accent) 42%, transparent);
+          text-decoration-color: color-mix(in srgb, var(--scholium-document-accent) 42%, transparent);
           text-underline-offset: 0.15em;
           border-radius: var(--scholium-corner-document-control);
         }
         .scholium-document .wiki-link:hover,
         .scholium-document .wiki-link:focus-visible,
         .scholium-live-mode .cm-live-wiki-link.scholium-link-preview-armed {
-          color: var(--scholium-color-accent);
+          color: var(--scholium-document-accent);
           background: var(--scholium-content-hover-surface);
           text-decoration-color: currentColor;
         }
@@ -1200,7 +1212,7 @@ enum ScholiumWebDesignTokens {
           display: block;
           box-sizing: border-box;
           margin-block: var(--scholium-rhythm-semantic-block-gap);
-          color: var(--scholium-color-accent);
+          color: var(--scholium-document-accent);
           font-weight: 650;
           padding: 0.75rem 0.9rem;
           border: 1px solid var(--scholium-color-separator);

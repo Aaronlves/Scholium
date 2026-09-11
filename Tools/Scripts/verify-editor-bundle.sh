@@ -86,11 +86,16 @@ if rg -q '^\.cm-live-callout-(orient|cite|connect|state|illustrate|quote|flag|ne
   exit 1
 fi
 
+if ! rg -q -F -- '--scholium-document-accent: color-mix(in srgb, var(--scholium-color-accent)' "$design_system"; then
+  print -u2 "The shared document Accent projection is missing."
+  exit 1
+fi
+
 if ! rg -U -q '^\.scholium-callout-role \{\n  display: block;' "$callout_styles" || \
    ! rg -U -q '^\.scholium-callout-cite \{[^}]*background: var\(--scholium-callout-surface\);' "$callout_styles" || \
    ! rg -U -q '^\.scholium-callout-flag \{[^}]*border: 1px solid var\(--scholium-callout-frame\);[^}]*background: transparent;' "$callout_styles" || \
    ! rg -q '^#editor \.cm-editor\.scholium-live-mode \.cm-line\.cm-live-callout-role-flag \{' "$callout_styles" || \
-   ! rg -U -q '^\.scholium-callout-state \{[^}]*border-inline-start: 3px solid var\(--scholium-color-accent\);' "$callout_styles"; then
+   ! rg -U -q '^\.scholium-callout-state \{[^}]*border-inline-start: 3px solid var\(--scholium-document-accent, var\(--scholium-color-accent\)\);' "$callout_styles"; then
   print -u2 "The semantic Callout role treatments are missing or incomplete."
   exit 1
 fi

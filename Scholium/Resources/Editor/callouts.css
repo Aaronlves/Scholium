@@ -134,7 +134,7 @@
 }
 
 .scholium-callout a:not(.wiki-link) {
-  color: var(--scholium-color-accent);
+  color: var(--scholium-document-accent, var(--scholium-color-accent));
   font-weight: 620;
   text-decoration-line: underline;
   text-decoration-color: var(--scholium-callout-rule);
@@ -143,7 +143,7 @@
 }
 
 .scholium-callout a.wiki-link {
-  color: var(--scholium-color-accent);
+  color: var(--scholium-document-accent, var(--scholium-color-accent));
   font-weight: 620;
   text-decoration: none;
 }
@@ -283,7 +283,7 @@
 }
 
 #editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-role-state {
-  border-inline-start: 3px solid var(--scholium-color-accent);
+  border-inline-start: 3px solid var(--scholium-document-accent, var(--scholium-color-accent));
 }
 
 #editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-role-illustrate.cm-live-callout-start {
@@ -392,7 +392,7 @@
 .scholium-callout-state {
   padding-block: .14rem .18rem;
   padding-inline-start: .9rem;
-  border-inline-start: 3px solid var(--scholium-color-accent);
+  border-inline-start: 3px solid var(--scholium-document-accent, var(--scholium-color-accent));
 }
 
 aside.scholium-callout-state .scholium-callout-body {

@@ -172,6 +172,7 @@
             let highlightTexts: [String]
             let highlightBackgrounds: [String]
             let highlightColors: [String]
+            let highlightParentColors: [String]
             let codeTexts: [String]
             let linkTexts: [String]
             let wikiLinkTexts: [String]
@@ -641,6 +642,8 @@
                     highlightTexts: texts('.cm-live-highlight'),
                     highlightBackgrounds: styles('.cm-live-highlight', 'backgroundColor'),
                     highlightColors: styles('.cm-live-highlight', 'color'),
+                    highlightParentColors: Array.from(line.querySelectorAll('.cm-live-highlight'))
+                        .map(element => getComputedStyle(element.parentElement || element).color),
                     codeTexts: texts('.cm-live-code'),
                     linkTexts: texts('.cm-live-link'),
                     wikiLinkTexts: texts('.cm-live-wiki-link, .cm-live-embed')

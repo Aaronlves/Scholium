@@ -14,7 +14,7 @@
   min-block-size: 1.05em;
   padding: 0 0.08em;
   border-radius: var(--scholium-corner-document-control);
-  color: var(--scholium-color-accent);
+  color: var(--scholium-document-accent, var(--scholium-color-accent));
   background: transparent;
   font-family: inherit;
   font-size: 0.68em;
@@ -42,7 +42,7 @@
   padding: 0;
   border: 0;
   border-radius: var(--scholium-corner-document-control);
-  color: var(--scholium-color-accent);
+  color: var(--scholium-document-accent, var(--scholium-color-accent));
   background: transparent;
   cursor: pointer;
 }
@@ -114,7 +114,7 @@
 .footnotes li + li { margin-block-start: 0.65em; }
 
 .footnotes li::marker {
-  color: var(--scholium-color-accent);
+  color: var(--scholium-document-accent, var(--scholium-color-accent));
   font-weight: 600;
   font-variant-numeric: lining-nums tabular-nums;
 }
@@ -145,7 +145,7 @@
   padding: 0;
   border: 0;
   border-radius: var(--scholium-corner-document-control);
-  color: var(--scholium-color-accent);
+  color: var(--scholium-document-accent, var(--scholium-color-accent));
   background: transparent;
   font: 500 0.82em/1 system-ui, sans-serif;
   cursor: pointer;

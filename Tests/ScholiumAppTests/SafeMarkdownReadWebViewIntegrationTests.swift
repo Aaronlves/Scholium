@@ -1221,8 +1221,8 @@ extension MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
-    @Test("Review and Edit consume the fixed Markdown highlight role")
-    func reviewConsumesFixedMarkdownHighlightRole() async throws {
+    @Test("Review and Edit share quiet Markdown highlight styling")
+    func reviewConsumesSharedMarkdownHighlightStyling() async throws {
         let source = "A ==marked passage== remains distinct from selection.\n"
         let document = NoteDocument(relativePath: "Highlight.md", rawContent: source)
         let harness = ReadHarness(
@@ -1241,11 +1241,63 @@ extension MarkdownEditorWebViewIntegrationTests {
                 const mark = document.querySelector('.scholium-highlight');
                 if (!mark) return null;
                 const style = getComputedStyle(mark);
-                return {background: style.backgroundColor, color: style.color};
+                return {
+                    background: style.backgroundColor,
+                    color: style.color,
+                    parentColor: getComputedStyle(mark.parentElement || mark).color,
+                    shadow: style.boxShadow,
+                    boxDecorationBreak: style.getPropertyValue('box-decoration-break')
+                        || style.getPropertyValue('-webkit-box-decoration-break')
+                };
                 """
             ) as? [String: String])
-        #expect(result["background"] == "rgb(255, 154, 0)")
-        #expect(result["color"] == "rgb(40, 36, 29)")
+        #expect(result["background"] != "rgb(255, 154, 0)")
+        #expect(result["background"] != "rgba(0, 0, 0, 0)")
+        #expect(result["color"] == result["parentColor"])
+        #expect(result["shadow"] != "none")
+        #expect(result["boxDecorationBreak"] == "clone")
+        await harness.closeAndDrain()
+    }
+
+    @Test("Review derives a quieter Accent for static document content")
+    func reviewUsesDerivedDocumentAccent() async throws {
+        let source = "[A link](https://example.com)\n\n> A quotation.\n"
+        let document = NoteDocument(relativePath: "DocumentAccent.md", rawContent: source)
+        let harness = ReadHarness(
+            source: source,
+            htmlBody: SafeMarkdownRenderer.render(document).htmlBody,
+            fingerprint: DocumentFingerprint(content: source).sha256,
+            initialAnchor: nil,
+            initialScrollFraction: 0
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        let result = try #require(
+            try await harness.callPageJavaScript(
+                """
+                const rawProbe = document.createElement('span');
+                const documentProbe = document.createElement('span');
+                rawProbe.style.cssText = 'position:fixed;inline-size:0;block-size:0;color:var(--scholium-color-accent)';
+                documentProbe.style.cssText = 'position:fixed;inline-size:0;block-size:0;color:var(--scholium-document-accent)';
+                document.body.append(rawProbe, documentProbe);
+                const link = document.querySelector('.scholium-document a:not(.wiki-link)');
+                const quotation = document.querySelector('.scholium-document blockquote');
+                const result = {
+                    rawColor: getComputedStyle(rawProbe).color,
+                    documentColor: getComputedStyle(documentProbe).color,
+                    linkColor: link ? getComputedStyle(link).color : '',
+                    quotationBorder: quotation ? getComputedStyle(quotation).borderInlineStartColor : ''
+                };
+                rawProbe.remove();
+                documentProbe.remove();
+                return result;
+                """
+            ) as? [String: String])
+        #expect(!result["documentColor", default: ""].isEmpty)
+        #expect(result["documentColor"] != result["rawColor"])
+        #expect(result["linkColor"] == result["documentColor"])
+        #expect(result["quotationBorder"] == result["documentColor"])
         await harness.closeAndDrain()
     }
 

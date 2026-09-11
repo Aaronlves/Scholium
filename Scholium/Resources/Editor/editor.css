@@ -90,7 +90,7 @@ body,
   color: var(--scholium-color-secondary-text);
 }
 #editor .cm-editor.scholium-live-mode .cm-line.scholium-frontmatter-line .cm-live-yaml-string {
-  color: var(--scholium-color-accent);
+  color: var(--scholium-document-accent, var(--scholium-color-accent));
 }
 
 /* YAML is authored source, but its quiet projection gets a small inset so it
@@ -264,7 +264,7 @@ body,
   display: block;
   box-sizing: border-box;
   margin-block: var(--scholium-rhythm-semantic-block-gap);
-  color: var(--scholium-color-accent);
+  color: var(--scholium-document-accent, var(--scholium-color-accent));
   font-weight: 650;
   padding: 0.75rem 0.9rem;
   border: 1px solid var(--scholium-color-separator);

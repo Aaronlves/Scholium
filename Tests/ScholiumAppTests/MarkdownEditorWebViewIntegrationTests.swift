@@ -1804,8 +1804,12 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(inactive.emphasisTexts == ["Third", "Fourth"])
         #expect(inactive.strikethroughTexts == ["Fifth"])
         #expect(inactive.highlightTexts == ["Sixth"])
-        #expect(inactive.highlightBackgrounds == ["rgb(255, 154, 0)"])
-        #expect(inactive.highlightColors == ["rgb(40, 36, 29)"])
+        #expect(inactive.highlightBackgrounds.count == 1)
+        #expect(
+            inactive.highlightBackgrounds.allSatisfy {
+                $0 != "rgb(255, 154, 0)" && $0 != "rgba(0, 0, 0, 0)"
+            })
+        #expect(inactive.highlightColors == inactive.highlightParentColors)
         #expect(inactive.codeTexts == ["Seventh"])
         #expect(inactive.linkTexts == ["Eighth"])
 
