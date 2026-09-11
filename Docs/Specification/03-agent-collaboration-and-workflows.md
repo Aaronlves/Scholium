@@ -70,10 +70,16 @@ bridge, and CLI availability and provides:
 - **Show Core Protocol in Finder…**.
 
 The copied commands register the same local stdio server at user scope using
-the verified absolute CLI path. Scholium does not edit either host's settings,
-install Skills, or claim that configuration succeeded. The Core Protocol ships
-as an ordinary `scholium-core-protocol` Skill folder; researchers may install
-it alongside their own Skills.
+the verified absolute CLI path. Scholium does not edit either external host's
+settings or claim that its configuration succeeded. In-app Chat has an
+additional conversation-token-scoped capability surface: when the researcher
+explicitly asks the Agent to manage Scholium, it may inspect and change the
+selected runtime's Skills, discovery roots, MCP Tool connections and
+conversation settings through the runtime owner. This does not edit host
+configuration files directly, create a second package manager or copy/delete
+Skill bytes. The Core Protocol is automatically supplied to in-app Chat and
+remains a protected application resource; external hosts may install it
+alongside their own Skills.
 
 MCP initialization carries only the entry/currentness, source-authority and
 mutation facts needed to use the tools. It references the Core Protocol boundary
@@ -81,9 +87,9 @@ in §8.5 instead of becoming a second philosophical instruction source.
 
 ### 8.3 Tool contract
 
-The local tool surface supports bounded knowledge-base operations. Tool availability
-never expands the current researcher request. The following contracts are shared
-by external hosts and in-app Chat:
+The external local tool surface supports bounded knowledge-base operations. Tool
+availability never expands the current researcher request. The following 18
+research contracts are shared by external hosts and in-app Chat:
 
 | Tool | Input | Result |
 | --- | --- | --- |
@@ -298,10 +304,14 @@ idempotent; Note create is non-idempotent, while Note
 update/trash are destructive and non-idempotent. An
 annotation is a host hint, never authorization.
 
-The first release exposes no MCP Resources, Prompts, Sampling, Roots,
-Elicitation, long-running Tasks, dynamic tool list, or provider-specific tool
-variant. MCP Tasks must not recreate an application-owned research lifecycle
-under another name.
+The external first-release surface exposes no MCP Resources, Prompts, Sampling,
+Roots, Elicitation, long-running Tasks, dynamic tool list, or provider-specific
+tool variant. A token-scoped in-app Chat connection additionally publishes the
+fixed `scholium_capabilities`, `scholium_configure_skill`,
+`scholium_configure_tool` and `scholium_configure_chat` controls. Their
+configuration changes remain runtime-owned and do not create an
+application-owned research lifecycle under another name. MCP Tasks must not
+recreate such a lifecycle either.
 
 ### 8.4 Currentness, mutation evidence, and recovery
 

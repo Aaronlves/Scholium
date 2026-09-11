@@ -79,6 +79,11 @@ declared-dependency availability and search-result provenance. Skill discovery,
 inspection, effective enable/disable, local association/removal, explicit message
 selection and tool inventory have native implementation slices; verify the folder
 picker and shared-setting confirmation in a live window.
+The in-app Agent capability surface is now implemented and focused-tested: an
+active token-scoped turn can inspect runtime capabilities, manage researcher-owned
+Skills and discovery roots, version-check MCP Tool configuration, begin runtime
+sign-in and change next-turn Chat settings through the existing runtime owner.
+This does not yet replace real-provider/browser acceptance.
 Remote/local connection forms and version-checked configuration writes are
 implemented, including environment-variable references. Advanced header mappings,
 helper programs and structured remote-environment references retain their runtime

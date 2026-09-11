@@ -49,7 +49,7 @@ struct ScholiumMCPServerTests {
         let recorder = MCPRequestRecorder()
         let server = ScholiumMCPServer { request in
             await recorder.record(request)
-            return .object(["schema_version": .integer(6), "status": .string("ok")])
+            return .object(["schema_version": .integer(ScholiumMCPContract.currentToolSchemaVersion), "status": .string("ok")])
         }
 
         let initialized = try await rpc(
@@ -66,9 +66,10 @@ struct ScholiumMCPServerTests {
         let listed = try await rpc(server, id: 2, method: "tools/list", params: [:])
         let listResult = try object(listed["result"])
         let tools = try #require(listResult["tools"] as? [[String: Any]])
+        let externalTools = ScholiumMCPToolName.allCases.filter { !$0.isChatControl }
         #expect(tools.compactMap { $0["name"] as? String } ==
-            ScholiumMCPToolName.allCases.map(\.rawValue))
-        #expect(tools.count == 18)
+            externalTools.map(\.rawValue))
+        #expect(tools.count == externalTools.count)
         let read = try #require(tools.first { $0["name"] as? String == "scholium_read_note" })
         let readProperties = try object(object(read["inputSchema"])["properties"])
         #expect(try object(readProperties["include_context"])["default"] as? Bool == false)
@@ -105,13 +106,44 @@ struct ScholiumMCPServerTests {
         #expect(await recorder.requests().isEmpty)
     }
 
+    @Test("In-app Chat publishes capability controls and binds every call to its conversation token")
+    func chatCapabilitySurface() async throws {
+        let recorder = MCPRequestRecorder()
+        let token = UUID()
+        let server = ScholiumMCPServer(conversationToken: token) { request in
+            await recorder.record(request)
+            return .object(["schema_version": .integer(ScholiumMCPContract.currentToolSchemaVersion), "status": .string("ok")])
+        }
+        let listed = try await rpc(server, id: 1, method: "tools/list", params: [:])
+        let tools = try #require(try object(listed["result"])["tools"] as? [[String: Any]])
+        let names = tools.compactMap { $0["name"] as? String }
+        #expect(names == ScholiumMCPToolName.allCases.map(\.rawValue))
+        #expect(Array(names.suffix(4)) == [
+            ScholiumMCPToolName.capabilities.rawValue,
+            ScholiumMCPToolName.configureSkill.rawValue,
+            ScholiumMCPToolName.configureTool.rawValue,
+            ScholiumMCPToolName.configureChat.rawValue,
+        ])
+        for tool in tools.suffix(4) {
+            let schema = try object(tool["inputSchema"])
+            #expect(schema["additionalProperties"] as? Bool == false)
+            #expect(try object(tool["outputSchema"])["oneOf"] as? [[String: Any]] != nil)
+        }
+        _ = try await rpc(server, id: 2, method: "tools/call", params: [
+            "name": ScholiumMCPToolName.capabilities.rawValue,
+            "arguments": [:],
+        ])
+        let requests = await recorder.requests()
+        #expect(requests.last?.conversationToken == token && requests.last?.tool == .capabilities)
+    }
+
     @Test("Tool calls carry only the named tool and argument object to the App bridge")
     func toolCallDelegatesToAppBridge() async throws {
         let recorder = MCPRequestRecorder()
         let server = ScholiumMCPServer { request in
             await recorder.record(request)
             return .object([
-                "schema_version": .integer(6),
+                "schema_version": .integer(ScholiumMCPContract.currentToolSchemaVersion),
                 "status": .string("ok"),
                 "current": .bool(false),
             ])
@@ -181,7 +213,7 @@ struct ScholiumMCPServerTests {
         let result = try object(response["result"])
         #expect(result["isError"] as? Bool == true)
         let structured = try object(result["structuredContent"])
-        #expect(structured["schema_version"] as? Int == 6)
+        #expect(structured["schema_version"] as? Int == ScholiumMCPContract.currentToolSchemaVersion)
         #expect(structured["status"] as? String == "failed")
         #expect(structured["code"] as? String == "workspace_not_ready")
         #expect(structured["recovery"] as? String == "Open one Triptych.")

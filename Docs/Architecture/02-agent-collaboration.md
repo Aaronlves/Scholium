@@ -22,7 +22,9 @@ open Triptychs require the caller's exact stable Triptych identity.
 
 ## Fixed tool surface
 
-`ScholiumMCPToolName` defines eighteen tools with closed schemas:
+`ScholiumMCPToolName` defines eighteen external research tools and four
+token-scoped in-app capability controls, all with closed schemas. The external
+surface includes:
 
 - workspace status;
 - current Library inventory browsing, Note Search and exact Note reads;
@@ -37,6 +39,9 @@ open Triptychs require the caller's exact stable Triptych identity.
 The external MCP server exposes no Resources, Prompts, Tasks, model operation,
 Handoff, Research Action, acceptance, Review, Settle, or research-result
 endpoint. Tool availability is not write permission.
+The in-app Chat server appends the four capability controls only when it carries
+the addressed conversation token; those controls remain runtime-owned and do
+not expand the external research surface.
 
 Browse projects the current `WorkspaceVaultSnapshot` folders and Note identities
 without a second index. `WorkspaceLibraryVisibility` owns the shared Library/MCP
@@ -549,9 +554,11 @@ answers the same pending request identity; presentation holds no write authority
 refresh and configuration-write tasks, with generation checks and disconnect
 invalidation. It does not persist an installed inventory or edit configuration
 files. `CodexChatMethods` translates Skills discovery/configuration and paginated
-MCP status; the official runtime owns the effective configuration. The Chat
-controller forwards capability observation for Send availability and refuses
-configuration changes during its active executions. Selected Skills are draft
+MCP status; the official runtime owns the effective configuration. Native
+Settings changes retain their idle guard, while the token-scoped in-app Chat
+capability tools use the same owner for explicit Agent-requested writes during
+an active turn. Those writes are serialized and version-checked; they do not
+change the admitted source or permission result. Selected Skills are draft
 values; sent messages retain immutable request labels and explicit runtime
 Skill inputs, independently of observed invocation events. Unknown or disabled
 choices remain visible and non-sending. The connection Settings owner refreshes

@@ -28,7 +28,7 @@ public enum AgentMCPService {
         guard arguments.count == 4, Array(arguments.prefix(3)) == ["mcp", "serve", "--conversation-token"],
               let token = UUID(uuidString: arguments[3]) else { throw HelperFailure.unsupportedCommand }
         let bridge = try MCPBridgeOperations(applicationSupportURL: ScholiumPaths.appBridgeContainerURL(environment: environment))
-        let server = ScholiumMCPServer { request in
+        let server = ScholiumMCPServer(conversationToken: token) { request in
             try await bridge.call(.init(requestID: request.requestID, tool: request.tool,
                 arguments: request.arguments, conversationToken: token, runtimeContext: request.runtimeContext))
         }

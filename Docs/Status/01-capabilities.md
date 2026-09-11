@@ -89,15 +89,20 @@
   repeated or ineligible recovery is refused. Chat Ask uses the reverse comparison,
   and successful Undo updates the original receipt without a new edit record.
 - Settings exposes Agents & Chat instructions for Codex and Claude Code and
-  reveals the bundled `scholium-core-protocol` Skill. External-host setup stores no credentials. In-app Chat separately retains
-  public conversation state and selected runtime configuration.
+  reveals the bundled `scholium-core-protocol` Skill. External-host setup
+  stores no credentials. In-app Chat separately retains public conversation
+  state and selected runtime configuration; its token-scoped capability tools
+  can manage runtime Skills, discovery roots, MCP connections and next-turn
+  Chat settings through the existing owner.
 - The Core Protocol uses ordinary Note operations for explicitly requested
   question/discussion writing. Substantive discussion does not authorize an
   automatic write or create an application-managed inquiry lifecycle.
 
 - Chat offers a persistent Zotero read-only preset through its existing versioned
-  runtime configuration editor. Disabled state survives reconnect; active turns
-  block changes and same-name custom connections are retained. Local API checks
+  runtime configuration editor. Disabled state survives reconnect; native
+  Settings changes wait for idle, while explicit in-app Agent capability calls
+  may configure the runtime during the admitted turn. Same-name custom
+  connections are retained. Local API checks
   report disabled/unavailable/available separately from MCP connection state.
   The first-party read-only CLI publishes seven read tools and rejects imports
   before contacting Zotero. Annotation listing/selected reads verify the exact

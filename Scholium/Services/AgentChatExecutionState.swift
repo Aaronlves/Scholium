@@ -15,6 +15,10 @@ struct AgentChatExecutionState {
   var routeToken: UUID?
   var admissionID: UUID?
   var displayScope: AgentChatDisplayScope?
+  /// Permission captured when the current turn is admitted. Conversation
+  /// settings may be changed by an in-turn capability call, but those changes
+  /// apply to the next turn only.
+  var permission: AgentChatPermission = .ask
   var completedTurns: Set<String> = []
   /// Notification validity only; public run state retains its existing owner.
   var notificationTurnID: String?

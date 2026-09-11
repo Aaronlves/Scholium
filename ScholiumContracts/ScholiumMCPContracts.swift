@@ -2,7 +2,7 @@ import Foundation
 
 public enum ScholiumMCPContract {
     public static let maximumDocumentUTF8ByteCount = 512 * 1_024
-    public static let currentToolSchemaVersion = 6
+    public static let currentToolSchemaVersion = 7
 }
 
 /// JSON values accepted at the MCP delivery boundary. Domain owners decode
@@ -99,6 +99,20 @@ public enum ScholiumMCPToolName: String, Codable, CaseIterable, Sendable {
     case readChange = "scholium_read_change"
     case undoChange = "scholium_undo_change"
     case trashNote = "scholium_trash_note"
+    case capabilities = "scholium_capabilities"
+    case configureSkill = "scholium_configure_skill"
+    case configureTool = "scholium_configure_tool"
+    case configureChat = "scholium_configure_chat"
+
+    /// These controls belong to the in-app Agent conversation. They are not
+    /// part of the standalone external research MCP surface because that
+    /// surface has no conversation-owned runtime configuration target.
+    public var isChatControl: Bool {
+        switch self {
+        case .capabilities, .configureSkill, .configureTool, .configureChat: true
+        default: false
+        }
+    }
 }
 
 public enum ScholiumMCPFailureCode: String, Codable, CaseIterable, Sendable {

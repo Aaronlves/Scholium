@@ -21,9 +21,11 @@ full-access environment and permits scoped MCP mutations without an additional
 proposal approval. Both preserve exact source, current revisions, live editors,
 readback, conflict and recovery. Full Access does not imply that arbitrary
 filesystem edits acquire Agent Change evidence. Raw edits remain external edits.
-A permission change applies only while the conversation is idle; it persists
-across turns. Runtime tools outside Scholium obey the actual runtime policy,
-not a simulated UI permission. Unsupported approval requests cannot run silently.
+Native permission controls apply while idle. The token-scoped Agent capability
+control may persist a new permission during an active turn for the next turn;
+the admitted turn keeps its original policy. Runtime tools obey the actual
+runtime policy, not a simulated UI permission. Unsupported approval requests
+cannot run silently.
 
 One active execution at a time owns each conversation's tool admission. In-app MCP calls bind
 the connected conversation and exact Triptych to the runtime-confirmed current
@@ -236,10 +238,10 @@ precedence and cannot be removed.
 Skill choices belong to the unsent message and remain visible in the retained
 message after sending. Sending resolves each exact selected Skill against the
 current runtime inventory; missing or disabled choices preserve the draft and
-block sending rather than silently dropping a requested Skill. Enable/disable
-changes apply to the connected runtime configuration, require all of that
-connection's conversations to be idle, and show the effective runtime result.
-An inventory or connection failure is distinct from an empty Skill/tool list.
+block sending rather than silently dropping a requested Skill. Native Settings
+changes require idle; Agent capability tools may change runtime Skills during an
+active turn without changing its source or permission. Inventory failure remains
+distinct from emptiness.
 
 The runtime is the single owner of installed Skills and tool configuration;
 Scholium neither mirrors an editable inventory nor implements a second package
@@ -251,10 +253,8 @@ Local folder association is a Scholium launch preference scoped to the selected
 runtime configuration folder. It supplies additional discovery roots to that
 app-server process and is reapplied when connecting. The preference records
 only the researcher's chosen folders, not a second installed-Skill inventory.
-Adding or removing a folder requires the connection's conversations to be idle;
-removal never deletes Skill files. Missing folders and unconfirmed application
-remain visible with Refresh and removal routes. A failed application is retried
-only by an explicit refresh or connection, never by a background inventory event.
+Native root changes wait for idle; Agent may apply a current-turn change.
+Removal preserves files; failed application remains visible.
 
 Connected tools expose identity, connection, authentication, availability and
 enabled state with runtime-supported setup, sign-in, refresh and removal routes.
@@ -269,10 +269,9 @@ and use its current version to reject intervening changes. A stale form retains
 its draft and requires an explicit reload; it never overwrites newer settings.
 Connections controlled by another configuration layer remain inspectable, with
 their ownership visible. Scholium's own bridge is managed by the application.
-Configuration changes wait for active conversation executions to finish and do
-not interrupt admitted research operations. Saving configuration and connecting
-successfully remain distinct results. Removing a connection does not revoke
-provider credentials or delete its local program.
+Native writes wait for idle. Agent writes may run during its active turn; the
+runtime serializes and version-checks them. Saving and connecting remain
+distinct; removal does not revoke credentials or delete the local program.
 Changing a remote origin or local program requires an explicit choice before
 reusing configured authentication headers or process environment values with
 the new destination. Credential values are not displayed as configuration prose.
@@ -293,6 +292,10 @@ transfer execution ownership, resend a request or change research authorization.
 Authorization URLs remain ephemeral, accept secure web destinations only, and
 are never recorded in conversations or portable research data. A late response
 from a disconnected runtime cannot open a page or update the new connection.
+
+In-app Chat publishes token-scoped controls for Skills, roots, MCP connections
+and next-turn settings. Agent permission changes are next-turn only; Note-mutation
+policy stays fixed.
 
 Web search is a first-class chat capability with explicit Off, Cached and Live
 choices where supported. Its availability is separate from general filesystem

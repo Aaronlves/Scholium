@@ -11,17 +11,21 @@ public actor ScholiumMCPServer {
 
     private let callBridge: @Sendable (ScholiumMCPBridgeRequest) async throws
         -> MCPJSONValue
+    private let conversationToken: UUID?
 
-    public init(bridge: MCPBridgeOperations) {
+    public init(bridge: MCPBridgeOperations, conversationToken: UUID? = nil) {
+        self.conversationToken = conversationToken
         callBridge = { request in
             try await bridge.call(request)
         }
     }
 
     public init(
+        conversationToken: UUID? = nil,
         handler: @escaping @Sendable (ScholiumMCPBridgeRequest) async throws
             -> MCPJSONValue
     ) {
+        self.conversationToken = conversationToken
         callBridge = handler
     }
 
@@ -66,7 +70,7 @@ public actor ScholiumMCPServer {
             return encode(responseResult(id: id, result: .object([:])))
         case "tools/list":
             return encode(responseResult(id: id, result: .object([
-                "tools": .array(Self.toolDefinitions),
+                "tools": .array(Self.toolDefinitions(conversationToken: conversationToken)),
             ])))
         case "tools/call":
             return encode(responseResult(
@@ -91,6 +95,13 @@ public actor ScholiumMCPServer {
                     code: .invalidRequest,
                     message: "The requested Scholium MCP tool is unknown.",
                     recovery: "Call tools/list and use one of the published tool names."
+                )
+            }
+            guard !tool.isChatControl || conversationToken != nil else {
+                throw ScholiumMCPFailure(
+                    code: .invalidRequest,
+                    message: "This capability-management tool requires an in-app Scholium Chat conversation.",
+                    recovery: "Open Scholium Chat and use its connected Scholium tool, or call one of the external research tools."
                 )
             }
             let arguments: [String: MCPJSONValue]
@@ -118,6 +129,7 @@ public actor ScholiumMCPServer {
             let result = try await callBridge(ScholiumMCPBridgeRequest(
                 tool: tool,
                 arguments: arguments,
+                conversationToken: conversationToken,
                 runtimeContext: context
             ))
             return toolResult(result, isError: false, includesImage: tool == .readAttachment)
@@ -230,7 +242,7 @@ public actor ScholiumMCPServer {
         let message: String
     }
 
-    private static let toolDefinitions: [MCPJSONValue] = [
+    private static let researchToolDefinitions: [MCPJSONValue] = [
         tool(
             .workspaceStatus,
             description: "Reconcile and report the running App's currently open Triptych state.",
@@ -452,6 +464,72 @@ public actor ScholiumMCPServer {
         ),
     ]
 
+    private static func toolDefinitions(conversationToken: UUID?) -> [MCPJSONValue] {
+        researchToolDefinitions + (conversationToken == nil ? [] : chatControlToolDefinitions)
+    }
+
+    private static let chatControlToolDefinitions: [MCPJSONValue] = [
+        tool(
+            .capabilities,
+            description: "Inspect the current in-app Agent runtime: available Skills, associated Skill roots, connected MCP tools, and the writable tool-configuration revision. This is an observation, not permission to change research Notes.",
+            properties: [:],
+            required: [],
+            readOnly: true,
+            destructive: false,
+            idempotent: true
+        ),
+        tool(
+            .configureSkill,
+            description: "Manage a runtime-owned Skill or its additional discovery roots at the researcher's explicit request. Skill files are never rewritten or deleted; the protected Scholium Core Protocol cannot be disabled.",
+            properties: [
+                "action": enumSchema(["enable", "disable", "add_root", "remove_root", "set_roots"]),
+                "path": stringSchema("Exact Skill.md path for enable/disable, or exact directory path for root actions."),
+                "name": stringSchema("Optional Skill name used with an exact Skill.md path."),
+                "roots": arraySchema(stringSchema("Absolute local Skill discovery directory.")),
+            ],
+            required: ["action"],
+            readOnly: false,
+            destructive: false,
+            idempotent: true
+        ),
+        tool(
+            .configureTool,
+            description: "Add, edit, enable, disable, remove or begin sign-in for a runtime-owned MCP connection. Configuration writes use the supplied live revision and edit environment-variable names only; secret values remain with the runtime.",
+            properties: [
+                "action": enumSchema(["add", "update", "set_enabled", "remove", "sign_in"]),
+                "expected_version": stringSchema("Exact tool-configuration version returned by scholium_capabilities for a write."),
+                "name": stringSchema("Exact connection name."),
+                "kind": enumSchema(["local", "remote"]),
+                "address": stringSchema("Local executable path or remote MCP endpoint."),
+                "args": arraySchema(stringSchema("One local server argument.")),
+                "enabled": booleanSchema,
+                "bearer_token_env_var": stringSchema("Environment-variable name only; never a token value."),
+                "env_vars": arraySchema(stringSchema("Inherited environment-variable name only.")),
+                "reuse_access_settings": booleanSchema,
+            ],
+            required: ["action"],
+            readOnly: false,
+            destructive: false,
+            idempotent: true
+        ),
+        tool(
+            .configureChat,
+            description: "Change this conversation's runtime preferences or next-message Skill selection. Changes are stored on the addressed conversation and apply to the next turn; they do not rewrite Notes or retroactively change the active turn.",
+            properties: [
+                "action": enumSchema(["set_permission", "set_model", "set_effort", "set_web_search", "set_selected_skills"]),
+                "permission": enumSchema(["ask", "fullAccess"]),
+                "model": nullable(stringSchema("Available model identifier; omit or send null to use the runtime default.")),
+                "effort": nullable(stringSchema("Reasoning effort supported by the selected model; omit or send null for the default.")),
+                "web_search": enumSchema(["runtimeDefault", "disabled", "cached", "live"]),
+                "skill_paths": arraySchema(stringSchema("Exact enabled Skill.md path for the next message.")),
+            ],
+            required: ["action"],
+            readOnly: false,
+            destructive: false,
+            idempotent: true
+        ),
+    ]
+
     private static func tool(
         _ name: ScholiumMCPToolName,
         description: String,
@@ -485,6 +563,13 @@ public actor ScholiumMCPServer {
         .object([
             "type": .string("string"),
             "description": .string(description),
+        ])
+    }
+
+    private static func enumSchema(_ values: [String]) -> MCPJSONValue {
+        .object([
+            "type": .string("string"),
+            "enum": .array(values.map(MCPJSONValue.string)),
         ])
     }
 
@@ -593,6 +678,31 @@ public actor ScholiumMCPServer {
         for tool: ScholiumMCPToolName
     ) -> MCPJSONValue {
         let successes: [MCPJSONValue] = switch tool {
+        case .capabilities:
+            [successSchema(properties: [
+                "triptych_id": uuidSchema("Current Triptych UUID."),
+                "conversation_id": uuidSchema("Addressed Chat conversation UUID."),
+                "conversation": simpleSchema("object"),
+                "skill_roots": arraySchema(stringSchema("Absolute Skill discovery directory.")),
+                "skills": arraySchema(simpleSchema("object")),
+                "skill_errors": arraySchema(simpleSchema("string")),
+                "connected_tools": arraySchema(simpleSchema("object")),
+                "tool_configuration": simpleSchema("object"),
+            ], required: ["triptych_id", "conversation_id", "conversation", "skill_roots", "skills", "skill_errors", "connected_tools", "tool_configuration"])]
+        case .configureSkill:
+            [successSchema(properties: [
+                "action": simpleSchema("string"), "path": nullable(simpleSchema("string")),
+                "effective_enabled": nullable(booleanSchema), "skill_roots": arraySchema(stringSchema("Absolute Skill discovery directory.")),
+            ], required: ["action", "path", "effective_enabled", "skill_roots"])]
+        case .configureTool:
+            [successSchema(properties: [
+                "action": simpleSchema("string"), "applies_to": simpleSchema("string"),
+                "authorization_url": nullable(simpleSchema("string")), "configuration": simpleSchema("object"),
+            ], required: ["action", "applies_to", "authorization_url", "configuration"])]
+        case .configureChat:
+            [successSchema(properties: [
+                "action": simpleSchema("string"), "applies_to": simpleSchema("string"), "conversation": simpleSchema("object"),
+            ], required: ["action", "applies_to", "conversation"])]
         case .workspaceStatus:
             [
                 successSchema(

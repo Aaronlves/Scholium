@@ -93,6 +93,8 @@ final class MCPAppBridgeRequestRouter {
             return try await undoChange(request.arguments)
         case .trashNote:
             return try await trashNote(request.arguments)
+        case .capabilities, .configureSkill, .configureTool, .configureChat:
+            throw invalid("conversation_token", "Capability management is available only inside an in-app Scholium Chat conversation.")
         }
     }
 

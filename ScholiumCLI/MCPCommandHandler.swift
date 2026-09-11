@@ -14,7 +14,7 @@ extension ScholiumCLI {
             throw commandUsageError("mcp serve")
         }
         let bridge = try CLIContext.makeMCPBridge()
-        let server = ScholiumMCPServer { request in
+        let server = ScholiumMCPServer(conversationToken: token) { request in
             try await bridge.call(ScholiumMCPBridgeRequest(
                 requestID: request.requestID, tool: request.tool,
                 arguments: request.arguments, conversationToken: token,
