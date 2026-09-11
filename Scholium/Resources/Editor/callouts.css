@@ -11,8 +11,9 @@
 /* Shared Read and Live Preview component                                    */
 /* ------------------------------------------------------------------------- */
 
-.scholium-callout {
-  --scholium-callout-block-gap: 1.4em;
+.scholium-callout,
+#editor .cm-editor.scholium-live-mode {
+  --scholium-callout-block-gap: 1.18em;
   --scholium-callout-ink: var(--scholium-color-primary-text, CanvasText);
   --scholium-callout-secondary-ink: var(--scholium-color-secondary-text, CanvasText);
   --scholium-callout-rule: var(--scholium-color-separator, GrayText);
@@ -21,11 +22,14 @@
     var(--scholium-color-primary-text, CanvasText) 4.5%,
     var(--scholium-color-document-background, Canvas)
   );
-  --scholium-callout-surface-emphasis: color-mix(
+  --scholium-callout-frame: color-mix(
     in srgb,
-    var(--scholium-color-primary-text, CanvasText) 7%,
-    var(--scholium-color-document-background, Canvas)
+    var(--scholium-color-primary-text, CanvasText) 24%,
+    var(--scholium-color-separator, GrayText)
   );
+}
+
+.scholium-callout {
   position: relative;
   display: block;
   box-sizing: border-box;
@@ -75,10 +79,9 @@
 }
 
 .scholium-callout-heading {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: .15rem .58rem;
+  display: grid;
+  align-items: start;
+  gap: .22rem;
   min-width: 0;
   margin: 0;
   font-size: 100%;
@@ -89,23 +92,22 @@
 .scholium-callout-role,
 .scholium-callout-title {
   color: var(--scholium-callout-ink);
-  font: 650 100%/1.35 Alegreya, Georgia, serif;
-  letter-spacing: 0;
   text-transform: none;
 }
 
-/* The generated role remains voiced but never competes with researcher text. */
 .scholium-callout-role {
-  position: absolute;
-  width: 1px;
-  height: 1px;
+  display: block;
   padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  clip-path: inset(50%);
-  white-space: nowrap;
+  margin: 0;
+  color: var(--scholium-callout-secondary-ink);
   border: 0;
+  font: 600 70%/1.25 system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  letter-spacing: .02em;
+}
+
+.scholium-callout-title {
+  font: 650 100%/1.35 Alegreya, Georgia, serif;
+  letter-spacing: 0;
 }
 
 .scholium-callout-body {
@@ -217,40 +219,40 @@
  * its outer edge stays aligned with the document measure.
  */
 
-/* Orientation — no visible heading; the prose only receives a slight inset. */
+/* Orientation — a boundary-free reading route with one quiet editorial rule. */
 .scholium-callout-orient {
-  margin-inline: clamp(.75rem, 4%, 1.5rem);
+  margin-inline: 0;
+  padding-block: .14rem .18rem;
+  padding-inline-start: .9rem;
+  border-inline-start: 2px solid var(--scholium-callout-rule);
 }
 
-.scholium-callout-orient > header .scholium-callout-heading,
-.scholium-callout-orient > summary .scholium-callout-heading {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  clip-path: inset(50%);
-  white-space: nowrap;
-  border: 0;
+.scholium-callout-orient .scholium-callout-title,
+.cm-live-callout-role-orient .scholium-callout-title {
+  font-style: italic;
+  font-weight: 590;
 }
 
 .scholium-callout-orient .scholium-callout-body {
   max-width: none;
-  margin: 0;
+  margin-top: .5rem;
   color: inherit;
   font-size: 100%;
   line-height: inherit;
   text-align: start;
 }
 
-/* Source — an aligned neutral surface with hanging source lines. */
-.scholium-callout-cite,
-.scholium-callout-flag {
-  padding-block: .72rem .8rem;
+/* Literature — a grouped neutral surface with hanging bibliographic lines. */
+.scholium-callout-cite {
+  padding: .72rem .88rem .78rem;
   border-radius: var(--scholium-corner-document-callout-surface);
   background: var(--scholium-callout-surface);
+}
+
+.scholium-callout-cite > header,
+.scholium-callout-cite > summary {
+  padding-block-end: .48rem;
+  border-block-end: 1px solid var(--scholium-callout-rule);
 }
 
 #editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-start {
@@ -263,14 +265,59 @@
   border-end-end-radius: var(--scholium-corner-document-callout-surface);
 }
 
+#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-role-orient {
+  border-inline-start: 2px solid var(--scholium-callout-rule);
+}
+
+#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-role-cite {
+  background: var(--scholium-callout-surface);
+}
+
+#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-role-cite.cm-live-callout-header {
+  box-shadow: inset 0 -1px var(--scholium-callout-rule);
+}
+
+#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-role-connect,
+#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-role-cite.cm-live-callout-body-line {
+  color: var(--scholium-callout-secondary-ink);
+}
+
+#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-role-state {
+  border-inline-start: 3px solid var(--scholium-color-accent);
+}
+
+#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-role-illustrate.cm-live-callout-start {
+  border-block-start: 1px solid var(--scholium-callout-rule);
+}
+
+#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-role-illustrate.cm-live-callout-end {
+  border-block-end: 1px solid var(--scholium-callout-rule);
+}
+
+#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-role-quote.cm-live-callout-body-line {
+  font-style: italic;
+}
+
+#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-role-flag {
+  border-inline: 1px solid var(--scholium-callout-frame);
+}
+
+#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-role-flag.cm-live-callout-start {
+  border-block-start: 1px solid var(--scholium-callout-frame);
+}
+
+#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-role-flag.cm-live-callout-end {
+  border-block-end: 1px solid var(--scholium-callout-frame);
+}
+
 .scholium-callout-cite .scholium-callout-role,
 .scholium-callout-cite .scholium-callout-title,
 .cm-live-callout-role-cite .scholium-callout-title {
-  font-size: 104%;
   font-weight: 650;
 }
 
 .scholium-callout-cite .scholium-callout-body {
+  margin-top: .52rem;
   color: var(--scholium-callout-secondary-ink);
   line-height: 1.58;
 }
@@ -282,7 +329,7 @@
 }
 
 .scholium-callout-cite .scholium-callout-content > p + p {
-  margin-top: .46rem;
+  margin-top: .34rem;
 }
 
 .scholium-callout-cite .scholium-callout-content > p strong:first-child {
@@ -296,10 +343,9 @@
  * border, or colored surface.
  */
 .scholium-callout-connect {
-  --scholium-callout-connect-content-indent: 1.1em;
+  --scholium-callout-connect-content-indent: .72em;
 }
 
-.scholium-callout-connect .scholium-callout-role,
 .scholium-callout-connect .scholium-callout-title,
 .cm-live-callout-role-connect .scholium-callout-title {
   font-size: 100%;
@@ -317,16 +363,18 @@
 .scholium-callout-connect .scholium-callout-content > ul {
   margin: 0;
   padding: 0;
+  border-block-start: 1px solid var(--scholium-callout-rule);
   list-style: none;
 }
 
 .scholium-callout-connect .scholium-callout-content > ul > li {
   margin: 0;
-  padding: 0;
+  padding: .4rem 0;
+  border-block-end: 1px solid var(--scholium-callout-rule);
 }
 
 .scholium-callout-connect .scholium-callout-content > ul > li + li {
-  margin-top: .36rem;
+  margin-top: 0;
 }
 
 .scholium-callout-connect .scholium-callout-content > ul > li > strong:first-child {
@@ -334,33 +382,22 @@
   font-weight: 600;
 }
 
-/* Statement — supplied title and first paragraph begin on the same line. */
-.scholium-callout-state .scholium-callout-role,
+/* Statement — one compact argument spine with a stable label-title-body axis. */
 .scholium-callout-state .scholium-callout-title,
 .cm-live-callout-role-state .scholium-callout-title {
   font-size: 100%;
   font-weight: 700;
 }
 
-aside.scholium-callout-state {
-  margin-inline-start: clamp(.5rem, 2.5%, 1rem);
-}
-
-aside.scholium-callout-state > header,
-aside.scholium-callout-state > .scholium-callout-body,
-aside.scholium-callout-state .scholium-callout-content,
-aside.scholium-callout-state .scholium-callout-content > p:first-child {
-  display: inline;
-}
-
-aside.scholium-callout-state .scholium-callout-heading {
-  display: inline;
-  margin-inline-end: .42em;
+.scholium-callout-state {
+  padding-block: .14rem .18rem;
+  padding-inline-start: .9rem;
+  border-inline-start: 3px solid var(--scholium-color-accent);
 }
 
 aside.scholium-callout-state .scholium-callout-body {
   max-width: none;
-  margin: 0;
+  margin-top: .34rem;
 }
 
 aside.scholium-callout-state .scholium-callout-content > p:first-child {
@@ -376,7 +413,6 @@ details.scholium-callout-state .scholium-callout-body {
 }
 
 /* Illustration — a title column and a content column, without a separator. */
-.scholium-callout-illustrate .scholium-callout-role,
 .scholium-callout-illustrate .scholium-callout-title,
 .cm-live-callout-role-illustrate .scholium-callout-title {
   font-size: 100%;
@@ -386,10 +422,11 @@ details.scholium-callout-state .scholium-callout-body {
 
 aside.scholium-callout-illustrate {
   display: grid;
-  grid-template-columns: minmax(7.5em, 28%) minmax(0, 1fr);
+  grid-template-columns: minmax(6.4em, 22%) minmax(0, 1fr);
   align-items: start;
-  column-gap: 1rem;
-  margin-inline: clamp(.5rem, 2.5%, 1rem);
+  column-gap: .85rem;
+  padding-block: .72rem;
+  border-block: 1px solid var(--scholium-callout-rule);
 }
 
 aside.scholium-callout-illustrate > header {
@@ -418,7 +455,31 @@ aside.scholium-callout-illustrate .scholium-callout-body {
 aside.scholium-callout-quote {
   display: flex;
   flex-direction: column;
-  margin-inline: clamp(.65rem, 3%, 1.2rem);
+  margin-inline: 0;
+  padding-inline: 1rem .35rem;
+}
+
+aside.scholium-callout-quote::before {
+  position: absolute;
+  inset-block-start: -.35rem;
+  inset-inline-start: -.1rem;
+  color: var(--scholium-callout-rule);
+  content: "“";
+  font: 500 3rem/1 Alegreya, Georgia, serif;
+  pointer-events: none;
+}
+
+.scholium-callout-quote .scholium-callout-role {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
 }
 
 aside.scholium-callout-quote > header {
@@ -449,20 +510,21 @@ aside.scholium-callout-quote .scholium-callout-body {
   hanging-punctuation: first;
 }
 
-/* Caution — one stronger aligned neutral surface, without warning hue. */
+/* Qualification — a complete hairline frame marks the passage's limited scope. */
 .scholium-callout-flag {
-  background: var(--scholium-callout-surface-emphasis);
+  padding: .72rem .88rem .78rem;
+  border: 1px solid var(--scholium-callout-frame);
+  border-radius: var(--scholium-corner-document-callout-surface);
+  background: transparent;
 }
 
 .scholium-callout-flag .scholium-callout-role,
 .scholium-callout-flag .scholium-callout-title,
 .cm-live-callout-role-flag .scholium-callout-title {
-  font: 700 84%/1.35 system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-  letter-spacing: .025em;
+  font-weight: 650;
 }
 
 /* Unknown identifiers stay deliberately neutral and claim no visual role. */
-.scholium-callout-neutral .scholium-callout-role,
 .scholium-callout-neutral .scholium-callout-title,
 .cm-live-callout-role-neutral .scholium-callout-title {
   color: var(--scholium-callout-secondary-ink);
@@ -480,7 +542,8 @@ aside.scholium-callout-quote .scholium-callout-body {
 /* ------------------------------------------------------------------------- */
 
 @media (prefers-contrast: more) {
-  .scholium-callout {
+  .scholium-callout,
+  #editor .cm-editor.scholium-live-mode {
     --scholium-callout-rule: var(--scholium-color-primary-text, CanvasText);
     --scholium-callout-secondary-ink: var(--scholium-color-primary-text, CanvasText);
     --scholium-callout-surface: color-mix(
@@ -488,11 +551,7 @@ aside.scholium-callout-quote .scholium-callout-body {
       var(--scholium-color-primary-text, CanvasText) 9%,
       var(--scholium-color-document-background, Canvas)
     );
-    --scholium-callout-surface-emphasis: color-mix(
-      in srgb,
-      var(--scholium-color-primary-text, CanvasText) 13%,
-      var(--scholium-color-document-background, Canvas)
-    );
+    --scholium-callout-frame: var(--scholium-color-primary-text, CanvasText);
   }
 
   .scholium-callout a:not(.wiki-link) {
@@ -508,7 +567,7 @@ aside.scholium-callout-quote .scholium-callout-body {
 
   .scholium-callout-cite,
   .scholium-callout-flag {
-    padding-block: .68rem .74rem;
+    padding: .68rem .78rem .72rem;
   }
 
   .scholium-callout-connect .scholium-callout-body,
@@ -523,9 +582,9 @@ aside.scholium-callout-quote .scholium-callout-body {
 
 @media (max-width: 430px) {
   .scholium-callout-orient,
-  aside.scholium-callout-state,
+  .scholium-callout-state,
   aside.scholium-callout-quote {
-    margin-inline: .5rem;
+    padding-inline-start: .65rem;
   }
 
   .scholium-callout-connect .scholium-callout-body,
@@ -556,7 +615,7 @@ aside.scholium-callout-quote .scholium-callout-body {
     --scholium-callout-secondary-ink: CanvasText;
     --scholium-callout-rule: CanvasText;
     --scholium-callout-surface: transparent;
-    --scholium-callout-surface-emphasis: transparent;
+    --scholium-callout-frame: CanvasText;
   }
 
   .scholium-callout-fold-mark {

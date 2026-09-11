@@ -248,6 +248,7 @@ enum DocumentAppearanceStyles {
     }
 
     private static func calloutCSS(_ callout: DocumentCalloutAppearance) -> String {
+        let defaults = DocumentAppearanceSettings.defaultSettings.callout(callout.role)
         let selector = selector(for: callout.role)
         let liveSelector = selector.replacingOccurrences(
             of: ".scholium-callout-",
@@ -287,8 +288,8 @@ enum DocumentAppearanceStyles {
             css += """
 
             \(selector) {
-              margin-inline-start: \(number(callout.startInsetEm ?? callout.inlineInsetEm))em;
-              margin-inline-end: \(number(callout.endInsetEm ?? callout.inlineInsetEm))em;
+              margin-inline-start: \(number(callout.startInsetEm ?? defaults.startInsetEm ?? callout.inlineInsetEm))em;
+              margin-inline-end: \(number(callout.endInsetEm ?? defaults.endInsetEm ?? callout.inlineInsetEm))em;
             }
             \(selector) .scholium-callout-body { margin-block-start: 0; }
             """
@@ -296,18 +297,18 @@ enum DocumentAppearanceStyles {
             css += """
 
             \(selector) {
-              --scholium-callout-connect-content-indent: \(number(callout.contentIndentEm ?? 1.1))em;
+              --scholium-callout-connect-content-indent: \(number(callout.contentIndentEm ?? defaults.contentIndentEm ?? 0))em;
               margin-inline: \(number(callout.inlineInsetEm))em;
             }
             """
         case .statement:
-            css += "\n\(selector) .scholium-callout-heading { margin-inline-end: \(number(callout.titleGapEm ?? 0))em; }"
+            css += "\n\(selector) .scholium-callout-heading { margin-inline-end: \(number(callout.titleGapEm ?? defaults.titleGapEm ?? 0))em; }"
         case .illustration:
             css += """
 
             \(selector) {
-              grid-template-columns: \(number(callout.titleColumnEm ?? 6.5))em minmax(0, 1fr);
-              column-gap: \(number(callout.columnGapEm ?? 1))em;
+              grid-template-columns: \(number(callout.titleColumnEm ?? defaults.titleColumnEm ?? 6.4))em minmax(0, 1fr);
+              column-gap: \(number(callout.columnGapEm ?? defaults.columnGapEm ?? 0.85))em;
               margin-inline: \(number(callout.inlineInsetEm))em;
             }
             """
@@ -316,22 +317,22 @@ enum DocumentAppearanceStyles {
 
             \(selector) {
               margin-inline: \(number(callout.inlineInsetEm))em;
-              padding-block: \(number(callout.paddingBlockEm ?? 0.9))em;
-              padding-inline: \(number(callout.paddingInlineEm ?? 1))em;
+              padding-block: \(number(callout.paddingBlockEm ?? defaults.paddingBlockEm ?? 0.72))em;
+              padding-inline: \(number(callout.paddingInlineEm ?? defaults.paddingInlineEm ?? 0.88))em;
             }
             """
         case .folded:
             css += """
 
             \(selector) { margin-inline: \(number(callout.inlineInsetEm))em; }
-            details.scholium-callout > .scholium-callout-body { margin-inline-start: \(number(callout.contentIndentEm ?? 0))em; }
+            details.scholium-callout > .scholium-callout-body { margin-inline-start: \(number(callout.contentIndentEm ?? defaults.contentIndentEm ?? 0.5))em; }
             """
         case .quotation:
             css += """
 
             \(selector) { margin-inline: \(number(callout.inlineInsetEm))em; }
-            \(selector) .scholium-callout-quotation { font-size: \(number(callout.quotationScale ?? 1))em; }
-            \(selector) .scholium-callout-title { font-size: \(number(callout.attributionScale ?? 0.85))em; }
+            \(selector) .scholium-callout-quotation { font-size: \(number(callout.quotationScale ?? defaults.quotationScale ?? 1.03))em; }
+            \(selector) .scholium-callout-title { font-size: \(number(callout.attributionScale ?? defaults.attributionScale ?? 0.82))em; }
             """
         }
         return css

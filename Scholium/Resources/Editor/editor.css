@@ -210,25 +210,14 @@ body,
   outline-offset: 2px;
 }
 
-/* A Callout remains one visible editorial block while it is active. Each
-   physical source line shares the quiet block surface, but only the line that
-   owns the caret exposes its exact quote/role markers. This keeps source
-   reachability without turning the entire Callout into Source mode. */
+/* A Callout remains one visible editorial block while it is active. Role-
+   specific surfaces and rules come from the protected Callout stylesheet;
+   only the line that owns the caret exposes its exact quote/role markers. */
 #editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout {
-  --scholium-live-callout-surface: color-mix(
-    in srgb,
-    var(--scholium-color-primary-text) 4.5%,
-    var(--scholium-color-document-background)
-  );
   box-sizing: border-box;
   padding-inline: .9em .9em;
   overflow-wrap: anywhere;
-  background: var(--scholium-live-callout-surface);
-  box-shadow: inset 2px 0 color-mix(
-    in srgb,
-    var(--scholium-color-accent) 52%,
-    var(--scholium-color-separator)
-  );
+  background: transparent;
   text-align: start;
 }
 
@@ -450,8 +439,8 @@ body,
   display: inline;
   margin-inline-end: .65em;
   font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-  font-size: .75em;
-  font-weight: 500;
+  font-size: .7em;
+  font-weight: 600;
   font-style: normal;
   color: var(--scholium-color-secondary-text);
 }

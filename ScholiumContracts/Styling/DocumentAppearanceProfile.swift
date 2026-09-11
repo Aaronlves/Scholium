@@ -274,66 +274,65 @@ public struct DocumentAppearanceSettings: Codable, Hashable, Sendable {
     public static let defaultCallouts: [DocumentCalloutAppearance] = [
         .init(
             role: .orientation,
-            inlineInsetEm: 1,
-            blockGapEm: 1.5,
-            titleWeight: 400,
-            lineHeight: 1.3,
-            startInsetEm: 3,
-            endInsetEm: 3
+            inlineInsetEm: 0,
+            blockGapEm: 1.18,
+            titleWeight: 600,
+            startInsetEm: 0,
+            endInsetEm: 0
         ),
         .init(
             role: .connections,
             inlineInsetEm: 0,
-            blockGapEm: 1.4,
-            paragraphSpacingEm: 0.36,
-            titleWeight: 500,
-            contentIndentEm: 1.1
+            blockGapEm: 1.18,
+            paragraphSpacingEm: 0.34,
+            titleWeight: 550,
+            contentIndentEm: 0.72
         ),
         .init(
             role: .statement,
-            inlineInsetEm: 1,
-            blockGapEm: 1.5,
-            titleWeight: 500,
-            titleGapEm: 0.32
+            inlineInsetEm: 0,
+            blockGapEm: 1.18,
+            titleWeight: 700,
+            titleGapEm: 0
         ),
         .init(
             role: .illustration,
-            inlineInsetEm: 1,
-            blockGapEm: 1,
-            titleWeight: 500,
-            titleColumnEm: 6.5,
-            columnGapEm: 1
+            inlineInsetEm: 0,
+            blockGapEm: 1.18,
+            titleWeight: 600,
+            titleColumnEm: 6.4,
+            columnGapEm: 0.85
         ),
         .init(
             role: .caution,
             inlineInsetEm: 0,
-            blockGapEm: 1.25,
-            titleWeight: 500,
-            paddingBlockEm: 0.7,
-            paddingInlineEm: 0.85
+            blockGapEm: 1.18,
+            titleWeight: 650,
+            paddingBlockEm: 0.72,
+            paddingInlineEm: 0.88
         ),
         .init(
             role: .folded,
-            inlineInsetEm: 1,
-            blockGapEm: 1.7,
-            titleWeight: 500,
-            contentIndentEm: 1.05
+            inlineInsetEm: 0,
+            blockGapEm: 1.18,
+            titleWeight: 550,
+            contentIndentEm: 0.5
         ),
         .init(
             role: .quotation,
-            inlineInsetEm: 1,
-            blockGapEm: 1.5,
-            titleWeight: 400,
-            quotationScale: 1.06,
-            attributionScale: 0.85
+            inlineInsetEm: 0,
+            blockGapEm: 1.18,
+            titleWeight: 600,
+            quotationScale: 1.03,
+            attributionScale: 0.82
         ),
         .init(
             role: .source,
             inlineInsetEm: 0,
-            blockGapEm: 1.25,
-            titleWeight: 500,
-            paddingBlockEm: 0.7,
-            paddingInlineEm: 0.85
+            blockGapEm: 1.18,
+            titleWeight: 650,
+            paddingBlockEm: 0.72,
+            paddingInlineEm: 0.88
         )
     ]
 
