@@ -87,8 +87,11 @@ enum ScholiumMathAssets {
       pointer-events: auto;
     }
     .scholium-math-source {
-      font-family: "Victor Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
-      font-size: 0.92em;
+      font-family: var(--scholium-document-source-font-family);
+      font-size: var(--scholium-document-source-font-size);
+      line-height: var(--scholium-rhythm-source-line-height);
+      font-style: normal;
+      font-variant-caps: normal;
       white-space: pre-wrap;
       overflow-wrap: anywhere;
     }

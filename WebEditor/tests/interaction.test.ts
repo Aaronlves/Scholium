@@ -8,16 +8,19 @@ describe("guarded list interaction", () => {
     for (const [source, expected] of [
       ["- claim", "- claim\n- "],
       ["- [x] checked", "- [x] checked\n- [ ] "],
+      ["* [x] alternate", "* [x] alternate\n* [ ] "],
+      ["12) [x] ordered task", "12) [x] ordered task\n13) [ ] "],
       ["9. claim", "9. claim\n10. "],
     ]) {
       const result = continueList(source, [{anchor: source.length, head: source.length}]);
       expect(applySourceChanges(source, result!.changes)).toBe(expected);
     }
   });
-  it("exits an empty list item by removing only its prefix", () => {
-    const source = "Before\n  - ";
-    const result = continueList(source, [{anchor: source.length, head: source.length}]);
-    expect(applySourceChanges(source, result!.changes)).toBe("Before\n");
+  it("exits empty list items by removing their complete marker track", () => {
+    for (const source of ["Before\n  - ", "Before\n  -", "Before\n  4)   "]) {
+      const result = continueList(source, [{anchor: source.length, head: source.length}]);
+      expect(applySourceChanges(source, result!.changes)).toBe("Before\n");
+    }
   });
   it("indents only proven list lines", () => {
     const source = "- one\n- two";
@@ -32,6 +35,50 @@ describe("guarded list interaction", () => {
     expect(applySourceChanges(source, continued!.changes)).toBe("intro\n- one\n- two\n- ");
     const indented = indentList(document, [{anchor: 6, head: source.length}], false);
     expect(applySourceChanges(source, indented!.changes)).toBe("intro\n  - one\n  - two");
+  });
+  it("keeps blockquote and Callout list indentation inside the quote track", () => {
+    const source = "> [!state] Claims\n> - one\n>   - nested";
+    const first = source.indexOf("> - one");
+    const result = indentList(
+      source,
+      [{anchor: first, head: source.length}],
+      false,
+    );
+    expect(applySourceChanges(source, result!.changes)).toBe(
+      "> [!state] Claims\n>   - one\n>     - nested",
+    );
+  });
+  it("removes one mixed indentation unit and maps a line-start caret after it", () => {
+    const source = "\t- tabbed\n    - spaced";
+    const result = indentList(
+      source,
+      [{anchor: 0, head: source.length}],
+      true,
+    );
+    expect(applySourceChanges(source, result!.changes)).toBe("- tabbed\n  - spaced");
+    expect(result!.selections).toEqual([{
+      anchor: 0,
+      head: source.length - 3,
+    }]);
+  });
+  it("does not continue or indent a protected technical line", () => {
+    const source = "```\n- code\n```";
+    const lineIsProtected = (line: {number: number}) => line.number === 2;
+    expect(continueList(source, [{anchor: 7, head: 7}], {lineIsProtected})).toBeNull();
+    expect(indentList(source, [{anchor: 7, head: 7}], false, {lineIsProtected})).toBeNull();
+  });
+  it("keeps the mapped selection on both indented list lines for outdent", () => {
+    const source = "  - first\n  - second\n\n```swift\n- code\n```\n";
+    const result = indentList(source, [{anchor: 2, head: 20}], true);
+    expect(result?.undoLabel).toBe("Outdent List");
+    expect(applySourceChanges(source, result!.changes))
+      .toBe("- first\n- second\n\n```swift\n- code\n```\n");
+  });
+  it("outdents only the nested lines in a mixed-depth selection", () => {
+    const source = "- root\n  - nested";
+    const result = indentList(source, [{anchor: 0, head: source.length}], true);
+    expect(applySourceChanges(source, result!.changes)).toBe("- root\n- nested");
+    expect(result!.undoLabel).toBe("Outdent List");
   });
 });
 

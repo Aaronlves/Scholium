@@ -971,9 +971,14 @@ enum ScholiumWebDesignTokens {
           color: color-mix(in srgb, var(--scholium-color-primary-text) 78%, transparent);
         }
         .scholium-document pre,
+        .scholium-document pre code,
         .cm-editor.scholium-live-mode .cm-live-codeblock {
           box-sizing: border-box;
-          font-family: "Victor Mono", ui-monospace, monospace;
+          font-family: var(--scholium-document-source-font-family);
+          font-size: var(--scholium-document-source-font-size);
+          line-height: var(--scholium-rhythm-source-line-height);
+          font-style: normal;
+          font-variant-caps: normal;
           background: color-mix(in srgb, var(--scholium-color-primary-text) 7%, transparent);
         }
         .scholium-document pre.raw-html,
@@ -981,7 +986,11 @@ enum ScholiumWebDesignTokens {
           box-sizing: border-box;
           color: var(--scholium-color-secondary-text);
           background: color-mix(in srgb, var(--scholium-color-primary-text) 7%, transparent);
-          font-family: "Victor Mono", ui-monospace, monospace;
+          font-family: var(--scholium-document-source-font-family);
+          font-size: var(--scholium-document-source-font-size);
+          line-height: var(--scholium-rhythm-source-line-height);
+          font-style: normal;
+          font-variant-caps: normal;
         }
         .cm-editor.scholium-live-mode .cm-live-raw-html {
           padding-inline: var(--scholium-rhythm-code-inset);

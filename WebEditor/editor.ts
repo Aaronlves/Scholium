@@ -38,6 +38,7 @@ import {
   foldGutter,
   foldKeymap,
   forceParsing,
+  indentUnit,
   indentOnInput,
   syntaxTree,
 } from "@codemirror/language";
@@ -49,6 +50,8 @@ import {
   isolateHistory,
   historyField,
   historyKeymap,
+  indentLess,
+  indentMore,
   redoDepth,
   selectLineBoundaryBackward,
   selectLineBoundaryForward,
@@ -1623,6 +1626,38 @@ const saveKeymap = keymap.of([
   },
 ]);
 
+// Structural Markdown commands must yield to literal technical regions. The
+// language tree is already the editor's source-navigation authority, so this
+// guard does not introduce a second Markdown scanner or materialize the whole
+// document just to decide what Return/Tab means on the current line.
+const protectedInteractionNodes = new Set([
+  "Frontmatter",
+  "FencedCode",
+  "IndentedCode",
+  "BlockMath",
+  "UnclosedBlockMath",
+  "ScholiumObsidianCommentBlock",
+  "HTMLBlock",
+  "HorizontalRule",
+]);
+
+function isProtectedInteractionLine(state: EditorState, lineFrom: number) {
+  for (let node = syntaxTree(state).resolveInner(
+    Math.min(lineFrom, state.doc.length),
+    1,
+  ); node; node = node.parent!) {
+    if (protectedInteractionNodes.has(node.name)) return true;
+  }
+  return false;
+}
+
+function interactionOptions(view: EditorView) {
+  return {
+    lineIsProtected: (line: {from: number}) =>
+      isProtectedInteractionLine(view.state, line.from),
+  };
+}
+
 function applyInteraction(
   transformation: ReturnType<typeof continueList>,
   userEvent: string,
@@ -1649,11 +1684,12 @@ const structuralInteractionKeymap = keymap.of([
       // second source transaction beside the composition.
       if (view.composing) return false;
       const selections = editorSelections(view.state);
+      const options = interactionOptions(view);
       return applyInteraction(
         (configuredEditorMode(view.state) === "livePreview"
-          ? continueCallout(view.state.doc, selections)
+          ? continueCallout(view.state.doc, selections, options)
           : null)
-          ?? continueList(view.state.doc, selections),
+          ?? continueList(view.state.doc, selections, options),
         "input.scholium.continueStructure",
       );
     },
@@ -1662,28 +1698,48 @@ const structuralInteractionKeymap = keymap.of([
     key: "Tab",
     run: (view) => {
       if (view.composing) return false;
-      if (view.state.selection.ranges.length !== 1) {
-        return applyInteraction(indentList(view.state.doc, editorSelections(), false), "input.scholium.indentList");
+      const selections = editorSelections(view.state);
+      const options = interactionOptions(view);
+      const table = view.state.selection.ranges.length === 1
+        ? tableTabAction(view.state.doc, view.state.selection.main.head, false)
+        : null;
+      const list = indentList(view.state.doc, selections, false, options);
+      if (table || list) {
+        return applyInteraction(
+          table ?? list,
+          table ? "input.scholium.structuralTab" : "input.scholium.indentList",
+        );
       }
-      return applyInteraction(
-        tableTabAction(view.state.doc, view.state.selection.main.head, false)
-          ?? indentList(view.state.doc, editorSelections(), false),
-        "input.scholium.structuralTab",
-      );
+      const handled = indentMore(view);
+      if (handled) {
+        lastUndoLabel = "Indent";
+        lastRedoLabel = "Indent";
+      }
+      return handled;
     },
   },
   {
     key: "Shift-Tab",
     run: (view) => {
       if (view.composing) return false;
-      if (view.state.selection.ranges.length !== 1) {
-        return applyInteraction(indentList(view.state.doc, editorSelections(), true), "input.scholium.outdentList");
+      const selections = editorSelections(view.state);
+      const options = interactionOptions(view);
+      const table = view.state.selection.ranges.length === 1
+        ? tableTabAction(view.state.doc, view.state.selection.main.head, true)
+        : null;
+      const list = indentList(view.state.doc, selections, true, options);
+      if (table || list) {
+        return applyInteraction(
+          table ?? list,
+          table ? "input.scholium.structuralBackTab" : "input.scholium.outdentList",
+        );
       }
-      return applyInteraction(
-        tableTabAction(view.state.doc, view.state.selection.main.head, true)
-          ?? indentList(view.state.doc, editorSelections(), true),
-        "input.scholium.structuralBackTab",
-      );
+      const handled = indentLess(view);
+      if (handled) {
+        lastUndoLabel = "Outdent";
+        lastRedoLabel = "Outdent";
+      }
+      return handled;
     },
   },
 ]);
@@ -1876,6 +1932,7 @@ const editorExtensions = [
       Prec.high(structuralInteractionKeymap),
       Prec.high(lineBoundaryKeymap),
       scholiumNoteLanguage,
+      indentUnit.of("  "),
       keymap.of([
         ...closeBracketsKeymap,
         ...defaultKeymap,

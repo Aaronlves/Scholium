@@ -141,7 +141,10 @@ export const syntaxPresentation = ViewPlugin.fromClass(class {
       key: this,
       read: () => ({
         objects: [...this.view.contentDOM.querySelectorAll<HTMLElement>(
-          ".cm-live-table-widget, .cm-live-table, .cm-live-math, .cm-live-math-source, .cm-live-mermaid-widget, .cm-live-footnote-reference-widget, .cm-live-embed")],
+          // Technical projections own their fade-only entry in CSS. Keeping
+          // them out of this generic object pulse avoids two animation owners
+          // competing while a widget is exchanged for its exact source.
+          ".cm-live-table-widget, .cm-live-table, .cm-live-footnote-reference-widget, .cm-live-embed")],
         cursor: readLiveCursorGeometry(this.view),
         frontmatter: [...this.view.contentDOM.querySelectorAll<HTMLElement>(
           ".scholium-frontmatter-delimiter-line[data-scholium-yaml-delimiter]")]

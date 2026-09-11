@@ -31,12 +31,19 @@
   color: var(--scholium-color-primary-text);
   background: var(--scholium-color-surface-background);
   border-inline-start: 0.18em solid var(--scholium-color-separator);
-  font-family: "Victor Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
-  font-size: 0.88em;
-  line-height: 1.55;
+  font-family: var(--scholium-document-source-font-family);
+  font-size: var(--scholium-document-source-font-size);
+  line-height: var(--scholium-rhythm-source-line-height);
+  font-style: normal;
+  font-variant-caps: normal;
   text-align: start;
   white-space: pre;
   direction: ltr;
+}
+
+.scholium-mermaid-source code {
+  font: inherit;
+  color: inherit;
 }
 
 .scholium-mermaid-rendered > .scholium-mermaid-source {

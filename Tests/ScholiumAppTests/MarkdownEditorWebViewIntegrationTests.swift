@@ -1049,6 +1049,66 @@ struct MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
+    @Test("Technical source uses Source Text typography without shrinking on activation")
+    func technicalSourceTypographyUsesSourceText() async throws {
+        let source = "---\nsummary: Fixture\n---\n# Technical\n\n```swift\nlet value = true\n```\n\n$$\nx + y\n$$\n"
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        func typography() async throws -> [String: Any] {
+            try #require(try await harness.callPageJavaScript(
+                """
+                const style = element => element ? getComputedStyle(element) : null;
+                const yaml = [...document.querySelectorAll('.cm-line.scholium-frontmatter-line')]
+                  .find(line => (line.textContent || '').includes('summary:'));
+                const code = [...document.querySelectorAll('.cm-line.cm-live-codeblock')]
+                  .find(line => (line.textContent || '').includes('let value'));
+                const math = document.querySelector('.cm-line.cm-live-math-source');
+                const yamlStyle = style(yaml);
+                const codeStyle = style(code);
+                const mathStyle = style(math);
+                return {
+                  yamlFont: yamlStyle?.fontFamily || '',
+                  yamlSize: yamlStyle?.fontSize || '',
+                  yamlLineHeight: yamlStyle?.lineHeight || '',
+                  codeFont: codeStyle?.fontFamily || '',
+                  codeSize: codeStyle?.fontSize || '',
+                  codeLineHeight: codeStyle?.lineHeight || '',
+                  codeAnimation: code?.getAnimations().length || 0,
+                  mathFont: mathStyle?.fontFamily || '',
+                  mathSize: mathStyle?.fontSize || '',
+                  mathLineHeight: mathStyle?.lineHeight || ''
+                };
+                """
+            ) as? [String: Any])
+        }
+
+        let inactive = try await typography()
+        #expect(inactive["codeFont"] as? String == inactive["yamlFont"] as? String)
+        #expect(inactive["codeSize"] as? String == inactive["yamlSize"] as? String)
+
+        let codeCaret = try #require(source.range(of: "let value")?.lowerBound)
+            .utf16Offset(in: source) + 3
+        harness.session.revealSourceRange(fromUTF16: codeCaret, toUTF16: codeCaret)
+        try await harness.waitUntilSelection(head: codeCaret, stage: "active code typography")
+        let activeCode = try await typography()
+        #expect(activeCode["codeFont"] as? String == inactive["codeFont"] as? String)
+        #expect(activeCode["codeSize"] as? String == inactive["codeSize"] as? String)
+        #expect(activeCode["codeLineHeight"] as? String == inactive["codeLineHeight"] as? String)
+
+        let mathCaret = try #require(source.range(of: "x + y")?.lowerBound)
+            .utf16Offset(in: source) + 2
+        harness.session.revealSourceRange(fromUTF16: mathCaret, toUTF16: mathCaret)
+        try await harness.waitUntilSelection(head: mathCaret, stage: "active math typography")
+        let activeMath = try await typography()
+        #expect(activeMath["mathFont"] as? String == inactive["yamlFont"] as? String)
+        #expect(activeMath["mathSize"] as? String == inactive["yamlSize"] as? String)
+        #expect(activeMath["mathLineHeight"] as? String == inactive["codeLineHeight"] as? String)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
     @Test("The published editor mode changes only after the Web bridge acknowledges it")
     func presentedModeWaitsForBridgeAcknowledgement() async throws {
         let dispatcher = SuspendingModeBridgeDispatcher()
@@ -3168,6 +3228,69 @@ struct MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
+    @Test("List Tab indentation is transactional and leaves fenced code to the editor indent command")
+    func listTabIndentationUsesStructuralAndCodePaths() async throws {
+        let source = "- first\n- second\n\n```swift\n- code\n```\n"
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        func pressTab(shift: Bool = false) async throws {
+            let handled = try await harness.callPageJavaScript(
+                """
+                const content = document.querySelector('.cm-content');
+                if (!content) return false;
+                const event = new KeyboardEvent('keydown', {
+                  key: 'Tab',
+                  code: 'Tab',
+                  shiftKey,
+                  bubbles: true,
+                  cancelable: true
+                });
+                content.dispatchEvent(event);
+                return event.defaultPrevented;
+                """,
+                arguments: ["shiftKey": shift]
+            ) as? Bool
+            #expect(handled == true)
+        }
+
+        let listSelectionEnd = try #require(source.range(of: "- second")?.upperBound)
+            .utf16Offset(in: source)
+        harness.session.revealSourceRange(fromUTF16: 0, toUTF16: listSelectionEnd)
+        try await harness.waitUntilSelection(head: listSelectionEnd, stage: "list selection")
+        try await pressTab()
+        let indented = "  - first\n  - second\n\n```swift\n- code\n```\n"
+        #expect(try await harness.session.currentText(for: harness.documentID) == indented)
+        #expect(harness.session.context?.selections == [
+            MarkdownEditorSelectionRange(anchor: 2, head: 20),
+        ])
+        #expect(harness.session.context?.undoLabel == "Indent List")
+
+        let indentedSelectionEnd = try #require(indented.range(of: "- second")?.upperBound)
+            .utf16Offset(in: indented)
+        harness.session.revealSourceRange(fromUTF16: 2, toUTF16: indentedSelectionEnd)
+        try await harness.waitUntilSelection(head: indentedSelectionEnd, stage: "indented list selection")
+        try await pressTab(shift: true)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        #expect(harness.session.context?.selections == [
+            MarkdownEditorSelectionRange(anchor: 0, head: 16),
+        ])
+        #expect(harness.session.context?.undoLabel == "Outdent List")
+
+        let codeCaret = try #require(source.range(of: "- code")?.lowerBound)
+            .utf16Offset(in: source) + 2
+        harness.session.revealSourceRange(fromUTF16: codeCaret, toUTF16: codeCaret)
+        try await harness.waitUntilSelection(head: codeCaret, stage: "fenced code caret")
+        try await pressTab()
+        #expect(
+            try await harness.session.currentText(for: harness.documentID)
+                == "- first\n- second\n\n```swift\n  - code\n```\n"
+        )
+        #expect(harness.session.context?.undoLabel == "Indent")
+        await harness.closeAndDrain()
+    }
+
     @Test("Projected task checkbox toggles only its exact marker bytes")
     func projectedTaskCheckboxTogglesExactMarkerBytes() async throws {
         let source = """
@@ -3326,7 +3449,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
-    @Test("Left Arrow enters every projected list prefix at its trailing edge")
+    @Test("List prefix arrows move one source position at a time")
     func leftArrowEntersProjectedListPrefixAtTrailingEdge() async throws {
         let source = """
         Before the lists.
@@ -3354,11 +3477,13 @@ struct MarkdownEditorWebViewIntegrationTests {
             harness.session.revealSourceRange(fromUTF16: bodyFrom, toUTF16: bodyFrom)
             try await harness.waitUntilSelection(head: bodyFrom)
 
-            try await harness.session.testingPressArrow("ArrowLeft")
-            try await harness.waitUntilSelection(
-                head: bodyFrom - 1,
-                stage: "trailing-edge source entry for \(testCase.body)"
-            )
+            for step in 1...testCase.prefix.utf16.count {
+                try await harness.session.testingPressArrow("ArrowLeft")
+                try await harness.waitUntilSelection(
+                    head: bodyFrom - step,
+                    stage: "source prefix step \(step) for \(testCase.body)"
+                )
+            }
             let lineText = try #require(try await harness.callPageJavaScript(
                 """
                 return Array.from(document.querySelectorAll('.cm-line'))
@@ -3367,6 +3492,22 @@ struct MarkdownEditorWebViewIntegrationTests {
                 """
             ) as? String)
             #expect(lineText.contains(testCase.prefix + testCase.body))
+
+            for step in stride(from: testCase.prefix.utf16.count - 1, through: 0, by: -1) {
+                try await harness.session.testingPressArrow("ArrowRight")
+                try await harness.waitUntilSelection(
+                    head: bodyFrom - step,
+                    stage: "right-arrow prefix step \(step) for \(testCase.body)"
+                )
+            }
+            let rightLineText = try #require(try await harness.callPageJavaScript(
+                """
+                return Array.from(document.querySelectorAll('.cm-line'))
+                  .find(line => (line.textContent || '').includes('\(testCase.body)'))
+                  ?.textContent || '';
+                """
+            ) as? String)
+            #expect(rightLineText.contains(testCase.prefix + testCase.body))
         }
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
         await harness.closeAndDrain()

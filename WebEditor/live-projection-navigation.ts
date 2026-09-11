@@ -67,6 +67,50 @@ export function createLiveProjectionNavigation(options: {
     )[0] ?? null;
   }
 
+  /**
+   * A projected list marker is an atomic replacement while the line is
+   * inactive. Once the caret enters its source prefix, however, the prefix
+   * becomes ordinary editable text. Do not hand those two states to
+   * CodeMirror's default cursor command at the same time: the atomic range
+   * can otherwise consume one character or re-enter the projected marker
+   * while the decoration transaction is still settling.
+   *
+   * The source prefix is traversed one UTF-16 position at a time. At its
+   * trailing edge the normal command may leave the prefix toward prose; at
+   * its leading edge the normal command may leave toward the previous line.
+   */
+  function stepInsideListPrefix(
+    view: EditorView,
+    forward: boolean,
+    extend: boolean,
+  ): boolean | null {
+    const selection = view.state.selection.main;
+    if (!selection.empty) return null;
+    const index = options.projections.index(view.state);
+    const nearby = projectionRangesIntersecting(
+      index.listPrefixRanges,
+      Math.max(0, selection.head - 1),
+      selection.head + 1,
+    );
+    const prefix = nearby.find((range) =>
+      selection.head >= range.from && selection.head <= range.to);
+    if (!prefix) return null;
+
+    const next = forward
+      ? selection.head < prefix.to ? selection.head + 1 : null
+      : selection.head > prefix.from ? selection.head - 1 : null;
+    if (next === null) return null;
+
+    view.dispatch({
+      selection: {
+        anchor: extend ? selection.anchor : next,
+        head: next,
+      },
+      scrollIntoView: true,
+    });
+    return true;
+  }
+
   function revealForVerticalMove(
     view: EditorView,
     forward: boolean,
@@ -128,6 +172,8 @@ export function createLiveProjectionNavigation(options: {
     extend: boolean,
   ) {
     if (options.mode(view.state) !== "livePreview" || view.composing) return false;
+    const listStep = stepInsideListPrefix(view, forward, extend);
+    if (listStep !== null) return listStep;
     const selection = view.state.selection.main;
     const projection = horizontalRangeAt(view.state, selection.head, forward);
     if (!projection) return false;

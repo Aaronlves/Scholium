@@ -3,18 +3,67 @@ import type {SourceChange, Transformation} from "./transformations";
 import {Text} from "@codemirror/state";
 
 type InteractionSource = string | Text;
+type InteractionLine = {
+  readonly number: number;
+  readonly from: number;
+  readonly to: number;
+  readonly text: string;
+};
+
+interface InteractionOptions {
+  readonly lineIsProtected?: (line: InteractionLine) => boolean;
+}
 
 function interactionDocument(source: InteractionSource) {
   return typeof source === "string" ? Text.of(source.split("\n")) : source;
 }
 
-function listPrefix(line: string) {
-  return /^(\s*)(?:(- \[[ xX]\] )|(- |\* |\+ )|(\d+)([.)] ))/.exec(line);
+interface ListPrefix {
+  readonly quotePrefix: string;
+  readonly indentation: string;
+  readonly marker: string;
+  readonly orderedNumber: number | null;
+  readonly orderedSuffix: string | null;
+  readonly task: boolean;
+  readonly sourcePrefix: string;
 }
 
-function continuedListPrefix(match: RegExpExecArray) {
-  const ordered = match[4] ? `${Number(match[4]) + 1}${match[5]}` : null;
-  return `${match[1]}${ordered ?? (match[2] ? "- [ ] " : match[3])}`;
+function blockquotePrefix(line: string) {
+  let position = 0;
+  while (position < line.length) {
+    const match = /^[ \t]{0,3}>[ \t]?/.exec(line.slice(position));
+    if (!match) break;
+    position += match[0].length;
+  }
+  return line.slice(0, position);
+}
+
+function listPrefix(line: string): ListPrefix | null {
+  const quotePrefix = blockquotePrefix(line);
+  const remainder = line.slice(quotePrefix.length);
+  // Keep the whole authored marker track, including the whitespace that
+  // separates a marker from its body. Empty items are valid Markdown too, so
+  // the separator is optional only at end-of-line. This lets Return remove a
+  // bare `-`/`1.` item cleanly and keeps task-list variants on their own
+  // bullet/numbering style when a new item is continued.
+  const match = /^([ \t]*)([-*+]|(\d{1,9})([.)]))(?:([ \t]+)(\[[ xX]\])?([ \t]*)|$)/.exec(remainder);
+  if (!match) return null;
+  return {
+    quotePrefix,
+    indentation: match[1],
+    marker: match[2],
+    orderedNumber: match[3] ? Number(match[3]) : null,
+    orderedSuffix: match[4] ?? null,
+    task: match[6] !== undefined,
+    sourcePrefix: `${quotePrefix}${match[0]}`,
+  };
+}
+
+function continuedListPrefix(match: ListPrefix) {
+  const ordered = match.orderedNumber === null || match.orderedSuffix === null
+    ? null
+    : `${match.orderedNumber + 1}${match.orderedSuffix}`;
+  return `${match.quotePrefix}${match.indentation}${ordered ?? match.marker}${match.task ? " [ ] " : " "}`;
 }
 
 function calloutQuotePrefix(line: string) {
@@ -38,20 +87,22 @@ function lineBelongsToCallout(document: Text, lineNumber: number) {
 export function continueCallout(
   source: InteractionSource,
   selections: SelectionRange[],
+  options: InteractionOptions = {},
 ): Transformation | null {
   const document = interactionDocument(source);
   if (selections.some((selection) => selection.anchor !== selection.head)) return null;
   const entries = selections.map((selection) => {
     const bounds = document.lineAt(selection.head);
+    if (options.lineIsProtected?.(bounds)) return null;
     const prefix = calloutQuotePrefix(bounds.text)?.[1];
     if (!prefix || !lineBelongsToCallout(document, bounds.number)) return null;
     const quotedContent = bounds.text.slice(prefix.length);
     const nestedList = listPrefix(quotedContent);
-    if (nestedList && quotedContent.slice(nestedList[0].length).trim().length === 0) {
+    if (nestedList && quotedContent.slice(nestedList.sourcePrefix.length).trim().length === 0) {
       return {
         change: {
           from: bounds.from + prefix.length,
-          to: bounds.from + prefix.length + nestedList[0].length,
+          to: bounds.from + prefix.length + nestedList.sourcePrefix.length,
           insert: "",
         },
         localSelection: bounds.from + prefix.length,
@@ -92,18 +143,25 @@ export function continueCallout(
   };
 }
 
-export function continueList(source: InteractionSource, selections: SelectionRange[]): Transformation | null {
+export function continueList(
+  source: InteractionSource,
+  selections: SelectionRange[],
+  options: InteractionOptions = {},
+): Transformation | null {
   const document = interactionDocument(source);
   if (selections.some((selection) => selection.anchor !== selection.head)) return null;
   const entries = selections.map((selection) => {
     const bounds = document.lineAt(selection.head);
     const line = bounds.text;
     const match = listPrefix(line);
-    if (!match) return null;
-    const prefix = match[0];
-    const content = line.slice(prefix.length);
+    if (!match || options.lineIsProtected?.(bounds)) return null;
+    const content = line.slice(match.sourcePrefix.length);
     if (content.trim().length === 0) {
-      return {change: {from: bounds.from, to: bounds.from + prefix.length, insert: ""}, localSelection: bounds.from};
+      const from = bounds.from + match.quotePrefix.length;
+      return {
+        change: {from, to: bounds.from + match.sourcePrefix.length, insert: ""},
+        localSelection: from,
+      };
     }
     const continued = continuedListPrefix(match);
     return {change: {from: selection.head, to: selection.head, insert: `\n${continued}`}, localSelection: selection.head + 1 + continued.length};
@@ -124,11 +182,20 @@ export function indentList(
   source: InteractionSource,
   selections: SelectionRange[],
   backwards: boolean,
+  options: InteractionOptions = {},
 ): Transformation | null {
   const document = interactionDocument(source);
   const lineStarts = [...new Set(selections.flatMap((selection) => {
-    const first = document.lineAt(Math.min(selection.anchor, selection.head));
-    const last = document.lineAt(Math.max(selection.anchor, selection.head));
+    const start = Math.min(selection.anchor, selection.head);
+    const end = Math.max(selection.anchor, selection.head);
+    const first = document.lineAt(start);
+    // A selection ending exactly at the next line's start does not select that
+    // empty line. This matches CodeMirror's selected-line commands and keeps
+    // Shift-Tab from touching a line the researcher did not include.
+    const lastPosition = end > start && document.lineAt(end).from === end
+      ? Math.max(start, end - 1)
+      : end;
+    const last = document.lineAt(lastPosition);
     const starts: number[] = [];
     for (let number = first.number; number <= last.number; number += 1) {
       starts.push(document.line(number).from);
@@ -137,18 +204,35 @@ export function indentList(
   }))].sort((left, right) => left - right);
   const changes: SourceChange[] = [];
   for (const from of lineStarts) {
-    const line = document.lineAt(from).text;
-    if (!listPrefix(line)) return null;
+    const bounds = document.lineAt(from);
+    const match = listPrefix(bounds.text);
+    if (!match || options.lineIsProtected?.(bounds)) return null;
+    const indentationFrom = from + match.quotePrefix.length;
     if (backwards) {
-      const indentation = /^\s*/.exec(line)?.[0] ?? "";
-      if (indentation.length === 0) return null;
-      changes.push({from, to: from + Math.min(2, indentation.length), insert: ""});
-    } else changes.push({from, to: from, insert: "  "});
+      // A mixed-depth selection can contain both root items and nested items.
+      // Mature editors leave root items in place while outdenting the lines
+      // that still have one indentation unit available.
+      if (match.indentation.length === 0) continue;
+      const removeLength = match.indentation.startsWith("\t")
+        ? 1
+        : Math.min(2, match.indentation.length);
+      changes.push({
+        from: indentationFrom,
+        to: indentationFrom + removeLength,
+        insert: "",
+      });
+    } else changes.push({from: indentationFrom, to: indentationFrom, insert: "  "});
   }
-  const positionAfterChanges = (position: number) => changes.reduce((mapped, change) => {
-    if (change.from > position) return mapped;
-    return mapped + change.insert.length - (change.to - change.from);
-  }, position);
+  const positionAfterChanges = (position: number) => {
+    let shift = 0;
+    for (const change of changes) {
+      if (position < change.from) return position + shift;
+      if (position <= change.to) return change.from + shift + change.insert.length;
+      shift += change.insert.length - (change.to - change.from);
+    }
+    return position + shift;
+  };
+  if (changes.length === 0) return null;
   return {
     changes,
     selections: selections.map((selection) => ({anchor: positionAfterChanges(selection.anchor), head: positionAfterChanges(selection.head)})),

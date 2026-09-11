@@ -14095,7 +14095,10 @@
         key: this,
         read: () => ({
           objects: [...this.view.contentDOM.querySelectorAll(
-            ".cm-live-table-widget, .cm-live-table, .cm-live-math, .cm-live-math-source, .cm-live-mermaid-widget, .cm-live-footnote-reference-widget, .cm-live-embed"
+            // Technical projections own their fade-only entry in CSS. Keeping
+            // them out of this generic object pulse avoids two animation owners
+            // competing while a widget is exchanged for its exact source.
+            ".cm-live-table-widget, .cm-live-table, .cm-live-footnote-reference-widget, .cm-live-embed"
           )],
           cursor: readLiveCursorGeometry(this.view),
           frontmatter: [...this.view.contentDOM.querySelectorAll(
@@ -22329,12 +22332,33 @@ ${fence}`;
   function interactionDocument(source) {
     return typeof source === "string" ? Text.of(source.split("\n")) : source;
   }
+  function blockquotePrefix(line) {
+    let position = 0;
+    while (position < line.length) {
+      const match = /^[ \t]{0,3}>[ \t]?/.exec(line.slice(position));
+      if (!match) break;
+      position += match[0].length;
+    }
+    return line.slice(0, position);
+  }
   function listPrefix(line) {
-    return /^(\s*)(?:(- \[[ xX]\] )|(- |\* |\+ )|(\d+)([.)] ))/.exec(line);
+    const quotePrefix = blockquotePrefix(line);
+    const remainder = line.slice(quotePrefix.length);
+    const match = /^([ \t]*)([-*+]|(\d{1,9})([.)]))(?:([ \t]+)(\[[ xX]\])?([ \t]*)|$)/.exec(remainder);
+    if (!match) return null;
+    return {
+      quotePrefix,
+      indentation: match[1],
+      marker: match[2],
+      orderedNumber: match[3] ? Number(match[3]) : null,
+      orderedSuffix: match[4] ?? null,
+      task: match[6] !== void 0,
+      sourcePrefix: `${quotePrefix}${match[0]}`
+    };
   }
   function continuedListPrefix(match) {
-    const ordered = match[4] ? `${Number(match[4]) + 1}${match[5]}` : null;
-    return `${match[1]}${ordered ?? (match[2] ? "- [ ] " : match[3])}`;
+    const ordered = match.orderedNumber === null || match.orderedSuffix === null ? null : `${match.orderedNumber + 1}${match.orderedSuffix}`;
+    return `${match.quotePrefix}${match.indentation}${ordered ?? match.marker}${match.task ? " [ ] " : " "}`;
   }
   function calloutQuotePrefix(line) {
     return /^(\s*>[ \t]?)/.exec(line);
@@ -22347,20 +22371,21 @@ ${fence}`;
     }
     return false;
   }
-  function continueCallout(source, selections) {
+  function continueCallout(source, selections, options = {}) {
     const document2 = interactionDocument(source);
     if (selections.some((selection) => selection.anchor !== selection.head)) return null;
     const entries = selections.map((selection) => {
       const bounds = document2.lineAt(selection.head);
+      if (options.lineIsProtected?.(bounds)) return null;
       const prefix = calloutQuotePrefix(bounds.text)?.[1];
       if (!prefix || !lineBelongsToCallout(document2, bounds.number)) return null;
       const quotedContent = bounds.text.slice(prefix.length);
       const nestedList = listPrefix(quotedContent);
-      if (nestedList && quotedContent.slice(nestedList[0].length).trim().length === 0) {
+      if (nestedList && quotedContent.slice(nestedList.sourcePrefix.length).trim().length === 0) {
         return {
           change: {
             from: bounds.from + prefix.length,
-            to: bounds.from + prefix.length + nestedList[0].length,
+            to: bounds.from + prefix.length + nestedList.sourcePrefix.length,
             insert: ""
           },
           localSelection: bounds.from + prefix.length,
@@ -22397,18 +22422,21 @@ ${continuedPrefix}` },
       undoLabel: accepted.every((entry) => entry.undoLabel === accepted[0].undoLabel) ? accepted[0].undoLabel : "Continue Callout"
     };
   }
-  function continueList(source, selections) {
+  function continueList(source, selections, options = {}) {
     const document2 = interactionDocument(source);
     if (selections.some((selection) => selection.anchor !== selection.head)) return null;
     const entries = selections.map((selection) => {
       const bounds = document2.lineAt(selection.head);
       const line = bounds.text;
       const match = listPrefix(line);
-      if (!match) return null;
-      const prefix = match[0];
-      const content2 = line.slice(prefix.length);
+      if (!match || options.lineIsProtected?.(bounds)) return null;
+      const content2 = line.slice(match.sourcePrefix.length);
       if (content2.trim().length === 0) {
-        return { change: { from: bounds.from, to: bounds.from + prefix.length, insert: "" }, localSelection: bounds.from };
+        const from = bounds.from + match.quotePrefix.length;
+        return {
+          change: { from, to: bounds.from + match.sourcePrefix.length, insert: "" },
+          localSelection: from
+        };
       }
       const continued = continuedListPrefix(match);
       return { change: { from: selection.head, to: selection.head, insert: `
@@ -22425,11 +22453,14 @@ ${continued}` }, localSelection: selection.head + 1 + continued.length };
     });
     return { changes: sorted.map((entry) => entry.change), selections: mapped, undoLabel: "Continue List" };
   }
-  function indentList(source, selections, backwards) {
+  function indentList(source, selections, backwards, options = {}) {
     const document2 = interactionDocument(source);
     const lineStarts = [...new Set(selections.flatMap((selection) => {
-      const first = document2.lineAt(Math.min(selection.anchor, selection.head));
-      const last = document2.lineAt(Math.max(selection.anchor, selection.head));
+      const start = Math.min(selection.anchor, selection.head);
+      const end = Math.max(selection.anchor, selection.head);
+      const first = document2.lineAt(start);
+      const lastPosition = end > start && document2.lineAt(end).from === end ? Math.max(start, end - 1) : end;
+      const last = document2.lineAt(lastPosition);
       const starts = [];
       for (let number2 = first.number; number2 <= last.number; number2 += 1) {
         starts.push(document2.line(number2).from);
@@ -22438,18 +22469,30 @@ ${continued}` }, localSelection: selection.head + 1 + continued.length };
     }))].sort((left, right) => left - right);
     const changes = [];
     for (const from of lineStarts) {
-      const line = document2.lineAt(from).text;
-      if (!listPrefix(line)) return null;
+      const bounds = document2.lineAt(from);
+      const match = listPrefix(bounds.text);
+      if (!match || options.lineIsProtected?.(bounds)) return null;
+      const indentationFrom = from + match.quotePrefix.length;
       if (backwards) {
-        const indentation2 = /^\s*/.exec(line)?.[0] ?? "";
-        if (indentation2.length === 0) return null;
-        changes.push({ from, to: from + Math.min(2, indentation2.length), insert: "" });
-      } else changes.push({ from, to: from, insert: "  " });
+        if (match.indentation.length === 0) continue;
+        const removeLength = match.indentation.startsWith("	") ? 1 : Math.min(2, match.indentation.length);
+        changes.push({
+          from: indentationFrom,
+          to: indentationFrom + removeLength,
+          insert: ""
+        });
+      } else changes.push({ from: indentationFrom, to: indentationFrom, insert: "  " });
     }
-    const positionAfterChanges = (position) => changes.reduce((mapped, change) => {
-      if (change.from > position) return mapped;
-      return mapped + change.insert.length - (change.to - change.from);
-    }, position);
+    const positionAfterChanges = (position) => {
+      let shift2 = 0;
+      for (const change of changes) {
+        if (position < change.from) return position + shift2;
+        if (position <= change.to) return change.from + shift2 + change.insert.length;
+        shift2 += change.insert.length - (change.to - change.from);
+      }
+      return position + shift2;
+    };
+    if (changes.length === 0) return null;
     return {
       changes,
       selections: selections.map((selection) => ({ anchor: positionAfterChanges(selection.anchor), head: positionAfterChanges(selection.head) })),
@@ -34845,6 +34888,28 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         (left, right) => left.from - right.from || left.to - right.to
       )[0] ?? null;
     }
+    function stepInsideListPrefix(view, forward, extend) {
+      const selection = view.state.selection.main;
+      if (!selection.empty) return null;
+      const index = options.projections.index(view.state);
+      const nearby = projectionRangesIntersecting(
+        index.listPrefixRanges,
+        Math.max(0, selection.head - 1),
+        selection.head + 1
+      );
+      const prefix = nearby.find((range) => selection.head >= range.from && selection.head <= range.to);
+      if (!prefix) return null;
+      const next = forward ? selection.head < prefix.to ? selection.head + 1 : null : selection.head > prefix.from ? selection.head - 1 : null;
+      if (next === null) return null;
+      view.dispatch({
+        selection: {
+          anchor: extend ? selection.anchor : next,
+          head: next
+        },
+        scrollIntoView: true
+      });
+      return true;
+    }
     function revealForVerticalMove(view, forward, extend) {
       if (options.mode(view.state) !== "livePreview" || view.composing) return false;
       const selection = view.state.selection.main;
@@ -34891,6 +34956,8 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     }
     function revealForHorizontalMove(view, forward, extend) {
       if (options.mode(view.state) !== "livePreview" || view.composing) return false;
+      const listStep = stepInsideListPrefix(view, forward, extend);
+      if (listStep !== null) return listStep;
       const selection = view.state.selection.main;
       const projection = horizontalRangeAt(view.state, selection.head, forward);
       if (!projection) return false;
@@ -37767,6 +37834,30 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       }
     }
   ]);
+  var protectedInteractionNodes = /* @__PURE__ */ new Set([
+    "Frontmatter",
+    "FencedCode",
+    "IndentedCode",
+    "BlockMath",
+    "UnclosedBlockMath",
+    "ScholiumObsidianCommentBlock",
+    "HTMLBlock",
+    "HorizontalRule"
+  ]);
+  function isProtectedInteractionLine(state, lineFrom) {
+    for (let node = syntaxTree(state).resolveInner(
+      Math.min(lineFrom, state.doc.length),
+      1
+    ); node; node = node.parent) {
+      if (protectedInteractionNodes.has(node.name)) return true;
+    }
+    return false;
+  }
+  function interactionOptions(view) {
+    return {
+      lineIsProtected: (line) => isProtectedInteractionLine(view.state, line.from)
+    };
+  }
   function applyInteraction(transformation, userEvent) {
     if (!transformation) return false;
     editor.dispatch({
@@ -37786,8 +37877,9 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       run: (view) => {
         if (view.composing) return false;
         const selections = editorSelections(view.state);
+        const options = interactionOptions(view);
         return applyInteraction(
-          (configuredEditorMode(view.state) === "livePreview" ? continueCallout(view.state.doc, selections) : null) ?? continueList(view.state.doc, selections),
+          (configuredEditorMode(view.state) === "livePreview" ? continueCallout(view.state.doc, selections, options) : null) ?? continueList(view.state.doc, selections, options),
           "input.scholium.continueStructure"
         );
       }
@@ -37796,26 +37888,44 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       key: "Tab",
       run: (view) => {
         if (view.composing) return false;
-        if (view.state.selection.ranges.length !== 1) {
-          return applyInteraction(indentList(view.state.doc, editorSelections(), false), "input.scholium.indentList");
+        const selections = editorSelections(view.state);
+        const options = interactionOptions(view);
+        const table = view.state.selection.ranges.length === 1 ? tableTabAction(view.state.doc, view.state.selection.main.head, false) : null;
+        const list = indentList(view.state.doc, selections, false, options);
+        if (table || list) {
+          return applyInteraction(
+            table ?? list,
+            table ? "input.scholium.structuralTab" : "input.scholium.indentList"
+          );
         }
-        return applyInteraction(
-          tableTabAction(view.state.doc, view.state.selection.main.head, false) ?? indentList(view.state.doc, editorSelections(), false),
-          "input.scholium.structuralTab"
-        );
+        const handled = indentMore(view);
+        if (handled) {
+          lastUndoLabel = "Indent";
+          lastRedoLabel = "Indent";
+        }
+        return handled;
       }
     },
     {
       key: "Shift-Tab",
       run: (view) => {
         if (view.composing) return false;
-        if (view.state.selection.ranges.length !== 1) {
-          return applyInteraction(indentList(view.state.doc, editorSelections(), true), "input.scholium.outdentList");
+        const selections = editorSelections(view.state);
+        const options = interactionOptions(view);
+        const table = view.state.selection.ranges.length === 1 ? tableTabAction(view.state.doc, view.state.selection.main.head, true) : null;
+        const list = indentList(view.state.doc, selections, true, options);
+        if (table || list) {
+          return applyInteraction(
+            table ?? list,
+            table ? "input.scholium.structuralBackTab" : "input.scholium.outdentList"
+          );
         }
-        return applyInteraction(
-          tableTabAction(view.state.doc, view.state.selection.main.head, true) ?? indentList(view.state.doc, editorSelections(), true),
-          "input.scholium.structuralBackTab"
-        );
+        const handled = indentLess(view);
+        if (handled) {
+          lastUndoLabel = "Outdent";
+          lastRedoLabel = "Outdent";
+        }
+        return handled;
       }
     }
   ]);
@@ -37982,6 +38092,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     Prec.high(structuralInteractionKeymap),
     Prec.high(lineBoundaryKeymap),
     scholiumNoteLanguage,
+    indentUnit.of("  "),
     keymap.of([
       ...closeBracketsKeymap,
       ...defaultKeymap,

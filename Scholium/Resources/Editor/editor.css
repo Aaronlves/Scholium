@@ -336,7 +336,39 @@ body,
 .cm-live-semantic-gap-before-callout { --scholium-live-gap-before: var(--scholium-callout-block-gap, 1.4em); }
 
 .cm-live-codeblock {
-  font-family: "Victor Mono", ui-monospace, monospace;
+  /* Technical source uses the same user-owned Source Text face and size as
+     YAML. Keeping the line box constant prevents the active-block handoff
+     from looking like a font-size animation. */
+  font-family: var(--scholium-document-source-font-family);
+  font-size: var(--scholium-document-source-font-size);
+  line-height: var(--scholium-rhythm-source-line-height);
+  font-style: normal;
+  font-variant-caps: normal;
+}
+
+@keyframes scholium-live-technical-fade {
+  from { opacity: .72; }
+  to { opacity: 1; }
+}
+
+/* Technical projections exchange source and rendered views without moving or
+   scaling their content. Opacity is the only animated channel. */
+.scholium-live-mode :is(
+  .cm-live-math,
+  .cm-live-mermaid-widget > .scholium-mermaid,
+  .cm-live-math-source
+) {
+  animation: scholium-live-technical-fade 120ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scholium-live-mode :is(
+    .cm-live-math,
+    .cm-live-mermaid-widget > .scholium-mermaid,
+    .cm-live-math-source
+  ) {
+    animation: none;
+  }
 }
 
 .cm-line.cm-live-code-fence-line {
@@ -439,6 +471,10 @@ body,
   font-variant-caps: normal;
   text-align: start;
   overflow-wrap: anywhere;
+}
+.scholium-live-mode :is(.cm-live-math-source, .cm-live-raw-html) {
+  font-size: var(--scholium-document-source-font-size);
+  line-height: var(--scholium-rhythm-source-line-height);
 }
 .scholium-live-mode :is(.cm-live-table, .cm-live-math-source) {
   background: color-mix(in srgb, var(--scholium-color-primary-text) 3%,
