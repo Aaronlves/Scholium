@@ -79,7 +79,7 @@ struct ContentView: View {
         })
         .sheet(item: presentedSheet) { route in
             sheetContent(for: route)
-                .scholiumButtonStyle(.automatic)
+                .buttonStyle(.automatic)
         }
         .alert(item: presentedAlert) { alert in
             switch alert {
@@ -129,7 +129,7 @@ struct ContentView: View {
                     SidebarView(controller: appState.discoveryController, context: sidebarContext)
                 }
             }
-            .scholiumButtonStyle(.automatic)
+            .buttonStyle(.automatic)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         } chat: {
             LibrarySurface {
@@ -161,7 +161,8 @@ struct ContentView: View {
                     }
                 }
             }
-            .scholiumButtonStyle(.automatic)
+            .buttonStyle(.automatic)
+            .menuStyle(.automatic)
             .frame(
                 maxWidth: .infinity,
                 maxHeight: .infinity,
@@ -176,11 +177,11 @@ struct ContentView: View {
                 }
             }
             .scholiumSurface(.document)
-            .scholiumButtonStyle(.automatic)
+            .buttonStyle(.automatic)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         } apparatus: {
             apparatusRegion
-                .scholiumButtonStyle(.automatic)
+                .buttonStyle(.automatic)
                 .scholiumSurface(.apparatus)
                 .frame(
                     maxWidth: .infinity,

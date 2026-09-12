@@ -38,7 +38,7 @@ private struct AttentionPopoverPresenter: ViewModifier {
                     presentation: session.presentation,
                     session: session
                 )
-                .scholiumButtonStyle(.automatic)
+                .buttonStyle(.automatic)
                 .frame(
                     width: ScholiumMetrics.Attention.popoverWidth,
                     height: ScholiumMetrics.Attention.popoverHeight
@@ -193,7 +193,7 @@ struct AttentionQueueView: View {
                             Label("Retry", systemImage: "arrow.clockwise")
                                 .labelStyle(.iconOnly)
                         }
-                        .scholiumButtonStyle(.borderless)
+                        .buttonStyle(.borderless)
                         .help("Retry")
                         .disabled(session.isRefreshing)
                     }
@@ -664,7 +664,7 @@ struct AttentionQueueRow: View {
                 }
                 .contentShape(Rectangle())
             }
-            .scholiumButtonStyle(.plain)
+            .buttonStyle(.plain)
             .scholiumActivationFocus($isFocused)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(accessibilitySummary)
@@ -705,7 +705,7 @@ struct AttentionQueueRow: View {
                 )
                 .accessibilityHidden(true)
         }
-        .scholiumMenuStyle(.borderlessButton)
+        .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
         .help("Dismiss…")

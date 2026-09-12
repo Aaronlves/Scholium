@@ -578,7 +578,8 @@ Library, Document, and Apparatus. The Sidebar installs `ScholiumSidebarViewContr
 `NSSplitViewItem(sidebarWithViewController:)`. Its retained Library/Chat hosts
 disable content-driven sizing and fill the live native safe area. Native
 `isHidden` excludes the inactive host from tooltip/event tracking, clearing its
-first responder when switching. Window shell state alone selects the page.
+first responder when switching. Hidden Library views cannot apply focus requests;
+the coordinator retains those requests until visible. Window shell state selects the page.
 SwiftUI and source-list content remain transparent so AppKit's regular Sidebar Glass, inset edge,
 shadow, and adaptation stay visible. The Document item enables
 `automaticallyAdjustsSafeAreaInsets`, extending its opaque Paper background

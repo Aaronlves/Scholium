@@ -28,12 +28,11 @@ alone do not create a common owner. Native geometry stays with the platform;
 local values remain with their feature. No JSON palette, geometry mirror or
 second appearance configuration is authoritative.
 
-The current native command adapters are `scholiumButtonStyle` and
-`scholiumMenuStyle` in `ScholiumButtons`. They forward activation and roles to
-native controls while applying shared command tint. `scholiumIconControl` owns a
-bounded native glass icon recipe. These are existing mechanisms, not a mandate
-to apply tint or glass throughout the app. Remaining custom feedback paths and
-new target conformance are tracked in [Open Work](../Status/03-open-work.md).
+Buttons and menus use SwiftUI/AppKit styles directly. No shared wrapper rewrites
+command tint or destructive colors. `scholiumIconControl` in `ScholiumButtons`
+provides bounded native glass icon composition; it does not impose an app-owned
+palette. Native controls retain role, enabled, focus and appearance behavior.
+Remaining custom feedback paths are tracked in [Open Work](../Status/03-open-work.md).
 
 Custom link-equivalent cursors use `scholiumActivationPointer` and
 `ScholiumPointingHandButton` where the host does not already own the cursor.

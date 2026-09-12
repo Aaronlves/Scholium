@@ -273,7 +273,7 @@ struct SidebarView: View {
             .scholiumForeground(.secondaryText)
             Spacer(minLength: 0)
             Button("Clear", action: clearAllFilters)
-                .scholiumButtonStyle(.borderless)
+                .buttonStyle(.borderless)
         }
         .frame(minHeight: ScholiumMetrics.Accessibility.preferredCustomTarget)
         .accessibilityElement(children: .contain)

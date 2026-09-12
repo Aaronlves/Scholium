@@ -42,21 +42,19 @@ remains authoritative, including menu and window-resize changes. Inspector contr
 use native enabled, selected, pressed, and disabled states, with no hand-tinted
 unavailable symbols or custom refusal animation. Chat is available with an open Triptych
 even without a Note. Chat inherits the Sidebar background with list-to-detail
-navigation. Conversation rows share cards with native secondary backgrounds by calendar
-day, with internal separators and Today/Yesterday/date headings instead of repeated
-dates. Empty unused sessions are omitted. Each conversation's entire row, including
-padding, opens its detail. Organize Chats switches current/archived lists or starts batch selection.
-Contextual and accessibility actions target that row: Open, Rename, Changes,
-Archive/Restore. Search-menu filters select All, Needs Input, In Progress or
-Has Draft, with visible Clear and no-match feedback; selection remains unchanged.
-Selection mode replaces navigation with selection circles and a bottom Cancel
-and counted Archive/Restore action. Empty selection or running targets disables
-archiving; Cancel changes nothing. Detail Changes stays conversation-scoped. Library and
-Chat share a native panel-header action group with consistent symbol sizing,
-neutral ink and complete button hit areas. Native controls own interaction feedback.
-One Sidebar spacing grid aligns Search, navigation, conversation cards and the
-composer; headings, dates and row text share a content inset. Native controls
-retain intrinsic metrics; Inspector geometry remains separate. The bottom
+navigation. A native sidebar List scrolls; buttons open conversations without persistent selection. Text-aligned separators divide rows in one continuous list. Dates accompany titles; no date sections. Titles wrap and expose Help; previews
+strip Markdown while retaining search matches. Draft, Unread, Important
+and current activity have text equivalents; completed turns carry no checkmark.
+One click opens; native button focus and keyboard activation remain available. Organize switches
+current and archived lists, without batch mode.
+Left swipe reveals Archive for current conversations, Delete and Restore for
+archives. Right swipe toggles read and
+important markers. Read/Important/Archive use system blue/orange/purple; Delete uses its destructive
+role. Native controls own continuous swipe feedback. Full swipe executes read or archive actions; deletion requires its button and confirmation. Menus and accessibility actions
+provide equivalent operations plus Rename and Changes. Search filters include
+Unread and Important, with Clear/empty feedback. §8.7 owns durable meanings.
+Library and Chat share native header controls and a spacing grid; headings,
+dates and row text align. The bottom
 composer and compact conversation-files entry float above the transcript using
 native Liquid Glass. Transcript content scrolls beneath these controls, with no
 extra opaque backing, gradient mask or simulated blur. A measured bottom inset

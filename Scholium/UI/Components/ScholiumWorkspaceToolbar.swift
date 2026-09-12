@@ -311,7 +311,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
                 notificationsPopover.contentViewController = NSHostingController(
                     rootView:
                         AttentionQueueView(presentation: session.presentation, session: session)
-                        .scholiumButtonStyle(.automatic)
+                        .buttonStyle(.automatic)
                         .frame(
                             width: ScholiumMetrics.Attention.popoverWidth,
                             height: ScholiumMetrics.Attention.popoverHeight))
@@ -1014,13 +1014,13 @@ private struct DocumentSettlementPopoverView: View {
                         }
                     }
                 }
-                .scholiumButtonStyle(.bordered)
+                .buttonStyle(.bordered)
                 .disabled(isSettling)
             }
         }
         .padding(ScholiumGrid.Spacing.sectionSeparation)
         .frame(width: 300)
-        .scholiumButtonStyle(.automatic)
+        .buttonStyle(.automatic)
     }
 
     private var actionTitle: LocalizedStringResource {

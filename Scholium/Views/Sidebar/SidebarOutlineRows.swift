@@ -285,6 +285,7 @@ final class SidebarOutlineView: NSOutlineView {
     }
 
     func requestKeyboardFocus() {
+        guard window != nil, !isHiddenOrHasHiddenAncestor else { return }
         selectionPresentation.recordKeyboardInteraction()
         window?.makeFirstResponder(self)
         synchronizeSelectionPresentation()

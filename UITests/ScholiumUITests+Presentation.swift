@@ -370,10 +370,8 @@ extension ScholiumUITests {
         XCTAssertEqual(input.frame.maxX, searchFrame.maxX - outerInset, accuracy: 1)
         app.typeText("271828")
         app.buttons["scholium.chat.back"].click()
-        let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "scholium.chat.conversation.")).firstMatch
+        let row = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "scholium.chat.conversation.")).firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 5))
-        XCTAssertEqual(row.frame.minX, searchFrame.minX, accuracy: 1)
-        XCTAssertEqual(row.frame.maxX, searchFrame.maxX, accuracy: 1)
         XCTAssertTrue(waitForDocumentTitle("QA Autosave A"))
     }
 
@@ -427,7 +425,7 @@ extension ScholiumUITests {
         app.typeText("314159265")
         XCTAssertEqual(input.value as? String, "314159265")
         app.buttons["scholium.chat.back"].click()
-        let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "scholium.chat.conversation.")).firstMatch
+        let row = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "scholium.chat.conversation.")).firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 5))
         let search = app.searchFields["scholium.chat.search"]
         search.buttons.firstMatch.click()
@@ -449,19 +447,76 @@ extension ScholiumUITests {
         app.typeKey(.return, modifierFlags: [])
         XCTAssertTrue(waitUntil(timeout: 5) { row.label.contains("Sidebar QA conversation") })
         row.rightClick()
+        XCTAssertFalse(app.windows.firstMatch.menuItems["Delete"].exists)
+        app.menuItems["Mark as Unread"].firstMatch.click()
+        row.rightClick()
+        XCTAssertTrue(app.menuItems["Mark as Read"].exists)
+        app.menuItems["Mark as Important"].firstMatch.click()
+        row.rightClick()
+        XCTAssertTrue(app.menuItems["Unmark Important"].exists)
         app.menuItems["Archive Chat"].firstMatch.click()
         XCTAssertTrue(waitUntil(timeout: 5) { !row.exists })
         app.descendants(matching: .any)["scholium.chat.archived"].firstMatch.click()
         app.menuItems["Archived Chats"].firstMatch.click()
         XCTAssertTrue(row.waitForExistence(timeout: 5))
         row.rightClick()
+        app.windows.firstMatch.menuItems["Delete"].firstMatch.click()
+        XCTAssertTrue(app.dialogs.firstMatch.waitForExistence(timeout: 5))
+        app.dialogs.firstMatch.buttons["Cancel"].click()
+        XCTAssertTrue(row.exists)
+        row.rightClick()
+        XCTAssertTrue(app.menuItems["Unmark Important"].exists)
         app.menuItems["Restore Chat"].firstMatch.click()
         app.buttons["scholium.chat.back"].click()
         XCTAssertTrue(row.waitForExistence(timeout: 5))
         row.click()
         XCTAssertTrue(input.waitForExistence(timeout: 5))
         XCTAssertEqual(input.value as? String, "314159265")
+        app.buttons["scholium.chat.back"].click()
+        create.click()
+        XCTAssertTrue(input.waitForExistence(timeout: 5))
+        app.typeText("271828182")
+        app.buttons["scholium.chat.back"].click()
+        let list = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+        list.name = "Chat list — native conversation rows"
+        list.lifetime = .keepAlways
+        add(list)
         XCTAssertTrue(waitForDocumentTitle("QA Autosave A"))
+        app.terminate()
+        sessionID = UUID()
+        app = configuredApplication(sessionID: sessionID, initialWorkspaceWidth: 900, appearance: .dark)
+        app.launch()
+        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 15))
+        waitForCurrentDocumentSurface()
+        sidebarModeControl("Chat").click()
+        let darkRow = app.descendants(matching: .any).matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "scholium.chat.conversation.")
+        ).firstMatch
+        XCTAssertTrue(darkRow.waitForExistence(timeout: 5))
+        let dark = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+        dark.name = "Chat list — dark narrow window"
+        dark.lifetime = .keepAlways
+        add(dark)
+        let darkSearch = app.searchFields["scholium.chat.search"]
+        darkSearch.click()
+        app.typeKey(.tab, modifierFlags: [])
+        let focused = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+        focused.name = "Chat list — native keyboard focus"
+        focused.lifetime = .keepAlways
+        add(focused)
+        app.typeKey(" ", modifierFlags: [])
+        XCTAssertTrue(app.textViews["scholium.chat.message"].waitForExistence(timeout: 5))
+        app.buttons["scholium.chat.back"].click()
+        darkRow.rightClick()
+        app.menuItems["Archive Chat"].firstMatch.click()
+        app.descendants(matching: .any)["scholium.chat.archived"].firstMatch.click()
+        app.menuItems["Archived Chats"].firstMatch.click()
+        XCTAssertTrue(darkRow.waitForExistence(timeout: 5))
+        darkRow.rightClick()
+        app.windows.firstMatch.menuItems["Delete"].firstMatch.click()
+        XCTAssertTrue(app.dialogs.firstMatch.waitForExistence(timeout: 5))
+        app.dialogs.firstMatch.buttons["Delete"].click()
+        XCTAssertTrue(waitUntil(timeout: 5) { !darkRow.exists })
     }
 
     @MainActor
@@ -1113,7 +1168,7 @@ final class ScholiumChatScrollUITests: XCTestCase {
         chat.click()
         let back = app.buttons["scholium.chat.back"]
         if back.waitForExistence(timeout: 2) { back.click() }
-        let row = app.buttons["scholium.chat.conversation.\(conversation)"]
+        let row = app.descendants(matching: .any)["scholium.chat.conversation.\(conversation)"].firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 10))
         row.click()
         let transcript = app.scrollViews["scholium.chat.transcript"]

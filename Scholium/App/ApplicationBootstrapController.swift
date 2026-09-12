@@ -254,7 +254,7 @@ struct ApplicationBootstrapGate<Content: View>: View {
                 )
             }
         }
-        .scholiumButtonStyle(.automatic)
+        .buttonStyle(.automatic)
         .task { controller.startIfNeeded() }
     }
 }
@@ -291,7 +291,7 @@ private struct ApplicationRegistryRecoveryView: View {
                 .contentShape(Rectangle())
             }
             .scholiumActivationPointer()
-            .scholiumButtonStyle(.plain)
+            .buttonStyle(.plain)
             .accessibilityLabel("Details")
             .accessibilityValue(showsDetails ? "Expanded" : "Collapsed")
             .accessibilityHint("Shows the registry diagnostic and recovery location.")
@@ -368,7 +368,7 @@ private struct ApplicationStorageUnavailableView: View {
                 .contentShape(Rectangle())
             }
             .scholiumActivationPointer()
-            .scholiumButtonStyle(.plain)
+            .buttonStyle(.plain)
             .accessibilityLabel("Details")
             .accessibilityValue(showsDetails ? "Expanded" : "Collapsed")
             .accessibilityHint("Shows the storage error details.")

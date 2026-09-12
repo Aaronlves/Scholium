@@ -317,7 +317,7 @@ struct AgentChangesView: View {
                             pendingUndo = review.change
                         }
                         .scholiumActivationPointer()
-                        .scholiumButtonStyle(.bordered)
+                        .buttonStyle(.bordered)
                         .disabled(!review.isDirectUndoAvailable || undoingID != nil)
                         .accessibilityHint(
                             review.isDirectUndoAvailable

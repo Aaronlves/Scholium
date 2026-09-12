@@ -2243,7 +2243,7 @@ struct FrontendArchitectureTests {
         #expect(attentionSource.contains(".scrollContentBackground(.hidden)"))
         #expect(!attentionSource.contains("in: Capsule(style: .continuous)"))
         #expect(!attentionSource.contains("Text(\"/\")"))
-        #expect(attentionSource.contains(".scholiumButtonStyle(.plain)"))
+        #expect(attentionSource.contains(".buttonStyle(.plain)"))
         #expect(attentionSource.contains("title: session.noteTitle(for: change)"))
         #expect(attentionSource.contains("title: session.noteTitle(for: item)"))
         #expect(!notificationRowsSource.contains("ScholiumTypography.exact"))

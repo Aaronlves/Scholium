@@ -162,7 +162,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
     }
 
     func removeDraftCoordinationTarget() {
-        guard selected?.archivedAt == nil else { return }
+        guard selected?.isAvailable == true else { return }
         update { $0.draftCoordinationTarget = nil }
         persist()
     }
@@ -216,13 +216,13 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
             changes: objectWillChange.eraseToAnyPublisher(),
             draft: { current()?.childDrafts[target.childThreadID] ?? "" },
             edit: { [weak self] value in
-                guard current()?.archivedAt == nil, current() != nil else { return }
+                guard current()?.isAvailable == true, current() != nil else { return }
                 self?.update(in: originID) {
                     if value.isEmpty { $0.childDrafts.removeValue(forKey: target.childThreadID) } else { $0.childDrafts[target.childThreadID] = value }
                 }
                 self?.persist()
             },
-            canEdit: { current() != nil && current()?.archivedAt == nil },
+            canEdit: { current() != nil && current()?.isAvailable == true },
             canSend: { [weak self] in
                 guard let self, self.connectionID == connection, let value = current() else { return false }
                 return self.canSend(message: proposal(nil), in: value)
@@ -243,7 +243,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
         let route = AgentChatNotificationRoute(triptychID: triptychID, conversationID: id, event: event)
         notificationSink(route) { [weak self] in
             guard let self, self.connectionID == connection, let execution = self.executions[id],
-                self.conversation(id)?.archivedAt == nil
+                self.conversation(id)?.isAvailable == true
             else { return false }
             if event == .inputRequired {
                 return execution.turnID == turnID && execution.state == .working
@@ -263,12 +263,12 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
     var hasActiveExecutions: Bool { executions.values.contains(where: \.isBusy) }
     var needsInput: Bool {
         executions.values.contains { $0.approvals.contains { !$0.isSubmitting } }
-            || conversations.contains { $0.archivedAt == nil && $0.messages.contains { $0.asyncQuestion?.isPending == true } }
+            || conversations.contains { $0.isAvailable == true && $0.messages.contains { $0.asyncQuestion?.isPending == true } }
     }
     var needsInputPublisher: AnyPublisher<Bool, Never> {
         $executions.combineLatest($conversations).map { executions, conversations in
             executions.values.contains { $0.approvals.contains { !$0.isSubmitting } }
-                || conversations.contains { $0.archivedAt == nil && $0.messages.contains { $0.asyncQuestion?.isPending == true } }
+                || conversations.contains { $0.isAvailable == true && $0.messages.contains { $0.asyncQuestion?.isPending == true } }
         }.removeDuplicates().eraseToAnyPublisher()
     }
     var isRefreshingHistory: Bool { selectedID.flatMap { executions[$0]?.isRefreshingHistory } ?? false }
@@ -334,7 +334,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
     var canCompact: Bool {
         state == .ready && account != nil && !isBusy && !historyUnavailable && selected?.threadID != nil
             && !capabilities.isChanging && !isRenewingSettings
-            && selected?.archivedAt == nil && selected?.pendingMessageID == nil
+            && selected?.isAvailable == true && selected?.pendingMessageID == nil
     }
     var canBranch: Bool {
         state == .ready && !isBusy && !historyUnavailable && account != nil && selectionIsAvailable
@@ -497,7 +497,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
                 || model(for: conversation.preferences)?.inputModalities.contains("image") == true)
             && execution != nil && execution?.historyUnavailable == false && execution?.isSending == false && execution?.isRefreshingHistory == false
             && (execution?.state == .ready || (execution?.state == .working && execution?.turnID != nil))
-            && runtime != nil && conversation.archivedAt == nil && conversation.pendingMessageID == nil
+            && runtime != nil && conversation.isAvailable == true && conversation.pendingMessageID == nil
             && !message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && (message.coordinationTarget == nil || message.coordinationTarget?.parentThreadID == conversation.threadID)
     }
@@ -558,7 +558,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
     }
 
     private func installPreparedMaterial(_ material: AgentChatLocalMaterial, replacing materialID: UUID?, in conversationID: UUID) async throws {
-        guard !Task.isCancelled, let current = conversation(conversationID), current.archivedAt == nil,
+        guard !Task.isCancelled, let current = conversation(conversationID), current.isAvailable == true,
             materialID == nil || current.localMaterials.contains(where: { $0.id == materialID })
         else {
             try? await materialStore.discard(material)
@@ -579,7 +579,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
 
     private func performMaterialPreparation(in conversationID: UUID, work: @escaping @MainActor () async throws -> Void) async -> Bool {
         guard isLoaded, !preparingMaterials.contains(conversationID),
-            conversations.contains(where: { $0.id == conversationID && $0.archivedAt == nil })
+            conversations.contains(where: { $0.id == conversationID && $0.isAvailable == true })
         else { return false }
         preparingMaterials.insert(conversationID)
         materialErrors[conversationID] = nil
@@ -663,7 +663,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
                 }
             }
             selectedID =
-                conversations.filter { $0.archivedAt == nil }
+                conversations.filter { $0.isAvailable == true }
                 .sorted { $0.updatedAt > $1.updatedAt }.first?.id
             executions = Dictionary(uniqueKeysWithValues: conversations.map { ($0.id, AgentChatExecutionState()) })
             isLoaded = true
@@ -679,7 +679,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
 
     @discardableResult
     func quoteReply(_ messageID: String, selection: AgentChatReplySelection?, in conversationID: UUID) -> Bool {
-        guard selectedID == conversationID, let conversation = selected, conversation.archivedAt == nil,
+        guard selectedID == conversationID, let conversation = selected, conversation.isAvailable == true,
             let message = conversation.messages.first(where: { $0.id == messageID }), message.role == .assistant,
             message.phase != .commentary, !message.text.isEmpty,
             !isBusy || message.turnID != currentTurnID
@@ -761,6 +761,29 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
         persist()
     }
 
+    func deleteConversation(_ id: UUID) {
+        guard isLoaded, canArchive(id), let index = conversations.firstIndex(where: { $0.id == id }),
+            conversations[index].archivedAt != nil else { return }
+        executions[id]?.admissionID = nil
+        conversations.remove(at: index)
+        executions.removeValue(forKey: id)
+        if selectedID == id { selectedID = nil }
+        persist()
+    }
+
+    func setUnread(_ id: UUID, unread: Bool) {
+        guard isLoaded, let index = conversations.firstIndex(where: { $0.id == id }) else { return }
+        guard (conversations[index].unreadAt != nil) != unread else { return }
+        conversations[index].unreadAt = unread ? Date() : nil
+        persist()
+    }
+
+    func setImportant(_ id: UUID, important: Bool) {
+        guard isLoaded, let index = conversations.firstIndex(where: { $0.id == id }) else { return }
+        conversations[index].importantAt = important ? Date() : nil
+        persist()
+    }
+
     func connectConfigured(using defaults: UserDefaults? = nil, automatically: Bool = false) {
         guard connectionState == .disconnected, isLoaded else { return }
         let defaults = defaults ?? connectionDefaults
@@ -795,7 +818,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
     }
     func editDraft(_ text: String, in conversationID: UUID) {
         guard let index = conversations.firstIndex(where: { $0.id == conversationID }),
-            conversations[index].archivedAt == nil,
+            conversations[index].isAvailable == true,
             conversations[index].draft != text
         else { return }
         conversations[index].draft = text
@@ -803,12 +826,12 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
         persist()
     }
     func setPermission(_ value: AgentChatPermission) {
-        guard !isBusy, selected?.archivedAt == nil else { return }
+        guard !isBusy, selected?.isAvailable == true else { return }
         update { $0.permission = value }
         persist()
     }
     func setModel(_ model: String?) {
-        guard !isBusy, selected?.archivedAt == nil,
+        guard !isBusy, selected?.isAvailable == true,
             model == nil || models.contains(where: { $0.model == model })
         else { return }
         update {
@@ -819,14 +842,14 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
         persist()
     }
     func setEffort(_ effort: String?) {
-        guard !isBusy, selected?.archivedAt == nil,
+        guard !isBusy, selected?.isAvailable == true,
             effort == nil || selectedModel?.efforts.contains(effort!) == true
         else { return }
         update { $0.preferences.effort = effort }
         persist()
     }
     func setWebSearch(_ mode: AgentChatPreferences.WebSearch) {
-        guard !isBusy, let selected, selected.archivedAt == nil, selected.preferences.webSearch != mode else { return }
+        guard !isBusy, let selected, selected.isAvailable == true, selected.preferences.webSearch != mode else { return }
         update { $0.preferences.webSearch = mode }
         persist()
         if selected.threadID != nil, connectionState == .ready { renewSettingsWhenIdle() }
@@ -889,7 +912,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
         persist()
     }
     func toggleMethod(_ method: AgentChatMethodSelection) {
-        guard isLoaded, selected?.archivedAt == nil else { return }
+        guard isLoaded, selected?.isAvailable == true else { return }
         let wasSelected = selected?.selectedMethods?.contains(where: { $0.id == method.id }) == true
         guard wasSelected || (method.name != "scholium-core-protocol" && capabilities.contains(method)) else { return }
         update {
@@ -908,7 +931,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
     @discardableResult
     func attachContext(_ attachments: [AgentChatAttachment]) -> Bool {
         guard isLoaded else { return false }
-        if selected == nil || selected?.archivedAt != nil {
+        if selected == nil || selected?.isAvailable == false {
             newConversation()
         }
         guard let selectedID else { return false }
@@ -917,7 +940,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
 
     @discardableResult
     func attachContext(_ attachments: [AgentChatAttachment], to conversationID: UUID) -> Bool {
-        guard isLoaded, conversations.contains(where: { $0.id == conversationID && $0.archivedAt == nil }) else { return false }
+        guard isLoaded, conversations.contains(where: { $0.id == conversationID && $0.isAvailable == true }) else { return false }
         update(in: conversationID) { conversation in
             for attachment in attachments
             where !conversation.attachments.contains(where: {
@@ -1123,7 +1146,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
 
     func editQueuedMessage(_ id: String, text: String, in conversationID: UUID) -> Bool {
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-            let conversation = conversation(conversationID), conversation.archivedAt == nil,
+            let conversation = conversation(conversationID), conversation.isAvailable == true,
             conversation.queuedMessages.contains(where: { $0.id == id })
         else { return false }
         update(in: conversationID) { conversation in
@@ -1319,7 +1342,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
                     return
                 }
                 guard self.connectionID == connectionID, !Task.isCancelled,
-                    let current = self.conversation(conversationID), current.archivedAt == nil,
+                    let current = self.conversation(conversationID), current.isAvailable == true,
                     current.threadID == selected.threadID, current.pendingMessageID == nil,
                     self.executions[conversationID]?.state == .ready || self.executions[conversationID]?.state == .working
                 else { return }
@@ -1661,12 +1684,12 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
     }
 
     var pendingAsyncQuestion: AgentChatMessage? {
-        guard let selected, selected.archivedAt == nil else { return nil }
+        guard let selected, selected.isAvailable == true else { return nil }
         return selected.messages.first { $0.asyncQuestion?.isPending == true }
     }
 
     func editAsyncAnswers(_ id: String, values: [String: AgentChatQuestionAnswer]) {
-        guard selected?.archivedAt == nil else { return }
+        guard selected?.isAvailable == true else { return }
         update { conversation in
             guard let index = conversation.messages.firstIndex(where: { $0.id == id }),
                 conversation.messages[index].asyncQuestion?.pendingMessageID == nil
@@ -2061,7 +2084,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
             let context = request.runtimeContext, context == runtimeContext(for: token), executions[owner]?.state == .working,
             let scope = executions[owner]?.displayScope, scope.windowID == windowID, displayWindow(owner) == scope
         else { return false }
-        return conversation(owner)?.archivedAt == nil
+        return conversation(owner)?.isAvailable == true
     }
 
     func handle(_ request: ScholiumMCPBridgeRequest) async -> ScholiumMCPBridgeResponse {
@@ -2075,7 +2098,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
         guard let requestToken = request.conversationToken,
             let conversationID = executionID(for: requestToken),
             executions[conversationID]?.state == .working,
-            let owner = conversation(conversationID), owner.archivedAt == nil,
+            let owner = conversation(conversationID), owner.isAvailable == true,
             let context = request.runtimeContext, context == runtimeContext(for: requestToken),
             let admission = executions[conversationID]?.admissionID
         else { return refusal("The conversation is not accepting operations.") }
@@ -2477,7 +2500,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
         conversationID: UUID
     ) async throws -> MCPJSONValue {
         try agentRequireOnly(arguments, keys: ["action", "permission", "model", "effort", "web_search", "skill_paths"])
-        guard let current = conversation(conversationID), current.archivedAt == nil else {
+        guard let current = conversation(conversationID), current.isAvailable == true else {
             throw ScholiumMCPFailure(
                 code: .workspaceNotReady,
                 message: "The addressed Chat conversation is unavailable.", recovery: "Use the active conversation's current capability context.")
@@ -2829,6 +2852,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
                 if completed || activity.kind == .compaction { persist() }
             case .assistant(let text, let phase):
                 update(in: conversationID) {
+                    if !text.isEmpty, $0.messages.first(where: { $0.id == item.id })?.text != text { $0.unreadAt = Date() }
                     if let index = $0.messages.firstIndex(where: { $0.id == item.id }) {
                         $0.messages[index].text = text
                         $0.messages[index].phase = phase
@@ -2858,6 +2882,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
             }
         case .assistantDelta(let id, let text):
             update(in: conversationID) {
+                if !text.isEmpty { $0.unreadAt = Date() }
                 if let index = $0.messages.firstIndex(where: { $0.id == id }) {
                     $0.messages[index].text += text
                 } else {

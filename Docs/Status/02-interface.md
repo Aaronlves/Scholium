@@ -15,12 +15,10 @@ already-visible Chat does not toggle the Sidebar closed.
 
 ## App root and workspace shell
 
-- Ordinary command buttons share a native style adapter with neutral Ink;
-  destructive roles retain semantic tint. Window roots, independently hosted
-  split regions, and sheet/popover content install the same default; local form choices use its shared
-  entry. Icon Buttons, icon Menus, and Notifications share one native chrome
-  recipe. Some feature routes, including Chat Send, use native prominence and shared Accent;
-  selection, links, and explicit status indicators retain their semantic colors.
+- Buttons and menus use native styles directly across roots, split regions,
+  sheets and popovers. Shared neutral-tint wrappers and neutral button tints in
+  Search and Connections have been removed. Icon controls retain native chrome;
+  explicit semantic action colors remain local to their actions.
 - Starting, Registry Recovery, Ready, and Storage Unavailable are distinct app
   roots. Failure states retain Details, Retry, and the applicable recovery or
   Quit route while workspace commands remain disabled.
@@ -321,7 +319,10 @@ already-visible Chat does not toggle the Sidebar closed.
   pending input. Light/dark offscreen list renders were inspected; no live
   window or accessibility interaction acceptance is claimed.
   The list searches retained titles and public messages, including plans and
-  supplied material passages, within its active/archived scope. Detail options
+  supplied material passages, within its current or archived scope.
+  Native list rows expose archive/delete/restore and read/important actions,
+  with persisted markers and Unread/Important filters. Only archived idle
+  conversations can be permanently deleted, with native confirmation. Detail options
   expose Find in Conversation and Rename. Find navigates matching messages,
   reveals matching activities and preserves input; native fields keep marked
   text intact. These routes have deterministic and offscreen component evidence;

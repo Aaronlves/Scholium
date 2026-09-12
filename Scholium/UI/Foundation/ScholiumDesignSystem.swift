@@ -151,6 +151,7 @@ enum ScholiumNativeColorRole: Sendable {
     case label, secondaryLabel, windowBackground, controlBackground, textBackground, controlAccent
     case searchMatchHighlight
     case structuralShadow
+    case unreadAction, importantAction, archiveAction
 
     var nsColor: NSColor {
         switch self {
@@ -162,6 +163,9 @@ enum ScholiumNativeColorRole: Sendable {
         case .controlAccent: .controlAccentColor
         case .searchMatchHighlight: .findHighlightColor
         case .structuralShadow: .shadowColor
+        case .unreadAction: .systemBlue
+        case .importantAction: .systemOrange
+        case .archiveAction: .systemPurple
         }
     }
 

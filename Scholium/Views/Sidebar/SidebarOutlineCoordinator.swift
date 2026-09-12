@@ -327,7 +327,8 @@ extension SidebarOutlineSourceList {
                 lastRequestedFocusPath = nil
                 return
             }
-            guard path != lastRequestedFocusPath,
+            guard !outlineView.isHiddenOrHasHiddenAncestor,
+                path != lastRequestedFocusPath,
                 let item = itemsByID[path]
             else { return }
             lastRequestedFocusPath = path
@@ -353,7 +354,8 @@ extension SidebarOutlineSourceList {
         }
 
         private func handleSourceListFocus(in outlineView: NSOutlineView) {
-            guard configuration.focusRequestGeneration != lastFocusRequestGeneration else {
+            guard !outlineView.isHiddenOrHasHiddenAncestor,
+                configuration.focusRequestGeneration != lastFocusRequestGeneration else {
                 return
             }
             lastFocusRequestGeneration = configuration.focusRequestGeneration

@@ -51,7 +51,7 @@ struct NoteFileOperationView: View {
                     Spacer()
                     Button(actionTitle) { perform() }
                         .scholiumActivationPointer()
-                        .scholiumButtonStyle(.bordered)
+                        .buttonStyle(.bordered)
                         .disabled(requestedDestinationPath == nil || isWorking)
                         .keyboardShortcut(.defaultAction)
                 }

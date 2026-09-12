@@ -28,7 +28,7 @@ extension WindowModel {
         do {
             let attachment = try await currentSelectionAttachment()
             guard chatController === chat, selected == chat.selectedID else { return false }
-            if chat.selected == nil || chat.selected?.archivedAt != nil { chat.newConversation() }
+            if chat.selected == nil || chat.selected?.isAvailable == false { chat.newConversation() }
             guard let conversationID = chat.selectedID else { return false }
             return chat.prepareSelectionInquiry([attachment], inquiry: inquiry, to: conversationID)
         } catch {
@@ -156,7 +156,7 @@ extension WindowModel {
         guard canAddNotesToChat(items), let chat = chatController,
             let runtime = windowWorkspaceController.activeCapabilities?.runtimeIdentity
         else { return false }
-        if chat.selected == nil || chat.selected?.archivedAt != nil { chat.newConversation() }
+        if chat.selected == nil || chat.selected?.isAvailable == false { chat.newConversation() }
         guard let conversationID = chat.selectedID else { return false }
         chat.presentContext(in: conversationID)
         Task { @MainActor [weak self, weak chat] in
@@ -180,7 +180,7 @@ extension WindowModel {
     @MainActor
     func addNoteToChat(_ note: WorkspaceCatalogNote, conversationID: UUID) async throws {
         guard let chat = chatController,
-            chat.conversations.contains(where: { $0.id == conversationID && $0.archivedAt == nil }),
+            chat.conversations.contains(where: { $0.id == conversationID && $0.isAvailable == true }),
             let capabilities = windowWorkspaceController.activeCapabilities,
             let noteID = note.reference.stableNoteID.flatMap(UUID.init(uuidString:)),
             workspaceCatalog?.notes.contains(where: { $0.reference == note.reference }) == true

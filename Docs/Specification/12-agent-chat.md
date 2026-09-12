@@ -4,15 +4,17 @@
 
 ## 8.7 In-app Chat
 
-Chat belongs to a Triptych and references Notes across its vaults. The first
-message starts a taskless conversation without a Record. Library or Note navigation
-never switches conversations or shares documents. History, drafts, attachments and
-uncertain delivery survive reopening in local storage. Titles derive from the first
-message and persistence is automatic. Archiving hides idle conversations but retains
-messages, drafts and modification links; restoring makes them writable. Archived
-conversations cannot send or start runs. Runtime history stays runtime-owned; public
-projections are not writable Notes or endorsements. User and Agent bodies share
-adaptive system type, ink and links; alignment and fill mark authorship.
+Chat belongs to a Triptych and references its Notes. Conversations require no task or Record. Note/Library navigation
+neither switches conversations nor shares documents. History, drafts, attachments
+and uncertain delivery persist. First messages supply titles.
+Archiving hides idle conversations and retains their content and modification
+links. Only archived idle conversations can be permanently deleted, after native
+confirmation. This removes local history and drafts, without recovery or runtime-history
+deletion. Archived conversations cannot send or run;
+unarchiving restores writing. Unread/Important markers persist independently of
+execution and ordering. New answers mark unread; displaying the
+transcript clears it. Markers are reversible; Important implies neither pinning nor endorsement. History stays runtime-owned; projections are neither Notes nor endorsements. User/Agent bodies share
+adaptive system type, ink and links; alignment and fill distinguish authorship.
 
 The researcher selects Ask for Approval or Full Access per conversation. Ask
 requires confirmation of each Scholium Note mutation and displays runtime

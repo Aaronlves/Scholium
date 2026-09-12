@@ -178,6 +178,9 @@ public struct AgentChatConversation: Codable, Equatable, Identifiable, Sendable 
     public let triptychID: UUID
     public var title: String
     public var archivedAt: Date?
+    public var unreadAt: Date?
+    public var importantAt: Date?
+    public var isAvailable: Bool { archivedAt == nil }
     public var threadID: String?
     public var permission: AgentChatPermission
     public var preferences: AgentChatPreferences

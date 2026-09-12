@@ -317,7 +317,7 @@ private struct ScholiumBootstrapRoot: View {
                 WorkspaceSetupView(context: workspaceSetupContext)
             }
         }
-        .scholiumButtonStyle(.automatic)
+        .buttonStyle(.automatic)
         .ignoresSafeArea(.container, edges: .top)
         .background(
             BootstrapWindowAttachment(
@@ -647,7 +647,7 @@ struct ScholiumWindowObservedRoot: View {
         .navigationSubtitle(workspaceWindowSubtitle)
         .toolbar(removing: .sidebarToggle)
         .toolbar(removing: .title)
-        .scholiumButtonStyle(.automatic)
+        .buttonStyle(.automatic)
         .focusedSceneObject(appState)
         .focusedSceneObject(appState.commandObservation)
         .focusedSceneValue(\.scholiumWorkspaceWindowActions, windowCoordinator.actions)
@@ -685,7 +685,7 @@ struct ScholiumWindowObservedRoot: View {
                     windowCoordinator.closeUnavailableWorkspaceAndTerminateApplication()
                 }
             )
-            .scholiumButtonStyle(.automatic)
+            .buttonStyle(.automatic)
         }
         .preferredColorScheme(shellState.colorScheme.swiftUIColorScheme)
         .onChange(of: windowWorkspaceController.state.accessRecovery) { _, recovery in

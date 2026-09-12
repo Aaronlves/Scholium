@@ -295,8 +295,10 @@ the steering request; completion cannot turn it into a new start. A pending send
 retains its message identity so cancellation cleanup cannot release a newer send.
 Direct receipt sheets load only their requested change; a conversation
 scope filters by its complete retained receipt IDs without collapsing successive changes
-to a Note. Storage retains complete evidence. The controller owns archive/restore and
-excludes archived conversations from sending. Machine path discovery and one-click
+to a Note. Storage retains complete evidence. The controller owns archive/delete/restore and read/important markers;
+conversation metadata persists through AgentChatStorage. The native List owns scrolling and swipes; row Buttons own activation; its Chat host uses automatic Button/Menu
+styles. Archived conversations cannot send;
+permanent deletion removes the conversation and execution entry. Machine path discovery and one-click
 connection have one controller entry point; Settings receives the selected Triptych
 controller from its composition root through environment injection, without giving
 Settings a workspace runtime. The connection form and native file picker live only in

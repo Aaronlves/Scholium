@@ -366,7 +366,7 @@ struct ResearchSearchView<Library: View>: View {
             )
             if isActive && !isAdvanced {
                 Button(action: context.dismiss) { Image(systemName: "xmark") }
-                    .scholiumButtonStyle(.borderless)
+                    .buttonStyle(.borderless)
                     .help("Close Search")
                     .accessibilityLabel("Close Search")
                     .accessibilityIdentifier("scholium.closeSearchButton")
@@ -440,7 +440,6 @@ struct ResearchSearchView<Library: View>: View {
         .font(ScholiumTypography.interface(.small))
         .scholiumForeground(.secondaryText)
         .controlSize(.small)
-        .tint(ScholiumColorRole.primaryText.color)
         .padding(.horizontal, isAdvanced ? 24 : ScholiumSidebarLayout.textInset)
         .padding(.top, isAdvanced ? 8 : 0)
         .padding(.bottom, ScholiumSidebarLayout.rowInset)
@@ -484,7 +483,7 @@ struct ResearchSearchView<Library: View>: View {
                     .contentShape(Rectangle())
                 }
                 .scholiumActivationPointer()
-                .scholiumButtonStyle(.plain)
+                .buttonStyle(.plain)
                 .accessibilityLabel("\(completion.displayText), \(completion.detail)")
                 .accessibilityAddTraits(
                     completionSelection == index ? .isSelected : []

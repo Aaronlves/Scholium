@@ -1,6 +1,230 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Delete Conversation?" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete Conversation?"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "删除会话？"
+          }
+        }
+      }
+    },
+    "This permanently deletes the local conversation history and drafts. This cannot be undone." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This permanently deletes the local conversation history and drafts. This cannot be undone."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这会永久删除本地会话记录和草稿，无法撤销。"
+          }
+        }
+      }
+    },
+    "Read" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Read"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已读"
+          }
+        }
+      }
+    },
+    "Unmark" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unmark"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "取消标记"
+          }
+        }
+      }
+    },
+    "Mark as Unread" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mark as Unread"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "标为未读"
+          }
+        }
+      }
+    },
+    "Mark as Read" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mark as Read"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "标为已读"
+          }
+        }
+      }
+    },
+    "Mark as Important" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mark as Important"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "标记重要"
+          }
+        }
+      }
+    },
+    "Unmark Important" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unmark Important"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "取消重要标记"
+          }
+        }
+      }
+    },
+    "Unread" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unread"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未读"
+          }
+        }
+      }
+    },
+    "Important" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Important"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重要"
+          }
+        }
+      }
+    },
+    "Restore" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Restore"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "恢复"
+          }
+        }
+      }
+    },
+    "Draft" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Draft"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "草稿"
+          }
+        }
+      }
+    },
+    "Search Match" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Search Match"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "搜索匹配"
+          }
+        }
+      }
+    },
+    "Unsent materials or instructions" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unsent materials or instructions"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尚未发送的材料或指令"
+          }
+        }
+      }
+    },
     "Research": {
       "localizations": {
         "en": {
@@ -3336,22 +3560,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "归档记录…"
-          }
-        }
-      }
-    },
-    "Archive Selected Chats (%lld)" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Archive Selected Chats (%lld)"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "归档所选会话（%lld）"
           }
         }
       }
@@ -21314,22 +21522,6 @@
         }
       }
     },
-    "Restore Selected Chats (%lld)" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Restore Selected Chats (%lld)"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "恢复所选会话（%lld）"
-          }
-        }
-      }
-    },
     "Restore every existing controlled choice. Their order may change." : {
       "localizations" : {
         "zh-Hans" : {
@@ -23319,38 +23511,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "选择全部"
-          }
-        }
-      }
-    },
-    "Select Chats to Archive" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Select Chats to Archive"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "选择会话归档"
-          }
-        }
-      }
-    },
-    "Select Chats to Restore" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Select Chats to Restore"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "选择会话恢复"
           }
         }
       }

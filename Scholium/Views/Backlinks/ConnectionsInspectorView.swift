@@ -293,7 +293,6 @@ private struct LinkOccurrenceRow: View {
                 }
                 .fixedSize(horizontal: false, vertical: true)
                 .buttonStyle(.accessoryBar)
-                .tint(ScholiumNativeColorRole.secondaryLabel.color)
                 .disabled(item.source == nil)
                 .help("Show this passage")
                 .accessibilityIdentifier("scholium.links.occurrence." + item.id)

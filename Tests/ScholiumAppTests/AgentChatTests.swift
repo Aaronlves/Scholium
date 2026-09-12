@@ -8,6 +8,54 @@ import Testing
 @Suite("In-app Agent collaboration", .serialized)
 @MainActor
 struct AgentChatTests {
+    @Test("Organization persists; only archived idle conversations can be permanently deleted")
+    func organizationLifecycle() async throws {
+        let root = try root()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let triptych = UUID()
+        let controller = AgentChatController(triptychID: triptych, root: root, toolHandler: success)
+        try await connect(controller)
+        controller.editDraft("phased activity")
+        controller.send()
+        let id = try #require(controller.selectedID)
+        controller.setArchived(id, archived: true)
+        controller.deleteConversation(id)
+        #expect(controller.selected?.isAvailable == true)
+        try await eventually { !controller.isBusy && controller.selected?.lastRunStatus == .completed }
+        #expect(controller.selected?.unreadAt != nil)
+        controller.setUnread(id, unread: false)
+        #expect(controller.selected?.unreadAt == nil)
+        controller.editDraft("Retain this draft")
+        let messages = controller.selected?.messages
+        let order = controller.selected?.updatedAt
+        controller.setUnread(id, unread: true)
+        controller.setImportant(id, important: true)
+        controller.deleteConversation(id)
+        #expect(controller.selected?.id == id)
+        controller.setArchived(id, archived: true)
+        #expect(!controller.canSend && !controller.canCompact)
+        #expect(controller.selected?.updatedAt == order)
+        await controller.disconnect()
+        let restored = AgentChatController(triptychID: triptych, root: root, toolHandler: success)
+        try await eventually { restored.isLoaded }
+        restored.select(id)
+        #expect(restored.selected?.archivedAt != nil)
+        #expect(restored.selected?.importantAt != nil && restored.selected?.unreadAt != nil)
+        #expect(restored.selected?.messages == messages && restored.selected?.draft == "Retain this draft")
+        restored.setArchived(id, archived: false)
+        #expect(restored.selected?.isAvailable == true)
+        restored.setImportant(id, important: false)
+        #expect(restored.selected?.importantAt == nil)
+        restored.setArchived(id, archived: true)
+        restored.deleteConversation(id)
+        #expect(restored.selectedID == nil && !restored.conversations.contains { $0.id == id })
+        await restored.disconnect()
+        let reopened = AgentChatController(triptychID: triptych, root: root, toolHandler: success)
+        try await eventually { reopened.isLoaded }
+        #expect(!reopened.conversations.contains { $0.id == id })
+        await reopened.disconnect()
+    }
+
     @Test("A missing runtime thread preserves local reading and draft without blaming the connection")
     func missingRuntimeHistory() async throws {
         let root = try root()

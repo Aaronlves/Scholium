@@ -421,7 +421,7 @@ struct NoteContentView: View {
                     },
                     onReloadFromDisk: { reloadFromDisk() }
                 )
-                .scholiumButtonStyle(.automatic)
+                .buttonStyle(.automatic)
             }
         }
         .task(id: documentIntegrityPresentation) {
@@ -1570,7 +1570,7 @@ private struct ConflictComparisonSheet: View {
                         .contentShape(Rectangle())
                     }
                     .scholiumActivationPointer()
-                    .scholiumButtonStyle(.plain)
+                    .buttonStyle(.plain)
                     .accessibilityLabel(conflict.relativePath)
                     .accessibilityValue(
                         isDocumentExpanded ? "Expanded" : "Collapsed"
