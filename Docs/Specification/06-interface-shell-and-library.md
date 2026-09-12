@@ -201,21 +201,22 @@ The Inspector remains hideable whenever visible and showable only with a
 Target. If an already-visible Inspector loses its Document, it presents **No
 Document Selected** without stale content or automatic collapse.
 
-With two or more open documents, a native rounded tab selector spans the top of
-the middle plane, with equal-width labels and system-owned selection rendering. One window-wide ordered collection includes Notes from
-Analyses, Topics, and Works. Changing the Library role neither replaces the
-active Document nor changes tab membership, order, or selection. Library, Chat,
-and Inspector remain shared window regions; tabs never create whole windows.
-AppKit owns tab rendering and page containment. Scholium validates source safety
-before committing a requested selection or close. A stable Note appears at most
-once per window; opening an existing Note selects its tab. Ordinary opening
-replaces the selected tab; Open in New Tab appends a new document.
-Closing a background tab preserves the active Document and focus. Closing the
-selected tab chooses the right neighbor, otherwise the left, across role
-boundaries; closing the last tab returns to No Document Selected. Failure keeps
-the tab and recoverable buffer with Retry. File provides Close Tab, and View
-provides Next Tab, Previous Tab, and a complete Document Tabs menu for overflow.
-Native content tabs do not provide whole-window tab grouping or tear-off.
+AppKit tabs use equal-width rounded labels and system typography/colors. Below two tabs, it hides.
+One collection spans roles; Library browsing preserves it and the shared panes. AppKit owns containment;
+Scholium guards selection and close. Library and Chat provide **Open in Separate Window**. Each Note has one location per Triptych; reopening activates it. Ordinary
+opening replaces selection; Open in New Tab appends. Switching preserves state without saving; background close saves only its target; selected close chooses right, otherwise left; last close shows No Document
+Selected. Failure retains the tab with Retry. Menus provide Close/Next/Previous Tab and Document Tabs for overflow.
+
+Tabs drag with an insertion gap; dropping back reorders, Escape cancels. Dropping
+outside, or **Move to Separate Window**, moves the same session into one document window: Review/Edit, Find, and
+save/conflict/recovery actions; no Library, Chat, Inspector, tabs, or floating
+priority. **More** contains **Move to Main Window** and **Close Window**. Hover/focus reveals ×; right-click targets its tab. Removal is immediate. Preparation
+precedes removal; source, Undo, selection, scroll, mode, and conflicts travel
+without forced save. Saving finishes first; composition or failure keeps
+its location. **Move to Main Window** appends and selects, reusing the
+origin, another same-Triptych main window, or creating one. Closing separately
+closes the document through save guards; it never returns automatically. Main closure or navigation preserves separate windows. Scholium owns session
+transfer; AppKit owns windows and dragging, without window-tab grouping.
 
 Closing a window, switching route, or terminating must preserve any failing
 save/conflict buffer and provide Retry. Window-session persistence is

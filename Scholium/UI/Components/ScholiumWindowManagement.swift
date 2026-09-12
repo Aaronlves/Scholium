@@ -420,6 +420,9 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
 
     private let appState: WindowModel
     private let lifecycleRegistry: ScholiumWindowLifecycleRegistry
+    var registry: ScholiumWindowLifecycleRegistry { lifecycleRegistry }
+    private var detachedToolbar: DetachedDocumentToolbar?
+    private weak var transferFirstResponder: NSResponder?
     private weak var window: NSWindow?
     var canAcceptAgentDisplay: Bool { window?.isKeyWindow == true && window?.attachedSheet == nil && !flushInFlight && !closeIsAuthorized }
     private weak var splitController: (any ScholiumWorkspaceSplitControlling)?
@@ -462,6 +465,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         loadingToolbar.itemIdentifiers = [.flexibleSpace]
         self.loadingToolbar = loadingToolbar
         super.init()
+        appState.nativeWindowCoordinator = self
         registerLifecycle()
         registerQAFocusRequest()
     }
@@ -534,13 +538,37 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         advancedSearchWindow?.close()
     }
 
+    /// Keep the native hierarchy and its toolbar safe area intact while input
+    /// is suspended. SwiftUI hit-testing modifiers around the split can insert
+    /// a graphics host that temporarily strips the propagated safe area.
+    func setTransferInProgress(_ value: Bool) {
+        guard let window else { return }
+        if value {
+            transferFirstResponder = window.firstResponder
+            window.makeFirstResponder(nil)
+            window.ignoresMouseEvents = true
+        } else {
+            window.ignoresMouseEvents = false
+            if let responder = transferFirstResponder as? NSView, responder.window === window {
+                window.makeFirstResponder(responder)
+            }
+            transferFirstResponder = nil
+        }
+    }
+
+    func requestNativeClose() { window?.performClose(nil) }
+    func closeTransferredContainer() { window?.close() }
+
     /// Returns focus to this exact workspace for its notification route.
     func makeKeyAndOrderFront() {
         window?.makeKeyAndOrderFront(nil)
     }
 
+    func updateOwnedWindowTitle(_ title: String) { window?.title = title }
+
     func attach(to window: NSWindow) {
         guard !didFinalizeWindowAttachments else { return }
+        appState.workspaceStore.documentLocations.register(appState)
         if self.window === window, window.delegate === self {
             installLoadingToolbarIfNeeded()
             installToolbarIfPossible()
@@ -556,7 +584,10 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         window.tabbingMode = .disallowed
         configureWindowFrame(window)
         installLoadingToolbarIfNeeded()
-        previousDelegate = window.delegate
+        // AppKit-created document containers have no SwiftUI scene delegate
+        // to preserve. A hosting proxy may already forward to this coordinator;
+        // retaining and forwarding to that proxy would create a delegate cycle.
+        previousDelegate = appState.isDetachedDocumentWindow ? nil : window.delegate
         window.delegate = self
         installToolbarIfPossible()
         markReadyIfPossible()
@@ -646,6 +677,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         // Release App-wide claims before SwiftUI tears down the per-window
         // model so an unresolved request can move to another exact window.
         appState.windowCloseCoordinator.finalize()
+        appState.workspaceStore.documentLocations.unregister(appState)
         if finalizeWindowAttachments(forwarding: notification) {
             DispatchQueue.main.async {
                 NSApplication.shared.terminate(nil)
@@ -721,6 +753,11 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
     }
 
     private func markReadyIfPossible() {
+        if appState.isDetachedDocumentWindow, window != nil, !readinessWasMarked {
+            readinessWasMarked = true
+            lifecycleRegistry.markReady(id: windowID)
+            return
+        }
         guard !readinessWasMarked,
             let window,
             let splitController,
@@ -740,6 +777,11 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
     }
 
     private func installToolbarIfPossible() {
+        if appState.isDetachedDocumentWindow, let window {
+            if detachedToolbar == nil { detachedToolbar = DetachedDocumentToolbar(model: appState) }
+            window.toolbar = detachedToolbar?.toolbar
+            return
+        }
         guard let window,
             let splitController,
             splitController.nativeSplitViewController.view.window === window
@@ -764,7 +806,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
     /// The split-dependent tracking items replace this inert toolbar in place;
     /// document loading therefore cannot move the traffic lights or safe area.
     private func installLoadingToolbarIfNeeded() {
-        guard toolbarController == nil, let window else { return }
+        guard !appState.isDetachedDocumentWindow, toolbarController == nil, let window else { return }
         if window.toolbar !== loadingToolbar {
             window.toolbar = loadingToolbar
         }
@@ -777,6 +819,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
     }
 
     private func removeToolbar() {
+        detachedToolbar = nil
         guard let window else {
             toolbarController?.invalidate()
             toolbarController = nil

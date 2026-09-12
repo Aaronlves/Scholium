@@ -230,18 +230,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
             item.visibilityPriority = .high
             return item
         case Item.documentMode:
-            let item = actionItem(
-                identifier: itemIdentifier,
-                label: ScholiumL10n.string("Document Mode"),
-                systemImage: NotePresentationMode.livePreview.symbol,
-                action: #selector(toggleDocumentMode(_:))
-            )
-            item.possibleLabels = Set(
-                NotePresentationMode.allCases.map {
-                    ScholiumDocumentModeToolbarButtonPresentation(mode: $0)
-                        .accessibilityLabel
-                })
-            return item
+            return ScholiumDocumentModeToolbarItem(identifier: itemIdentifier, model: appState)
         case Item.settlement:
             let item = actionItem(
                 identifier: itemIdentifier,
@@ -550,20 +539,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
             item.paletteLabel = name
         }
 
-        if let item = toolbarItem(Item.documentMode) {
-            let presentation = ScholiumDocumentModeToolbarButtonPresentation(
-                mode: appState.documentController.chromeProjection.mode
-            )
-            item.isHidden = appState.currentNote == nil
-            update(
-                item,
-                label: presentation.accessibilityLabel,
-                systemImage: presentation.symbol,
-                isEnabled: isCommandEnabled(Item.documentMode),
-                toolTip: presentation.toolTip,
-                accessibilityValue: presentation.mode.title
-            )
-        }
+        (toolbarItem(Item.documentMode) as? ScholiumDocumentModeToolbarItem)?.refreshPresentation()
 
         if let item = toolbarItem(Item.settlement) {
             let hasDocument = appState.currentNote != nil
@@ -645,11 +621,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
         case Item.settlement: currentSettlementTarget != nil
         case Item.inspector: appState.canToggleResearchInspector
         case Item.inspectorModes: appState.currentNote != nil && appState.shellState.inspector.isVisible
-        case Item.documentMode:
-            appState.currentNote != nil && !currentEditorIsComposing
-                && (ScholiumDocumentModeToolbarButtonPresentation(
-                    mode: appState.documentController.chromeProjection.mode
-                ).destination == .read || appState.canEditCurrentNote)
+        case Item.documentMode: ScholiumDocumentModeToolbarItem.isAvailable(in: appState)
         default: true
         }
     }
@@ -776,24 +748,6 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
         return root
     }
 
-    private var currentEditorIsComposing: Bool {
-        guard let session = currentDocumentSession else { return false }
-        return session.isEditing && session.editorSession.context?.composing == true
-    }
-
-    private var currentDocumentSession: DocumentSessionModel? {
-        if let descriptor = appState.currentDocumentDescriptor {
-            return appState.documentController.session(for: descriptor)
-        }
-        guard let note = appState.currentNote else { return nil }
-        return appState.documentController.session(
-            for: .unavailable(
-                vaultID: note.vaultID,
-                relativePath: note.relativePath
-            )
-        )
-    }
-
     @objc private func goBack(_ sender: Any?) {
         guard isCommandEnabled(Item.back) else { return }
         appState.navigateDocumentHistory(.back)
@@ -826,14 +780,6 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
         guard !isInvalidated, let window, window.isKeyWindow, let responder else { return }
         if let view = responder as? NSView, view.window !== window { return }
         window.makeFirstResponder(responder)
-    }
-
-    @objc private func toggleDocumentMode(_ sender: Any?) {
-        guard isCommandEnabled(Item.documentMode) else { return }
-        let presentation = ScholiumDocumentModeToolbarButtonPresentation(
-            mode: appState.documentController.chromeProjection.mode
-        )
-        appState.requestDocumentMode(presentation.destination)
     }
 
     @objc private func toggleSettlement(_ sender: Any?) {

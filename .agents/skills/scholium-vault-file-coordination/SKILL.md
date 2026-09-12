@@ -1,6 +1,6 @@
 ---
 name: scholium-vault-file-coordination
-description: "Implement, diagnose, or test Scholium coordination with external editors, sync tools, and multiple windows. Use for watchers, scans, rename/delete, autosave, stale buffers, conflicts, atomic replacement, bookmarks, cloud placeholders, or lifecycle."
+description: "Implement, diagnose, or test Scholium filesystem observation, concurrent saves, external edits, and cross-window convergence."
 ---
 
 # Scholium Vault File Coordination
@@ -10,23 +10,28 @@ only a fresh authorized read establishes current content.
 
 Apply the shared [development contract](../scholium-toolkit-maintenance/references/researcher-codex-development-contract.md).
 
-## Method
+## Reconstruct the interleaving
 
-1. Reopen current ownership, construction, identity, write, watcher, cache, and
-   window-lifecycle evidence.
-2. Trace disk bytes, open buffers, starting revisions, vault identity, watcher
-   generation, and derived generations separately.
-3. Model the relevant race before editing. Use the
-   [event and race matrix](references/event-race-matrix.md) for watcher,
-   autosave, bookmark, or cache changes.
-4. Make the smallest change at the single owning boundary; do not add a second
-   watcher, writer, cache authority, or conflict lifecycle.
-5. Verify the final bytes and every affected clean, dirty, cancelled, failed,
-   and recovered participant with disposable vaults.
+Keep three contents separate: the editor's starting revision A, current disk B,
+and unsaved buffer C. Determine whether the recipient was clean or dirty when
+the event was applied, rather than when the notification was sent. A path alone
+cannot establish that a recreated file is the same document.
 
-For substantial mechanism changes, apply the shared
-[backend decision research](../scholium-engineering/references/backend-decision-research.md)
-before custom implementation.
+Trace observation, read, validation, replacement, and publication with vault
+identity and generation. Locate the first stale assumption: an event can be
+coalesced, a read can finish after switching vaults, and a self-write notification
+can arrive after a newer external write. Cancellation is not proof that an
+already scheduled callback cannot publish.
+
+Use the [race matrix](references/event-race-matrix.md) for diagnosis or changes
+to observation, saves, access, or convergence. Reproduce the implicated ordering
+with barriers at the existing boundary, not timing sleeps. Compare final bytes,
+buffer recoverability, and participant state with a fresh read or rebuild.
+
+Fix the stale check or publication owner and remove any competing path in the
+bounded change. A debounce, blind reload, or self-event time window needs evidence
+that it preserves a later external edit. For substantial mechanism changes,
+use [backend research](../scholium-engineering/references/backend-decision-research.md).
 
 ## Invariants
 

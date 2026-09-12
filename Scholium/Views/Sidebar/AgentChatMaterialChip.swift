@@ -91,6 +91,9 @@ struct AgentChatMaterialChip: View {
             .padding().frame(width: 320)
             .tint(nil as Color?)
         }
+        .contextMenu {
+            AgentChatNoteMenu(url: AgentChatReference.url(noteID: attachment.noteID))
+        }
         .accessibilityIdentifier("scholium.chat.material.\(attachment.id)")
     }
 }

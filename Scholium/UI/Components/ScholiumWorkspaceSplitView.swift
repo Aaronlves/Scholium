@@ -133,6 +133,8 @@ struct ScholiumWorkspaceSplitView<Library: View, Chat: View, Document: View, App
     let selectedDocumentTabID: UUID?
     let selectDocumentTab: (UUID) -> Void
     let closeDocumentTab: (UUID) -> Void
+    let detachDocumentTab: (UUID, NSPoint?) -> Void
+    let reorderDocumentTab: (UUID, Int) -> Void
     let libraryVisibilityDidChange: (Bool) -> Void
     let researchInspectorVisibilityDidChange: (Bool) -> Void
     let splitControllerDidAttach:
@@ -157,6 +159,8 @@ struct ScholiumWorkspaceSplitView<Library: View, Chat: View, Document: View, App
         selectedDocumentTabID: UUID?,
         selectDocumentTab: @escaping (UUID) -> Void,
         closeDocumentTab: @escaping (UUID) -> Void,
+        detachDocumentTab: @escaping (UUID, NSPoint?) -> Void = { _, _ in },
+        reorderDocumentTab: @escaping (UUID, Int) -> Void = { _, _ in },
         libraryVisibilityDidChange: @escaping (Bool) -> Void,
         researchInspectorVisibilityDidChange: @escaping (Bool) -> Void,
         splitControllerDidAttach:
@@ -178,6 +182,8 @@ struct ScholiumWorkspaceSplitView<Library: View, Chat: View, Document: View, App
         self.selectedDocumentTabID = selectedDocumentTabID
         self.selectDocumentTab = selectDocumentTab
         self.closeDocumentTab = closeDocumentTab
+        self.detachDocumentTab = detachDocumentTab
+        self.reorderDocumentTab = reorderDocumentTab
         self.libraryVisibilityDidChange = libraryVisibilityDidChange
         self.researchInspectorVisibilityDidChange = researchInspectorVisibilityDidChange
         self.splitControllerDidAttach = splitControllerDidAttach
@@ -197,6 +203,8 @@ struct ScholiumWorkspaceSplitView<Library: View, Chat: View, Document: View, App
             selectedDocumentTabID: selectedDocumentTabID,
             selectDocumentTab: selectDocumentTab,
             closeDocumentTab: closeDocumentTab,
+            detachDocumentTab: detachDocumentTab,
+            reorderDocumentTab: reorderDocumentTab,
             libraryVisibilityDidChange: libraryVisibilityDidChange,
             researchInspectorVisibilityDidChange: researchInspectorVisibilityDidChange,
             splitControllerDidAttach: splitControllerDidAttach,
@@ -222,6 +230,8 @@ struct ScholiumWorkspaceSplitView<Library: View, Chat: View, Document: View, App
             selectedDocumentTabID: selectedDocumentTabID,
             selectDocumentTab: selectDocumentTab,
             closeDocumentTab: closeDocumentTab,
+            detachDocumentTab: detachDocumentTab,
+            reorderDocumentTab: reorderDocumentTab,
             libraryVisibilityDidChange: libraryVisibilityDidChange,
             researchInspectorVisibilityDidChange: researchInspectorVisibilityDidChange,
             splitControllerDidAttach: splitControllerDidAttach,
@@ -262,6 +272,8 @@ struct ScholiumWorkspaceSplitView<Library: View, Chat: View, Document: View, App
             selectedDocumentTabID: UUID?,
             selectDocumentTab: @escaping (UUID) -> Void,
             closeDocumentTab: @escaping (UUID) -> Void,
+            detachDocumentTab: @escaping (UUID, NSPoint?) -> Void = { _, _ in },
+            reorderDocumentTab: @escaping (UUID, Int) -> Void = { _, _ in },
             libraryVisibilityDidChange: @escaping (Bool) -> Void,
             researchInspectorVisibilityDidChange: @escaping (Bool) -> Void,
             splitControllerDidAttach:
@@ -292,7 +304,9 @@ struct ScholiumWorkspaceSplitView<Library: View, Chat: View, Document: View, App
                 tabs: documentTabs,
                 selectedTabID: selectedDocumentTabID,
                 selectTab: selectDocumentTab,
-                closeTab: closeDocumentTab
+                closeTab: closeDocumentTab,
+                detachTab: detachDocumentTab,
+                reorderTab: reorderDocumentTab
             )
             let apparatusHost = NSHostingController(rootView: apparatus)
             // The native split item is the sole width owner. Inspector content
@@ -425,6 +439,8 @@ struct ScholiumWorkspaceSplitView<Library: View, Chat: View, Document: View, App
             selectedDocumentTabID: UUID?,
             selectDocumentTab: @escaping (UUID) -> Void,
             closeDocumentTab: @escaping (UUID) -> Void,
+            detachDocumentTab: @escaping (UUID, NSPoint?) -> Void = { _, _ in },
+            reorderDocumentTab: @escaping (UUID, Int) -> Void = { _, _ in },
             libraryVisibilityDidChange: @escaping (Bool) -> Void,
             researchInspectorVisibilityDidChange: @escaping (Bool) -> Void,
             splitControllerDidAttach:
@@ -442,7 +458,9 @@ struct ScholiumWorkspaceSplitView<Library: View, Chat: View, Document: View, App
                 tabs: documentTabs,
                 selectedTabID: selectedDocumentTabID,
                 selectTab: selectDocumentTab,
-                closeTab: closeDocumentTab
+                closeTab: closeDocumentTab,
+                detachTab: detachDocumentTab,
+                reorderTab: reorderDocumentTab
             )
             apparatusHost.rootView = apparatus
             self.libraryVisibilityDidChange = libraryVisibilityDidChange
@@ -542,8 +560,7 @@ private final class ScholiumNativeDocumentTabController: NSTabViewController {
 @MainActor
 final class ScholiumDocumentTabsViewController<Document: View>: NSViewController {
     private let tabViewController = ScholiumNativeDocumentTabController()
-    private let tabSelector = NSSegmentedControl()
-    private let tabHeader = NSStackView()
+    private let tabStrip = DocumentTabStrip()
     private var pageHosts: [UUID: NSHostingController<Document>] = [:]
     private var pageItems: [UUID: NSTabViewItem] = [:]
     private var placeholderHost: NSHostingController<Document>
@@ -552,18 +569,24 @@ final class ScholiumDocumentTabsViewController<Document: View>: NSViewController
     private var selectedTabID: UUID?
     private var selectTab: (UUID) -> Void
     private var closeTab: (UUID) -> Void
+    private var detachTab: (UUID, NSPoint?) -> Void
+    private var reorderTab: (UUID, Int) -> Void
 
     init(
         document: Document,
         tabs: [DocumentTabItem],
         selectedTabID: UUID?,
         selectTab: @escaping (UUID) -> Void,
-        closeTab: @escaping (UUID) -> Void
+        closeTab: @escaping (UUID) -> Void,
+        detachTab: @escaping (UUID, NSPoint?) -> Void = { _, _ in },
+        reorderTab: @escaping (UUID, Int) -> Void = { _, _ in }
     ) {
         self.tabs = tabs
         self.selectedTabID = selectedTabID
         self.selectTab = selectTab
         self.closeTab = closeTab
+        self.detachTab = detachTab
+        self.reorderTab = reorderTab
         let placeholderHost = NSHostingController(rootView: document)
         placeholderHost.sizingOptions = []
         self.placeholderHost = placeholderHost
@@ -577,54 +600,16 @@ final class ScholiumDocumentTabsViewController<Document: View>: NSViewController
     }
 
     override func loadView() {
-        view = NSView()
-        view.setAccessibilityIdentifier("scholium.documentRegion")
-
         tabViewController.tabStyle = .unspecified
         tabViewController.transitionOptions = []
         tabViewController.canPropagateSelectedChildViewControllerTitle = false
         addChild(tabViewController)
-
         tabViewController.requestSelection = { [weak self] id in self?.selectTab(id) }
         let tabContent = tabViewController.view
-        tabContent.translatesAutoresizingMaskIntoConstraints = false
         tabViewController.tabView.tabViewType = .noTabsNoBorder
         tabViewController.tabView.setAccessibilityIdentifier("scholium.documentPage")
-        tabSelector.trackingMode = .selectOne
-        tabSelector.segmentStyle = .automatic
-        tabSelector.borderShape = .capsule
-        tabSelector.controlSize = .large
-        tabSelector.segmentDistribution = .fillEqually
-        if #available(macOS 27.0, *) { tabSelector.role = .tabs }
-        tabSelector.target = self
-        tabSelector.action = #selector(selectDocumentTab(_:))
-        tabSelector.setAccessibilityIdentifier("scholium.documentTabs")
-        tabSelector.setAccessibilityLabel(
-            String(localized: "Document Tabs", table: "Localizable", bundle: .module)
-        )
-        tabSelector.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        tabSelector.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        tabHeader.orientation = .horizontal
-        tabHeader.distribution = .fill
-        let inset = ScholiumGrid.Spacing.inlineControlGap
-        tabHeader.edgeInsets = NSEdgeInsets(top: inset, left: inset, bottom: inset, right: inset)
-        tabHeader.addArrangedSubview(tabSelector)
-        tabHeader.setContentHuggingPriority(.required, for: .vertical)
-        let column = NSStackView(views: [tabHeader, tabContent])
-        column.orientation = .vertical
-        column.alignment = .width
-        column.distribution = .fill
-        column.spacing = 0
-        column.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(column)
-        NSLayoutConstraint.activate([
-            tabHeader.widthAnchor.constraint(equalTo: column.widthAnchor),
-            tabSelector.widthAnchor.constraint(equalTo: tabHeader.widthAnchor, constant: -2 * inset),
-            column.topAnchor.constraint(equalTo: view.topAnchor),
-            column.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            column.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            column.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-        ])
+        view = DocumentTabContainerView(strip: tabStrip, document: tabContent)
+        view.setAccessibilityIdentifier("scholium.documentRegion")
         synchronize(document: placeholderHost.rootView)
     }
 
@@ -633,12 +618,16 @@ final class ScholiumDocumentTabsViewController<Document: View>: NSViewController
         tabs: [DocumentTabItem],
         selectedTabID: UUID?,
         selectTab: @escaping (UUID) -> Void,
-        closeTab: @escaping (UUID) -> Void
+        closeTab: @escaping (UUID) -> Void,
+        detachTab: @escaping (UUID, NSPoint?) -> Void = { _, _ in },
+        reorderTab: @escaping (UUID, Int) -> Void = { _, _ in }
     ) {
         self.tabs = tabs
         self.selectedTabID = selectedTabID
         self.selectTab = selectTab
         self.closeTab = closeTab
+        self.detachTab = detachTab
+        self.reorderTab = reorderTab
         guard isViewLoaded else {
             placeholderHost.rootView = document
             return
@@ -649,26 +638,12 @@ final class ScholiumDocumentTabsViewController<Document: View>: NSViewController
     private func synchronize(document: Document) {
         tabViewController.isApplyingSelection = true
         defer { tabViewController.isApplyingSelection = false }
-        tabHeader.isHidden = tabs.count < 2
-        if tabSelector.segmentCount != tabs.count { tabSelector.segmentCount = tabs.count }
-        for (index, tab) in tabs.enumerated() {
-            tabSelector.setLabel(tab.title, forSegment: index)
-            tabSelector.setToolTip(tab.toolTip, forSegment: index)
-            tabSelector.setWidth(0, forSegment: index)
-        }
-        tabSelector.selectedSegment = tabs.firstIndex { $0.id == selectedTabID } ?? -1
-        let menu = NSMenu()
-        for tab in tabs {
-            let item = NSMenuItem(
-                title: String(localized: "Close Tab", table: "Localizable", bundle: .module)
-                    + " — " + tab.title,
-                action: #selector(closeDocumentTab(_:)), keyEquivalent: ""
-            )
-            item.target = self
-            item.representedObject = tab.id
-            menu.addItem(item)
-        }
-        tabSelector.menu = menu
+        tabStrip.select = selectTab
+        tabStrip.close = closeTab
+        tabStrip.detach = detachTab
+        tabStrip.reorder = reorderTab
+        tabStrip.update(tabs: tabs, selectedID: selectedTabID)
+        (view as? DocumentTabContainerView)?.showsTabs = tabs.count > 1
         let showsPlaceholder = tabs.isEmpty || selectedTabID == nil
         if showsPlaceholder {
             placeholderHost.rootView = document
@@ -728,23 +703,11 @@ final class ScholiumDocumentTabsViewController<Document: View>: NSViewController
         }
     }
 
-    @objc private func selectDocumentTab(_ sender: NSSegmentedControl) {
-        let index = sender.selectedSegment
-        sender.selectedSegment = tabs.firstIndex { $0.id == selectedTabID } ?? -1
-        guard tabs.indices.contains(index), tabs[index].id != selectedTabID else { return }
-        selectTab(tabs[index].id)
-    }
-
-    @objc private func closeDocumentTab(_ sender: NSMenuItem) {
-        guard let id = sender.representedObject as? UUID else { return }
-        closeTab(id)
-    }
-
     #if DEBUG
         func testingPageHost(for id: UUID) -> AnyObject? { pageHosts[id] }
         func testingPageItem(for id: UUID) -> AnyObject? { pageItems[id] }
         var testingNativeTabView: NSTabView { tabViewController.tabView }
-        var testingTabSelector: NSSegmentedControl { tabSelector }
+        var testingTabStrip: DocumentTabStrip { tabStrip }
         func testingPageLabel(for id: UUID) -> String? { pageItems[id]?.label }
     #endif
 

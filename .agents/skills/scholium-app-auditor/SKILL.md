@@ -1,6 +1,6 @@
 ---
 name: scholium-app-auditor
-description: "Audit Scholium architecture, defects, contract conformance, or release acceptance read-only. Use for whole-app or cross-contract questions; route bounded Agent, source, file, interface, performance, language, or test audits to their owners."
+description: "Audit Scholium architecture, defects, conformance, or release readiness read-only across contracts; bounded audits stay with their subsystem owner."
 ---
 
 # Scholium App Auditor
@@ -27,26 +27,27 @@ motion, performance, language, or test audit to its narrow owner. A decompositio
 opportunity, implementation divergence, superseded-path residue, open gate,
 and confirmed defect are different claims.
 
-## Audit in stages
+## Admit findings from evidence
 
-1. Reopen the product, architecture, and dated-status manifests, follow their
-   declared routes at the depth required by the selected mode, then inspect
-   live construction, tests, scripts, and worktree state. Do not load unrelated
-   authority chapters merely to imply whole-app coverage.
-2. Establish exact scope and coverage; mark uninspected or blocked areas rather
-   than implying completeness.
-3. Trace credible candidates through ownership, reachability, state, failure,
-   cancellation, recovery, and focused tests. Search matches and code shape are
-   only leads.
-4. Reproduce a defect with an existing test or disposable fixture when
-   possible. In read-only work, specify the smallest regression proof instead
-   of adding it.
-5. Admit a finding only when evidence establishes a violated contract or a
-   precisely named structural risk and its consequence.
+Follow the selected mode's authority and live construction path. Begin with the
+requested user task or contract; use repository-wide searches to find candidates,
+not to manufacture whole-app coverage. State which reachable paths were checked.
 
-Rank confirmed defects by consequence and reachability under the live release
-and trust rules; do not keep a severity table or subsystem inventory here.
-Never report the same root cause twice or promote preference into defect.
+For each candidate, try to disprove it: is it reachable, does a caller already
+enforce the invariant, and is the alleged failure actually permitted behavior?
+Distinguish a target divergence, an implementation defect, a structural risk,
+and a preference. A large file, missing keyword, or unused-looking symbol is
+not sufficient evidence for any of them.
+
+Trace the shortest input-to-consequence path and, when possible, reproduce it
+through an existing test or disposable fixture. Read-only work may propose a
+regression test but does not add it. Mark uncertainty if the relevant runtime,
+platform, or source is unavailable; do not promote a plausible story to a bug.
+
+Group manifestations with the same causal owner into one finding. Rank by
+reachable consequence under current release and trust rules. Stop extending
+the audit once the requested coverage is accounted for; leave unrelated leads
+explicitly outside its evidence.
 
 ## Report
 

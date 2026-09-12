@@ -75,6 +75,7 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
         subsystem: "com.scholium.app",
         category: "WorkspacePublication"
     )
+    lazy var documentLocations = DocumentWindowLocationStore(workspaceStore: self)
     let applicationSupportURL: URL
     let applicationRuntime: WorkspaceRuntime
     let cssSnippetStore: CSSSnippetStore

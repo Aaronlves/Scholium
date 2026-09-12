@@ -22,6 +22,17 @@
         "Preserves the starting buffer and current disk bytes as distinct recoverable values.",
         "Does not make parsing logic an authorization or conflict owner."
       ]
+    },
+    {
+      "id": 2,
+      "prompt": "A source-save test compares output and expected after CRLF-to-LF normalization. An unrelated title edit is reported, but no field or payload is supplied. Review what this test proves and specify adequate proof without inventing a patch.",
+      "expected_output": "Identifies an inadequate preservation oracle and missing edit scope.",
+      "files": [],
+      "assertions": [
+        "Does not infer full-source authority from a visible title edit.",
+        "Separates exact unchanged-byte assertions from intended semantic validation.",
+        "Does not invent an exact title mutation absent the payload."
+      ]
     }
   ]
 }

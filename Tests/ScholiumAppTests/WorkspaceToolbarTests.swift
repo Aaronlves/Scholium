@@ -146,7 +146,8 @@ struct WorkspaceToolbarTests {
             ScholiumWorkspaceToolbarController.Item.inspector,
         ] {
             let command = try #require(item(identifier, in: toolbar))
-            #expect(command.target === controller)
+            let expectedTarget: AnyObject = command is ScholiumDocumentModeToolbarItem ? command : controller
+            #expect(command.target === expectedTarget)
             #expect(command.action != nil)
             #expect(
                 command.visibilityPriority
@@ -158,7 +159,7 @@ struct WorkspaceToolbarTests {
             #expect(command.style == .plain)
             #expect(command.view == nil)
             let overflowCommand = try #require(command.menuFormRepresentation)
-            #expect(overflowCommand.target === controller)
+            #expect(overflowCommand.target === expectedTarget)
             #expect(overflowCommand.action == command.action)
             #expect(overflowCommand.image != nil)
         }

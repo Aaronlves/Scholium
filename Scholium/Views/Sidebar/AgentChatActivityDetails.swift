@@ -83,6 +83,7 @@ struct AgentChatActivityDetails: View {
                 if let id = file.noteID, file.effect != .trashed, let openNote {
                     Button(file.path) { openNote(AgentChatReference.url(noteID: id)) }
                         .buttonStyle(.link).help("Open Note")
+                        .contextMenu { AgentChatNoteMenu(url: AgentChatReference.url(noteID: id)) }
                 } else {
                     Text(verbatim: file.path).monospaced()
                 }

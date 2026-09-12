@@ -1,12 +1,12 @@
 ---
 name: scholium-agent-collaboration
-description: "Implement, diagnose, or test Scholium's external-Agent MCP/App bridge, guarded Note operations, or Agent Changes. Exclude philosophical methods, interface-only work, source parsing, retrieval ranking, and release acceptance."
+description: "Implement, diagnose, or test Scholium MCP/App operations and Agent Change evidence; excludes interface-only and philosophical-method work."
 ---
 
 # Scholium Agent Collaboration
 
 Own the functional boundary between an external Agent and the running App,
-including mutation evidence and exact mutation evidence. Conversation and
+including guarded mutations and their exact-source evidence. Conversation and
 research method remain with the external host and researcher.
 
 Apply the shared [development contract](../scholium-toolkit-maintenance/references/researcher-codex-development-contract.md).
@@ -25,20 +25,29 @@ semantics there rather than treating this skill as a protocol specification.
 - Philosophical method and release-shipped Core Protocol changes need their
   separately requested scope; this developer skill does not edit them.
 
-## Method
+## Diagnose one operation
 
-1. Trace one current request from MCP entry through bridge routing, selected
-   open Triptych, Application operation, persistence, and returned result.
-2. Distinguish Note identity and source revision, transport authentication,
-   Agent Change evidence, and mutation recovery. Locate each writer and
-   projection before changing it.
-3. Inspect stale identities, unavailable App/workspace state, concurrent editor
-   changes, failures, uncertain writes, and retry behavior relevant to that
-   operation. Do not infer safe replay from transport success or failure.
-4. Change the owning boundary and its affected schemas, callers, and focused
-   tests together. Preserve one Application operation across delivery adapters.
-5. Verify the actual operation and its affected failure/recovery paths using
-   disposable fixtures under the repository's verification rules.
+Trace the request and response separately: client input, bridge admission,
+selected live workspace, Application operation, durable effects, evidence,
+and delivery. Find the first boundary where observed identity or result differs
+from the contract; a client timeout alone locates no failed write.
+
+For a mutation, distinguish three questions: did admission succeed, did source
+or record state commit, and did the caller receive confirmation? Inspect exact
+current state and retained evidence before proposing replay. Source and portable
+record revisions are separate inputs; a matching Note fingerprint does not
+prove an attachment relationship or Metadata record is unchanged.
+
+For a stale or misdirected request, follow captured workspace, document,
+conversation or operation identity across each suspension. Recheck at the
+consequential boundary, not only at initial dispatch. Cancellation and late
+callbacks must not transfer an old request to a newly selected target.
+
+Implement at the first incorrect owner, keeping preview and execution on the
+same pure transformation where applicable. Verify one successful operation and
+the failure phase implicated by the defect. For lost responses, assert durable
+bytes and evidence as well as the returned error; transport-only mocks cannot
+establish recovery correctness.
 
 ## Invariants
 

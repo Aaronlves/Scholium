@@ -90,6 +90,14 @@ final class DocumentTabController: ObservableObject {
         selectedTabID = id
     }
 
+    func moveTab(withID id: UUID, to index: Int) {
+        guard let current = tabs.firstIndex(where: { $0.id == id }), tabs.indices.contains(index), current != index else { return }
+        var ordered = tabs
+        let tab = ordered.remove(at: current)
+        ordered.insert(tab, at: index)
+        tabs = ordered
+    }
+
     func closePlan(forTabWithID id: UUID) -> DocumentTabClosePlan? {
         guard let index = tabs.firstIndex(where: { $0.id == id }) else { return nil }
         guard selectedTabID == id else {
@@ -128,6 +136,12 @@ final class DocumentTabController: ObservableObject {
             tabs[index].title = title
             tabs[index].toolTip = toolTip
         }
+    }
+
+    func insertTransferredTab(_ tab: DocumentTabItem, at index: Int? = nil, select: Bool = true) {
+        precondition(!tabs.contains { $0.document.editingTarget == tab.document.editingTarget })
+        tabs.insert(tab, at: min(index ?? tabs.count, tabs.count))
+        if select { selectedTabID = tab.id }
     }
 
     func removeAll() {

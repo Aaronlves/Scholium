@@ -162,7 +162,8 @@ two identifiers, then state the modern philosophical interpretation separately.
 
 ## 9. Prompt contract
 
-Write four compact paragraphs:
+Include the following information in a compact prompt; paragraph count is not
+a requirement:
 
 1. **Delivery field:** destination, exact frame, full-frame opaque pigment,
    quiet-space share, crop-safe and copy-safe regions.
@@ -203,7 +204,8 @@ infer it from a window's initial size. At thumbnail size, ask:
 2. What verb is occurring?
 3. Which shape proves the intent?
 
-If any answer is unavailable, regenerate once with a larger gesture, fewer
-secondary shapes, and more explicit contact. If the output reads as a sketch,
-regenerate once with flat filled forms, bolder rounded contours, shallow
-overlap, and explicit bans on pencil, charcoal, etching, and realism.
+If an answer is unclear, target gesture scale, secondary shapes, or contact in
+the next revision. If the action reads but the output looks like a sketch,
+target flat fills, contour, and shallow overlap while preserving the action.
+Compare the revision with the observed defect; do not regenerate merely to
+satisfy a fixed attempt count.

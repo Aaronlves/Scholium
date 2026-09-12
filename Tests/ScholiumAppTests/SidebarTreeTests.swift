@@ -134,6 +134,7 @@ struct SidebarTreeTests {
         #expect(
             workspaceMenu == [
                 .openInNewTab,
+                .openInSeparateWindow,
                 .addToChat,
                 .duplicate,
                 .rename,

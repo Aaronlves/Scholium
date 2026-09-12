@@ -1,6 +1,9 @@
 # Search, link, and index fixture matrix
 
-The parent derived-index skill owns the active versioned user-visible contract. This matrix supplies executable cases. Each path must conform to that contract, including any explicitly versioned and separately tested exception; a backend may not introduce an accidental difference.
+The live specification owns retrieval semantics; architecture and construction
+identify their current implementation. This matrix supplies candidate cases,
+not product authority or a mandatory suite. Select those that distinguish the
+suspected stage. A backend may not introduce an accidental semantic difference.
 
 ## Search semantics
 
@@ -40,7 +43,10 @@ The parent derived-index skill owns the active versioned user-visible contract. 
 
 ## Mutation sequence oracle
 
-After each step, compare the live derived state with a clean rebuild:
+For a generation or invalidation change, choose the relevant subsequence below
+and compare the live derived state with a clean rebuild after each selected
+step. Keep one independent expected result so shared parser or eligibility bugs
+cannot pass merely because both paths agree:
 
 1. Open the base fixture.
 2. Add a note containing Unicode metadata and links.

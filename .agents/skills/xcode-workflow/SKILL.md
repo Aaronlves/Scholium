@@ -1,6 +1,6 @@
 ---
 name: xcode-workflow
-description: "Build, test, or diagnose Apple-platform projects and isolated Scholium QA. Use for Xcode/toolchain builds, SDK docs, keyboard/focus/accessibility journeys, feedback builds, human acceptance, or release-artifact checks; route unit-test design to Swift."
+description: "Build or diagnose Apple projects, inspect SDK APIs, or verify isolated Scholium app and release behavior; unit-test design uses Swift guidance."
 ---
 
 # Xcode Workflow
@@ -17,7 +17,8 @@ project, or `Package.swift`; do not invent a project wrapper.
 - **Human acceptance:** use that same reference to stage the irreducible human
   judgment, preserving its distinction from automated evidence.
 
-Read-only verification planning does not require a build or toolchain preflight.
+Read-only verification planning and SDK-documentation lookup do not require
+a build or toolchain preflight. Bind SDK claims to the documentation version.
 Unit-only execution does not require app launch or the interaction references.
 
 ## Choose the execution surface
@@ -32,8 +33,9 @@ Unit-only execution does not require app launch or the interaction references.
 
 ## Bind the intended toolchain and project
 
-Run `scripts/preflight.sh` from this skill directory with the selected Xcode
-app or developer directory. Without an explicit selection, inspect the active
+Before executing builds or tests, run `scripts/preflight.sh` from this skill
+directory with the selected Xcode app or developer directory. Without an
+explicit selection, inspect the active
 `xcode-select` result; do not assume a beta installation. Carry the resolved
 `DEVELOPER_DIR` on shell build/test commands. Do not change the machine-wide
 selection or install/repair tooling without authorization.
@@ -51,6 +53,13 @@ selecting tests. If MCP is unavailable, identify that limit and use shell only
 when it can establish the requested claim; do not call that an MCP build.
 
 ## Execute and verify
+
+Classify a failed run before retrying: did the runner start, did compilation
+finish, did the intended test execute, and did an assertion fail? Inspect the
+first relevant causal diagnostic and retained result, not just the last error
+or process exit code. A discovery failure or skipped test is no behavioral pass.
+For UI interruptions, inspect the process, fixture and visible state before
+replaying any mutating step.
 
 Confirm configuration and SDK, then use the narrowest build or test covering
 the claim. Retain full logs/result bundles and inspect relevant diagnostics.

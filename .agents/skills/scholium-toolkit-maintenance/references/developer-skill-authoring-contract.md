@@ -21,9 +21,12 @@ in their live document authorities, not a second manual inside skills.
 
 ## Disclose detail when needed
 
-Descriptions should distinguish neighboring tasks without exhaustive keyword
-lists. Keep the entry self-contained for ordinary use. Link a reference with a
-specific loading condition only when its detail earns the extra file and read.
+Descriptions should name the job and its discriminating trigger in a short
+sentence; add an exclusion only for a likely neighboring collision. A related
+file type or keyword alone is not a trigger. Keep ordinary use self-contained.
+For substantial modes, keep the entry a router rather than a shared itinerary.
+Link a reference with a specific loading condition only when its detail earns
+the extra file and read.
 Do not move redundant prose to references just to shrink the entry.
 
 Resolve changing product state, toolchain/API facts, thresholds, and test names
@@ -38,6 +41,11 @@ for adapted material that remains.
 Check entry, metadata, references, scripts, evaluations, links, and catalog as
 one package. Preserve invocation policy; change capability mappings or modes
 only when responsibility changes. Run the package and toolkit validators.
+For a method change, keep a bounded raw artifact and inspect the resulting
+analysis, patch, or executable output. Prefer a before/after comparison when
+claiming benefit. Hide expected answers from performers and distinguish a
+routing simulation from task execution. If both versions succeed, claim retained
+capability or simpler guidance, not a demonstrated performance improvement.
 Use positive and neighboring boundary cases for changed routing or permissions;
 structural checks do not establish behavior. Evaluate realistic outcomes, not
 heading matches or deletion percentages. Report any untested behavior.
@@ -46,6 +54,11 @@ heading matches or deletion percentages. Report any untested behavior.
 
 Use OpenAI's available skill-creation capability when maintaining packages;
 resolve it from the active skill catalog rather than a private path.
+The official [Rethinking skills and prompts for GPT-6 Astra](https://developers.openai.com/blog/rethinking-skills-and-prompts-for-gpt-6-astra)
+article motivates revisiting discovery cost, conditional reading, unnecessary
+checkpoints, and completion criteria. Apply those criteria to observed needs;
+keep instructions useful across models rather than prescribing a model or
+removing safeguards on the strength of a capability claim.
 Official [Build skills](https://learn.chatgpt.com/docs/build-skills) guidance
 supports focused jobs and tested triggers. The official
 [model guidance](https://developers.openai.com/api/docs/guides/latest-model)

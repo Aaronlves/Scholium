@@ -52,6 +52,27 @@
         "Accepts matching version-bound primary evidence while preserving higher-level browsing requirements.",
         "Does not claim local definitions establish latest releases, security advisories, or current recommendations."
       ]
+    },
+    {
+      "id": 5,
+      "prompt": "根据技能精简指导更新本地开发技能，完成校验，不要改产品代码。",
+      "expected_output": "Complete canonical toolkit maintenance and owning validation within the existing request.",
+      "files": [],
+      "assertions": [
+        "Keeps precise triggers and conditional reference routes without deleting source-fidelity or authorization safeguards.",
+        "Does not stop after a proposed patch or request the same authorization again.",
+        "Does not change product source, installed copies, model settings, or invocation policy."
+      ]
+    },
+    {
+      "id": 6,
+      "prompt": "Both prior and revised instructions solve the same three synthetic diagnostic cases. The revised skill is clearer and structural validation passes. Report what has been established.",
+      "expected_output": "Reports preserved diagnostic capability in the exercised cases, not demonstrated superiority.",
+      "files": [],
+      "assertions": [
+        "Distinguishes actual diagnostic evaluation from routing-only simulation.",
+        "Does not infer quality or speed improvement from structure, brevity, or equal successful outcomes."
+      ]
     }
   ]
 }

@@ -10,6 +10,44 @@ import WebKit
 @Suite("Markdown editor WKWebView integration", .serialized)
 @MainActor
 struct MarkdownEditorWebViewIntegrationTests {
+    @Test("A production document identity preserves Undo and selection across WebView transfer")
+    func productionIdentitySurvivesTransfer() async throws {
+        let source = "# Fixture\n\nOriginal text."
+        let harness = EditorHarness(source: source, usesSessionDocumentIdentity: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        let identity = harness.session.bridgeDocumentID
+        let transport = harness.session.sessionID
+        let web = try #require(harness.session.webView)
+        _ = try await harness.session.send(.replacePassage(
+            expectedText: source, fromUTF16: 0, toUTF16: source.utf16.count,
+            replacement: source + " Added 😀."
+        ), in: web)
+        let expected = try await harness.session.currentText()
+        let selection = harness.session.context?.selections
+        _ = try #require(harness.session.context?.undoLabel)
+        try await harness.session.captureStateForViewReconstruction()
+        try await harness.reconstructEditorView()
+        try await harness.waitUntilReady()
+        #expect(harness.session.sessionID != transport)
+        #expect(harness.session.bridgeDocumentID == identity)
+        #expect(try await harness.session.currentText() == expected)
+        #expect(harness.session.context?.selections == selection)
+        #expect(harness.session.context?.undoLabel != nil)
+        _ = try await harness.callPageJavaScript("""
+            document.querySelector('.cm-content')?.dispatchEvent(new KeyboardEvent('keydown', {
+                key: 'z', code: 'KeyZ', keyCode: 90, which: 90,
+                metaKey: true, bubbles: true, cancelable: true
+            }));
+            """)
+        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while try await harness.session.currentText() != source, ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(try await harness.session.currentText() == source)
+        await harness.closeAndDrain()
+    }
+
     @Test("Adoption crosses the real typed bridge and rejects the superseded source")
     func adoptExactPassage() async throws {
         let source = "\u{FEFF}---\r\nunknown: 'keep'\r\n---\n原文 😀。\r\n尾段\n"
@@ -5882,6 +5920,7 @@ struct MarkdownEditorWebViewIntegrationTests {
             documentID: String = "Argument.md",
             documentTitle: String = "Argument",
             source: String,
+            usesSessionDocumentIdentity: Bool = false,
             linkPreviews: [DocumentLinkPreview] = [],
             bridgeDispatcher: (any MarkdownEditorBridgeDispatching)? = nil,
             lifecyclePolicy: ScholiumLifecyclePolicy = ScholiumLifecyclePolicy(),
@@ -5910,7 +5949,7 @@ struct MarkdownEditorWebViewIntegrationTests {
                     toUTF16: initialSourceRange.upperBound
                 )
             }
-            self.documentID = documentID
+            self.documentID = usesSessionDocumentIdentity ? session.bridgeDocumentID : documentID
             sourceBox = SourceBox(
                 source,
                 mode: initialMode,
@@ -5932,7 +5971,8 @@ struct MarkdownEditorWebViewIntegrationTests {
             window.isReleasedWhenClosed = false
             let editor = EditorHarnessRoot(
                 session: session,
-                documentID: documentID,
+                documentID: self.documentID,
+                usesSessionDocumentIdentity: usesSessionDocumentIdentity,
                 sourceBox: sourceBox,
                 linkPreviews: linkPreviews,
                 onTitleRename: onTitleRename,
@@ -6580,6 +6620,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         @ObservedObject var sourceBox: SourceBox
         @ObservedObject var session: MarkdownEditorSession
         let documentID: String
+        let usesSessionDocumentIdentity: Bool
         let linkPreviews: [DocumentLinkPreview]
         let onTitleRename: @MainActor (String, String) async throws -> String
         let laysOutForPointerTesting: Bool
@@ -6588,6 +6629,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         init(
             session: MarkdownEditorSession,
             documentID: String,
+            usesSessionDocumentIdentity: Bool,
             sourceBox: SourceBox,
             linkPreviews: [DocumentLinkPreview],
             onTitleRename: @escaping @MainActor (String, String) async throws -> String,
@@ -6596,6 +6638,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         ) {
             self.session = session
             self.documentID = documentID
+            self.usesSessionDocumentIdentity = usesSessionDocumentIdentity
             self.sourceBox = sourceBox
             self.linkPreviews = linkPreviews
             self.onTitleRename = onTitleRename
@@ -6633,7 +6676,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         private var editorWebView: some View {
             MarkdownEditorWebView(
                 session: session,
-                documentID: documentID,
+                documentID: usesSessionDocumentIdentity ? session.bridgeDocumentID : documentID,
                 documentTitle: sourceBox.documentTitle,
                 performanceDocumentID: documentID,
                 source: sourceBox.source,

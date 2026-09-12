@@ -352,6 +352,15 @@ final class DocumentSessionStore {
         retainedSession(for: .workspace(key))
     }
 
+    func takeSession(for target: DocumentEditingTarget) -> DocumentSessionModel? {
+        entries.removeValue(forKey: target)?.session
+    }
+
+    func receiveSession(_ session: DocumentSessionModel, for target: DocumentEditingTarget) {
+        precondition(entries[target] == nil)
+        entries[target] = Entry(session: session, leaseCount: 1, isForeground: true)
+    }
+
     func reconcileLeases(
         openTargets: [DocumentEditingTarget],
         foregroundTarget: DocumentEditingTarget?

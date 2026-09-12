@@ -29,8 +29,10 @@ feedback loop.
 
 ## Build in causal order
 
-Prove the native mechanics first with the smallest synthetic hierarchy and one
-falsifiable interaction. Then connect the real projection through stable
+For an unverified native mechanism, prove it with the smallest synthetic
+hierarchy and one falsifiable interaction. A correction to a known mechanism
+can use the existing focused reproduction without a second probe. Connect the
+real projection through stable
 identity and idempotent, difference-only synchronization, including observer
 and tracking teardown. Add Scholium row content and visual treatment only after
 container mechanics, focus, and accessibility remain intact.

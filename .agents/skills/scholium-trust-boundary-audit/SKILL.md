@@ -1,6 +1,6 @@
 ---
 name: scholium-trust-boundary-audit
-description: "Audit or harden Scholium researcher-control and loss-prevention boundaries. Use for authorization, containment, privacy, current-revision, credentials, or recovery safety; route ordinary source, file, Agent lifecycle, and presentation work to functional owners."
+description: "Audit or harden Scholium authorization, containment, privacy, revision, and recovery safety; ordinary subsystem work stays with its owner."
 ---
 
 # Scholium Trust Boundary Audit
@@ -17,23 +17,26 @@ The functional subsystem retains its semantics; this capability adds the trust b
 - **Harden:** after the request authorizes a fix, correct the violated trust
   boundary and add executable regression evidence.
 
-## Method
+## Find the consequential boundary
 
-1. Reopen the target contract and live path from untrusted input through its
-   authorizer, writer or action, persisted record, and recovery path.
-2. Name the authoritative input, derived state, intended owner, revision token,
-   containment boundary, and storage location.
-3. Test the boundary with disposable fixtures and adversarial interleavings.
-   Load the [adversarial fixture guide](references/adversarial-fixtures.md) for
-   the relevant attack classes.
-4. For writes, snapshots, conflicts, or recovery, also load the
-   [transaction and conflict protocol](references/transaction-conflict-protocol.md).
-5. In Harden mode, fix the violated boundary and add an executable regression
-   proof. In Audit mode, stop with the finding, consequence, owner, and required
-   proof.
+Trace one untrusted input to the action it could authorize, the durable state
+it could change, or the private content it could expose. Identify the first
+check and the last point where identity, revision, scope, or path can change.
+Validation at dispatch is insufficient if a suspension or filesystem race can
+invalidate it before use.
 
-For a new mechanism or dependency, apply the shared
-[backend decision research](../scholium-engineering/references/backend-decision-research.md).
+Write a concrete violating interleaving and its observable consequence. Use
+[adversarial fixtures](references/adversarial-fixtures.md) for the applicable
+attack class and the [transaction checklist](references/transaction-conflict-protocol.md)
+for writes or recovery. Check both rejection and absence of prohibited effects;
+a returned error does not prove that bytes, access, or evidence stayed unchanged.
+
+In Harden mode, enforce the invariant in the functional owner so all callers
+receive it, then exercise the violating case and a valid neighboring operation.
+Do not replace a loss-prevention defect with universal denial. In Audit mode,
+report the reachable violation, evidence limits, and smallest regression proof.
+Use [backend research](../scholium-engineering/references/backend-decision-research.md)
+only for a new mechanism or dependency.
 
 ## Invariants
 

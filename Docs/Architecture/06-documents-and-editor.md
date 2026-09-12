@@ -5,9 +5,9 @@ CodeMirror/WebKit, exact source, rendering, and editor performance.
 
 ## Documents and CodeMirror
 
-Each window's `DocumentController` owns a `DocumentSessionStore` keyed by the
-registered vault and stable Note UUID. Renames retain editor state; windows
-never share it.
+`DocumentController` owns vault/Note-keyed sessions. Transfer moves ownership;
+CodeMirror document identity survives attachment while transport identity rotates.
+Renames preserve state.
 
 The store acquires destination leases before release. Dirty, conflict,
 save-in-flight, retryable-recovery, and recovery-buffer states pin a session.

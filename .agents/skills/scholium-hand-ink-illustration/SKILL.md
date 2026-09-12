@@ -1,6 +1,6 @@
 ---
 name: scholium-hand-ink-illustration
-description: "Create or edit bounded, textless Scholium product illustrations for welcome, empty, educational, or feature-introduction states. Preserve the canonical hand-ink visual language; exclude app-icon replacement, interface code, posters, and copied third-party art."
+description: "Create or edit textless hand-ink illustrations for Scholium product states; excludes app icons, promotional art, and interface implementation."
 ---
 
 # Scholium Hand-Ink Illustration
@@ -84,6 +84,19 @@ master and derive exact-size delivery without distortion.
 5. Derive exact-size delivery without distortion, verify dimensions, format,
    alpha, and profile, and keep every unapproved candidate under
    `.build/visual-proofs/` outside research vaults and release assets.
+
+## Correct the visible failure
+
+Inspect the generated image before changing the prompt. If the intended action
+is unreadable, change gesture, contact, scale, or overlap; recoloring cannot fix
+an absent relation. If the action reads but the drawing grammar fails, preserve
+the composition and target contour, fill, or texture. If only delivery facts
+fail, correct the format or crop without inventing a new concept.
+
+For an edit, compare unchanged regions with the supplied artwork and flag
+unintended changes. Stop iterating when the bounded brief and measured delivery
+are met, or identify the specific unresolved visual defect; generation count
+alone is neither quality evidence nor an acceptance rule.
 
 ## Evidence and invariants
 

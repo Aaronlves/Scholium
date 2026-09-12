@@ -2,7 +2,8 @@
 
 Use the trust skill's [transaction-conflict-protocol.md](../../scholium-trust-boundary-audit/references/transaction-conflict-protocol.md) as a stable safety checklist, then derive the exact current transaction order and failure policy from the specification, implementation architecture, live repository, and tests. This matrix adds filesystem-event interleavings; it does not redefine the write order.
 
-For every scenario, record the starting disk fingerprint, editor fingerprint, event generation, final disk fingerprint, and visible recovery state.
+Select the interleaving implicated by the defect and a neighboring valid case.
+For each selected scenario, record the starting disk fingerprint, editor fingerprint, event generation, final disk fingerprint, and visible recovery state.
 
 | Scenario | Injected sequence | Required result |
 |---|---|---|

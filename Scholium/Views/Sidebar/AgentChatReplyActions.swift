@@ -156,6 +156,7 @@ struct AgentChatSourcesView: View {
                                 Button(source.title) {
                                     open(source)
                                 }.buttonStyle(.link)
+                                    .contextMenu { AgentChatNoteMenu(url: source.url) }
                             } else {
                                 Text(source.title).textSelection(.enabled)
                             }

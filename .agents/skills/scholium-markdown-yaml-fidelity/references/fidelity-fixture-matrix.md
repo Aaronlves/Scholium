@@ -1,6 +1,9 @@
 # Markdown and YAML fidelity fixture matrix
 
 Use generated or copied test fixtures only. Never exercise mutations against a research vault.
+Select rows for the changed conversion or failure mode; the table is not a
+mandatory full matrix for a local correction. The live source contract owns
+acceptance and rejection rules; these fixtures do not redefine them.
 
 | Area | Required fixture | Required result |
 |---|---|---|
@@ -48,7 +51,7 @@ Select the assertion group from the actual submitted mutation payload. A complet
 
 ### Full-source edit
 
-- The active editor's complete buffer is the candidate source; do not reconstruct it from a parsed model or a Live Preview render tree.
+- The active editor boundary's complete exact-source snapshot is the candidate; do not substitute normalized editor text, a parsed model, or a render tree.
 - Reject malformed frontmatter before entering the write phase.
 - Bind the save to the document identity and starting fingerprint.
 - For any profile that permits YAML-free source, preserve the absence of
@@ -56,7 +59,7 @@ Select the assertion group from the actual submitted mutation payload. A complet
 
 ## Differential checks
 
-- Parse every fixture through the core document layer and every active app projection.
+- Parse the selected fixture through the affected core layer and consuming projection.
 - Compare frontmatter presence, body boundary, supported values, and diagnostics.
 - When the projections disagree, choose the exact-document contract as authority and fix or remove the divergent parser.
-- Add the fixture to the regression suite before changing behavior.
+- Retain the fixture as regression coverage when it detects the reported failure; diagnosis-only work describes the test without adding it.

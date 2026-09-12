@@ -82,6 +82,16 @@
         "Keeps release-artifact evidence distinct from routine Debug UI automation and human acceptance.",
         "Does not claim more than the exact artifact, fixture, settings, and first-launch journey establish."
       ]
+    },
+    {
+      "id": 8,
+      "prompt": "查选定 SDK 中一个 API 的声明，不编译。",
+      "expected_output": "Inspect version-bound SDK documentation without build setup.",
+      "files": [],
+      "assertions": [
+        "Does not run build/test preflight or launch a QA app for documentation lookup.",
+        "Reports the documentation version and does not infer build success from the declaration."
+      ]
     }
   ]
 }

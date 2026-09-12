@@ -1363,24 +1363,27 @@ struct FrontendArchitectureTests {
             ScholiumWorkspaceToolbarController.Item.documentMode.rawValue
                 == "scholium.toolbar.documentMode"
         )
-        #expect(toolbarSource.contains("systemImage: presentation.symbol"))
-        #expect(toolbarSource.contains("toolTip: presentation.toolTip"))
-        #expect(toolbarSource.contains("label: presentation.accessibilityLabel"))
-        #expect(
-            toolbarSource.contains(
-                "mode: appState.documentController.chromeProjection.mode"
-            )
+        let modeItemSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/UI/Components/ScholiumDocumentModeToolbarItem.swift"
+            ),
+            encoding: .utf8
         )
-        #expect(toolbarSource.contains("appState.requestDocumentMode(presentation.destination)"))
+        #expect(toolbarSource.contains("ScholiumDocumentModeToolbarItem("))
+        #expect(modeItemSource.contains("named: presentation.symbol"))
+        #expect(modeItemSource.contains("toolTip = presentation.toolTip"))
+        #expect(modeItemSource.contains("label = presentation.accessibilityLabel"))
+        #expect(modeItemSource.contains("mode: model.documentController.chromeProjection.mode"))
+        #expect(modeItemSource.contains("model.requestDocumentMode("))
         #expect(!toolbarSource.contains("NSSegmentedControl(frame: .zero)"))
         #expect(!toolbarSource.contains("scholium.documentModeToggle"))
         #expect(!toolbarSource.contains("scholium.documentModeMenu"))
-        let compactToolbarSource = toolbarSource.replacingOccurrences(
+        let compactModeItemSource = modeItemSource.replacingOccurrences(
             of: #"\s+"#,
             with: "",
             options: .regularExpression
         )
-        #expect(compactToolbarSource.contains("item.possibleLabels=Set(NotePresentationMode.allCases.map"))
+        #expect(compactModeItemSource.contains("possibleLabels=Set(NotePresentationMode.allCases.map"))
 
         let appSource = try String(
             contentsOf: repository.appendingPathComponent(
@@ -2848,7 +2851,7 @@ struct FrontendArchitectureTests {
 
         #expect(splitSource.contains("private let tabViewController = ScholiumNativeDocumentTabController()"))
         #expect(splitSource.contains("tabViewController.tabStyle = .unspecified"))
-        #expect(splitSource.contains("tabSelector.borderShape = .capsule"))
+        #expect(splitSource.contains("DocumentTabContainerView(strip: tabStrip, document: tabContent)"))
         #expect(!splitSource.contains("TabSelectorViews"))
         #expect(splitSource.contains("super.tabView(tabView, shouldSelect: tabViewItem)"))
         #expect(splitSource.contains("let documentTabsController:"))

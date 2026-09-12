@@ -9,8 +9,10 @@ product authority or permission beyond that request and repository rules.
   constraints. Preserve authorization already given in the session; a skill's
   mode or suggested checkpoint does not require another approval.
 - The researcher owns product intent, material tradeoffs, and experiential
-  acceptance. Codex resolves ordinary engineering choices from live evidence
-  and completes the authorized work, including its necessary verification.
+  acceptance. Codex resolves ordinary engineering choices from live evidence.
+  Complete the requested result, its required verification, correction of
+  failures caused by the change, and test-owned cleanup before handing back.
+  Honor an explicit review boundary; do not invent one after a first pass.
 - Ask only for missing information or authorization that materially affects
   the result and cannot be resolved from the session or workspace. Continue
   independent work while that question remains open.
@@ -20,11 +22,11 @@ product authority or permission beyond that request and repository rules.
 
 ## Continuity across turns
 
-- For work that spans turns, carry one compact coordination ledger: objective
+- When resuming work requires retained state, carry compact context: objective
   and authorized side effects; settled decisions and constraints; current
   revision and worktree state; proof and its evidence class; unresolved
   questions; and the next action and cleanup state.
-- Refresh the ledger against the live checkout, canonical authority, and
+- Refresh that context against the live checkout, relevant authority, and
   running-process or fixture state before resuming. Treat it as task context,
   not product, specification, or release state; never copy volatile details
   into a skill or canonical product document.
@@ -33,8 +35,9 @@ product authority or permission beyond that request and repository rules.
 
 ## Repository and evidence
 
-Bind the live checkout through `AGENTS.md`, the package manifest, and
-`.agents/skills/catalog.json`. Inspect the worktree and preserve unrelated work.
+Use `AGENTS.md` for checkout rules, the package manifest for build or dependency
+questions, and `.agents/skills/catalog.json` for capability routing. Inspect the
+worktree before edits and preserve unrelated work.
 `AGENTS.md` owns repository-wide implementation and verification rules; follow
 its document routes rather than copying them into each skill.
 

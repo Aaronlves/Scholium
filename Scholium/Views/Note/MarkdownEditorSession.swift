@@ -149,7 +149,9 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     /// Opaque identity for the CodeMirror document owned by this retained
     /// session. A vault-relative path is a mutable projection and must not
     /// force a new EditorState when the same stable note is renamed.
-    var bridgeDocumentID: String { sessionID.uuidString }
+    // The transport session rotates on attachment; the document identity must
+    // survive that rotation for reconstruction to admit its selection/history.
+    let bridgeDocumentID = UUID().uuidString
     private(set) var startingFingerprint = ""
     private(set) var generation = 0
 

@@ -597,7 +597,7 @@ private struct ScholiumWindowRoot: View {
 /// Keeping this boundary below `ScholiumWindowRoot` prevents a SwiftUI root
 /// reinitialization from pairing its retained `@StateObject` with children from
 /// a newly constructed, discarded `WindowModel`.
-private struct ScholiumWindowObservedRoot: View {
+struct ScholiumWindowObservedRoot: View {
     @Environment(\.scholiumReduceMotion) private var reduceMotion
     @Environment(\.openWindow) private var openWindow
     @Environment(\.dismissWindow) private var dismissWindow
@@ -635,6 +635,7 @@ private struct ScholiumWindowObservedRoot: View {
     }
 
     var body: some View {
+        let openWindowAction = openWindow
         let hasReadyWorkspace =
             shellState.hasCompletedInitialRestore && appState.vaultConfig != nil
         ScholiumWindowObservedContent(
@@ -735,8 +736,13 @@ private struct ScholiumWindowObservedRoot: View {
                 appState.vaultError = error.localizedDescription
             }
         }
-        .onAppear { [weak appState, weak windowCoordinator] in
+        .onAppear { [weak appState, weak windowCoordinator, openWindowAction] in
             guard let appState, let windowCoordinator else { return }
+            if !appState.isDetachedDocumentWindow {
+                appState.workspaceStore.documentLocations.openMainWindow = { route in
+                    openWindowAction(id: "scholium-main", value: route)
+                }
+            }
             let displayWindow = AgentNoteDisplayWindow(
                 state: { [weak appState, weak windowCoordinator] in
                     appState?.agentNoteDisplayState(canDisplay: windowCoordinator?.canAcceptAgentDisplay == true)
@@ -772,6 +778,11 @@ private struct ScholiumWindowObservedRoot: View {
                 }
             )
             windowCoordinator.update(reduceMotion: reduceMotion)
+        }
+        .onChange(of: commandObservation.revision, initial: true) { _, _ in
+            if appState.isDetachedDocumentWindow {
+                windowCoordinator.updateOwnedWindowTitle(workspaceWindowTitle)
+            }
         }
         .onChange(of: reduceMotion) { _, reduceMotion in
             windowCoordinator.update(reduceMotion: reduceMotion)
@@ -1023,7 +1034,17 @@ private struct ScholiumAfterNewItemCommandContent: View {
     @FocusedValue(\.scholiumEditorActions) private var editorActions
 
     var body: some View {
+        Button(appState?.isDetachedDocumentWindow == true ? "Move to Main Window" : "Move to Separate Window") {
+            guard let appState else { return }
+            if appState.isDetachedDocumentWindow { appState.requestMoveDocumentBack() }
+            else { appState.requestMoveDocumentToWindow() }
+        }
+        .disabled(appState?.documentTabController.selectedTabID == nil)
         Button("Close Tab") {
+            if appState?.isDetachedDocumentWindow == true {
+                appState?.nativeWindowCoordinator?.requestNativeClose()
+                return
+            }
             guard let id = appState?.documentTabController.selectedTabID else { return }
             appState?.closeDocumentTab(withID: id)
         }
@@ -1060,11 +1081,12 @@ private struct ScholiumAfterNewItemCommandContent: View {
         .disabled(
             appState?.workspaceAssignment == nil
                 || appState?.noteSourceScope != .library
+                || appState?.isDetachedDocumentWindow == true
                 || appState?.libraryMutationController.isCreatingNote == true
         )
         Button("Import Markdown…") { appState?.showMarkdownImporter = true }
             .scholiumActivationPointer()
-            .disabled(appState?.workspaceAssignment == nil)
+            .disabled(appState?.workspaceAssignment == nil || appState?.isDetachedDocumentWindow == true)
         Divider()
         Button("Duplicate Note…") {
             guard let note = appState?.currentNote,
@@ -1486,10 +1508,12 @@ private struct ScholiumSidebarCommandContent: View {
             Button("Edit") { appState?.requestDocumentMode(.livePreview) }
                 .scholiumActivationPointer()
                 .disabled(appState?.canEditCurrentNote != true)
-            Button("Source") { appState?.requestDocumentMode(.source) }
-                .scholiumActivationPointer()
-                .scholiumKeyboardShortcut(shortcut(for: .showSource))
-                .disabled(appState?.canEditCurrentNote != true)
+            if appState?.isDetachedDocumentWindow != true {
+                Button("Source") { appState?.requestDocumentMode(.source) }
+                    .scholiumActivationPointer()
+                    .scholiumKeyboardShortcut(shortcut(for: .showSource))
+                    .disabled(appState?.canEditCurrentNote != true)
+            }
         }
         .scholiumActivationPointer()
         .disabled(appState?.currentNote == nil || editorActions?.isComposing == true)
@@ -1779,6 +1803,12 @@ final class WindowModel: ObservableObject {
                     bundle: .module)
             }
         }
+    }
+
+    enum DocumentTransitionPreparation {
+        case saveOpenDocuments
+        case preserveSelectedDocument
+        case operationOnly
     }
 
     enum DocumentTabActivation {
@@ -2187,7 +2217,7 @@ final class WindowModel: ObservableObject {
     }
 
     var canToggleResearchInspector: Bool {
-        currentNote != nil || shellState.inspector.isVisible
+        !isDetachedDocumentWindow && (currentNote != nil || shellState.inspector.isVisible)
     }
 
     var researchInspectorVisible: Bool {
@@ -2277,7 +2307,12 @@ final class WindowModel: ObservableObject {
     private var didOpenRequestedInitialDocument = false
     private var presentedOpeningRuntimeIdentity: TriptychRuntimeIdentity?
     private var projectionRefreshToken: UInt64 = 0
-    private let workspaceStore: WorkspaceStore
+    let workspaceStore: WorkspaceStore
+    var isDetachedDocumentWindow = false
+    weak var nativeWindowCoordinator: WorkspaceWindowCoordinator?
+    @Published var transferInProgress = false {
+        didSet { nativeWindowCoordinator?.setTransferInProgress(transferInProgress) }
+    }
     private let lifecyclePolicy: ScholiumLifecyclePolicy
     private let documentTransitionCoordinator = DocumentTransitionCoordinator()
     private var documentTransitionIssueID: UUID?
@@ -2290,9 +2325,8 @@ final class WindowModel: ObservableObject {
             guard let self else {
                 throw ScholiumWindowLifecycleError.unregisteredBeforeReady
             }
-            try await self.flushRegisteredEditorIfNeeded(
-                capturingEditorState: true
-            )
+            guard !self.transferInProgress else { throw CancellationError() }
+            try await self.flushRegisteredEditorIfNeeded(capturingEditorState: true)
             try await self.chatController?.flushPersistence()
         },
         presentationSnapshot: { [weak self] in
@@ -2844,6 +2878,7 @@ final class WindowModel: ObservableObject {
     /// still flushes CodeMirror's exact text, but skips serializing selection,
     /// scroll, and undo state that will be discarded with the replaced tab.
     func enqueueDocumentTransition(
+        preparation: DocumentTransitionPreparation = .saveOpenDocuments,
         preservingCurrentEditorState: Bool = true,
         retainingCurrentDocument target: DocumentSessionKey? = nil,
         _ operation: @escaping @MainActor () async throws -> Void,
@@ -2851,13 +2886,22 @@ final class WindowModel: ObservableObject {
         didSucceed: (@MainActor () -> Void)? = nil,
         didFinish: (@MainActor () -> Void)? = nil
     ) {
+        guard !transferInProgress else { return }
         documentTransitionCoordinator.enqueue(
             prepare: { [weak self] in
                 guard let self else { throw CancellationError() }
                 if let target, self.currentDocumentDescriptor?.sessionKey == target { return }
-                try await self.flushRegisteredEditorIfNeeded(
-                    capturingEditorState: preservingCurrentEditorState
-                )
+                switch preparation {
+                case .saveOpenDocuments:
+                    try await self.flushRegisteredEditorIfNeeded(capturingEditorState: preservingCurrentEditorState)
+                case .preserveSelectedDocument:
+                    if let document = self.documentController.selectedDocument {
+                        defer { self.documentController.resumeAutosave(afterTransferOf: document) }
+                        try await self.documentController.prepareSessionTransfer(document)
+                    }
+                case .operationOnly:
+                    break
+                }
             },
             operation: operation,
             didFail: { [weak self] error in
@@ -2872,7 +2916,7 @@ final class WindowModel: ObservableObject {
                 }
                 if let navigationError = error as? WindowNavigationError {
                     self.documentTransitionIssueID = self.reportOperationIssue(navigationError.localizedDescription, kind: .warning)
-                } else {
+                } else if case .saveOpenDocuments = preparation {
                     self.lastSaveError = error.localizedDescription
                     self.documentTransitionIssueID = self.reportOperationIssue(
                         String(
@@ -2882,6 +2926,8 @@ final class WindowModel: ObservableObject {
                         ),
                         kind: .error
                     )
+                } else {
+                    self.documentTransitionIssueID = self.reportOperationIssue(error.localizedDescription, kind: .error)
                 }
             },
             didSucceed: { [weak self] in
@@ -3058,6 +3104,12 @@ final class WindowModel: ObservableObject {
         _ path: String,
         disposition: WindowOpenDisposition = .replaceCurrent
     ) {
+        if disposition == .separateWindow, let reference = documentReference(for: path) {
+            requestOpenNote(reference, disposition: disposition)
+            return
+        }
+        if let reference = documentReference(for: path),
+            workspaceStore.documentLocations.revealExisting(reference, excluding: self) { return }
         if disposition == .newTab {
             guard let reference = documentReference(for: path) else { return }
             requestOpenNote(reference, disposition: .newTab)
@@ -3099,6 +3151,15 @@ final class WindowModel: ObservableObject {
         _ reference: VaultNoteReference,
         disposition: WindowOpenDisposition = .replaceCurrent
     ) {
+        if disposition == .separateWindow {
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                do { _ = try await workspaceStore.documentLocations.openSeparate(reference, from: self) }
+                catch { reportOperationIssue(error.localizedDescription, kind: .error) }
+            }
+            return
+        }
+        if workspaceStore.documentLocations.revealExisting(reference, excluding: self) { return }
         if disposition == .newTab {
             openInNewTab(reference)
             return
@@ -3117,6 +3178,12 @@ final class WindowModel: ObservableObject {
         sourceLine: Int,
         mode: NotePresentationMode = .source
     ) {
+        if let reference = documentReference(for: path),
+            let owner = workspaceStore.documentLocations.existingOwner(of: reference, excluding: self) {
+            owner.nativeWindowCoordinator?.makeKeyAndOrderFront()
+            Task { await owner.openWorkspaceReference(reference, line: sourceLine, mode: mode) }
+            return
+        }
         enqueueDocumentTransition(preservingCurrentEditorState: false) { [weak self] in
             guard let self else { return }
             self.openNote(path)
@@ -3157,6 +3224,7 @@ final class WindowModel: ObservableObject {
     }
 
     func requestDocumentMode(_ mode: NotePresentationMode) {
+        guard !transferInProgress else { return }
         guard mode == .read || canEditCurrentNote else {
             reportOperationIssue(String(localized: "This note is read-only in Scholium.", table: "Localizable", bundle: .module), kind: .information)
             return
@@ -3457,6 +3525,60 @@ final class WindowModel: ObservableObject {
         }
     }
 
+    func waitForDocumentTransitions() async {
+        await documentTransitionCoordinator.waitForIdle()
+    }
+
+    func requestMoveDocumentToWindow(tabID: UUID? = nil, at point: NSPoint? = nil) {
+        guard let id = tabID ?? documentTabController.selectedTabID else { return }
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            do { try await workspaceStore.documentLocations.moveTab(id, from: self, at: point) }
+            catch { reportOperationIssue(error.localizedDescription, kind: .error) }
+        }
+    }
+
+    func requestMoveDocumentBack() {
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            do { try await workspaceStore.documentLocations.moveBack(from: self) }
+            catch { reportOperationIssue(error.localizedDescription, kind: .error) }
+        }
+    }
+
+    /// Select the retained neighbor before releasing the outgoing session.
+    /// Native toolbar observers must never see an artificial empty document
+    /// between two real selections during a move.
+    func takeDocumentForTransfer(tabID: UUID) throws -> DocumentSessionTransfer {
+        guard let tab = documentTabController.tabs.first(where: { $0.id == tabID }),
+            let plan = documentTabController.closePlan(forTabWithID: tabID)
+        else { throw DocumentControllerError.documentUnavailable }
+        let previous = documentController.selectedDocument
+        if let next = plan.documentToActivate {
+            try activateResolvedDocument(next, tabActivation: .preserveTabMembership)
+        }
+        guard let transfer = documentController.takeSessionForTransfer(tab.document) else {
+            if let previous { _ = documentController.selectRetainedDocument(previous) }
+            throw DocumentControllerError.documentUnavailable
+        }
+        documentTabController.apply(plan)
+        reconcileDocumentSessionLeases()
+        return transfer
+    }
+
+    func finishIncomingTransfer(_ transfer: DocumentSessionTransfer, tab: DocumentTabItem) {
+        if let descriptor = transfer.document.workspaceDescriptor,
+            let vault = workspaceAssignment?.vaults.values.first(where: { $0.id == descriptor.reference.vaultID }),
+            let workspace = workspaceSlot(for: vault) {
+            documentController.selectWorkspace(workspace)
+            shellState.selectDocumentWorkspace(workspace)
+        }
+        documentController.receiveSessionTransfer(transfer)
+        documentTabController.insertTransferredTab(tab)
+        documentNavigationHistoryController.record(transfer.document)
+        reconcileDocumentSessionLeases()
+    }
+
     func selectAdjacentDocumentTab(offset: Int) {
         let tabs = documentTabController.tabs
         guard let index = tabs.firstIndex(where: { $0.id == documentTabController.selectedTabID }),
@@ -3465,7 +3587,8 @@ final class WindowModel: ObservableObject {
     }
 
     func selectDocumentTab(withID id: UUID) {
-        enqueueDocumentTransition { [weak self] in
+        guard documentTabController.selectedTabID != id else { return }
+        enqueueDocumentTransition(preparation: .preserveSelectedDocument) { [weak self] in
             guard let self,
                 self.documentTabController.selectedTabID != id,
                 let tab = self.documentTabController.tabs.first(where: { $0.id == id })
@@ -3479,6 +3602,11 @@ final class WindowModel: ObservableObject {
     }
 
     func navigateDocumentHistory(_ direction: DocumentNavigationDirection) {
+        if let target = documentNavigationHistoryController.target(for: direction),
+            workspaceStore.documentLocations.revealExisting(target, excluding: self) {
+            documentNavigationHistoryController.commit(direction, to: target)
+            return
+        }
         enqueueDocumentTransition { [weak self] in
             guard let self,
                 let target = self.documentNavigationHistoryController.target(
@@ -3495,7 +3623,7 @@ final class WindowModel: ObservableObject {
     }
 
     func closeDocumentTab(withID id: UUID) {
-        enqueueDocumentTransition { [weak self] in
+        enqueueDocumentTransition(preparation: .operationOnly) { [weak self] in
             guard let self,
                 let closingDocument = self.documentTabController.tabs.first(where: {
                     $0.id == id
@@ -4439,7 +4567,7 @@ final class WindowModel: ObservableObject {
         // QA launch note applies only to un-routed windows; opening it first
         // would create a transient, incorrect tab identity before the routed
         // document replaces it.
-        guard requestedInitialDocument == nil,
+        guard !isDetachedDocumentWindow, requestedInitialDocument == nil,
             let requested = ProcessInfo.processInfo.environment["SCHOLIUM_UI_TEST_OPEN_NOTE"]
         else { return }
         let path =
@@ -5208,6 +5336,9 @@ final class WindowModel: ObservableObject {
         _ path: String,
         tabActivation: DocumentTabActivation = .place(.replaceSelected)
     ) {
+        guard !transferInProgress else { return }
+        if let descriptor = selectionDescriptor(for: path),
+            workspaceStore.documentLocations.revealExisting(descriptor, excluding: self) { return }
         guard let location = notes.first(where: { $0.relativePath == path }) else {
             reportOperationIssue(String(localized: "Note not found: \(path)", table: "Localizable", bundle: .module), kind: .warning)
             return
@@ -5264,6 +5395,7 @@ final class WindowModel: ObservableObject {
         tabActivation: DocumentTabActivation,
         recordsNavigationHistory: Bool = true
     ) async throws {
+        if workspaceStore.documentLocations.revealExisting(document, excluding: self) { return }
         guard let vaultID = document.vaultID,
             let vault = workspaceAssignment?.vaults.values.first(where: {
                 $0.id == vaultID
@@ -5293,6 +5425,19 @@ final class WindowModel: ObservableObject {
         tabActivation: DocumentTabActivation,
         recordsNavigationHistory: Bool = true
     ) throws {
+        if case .preserveTabMembership = tabActivation {
+            try validateDocumentIsAvailable(document)
+            if let vaultID = document.vaultID,
+                let vault = workspaceAssignment?.vaults.values.first(where: { $0.id == vaultID }),
+                let workspace = workspaceSlot(for: vault) {
+                documentController.selectWorkspace(workspace)
+                shellState.selectDocumentWorkspace(workspace)
+            }
+            if documentController.selectRetainedDocument(document) {
+                synchronizeDocumentTabs(after: tabActivation, recordsNavigationHistory: recordsNavigationHistory)
+                return
+            }
+        }
         switch document {
         case .workspace(let descriptor):
             try activateResolvedWorkspaceReference(
@@ -5321,7 +5466,9 @@ final class WindowModel: ObservableObject {
         managedCreationBodyStartUTF16: Int? = nil,
         validateDisplay: @MainActor () throws -> Void = {}
     ) async throws {
+        guard !transferInProgress else { throw CancellationError() }
         try validateDisplay()
+        if workspaceStore.documentLocations.revealExisting(reference, excluding: self) { return }
         guard
             let vault = workspaceAssignment?.vaults.values.first(where: {
                 $0.id == reference.vaultID
@@ -5373,6 +5520,7 @@ final class WindowModel: ObservableObject {
         recordsNavigationHistory: Bool = true,
         managedCreationBodyStartUTF16: Int? = nil
     ) throws {
+        if workspaceStore.documentLocations.revealExisting(reference, excluding: self) { return }
         guard
             let vault = workspaceAssignment?.vaults.values.first(where: {
                 $0.id == reference.vaultID
@@ -5430,7 +5578,7 @@ final class WindowModel: ObservableObject {
                 document: document,
                 title: presentation.title,
                 toolTip: presentation.toolTip,
-                placement: placement
+                placement: isDetachedDocumentWindow ? .replaceSelected : placement
             )
             if !libraryMutationController.isCreatingNote {
                 scheduleLibraryReveal(for: document)
@@ -5762,6 +5910,11 @@ final class WindowModel: ObservableObject {
         mode: NotePresentationMode? = nil,
         inspectorMode: ResearchInspectorMode? = nil
     ) async {
+        if let owner = workspaceStore.documentLocations.existingOwner(of: reference, excluding: self) {
+            owner.nativeWindowCoordinator?.makeKeyAndOrderFront()
+            await owner.openWorkspaceReference(reference, line: line, mode: mode, inspectorMode: inspectorMode)
+            return
+        }
         let navigationMode = mode ?? presentedDocumentMode
         enqueueDocumentTransition(preservingCurrentEditorState: false) { [weak self] in
             guard let self else { return }
@@ -5785,6 +5938,11 @@ final class WindowModel: ObservableObject {
         sourceRange: SearchSourceRange?,
         fallbackLine: Int
     ) {
+        if let owner = workspaceStore.documentLocations.existingOwner(of: reference, excluding: self) {
+            owner.nativeWindowCoordinator?.makeKeyAndOrderFront()
+            owner.openWorkspaceReference(reference, sourceRange: sourceRange, fallbackLine: fallbackLine)
+            return
+        }
         enqueueDocumentTransition(preservingCurrentEditorState: false) { [weak self] in
             guard let self else { return }
             try await self.activateWorkspaceReference(

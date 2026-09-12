@@ -1,6 +1,6 @@
 ---
 name: scholium-interface-design
-description: "Critique, design, record, or implement Scholium's native macOS interface. Use for SwiftUI/AppKit layout, navigation, focus, accessibility, visual polish, or motion; route interaction verification to Xcode workflow."
+description: "Critique, design, record approved decisions, or implement Scholium native macOS interfaces and motion; interaction verification uses Xcode workflow."
 ---
 
 # Scholium Interface Design
@@ -47,8 +47,9 @@ no complete-window inspection or implementation loop.
    [SwiftUI and native implementation loop](references/swiftui-implementation-loop.md).
    When SwiftUI and AppKit share a region, also apply the
    [native-container diagnosis](references/native-window-boundary-debugging.md).
-5. Load another conditional reference only when needed:
-   [component/state system](references/component-state-presentation-system.md),
+5. For reusable presentation or shared component-state changes, read the
+   [component/state system](references/component-state-presentation-system.md).
+   For an accessibility audit or accessibility-sensitive implementation, read
    [accessibility verification](references/accessibility-audit.md).
 6. Define the proof capable of invalidating the selected mode's claim. Route
    Xcode toolchain/build/diagnostic/QA orchestration to the available Xcode
@@ -57,6 +58,20 @@ no complete-window inspection or implementation loop.
    judgment to Xcode workflow's interaction verification.
 7. Report only the selected mode's output; do not promote design inspection,
    compilation, or automation into a stronger acceptance class.
+
+## Turn the symptom into a design decision
+
+Locate the breakdown in the researcher's task: discovering an action, knowing
+current state, choosing a target, understanding an effect, or recovering from
+failure. Use that breakdown to choose hierarchy, wording, control, or ownership
+changes; visual density alone does not justify hiding necessary information.
+
+For a structural defect, identify which native owner controls the region before
+tuning a child. For polish, keep the task and state stable while comparing the
+smallest treatment that changes legibility. Evaluate the result in its window
+and adjacent consequential state, not only as an isolated screenshot.
+A prototype settles the question it was built to answer; implementation and
+native interaction still need their own evidence.
 
 ## Invariants
 

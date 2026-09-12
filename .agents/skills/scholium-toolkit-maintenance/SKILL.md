@@ -1,6 +1,6 @@
 ---
 name: scholium-toolkit-maintenance
-description: "Audit, maintain, or evaluate Scholium's canonical developer-skill toolkit. Use for `.agents/skills`, the catalog, metadata, routing, references, validation, overlap, staleness, or duplicate discovery; exclude product code and shipped skills."
+description: "Audit, update, or evaluate the canonical .agents/skills toolkit and catalog; excludes release-shipped skills and installed copies."
 ---
 
 # Scholium Toolkit Maintenance
@@ -9,8 +9,9 @@ Maintain only the canonical `.agents/skills/` tree and capability catalog.
 Keep release-shipped skills, personal plugins, and installed caches outside
 this task; never create or publish a developer-toolkit mirror.
 
-Apply the shared [development contract](references/researcher-codex-development-contract.md)
-and [authoring contract](references/developer-skill-authoring-contract.md).
+Apply the shared [development contract](references/researcher-codex-development-contract.md).
+For instruction, resource, or discovery changes, use the
+[authoring contract](references/developer-skill-authoring-contract.md).
 
 ## Modes
 
@@ -18,6 +19,20 @@ and [authoring contract](references/developer-skill-authoring-contract.md).
 - **Maintain:** make the requested correction, simplification, merge, rename,
   or deletion.
 - **Evaluate:** exercise routing and boundaries without changing product behavior.
+
+## Establish the practical gap
+
+Start with a real task the skill should improve and the observed wrong decision,
+missing operation, or wasted work. Separate discovery failure from weak method,
+stale reference, missing tool, and unavailable evidence; editing a description
+cannot repair all five. Preserve already useful guidance instead of rewriting
+all packages to share a form.
+
+For material method changes, evaluate the produced work on bounded artifacts,
+not just which skill an agent selects. Compare with the prior instructions when
+claiming improvement, and record unchanged outcomes as such. A package validator
+checks structure; a route explanation checks selection; neither proves that the
+method solves its task. Keep evaluation outputs in ignored test-owned storage.
 
 ## Method
 

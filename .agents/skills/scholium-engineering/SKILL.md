@@ -1,6 +1,6 @@
 ---
 name: scholium-engineering
-description: "Implement Scholium changes that cross subsystem owners, change state ownership, or are an explicit final integration. Use architecture-cutover or cross-layer-integration mode; route documentation, design, audits, and single-owner work elsewhere."
+description: "Implement Scholium changes across subsystem owners, transfer state ownership, or perform an explicit final integration; excludes single-owner work."
 ---
 
 # Scholium Engineering
@@ -28,6 +28,12 @@ For a new mechanism or dependency use [backend decision research](references/bac
 Use [service-boundary testing](references/service-boundary-testing.md) only when
 existing targets cannot exercise deterministic service behavior, and
 [release verification](references/release-verification.md) only for release work.
+
+Before cutting a slice, identify its entry, policy owner, durable effect, and
+observable returned state. A new API that no reachable consumer uses is not a
+completed slice. When consumers disagree, determine whether the policy is
+missing at the common owner or an adapter is losing identity, errors, or scope;
+do not converge them by copying policy into each adapter.
 
 Delivery adapters preserve application/domain semantics. Do not split an atomic
 state transition, durable transaction, or single-writer invariant. Derived

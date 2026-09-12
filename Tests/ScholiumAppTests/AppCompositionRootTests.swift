@@ -290,12 +290,108 @@ struct AppCompositionRootTests {
             )
         }
         let session = window.documentController.session(for: second.editingTarget)
+        session.beginEditing(in: .source)
+        session.originalEditingSource = "Saved source"
+        session.editingSource = "Unsaved active draft"
+        session.editError = "Active document save failure"
+        session.canRetrySave = true
+        session.suppressAutosave = true
         let backgroundID = try #require(window.documentTabController.tabs.first?.id)
         window.closeDocumentTab(withID: backgroundID)
         try await waitUntil("the background tab closed") { window.documentTabController.tabs.count == 1 }
+        #expect(session.editingSource == "Unsaved active draft")
+        #expect(session.editError == "Active document save failure")
+        #expect(session.hasUnsavedChanges)
         #expect(window.documentController.selectedDocument == second)
         #expect(window.documentTabController.selectedTab?.document == second)
         #expect(window.documentController.session(for: second.editingTarget) === session)
+    }
+
+    @Test("Moving the selected tab never publishes an empty document before its neighbor")
+    func transferKeepsContinuousDocumentSelection() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("Scholium-Transfer-\(UUID().uuidString)")
+        let analyses = root.appendingPathComponent("triptych/analyses")
+        try FileManager.default.createDirectory(at: analyses, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        for path in ["First.md", "Second.md"] {
+            try "---\nid: \(UUID().uuidString.lowercased())\n---\n\nFixture.".write(to: analyses.appendingPathComponent(path), atomically: true, encoding: .utf8)
+        }
+        let store = makeTestWorkspaceStore()
+        let vaultID = try await configurePresentationFixture(store: store, root: root)
+        let window = WindowModel(workspaceStore: store)
+        await window.restoreWindowSession(id: UUID())
+        try await waitUntil("both transfer fixture documents are indexed") {
+            window.workspaceProjectionController.cachedNote(vaultID: vaultID, stableNoteID: nil, relativePath: "First.md") != nil
+                && window.workspaceProjectionController.cachedNote(vaultID: vaultID, stableNoteID: nil, relativePath: "Second.md") != nil
+        }
+        let first = WindowSelectedDocument.unavailable(vaultID: vaultID, relativePath: "First.md")
+        let second = WindowSelectedDocument.unavailable(vaultID: vaultID, relativePath: "Second.md")
+        for document in [first, second] {
+            window.documentController.selectDocument(document)
+            window.documentTabController.activate(document: document, title: document.relativePath,
+                toolTip: document.relativePath, placement: .newTab)
+        }
+        let session = window.documentController.session(for: second.editingTarget)
+        var observedSelections: [WindowSelectedDocument?] = []
+        let observation = window.documentController.$selectedDocument.dropFirst().sink { observedSelections.append($0) }
+        defer { observation.cancel() }
+        let outgoingID = try #require(window.documentTabController.selectedTabID)
+        let transfer = try window.takeDocumentForTransfer(tabID: outgoingID)
+        #expect(transfer.session === session)
+        #expect(!observedSelections.contains(where: { $0 == nil }))
+        #expect(window.documentController.selectedDocument == first)
+        #expect(window.documentTabController.tabs.map(\.document) == [first])
+        #expect(window.documentTabController.selectedTab?.document == first)
+    }
+
+    @Test("Opening an existing auxiliary document reuses its location without touching the main tabs")
+    func separateOpeningReusesLocation() async throws {
+        let store = makeTestWorkspaceStore()
+        let main = WindowModel(workspaceStore: store)
+        let separate = WindowModel(workspaceStore: store)
+        separate.isDetachedDocumentWindow = true
+        let key = DocumentSessionKey(vaultID: UUID(), noteID: UUID())
+        let reference = VaultNoteReference(vaultID: key.vaultID, vaultName: "Fixture", vaultRole: .topicKnowledge,
+            relativePath: "Separate.md", stableNoteID: key.noteID.uuidString)
+        let document = WindowSelectedDocument.workspace(WindowDocumentDescriptor(sessionKey: key, reference: reference))
+        separate.documentController.selectDocument(document)
+        separate.documentTabController.activate(document: document, title: "Separate", toolTip: "Separate", placement: .newTab)
+        store.documentLocations.register(main)
+        store.documentLocations.register(separate)
+        defer { store.documentLocations.unregister(main); store.documentLocations.unregister(separate) }
+        let result = try await store.documentLocations.openSeparate(reference, from: main)
+        #expect(result === separate)
+        #expect(main.documentTabController.tabs.isEmpty)
+        #expect(separate.documentTabController.tabs.count == 1)
+        #expect(separate.documentController.selectedDocument == document)
+    }
+
+    @Test("History activates a document's existing window without replacing the source tab")
+    func historyRevealsExistingLocation() async throws {
+        let store = makeTestWorkspaceStore()
+        let main = WindowModel(workspaceStore: store)
+        let separate = WindowModel(workspaceStore: store)
+        let key = DocumentSessionKey(vaultID: UUID(), noteID: UUID())
+        let document = WindowSelectedDocument.workspace(WindowDocumentDescriptor(
+            sessionKey: key, reference: VaultNoteReference(vaultID: key.vaultID,
+                vaultName: "Fixture", vaultRole: .topicKnowledge,
+                relativePath: "Moved.md", stableNoteID: key.noteID.uuidString)))
+        let other = WindowSelectedDocument.unavailable(vaultID: UUID(), relativePath: "Current.md")
+        main.documentController.selectDocument(other)
+        main.documentTabController.activate(document: other, title: "Current", toolTip: "Current", placement: .newTab)
+        separate.documentController.selectDocument(document)
+        separate.documentTabController.activate(document: document, title: "Moved", toolTip: "Moved", placement: .newTab)
+        store.documentLocations.register(main)
+        store.documentLocations.register(separate)
+        defer { store.documentLocations.unregister(main); store.documentLocations.unregister(separate) }
+        main.documentNavigationHistoryController.record(document)
+        main.documentNavigationHistoryController.record(other)
+        main.navigateDocumentHistory(.back)
+        await main.waitForPendingDocumentTransitionsForTesting()
+        #expect(main.documentController.selectedDocument == other)
+        #expect(main.documentTabController.tabs.map(\.document) == [other])
+        #expect(separate.documentTabController.tabs.map(\.document) == [document])
+        #expect(main.documentNavigationHistoryController.canGoForward)
     }
 
     @Test("Window close retains open-note focus while explicit tab close forgets it")

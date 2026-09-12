@@ -1041,6 +1041,7 @@ struct AgentChatView: View {
                                                 Button(AgentChangePresentation.displayName(for: change)) {
                                                     _ = openReference(AgentChatReference.url(noteID: change.noteID))
                                                 }.buttonStyle(.link).help("Open Note")
+                                                .contextMenu { AgentChatNoteMenu(url: AgentChatReference.url(noteID: change.noteID)) }
                                             } else {
                                                 Text(AgentChangePresentation.displayName(for: change))
                                             }

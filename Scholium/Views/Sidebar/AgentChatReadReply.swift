@@ -9,6 +9,7 @@ struct AgentChatReadReply: View {
     let quote: ((AgentChatReplySelection) -> Void)?
     let openLink: (URL) -> Void
     var fitsContent = false
+    @Environment(\.openChatNoteInSeparateWindow) private var openSeparate
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.colorSchemeContrast) private var contrast
     @State private var projection: Projection?
@@ -76,6 +77,15 @@ struct AgentChatReadReply: View {
             height = value
             intrinsicWidth = width
         case .quote(let text): quote?(.reader(source: source, excerpt: text))
+        case .noteContext(let url, let point, let view):
+            guard AgentChatReplySource.collect(source).contains(where: { $0.url == url && $0.isNote }) else { return }
+            let menu = NSMenu()
+            menu.addItem(AgentChatNoteMenuItem(ScholiumL10n.string("Open Note")) { openLink(url) })
+            if let openSeparate {
+                menu.addItem(AgentChatNoteMenuItem(ScholiumL10n.string("Open in Separate Window")) { openSeparate(url) })
+            }
+            menu.popUp(positioning: nil, at: point, in: view)
+
         case .object(let index, let copy, let size, let anchor, let view):
             let layout = AgentChatObjectProjection.layoutReply(source)
             let objects = AgentChatRichSegment.collect(layout).filter(\.isObject)

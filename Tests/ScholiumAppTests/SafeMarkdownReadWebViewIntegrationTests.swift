@@ -7,6 +7,37 @@ import WebKit
 @testable import ScholiumApp
 
 extension MarkdownEditorWebViewIntegrationTests {
+    @Test("Chat note context menus target the pointed link and leave web links native")
+    func chatNoteContextTarget() async throws {
+        let first = AgentChatReference.url(noteID: UUID())
+        let second = AgentChatReference.url(noteID: UUID())
+        let source = "[First](\(first.absoluteString)) [Second](\(second.absoluteString)) [Web](https://example.org)"
+        let document = NoteDocument(relativePath: "Reply.md", rawContent: source)
+        let harness = ReadHarness(source: source, htmlBody: SafeMarkdownRenderer.render(document).htmlBody,
+            fingerprint: document.fingerprint.sha256, initialAnchor: nil, initialScrollFraction: 0,
+            laysOutForNativePreview: true, chatReply: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        let cancelled = try await harness.callBridgeJavaScript("""
+            const links = document.querySelectorAll('#scholium-document a');
+            return [links[1], links[2]].map(link => {
+                const box = link.getBoundingClientRect();
+                const event = new MouseEvent('contextmenu', {bubbles:true, cancelable:true, clientX:box.x+1, clientY:box.y+1});
+                link.dispatchEvent(event); return event.defaultPrevented;
+            });
+            """) as? [Bool]
+        #expect(cancelled == [true, false])
+        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while !harness.replyEvents.contains(where: { if case .noteContext = $0 { return true }; return false }) {
+            try #require(ContinuousClock.now < deadline)
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        let targets = harness.replyEvents.compactMap { event -> URL? in
+            if case .noteContext(let url, _, _) = event { return url }; return nil
+        }
+        #expect(targets == [second])
+    }
+
     @Test("Chat reader quotes one selection across prose, table and code")
     func chatReplyCrossObjectSelection() async throws {
         let source = "Reason 😀.\n\n| Claim | Evidence |\n|---|---|\n| A | B |\n\n```text\nlast line\n```"
@@ -2063,7 +2094,7 @@ extension MarkdownEditorWebViewIntegrationTests {
                 }
                 if clock.now >= deadline {
                     let diagnostic = try? await callBridgeJavaScript(
-                        "return {state: document.readyState, fonts: document.fonts.status, native: typeof window.scholiumNativeFloatingEvent, width: innerWidth, height: innerHeight};"
+                        "return {state: document.readyState, fonts: document.fonts.status, native: typeof window.scholiumNativeFloatingEvent, ready: await Promise.race([Promise.resolve(window.scholiumReadReady).then(() => true, error => String(error)), new Promise(resolve => setTimeout(() => resolve('pending'), 500))]), quote: typeof window.scholiumQuoteReplySelection, width: innerWidth, height: innerHeight};"
                     )
                     print("READ READY DIAGNOSTIC", diagnostic ?? "nil")
                     Issue.record("The Read WKWebView did not report rendering readiness.")

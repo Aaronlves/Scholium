@@ -1,6 +1,6 @@
 ---
 name: rust-language
-description: "Implement or review bounded Rust or Rust/Swift FFI components in Scholium. Use for Cargo, ownership, errors, concurrency, unsafe code, performance, packaging, or Rust-adoption decisions; exclude Swift-only work and unmeasured rewrites."
+description: "Implement or review Scholium Rust components and Swift FFI, or evaluate a proposed Rust adoption."
 ---
 
 # Rust Language
@@ -11,11 +11,12 @@ boundary.
 
 Apply the shared [development contract](../scholium-toolkit-maintenance/references/researcher-codex-development-contract.md).
 
-## Decide before adopting
+## Adoption decisions
 
-Inspect the live Swift boundary, selected Rust toolchain, manifests,
-dependencies, packaging route, and tests. Do not install or change global
-tooling without authorization.
+For a proposed adoption or boundary change, inspect the live Swift owner,
+toolchain, dependency, and packaging evidence. Existing Rust corrections do
+not reopen the adoption decision. Do not change global tooling without
+authorization.
 
 Adopt Rust only when measured performance, portability, a well-audited library,
 or process isolation justifies the added build, packaging, and maintenance
@@ -25,6 +26,13 @@ authorization, snapshots, conflicts, and authoritative writes in their
 existing Swift owners.
 
 ## Design one narrow boundary
+
+For an FFI failure, trace allocation, borrowing, transfer, and release on both
+sides, including error and cancellation paths. Distinguish a returned owned
+buffer from a pointer borrowed only for the call. Identify which runtime must
+free it; a successful round trip does not establish lifetime correctness.
+Check length units, encoding, nullability, and integer-width conversions against
+the actual boundary types before changing wrappers.
 
 - Pass immutable owned values and typed results across a versioned boundary.
 - Keep research content out of logs, panics, and diagnostics.

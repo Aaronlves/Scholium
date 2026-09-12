@@ -16,6 +16,20 @@ export function installChatReply(
       event.preventDefault(); quote();
     }
   };
+  const noteContextMenu = (event: MouseEvent) => {
+    const anchor = event.target instanceof Element ? event.target.closest<HTMLAnchorElement>('a[href]') : null;
+    if (!anchor || !root.contains(anchor) || anchor.protocol !== 'scholium-note:') return;
+    // SafeMarkdownRenderer wraps internal targets in an encoded navigation URL.
+    // Use the same target decoding as the reader's ordinary link-click route.
+    let url: string;
+    try { url = decodeURIComponent((anchor.getAttribute('href') || '').slice('scholium-note:'.length)); }
+    catch { return; }
+    if (!url.startsWith('scholium-note://')) return;
+    event.preventDefault();
+    event.stopPropagation();
+    post('replyNoteContext', {url, left: event.clientX, top: event.clientY});
+  };
+  root.addEventListener('contextmenu', noteContextMenu);
   root.addEventListener('keydown', keydown);
   root.tabIndex = 0;
   root.querySelectorAll<HTMLElement>('table, pre, .scholium-mermaid').forEach((element) => {
@@ -71,5 +85,5 @@ export function installChatReply(
   };
   const observer = new ResizeObserver(reportSize); observer.observe(root); reportSize();
   (window as Window & {scholiumQuoteReplySelection?: () => void}).scholiumQuoteReplySelection = quote;
-  return () => { observer.disconnect(); root.removeEventListener('keydown', keydown); };
+  return () => { observer.disconnect(); root.removeEventListener('keydown', keydown); root.removeEventListener('contextmenu', noteContextMenu); };
 }

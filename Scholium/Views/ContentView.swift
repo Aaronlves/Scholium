@@ -65,6 +65,37 @@ struct ContentView: View {
     }
 
     var body: some View {
+        Group {
+            if appState.isDetachedDocumentWindow {
+                detailRegion
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(ScholiumColorRole.documentBackground.color)
+            } else {
+                workspaceShell
+            }
+        }
+        .environment(\.openChatNoteInSeparateWindow, { url in
+            _ = appState.openChatReference(url, disposition: .separateWindow)
+        })
+        .sheet(item: presentedSheet) { route in
+            sheetContent(for: route)
+                .scholiumButtonStyle(.automatic)
+        }
+        .alert(item: presentedAlert) { alert in
+            switch alert {
+            case .actionFailure(let message):
+                Alert(
+                    title: Text("Could Not Complete Action"),
+                    message: Text(message),
+                    dismissButton: .default(Text("Dismiss")) {
+                        appState.presentationRouter.alert = nil
+                    }
+                )
+            }
+        }
+    }
+
+    private var workspaceShell: some View {
         ScholiumWorkspaceSplitView(
             sidebarContent: shellState.sidebarContent,
             initialLibraryVisible: shellLibraryVisible,
@@ -73,6 +104,8 @@ struct ContentView: View {
             selectedDocumentTabID: appState.documentTabController.selectedTabID,
             selectDocumentTab: { appState.selectDocumentTab(withID: $0) },
             closeDocumentTab: { appState.closeDocumentTab(withID: $0) },
+            detachDocumentTab: { appState.requestMoveDocumentToWindow(tabID: $0, at: $1) },
+            reorderDocumentTab: { appState.documentTabController.moveTab(withID: $0, to: $1) },
             libraryVisibilityDidChange: {
                 appState.recordLibraryVisibility($0)
             },
@@ -161,10 +194,6 @@ struct ContentView: View {
         .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .ignoresSafeArea(.container, edges: .top)
-        .animation(
-            ScholiumMotion.documentReveal(reduceMotion: reduceMotion),
-            value: appState.currentNote != nil
-        )
         .overlay {
             if appState.isLoading {
                 LoadingOverlay()
@@ -200,22 +229,6 @@ struct ContentView: View {
         }
         .onChange(of: searchController.presentation) { _, presentation in
             if presentation == .inactive { windowCoordinator.closeAdvancedSearch() }
-        }
-        .sheet(item: presentedSheet) { route in
-            sheetContent(for: route)
-                .scholiumButtonStyle(.automatic)
-        }
-        .alert(item: presentedAlert) { alert in
-            switch alert {
-            case .actionFailure(let message):
-                Alert(
-                    title: Text("Could Not Complete Action"),
-                    message: Text(message),
-                    dismissButton: .default(Text("Dismiss")) {
-                        appState.presentationRouter.alert = nil
-                    }
-                )
-            }
         }
     }
 
@@ -831,6 +844,10 @@ struct ContentView: View {
             }
             detailContent
         }
+        .animation(
+            ScholiumMotion.documentReveal(reduceMotion: reduceMotion),
+            value: appState.currentNote != nil
+        )
     }
 
     @ViewBuilder

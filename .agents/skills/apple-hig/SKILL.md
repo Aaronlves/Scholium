@@ -1,6 +1,6 @@
 ---
 name: apple-hig
-description: "Verify Apple Human Interface Guidelines and SDK guidance for native interface decisions. Use for Apple-platform layout, controls, materials, typography, color, symbols, motion, accessibility, privacy, or interaction conventions; keep Scholium authority primary."
+description: "Verify official Apple HIG and SDK guidance for Apple-platform interface decisions or update the local HIG corpus."
 ---
 
 # Apple HIG
@@ -16,6 +16,12 @@ for design, Apple's Design Resources or official sessions for released assets
 and platform direction, and the selected Xcode documentation, SDK, and compiler
 for API signatures, availability, and buildability. Do not infer an API contract
 from a design page.
+
+Frame the question as a platform decision: semantic control role, interaction,
+adaptation, or API availability. Check the topic's platform and conditional
+wording before applying it; an example screenshot does not establish a required
+metric. If HIG describes an outcome but no API, consult the selected SDK rather
+than inferring that an unsupported mechanism exists.
 
 Use `routing-index.md` to locate only the relevant `distilled/` topics. Include
 platform or foundation material when it affects the question; do not load all

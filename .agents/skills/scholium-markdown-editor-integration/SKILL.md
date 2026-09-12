@@ -1,6 +1,6 @@
 ---
 name: scholium-markdown-editor-integration
-description: "Implement, diagnose, or test Scholium's Markdown editor and reader boundary. Use for CodeMirror/WKWebView bridging, exact text reconciliation, selection, undo, focus, IME, accessibility, security, or generated assets."
+description: "Implement, diagnose, or test Scholium CodeMirror/WKWebView editing, reader projection, and native text-session integration."
 ---
 
 # Scholium Markdown Editor Integration
@@ -10,18 +10,30 @@ presentation. Rendered or decorated forms never become writable source.
 
 Apply the shared [development contract](../scholium-toolkit-maintenance/references/researcher-codex-development-contract.md).
 
-## Method
+## Find the first divergent state
 
-1. Locate the reachable editor, persistent session, bridge, reader, and
-   generated assets from live construction and tests.
-2. Trace exact source from authoritative read through editing, reconciliation,
-   transactional save, committed read-back, and reader presentation.
-3. Load the [WebKit bridge checklist](references/webkit-bridge-checklist.md) for
-   the active bridge.
-4. Change the smallest owning boundary and regenerate assets through current
-   repository scripts rather than editing generated output.
-5. Verify source fidelity together with session behavior, input services,
-   accessibility, failure, conflict, and recovery.
+Follow one input through native event delivery, CodeMirror transaction, exact
+source mapping, bridge message, checked native mirror, persistence, and reader
+projection. Compare identity, generation, offsets, and bytes at the first
+mismatch instead of forcing a reload to hide it.
+
+Keep normalized editor text distinct from line-ending-preserving source.
+A DOM range, editor UTF-16 offset, source UTF-16 offset, and UTF-8 byte offset
+are not interchangeable. Check the existing mapping with BOM, CRLF, a non-BMP
+character, and a decomposed character when the defect concerns ranges; do not
+normalize source to make coordinates agree.
+
+For text loss or save mismatch, inspect the exact-source snapshot and generation
+admission. For selection, Undo, or IME defects, inspect transaction origin,
+composition lifetime, and replacement of the persistent editor session. For
+reader defects, inspect committed revision and source-locator projection rather
+than routing reader state back into the editor.
+
+Load the [bridge checklist](references/webkit-bridge-checklist.md) only for the
+affected boundary. Keep a fix at its owner, regenerate changed bundled assets
+through repository scripts, and verify both exact source and the affected
+interaction. A passing JavaScript transformation does not establish native
+focus or composition behavior.
 
 ## Invariants
 

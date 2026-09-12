@@ -123,6 +123,20 @@ usability or accessibility acceptance.
    least a positive and a neighboring boundary case before treating the package
    surface as complete.
 
+## Task execution comparisons
+
+For a substantive method change, give the performer a bounded source artifact,
+trace, or disposable implementation task and inspect the resulting work. Keep
+expected findings out of its input. A request to explain which skill it would
+choose tests routing only.
+
+When comparing revisions, hold task inputs and available operations constant.
+Assess concrete outcomes: correct byte ranges, supported causal findings,
+preserved authorized scope, executable patch behavior, and honest uncertainty.
+Record what the performer actually calculated, inspected, or ran. A plausible
+regression proposal is not an executed regression test. Equal correct outcomes
+support retained capability in those cases, not a quality or latency gain.
+
 ## Evaluation report
 
 For each exercised case, record the prompt, selected capability and mode, inspected authority, attempted side effects, expected result, observed result, hard-gate status, and remaining uncertainty. Mark cases not actually run as untested rather than inferred passes.

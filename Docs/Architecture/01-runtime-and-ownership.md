@@ -539,18 +539,31 @@ silently last-writer-win.
 Each window has one `DocumentTabController` with one ordered collection and
 selected identity across all three vault roles. An `.unspecified`
 `NSTabViewController` in the middle split item keeps its content view borderless.
-A full-width native `NSSegmentedControl` uses automatic styling, a capsule border,
-large control size and equal segment distribution; macOS 27 adds its tabs role.
-It is hidden when fewer than two documents remain. AppKit owns the control's
-shape, selection rendering and adaptation. Its action and the native delegate
-translate selection into the window's guarded intent;
-only a committed model projection may change the native selected page. It never
-replaces `NSWindow.toolbar`. Tabs create no window, model, split, Library, or
+`DocumentTabStrip` owns persistent AppKit tab cells, equal-width rounded layout,
+keyboard/accessibility actions and one `NSDraggingSession`. Dragging uses a tab
+preview and insertion gap; a drop back commits order, cancellation preserves
+membership, and an outside drop transfers the session. `DocumentTabContainerView`
+places the bar and page directly; below two documents its header height is zero.
+There is no hidden-arranged-view collapse or segmented-control animation.
+Selection passes through the window's guarded intent; only a committed model
+projection changes the native page. It never replaces `NSWindow.toolbar`.
+Main-window tabs share one split, Library, and
 Apparatus. `DocumentController` and `DocumentSessionStore` retain sessions and
-apply the flush/reconstruction guard. Apparatus derives from the active Document;
-browsing Library leaves that Document and its mode intact. Only New Window creates
-a shell. Document presentation retains one Review/Edit/Source preference per role,
-defaulting writable roles to Edit and applying it when a Note is activated.
+capture state on switching and save only the closing document. Apparatus derives from the active Document;
+browsing Library leaves that Document and its mode intact.
+`WorkspaceStore.documentLocations` tracks open document locations by Triptych,
+vault, and stable Note identity. A transfer prepares a native `NSWindowController`
+with a document-only `WindowModel`, captures editor reconstruction state, and
+moves the existing `DocumentSessionModel` between session stores. Autosave and
+observation ownership follow the session; its original WebView must detach
+before destination attachment. Source selects its neighbor before releasing the
+outgoing session, avoiding transient empty-window chrome. The native window coordinator
+suspends input during transfer without changing the SwiftUI hosting hierarchy or
+toolbar safe area. Failure restores source membership. Return reuses a main window or opens
+the ordinary SwiftUI workspace scene. `WorkspaceWindowCoordinator` retains the same native close/quit
+save guards for both window kinds; separate windows never inherit sidebars or
+native window-tab grouping. Document presentation retains one Review/Edit/Source preference per role,
+defaulting writable roles to Edit on first activation; retained sessions preserve their mode.
 `WindowSessionSnapshot` stores window-wide tab order and selection independently
 of the browsed role. `WindowWorkspaceSessionSnapshot` retains mode preferences
 and lightweight presentation for each still-open document in its vault: normalized
@@ -559,7 +572,7 @@ It stores no source bytes, Undo state, or presentation for closed tabs.
 Unsupported session bytes fail closed rather than entering a compatibility
 decoder.
 
-Each configured scene constructs one `ScholiumWorkspaceSplitView`: one
+Each configured main scene constructs one `ScholiumWorkspaceSplitView`: one
 `NSSplitViewController` with three direct `NSSplitViewItem` siblings for
 Library, Document, and Apparatus. The Sidebar installs `ScholiumSidebarViewController` through
 `NSSplitViewItem(sidebarWithViewController:)`. Its retained Library/Chat hosts

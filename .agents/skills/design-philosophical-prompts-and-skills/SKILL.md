@@ -1,6 +1,6 @@
 ---
 name: design-philosophical-prompts-and-skills
-description: "Design or audit prompts, agent instructions, and reusable skills for philosophical research and scholarly knowledge bases. Use for source analysis, argument reconstruction, evidence or permission boundaries, and method design; exclude performing research, coding, or generic app work."
+description: "Design or audit philosophical research prompts, instructions, and skills; excludes performing the research itself."
 ---
 
 # Design Philosophical Prompts and Skills
@@ -44,6 +44,21 @@ Keep Scholium-specific behavior subordinate to its live authorities.
 4. Check goal, method, evidence, permission, and output for contradictions.
    Validate material changes on realistic work; report actual evidence and
    unresolved methodological choices, without claiming truth from process compliance.
+
+## Test whether the instruction changes scholarly work
+
+Use a small supplied passage or task artifact that exposes the disputed choice.
+Inspect the produced attribution, inference, uncertainty, and proposed effects,
+not whether the response repeats the instruction. If the method labels a claim
+as source-supported, require the supporting passage; if it repairs an argument,
+check that the repair remains separate from the author's position.
+
+Change the instruction responsible for the error, then rerun the same case and
+a neighboring case where that restriction should not block legitimate work.
+If both old and new methods already behave correctly, report that the comparison
+shows preserved behavior, not an established quality gain. Supply the source
+evidence needed for the task, while keeping expected judgments out of the
+performer prompt.
 
 ## Conditional references
 

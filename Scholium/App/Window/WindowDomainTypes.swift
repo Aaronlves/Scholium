@@ -139,6 +139,7 @@ enum NoteSortOrder: String, CaseIterable, Identifiable, Sendable {
 enum WindowOpenDisposition: String, Codable, Hashable, Sendable {
     case replaceCurrent
     case newTab
+    case separateWindow
 }
 
 /// A resolved document destination emitted by a feature controller and routed

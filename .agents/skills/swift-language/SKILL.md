@@ -1,6 +1,6 @@
 ---
 name: swift-language
-description: "Implement, review, or test Swift code. Use for API/type design, compiler diagnostics, concurrency, isolation, async lifetimes, serialization, refactoring, or Swift Testing; route layout/interaction to native interface and builds/QA to Xcode."
+description: "Implement, review, or test Swift language and API behavior; native interface work and Xcode build/QA have separate owners."
 ---
 
 # Swift Language
@@ -24,6 +24,12 @@ A synchronous helper correction needs none of these references unless it changes
 one of their contracts. Do not load all three simply because the file is Swift.
 
 ## Implementation and proof
+
+For a compiler error, reduce it to the failing declaration and real caller;
+distinguish a type mismatch from an isolation, availability, or lifetime problem.
+A compiling cast, default value, or unchecked annotation is not a correction if
+it discards an error or weakens the existing contract. For asynchronous code,
+load concurrency guidance before choosing the owner of values crossing `await`.
 
 Choose types and abstractions from actual callers and runtime heterogeneity.
 Preserve evaluation order, errors, representation, collection ordering, and

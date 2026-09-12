@@ -21,6 +21,16 @@
         "Does not load the editor owner merely because the source may later be displayed in CodeMirror.",
         "Uses targeted range mutation and exact unchanged-byte evidence."
       ]
+    },
+    {
+      "id": 2,
+      "prompt": "Review an editor selection [5,7) in normalized UTF-16 for exact source BOM + A + CRLF + emoji U+1F600 + e + U+0301 + CRLF + Z. A save helper writes normalized editor text. Calculate the exact source ranges and diagnose the save boundary.",
+      "expected_output": "Maps selection to exact-source UTF-16 [6,8) and UTF-8 [10,13); identifies normalization as source loss.",
+      "files": [],
+      "assertions": [
+        "Separates normalized editor coordinates, exact UTF-16 source coordinates, and UTF-8 byte coordinates.",
+        "Requires byte-preservation assertions and the exact-source snapshot rather than normalized text."
+      ]
     }
   ]
 }

@@ -14,6 +14,21 @@
         quote();
       }
     };
+    const noteContextMenu = (event) => {
+      const anchor = event.target instanceof Element ? event.target.closest("a[href]") : null;
+      if (!anchor || !root.contains(anchor) || anchor.protocol !== "scholium-note:") return;
+      let url;
+      try {
+        url = decodeURIComponent((anchor.getAttribute("href") || "").slice("scholium-note:".length));
+      } catch {
+        return;
+      }
+      if (!url.startsWith("scholium-note://")) return;
+      event.preventDefault();
+      event.stopPropagation();
+      post("replyNoteContext", { url, left: event.clientX, top: event.clientY });
+    };
+    root.addEventListener("contextmenu", noteContextMenu);
     root.addEventListener("keydown", keydown);
     root.tabIndex = 0;
     root.querySelectorAll("table, pre, .scholium-mermaid").forEach((element) => {
@@ -84,6 +99,7 @@
     return () => {
       observer.disconnect();
       root.removeEventListener("keydown", keydown);
+      root.removeEventListener("contextmenu", noteContextMenu);
     };
   }
 

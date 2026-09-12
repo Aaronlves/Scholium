@@ -12,6 +12,7 @@ enum SidebarNoteCommandSurface: Equatable {
 
 enum SidebarNoteCommand: String, Hashable, Identifiable {
     case openInNewTab
+    case openInSeparateWindow
     case addToChat
     case duplicate
     case rename
@@ -24,7 +25,7 @@ enum SidebarNoteCommand: String, Hashable, Identifiable {
 
     var requiresMutationTarget: Bool {
         switch self {
-        case .openInNewTab, .addToChat, .copyRelativePath, .revealInFinder:
+        case .openInNewTab, .openInSeparateWindow, .addToChat, .copyRelativePath, .revealInFinder:
             false
         case .duplicate, .rename, .move, .moveToSystemTrash:
             true
@@ -34,6 +35,7 @@ enum SidebarNoteCommand: String, Hashable, Identifiable {
     var contextMenuTitle: LocalizedStringKey {
         switch self {
         case .openInNewTab: "Open in New Tab"
+        case .openInSeparateWindow: "Open in Separate Window"
         case .addToChat: "Add to Chat"
         case .duplicate: "Duplicate…"
         case .rename: "Rename…"
@@ -47,6 +49,7 @@ enum SidebarNoteCommand: String, Hashable, Identifiable {
     var accessibilityTitle: LocalizedStringKey {
         switch self {
         case .openInNewTab: "Open in New Tab"
+        case .openInSeparateWindow: "Open in Separate Window"
         case .addToChat: "Add to Chat"
         case .duplicate: "Duplicate Note"
         case .rename: "Rename Note"
@@ -80,7 +83,7 @@ func sidebarNoteCommandGroups() -> [SidebarNoteCommandGroup] {
     var groups = [
         SidebarNoteCommandGroup(
             kind: .opening,
-            commands: [.openInNewTab, .addToChat]
+            commands: [.openInNewTab, .openInSeparateWindow, .addToChat]
         )
     ]
 
@@ -289,6 +292,8 @@ struct SidebarTreeNodeRow: View {
         switch command {
         case .openInNewTab:
             context.openNote(note, .newTab)
+        case .openInSeparateWindow:
+            context.openNote(note, .separateWindow)
         case .addToChat:
             context.addNoteToChat(note)
         case .duplicate, .rename, .move:

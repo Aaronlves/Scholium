@@ -98,6 +98,17 @@
         "Allows both frameworks in the target without duplicate tests or API mixing within one test.",
         "Does not broaden migration to other suites or production code."
       ]
+    },
+    {
+      "id": 9,
+      "prompt": "Review MainActor search code that cancels a prior Task, awaits a service which may ignore cancellation, then unconditionally publishes hits and clears loading. New requests can change vault or reuse the same vault, and task startup may be delayed.",
+      "expected_output": "Finds stale publication despite actor isolation and cancellation.",
+      "files": [],
+      "assertions": [
+        "Captures request scope before asynchronous startup and checks request currency on publication.",
+        "Uses request identity as well as vault identity to reject same-vault stale results.",
+        "Describes deterministic suspension/release testing instead of sleeps."
+      ]
     }
   ]
 }

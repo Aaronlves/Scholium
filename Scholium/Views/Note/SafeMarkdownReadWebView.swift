@@ -622,6 +622,14 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                     else { return }
                     onReplyEvent?(.layout(height: height, intrinsicWidth: width.map { CGFloat($0) }))
                 }
+            case "replyNoteContext":
+                guard let rawURL = payload["url"] as? String, rawURL.utf8.count <= 8_192,
+                    let url = URL(string: rawURL), AgentChatReference.parse(url) != nil,
+                    let left = payload["left"] as? Double, let top = payload["top"] as? Double,
+                    left.isFinite, top.isFinite, let view = message.webView,
+                    view.bounds.contains(NSPoint(x: left, y: top))
+                else { return }
+                onReplyEvent?(.noteContext(url, point: NSPoint(x: left, y: top), view: view))
             case "replyQuote":
                 if let text = payload["text"] as? String, !text.isEmpty, text.utf8.count <= 65_536 {
                     onReplyEvent?(.quote(text))
@@ -984,7 +992,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 if (window.scholiumMermaidReady) await window.scholiumMermaidReady;
                 if (document.fonts?.ready) await document.fonts.ready;
                 let extent = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
-                for (let attempt = 0; attempt < 50 && extent <= 0; attempt += 1) {
+                for (let attempt = 0; fallbackFraction > 0 && attempt < 50 && extent <= 0; attempt += 1) {
                   await new Promise(resolve => setTimeout(resolve, 10));
                   extent = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
                 }
@@ -1614,6 +1622,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
 enum ReadReplyEvent {
     case layout(height: CGFloat, intrinsicWidth: CGFloat?)
     case quote(String)
+    case noteContext(URL, point: NSPoint, view: NSView)
     case object(Int, copy: Bool, size: CGSize, anchor: NSRect, view: NSView)
 }
 

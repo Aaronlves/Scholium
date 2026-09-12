@@ -141,6 +141,15 @@ enum DocumentAttachmentSelectionMode: Equatable {
     case referenceOriginal
 }
 
+/// A live session handed between containers. No source reconstruction or file write.
+@MainActor
+struct DocumentSessionTransfer {
+    let document: WindowSelectedDocument
+    let session: DocumentSessionModel
+    let snapshot: WorkspaceNoteSnapshot?
+    let mode: NotePresentationMode
+}
+
 /// Per-window owner for the selected document and retained editor sessions. Repository writes,
 /// source transactions and conflict recovery remain Application calls;
 /// this controller owns only window and editor-session state.
@@ -591,6 +600,16 @@ final class DocumentController: ObservableObject {
         refreshChromeProjection()
     }
 
+    /// Tab activation reuses a leased presentation instead of reopening it.
+    /// In particular, it must not reset scroll or replace a retained Source mode.
+    func selectRetainedDocument(_ document: WindowSelectedDocument) -> Bool {
+        guard let session = sessions.retainedSession(for: document.editingTarget) else { return false }
+        selectedDocument = document
+        currentPresentationMode = session.pendingEditorMode?.presentationMode ?? session.presentationMode
+        refreshChromeProjection()
+        return true
+    }
+
     func requestSourceLocation(
         line: Int?, range: SearchSourceRange? = nil, requiresExactSelection: Bool = false,
         sourceFingerprint: String? = nil
@@ -631,6 +650,75 @@ final class DocumentController: ObservableObject {
     func clearSelectionAfterClosingLastTab() {
         selectedDocument = nil
         refreshChromeProjection()
+    }
+
+    func canReceiveSessionTransfer(_ document: WindowSelectedDocument) -> Bool {
+        guard let existing = sessions.retainedSession(for: document.editingTarget) else { return true }
+        return !existing.hasUnsavedChanges && existing.conflict == nil
+            && !existing.isSavingEdit && !existing.editorSession.hasAttachedWebView
+    }
+
+    func resumeAutosave(afterTransferOf document: WindowSelectedDocument) {
+        guard let session = sessions.retainedSession(for: document.editingTarget) else { return }
+        scheduleAutosave(session: session, target: document.editingTarget)
+    }
+
+    func prepareSessionTransfer(_ document: WindowSelectedDocument) async throws {
+        let session = session(for: document.editingTarget)
+        guard !session.editorSession.isComposing else { throw DocumentControllerError.editorUnavailable }
+        session.cancelAutosave()
+        do {
+            if let save = session.activeSaveTask {
+                _ = await save.result
+                let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+                while session.isSavingEdit, ContinuousClock.now < deadline {
+                    try await Task.sleep(for: .milliseconds(10))
+                }
+                guard !session.isSavingEdit else { throw DocumentControllerError.changedDuringSave }
+            }
+            if session.editorSession.hasAttachedWebView {
+                try await session.editorSession.captureStateForViewReconstruction()
+            }
+            guard !session.editorSession.isComposing else { throw DocumentControllerError.editorUnavailable }
+        } catch {
+            resumeAutosave(afterTransferOf: document)
+            throw error
+        }
+    }
+
+    func takeSessionForTransfer(_ document: WindowSelectedDocument) -> DocumentSessionTransfer? {
+        guard let session = sessions.takeSession(for: document.editingTarget) else { return nil }
+        session.cancelAutosave()
+        let transfer = DocumentSessionTransfer(
+            document: document, session: session,
+            snapshot: document.sessionKey.flatMap { snapshots[$0] }, mode: session.presentationMode
+        )
+        if selectedDocument?.editingTarget == document.editingTarget { selectedDocument = nil }
+        pruneReapedSessionBookkeeping()
+        refreshChromeProjection()
+        return transfer
+    }
+
+    func receiveSessionTransfer(_ transfer: DocumentSessionTransfer, selecting: Bool = true) {
+        let document = transfer.document
+        // A clean preloaded projection has no lease and can be discarded before adoption.
+        if let existing = sessions.takeSession(for: document.editingTarget) {
+            precondition(!existing.hasUnsavedChanges && !existing.editorSession.hasAttachedWebView)
+            existing.shutdown()
+        }
+        sessions.receiveSession(transfer.session, for: document.editingTarget)
+        if let descriptor = document.workspaceDescriptor {
+            retainedReferences[descriptor.sessionKey] = descriptor.reference
+            snapshots[descriptor.sessionKey] = transfer.snapshot
+        }
+        observe(transfer.session)
+        if selecting {
+            selectedDocument = document
+            currentPresentationMode = transfer.mode
+            presentationModesByWorkspace[activeWorkspace] = transfer.mode
+        }
+        refreshChromeProjection()
+        scheduleAutosave(session: transfer.session, target: document.editingTarget)
     }
 
     /// Reconciles the full editor-session leases from the authoritative tab

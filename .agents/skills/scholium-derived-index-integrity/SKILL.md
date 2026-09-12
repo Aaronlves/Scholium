@@ -1,6 +1,6 @@
 ---
 name: scholium-derived-index-integrity
-description: "Implement, diagnose, or test Scholium Search, links, and derived indexes. Use for ranking, scopes, saved queries, CJK/Unicode, source locations, rebuild/recovery, or backend evaluation; exclude authoritative source writes and unmeasured rewrites."
+description: "Implement, diagnose, or test Scholium retrieval, links, and derived-index correctness, including tokenizer or backend evaluation."
 ---
 
 # Scholium Derived Index Integrity
@@ -14,21 +14,28 @@ For a tokenizer, engine, dependency, or backend-lifecycle decision, load
 [engine evaluation](references/engine-evaluation.md). Ordinary active-index
 corrections use the method below without an engine comparison or shadow runtime.
 
-## Method
+## Separate retrieval stages
 
-1. Reopen the current query/result contract, construction, authorization and
-   federation boundary, semantic projection, persistence, adapters, and tests.
-2. Identify authoritative inputs, versioned semantics, generation identity,
-   eligibility rules, publication point, and recovery path.
-3. Load the [search and link fixture matrix](references/search-link-fixture-matrix.md)
-   for the affected retrieval, saved-query, graph, or mutation behavior.
-4. Change one owning boundary. Do not create a second tokenizer, ranker,
-   resolver, eligibility rule, or generated-state authority in an adapter.
-5. Compare incremental/event-driven results with a clean rebuild over the same
-   authorized bytes.
+For a missing or incorrect hit, trace eligibility, source projection,
+tokenization, query interpretation, matching, ranking, limiting, and presentation
+in that order until the first divergence. A missing hit is not necessarily a
+ranking defect, and a correct result set does not establish correct locators.
 
-For a new mechanism or dependency, apply the shared
-[backend decision research](../scholium-engineering/references/backend-decision-research.md).
+Compare the affected query over identical authorized bytes through the active
+index and a clean rebuild. If only incremental state differs, inspect generation
+and invalidation; if both are wrong, inspect shared semantics. Keep an independent
+small expected result, since rebuild and incremental paths can share a bug.
+
+For links, distinguish syntax recognition, target identity, locator, and derived
+relationship. Duplicate basenames need an ambiguity result, not a tie-break that
+silently chooses a target. For federation, inspect access before merging and
+limits before and after merge; retain each hit's provenance.
+
+Select relevant cases from the [fixture matrix](references/search-link-fixture-matrix.md).
+Correct the first responsible stage and verify ordered identities, eligibility,
+locators, and affected mutation/rebuild equivalence. Use
+[backend research](../scholium-engineering/references/backend-decision-research.md)
+only when the correction requires a new mechanism or dependency.
 
 ## Invariants
 

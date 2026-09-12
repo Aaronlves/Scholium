@@ -21,6 +21,16 @@
         "Recognizes a Swift-only isolation boundary.",
         "Does not introduce Rust or an FFI boundary without a measured need."
       ]
+    },
+    {
+      "id": 2,
+      "prompt": "修复现有 Rust FFI 错误转换，不改变边界或依赖。",
+      "expected_output": "Correct the existing Rust implementation without reopening adoption.",
+      "files": [],
+      "assertions": [
+        "Uses the existing boundary and relevant FFI guidance.",
+        "Does not require a new adoption benchmark or dependency comparison for an unchanged boundary."
+      ]
     }
   ]
 }

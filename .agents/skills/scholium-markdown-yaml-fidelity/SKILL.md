@@ -1,6 +1,6 @@
 ---
 name: scholium-markdown-yaml-fidelity
-description: "Implement, diagnose, or test Scholium's lossless Markdown/YAML pipeline. Use for exact parsing, targeted edits, schema projection, validation, source versions, BOM, Unicode, newlines, or save behavior that could alter authored bytes."
+description: "Implement, diagnose, or test exact Markdown/YAML parsing, projection, and targeted source edits in Scholium."
 ---
 
 # Scholium Markdown and YAML Fidelity
@@ -10,24 +10,33 @@ typed projections are views of source, never replacement authorities.
 
 Apply the shared [development contract](../scholium-toolkit-maintenance/references/researcher-codex-development-contract.md).
 
-## Method
+## Locate the representation that loses fidelity
 
-1. Reopen the current specification, architecture, construction, writer,
-   parser, projection, call sites, and focused tests.
-2. Separate vault role, schema profile, and exact source. Resolve current
-   fields, validation, and rejection rules from live authority rather than this
-   skill.
-3. Classify the operation from its submitted payload: read, body edit,
-   property edit, full-source edit, or no-op.
-4. Patch only the uniquely owned range, validate the complete proposed result,
-   and pass it through the sole transactional writer.
-5. Prove both intended semantic change and byte preservation outside the
-   changed range.
+Classify the submitted operation as no-op, body-range, property-range, or
+full-source replacement. The visible size of a diff does not change the
+operation's authority. Locate the first conversion between exact bytes,
+lexical ranges, parsed values, schema projection, and candidate bytes.
 
-For nontrivial parsing or mutation work, load the
-[fidelity fixture matrix](references/fidelity-fixture-matrix.md). For a new
-backend or library decision, first apply the shared
-[backend decision research](../scholium-engineering/references/backend-decision-research.md).
+Use two independent checks: exact bytes outside authorized ranges, and the
+intended semantics after reparsing the complete candidate. Parsed equality
+cannot prove source preservation; byte equality alone cannot prove that a
+property acquired the intended type. Canonically equivalent Unicode strings
+may still have different bytes.
+
+For a range error, name the coordinate system at each boundary: UTF-8 bytes,
+UTF-16 code units, graphemes, normalized editor positions, or source positions.
+Derive ranges against the same immutable source revision. Repeated text requires
+an exact locator and expected bytes; a first-substring search is not identity.
+For a batch, preserve the contract's original-versus-sequential range semantics
+and reject ambiguity before applying any effect.
+
+Use the [fidelity fixtures](references/fidelity-fixture-matrix.md) to select the
+smallest input exposing the conversion, plus a neighboring valid case. Patch
+only a provably owned lexical range, reparse, and use the existing transactional
+writer. If the representation cannot preserve untouched syntax, reject that
+mutation rather than serialize the parsed document. Consult architecture for
+ownership changes and [backend research](../scholium-engineering/references/backend-decision-research.md)
+only for a new parser or library decision.
 
 ## Invariants
 

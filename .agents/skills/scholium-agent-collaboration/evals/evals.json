@@ -52,6 +52,17 @@
         "Reads current specification and distinguishes historical behavior.",
         "Does not create a compatibility workflow or modify application source."
       ]
+    },
+    {
+      "id": 5,
+      "prompt": "Review a client retry after source replacement A to B and successful readback, followed by evidence-confirmation I/O failure and timeout. A portable relationship changed from R1 to R2 before retry.",
+      "expected_output": "Separates known source effects, uncertain evidence, delivery failure, and the independent record revision.",
+      "files": [],
+      "assertions": [
+        "Does not treat timeout as proof of no mutation or authorize blind replay.",
+        "Inspects current exact source and record state plus retained evidence before another mutation.",
+        "Does not invent rollback or a new idempotency protocol."
+      ]
     }
   ]
 }

@@ -1,6 +1,6 @@
 ---
 name: scholium-performance-audit
-description: "Diagnose or remediate a measured Scholium performance problem. Use for latency, CPU, memory, hangs, rendering, indexing, or regressions; preserve source fidelity and vault safety, and exclude speculative optimization."
+description: "Diagnose or fix a concrete Scholium performance problem using measurements; excludes speculative optimization."
 ---
 
 # Scholium Performance Audit
@@ -17,30 +17,31 @@ Apply the shared [development contract](../scholium-toolkit-maintenance/referenc
 - **Remediate:** after the request authorizes a fix, change the measured owner,
   preserve its correctness oracle, and remeasure the identical scenario.
 
-## Method
+## Test a causal hypothesis
 
-1. State the user-visible symptom, build, environment, fixture class, and
-   interaction. Classify the evidence as diagnostic, regression, or product
-   acceptance before measuring.
-2. Reopen the current construction path and product benchmark authority. Do not
-   copy its fixtures, thresholds, or sampling rules into this skill.
-3. Establish a reproducible baseline and a correctness oracle before changing
-   code.
-4. Narrow the cause from cheap tracing to targeted instrumentation. For trace
-   capture or supplied trace bundles, load the
-   [trace-tools procedure](references/instruments-trace-tools.md); for logging
-   boundaries, load [observability](references/observability.md). For a
-   SwiftUI or hybrid AppKit presentation path, load the
-   [presentation hypotheses](references/swiftui-performance-checks.md) and
-   route native-container ownership to `scholium-interface-design` before
-   optimizing rendering symptoms.
-5. In Remediate mode, remove repeated or misplaced work at the measured owner,
-   then rerun the same scenario and correctness checks. In Diagnose mode, stop
-   with the causal finding and smallest credible correction.
+Bind the symptom to a build, fixture, action, metric, and correctness oracle.
+Separate cold startup from steady state and user-visible latency from aggregate
+CPU or memory. Follow current benchmark authority for acceptance thresholds;
+a diagnostic scenario does not create a product gate.
 
-For a new backend, dependency, or architectural mechanism, apply the shared
-[backend decision research](../scholium-engineering/references/backend-decision-research.md)
-before implementation.
+Choose the next observation that separates plausible causes. If time is spent
+before rendering, inspect upstream work rather than tuning view appearance.
+Count invalidations or transfers only when they explain the measured delay.
+For memory, distinguish retained growth across repeated completed lifecycles
+from transient peaks or an intentionally retained cache.
+
+Use [trace tools](references/instruments-trace-tools.md) for trace capture or
+inspection, [observability](references/observability.md) for logging boundaries,
+and [presentation hypotheses](references/swiftui-performance-checks.md) for a
+measured SwiftUI/AppKit path. Native-container ownership diagnosis is needed
+when the evidence points to competing geometry, identity, or lifecycle owners.
+
+In Remediate mode, change one causal factor and repeat the same scenario and
+correctness checks. Record sampling variability before calling a small change
+an improvement. If evidence contradicts the hypothesis, revise it rather than
+accumulate optimizations. In Diagnose mode, report the strongest supported cause
+and the next discriminating observation where causality remains uncertain.
+For a new mechanism, use [backend research](../scholium-engineering/references/backend-decision-research.md).
 
 ## Invariants
 

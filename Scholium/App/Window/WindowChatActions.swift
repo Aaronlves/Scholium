@@ -327,15 +327,15 @@ extension WindowModel {
     }
 
     @MainActor @discardableResult
-    func openChatReference(_ url: URL) -> Bool {
+    func openChatReference(_ url: URL, disposition: WindowOpenDisposition = .newTab) -> Bool {
         guard let reference = AgentChatReference.parse(url) else { return false }
         return openChatSource(
             noteID: reference.noteID, vaultID: reference.vaultID,
-            line: reference.line, revision: reference.revision)
+            line: reference.line, revision: reference.revision, disposition: disposition)
     }
 
     @MainActor private func openChatSource(
-        noteID: UUID, vaultID: UUID?, line: Int?, revision: String?, sourceRange: SearchSourceRange? = nil, excerpt: String? = nil
+        noteID: UUID, vaultID: UUID?, line: Int?, revision: String?, sourceRange: SearchSourceRange? = nil, excerpt: String? = nil, disposition: WindowOpenDisposition = .newTab
     ) -> Bool {
         let matches =
             workspaceCatalog?.notes.filter {
@@ -347,6 +347,22 @@ extension WindowModel {
         else {
             reportOperationIssue(String(localized: "This note cannot be located in the current Triptych."), kind: .information)
             return false
+        }
+        if disposition == .separateWindow {
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                do {
+                    let destination = try await workspaceStore.documentLocations.openSeparate(reference, from: self)
+                    _ = destination.openChatSource(noteID: noteID, vaultID: vaultID, line: line,
+                        revision: revision, sourceRange: sourceRange, excerpt: excerpt)
+                } catch { reportOperationIssue(error.localizedDescription, kind: .error) }
+            }
+            return true
+        }
+        if let owner = workspaceStore.documentLocations.existingOwner(of: reference, excluding: self) {
+            owner.nativeWindowCoordinator?.makeKeyAndOrderFront()
+            return owner.openChatSource(noteID: noteID, vaultID: vaultID, line: line,
+                revision: revision, sourceRange: sourceRange, excerpt: excerpt)
         }
         let target = DocumentSessionKey(vaultID: reference.vaultID, noteID: noteID)
         let navigationMode = presentedDocumentMode

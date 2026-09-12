@@ -6,12 +6,22 @@ adapter symbols from the implementation architecture and live protocol.
 
 ## Source and synchronization
 
-- Load the exact source into CodeMirror with a new session ID, document ID, starting fingerprint, and document version zero.
-- Send every edit as bounded UTF-16 `from`, `to`, and insertion values with one contiguous document-version increment.
-- Apply deltas to the same Swift mirror and reject stale, repeated, skipped, overlapping-invalid, or out-of-bounds changes.
-- Before save or autosave, request the complete CodeMirror text and compare it with the mirror.
-- On mismatch, reconcile to the complete editor text while retaining dirty state; never save a stale mirror or synthesize source from rendered content.
-- Run the reconciled string through expected-revision conflict detection and the transactional repository save path.
+- Resolve the current session, revision, generation, and range contract from
+  the typed bridge. Do not infer field names or initialization values here.
+- Distinguish CodeMirror's normalized editing representation from the exact
+  source mirror and its full-source snapshot. Reading the editor's normalized
+  text alone cannot establish preserved CRLF bytes.
+- Follow the existing offset map between editor and exact-source coordinates;
+  validate deltas against the same generation and declared coordinate system.
+- Compare accepted changes with the checked native mirror; reject stale,
+  repeated, skipped, invalid, or out-of-bounds messages under the live protocol.
+- Before persistence, obtain the boundary's exact-source snapshot and reconcile
+  it against the native mirror while preserving dirty state on mismatch.
+  Do not rebuild source from rendered output or a normalized text dump.
+- Preserve the transactional save's expected-revision checks after successful
+  reconciliation; editor agreement does not prove current disk agreement.
+- Exercise the smallest representative edit across each implicated conversion,
+  comparing exact bytes and mapped source ranges, not only displayed text.
 
 ## Configuration and lifetime
 
@@ -55,6 +65,11 @@ adapter symbols from the implementation architecture and live protocol.
 - Sanitize Markdown and user CSS before insertion; never allow research text to become executable markup.
 
 ## Behavioral tests
+
+Select the affected boundary and a neighboring case; this is a menu, not a
+requirement to run every journey for every bridge change. For a range defect,
+use a minimal Unicode/CRLF fixture before a full app journey. For lifetime or
+focus claims, preserve the native runtime evidence requirement.
 
 - initial handshake, source load, and missing/stale bundle failure;
 - exact UTF-16 deltas with emoji, combining marks, CJK, and CRLF;
