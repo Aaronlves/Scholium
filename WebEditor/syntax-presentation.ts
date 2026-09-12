@@ -94,6 +94,7 @@ export const syntaxPresentation = ViewPlugin.fromClass(class {
     this.frame = 0;
     for (const animation of this.animations) animation.cancel();
     this.animations = [];
+    this.transitions.clear();
     this.frontmatterTransitions.clear();
   };
 

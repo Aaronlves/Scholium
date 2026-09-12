@@ -3043,9 +3043,9 @@ struct MarkdownEditorWebViewIntegrationTests {
     @Test("Edit callout roles use styling without duplicate visible labels")
     func editCalloutRolesUseStylingWithoutVisibleLabels() async throws {
         let source =
-            "> [!warning] Limitation\n> First body.\n\n"
-            + "> [!state] Claim\n> Second body.\n\n"
-            + "> [!quote] Source\n> Third body.\n"
+            "> [!warning]+ Limitation\n> First body.\n\n"
+            + "> [!state]+ Claim\n> Second body.\n\n"
+            + "> [!quote]+ Source\n> Third body.\n"
         let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
         defer { harness.close() }
         try await harness.waitUntilReady()
@@ -3072,6 +3072,41 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect((result["labelCount"] as? NSNumber)?.intValue == 3)
         #expect(result["visuallyHidden"] as? Bool == true)
         #expect(result["roleClasses"] as? [Bool] == [true, true, true])
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Edit callouts do not materialize a default title")
+    func editCalloutsDoNotMaterializeDefaultTitle() async throws {
+        let source = "> [!warning]\n> Warning body.\n\n> [!warning]-\n> Foldable body.\n"
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        let result = try #require(
+            try await harness.callPageJavaScript(
+                """
+                const defaultTitles = [...document.querySelectorAll('.scholium-callout-default-title')];
+                const roleLabels = [...document.querySelectorAll('.cm-live-callout-role-label')];
+                const disclosureButtons = [...document.querySelectorAll('.cm-live-callout-disclosure')];
+                const sourceLines = [...document.querySelectorAll('.cm-line.cm-live-callout')]
+                  .map(line => {
+                    const clone = line.cloneNode(true);
+                    clone.querySelectorAll('.cm-live-callout-role-label').forEach(label => label.remove());
+                    return clone.textContent ?? '';
+                  }).join('\\n');
+                return {
+                  defaultTitleCount: defaultTitles.length,
+                  roleLabelCount: roleLabels.length,
+                  disclosureCount: disclosureButtons.length,
+                  sourceContainsGeneratedRole: sourceLines.includes('Caution'),
+                };
+                """
+            ) as? [String: Any])
+        #expect((result["defaultTitleCount"] as? NSNumber)?.intValue == 0)
+        #expect((result["roleLabelCount"] as? NSNumber)?.intValue == 1)
+        #expect((result["disclosureCount"] as? NSNumber)?.intValue == 1)
+        #expect(result["sourceContainsGeneratedRole"] as? Bool == false)
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
         await harness.closeAndDrain()
     }
@@ -4271,19 +4306,22 @@ struct MarkdownEditorWebViewIntegrationTests {
                   secondMargin: getComputedStyle(second).marginInlineStart,
                   firstBorder: getComputedStyle(first).borderInlineStartWidth,
                   secondBorder: getComputedStyle(second).borderInlineStartWidth,
-                  parentRail: getComputedStyle(second, '::before').borderInlineStartWidth
+                  quoteDepth: getComputedStyle(second).getPropertyValue('--scholium-live-quote-depth').trim(),
+                  parentRail: getComputedStyle(second, '::before').backgroundImage
                 };
                 """
             ) as? [String: Any]
         )
-        #expect((geometry["firstClass"] as? String)?.contains("cm-live-quote-depth-1") == true)
-        #expect((geometry["secondClass"] as? String)?.contains("cm-live-quote-depth-2") == true)
+        #expect((geometry["firstClass"] as? String)?.contains("cm-live-quote") == true)
+        #expect((geometry["firstClass"] as? String)?.contains("cm-live-quote-nested") == false)
+        #expect((geometry["secondClass"] as? String)?.contains("cm-live-quote-nested") == true)
         #expect(geometry["firstInset"] as? String == "16px")
-        #expect(geometry["secondInset"] as? String == "16px")
-        #expect(geometry["secondMargin"] as? String == "16px")
+        #expect(geometry["secondInset"] as? String == "32px")
+        #expect(geometry["secondMargin"] as? String == "0px")
         #expect(geometry["firstBorder"] as? String == "3px")
-        #expect(geometry["secondBorder"] as? String == "1px")
-        #expect(geometry["parentRail"] as? String == "3px")
+        #expect(geometry["secondBorder"] as? String == "3px")
+        #expect(geometry["quoteDepth"] as? String == "2")
+        #expect((geometry["parentRail"] as? String)?.contains("gradient") == true)
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
         #expect(!harness.session.isDirty)
         await harness.closeAndDrain()

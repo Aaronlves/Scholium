@@ -40,6 +40,7 @@ enum DocumentAppearanceStyles {
 
         var rules = """
             :root {
+              --scholium-document-body-font-family: \(bodyFont);
               --scholium-document-line-width: \(number(settings.lineWidthCharacterUnits))ch;
               --scholium-document-half-line-width: \(number(settings.lineWidthCharacterUnits / 2))ch;
               --scholium-document-prose-font-size: \(number(body.fontSizePoints))pt;
@@ -88,10 +89,10 @@ enum DocumentAppearanceStyles {
         return rules
     }
 
-    /// The shared WebKit heading selectors are structural. Their built-in
-    /// typography remains derived from the same Appearance owner used by a
-    /// selected profile, including no-profile and failed-profile paths.
-    static func headingTransportDeclarations(
+    /// Shared WebKit typography remains derived from the same Appearance
+    /// owner used by a selected profile, including no-profile and failed-
+    /// profile paths. Both Review and Live consume these transport variables.
+    static func documentTypographyTransportDeclarations(
         for settings: DocumentAppearanceSettings
     ) -> String {
         let bodyFont = cssFontFamily(settings.body.fontFamily)
@@ -104,6 +105,7 @@ enum DocumentAppearanceStyles {
         let fontVariantCaps = headings.style == .smallCaps ? "small-caps" : "normal"
 
         return """
+            --scholium-document-body-font-family: \(bodyFont);
             --scholium-document-heading-font-family: \(headingFont);
             --scholium-document-heading-font-style: \(fontStyle);
             --scholium-document-heading-font-variant-caps: \(fontVariantCaps);
@@ -253,36 +255,32 @@ enum DocumentAppearanceStyles {
 
     private static func calloutCSS(_ callout: DocumentCalloutAppearance) -> String {
         let defaults = DocumentAppearanceSettings.defaultSettings.callout(callout.role)
-        let selector = selector(for: callout.role)
-        let liveSelector = selector.replacingOccurrences(
-            of: ".scholium-callout-",
-            with: "#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-role-"
-        )
+        let selectors = selectors(for: callout.role)
         var css = """
-            \(liveSelector) {
+            \(selectors.live) {
               font-size: \(number(callout.fontScale))em;
               line-height: \(callout.lineHeight.map(number) ?? "inherit");
             }
-            \(liveSelector) .scholium-callout-title {
+            \(selectors.live) .scholium-callout-title {
               font-family: inherit;
               font-weight: \(callout.titleWeight);
             }
-            \(selector) {
+            \(selectors.review) {
               --scholium-callout-block-gap: \(number(callout.blockGapEm))em;
               margin-block: var(--scholium-callout-block-gap);
               font-size: \(number(callout.fontScale))em;
             }
-            \(selector) .scholium-callout-body {
+            \(selectors.review) .scholium-callout-body {
               line-height: \(callout.lineHeight.map(number) ?? "inherit");
             }
-            \(selector) .scholium-callout-body p {
+            \(selectors.review) .scholium-callout-body p {
               margin-block: 0;
               padding-block: 0;
             }
-            \(selector) .scholium-callout-body p + p {
+            \(selectors.review) .scholium-callout-body p + p {
               margin-block-start: \(number(callout.paragraphSpacingEm))em;
             }
-            \(selector) .scholium-callout-title {
+            \(selectors.review) .scholium-callout-title {
               font-family: inherit;
               font-weight: \(callout.titleWeight);
             }
@@ -292,67 +290,104 @@ enum DocumentAppearanceStyles {
         case .orientation:
             css += """
 
-                \(selector) {
+                \(selectors.review),
+                \(selectors.live) {
                   margin-inline-start: \(number(callout.startInsetEm ?? defaults.startInsetEm ?? callout.inlineInsetEm))em;
                   margin-inline-end: \(number(callout.endInsetEm ?? defaults.endInsetEm ?? callout.inlineInsetEm))em;
                 }
-                \(selector) .scholium-callout-body { margin-block-start: 0; }
+                \(selectors.review) .scholium-callout-body { margin-block-start: 0; }
                 """
         case .connections:
             css += """
 
-                \(selector) {
+                \(selectors.review),
+                \(selectors.live) {
                   --scholium-callout-connect-content-indent: \(number(callout.contentIndentEm ?? defaults.contentIndentEm ?? 0))em;
                   margin-inline: \(number(callout.inlineInsetEm))em;
                 }
+                \(selectors.live).cm-live-callout-body-line {
+                  padding-inline-start: calc(.9em + var(--scholium-callout-connect-content-indent));
+                }
                 """
         case .statement:
-            css += "\n\(selector) .scholium-callout-heading { margin-inline-end: \(number(callout.titleGapEm ?? defaults.titleGapEm ?? 0))em; }"
+            css += """
+
+                \(selectors.review),
+                \(selectors.live) { margin-inline: \(number(callout.inlineInsetEm))em; }
+                \(selectors.review) .scholium-callout-heading { margin-inline-end: \(number(callout.titleGapEm ?? defaults.titleGapEm ?? 0))em; }
+                """
         case .illustration:
             css += """
 
-                \(selector) {
+                \(selectors.review) {
                   grid-template-columns: \(number(callout.titleColumnEm ?? defaults.titleColumnEm ?? 6.4))em minmax(0, 1fr);
                   column-gap: \(number(callout.columnGapEm ?? defaults.columnGapEm ?? 0.85))em;
+                  margin-inline: \(number(callout.inlineInsetEm))em;
+                }
+                \(selectors.live) {
                   margin-inline: \(number(callout.inlineInsetEm))em;
                 }
                 """
         case .caution, .source:
             css += """
 
-                \(selector) {
+                \(selectors.review) {
                   margin-inline: \(number(callout.inlineInsetEm))em;
                   padding-block: \(number(callout.paddingBlockEm ?? defaults.paddingBlockEm ?? 0.72))em;
                   padding-inline: \(number(callout.paddingInlineEm ?? defaults.paddingInlineEm ?? 0.88))em;
+                }
+                \(selectors.live) {
+                  margin-inline: \(number(callout.inlineInsetEm))em;
+                  padding-inline: \(number(callout.paddingInlineEm ?? defaults.paddingInlineEm ?? 0.88))em;
+                  --scholium-callout-live-start-inset: \(number(callout.paddingBlockEm ?? defaults.paddingBlockEm ?? 0.72))em;
+                  --scholium-callout-live-end-inset: \(number(callout.paddingBlockEm ?? defaults.paddingBlockEm ?? 0.72))em;
                 }
                 """
         case .folded:
             css += """
 
-                \(selector) { margin-inline: \(number(callout.inlineInsetEm))em; }
-                details.scholium-callout > .scholium-callout-body { margin-inline-start: \(number(callout.contentIndentEm ?? defaults.contentIndentEm ?? 0.5))em; }
+                \(selectors.review),
+                \(selectors.live) { margin-inline: \(number(callout.inlineInsetEm))em; }
+                \(selectors.review) > .scholium-callout-body { margin-inline-start: \(number(callout.contentIndentEm ?? defaults.contentIndentEm ?? 0.5))em; }
+                \(selectors.live).cm-live-callout-body-line { padding-inline-start: \(number(callout.contentIndentEm ?? defaults.contentIndentEm ?? 0.5))em; }
                 """
         case .quotation:
             css += """
 
-                \(selector) { margin-inline: \(number(callout.inlineInsetEm))em; }
-                \(selector) .scholium-callout-quotation { font-size: \(number(callout.quotationScale ?? defaults.quotationScale ?? 1.03))em; }
-                \(selector) .scholium-callout-title { font-size: \(number(callout.attributionScale ?? defaults.attributionScale ?? 0.82))em; }
+                \(selectors.review),
+                \(selectors.live) { margin-inline: \(number(callout.inlineInsetEm))em; }
+                \(selectors.review) .scholium-callout-quotation { font-size: \(number(callout.quotationScale ?? defaults.quotationScale ?? 1.03))em; }
+                \(selectors.review) .scholium-callout-title { font-size: \(number(callout.attributionScale ?? defaults.attributionScale ?? 0.82))em; }
+                \(selectors.live).cm-live-callout-body-line { font-size: \(number(callout.quotationScale ?? defaults.quotationScale ?? 1.03))em; }
+                \(selectors.live) .scholium-callout-title { font-size: \(number(callout.attributionScale ?? defaults.attributionScale ?? 0.82))em; }
                 """
         }
         return css
     }
 
-    private static func selector(for role: DocumentCalloutAppearanceRole) -> String {
+    private struct CalloutSelectors {
+        let review: String
+        let live: String
+    }
+
+    private static func selectors(for role: DocumentCalloutAppearanceRole) -> CalloutSelectors {
         switch role {
-        case .orientation: ".scholium-callout-orient"
-        case .connections: ".scholium-callout-connect"
-        case .statement: ".scholium-callout-state"
-        case .illustration: ".scholium-callout-illustrate"
-        case .caution: ".scholium-callout-flag"
-        case .folded: ".scholium-callout-neutral"
-        case .quotation: ".scholium-callout-quote"
-        case .source: ".scholium-callout-cite"
+        case .orientation:
+            .init(review: ".scholium-callout-orient", live: "#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-role-orient")
+        case .connections:
+            .init(review: ".scholium-callout-connect", live: "#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-role-connect")
+        case .statement:
+            .init(review: ".scholium-callout-state", live: "#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-role-state")
+        case .illustration:
+            .init(review: ".scholium-callout-illustrate", live: "#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-role-illustrate")
+        case .caution:
+            .init(review: ".scholium-callout-flag", live: "#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-role-flag")
+        case .folded:
+            .init(review: ".scholium-callout-neutral", live: "#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-role-neutral")
+        case .quotation:
+            .init(review: ".scholium-callout-quote", live: "#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-role-quote")
+        case .source:
+            .init(review: ".scholium-callout-cite", live: "#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-role-cite")
         }
     }
 

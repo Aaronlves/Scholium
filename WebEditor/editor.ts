@@ -935,9 +935,7 @@ function buildLiveDecorations(
           lineQueryTo,
         )[0];
         if (semanticCodeBlock) {
-          const fenceLine = semanticCodeBlock
-            ? isFencedDelimiterLine(doc, semanticCodeBlock, line.from)
-            : false;
+          const fenceLine = isFencedDelimiterLine(doc, semanticCodeBlock, line.from);
           const codeBlockActive = projectionSelections.some((range) =>
             selectionActivatesSyntax(
               range,
@@ -1014,8 +1012,7 @@ function buildLiveDecorations(
           lineQueryTo,
         )[0];
         const semanticCallout = semanticBlocksOnLine.find((block) => block.kind === "callout");
-        const activeCallout = parsedCallout;
-        if (activeCallout) {
+        if (parsedCallout) {
           const semanticLineMarkers = semanticCallout?.markerRanges.filter((range) =>
             range.from < lineQueryTo && range.to > line.from) ?? [];
           const pendingPrefix = semanticLineMarkers.length === 0
@@ -1067,10 +1064,17 @@ function buildLiveDecorations(
             }
           }
         }
-        const quote = semanticBlocksOnLine.find((block) => block.kind === "blockQuote");
-        if (quote && !parsedCallout) {
-          for (const marker of quote.markerRanges.filter((range) =>
-            range.from < lineQueryTo && range.to > line.from)) {
+        const quoteBlocks = parsedCallout
+          ? []
+          : semanticBlocksOnLine.filter((block) => block.kind === "blockQuote");
+        if (quoteBlocks.length > 0) {
+          const quoteMarkers = [...new Map(
+            quoteBlocks
+              .flatMap((block) => block.markerRanges)
+              .filter((range) => range.from < lineQueryTo && range.to > line.from)
+              .map((range) => [`${range.from}:${range.to}`, range]),
+          ).values()];
+          for (const marker of quoteMarkers) {
             const markerFrom = Math.max(line.from, marker.from);
             let markerTo = Math.min(line.to, marker.to);
             while (markerTo < line.to) {
@@ -1127,11 +1131,8 @@ function buildLiveDecorations(
           const prefixIsActive = projectionSelections.some((range) =>
             selectionActivatesSyntax(range, {from: replacementFrom, to: replacementTo}));
           if (prefixIsActive) {
-            const className = [
-              "cm-live-list-source-prefix",
-            ].join(" ");
             const indent = liveInlineWidgets.listIndent(listDepth);
-            const attributes: Record<string, string> = {class: className};
+            const attributes: Record<string, string> = {class: "cm-live-list-source-prefix"};
             if (indent) attributes.style = `margin-inline-start: ${indent}`;
             const range = Decoration.mark({attributes}).range(replacementFrom, replacementTo);
             decorations.push(range);
@@ -1448,10 +1449,13 @@ function buildFrontmatterPresentation(state: EditorState): DecorationSet {
     lines.push(Decoration.mark({class: className}).range(from, Math.min(to, end)));
   };
 
-  if (boundary.endLine > 0 && frontmatterIsActive) {
+  if (boundary.endLine > 0) {
     const opening = state.doc.line(1);
     const openingFrom = opening.text.charCodeAt(0) === 0xfeff
       ? opening.from + 1 : opening.from;
+    // Keep the authored fence range mounted in every state. CSS owns its
+    // opacity, so an inactive YAML boundary keeps the original line geometry
+    // and the same range can fade back in without a replacement transaction.
     addMark(openingFrom, Math.min(openingFrom + 3, opening.to), "cm-live-yaml-delimiter");
     const closing = state.doc.line(boundary.endLine);
     addMark(closing.from, Math.min(closing.from + 3, closing.to), "cm-live-yaml-delimiter");
@@ -1676,6 +1680,7 @@ const protectedInteractionNodes = new Set([
   "BlockMath",
   "UnclosedBlockMath",
   "ScholiumObsidianCommentBlock",
+  "CommentBlock",
   "HTMLBlock",
   "HorizontalRule",
 ]);
@@ -1953,42 +1958,42 @@ const editorContextMenu = createEditorContextMenuExtension({
 });
 
 const editorExtensions = [
-      editorArrivalHighlight,
-      highlightSpecialChars(),
-      history(),
-      drawSelection({drawRangeCursor: false}),
-      textSelectionPresentation,
-      dropCursor(),
-      EditorState.allowMultipleSelections.of(true),
-      indentOnInput(),
-      bidiIsolates(),
-      closeBrackets(),
-      rectangularSelection(),
-      EditorView.perLineTextDirection.of(true),
-      // Share Markdown's high precedence while preceding its generic list
-      // continuation. Scholium must compose the Callout quote and nested list
-      // prefixes before the base Markdown command can consume Return.
-      Prec.high(structuralInteractionKeymap),
-      Prec.high(lineBoundaryKeymap),
-      scholiumNoteLanguage,
-      indentUnit.of("  "),
-      keymap.of([
-        ...closeBracketsKeymap,
-        ...defaultKeymap,
-        ...historyKeymap,
-        ...foldKeymap,
-      ]),
-      saveKeymap,
-      documentFindExtension,
-      editorContextMenu,
-      stateReporter,
-      linkActivation,
-      lineSeparatorCompartment.of(EditorState.lineSeparator.of("\n")),
-      modeCompartment.of(sourceMode),
-      EditorView.theme({
-        "&": { height: "100%" },
-        ".cm-scroller": { overflow: "auto" },
-      }),
+  editorArrivalHighlight,
+  highlightSpecialChars(),
+  history(),
+  drawSelection({drawRangeCursor: false}),
+  textSelectionPresentation,
+  dropCursor(),
+  EditorState.allowMultipleSelections.of(true),
+  indentOnInput(),
+  bidiIsolates(),
+  closeBrackets(),
+  rectangularSelection(),
+  EditorView.perLineTextDirection.of(true),
+  // Share Markdown's high precedence while preceding its generic list
+  // continuation. Scholium must compose the Callout quote and nested list
+  // prefixes before the base Markdown command can consume Return.
+  Prec.high(structuralInteractionKeymap),
+  Prec.high(lineBoundaryKeymap),
+  scholiumNoteLanguage,
+  indentUnit.of("  "),
+  keymap.of([
+    ...closeBracketsKeymap,
+    ...defaultKeymap,
+    ...historyKeymap,
+    ...foldKeymap,
+  ]),
+  saveKeymap,
+  documentFindExtension,
+  editorContextMenu,
+  stateReporter,
+  linkActivation,
+  lineSeparatorCompartment.of(EditorState.lineSeparator.of("\n")),
+  modeCompartment.of(sourceMode),
+  EditorView.theme({
+    "&": { height: "100%" },
+    ".cm-scroller": { overflow: "auto" },
+  }),
 ];
 const editor = createMarkdownEditor(document.getElementById("editor")!, editorExtensions);
 editor.contentDOM.addEventListener("pointerdown", () => { selectingForAgent = true; selectionActions.dismiss(); });
@@ -2624,7 +2629,6 @@ const editorOperations = {
     documentTitlePresentationRevision += 1;
     editor.dispatch({effects: refreshDocumentTitleEffect.of(null)});
   },
-
 
   /** @param {string} mode */
   async setMode(mode: string) {

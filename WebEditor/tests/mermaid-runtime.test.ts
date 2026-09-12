@@ -165,11 +165,13 @@ describe("shared Mermaid runtime boundary", () => {
       ["--scholium-color-primary-text", "#28241d"],
       ["--scholium-color-accent", "-apple-system-control-accent"],
       ["--scholium-color-separator", "#c5c0b5"],
+      ["--scholium-document-body-font-family", "Alegreya, Georgia, serif"],
     ]);
     const style = {getPropertyValue: (name: string) => colors.get(name) ?? ""};
     const theme = mermaidThemeFromStyle(style);
     expect(theme).toMatchObject({
       darkMode: false,
+      fontFamily: "Alegreya, Georgia, serif",
       variables: {
         background: "#fef8ed",
         primaryColor: "#f4eee3",

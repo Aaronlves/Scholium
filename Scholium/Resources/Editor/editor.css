@@ -24,7 +24,7 @@ body,
 }
 
 #editor .cm-editor.scholium-live-mode .cm-scroller {
-  font-family: "Alegreya", Georgia, serif;
+  font-family: var(--scholium-document-body-font-family);
   font-size: var(--scholium-document-prose-font-size);
   line-height: var(--scholium-rhythm-prose-line-height);
 }
@@ -80,6 +80,13 @@ body,
 #editor .cm-editor.scholium-live-mode .cm-line.scholium-frontmatter-line .cm-live-yaml-delimiter,
 #editor .cm-editor.scholium-live-mode .cm-line.scholium-frontmatter-line .cm-live-yaml-comment {
   color: var(--scholium-color-secondary-text);
+}
+#editor .cm-editor.scholium-live-mode .cm-line.scholium-frontmatter-line .cm-live-yaml-delimiter {
+  opacity: 0;
+  transition: opacity 140ms cubic-bezier(.2, 0, .2, 1);
+}
+#editor .cm-editor.scholium-live-mode .cm-line.scholium-frontmatter-delimiter-line-active .cm-live-yaml-delimiter {
+  opacity: 1;
 }
 #editor .cm-editor.scholium-live-mode .cm-line.scholium-frontmatter-line .cm-live-yaml-key {
   color: var(--scholium-color-primary-text);
@@ -207,15 +214,21 @@ body,
   overflow-wrap: anywhere;
 }
 @media (prefers-reduced-motion: reduce) {
-  .scholium-live-mode .cm-syntax-token { transition: none; }
+  .scholium-live-mode :is(.cm-syntax-token, .cm-live-yaml-delimiter) {
+    transition: none;
+  }
 }
 
 /* The cursor remains CodeMirror-owned and is refreshed from the authoritative
    source selection when Live Preview changes inline geometry. It has no
    independent CSS transition that could lag behind the syntax it follows. */
 
-.cm-live-callout-start { padding-block-start: .55em; }
-.cm-live-callout-end { padding-block-end: .55em; }
+.cm-live-callout-start {
+  padding-block-start: var(--scholium-callout-live-start-inset, .55em);
+}
+.cm-live-callout-end {
+  padding-block-end: var(--scholium-callout-live-end-inset, .55em);
+}
 .cm-live-callout-body-line { min-block-size: 1lh; }
 .cm-live-callout-heading-control { display: inline; }
 .cm-live-callout-disclosure {
@@ -453,63 +466,46 @@ body,
    and share tables.css with Read. These source-line rules remain only while
    the caret or an IME composition is inside the exact Markdown table. */
 
+/* Live Preview is line-backed rather than tree-backed. Every quote line uses
+   the parser-owned cumulative depth and one rail track. The base border is
+   the outer quotation rail; the track repeats the quieter inner rail at each
+   additional inset. This mirrors Review's nested blockquote containers while
+   keeping the source line and caret in their original positions. */
 #editor .cm-editor.scholium-live-mode .cm-line.cm-live-quote {
-  padding-inline-start: var(--scholium-rhythm-quote-inset);
+  --scholium-live-quote-depth: 1;
+  margin-inline: 0;
+  padding-inline-start: calc(
+    var(--scholium-rhythm-quote-inset) * var(--scholium-live-quote-depth)
+  );
   padding-inline-end: 0;
 }
-#editor .cm-editor.scholium-live-mode .cm-line.cm-live-quote.cm-live-quote-depth-2 {
-  margin-inline-start: var(--scholium-rhythm-quote-inset);
-  padding-inline-start: var(--scholium-rhythm-quote-inset);
-}
-#editor .cm-editor.scholium-live-mode .cm-line.cm-live-quote.cm-live-quote-depth-3 {
-  margin-inline-start: calc(
-    var(--scholium-rhythm-quote-inset) + var(--scholium-rhythm-quote-inset)
-  );
-  padding-inline-start: var(--scholium-rhythm-quote-inset);
-}
-
-/* Live Preview is line-backed rather than tree-backed. The semantic quote
-   depth therefore paints the same ancestor rails that the nested Review
-   blockquotes own, so a child line never visually detaches from its parent. */
-#editor .cm-editor.scholium-live-mode .cm-line.cm-live-quote.cm-live-quote-depth-2::before,
-#editor .cm-editor.scholium-live-mode .cm-line.cm-live-quote.cm-live-quote-depth-3::before,
-#editor .cm-editor.scholium-live-mode .cm-line.cm-live-quote.cm-live-quote-depth-3::after {
+#editor .cm-editor.scholium-live-mode .cm-line.cm-live-quote::before {
   position: absolute;
   inset-block: 0;
+  inset-inline-start: 0;
+  inline-size: calc(
+    ((var(--scholium-live-quote-depth) - 1) * var(--scholium-rhythm-quote-inset)) + 1px
+  );
+  background: repeating-linear-gradient(
+    to right,
+    transparent 0,
+    transparent calc(var(--scholium-rhythm-quote-inset) - 1px),
+    var(--scholium-color-separator) calc(var(--scholium-rhythm-quote-inset) - 1px),
+    var(--scholium-color-separator) var(--scholium-rhythm-quote-inset)
+  );
   pointer-events: none;
   content: "";
 }
-#editor .cm-editor.scholium-live-mode .cm-line.cm-live-quote.cm-live-quote-depth-2::before {
-  inset-inline-start: calc(-1 * var(--scholium-rhythm-quote-inset));
-  border-inline-start: 3px solid var(--scholium-document-accent);
-}
-#editor .cm-editor.scholium-live-mode .cm-line.cm-live-quote.cm-live-quote-depth-3::before {
-  inset-inline-start: calc(-1 * var(--scholium-rhythm-quote-inset));
-  border-inline-start: 1px solid var(--scholium-color-separator);
-}
-#editor .cm-editor.scholium-live-mode .cm-line.cm-live-quote.cm-live-quote-depth-3::after {
-  inset-inline-start: calc(-2 * var(--scholium-rhythm-quote-inset));
-  border-inline-start: 3px solid var(--scholium-document-accent);
-}
-
 /* Protected Callout presentation is injected from callouts.css by the app. */
 
 .cm-live-rule {
   margin: 0;
 }
 
-@media (prefers-reduced-transparency: reduce) {
-  .cm-gutters,
-  .cm-activeLine,
-  .cm-activeLineGutter,
-  .cm-live-code {
-    background: var(--scholium-color-document-background);
-  }
-}
-
 /* Technical syntax keeps its own readable source surface. No horizontal
    pushing is applied to table cells, equations, diagrams, or literal source. */
 .scholium-live-mode :is(.cm-live-table, .cm-live-math-source, .cm-live-raw-html) {
+  box-sizing: border-box;
   font-family: var(--scholium-document-source-font-family);
   font-style: normal;
   font-variant-caps: normal;
@@ -517,11 +513,38 @@ body,
   overflow-wrap: anywhere;
 }
 .scholium-live-mode :is(.cm-live-math-source, .cm-live-raw-html) {
+  padding-inline: var(--scholium-rhythm-code-inset);
   font-size: var(--scholium-document-source-font-size);
   line-height: var(--scholium-rhythm-source-line-height);
 }
+.scholium-live-mode .cm-line.cm-live-math-source-start {
+  padding-block-start: var(--scholium-rhythm-code-inset);
+  border-start-start-radius: var(--scholium-corner-document-code-block);
+  border-start-end-radius: var(--scholium-corner-document-code-block);
+}
+.scholium-live-mode .cm-line.cm-live-math-source-end {
+  padding-block-end: var(--scholium-rhythm-code-inset);
+  border-end-start-radius: var(--scholium-corner-document-code-block);
+  border-end-end-radius: var(--scholium-corner-document-code-block);
+}
 .scholium-live-mode :is(.cm-live-table, .cm-live-math-source) {
   background: var(--scholium-document-technical-surface);
+}
+@media (prefers-reduced-transparency: reduce) {
+  .cm-gutters,
+  .cm-activeLine,
+  .cm-activeLineGutter,
+  .cm-live-code {
+    background: var(--scholium-color-document-background);
+  }
+  .cm-editor.scholium-live-mode :is(
+    .cm-live-codeblock,
+    .cm-live-table,
+    .cm-live-math-source,
+    .cm-live-raw-html
+  ) {
+    background: var(--scholium-color-document-background);
+  }
 }
 @media (prefers-contrast: more) {
   .scholium-live-mode .cm-syntax-token[data-syntax-open="true"] {

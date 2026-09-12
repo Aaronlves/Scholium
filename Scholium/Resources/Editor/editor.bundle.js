@@ -14064,6 +14064,7 @@
       this.frame = 0;
       for (const animation of this.animations) animation.cancel();
       this.animations = [];
+      this.transitions.clear();
       this.frontmatterTransitions.clear();
     };
     update(update) {
@@ -30729,6 +30730,10 @@ ${fence}
     ["Table", "table"],
     ["HorizontalRule", "thematicBreak"],
     ["HTMLBlock", "html"],
+    // CommonMark exposes a block HTML comment as CommentBlock while Swift
+    // Markdown exposes the same inert source as HTMLBlock. Keep both adapters
+    // on one raw-HTML presentation path so Review and Edit cannot drift.
+    ["CommentBlock", "html"],
     ["Callout", "callout"],
     ["FootnoteDefinition", "footnoteDefinition"],
     ["BlockMath", "displayMath"],
@@ -32547,9 +32552,6 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     }
     const body = document2.createElement("div");
     body.className = "scholium-callout-body";
-    const signature = document2.createElement("span");
-    signature.className = "scholium-callout-signature";
-    signature.setAttribute("aria-hidden", "true");
     const content2 = document2.createElement("div");
     content2.className = "scholium-callout-content";
     const destination = parts.definition.identifier === "quote" ? document2.createElement("blockquote") : content2;
@@ -32567,7 +32569,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     } else {
       appendMarkdownBlocks(parts.body, destination, optionsWithMap(options, parts.bodyOffsets));
     }
-    body.append(signature, content2);
+    body.append(content2);
     callout.append(headingContainer, body);
     parent.append(callout);
   }
@@ -32642,7 +32644,8 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         parent.append(pre);
         return;
       }
-      case "HTMLBlock": {
+      case "HTMLBlock":
+      case "CommentBlock": {
         const pre = document2.createElement("pre");
         pre.className = "raw-html";
         pre.dir = "ltr";
@@ -33689,6 +33692,20 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       }];
     });
   }
+  function indexedQuoteRanges(syntax) {
+    const blocksByRange = new Map(
+      syntax.blocks.map((block) => [rangeKey(block.from, block.to), block])
+    );
+    return syntax.blocks.filter((block) => block.kind === "blockQuote").map((block) => {
+      let depth2 = 1;
+      let parent = block.parent;
+      while (parent) {
+        if (parent.kind === "blockQuote") depth2 += 1;
+        parent = blocksByRange.get(rangeKey(parent.from, parent.to))?.parent ?? null;
+      }
+      return { from: block.from, to: block.to, depth: depth2 };
+    });
+  }
   function indexedTablePositionRanges(doc2, tables) {
     const ranges = [];
     for (const table of tables) {
@@ -33728,6 +33745,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
   function finalizedLiveProjectionIndex(doc2, topologyIdentity, syntax, excluded, codeBlocks, inlineRanges, listPrefixRanges, taskItemRanges, footnotes, tables, callouts, mathExpressions, frontmatterRange, hasUnclosedFrontmatter) {
     const immutableExcluded = immutableProjectionRanges(excluded);
     const immutableCodeBlocks = immutableProjectionRanges(codeBlocks);
+    const immutableQuoteRanges = immutableProjectionRanges(indexedQuoteRanges(syntax));
     const immutableFrontmatter = frontmatterRange === null ? null : Object.freeze({ ...frontmatterRange });
     const immutableTables = Object.freeze([...tables]);
     const immutableCallouts = Object.freeze([...callouts]);
@@ -33752,6 +33770,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     return Object.freeze({
       topologyIdentity,
       syntax,
+      quoteRanges: immutableQuoteRanges,
       literals: Object.freeze({
         excluded: immutableExcluded,
         codeBlocks: immutableCodeBlocks
@@ -34024,17 +34043,6 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     if (!block.fenced) return false;
     return block.markerRanges.some((range) => doc2.lineAt(range.from).from === lineFrom);
   }
-  function authoredQuoteDepth(text, fallback) {
-    let index = 0;
-    let depth2 = 0;
-    while (index < text.length && depth2 < 3) {
-      while (index < text.length && (text[index] === " " || text[index] === "	")) index += 1;
-      if (text[index] !== ">") break;
-      depth2 += 1;
-      index += 1;
-    }
-    return Math.max(1, Math.min(depth2 || fallback, 3));
-  }
   function affectedProjectionAndCodeBlockRanges(indexController, state, previousSelections, nextSelections) {
     const changedCodeBlocks = indexController.index(state).literals.codeBlocks.filter((block) => {
       const wasActive = previousSelections.some((selection) => selectionActivatesSyntax(selection, codeBlockActivationRange(state.doc, block)));
@@ -34050,7 +34058,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       ...changedCodeBlocks
     ]);
   }
-  function semanticBlockSpacing(block, _edge) {
+  function semanticBlockSpacing(block) {
     switch (block.kind) {
       case "unorderedList":
       case "orderedList":
@@ -34063,6 +34071,8 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         return "paragraph";
       case "callout":
         return "callout";
+      case "comment":
+        return "standard";
       case "thematicBreak":
         return "half";
       default:
@@ -34114,7 +34124,6 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       const headingMarkers = heading2?.markerRanges.filter((range) => range.from < lineQueryTo && range.to > line.from) ?? [];
       const setextMarkerLine = heading2?.nodeName.startsWith("SetextHeading") && headingMarkers.some((range) => range.from <= line.from && range.to >= line.to);
       const paragraph = blocks.find((block) => block.kind === "paragraph") ?? null;
-      const callout = blocks.find((block) => block.kind === "callout") ?? null;
       const calloutPresentation = projectionRangesIntersecting(
         index.callouts,
         line.from,
@@ -34122,8 +34131,14 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       )[0] ?? null;
       const opening = calloutPresentation ? calloutHeader(calloutPresentation.source.split(/\r?\n/, 1)[0] ?? "") : null;
       const calloutIdentifier = opening ? calloutDefinition(options.editingDialect(), opening[2]).identifier : null;
-      const quote = calloutPresentation ? null : blocks.find((block) => block.kind === "blockQuote") ?? null;
-      const quoteMarkers = quote?.markerRanges.filter((range) => range.from < lineQueryTo && range.to > line.from) ?? [];
+      const displayMath = blocks.find((block) => block.kind === "displayMath") ?? null;
+      const quoteBlocks = calloutPresentation ? [] : blocks.filter((block) => block.kind === "blockQuote");
+      const quoteRanges = calloutPresentation ? [] : projectionRangesIntersecting(index.quoteRanges, line.from, lineQueryTo);
+      const quote = quoteBlocks[0] ?? null;
+      const quoteDepth = quoteRanges.reduce(
+        (maximum, range) => Math.max(maximum, range.depth),
+        0
+      );
       const rule = blocks.find((block) => block.kind === "thematicBreak") ?? null;
       const html2 = blocks.find((block) => block.kind === "html") ?? null;
       const blockComment = blocks.find((block) => block.kind === "comment") ?? null;
@@ -34169,7 +34184,13 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         }
         if (calloutIdentifier === "orient") classes.add("cm-live-callout-orient-source");
       }
-      if (blocks.some((block) => block.kind === "displayMath")) classes.add("cm-live-math-source");
+      if (displayMath) {
+        classes.add("cm-live-math-source");
+        const firstMathLine = state.doc.lineAt(displayMath.from).number;
+        const lastMathLine = state.doc.lineAt(displayMath.to).number;
+        if (line.number === firstMathLine) classes.add("cm-live-math-source-start");
+        if (line.number === lastMathLine) classes.add("cm-live-math-source-end");
+      }
       if (blocks.some((block) => block.kind === "footnoteDefinition")) classes.add("cm-live-footnote-source");
       if (codeBlock) {
         classes.add("cm-live-codeblock");
@@ -34190,6 +34211,10 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
           if (line.number === firstStyledLine) classes.add("cm-live-codeblock-start");
           if (line.number === lastStyledLine) classes.add("cm-live-codeblock-end");
         }
+      } else if (blockComment) {
+        classes.add("cm-live-raw-html");
+        if (line.from <= blockComment.from) classes.add("cm-live-raw-html-start");
+        if (line.to >= blockComment.to) classes.add("cm-live-raw-html-end");
       } else if (comment2) {
         classes.add("cm-live-paragraph");
         classes.add("cm-live-paragraph-start");
@@ -34207,15 +34232,14 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
             classes.add(`cm-live-h${headingLevel}`);
           }
         }
-        if (paragraph && !callout && headingLevel === null) {
+        if (paragraph && !calloutPresentation && headingLevel === null) {
           classes.add("cm-live-paragraph");
           if (line.from <= paragraph.from) classes.add("cm-live-paragraph-start");
           if (line.to >= paragraph.to) classes.add("cm-live-paragraph-end");
         }
         if (quote) {
           classes.add("cm-live-quote");
-          const quoteDepth = authoredQuoteDepth(line.text, quoteMarkers.length);
-          classes.add(`cm-live-quote-depth-${quoteDepth}`);
+          if (quoteDepth > 1) classes.add("cm-live-quote-nested");
         }
         if (rule && outsideFrontmatter && !active) classes.add("cm-live-rule");
         if (list && listMarker) {
@@ -34225,22 +34249,16 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         }
       }
       return {
-        active,
         classes: [...classes],
         codeBlock,
-        heading: heading2,
         headingLevel,
-        headingMarkers,
+        displayMath,
         paragraph,
-        callout,
         calloutPresentation,
-        quote,
-        quoteMarkers,
-        rule,
+        quoteDepth,
         html: html2,
         comment: comment2,
-        list,
-        listMarker
+        list
       };
     }
     function semanticLineDecorationRanges(state, from = 0, to = state.doc.length) {
@@ -34253,7 +34271,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       let line = state.doc.lineAt(scanFrom);
       while (line.from <= scanTo) {
         const presentation = semanticLinePresentation(state, line, index);
-        const direction = presentation.codeBlock || presentation.html ? "ltr" : presentation.headingLevel !== null || presentation.paragraph || presentation.calloutPresentation || presentation.quote || presentation.list || presentation.comment ? "auto" : null;
+        const direction = presentation.codeBlock || presentation.displayMath || presentation.html ? "ltr" : presentation.headingLevel !== null || presentation.paragraph || presentation.calloutPresentation || presentation.quoteDepth > 0 || presentation.list || presentation.comment ? "auto" : null;
         if (presentation.classes.length > 0 || direction) {
           const attributes = {};
           if (presentation.classes.length > 0) {
@@ -34263,6 +34281,9 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
             attributes["data-scholium-callout-from"] = String(
               presentation.calloutPresentation.from
             );
+          }
+          if (presentation.quoteDepth > 0) {
+            attributes.style = `--scholium-live-quote-depth: ${presentation.quoteDepth};`;
           }
           if (direction) attributes.dir = direction;
           if (presentation.headingLevel !== null) {
@@ -34385,8 +34406,8 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       const ranges = [];
       let previous = null;
       for (const current of topLevelBlocks) {
-        const previousSpacing = previous ? semanticBlockSpacing(previous, "after") : "none";
-        const nextSpacing = semanticBlockSpacing(current, "before");
+        const previousSpacing = previous ? semanticBlockSpacing(previous) : "none";
+        const nextSpacing = semanticBlockSpacing(current);
         const previousLineNumber = previous ? state.doc.lineAt(Math.min(previous.to, state.doc.length)).number : 0;
         const currentLineNumber = state.doc.lineAt(current.from).number;
         let authoredSeparatorLine = null;
@@ -34418,7 +34439,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         previous = current;
       }
       if (previous) {
-        const spacing = semanticBlockSpacing(previous, "after");
+        const spacing = semanticBlockSpacing(previous);
         if (spacing !== "none") {
           ranges.push(Decoration.widget({
             widget: new SemanticBlockGapWidget(spacing, "none"),
@@ -34858,20 +34879,12 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
           label.textContent = `${this.label} `;
           root.append(label);
         }
-        if (this.label && this.title.trim().length === 0) {
-          const fallbackTitle = document.createElement("span");
-          fallbackTitle.className = "scholium-callout-title scholium-callout-default-title";
-          fallbackTitle.textContent = this.label;
-          root.append(fallbackTitle);
-        }
         return root;
       }
       updateDOM(root) {
         const button = root.querySelector("button");
         const label = root.querySelector(".cm-live-callout-role-label");
-        const fallbackTitle = root.querySelector(".scholium-callout-default-title");
-        const needsFallbackTitle = this.label.length > 0 && this.title.trim().length === 0;
-        if (!!button !== this.foldable || !!label !== !!this.label || !!fallbackTitle !== needsFallbackTitle) return false;
+        if (!!button !== this.foldable || !!label !== !!this.label) return false;
         root.dataset.calloutFrom = String(this.from);
         if (button) {
           button.textContent = this.collapsed ? "\u25B8" : "\u25BE";
@@ -34879,7 +34892,6 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
           button.setAttribute("aria-label", `${localized("Callout")}: ${this.title || this.label}`);
         }
         if (label) label.textContent = `${this.label} `;
-        if (fallbackTitle) fallbackTitle.textContent = this.label;
         return true;
       }
       ignoreEvent() {
@@ -34897,7 +34909,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         const bodyActive = selections.some((range) => range.empty ? range.head > header.to && range.head <= presentation.to : range.from < presentation.to && range.to > header.to);
         const collapsed = foldable2 && !bodyActive && (folds.get(presentation.from) ?? opening[3] === "-");
         const label = resolveCallout(opening[2]).label;
-        if (foldable2 || label) decorations2.push(Decoration.widget({
+        if (foldable2) decorations2.push(Decoration.widget({
           widget: new CalloutHeadingWidget(presentation.from, label, opening[4], foldable2, collapsed),
           side: 1
         }).range(header.to - opening[4].length));
@@ -37292,7 +37304,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
             lineQueryTo
           )[0];
           if (semanticCodeBlock) {
-            const fenceLine = semanticCodeBlock ? isFencedDelimiterLine2(doc2, semanticCodeBlock, line.from) : false;
+            const fenceLine = isFencedDelimiterLine2(doc2, semanticCodeBlock, line.from);
             const codeBlockActive = projectionSelections.some((range) => selectionActivatesSyntax(
               range,
               codeBlockActivationRange(doc2, semanticCodeBlock)
@@ -37355,8 +37367,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
             lineQueryTo
           )[0];
           const semanticCallout = semanticBlocksOnLine.find((block) => block.kind === "callout");
-          const activeCallout = parsedCallout;
-          if (activeCallout) {
+          if (parsedCallout) {
             const semanticLineMarkers = semanticCallout?.markerRanges.filter((range) => range.from < lineQueryTo && range.to > line.from) ?? [];
             const pendingPrefix = semanticLineMarkers.length === 0 ? /^\s*>[ \t]*/.exec(doc2.sliceString(line.from, line.to))?.[0] ?? "" : "";
             const lineMarkers = semanticLineMarkers.length > 0 ? semanticLineMarkers : pendingPrefix.length > 0 ? [{ from: line.from, to: line.from + pendingPrefix.length }] : [];
@@ -37396,9 +37407,12 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
               }
             }
           }
-          const quote = semanticBlocksOnLine.find((block) => block.kind === "blockQuote");
-          if (quote && !parsedCallout) {
-            for (const marker of quote.markerRanges.filter((range) => range.from < lineQueryTo && range.to > line.from)) {
+          const quoteBlocks = parsedCallout ? [] : semanticBlocksOnLine.filter((block) => block.kind === "blockQuote");
+          if (quoteBlocks.length > 0) {
+            const quoteMarkers = [...new Map(
+              quoteBlocks.flatMap((block) => block.markerRanges).filter((range) => range.from < lineQueryTo && range.to > line.from).map((range) => [`${range.from}:${range.to}`, range])
+            ).values()];
+            for (const marker of quoteMarkers) {
               const markerFrom = Math.max(line.from, marker.from);
               let markerTo = Math.min(line.to, marker.to);
               while (markerTo < line.to) {
@@ -37434,11 +37448,8 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
             const replacementTo = listPrefix2?.to ?? (task ? list.taskMarkerRange.to : listMarker.to);
             const prefixIsActive = projectionSelections.some((range) => selectionActivatesSyntax(range, { from: replacementFrom, to: replacementTo }));
             if (prefixIsActive) {
-              const className = [
-                "cm-live-list-source-prefix"
-              ].join(" ");
               const indent = liveInlineWidgets.listIndent(listDepth);
-              const attributes = { class: className };
+              const attributes = { class: "cm-live-list-source-prefix" };
               if (indent) attributes.style = `margin-inline-start: ${indent}`;
               const range = Decoration.mark({ attributes }).range(replacementFrom, replacementTo);
               decorations2.push(range);
@@ -37705,7 +37716,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       if (from < 0 || to <= from || from >= end) return;
       lines.push(Decoration.mark({ class: className }).range(from, Math.min(to, end)));
     };
-    if (boundary.endLine > 0 && frontmatterIsActive) {
+    if (boundary.endLine > 0) {
       const opening = state.doc.line(1);
       const openingFrom = opening.text.charCodeAt(0) === 65279 ? opening.from + 1 : opening.from;
       addMark(openingFrom, Math.min(openingFrom + 3, opening.to), "cm-live-yaml-delimiter");
@@ -37897,6 +37908,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     "BlockMath",
     "UnclosedBlockMath",
     "ScholiumObsidianCommentBlock",
+    "CommentBlock",
     "HTMLBlock",
     "HorizontalRule"
   ]);

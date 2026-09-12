@@ -3356,6 +3356,10 @@ struct FrontendArchitectureTests {
             contentsOf: repository.appendingPathComponent("WebEditor/live-semantic-layout.ts"),
             encoding: .utf8
         )
+        let semanticProjectionSource = try String(
+            contentsOf: repository.appendingPathComponent("WebEditor/semantic-projection.ts"),
+            encoding: .utf8
+        )
         let noteSource = try String(
             contentsOf: repository.appendingPathComponent(
                 "Scholium/Views/Note/NoteContentView.swift"),
@@ -3446,8 +3450,13 @@ struct FrontendArchitectureTests {
         #expect(!syntaxPresentationSource.contains("fromMarginInlineStart"))
         #expect(syntaxPresentationSource.contains("scholium-frontmatter-delimiter-line"))
         #expect(editorSource.contains("data-scholium-yaml-delimiter"))
+        #expect(semanticProjectionSource.contains("[\"CommentBlock\", \"html\"]"))
         #expect(structuredProjectionSource.contains("calloutMotion"))
-        #expect(semanticLayoutSource.contains(#"classes.add(`cm-live-quote-depth-${quoteDepth}`)"#))
+        #expect(semanticLayoutSource.contains("classes.add(\"cm-live-quote-nested\")"))
+        #expect(!semanticLayoutSource.contains("cm-live-quote-depth-"))
+        #expect(semanticLayoutSource.contains("index.quoteRanges"))
+        #expect(semanticLayoutSource.contains("--scholium-live-quote-depth"))
+        #expect(!semanticLayoutSource.contains("authoredQuoteDepth"))
         #expect(editorStyles.contains(".cm-cursor"))
         #expect(editorStyles.contains(".cm-live-footnote-source-marker"))
         #expect(editorStyles.contains(".cm-syntax-token {"))
@@ -4262,16 +4271,29 @@ struct FrontendArchitectureTests {
     }
 
     @Test("Read and Live Preview inject one protected callout presentation")
-    func readModeInjectsProtectedCalloutPresentation() {
+    func readModeInjectsProtectedCalloutPresentation() throws {
         let css = SafeMarkdownReadWebView.Coordinator.baseCSS
         let calloutCSS = ScholiumCalloutStyles.css
         let editorHTML = MarkdownEditorWebView.editorHTML ?? ""
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let projectionSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "WebEditor/live-structured-block-projections.ts"
+            ),
+            encoding: .utf8
+        )
 
         #expect(css.contains(".scholium-callout"))
         #expect(!css.contains("(ScholiumCalloutStyles.css)"))
         #expect(css.contains(calloutCSS))
         #expect(editorHTML.contains(calloutCSS))
         #expect(editorHTML.contains(".cm-live-callout-role-label"))
+        #expect(projectionSource.contains("if (foldable) decorations.push(Decoration.widget({"))
+        #expect(!projectionSource.contains("if (foldable || label) decorations.push"))
+        #expect(!projectionSource.contains("scholium-callout-default-title"))
         #expect(calloutCSS.contains(".scholium-callout-role,\n.scholium-callout-title"))
         #expect(calloutCSS.contains(".scholium-callout-role {\n  display: block;"))
         #expect(!calloutCSS.contains(".cm-live-callout-role {"))
@@ -4335,7 +4357,7 @@ struct FrontendArchitectureTests {
         #expect(!calloutCSS.contains("text-align-last:"))
         #expect(
             ScholiumWebDesignTokens.documentPresentationCSS.contains(
-                "cm-live-quote.cm-live-quote-depth-2"
+                "cm-live-quote.cm-live-quote-nested"
             ))
         #expect(
             ScholiumWebDesignTokens.documentPresentationCSS.contains(
@@ -4352,6 +4374,10 @@ struct FrontendArchitectureTests {
         #expect(
             ScholiumWebDesignTokens.documentPresentationCSS.contains(
                 "Nested quotations are real children of their parent quotation"
+            ))
+        #expect(
+            !ScholiumWebDesignTokens.documentPresentationCSS.contains(
+                "cm-live-quote.cm-live-quote-depth-2"
             ))
     }
 
@@ -4387,8 +4413,12 @@ struct FrontendArchitectureTests {
             ))
         #expect(
             editorCSS.contains(
-                "padding-inline-start: var(--scholium-rhythm-quote-inset);"
+                "--scholium-live-quote-depth: 1;"
             ))
+        #expect(editorCSS.contains("margin-inline: 0;"))
+        #expect(editorCSS.contains("repeating-linear-gradient("))
+        #expect(editorCSS.contains("var(--scholium-live-quote-depth)"))
+        #expect(!editorCSS.contains("cm-live-quote-depth-2 {\n  margin-inline-start:"))
     }
 
     @Test("Edit H1 remains an authored first-level body heading")
@@ -4670,6 +4700,7 @@ struct FrontendArchitectureTests {
         let css = DocumentAppearanceStyles.css(for: profile)
 
         #expect(css.contains("--scholium-document-prose-font-size: 12pt"))
+        #expect(css.contains("--scholium-document-body-font-family: Alegreya"))
         #expect(css.contains("--scholium-rhythm-prose-line-height: 1.7"))
         #expect(css.contains("--scholium-appearance-h1-before: 0.9em"))
         #expect(css.contains("--scholium-appearance-h1-after: 0.35em"))
@@ -4688,7 +4719,9 @@ struct FrontendArchitectureTests {
         #expect(css.contains(".scholium-callout-connect"))
         #expect(css.contains("--scholium-callout-connect-content-indent: 0.72em"))
         #expect(css.contains("grid-template-columns: 6.4em minmax(0, 1fr)"))
-        #expect(css.contains("details.scholium-callout > .scholium-callout-body"))
+        #expect(css.contains(".scholium-callout-neutral > .scholium-callout-body"))
+        #expect(css.contains("cm-live-callout-role-neutral.cm-live-callout-body-line"))
+        #expect(!css.contains("details.scholium-callout > .scholium-callout-body"))
         #expect(css.contains("--scholium-document-line-width: 66ch"))
         #expect(css.contains("--scholium-document-half-line-width: 33ch"))
         #expect(css.contains(".scholium-document p em :lang(zh-Hans)"))
@@ -4731,6 +4764,10 @@ struct FrontendArchitectureTests {
         #expect(css.contains(".scholium-table th"))
         #expect(css.contains("--scholium-table-cell-inline-inset"))
         #expect(css.contains("overflow-x: auto"))
+        #expect(
+            ScholiumWebDesignTokens.documentPresentationCSS.contains(
+                ".scholium-table :not(pre) > code"
+            ))
         #expect(editorHTML.contains(css))
         #expect(
             SafeMarkdownReadWebView.Coordinator.documentHTML(

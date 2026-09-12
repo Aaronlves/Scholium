@@ -1598,7 +1598,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         static let baseCSS = """
             html, body { margin: 0; min-height: 100%; overflow-x: hidden; background: var(--scholium-color-document-background); color: var(--scholium-color-primary-text); }
             html.scholium-viewport-resize-suppresses-overlay-scrollbar { scrollbar-width: none; }
-            body { font-family: Alegreya, Georgia, serif; font-size: var(--scholium-document-prose-font-size); line-height: var(--scholium-rhythm-prose-line-height); }
+            body { font-family: var(--scholium-document-body-font-family); font-size: var(--scholium-document-prose-font-size); line-height: var(--scholium-rhythm-prose-line-height); }
             \(ReviewSelectionPresentation.css)
             .scholium-link-annotation-button > span { background: currentColor; -webkit-mask: var(--scholium-system-symbol-text-bubble) center / contain no-repeat; mask: var(--scholium-system-symbol-text-bubble) center / contain no-repeat; }
             img, video, svg { max-width: 100%; height: auto; }

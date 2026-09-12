@@ -91,10 +91,21 @@ export interface IndexedTaskItemRange extends ProjectionSourceRange {
   readonly markerTo: number;
 }
 
+/**
+ * A parser-owned quotation container. The depth is the number of Blockquote
+ * ancestors in the semantic tree, rather than a count guessed from one
+ * physical line. Edit uses this range to project the same ancestor track that
+ * Review gets from nested blockquote elements.
+ */
+export interface LiveQuoteProjectionRange extends ProjectionSourceRange {
+  readonly depth: number;
+}
+
 export interface LiveProjectionIndex {
   /** Stable only while local Markdown topology is proven unchanged. */
   readonly topologyIdentity: object;
   readonly syntax: SemanticProjectionRanges;
+  readonly quoteRanges: readonly Readonly<LiveQuoteProjectionRange>[];
   readonly literals: SemanticLiteralRanges;
   readonly inlineRanges: readonly Readonly<ProjectionSourceRange>[];
   readonly listPrefixRanges: readonly Readonly<ProjectionSourceRange>[];
@@ -170,6 +181,23 @@ function indexedTaskItemRanges(syntax: SemanticProjectionRanges) {
       markerTo: block.taskMarkerRange.to,
     }];
   });
+}
+
+function indexedQuoteRanges(syntax: SemanticProjectionRanges) {
+  const blocksByRange = new Map(
+    syntax.blocks.map((block) => [rangeKey(block.from, block.to), block]),
+  );
+  return syntax.blocks
+    .filter((block) => block.kind === "blockQuote")
+    .map((block): LiveQuoteProjectionRange => {
+      let depth = 1;
+      let parent = block.parent;
+      while (parent) {
+        if (parent.kind === "blockQuote") depth += 1;
+        parent = blocksByRange.get(rangeKey(parent.from, parent.to))?.parent ?? null;
+      }
+      return {from: block.from, to: block.to, depth};
+    });
 }
 
 export interface LiveProjectionIndexController {
@@ -254,6 +282,7 @@ function finalizedLiveProjectionIndex(
 ): LiveProjectionIndex {
   const immutableExcluded = immutableProjectionRanges(excluded);
   const immutableCodeBlocks = immutableProjectionRanges(codeBlocks);
+  const immutableQuoteRanges = immutableProjectionRanges(indexedQuoteRanges(syntax));
   const immutableFrontmatter = frontmatterRange === null
     ? null
     : Object.freeze({...frontmatterRange});
@@ -280,6 +309,7 @@ function finalizedLiveProjectionIndex(
   return Object.freeze({
     topologyIdentity,
     syntax,
+    quoteRanges: immutableQuoteRanges,
     literals: Object.freeze({
       excluded: immutableExcluded,
       codeBlocks: immutableCodeBlocks,

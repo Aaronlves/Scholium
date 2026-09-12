@@ -571,7 +571,7 @@ enum ScholiumWebDesignTokens {
                 body.paragraphSpacingEm * body.fontSizePoints * (96 / 72)
             ))px;
             --scholium-rhythm-heading-line-height: \(number(headings.lineHeight));
-            \(DocumentAppearanceStyles.headingTransportDeclarations(for: defaults))
+            \(DocumentAppearanceStyles.documentTypographyTransportDeclarations(for: defaults))
             --scholium-rhythm-code-inset: \(ScholiumDocumentRhythm.codeBlockInset)px;
             --scholium-document-technical-surface: color-mix(
               in srgb,
@@ -684,7 +684,7 @@ enum ScholiumWebDesignTokens {
             var(--scholium-rhythm-inline-regular),
             calc(50% - var(--scholium-document-half-line-width))
           );
-          font-family: Alegreya, Georgia, "Songti SC", "STSong", serif;
+          font-family: var(--scholium-document-body-font-family);
           font-size: calc(
             var(--scholium-document-prose-font-size)
             * var(--scholium-document-text-scale-factor)
@@ -1007,16 +1007,15 @@ enum ScholiumWebDesignTokens {
           color: color-mix(in srgb, var(--scholium-color-primary-text) 78%, transparent);
         }
         /* Nested quotations are real children of their parent quotation in
-           Review. The parent rail therefore remains continuous through the
-           child; only the child rail recedes in weight and ink. */
-        .scholium-document blockquote blockquote:not(.scholium-callout-quotation),
-        .cm-editor.scholium-live-mode .cm-live-quote.cm-live-quote-depth-2,
-        .cm-editor.scholium-live-mode .cm-live-quote.cm-live-quote-depth-3 {
+           Review. Edit carries the same nested role on every line while its
+           separate rail track paints the ancestor borders. */
+        .scholium-document blockquote blockquote:not(.scholium-callout-quotation) {
           border-inline-start: 1px solid var(--scholium-color-separator);
           color: color-mix(in srgb, var(--scholium-color-primary-text) 66%, transparent);
-        }
-        .scholium-document blockquote blockquote:not(.scholium-callout-quotation) {
           padding-inline-start: var(--scholium-rhythm-quote-inset);
+        }
+        .cm-editor.scholium-live-mode .cm-live-quote.cm-live-quote-nested {
+          color: color-mix(in srgb, var(--scholium-color-primary-text) 66%, transparent);
         }
         .scholium-document pre,
         .cm-editor.scholium-live-mode .cm-live-codeblock {
@@ -1083,6 +1082,17 @@ enum ScholiumWebDesignTokens {
           border-end-start-radius: var(--scholium-corner-document-code-block);
           border-end-end-radius: var(--scholium-corner-document-code-block);
         }
+        @media (prefers-reduced-transparency: reduce) {
+          .scholium-document pre,
+          .scholium-document pre.raw-html,
+          .cm-editor.scholium-live-mode :is(
+            .cm-live-codeblock,
+            .cm-live-math-source,
+            .cm-live-raw-html
+          ) {
+            background: var(--scholium-color-document-background);
+          }
+        }
         .scholium-callout p,
         .footnote-content p {
           padding-block: 0;
@@ -1119,6 +1129,7 @@ enum ScholiumWebDesignTokens {
           }
         }
         .scholium-document :not(pre) > code,
+        .scholium-table :not(pre) > code,
         .scholium-live-mode .cm-live-code {
           padding: 0.08em 0.25em;
           border-radius: var(--scholium-corner-document-inline-code);

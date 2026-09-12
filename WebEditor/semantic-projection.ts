@@ -178,6 +178,10 @@ const blockKinds = new Map<string, PresentationBlockKind>([
   ["Table", "table"],
   ["HorizontalRule", "thematicBreak"],
   ["HTMLBlock", "html"],
+  // CommonMark exposes a block HTML comment as CommentBlock while Swift
+  // Markdown exposes the same inert source as HTMLBlock. Keep both adapters
+  // on one raw-HTML presentation path so Review and Edit cannot drift.
+  ["CommentBlock", "html"],
   ["Callout", "callout"],
   ["FootnoteDefinition", "footnoteDefinition"],
   ["BlockMath", "displayMath"],

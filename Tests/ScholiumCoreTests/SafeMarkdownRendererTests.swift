@@ -196,7 +196,6 @@ struct SafeMarkdownRendererTests {
         #expect(rendered.contains("class=\"scholium-callout-role\""))
         #expect(rendered.contains(">Statement</span>"))
         #expect(rendered.contains("class=\"scholium-callout-title\" dir=\"auto\"><em>Fittingness</em></span>"))
-        #expect(rendered.contains("class=\"scholium-callout-signature\" aria-hidden=\"true\""))
         #expect(rendered.contains("without endorsing it"))
         #expect(rendered.contains("<strong>correct</strong>"))
         #expect(!rendered.contains("scholium-callout-fold-mark"))
@@ -268,7 +267,6 @@ struct SafeMarkdownRendererTests {
         #expect(rendered.contains("scholium-callout-quote"))
         #expect(rendered.contains("<blockquote class=\"scholium-callout-quotation\" dir=\"auto\">"))
         #expect(rendered.contains("The wording itself does argumentative work."))
-        #expect(rendered.contains("class=\"scholium-callout-signature\" aria-hidden=\"true\""))
     }
 
     @Test("Orientation preserves semantic metadata for its label-free visual treatment")

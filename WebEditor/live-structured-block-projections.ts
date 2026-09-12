@@ -180,21 +180,12 @@ export function createLiveStructuredBlockProjections(options: {
         // repeating it as visible prose beside the authored callout title.
         root.append(label);
       }
-      if (this.label && this.title.trim().length === 0) {
-        const fallbackTitle = document.createElement("span");
-        fallbackTitle.className = "scholium-callout-title scholium-callout-default-title";
-        fallbackTitle.textContent = this.label;
-        root.append(fallbackTitle);
-      }
       return root;
     }
     updateDOM(root: HTMLElement) {
       const button = root.querySelector("button");
       const label = root.querySelector(".cm-live-callout-role-label");
-      const fallbackTitle = root.querySelector(".scholium-callout-default-title");
-      const needsFallbackTitle = this.label.length > 0 && this.title.trim().length === 0;
-      if (!!button !== this.foldable || !!label !== !!this.label
-          || !!fallbackTitle !== needsFallbackTitle) return false;
+      if (!!button !== this.foldable || !!label !== !!this.label) return false;
       root.dataset.calloutFrom = String(this.from);
       if (button) {
         button.textContent = this.collapsed ? "▸" : "▾";
@@ -202,7 +193,6 @@ export function createLiveStructuredBlockProjections(options: {
         button.setAttribute("aria-label", `${localized("Callout")}: ${this.title || this.label}`);
       }
       if (label) label.textContent = `${this.label} `;
-      if (fallbackTitle) fallbackTitle.textContent = this.label;
       return true;
     }
     ignoreEvent() { return true; }
@@ -223,7 +213,11 @@ export function createLiveStructuredBlockProjections(options: {
       const collapsed = foldable && !bodyActive
         && (folds.get(presentation.from) ?? opening[3] === "-");
       const label = resolveCallout(opening[2]).label;
-      if (foldable || label) decorations.push(Decoration.widget({
+      // A fixed callout has no editable heading widget. Its authored title
+      // stays in the source line; when absent, Edit must not materialize the
+      // Review-only default title. Foldable callouts still need the native
+      // disclosure control and its hidden role metadata.
+      if (foldable) decorations.push(Decoration.widget({
         widget: new CalloutHeadingWidget(presentation.from, label, opening[4], foldable, collapsed),
         side: 1,
       }).range(header.to - opening[4].length));

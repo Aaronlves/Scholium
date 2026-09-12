@@ -73,6 +73,17 @@ describe("Lezer-backed semantic projection", () => {
       .map((range) => source.slice(range.from, range.to))).toEqual([">", "[!state]-", ">"]);
   });
 
+  it("uses the raw HTML projection for block comments", () => {
+    const source = "<!-- inert source comment -->\n\n<section>Literal HTML.</section>";
+    const ranges = completeProjection(source);
+    const htmlBlocks = ranges.blocks.filter((block) => block.kind === "html");
+
+    expect(htmlBlocks.map((block) => source.slice(block.from, block.to)))
+      .toEqual(["<!-- inert source comment -->", "<section>Literal HTML.</section>"]);
+    expect(ranges.literals.map((literal) => source.slice(literal.from, literal.to)))
+      .toContain("<!-- inert source comment -->");
+  });
+
   it("owns marker ranges and nesting for both presentation adapters", () => {
     const source = [
       "## ATX heading",

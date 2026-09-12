@@ -40,22 +40,16 @@ interface SemanticPhysicalLine {
 }
 
 interface SemanticLinePresentation {
-  readonly active: boolean;
   readonly classes: readonly string[];
   readonly codeBlock: Readonly<SemanticCodeBlockRange> | null;
-  readonly heading: SemanticBlockProjection | null;
   readonly headingLevel: number | null;
-  readonly headingMarkers: readonly {from: number; to: number}[];
+  readonly displayMath: SemanticBlockProjection | null;
   readonly paragraph: SemanticBlockProjection | null;
-  readonly callout: SemanticBlockProjection | null;
   readonly calloutPresentation: CalloutPresentation | null;
-  readonly quote: SemanticBlockProjection | null;
-  readonly quoteMarkers: readonly {from: number; to: number}[];
-  readonly rule: SemanticBlockProjection | null;
+  readonly quoteDepth: number;
   readonly html: SemanticBlockProjection | null;
   readonly comment: SemanticBlockProjection | null;
   readonly list: SemanticBlockProjection | null;
-  readonly listMarker: {from: number; to: number} | null;
 }
 
 interface LiveSemanticLineState {
@@ -75,18 +69,6 @@ function isFencedDelimiterLine(
 ) {
   if (!block.fenced) return false;
   return block.markerRanges.some((range) => doc.lineAt(range.from).from === lineFrom);
-}
-
-function authoredQuoteDepth(text: string, fallback: number): number {
-  let index = 0;
-  let depth = 0;
-  while (index < text.length && depth < 3) {
-    while (index < text.length && (text[index] === " " || text[index] === "\t")) index += 1;
-    if (text[index] !== ">") break;
-    depth += 1;
-    index += 1;
-  }
-  return Math.max(1, Math.min(depth || fallback, 3));
 }
 
 function affectedProjectionAndCodeBlockRanges(
@@ -114,7 +96,6 @@ function affectedProjectionAndCodeBlockRanges(
 
 function semanticBlockSpacing(
   block: SemanticBlockProjection,
-  _edge: "before" | "after",
 ): SemanticBlockSpacing {
   switch (block.kind) {
   case "unorderedList":
@@ -125,6 +106,7 @@ function semanticBlockSpacing(
   case "table":
   case "displayMath": return "paragraph";
   case "callout": return "callout";
+  case "comment": return "standard";
   case "thematicBreak": return "half";
   default: return "none";
   }
@@ -192,7 +174,6 @@ export function createLiveSemanticLayout(options: {
     const setextMarkerLine = heading?.nodeName.startsWith("SetextHeading") && headingMarkers.some((range) =>
       range.from <= line.from && range.to >= line.to);
     const paragraph = blocks.find((block) => block.kind === "paragraph") ?? null;
-    const callout = blocks.find((block) => block.kind === "callout") ?? null;
     const calloutPresentation = projectionRangesIntersecting(
       index.callouts,
       line.from,
@@ -204,11 +185,18 @@ export function createLiveSemanticLayout(options: {
     const calloutIdentifier = opening
       ? calloutDefinition(options.editingDialect(), opening[2]).identifier
       : null;
-    const quote = calloutPresentation
-      ? null
-      : blocks.find((block) => block.kind === "blockQuote") ?? null;
-    const quoteMarkers = quote?.markerRanges.filter((range) =>
-      range.from < lineQueryTo && range.to > line.from) ?? [];
+    const displayMath = blocks.find((block) => block.kind === "displayMath") ?? null;
+    const quoteBlocks = calloutPresentation
+      ? []
+      : blocks.filter((block) => block.kind === "blockQuote");
+    const quoteRanges = calloutPresentation
+      ? []
+      : projectionRangesIntersecting(index.quoteRanges, line.from, lineQueryTo);
+    const quote = quoteBlocks[0] ?? null;
+    const quoteDepth = quoteRanges.reduce(
+      (maximum, range) => Math.max(maximum, range.depth),
+      0,
+    );
     const rule = blocks.find((block) => block.kind === "thematicBreak") ?? null;
     const html = blocks.find((block) => block.kind === "html") ?? null;
     const blockComment = blocks.find((block) => block.kind === "comment") ?? null;
@@ -262,7 +250,13 @@ export function createLiveSemanticLayout(options: {
       }
       if (calloutIdentifier === "orient") classes.add("cm-live-callout-orient-source");
     }
-    if (blocks.some(block => block.kind === "displayMath")) classes.add("cm-live-math-source");
+    if (displayMath) {
+      classes.add("cm-live-math-source");
+      const firstMathLine = state.doc.lineAt(displayMath.from).number;
+      const lastMathLine = state.doc.lineAt(displayMath.to).number;
+      if (line.number === firstMathLine) classes.add("cm-live-math-source-start");
+      if (line.number === lastMathLine) classes.add("cm-live-math-source-end");
+    }
     if (blocks.some(block => block.kind === "footnoteDefinition")) classes.add("cm-live-footnote-source");
     if (codeBlock) {
       classes.add("cm-live-codeblock");
@@ -292,6 +286,10 @@ export function createLiveSemanticLayout(options: {
         if (line.number === firstStyledLine) classes.add("cm-live-codeblock-start");
         if (line.number === lastStyledLine) classes.add("cm-live-codeblock-end");
       }
+    } else if (blockComment) {
+      classes.add("cm-live-raw-html");
+      if (line.from <= blockComment.from) classes.add("cm-live-raw-html-start");
+      if (line.to >= blockComment.to) classes.add("cm-live-raw-html-end");
     } else if (comment) {
       classes.add("cm-live-paragraph");
       classes.add("cm-live-paragraph-start");
@@ -309,15 +307,14 @@ export function createLiveSemanticLayout(options: {
           classes.add(`cm-live-h${headingLevel}`);
         }
       }
-      if (paragraph && !callout && headingLevel === null) {
+      if (paragraph && !calloutPresentation && headingLevel === null) {
         classes.add("cm-live-paragraph");
         if (line.from <= paragraph.from) classes.add("cm-live-paragraph-start");
         if (line.to >= paragraph.to) classes.add("cm-live-paragraph-end");
       }
       if (quote) {
         classes.add("cm-live-quote");
-        const quoteDepth = authoredQuoteDepth(line.text, quoteMarkers.length);
-        classes.add(`cm-live-quote-depth-${quoteDepth}`);
+        if (quoteDepth > 1) classes.add("cm-live-quote-nested");
       }
       if (rule && outsideFrontmatter && !active) classes.add("cm-live-rule");
       if (list && listMarker) {
@@ -327,22 +324,16 @@ export function createLiveSemanticLayout(options: {
       }
     }
     return {
-      active,
       classes: [...classes],
       codeBlock,
-      heading,
       headingLevel,
-      headingMarkers,
+      displayMath,
       paragraph,
-      callout,
       calloutPresentation,
-      quote,
-      quoteMarkers,
-      rule,
+      quoteDepth,
       html,
       comment,
       list,
-      listMarker,
     };
   }
 
@@ -362,12 +353,12 @@ export function createLiveSemanticLayout(options: {
     let line = state.doc.lineAt(scanFrom);
     while (line.from <= scanTo) {
       const presentation = semanticLinePresentation(state, line, index);
-      const direction = presentation.codeBlock || presentation.html
+      const direction = presentation.codeBlock || presentation.displayMath || presentation.html
         ? "ltr"
         : presentation.headingLevel !== null
             || presentation.paragraph
             || presentation.calloutPresentation
-            || presentation.quote
+            || presentation.quoteDepth > 0
             || presentation.list
             || presentation.comment
           ? "auto"
@@ -381,6 +372,13 @@ export function createLiveSemanticLayout(options: {
           attributes["data-scholium-callout-from"] = String(
             presentation.calloutPresentation.from,
           );
+        }
+        if (presentation.quoteDepth > 0) {
+          // The depth is parser-owned data transported as a CSS custom
+          // property. The stylesheet can therefore paint every ancestor rail
+          // from one semantic track, including depths not present in a
+          // hard-coded selector list.
+          attributes.style = `--scholium-live-quote-depth: ${presentation.quoteDepth};`;
         }
         if (direction) attributes.dir = direction;
         if (presentation.headingLevel !== null) {
@@ -525,9 +523,9 @@ export function createLiveSemanticLayout(options: {
     let previous: SemanticBlockProjection | null = null;
     for (const current of topLevelBlocks) {
       const previousSpacing = previous
-        ? semanticBlockSpacing(previous, "after")
+        ? semanticBlockSpacing(previous)
         : "none";
-      const nextSpacing = semanticBlockSpacing(current, "before");
+      const nextSpacing = semanticBlockSpacing(current);
       const previousLineNumber = previous
         ? state.doc.lineAt(Math.min(previous.to, state.doc.length)).number
         : 0;
@@ -564,7 +562,7 @@ export function createLiveSemanticLayout(options: {
       previous = current;
     }
     if (previous) {
-      const spacing = semanticBlockSpacing(previous, "after");
+      const spacing = semanticBlockSpacing(previous);
       if (spacing !== "none") {
         ranges.push(Decoration.widget({
           widget: new SemanticBlockGapWidget(spacing, "none"),

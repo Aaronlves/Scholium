@@ -150,6 +150,7 @@ export function mountMermaidSVG(host: HTMLElement, svg: SVGSVGElement): boolean 
 
 interface ScholiumMermaidTheme {
   readonly darkMode: boolean;
+  readonly fontFamily: string;
   readonly variables: Readonly<Record<string, string>>;
 }
 
@@ -211,7 +212,8 @@ export function mermaidThemeFromStyle(
   const text = semanticColor(style, "--scholium-color-primary-text");
   const accent = semanticColor(style, "--scholium-color-accent", systemAccent);
   const separator = semanticColor(style, "--scholium-color-separator");
-  if (!background || !surface || !text || !accent || !separator) return null;
+  const fontFamily = style.getPropertyValue("--scholium-document-body-font-family").trim();
+  if (!background || !surface || !text || !accent || !separator || !fontFamily) return null;
   const diagramScale = Object.fromEntries(Array.from({length: 12}, (_, index) => [
     [`cScale${index}`, index % 2 === 0 ? surface : background],
     [`cScaleLabel${index}`, text],
@@ -220,6 +222,7 @@ export function mermaidThemeFromStyle(
   ]).flat());
   return {
     darkMode: relativeLuminance(background) < 0.5,
+    fontFamily,
     variables: {
       background,
       primaryColor: surface,
@@ -295,7 +298,7 @@ async function renderValidatedMermaid(
       themeVariables: {
         darkMode: theme.darkMode,
         ...theme.variables,
-        fontFamily: "Alegreya, Georgia, serif",
+        fontFamily: theme.fontFamily,
       },
       flowchart: {useMaxWidth: false},
     });

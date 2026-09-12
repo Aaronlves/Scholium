@@ -54,6 +54,15 @@ describe("appendMarkdownBlocks", () => {
     expect(root.textContent).toContain("<script>alert('no')</script>");
   });
 
+  it("renders block HTML comments through the inert raw-source surface", () => {
+    const {document} = parseHTML("<html><body><div id='root'></div></body></html>");
+    const root = document.querySelector<HTMLElement>("#root")!;
+    appendMarkdownBlocks("<!-- retained source comment -->", root);
+
+    expect(root.querySelector("pre.raw-html code")?.textContent)
+      .toBe("<!-- retained source comment -->");
+  });
+
   it("reuses callout, table, and mathematics components inside a fragment", () => {
     const {document, window} = parseHTML("<html><body><div id='root'></div></body></html>");
     window.scholiumMath = {

@@ -67,7 +67,10 @@ enum ScholiumMathAssets {
           justify-self: end;
           align-self: baseline;
           content: "(" counter(scholium-equation) ")";
-          font: normal 0.82em/1 Alegreya, Georgia, serif;
+          font-family: var(--scholium-document-body-font-family);
+          font-size: 0.82em;
+          font-style: normal;
+          line-height: 1;
           font-variant-numeric: tabular-nums;
         }
         .scholium-math-display .katex { font-style: italic; }

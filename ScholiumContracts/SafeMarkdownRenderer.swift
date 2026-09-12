@@ -247,11 +247,15 @@ public enum SafeMarkdownRenderer {
         let roleLabel = escapeHTML(callout.role.displayLabel)
         let purpose = escapeAttribute(callout.role.purpose)
         let accessibleRole = escapeAttribute("\(callout.role.displayLabel). \(callout.role.purpose)")
-        // Keep the role as accessible metadata, but render one visible title:
-        // the authored title when present, otherwise the role's default label.
-        // Review and Live Preview therefore resolve the same title contract.
-        let roleHTML = "<span class=\"scholium-callout-role scholium-callout-role-context\" dir=\"auto\" title=\"\(purpose)\" aria-label=\"\(accessibleRole)\">\(roleLabel)</span>"
-        let orientationTitleBecomesBody = callout.role == .orient
+        // Keep the role as accessible metadata, but render one visible Review
+        // title: the authored title when present, otherwise the role's default
+        // label. Live Preview retains only authored source text and never
+        // materializes this fallback as editable prose.
+        let roleHTML =
+            "<span class=\"scholium-callout-role scholium-callout-role-context\" dir=\"auto\" "
+            + "title=\"\(purpose)\" aria-label=\"\(accessibleRole)\">\(roleLabel)</span>"
+        let orientationTitleBecomesBody =
+            callout.role == .orient
             && callout.title != nil
             && callout.bodySource.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         let titleHTML =
@@ -280,7 +284,7 @@ public enum SafeMarkdownRenderer {
             ? "<blockquote class=\"scholium-callout-quotation\" dir=\"auto\">\(renderedBody)</blockquote>"
             : renderedBody
         let body =
-            "<div class=\"scholium-callout-body\"><span class=\"scholium-callout-signature\" aria-hidden=\"true\"></span><div class=\"scholium-callout-content\">\(semanticBody)</div></div>"
+            "<div class=\"scholium-callout-body\"><div class=\"scholium-callout-content\">\(semanticBody)</div></div>"
         let attributes =
             "class=\"scholium-callout scholium-callout-\(callout.role.rawValue)\" data-callout=\"\(escapeAttribute(callout.kind))\" data-callout-source=\"\(escapeAttribute(callout.rawKind))\" data-callout-fold=\"\(callout.foldState.rawValue)\" \(sourceAttributes(callout.span)) data-scholium-protected=\"callout\""
         switch callout.foldState {
@@ -442,9 +446,12 @@ public enum SafeMarkdownRenderer {
         let location = span.utf16LowerBound - bodyUTF16Offset
         guard location >= 0, location < source.length else { return 1 }
 
-        let line = source.substring(
-            with: source.lineRange(for: NSRange(location: location, length: 0))
-        ) as NSString
+        let line =
+            source.substring(
+                with: source.lineRange(
+                    for: NSRange(location: location, length: 0)
+                )
+            ) as NSString
         var cursor = 0
         var depth = 0
         while cursor < line.length {
@@ -500,7 +507,12 @@ public enum SafeMarkdownRenderer {
                 output.removeLast()
                 output.append(
                     .quote(
-                    mergeQuotes(previous, current)))
+                        mergeQuotes(
+                            previous,
+                            current
+                        )
+                    )
+                )
                 pendingWhitespace = ""
                 continue
             }
@@ -523,9 +535,7 @@ public enum SafeMarkdownRenderer {
             case .html(let html):
                 return html
             case .quote(let node):
-                let source = node.metadata.span.map {
-                    " \(sourceAttributes($0))"
-                } ?? ""
+                let source = node.metadata.span.map { " \(sourceAttributes($0))" } ?? ""
                 return
                     "<blockquote dir=\"auto\"\(source)>\(renderQuoteParts(node.children))</blockquote>\n"
             }
@@ -1069,10 +1079,12 @@ private struct SafeHTMLVisitor: MarkupWalker {
             if tokenStart.lowerBound > cursor {
                 append(.html(String(result[cursor..<tokenStart.lowerBound])))
             }
-            guard let tokenEnd = result.range(
-                of: Self.quoteTokenEnd,
-                range: tokenStart.upperBound..<result.endIndex
-            ) else {
+            guard
+                let tokenEnd = result.range(
+                    of: Self.quoteTokenEnd,
+                    range: tokenStart.upperBound..<result.endIndex
+                )
+            else {
                 append(.html(String(result[tokenStart.lowerBound..<result.endIndex])))
                 cursor = result.endIndex
                 break
@@ -1080,7 +1092,8 @@ private struct SafeHTMLVisitor: MarkupWalker {
             let payload = String(result[tokenStart.upperBound..<tokenEnd.lowerBound])
             if payload.hasPrefix("open:") {
                 let identifier = String(payload.dropFirst("open:".count))
-                let metadata = quoteMetadata[identifier]
+                let metadata =
+                    quoteMetadata[identifier]
                     ?? SafeHTMLQuoteMetadata(span: nil, depth: 1)
                 frames.append(
                     SafeHTMLQuoteFrame(

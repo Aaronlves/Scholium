@@ -503,9 +503,6 @@ function appendCallout(
   }
   const body = document.createElement("div");
   body.className = "scholium-callout-body";
-  const signature = document.createElement("span");
-  signature.className = "scholium-callout-signature";
-  signature.setAttribute("aria-hidden", "true");
   const content = document.createElement("div");
   content.className = "scholium-callout-content";
   const destination = parts.definition.identifier === "quote"
@@ -525,7 +522,7 @@ function appendCallout(
   } else {
     appendMarkdownBlocks(parts.body, destination, optionsWithMap(options, parts.bodyOffsets));
   }
-  body.append(signature, content);
+  body.append(content);
   callout.append(headingContainer, body);
   parent.append(callout);
 }
@@ -607,7 +604,8 @@ function appendMarkdownBlockNode(
     parent.append(pre);
     return;
   }
-  case "HTMLBlock": {
+  case "HTMLBlock":
+  case "CommentBlock": {
     const pre = document.createElement("pre");
     pre.className = "raw-html";
     pre.dir = "ltr";

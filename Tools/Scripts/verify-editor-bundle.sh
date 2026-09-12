@@ -72,8 +72,8 @@ done
 
 if ! rg -q '^\.scholium-callout-fold-mark' "$callout_styles" || \
    ! rg -q 'scholium-callout-fold-mark' "$renderer" || \
-   ! rg -q 'scholium-callout-signature' "$renderer"; then
-  print -u2 "The protected Callout fold or compatibility markup contract is incomplete."
+   rg -q 'scholium-callout-signature' "$renderer"; then
+  print -u2 "The protected Callout fold-mark contract is incomplete or contains obsolete compatibility markup."
   exit 1
 fi
 

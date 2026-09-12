@@ -88,7 +88,12 @@ struct DocumentEditorHost<ReadSurface: View, EditorSurface: View>: View {
     var body: some View {
         ZStack {
             readSurface
-                .opacity(!presentsEditor || allowsPendingReadRecovery ? 1 : 0)
+                // Keep a retained Review WebView composited behind the active
+                // editor. A zero-opacity WKWebView can be suspended by WebKit
+                // and fail to repaint when Review becomes visible again.
+                // During the initial editor handoff the clear cover still
+                // hides the stale projection until CodeMirror is ready.
+                .opacity(presentsEditor && !showsEditor && !allowsPendingReadRecovery ? 0 : 1)
                 .allowsHitTesting(
                     presentationGate.allowsReadHitTesting(
                         documentID: documentID,
@@ -102,7 +107,11 @@ struct DocumentEditorHost<ReadSurface: View, EditorSurface: View>: View {
 
             if retainsEditor {
                 editorSurface
-                    .opacity(presentsEditor ? 1 : 0)
+                    // Retain both document planes at full opacity and let
+                    // z-order, hit testing, and accessibility own visibility.
+                    // This avoids treating opacity as a WebKit lifecycle
+                    // signal while preserving one visible surface.
+                    .opacity(1)
                     .allowsHitTesting(showsEditor)
                     .accessibilityHidden(!showsEditor)
                     .zIndex(showsEditor ? 1 : 0)
