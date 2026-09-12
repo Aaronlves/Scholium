@@ -1449,22 +1449,23 @@ private struct ScholiumSidebarCommandContent: View {
         .scholiumActivationPointer()
         .scholiumKeyboardShortcut(shortcut(for: .toggleResearchInspector))
         .disabled(workspaceWindowActions == nil || appState?.canToggleResearchInspector != true)
+        Button(
+            ScholiumL10n.dynamicString(
+                appState?.presentedDocumentMode == .read ? "Edit" : "Review"
+            )
+        ) {
+            guard let destination = reviewEditDestination else { return }
+            appState?.requestDocumentMode(destination)
+        }
+        .scholiumActivationPointer()
+        .scholiumKeyboardShortcut(shortcut(for: .toggleReviewEdit))
+        .disabled(reviewEditDestination == nil || editorActions?.isComposing == true)
         Menu("Document Mode") {
-            if appState?.presentedDocumentMode == .read {
-                Button("Review") { appState?.requestDocumentMode(.read) }
-                    .scholiumActivationPointer()
-                Button("Edit") { appState?.requestDocumentMode(.livePreview) }
-                    .scholiumActivationPointer()
-                    .scholiumKeyboardShortcut(shortcut(for: .toggleReviewEdit))
-                    .disabled(appState?.canEditCurrentNote != true)
-            } else {
-                Button("Review") { appState?.requestDocumentMode(.read) }
-                    .scholiumActivationPointer()
-                    .scholiumKeyboardShortcut(shortcut(for: .toggleReviewEdit))
-                Button("Edit") { appState?.requestDocumentMode(.livePreview) }
-                    .scholiumActivationPointer()
-                    .disabled(appState?.canEditCurrentNote != true)
-            }
+            Button("Review") { appState?.requestDocumentMode(.read) }
+                .scholiumActivationPointer()
+            Button("Edit") { appState?.requestDocumentMode(.livePreview) }
+                .scholiumActivationPointer()
+                .disabled(appState?.canEditCurrentNote != true)
             Button("Source") { appState?.requestDocumentMode(.source) }
                 .scholiumActivationPointer()
                 .scholiumKeyboardShortcut(shortcut(for: .showSource))
@@ -1530,6 +1531,16 @@ private struct ScholiumSidebarCommandContent: View {
             for: command,
             data: hotkeyPreferencesData
         )
+    }
+
+    private var reviewEditDestination: NotePresentationMode? {
+        guard let appState, appState.currentNote != nil else { return nil }
+        switch appState.presentedDocumentMode {
+        case .read:
+            return appState.canEditCurrentNote ? .livePreview : nil
+        case .livePreview, .source:
+            return .read
+        }
     }
 }
 
@@ -1638,7 +1649,10 @@ private struct ScholiumCommands: Commands {
         CommandGroup(after: .pasteboard) {
             pasteboardCommand
         }
-        CommandGroup(after: .textFormatting) {
+        // Scholium owns Markdown formatting semantics. Replacing the system
+        // rich-text group prevents NSText/HTML editing actions from competing
+        // with the exact-source commands exposed below.
+        CommandGroup(replacing: .textFormatting) {
             textFormattingCommand
         }
         CommandMenu("Insert") {

@@ -166,7 +166,8 @@ struct AgentChatMessageStyleTests {
                         """) as? [String: Any], let height = value["height"] as? Double,
                     abs(reader.frame.height - height) <= 1,
                     (value["text"] as? String)?.contains(source == "好的。" ? "好的。" : source == long ? "原始含义" : "阅读方向") == true,
-                    source != "好的。" || reader.frame.width < 60
+                    source != "好的。" || reader.frame.width < 60,
+                    source != long || width != 480 || (height < narrowHeight && reader.frame.width > 300)
                 {
                     result = value
                     if source == "好的。" { #expect(reader.frame.width > 20 && reader.frame.width < 60) }

@@ -1400,9 +1400,14 @@ struct FrontendArchitectureTests {
         ]
         #expect(documentModeMenu.contains("Button(\"Source\")"))
         #expect(
-            documentModeMenu.contains(
+            !documentModeMenu.contains(
                 ".scholiumKeyboardShortcut(shortcut(for: .toggleReviewEdit))"
             ))
+        #expect(
+            appSource.components(
+                separatedBy: ".scholiumKeyboardShortcut(shortcut(for: .toggleReviewEdit))"
+            ).count - 1 == 1
+        )
 
         let commandObservation = try String(
             contentsOf: repository.appendingPathComponent(
@@ -1420,6 +1425,30 @@ struct FrontendArchitectureTests {
                 "changes(documentController.$chromeProjection)"
             )
         )
+    }
+
+    @Test("Markdown formatting shortcuts share the editor transaction owner")
+    func markdownFormattingShortcutsHaveOneOwner() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let appSource = try String(
+            contentsOf: repository.appendingPathComponent("Scholium/App/ScholiumApp.swift"),
+            encoding: .utf8
+        )
+        let editorSource = try String(
+            contentsOf: repository.appendingPathComponent("WebEditor/editor.ts"),
+            encoding: .utf8
+        )
+
+        #expect(appSource.contains("CommandGroup(replacing: .textFormatting)"))
+        #expect(!appSource.contains("CommandGroup(after: .textFormatting)"))
+        #expect(appSource.contains("Button(\"Italic\") { editorActions?.perform(.emphasis) }"))
+        #expect(appSource.contains(".keyboardShortcut(\"i\", modifiers: [.command])"))
+        #expect(editorSource.contains("key: \"Mod-i\""))
+        #expect(editorSource.contains("applyMarkdownCommand(view, \"emphasis\")"))
+        #expect(editorSource.contains("markdownCommandTransformation(editor.state, operation.command, argument)"))
     }
 
     @Test("Native split backgrounds fill the titlebar without an extension effect")
@@ -3606,6 +3635,15 @@ struct FrontendArchitectureTests {
         #expect(structuralKeymap.contains("tableTabAction(view.state.doc"))
         #expect(structuralKeymap.contains("indentList(view.state.doc"))
         #expect(!structuralKeymap.contains("doc.toString()"))
+
+        let formattingKeymap = try section(
+            from: "const editorMarkdownCommandKeymap = keymap.of",
+            to: "const structuralInteractionKeymap = keymap.of"
+        )
+        #expect(formattingKeymap.contains("key: \"Mod-b\""))
+        #expect(formattingKeymap.contains("key: \"Mod-i\""))
+        #expect(formattingKeymap.contains("key: \"Mod-k\""))
+        #expect(formattingKeymap.contains("applyMarkdownCommand"))
 
         let sessionSource = try String(
             contentsOf: repository.appendingPathComponent(

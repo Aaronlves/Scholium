@@ -65,62 +65,10 @@ export interface SemanticProjectionRanges {
   blocks: SemanticBlockProjection[];
   inlines: SemanticInlineProjection[];
   literals: Array<SemanticSourceRange & {nodeName: string}>;
-  headingLevelByLineFrom: Map<number, number>;
-  paragraphs: Array<{from: number; to: number}>;
-  strong: Set<string>;
-  emphasis: Set<string>;
-  links: Set<string>;
-  wikilinks: Set<string>;
-  strikethrough: Set<string>;
-  highlights: Set<string>;
-  tables: Array<{from: number; to: number}>;
-  callouts: Array<{from: number; to: number}>;
-}
-
-function projectionRangesFromCatalog(
-  state: EditorState,
-  blocks: SemanticBlockProjection[],
-  inlines: SemanticInlineProjection[],
-  literals: Array<SemanticSourceRange & {nodeName: string}>,
-): SemanticProjectionRanges {
-  const result: SemanticProjectionRanges = {
-    blocks,
-    inlines,
-    literals,
-    headingLevelByLineFrom: new Map(),
-    paragraphs: [],
-    strong: new Set(),
-    emphasis: new Set(),
-    links: new Set(),
-    wikilinks: new Set(),
-    strikethrough: new Set(),
-    highlights: new Set(),
-    tables: [],
-    callouts: [],
-  };
-  for (const block of blocks) {
-    if (block.kind === "heading" && block.headingLevel !== null) {
-      result.headingLevelByLineFrom.set(state.doc.lineAt(block.from).from, block.headingLevel);
-    }
-    if (block.kind === "paragraph") result.paragraphs.push({from: block.from, to: block.to});
-    if (block.kind === "table") result.tables.push({from: block.from, to: block.to});
-    if (block.kind === "callout") result.callouts.push({from: block.from, to: block.to});
-  }
-  for (const inline of inlines) {
-    const key = rangeKey(inline.from, inline.to);
-    if (inline.kind === "strong") result.strong.add(key);
-    if (inline.kind === "emphasis") result.emphasis.add(key);
-    if (inline.kind === "link") result.links.add(key);
-    if (inline.kind === "wikilink") result.wikilinks.add(key);
-    if (inline.kind === "strikethrough") result.strikethrough.add(key);
-    if (inline.kind === "highlight") result.highlights.add(key);
-  }
-  return result;
 }
 
 export function mapSemanticProjectionRanges(
   previous: SemanticProjectionRanges,
-  state: EditorState,
   mapPosition: (position: number) => number,
 ) {
   const mapRange = (range: SemanticSourceRange) => ({
@@ -156,7 +104,7 @@ export function mapSemanticProjectionRanges(
     from: mapPosition(literal.from),
     to: mapPosition(literal.to),
   }));
-  return projectionRangesFromCatalog(state, blocks, inlines, literals);
+  return {blocks, inlines, literals};
 }
 
 interface ProjectionSyntaxNode {
@@ -267,7 +215,7 @@ function inlinePresentation(
   node: ProjectionSyntaxNode,
   kind: PresentationInlineKind,
   source: string,
-): SemanticInlineProjection {
+): SemanticInlineProjection | null {
   const markerNames = new Set<string>();
   switch (kind) {
   case "strong":
@@ -304,6 +252,11 @@ function inlinePresentation(
   let visibleRanges = complementRanges(node.from, node.to, markerRanges);
   if (kind === "link" || kind === "image") {
     const explicitVisible = childRanges(node, new Set(["URL"]));
+    // The Markdown parser can retain a recoverable Link node for an unfinished
+    // `[label](` prefix. Without a URL child there is no proven destination,
+    // so it remains ordinary editable source instead of becoming an active
+    // projection or link target.
+    if (explicitVisible.length === 0) return null;
     if (node.name === "Autolink") {
       visibleRanges = explicitVisible;
     } else {
@@ -392,16 +345,6 @@ export function semanticProjectionRanges(
     blocks: [],
     inlines: [],
     literals: [],
-    headingLevelByLineFrom: new Map(),
-    paragraphs: [],
-    strong: new Set(),
-    emphasis: new Set(),
-    links: new Set(),
-    wikilinks: new Set(),
-    strikethrough: new Set(),
-    highlights: new Set(),
-    tables: [],
-    callouts: [],
   };
   if (visibleRanges.length === 0) return result;
   const from = Math.max(0, Math.min(...visibleRanges.map((range) => range.from)) - margin);
@@ -488,7 +431,7 @@ export function semanticProjectionRanges(
       const inlineKind = inlineKinds.get(node.name);
       if (inlineKind) {
         const inline = inlinePresentation(node, inlineKind, source);
-        result.inlines.push(inline);
+        if (inline) result.inlines.push(inline);
       }
       if ([
         "HTMLTag", "CommentBlock", "Comment", "ObsidianComment",
@@ -511,5 +454,5 @@ export function semanticProjectionRanges(
   result.blocks.sort((left, right) => left.from - right.from || right.to - left.to || left.kind.localeCompare(right.kind));
   result.inlines.sort((left, right) => left.from - right.from || right.to - left.to || left.kind.localeCompare(right.kind));
   result.literals.sort((left, right) => left.from - right.from || right.to - left.to);
-  return projectionRangesFromCatalog(state, result.blocks, result.inlines, result.literals);
+  return result;
 }

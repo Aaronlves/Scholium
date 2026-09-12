@@ -16,6 +16,9 @@ enum ScholiumHotkeyCategory: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
+// This registry contains only Scholium-owned app commands. Standard macOS
+// editing and fixed Markdown-editor bindings stay at their native/editor
+// owners and are intentionally not user-remappable here.
 enum ScholiumHotkeyCommand: String, CaseIterable, Codable, Identifiable, Sendable {
     case searchResearch
     case toggleLibrary
@@ -262,6 +265,8 @@ enum ScholiumHotkeyPreferences {
         return (try? encoder.encode(payload)) ?? Data()
     }
 
+    // Includes the fixed Cmd-B/I/K Markdown editor commands as well as the
+    // standard macOS bindings, so custom app commands cannot compete with them.
     private static let systemReservedBindings: Set<ScholiumHotkeyBinding> = {
         func binding(
             _ key: String,

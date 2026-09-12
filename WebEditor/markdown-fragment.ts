@@ -487,7 +487,7 @@ function appendCallout(
     title.dir = "auto";
     appendInlineMarkdown(parts.title, title, optionsAt(options, parts.titleFrom));
     heading.append(title);
-  } else {
+  } else if (!orientationTitleBecomesBody) {
     const title = document.createElement("span");
     title.className = "scholium-callout-title scholium-callout-default-title";
     title.dir = "auto";

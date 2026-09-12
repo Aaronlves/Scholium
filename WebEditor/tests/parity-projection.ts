@@ -1,43 +1,19 @@
-import {EditorState, Text} from "@codemirror/state";
+/**
+ * Test oracle for the Markdown dialect parity fixtures.
+ * This code is intentionally excluded from every production bundle.
+ */
+import {EditorState} from "@codemirror/state";
 import {ensureSyntaxTree} from "@codemirror/language";
-import type {MarkdownEditingDialect} from "./protocol";
-import {markdownLiteralRanges, scanMath} from "./math";
-import {footnotePresentation} from "./footnote-presentation";
-import {scholiumNoteLanguage} from "./language";
+import type {MarkdownEditingDialect} from "../protocol";
+import {markdownLiteralRanges, scanMath} from "../math";
+import {footnotePresentation} from "../footnote-presentation";
+import {scholiumNoteLanguage} from "../language";
 import {
   semanticProjectionRanges,
   type BaseBlockKind,
   type BaseInlineKind,
-} from "./semantic-projection";
-import {linkAnnotationAfter} from "./link-annotation";
-
-export type {BaseBlockKind, BaseInlineKind} from "./semantic-projection";
-
-function intersects(
-  range: {from: number; to: number},
-  candidates: Array<{from: number; to: number}>,
-): boolean {
-  return candidates.some((candidate) => candidate.from < range.to && range.from < candidate.to);
-}
-
-export function linkTargetAt(source: string | Text, offset: number): string | null {
-  const document = typeof source === "string" ? Text.of(source.split("\n")) : source;
-  if (offset < 0 || offset > document.length) return null;
-  const sourceLine = document.lineAt(offset);
-  const lineFrom = sourceLine.from;
-  const line = sourceLine.text;
-  for (const match of line.matchAll(/!?\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g)) {
-    const from = lineFrom + match.index;
-    const to = from + match[0].length;
-    if (offset >= from && offset < to) return match[1].trim();
-  }
-  for (const match of line.matchAll(/\[[^\]\n]+\]\(([^)\n]+)\)/g)) {
-    const from = lineFrom + match.index;
-    const to = from + match[0].length;
-    if (offset >= from && offset < to) return match[1].trim();
-  }
-  return null;
-}
+} from "../semantic-projection";
+import {linkAnnotationAfter} from "../link-annotation";
 
 export interface DialectSemanticProjection {
   callouts: string[];
@@ -58,6 +34,13 @@ export interface DialectSemanticProjection {
 export interface BaseSyntaxProjection {
   blocks: Array<{kind: BaseBlockKind; from: number; to: number; source: string}>;
   inlines: Array<{kind: BaseInlineKind; from: number; to: number; source: string}>;
+}
+
+function intersects(
+  range: {from: number; to: number},
+  candidates: Array<{from: number; to: number}>,
+): boolean {
+  return candidates.some((candidate) => candidate.from < range.to && range.from < candidate.to);
 }
 
 function normalizedParserInput(source: string) {
@@ -95,11 +78,6 @@ function withoutTerminalLineEnding(source: string, from: number, to: number) {
   return to;
 }
 
-/**
- * Projects the mode-neutral CommonMark/GFM node catalog used by both render
- * adapters. Source offsets are mapped back to the exact UTF-16 note buffer.
- * Terminal line endings are not owned by a semantic block in this contract.
- */
 export function projectBaseSyntax(source: string): BaseSyntaxProjection {
   const parserInput = normalizedParserInput(source);
   const state = EditorState.create({doc: parserInput.normalized, extensions: [scholiumNoteLanguage]});
@@ -152,13 +130,14 @@ export function projectDialectSemantics(source: string, dialect: MarkdownEditing
   const tree = ensureSyntaxTree(state, state.doc.length, 5_000);
   if (!tree) throw new Error("Could not complete the Scholium dialect syntax tree.");
   const rangesByName = new Map<string, Array<{from: number; to: number}>>();
+  const projectedNodeNames = new Set([
+    "Callout", "WikiLink", "Link", "Autolink",
+    "FootnoteDefinition", "FootnoteReference", "InlineFootnote",
+    "InlineMath", "BlockMath",
+  ]);
   tree.iterate({
     enter(node) {
-      if (![
-        "Callout", "WikiLink", "Link", "Autolink",
-        "FootnoteDefinition", "FootnoteReference", "InlineFootnote",
-        "InlineMath", "BlockMath",
-      ].includes(node.name)) return;
+      if (!projectedNodeNames.has(node.name)) return;
       const ranges = rangesByName.get(node.name) ?? [];
       ranges.push({
         from: parserInput.exactOffsets[node.from],
@@ -204,12 +183,7 @@ export function projectDialectSemantics(source: string, dialect: MarkdownEditing
     const path = rawTarget.split("#", 1)[0];
     let target = path;
     try { target = decodeURIComponent(path); } catch { target = path; }
-    locatedLinks.push({
-      from,
-      to,
-      target,
-      annotation: null,
-    });
+    locatedLinks.push({from, to, target, annotation: null});
   }
   locatedLinks.sort((left, right) => left.from - right.from);
   const links = locatedLinks.map(({target, annotation}) => ({target, annotation}));

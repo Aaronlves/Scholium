@@ -117,8 +117,17 @@ extension MarkdownEditorWebViewIntegrationTests {
         let paragraphHeight = try #require(snapshot["paragraphHeight"] as? Double)
         #expect(markerHeight > 0 && markerHeight < paragraphHeight / 2)
         #expect(try await harness.callBridgeJavaScript(Self.arrivalAnimationProbe) as? Bool == true)
-        try await Task.sleep(for: .milliseconds(1550))
-        #expect(try await harness.callBridgeJavaScript("return document.querySelectorAll('.scholium-arrival-target').length;") as? Int == 0)
+        #expect(try await harness.callBridgeJavaScript("return document.querySelectorAll('.scholium-arrival-target').length;") as? Int == 1)
+        let expirationDeadline = ContinuousClock.now.advanced(by: .seconds(5))
+        var remaining = 1
+        while remaining != 0 && ContinuousClock.now < expirationDeadline {
+            remaining =
+                try await harness.callBridgeJavaScript(
+                    "return document.querySelectorAll('.scholium-arrival-target').length;"
+                ) as? Int ?? -1
+            if remaining != 0 { try await Task.sleep(for: .milliseconds(20)) }
+        }
+        #expect(remaining == 0)
         #expect(try await harness.callBridgeJavaScript(paragraphsHaveNoBackground) as? Bool == true)
         harness.requestSourceLine(3)
         try await harness.waitUntilSourceLineReached(3)

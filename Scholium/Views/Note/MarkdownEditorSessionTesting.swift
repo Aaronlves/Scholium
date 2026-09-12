@@ -310,7 +310,7 @@
                 const calloutStyle = style('.cm-live-callout-role-state');
                 const calloutRoleStyle = style('.cm-live-callout-role-state .cm-live-callout-role-label');
                 const calloutTitleStyle = style('.cm-live-callout-role-state .scholium-callout-title');
-                const orientationStyle = style('.cm-live-callout-orient-source');
+                const orientationStyle = style('.cm-live-callout-role-orient');
                 const tableStyle = style('.cm-live-table-widget');
                 const tableCellStyle = style('.cm-live-table-widget th');
                 const mathStyle = style('.cm-live-math.scholium-math-display');

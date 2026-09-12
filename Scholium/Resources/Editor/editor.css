@@ -259,10 +259,6 @@ body,
   text-align: start;
 }
 
-#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-orient-source {
-  font-weight: inherit;
-}
-
 .scholium-link-annotation-disclosure,
 .scholium-annotated-link {
   display: inline;

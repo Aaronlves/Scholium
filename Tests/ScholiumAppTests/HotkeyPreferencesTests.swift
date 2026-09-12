@@ -96,6 +96,20 @@ struct HotkeyPreferencesTests {
         )
     }
 
+    @Test("Fixed editor shortcuts stay outside the customizable command set")
+    func fixedEditorShortcutsRemainReserved() {
+        for key in ["b", "i", "k"] {
+            let binding = ScholiumHotkeyBinding(key: key, modifiers: [.command])!
+            #expect(
+                ScholiumHotkeyPreferences.validationIssue(
+                    for: binding,
+                    command: .showAttention,
+                    data: ScholiumHotkeyPreferences.defaultData
+                ) == .systemReserved
+            )
+        }
+    }
+
     @Test("Malformed persisted bindings cannot become active commands")
     func malformedPersistenceFailsClosed() {
         let malformed = Data(#"{"overrides":{"showAttention":{"key":"qq","modifiers":8}},"disabled":[]}"#.utf8)

@@ -1,5 +1,5 @@
 import {describe, expect, it} from "vitest";
-import {linkTargetAt} from "../projection";
+import {linkTargetAt} from "../link-target";
 import {Text} from "@codemirror/state";
 
 describe("exact link activation projection", () => {

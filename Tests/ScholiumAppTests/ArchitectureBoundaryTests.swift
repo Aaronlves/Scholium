@@ -456,7 +456,7 @@ struct ArchitectureBoundaryTests {
         #expect(testingInteractions.hasPrefix("#if DEBUG"))
         #expect(!session.contains("TestingPresentationSnapshot"))
         for module in [
-            "protocol.ts", "projection.ts", "semantic-projection.ts", "transformations.ts", "tables.ts",
+            "protocol.ts", "link-target.ts", "semantic-projection.ts", "transformations.ts", "tables.ts",
             "table-presentation.ts",
             "interaction.ts", "clipboard.ts", "state.ts", "accessibility.ts", "bootstrap.ts", "performance.ts",
             "live-selection.ts", "live-projection-index.ts",
@@ -467,6 +467,14 @@ struct ArchitectureBoundaryTests {
                     atPath: repositoryRoot.appendingPathComponent("WebEditor/\(module)").path
                 ),
                 Comment(rawValue: "Missing editor module: \(module)")
+            )
+        }
+        for retiredModule in ["projection.ts", "floating-surface-geometry.ts"] {
+            #expect(
+                !FileManager.default.fileExists(
+                    atPath: repositoryRoot.appendingPathComponent("WebEditor/\(retiredModule)").path
+                ),
+                Comment(rawValue: "Retired editor module still exists: \(retiredModule)")
             )
         }
         #expect(editor.contains("createPreviewPopoverController"))

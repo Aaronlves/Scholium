@@ -69,6 +69,7 @@ import {
   type EditorContext,
   type EditorFocusTarget,
   type EditorMode,
+  type MarkdownEditorCommand,
   type EditorRequest,
   type EditorScrollAnchor,
   type MarkdownEditingDialect,
@@ -86,7 +87,7 @@ import {
 import {continueCallout, continueList, indentList} from "./interaction";
 import {tableTabAction} from "./tables";
 import {decodeClipboardPayload, isSingleSafeURL, pasteAsMarkdown} from "./clipboard";
-import {linkTargetAt} from "./projection";
+import {linkTargetAt} from "./link-target";
 import {scholiumNoteLanguage} from "./language";
 import {
   boundedProjectionRanges,
@@ -1160,11 +1161,7 @@ function buildLiveDecorations(
           }
         }
 
-        const parsedTable = rangesIntersecting(
-          parsedProjection.tables,
-          scanFrom,
-          lineQueryTo,
-        )[0];
+        const parsedTable = semanticBlocksOnLine.find((block) => block.kind === "table");
         const activeTable = parsedTable && projectionSelections.some((range) =>
           selectionActivatesSyntax(range, parsedTable),
         );
@@ -1669,6 +1666,74 @@ const saveKeymap = keymap.of([
   },
 ]);
 
+// Markdown commands are editor-local source transactions, not browser rich-text
+// actions. The native Format/Insert menus and this CodeMirror keymap are two
+// transports into this one transformation owner. Keeping the transformation
+// and dispatch policy here makes keyboard and menu invocation agree on exact
+// source, selection, protection, size limits, and CodeMirror undo history.
+function markdownCommandTransformation(
+  state: EditorState,
+  command: MarkdownEditorCommand,
+  argument?: string,
+) {
+  const source = state.doc.toString();
+  const transformed = transformMarkdown(
+    source,
+    editorSelections(state),
+    command,
+    {
+      argument,
+      protectedRanges: commandProtection(command, state),
+      taskItems: liveProjectionIndex.index(state).taskItemRanges,
+    },
+  );
+  if (!transformed) return null;
+  const transformedSource = applySourceChanges(source, transformed.changes);
+  if (new TextEncoder().encode(transformedSource).byteLength > MAX_SOURCE_UTF8_BYTES) {
+    return null;
+  }
+  return transformed;
+}
+
+function applyMarkdownCommand(
+  view: EditorView,
+  command: MarkdownEditorCommand,
+  argument?: string,
+) {
+  if (view.composing) return false;
+  const transformed = markdownCommandTransformation(view.state, command, argument);
+  if (!transformed) return false;
+  view.dispatch({
+    changes: transformed.changes,
+    selection: EditorSelection.create(
+      transformed.selections.map((range) =>
+        EditorSelection.range(range.anchor, range.head)),
+    ),
+    annotations: Transaction.userEvent.of(`input.scholium.${command}`),
+  });
+  lastUndoLabel = transformed.undoLabel;
+  lastRedoLabel = transformed.undoLabel;
+  return true;
+}
+
+const editorMarkdownCommandKeymap = keymap.of([
+  {
+    key: "Mod-b",
+    preventDefault: true,
+    run: (view) => applyMarkdownCommand(view, "bold"),
+  },
+  {
+    key: "Mod-i",
+    preventDefault: true,
+    run: (view) => applyMarkdownCommand(view, "emphasis"),
+  },
+  {
+    key: "Mod-k",
+    preventDefault: true,
+    run: (view) => applyMarkdownCommand(view, "standardLink"),
+  },
+]);
+
 // Structural Markdown commands must yield to literal technical regions. The
 // language tree is already the editor's source-navigation authority, so this
 // guard does not introduce a second Markdown scanner or materialize the whole
@@ -1973,6 +2038,7 @@ const editorExtensions = [
   // Share Markdown's high precedence while preceding its generic list
   // continuation. Scholium must compose the Callout quote and nested list
   // prefixes before the base Markdown command can consume Return.
+  Prec.high(editorMarkdownCommandKeymap),
   Prec.high(structuralInteractionKeymap),
   Prec.high(lineBoundaryKeymap),
   scholiumNoteLanguage,
@@ -2386,16 +2452,8 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
       if (!payload) return rejected(request.requestID, documentVersion, "pasteMarkdown requires a clipboard payload");
       argument = editingFrontmatterSelection() ? payload.plainText : pasteAsMarkdown(payload);
     }
-    const transformed = transformMarkdown(editor.state.doc.toString(), editorSelections(), operation.command, {
-      argument,
-      protectedRanges: commandProtection(operation.command),
-      taskItems: liveProjectionIndex.index(editor.state).taskItemRanges,
-    });
+    const transformed = markdownCommandTransformation(editor.state, operation.command, argument);
     if (!transformed) return rejected(request.requestID, documentVersion, "command is unavailable for the exact selection");
-    const transformedSource = applySourceChanges(editor.state.doc.toString(), transformed.changes);
-    if (new TextEncoder().encode(transformedSource).byteLength > MAX_SOURCE_UTF8_BYTES) {
-      return rejected(request.requestID, documentVersion, "command result is too large");
-    }
     editor.dispatch({
       changes: transformed.changes,
       selection: EditorSelection.create(transformed.selections.map((range) => EditorSelection.range(range.anchor, range.head))),

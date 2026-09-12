@@ -200,8 +200,17 @@ struct MarkdownEditorWebViewIntegrationTests {
             #expect(marked?.contains("中文 😀 passage.") == true)
             #expect(harness.session.presentedMode == mode)
             #expect(try await harness.callPageJavaScript(Self.arrivalAnimationProbe) as? Bool == true)
-            try await Task.sleep(for: .milliseconds(1550))
-            #expect(try await harness.callPageJavaScript("return document.querySelectorAll('.scholium-arrival-target').length;") as? Int == 0)
+            #expect(try await harness.callPageJavaScript("return document.querySelectorAll('.scholium-arrival-target').length;") as? Int == 1)
+            let expirationDeadline = ContinuousClock.now.advanced(by: .seconds(5))
+            var remaining = 1
+            while remaining != 0 && ContinuousClock.now < expirationDeadline {
+                remaining =
+                    try await harness.callPageJavaScript(
+                        "return document.querySelectorAll('.scholium-arrival-target').length;"
+                    ) as? Int ?? -1
+                if remaining != 0 { try await Task.sleep(for: .milliseconds(20)) }
+            }
+            #expect(remaining == 0)
             _ = try await harness.session.send(.goToLine(3, focusesEditor: false), in: webView)
             #expect(try await harness.callPageJavaScript("return document.querySelectorAll('.scholium-arrival-target').length;") as? Int == 1)
             _ = try await harness.session.send(.goToLine(5, focusesEditor: false), in: webView)
@@ -244,7 +253,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect((yamlTop ?? -1) >= 0)
         #expect((titleOffset ?? .greatestFiniteMagnitude) < (yamlTop ?? -1))
         #expect((yamlBottom ?? .greatestFiniteMagnitude) <= (headingTop ?? -1))
-        #expect(delimiterCount == 0)
+        #expect(delimiterCount == 2)
         #expect(delimitersQuiet == true)
         #expect((renderedLineCount ?? 0) > 0)
         _ = try await harness.session.send(.goToLine(2, focusesEditor: true), in: webView)
@@ -5025,6 +5034,61 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(snapshot["viewportTabIndex"] as? Int == 0)
         #expect(snapshot["sourceLocatorCount"] as? Int == 0)
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Edit Command-I applies one exact Markdown transaction and remains undoable")
+    func editKeyboardItalicUsesExactSourceTransaction() async throws {
+        let source = "Selected 中文 claim remains exact.\n"
+        let selectedText = "Selected 中文 claim"
+        let end = selectedText.utf16.count
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        harness.session.revealSourceRange(fromUTF16: 0, toUTF16: end)
+        try await harness.waitUntilSelection(head: end)
+        try await harness.session.focusAndWait()
+
+        let handled =
+            try await harness.callPageJavaScript(
+                """
+                const content = document.querySelector('.cm-content');
+                if (!content) return false;
+                const event = new KeyboardEvent('keydown', {
+                  key: 'i', code: 'KeyI', keyCode: 73, which: 73,
+                  metaKey: true, bubbles: true, cancelable: true
+                });
+                content.dispatchEvent(event);
+                return event.defaultPrevented;
+                """
+            ) as? Bool
+        #expect(handled == true)
+
+        let expected = "*Selected 中文 claim* remains exact.\n"
+        let editedDeadline = ContinuousClock.now.advanced(by: .seconds(3))
+        var edited = source
+        while edited == source && ContinuousClock.now < editedDeadline {
+            edited = try await harness.session.currentText(for: harness.documentID)
+            if edited == source { try await Task.sleep(for: .milliseconds(20)) }
+        }
+        #expect(edited == expected)
+        #expect(harness.session.context?.undoLabel == "Italic")
+
+        _ = try await harness.callPageJavaScript(
+            """
+            document.querySelector('.cm-content')?.dispatchEvent(new KeyboardEvent('keydown', {
+              key: 'z', code: 'KeyZ', keyCode: 90, which: 90,
+              metaKey: true, bubbles: true, cancelable: true
+            }));
+            """
+        )
+        let restoredDeadline = ContinuousClock.now.advanced(by: .seconds(3))
+        var restored = edited
+        while restored != source && ContinuousClock.now < restoredDeadline {
+            restored = try await harness.session.currentText(for: harness.documentID)
+            if restored != source { try await Task.sleep(for: .milliseconds(20)) }
+        }
+        #expect(restored == source)
         await harness.closeAndDrain()
     }
 

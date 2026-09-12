@@ -1,6 +1,6 @@
 import {readFileSync} from "node:fs";
 import {describe, expect, it} from "vitest";
-import {projectDialectSemantics} from "../projection";
+import {projectDialectSemantics} from "./parity-projection";
 import type {MarkdownEditingDialect} from "../protocol";
 
 const dialect: MarkdownEditingDialect = {

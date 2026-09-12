@@ -22607,376 +22607,24 @@ ${fence}
     return /^(https?:\/\/|mailto:)[^\s]+$/i.test(trimmed) ? trimmed : null;
   }
 
-  // math.ts
-  function scanMath(source, dialect) {
-    if (dialect.inlineDelimiter !== "$" || dialect.displayDelimiter !== "$$") return [];
-    const lines = lineRanges(source);
-    const excluded = markdownLiteralRanges(source, lines);
-    const displays = [];
-    const displayRanges = [];
-    for (let index = 0; index < lines.length; index += 1) {
-      const line = lines[index];
-      const opener = displayFence(source, line);
-      if (!opener || intersects(opener, excluded)) continue;
-      let closingIndex = -1;
-      let closing2 = null;
-      for (let candidateIndex = index + 1; candidateIndex < lines.length; candidateIndex += 1) {
-        const candidate = displayFence(source, lines[candidateIndex]);
-        if (candidate && candidate.to - candidate.from >= opener.to - opener.from && !intersects(candidate, excluded)) {
-          closingIndex = candidateIndex;
-          closing2 = candidate;
-          break;
-        }
-      }
-      if (!closing2 || closingIndex < 0) continue;
-      const contentFrom = line.to;
-      const contentTo = lines[closingIndex].from;
-      const range = { from: opener.from, to: closing2.to };
-      displays.push({
-        kind: "display",
-        content: source.slice(contentFrom, contentTo).replace(/^[\r\n]+|[\r\n]+$/g, ""),
-        delimiterLength: opener.to - opener.from,
-        from: range.from,
-        to: range.to,
-        contentFrom,
-        contentTo
-      });
-      displayRanges.push(range);
-      index = closingIndex;
-    }
-    const inlineExcluded = excluded.concat(displayRanges);
-    const inlines = [];
-    for (let cursor = 0; cursor < source.length; ) {
-      if (source.charCodeAt(cursor) !== 36) {
-        cursor += 1;
-        continue;
-      }
-      const openingStart = cursor;
-      while (cursor < source.length && source.charCodeAt(cursor) === 36) cursor += 1;
-      const delimiterLength = cursor - openingStart;
-      const opening = { from: openingStart, to: cursor };
-      if (isEscaped(source, openingStart) || intersects(opening, inlineExcluded)) continue;
-      let closingStart = -1;
-      for (let search2 = cursor; search2 < source.length; ) {
-        if (source.charCodeAt(search2) !== 36) {
-          search2 += 1;
-          continue;
-        }
-        const runStart = search2;
-        while (search2 < source.length && source.charCodeAt(search2) === 36) search2 += 1;
-        if (search2 - runStart === delimiterLength && !isEscaped(source, runStart)) {
-          closingStart = runStart;
-          break;
-        }
-      }
-      if (closingStart <= cursor) continue;
-      const whole = { from: openingStart, to: closingStart + delimiterLength };
-      if (intersects(whole, inlineExcluded)) continue;
-      const raw = source.slice(cursor, closingStart);
-      const content2 = raw.length > 2 && /^\s/.test(raw) && /\s$/.test(raw) && /\S/.test(raw) ? raw.slice(1, -1) : raw;
-      inlines.push({
-        kind: "inline",
-        content: content2,
-        delimiterLength,
-        from: whole.from,
-        to: whole.to,
-        contentFrom: cursor,
-        contentTo: closingStart
-      });
-      cursor = whole.to;
-    }
-    return displays.concat(inlines).sort((left, right) => left.from - right.from);
-  }
-  function displayFence(source, line) {
-    let position = line.from;
-    let indentation2 = 0;
-    while (position < line.contentTo && source.charCodeAt(position) === 32 && indentation2 < 4) {
-      position += 1;
-      indentation2 += 1;
-    }
-    if (indentation2 > 3 || position >= line.contentTo || source.charCodeAt(position) !== 36 || isEscaped(source, position)) {
-      return null;
-    }
-    const start = position;
-    while (position < line.contentTo && source.charCodeAt(position) === 36) position += 1;
-    const delimiterEnd = position;
-    if (delimiterEnd - start < 2) return null;
-    while (position < line.contentTo && (source.charCodeAt(position) === 32 || source.charCodeAt(position) === 9)) {
-      position += 1;
-    }
-    return position === line.contentTo ? { from: start, to: delimiterEnd } : null;
-  }
-  function lineRanges(source) {
-    const lines = [];
-    for (let from = 0; from <= source.length; ) {
-      let contentTo = from;
-      while (contentTo < source.length && source.charCodeAt(contentTo) !== 10 && source.charCodeAt(contentTo) !== 13) {
-        contentTo += 1;
-      }
-      let to = contentTo;
-      if (to < source.length && source.charCodeAt(to) === 13) to += 1;
-      if (to < source.length && source.charCodeAt(to) === 10) to += 1;
-      lines.push({ from, contentTo, to });
-      if (to >= source.length) break;
-      from = to;
-    }
-    return lines;
-  }
-  function markdownLiteralRanges(source, knownLines = lineRanges(source)) {
-    const lines = knownLines;
-    const ranges = [];
-    const firstLine = lines[0];
-    if (firstLine && source.slice(firstLine.from, firstLine.contentTo).replace(/^\uFEFF/, "") === "---") {
-      for (let index = 1; index < lines.length; index += 1) {
-        const value = source.slice(lines[index].from, lines[index].contentTo);
-        if (value === "---" || value === "...") {
-          ranges.push({ from: firstLine.from, to: lines[index].to });
-          break;
-        }
-      }
-    }
-    for (let index = 0; index < lines.length; index += 1) {
-      const value = source.slice(lines[index].from, lines[index].contentTo);
-      const opening = value.match(/^ {0,3}(`{3,}|~{3,})/);
-      if (!opening) continue;
-      const marker = opening[1][0];
-      const length = opening[1].length;
-      let closingIndex = index;
-      for (let candidate = index + 1; candidate < lines.length; candidate += 1) {
-        const candidateValue = source.slice(lines[candidate].from, lines[candidate].contentTo);
-        const closing2 = candidateValue.match(new RegExp(`^ {0,3}${marker === "`" ? "`" : "~"}{${length},}[ \\t]*$`));
-        if (closing2) {
-          closingIndex = candidate;
-          break;
-        }
-      }
-      ranges.push({ from: lines[index].from, to: lines[closingIndex].to });
-      index = closingIndex;
-    }
-    const blockTags = "address|article|aside|base|basefont|blockquote|body|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|frame|frameset|h[1-6]|head|header|hr|html|iframe|legend|li|link|main|menu|menuitem|nav|noframes|ol|optgroup|option|p|param|search|section|summary|table|tbody|td|tfoot|th|thead|title|tr|track|ul";
-    const blockStart = new RegExp(`^ {0,3}<(${blockTags})(?:[\\t >]|/?>)`, "i");
-    for (let index = 0; index < lines.length; index += 1) {
-      const value = source.slice(lines[index].from, lines[index].contentTo);
-      if (!blockStart.test(value)) continue;
-      let closingIndex = lines.length - 1;
-      for (let candidate = index + 1; candidate < lines.length; candidate += 1) {
-        if (source.slice(lines[candidate].from, lines[candidate].contentTo).trim().length === 0) {
-          closingIndex = candidate - 1;
-          break;
-        }
-      }
-      ranges.push({ from: lines[index].from, to: lines[closingIndex].to });
-      index = closingIndex;
-    }
-    for (const delimiters of [["%%", "%%"], ["<!--", "-->"]]) {
-      for (let from = source.indexOf(delimiters[0]); from >= 0; ) {
-        const end = source.indexOf(delimiters[1], from + delimiters[0].length);
-        if (end < 0) {
-          ranges.push({ from, to: source.length });
-          break;
-        }
-        ranges.push({ from, to: end + delimiters[1].length });
-        from = source.indexOf(delimiters[0], end + delimiters[1].length);
-      }
-    }
-    for (let cursor = 0; cursor < source.length; ) {
-      if (source.charCodeAt(cursor) !== 96) {
-        cursor += 1;
-        continue;
-      }
-      const from = cursor;
-      while (cursor < source.length && source.charCodeAt(cursor) === 96) cursor += 1;
-      const length = cursor - from;
-      if (isEscaped(source, from)) continue;
-      for (let search2 = cursor; search2 < source.length; ) {
-        if (source.charCodeAt(search2) !== 96) {
-          search2 += 1;
-          continue;
-        }
-        const close = search2;
-        while (search2 < source.length && source.charCodeAt(search2) === 96) search2 += 1;
-        if (search2 - close === length) {
-          ranges.push({ from, to: search2 });
-          cursor = search2;
-          break;
-        }
-      }
-    }
-    return ranges;
-  }
-  function intersects(range, candidates) {
-    return candidates.some((candidate) => candidate.from < range.to && range.from < candidate.to);
-  }
-  function isEscaped(source, position) {
-    let count2 = 0;
-    for (let cursor = position - 1; cursor >= 0 && source.charCodeAt(cursor) === 92; cursor -= 1) count2 += 1;
-    return count2 % 2 === 1;
-  }
-
-  // footnote-presentation.ts
-  var scholiumFootnoteDialect = {
-    namedReferenceOpening: "[^",
-    namedReferenceClosing: "]",
-    definitionSeparator: ":",
-    inlineOpening: "^[",
-    continuationIndentSpaces: 2,
-    allowsTabContinuation: true,
-    caseSensitiveIdentifiers: true,
-    ordinalByFirstReference: true
-  };
-  function supportsFootnoteDialect(dialect) {
-    return dialect.namedReferenceOpening === scholiumFootnoteDialect.namedReferenceOpening && dialect.namedReferenceClosing === scholiumFootnoteDialect.namedReferenceClosing && dialect.definitionSeparator === scholiumFootnoteDialect.definitionSeparator && dialect.inlineOpening === scholiumFootnoteDialect.inlineOpening && dialect.continuationIndentSpaces === scholiumFootnoteDialect.continuationIndentSpaces && dialect.allowsTabContinuation === scholiumFootnoteDialect.allowsTabContinuation && dialect.caseSensitiveIdentifiers === scholiumFootnoteDialect.caseSensitiveIdentifiers && dialect.ordinalByFirstReference === scholiumFootnoteDialect.ordinalByFirstReference;
-  }
-  function sourceLines(source) {
-    if (source.length === 0) return [];
-    const lines = [];
-    let from = 0;
-    while (from < source.length) {
-      const newline3 = source.indexOf("\n", from);
-      const contentTo = newline3 < 0 ? source.length : newline3;
-      const to = newline3 < 0 ? source.length : newline3 + 1;
-      const raw = source.slice(from, contentTo);
-      const text = raw.endsWith("\r") ? raw.slice(0, -1) : raw;
-      lines.push({ from, contentTo: from + text.length, to, text });
-      from = to;
-    }
-    return lines;
-  }
-  function overlaps2(ranges, from, to) {
-    return ranges.some((range) => range.from < to && range.to > from);
-  }
-  function isEscaped2(source, offset) {
-    let backslashes = 0;
-    for (let index = offset - 1; index >= 0 && source[index] === "\\"; index -= 1) {
-      backslashes += 1;
-    }
-    return backslashes % 2 === 1;
-  }
-  function footnotePresentation(source, excluded = [], dialect = scholiumFootnoteDialect) {
-    if (!supportsFootnoteDialect(dialect)) return { definitions: [], references: [] };
-    const lines = sourceLines(source);
-    const rawDefinitions = [];
-    for (let index = 0; index < lines.length; index += 1) {
-      const line = lines[index];
-      if (overlaps2(excluded, line.from, line.contentTo)) continue;
-      const match = /^\[\^([^\]\r\n]+)\]:[ \t]*(.*)$/.exec(line.text);
-      if (!match) continue;
-      const parts = [match[2]];
-      const firstLineContentFrom = line.contentTo - match[2].length;
-      let contentFrom = firstLineContentFrom + (match[2].match(/^\s*/)?.[0].length ?? 0);
-      let foundContentStart = /\S/.test(match[2]);
-      let to = line.to;
-      let continuation = index + 1;
-      while (continuation < lines.length) {
-        const candidate = lines[continuation];
-        if (!(candidate.text.startsWith("  ") || candidate.text.startsWith("	") || candidate.text.length === 0)) break;
-        const continuationText = candidate.text.replace(/^(?: {2}|\t)/, "");
-        if (!foundContentStart && /\S/.test(continuationText)) {
-          const removedIndent = candidate.text.length - continuationText.length;
-          const leadingWhitespace = continuationText.match(/^\s*/)?.[0].length ?? 0;
-          contentFrom = candidate.from + removedIndent + leadingWhitespace;
-          foundContentStart = true;
-        }
-        parts.push(continuationText);
-        to = candidate.to;
-        continuation += 1;
-      }
-      rawDefinitions.push({
-        identifier: match[1],
-        content: parts.join("\n").trim(),
-        contentFrom,
-        from: line.from,
-        to,
-        isInline: false,
-        marker: { from: line.from, to: line.contentTo }
-      });
-      index = continuation - 1;
-    }
-    const rawReferences = [];
-    for (const match of source.matchAll(/\[\^([^\]\r\n]+)\]/g)) {
-      const from = match.index;
+  // link-target.ts
+  function linkTargetAt(source, offset) {
+    const document2 = typeof source === "string" ? Text.of(source.split("\n")) : source;
+    if (offset < 0 || offset > document2.length) return null;
+    const sourceLine = document2.lineAt(offset);
+    const lineFrom = sourceLine.from;
+    const line = sourceLine.text;
+    for (const match of line.matchAll(/!?\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g)) {
+      const from = lineFrom + match.index;
       const to = from + match[0].length;
-      if (overlaps2(excluded, from, to) || rawDefinitions.some((definition) => overlaps2([definition.marker], from, to)) || isEscaped2(source, from)) continue;
-      rawReferences.push({
-        identifier: match[1],
-        from,
-        to,
-        isInline: false,
-        inlineContent: null
-      });
+      if (offset >= from && offset < to) return match[1].trim();
     }
-    let inlineCounter = 0;
-    for (const match of source.matchAll(/\^\[([^\]\r\n]+)\]/g)) {
-      const from = match.index;
+    for (const match of line.matchAll(/\[[^\]\n]+\]\(([^)\n]+)\)/g)) {
+      const from = lineFrom + match.index;
       const to = from + match[0].length;
-      if (overlaps2(excluded, from, to) || isEscaped2(source, from)) continue;
-      inlineCounter += 1;
-      const identifier4 = `inline-${inlineCounter}`;
-      rawReferences.push({
-        identifier: identifier4,
-        from,
-        to,
-        isInline: true,
-        inlineContent: match[1]
-      });
-      rawDefinitions.push({
-        identifier: identifier4,
-        content: match[1],
-        contentFrom: from + scholiumFootnoteDialect.inlineOpening.length,
-        from,
-        to,
-        isInline: true,
-        marker: { from, to }
-      });
+      if (offset >= from && offset < to) return match[1].trim();
     }
-    rawReferences.sort((left, right) => left.from - right.from);
-    const ordinalByIdentifier = /* @__PURE__ */ new Map();
-    const occurrenceByIdentifier = /* @__PURE__ */ new Map();
-    for (const reference of rawReferences) {
-      if (!ordinalByIdentifier.has(reference.identifier)) {
-        ordinalByIdentifier.set(reference.identifier, ordinalByIdentifier.size + 1);
-      }
-      occurrenceByIdentifier.set(
-        reference.identifier,
-        (occurrenceByIdentifier.get(reference.identifier) ?? 0) + 1
-      );
-    }
-    const firstDefinitionByIdentifier = /* @__PURE__ */ new Map();
-    for (const definition of rawDefinitions) {
-      if (!firstDefinitionByIdentifier.has(definition.identifier)) {
-        firstDefinitionByIdentifier.set(definition.identifier, definition);
-      }
-    }
-    occurrenceByIdentifier.clear();
-    const references = rawReferences.map((reference) => {
-      const occurrence = (occurrenceByIdentifier.get(reference.identifier) ?? 0) + 1;
-      occurrenceByIdentifier.set(reference.identifier, occurrence);
-      const definition = firstDefinitionByIdentifier.get(reference.identifier);
-      return {
-        identifier: reference.identifier,
-        ordinal: ordinalByIdentifier.get(reference.identifier),
-        occurrence,
-        isInline: reference.isInline,
-        definitionFrom: definition?.from ?? null,
-        definitionContentFrom: definition?.contentFrom ?? null,
-        from: reference.from,
-        to: reference.to
-      };
-    });
-    const definitions = [...firstDefinitionByIdentifier.values()].map((definition) => ({
-      identifier: definition.identifier,
-      content: definition.content,
-      contentFrom: definition.contentFrom,
-      ordinal: ordinalByIdentifier.get(definition.identifier) ?? null,
-      isInline: definition.isInline,
-      from: definition.from,
-      to: definition.to
-    })).sort((left, right) => {
-      const leftOrdinal = left.ordinal ?? Number.MAX_SAFE_INTEGER;
-      const rightOrdinal = right.ordinal ?? Number.MAX_SAFE_INTEGER;
-      return leftOrdinal === rightOrdinal ? left.from - right.from : leftOrdinal - rightOrdinal;
-    });
-    return { definitions, references };
+    return null;
   }
 
   // node_modules/@lezer/markdown/dist/index.js
@@ -30288,7 +29936,7 @@ ${fence}
   function isHorizontalWhitespace(character) {
     return character === SPACE || character === TAB;
   }
-  function isEscaped3(cx, position) {
+  function isEscaped(cx, position) {
     let backslashes = 0;
     for (let cursor = position - 1; cursor >= cx.offset && cx.char(cursor) === 92; cursor -= 1) {
       backslashes += 1;
@@ -30369,7 +30017,7 @@ ${fence}
     for (let cursor = position + 2; cursor < cx.end; cursor += 1) {
       const character = cx.char(cursor);
       if (character === LINE_FEED || character === CARRIAGE_RETURN) return -1;
-      if (character !== 93 || isEscaped3(cx, cursor)) continue;
+      if (character !== 93 || isEscaped(cx, cursor)) continue;
       if (cx.slice(position + 2, cursor).trim().length === 0) return -1;
       return cx.addElement(cx.elt("InlineFootnote", position, cursor + 1, [
         cx.elt("InlineFootnoteOpenMark", position, position + 2),
@@ -30387,7 +30035,7 @@ ${fence}
     for (let cursor = openingTo; cursor < cx.end; cursor += 1) {
       const character = cx.char(cursor);
       if (character === LINE_FEED || character === CARRIAGE_RETURN) return -1;
-      if (character !== 36 || isEscaped3(cx, cursor)) continue;
+      if (character !== 36 || isEscaped(cx, cursor)) continue;
       let closingTo = cursor + 1;
       while (cx.char(closingTo) === 36) closingTo += 1;
       if (closingTo - cursor !== delimiterLength) {
@@ -30408,7 +30056,7 @@ ${fence}
     for (let cursor = position + 2; cursor < cx.end - 1; cursor += 1) {
       const character = cx.char(cursor);
       if (character === LINE_FEED || character === CARRIAGE_RETURN) return -1;
-      if (character !== 61 || cx.char(cursor + 1) !== 61 || cx.char(cursor + 2) === 61 || isEscaped3(cx, cursor)) continue;
+      if (character !== 61 || cx.char(cursor + 1) !== 61 || cx.char(cursor + 2) === 61 || isEscaped(cx, cursor)) continue;
       if (cx.slice(position + 2, cursor).trim().length === 0) return -1;
       return cx.addElement(cx.elt("Highlight", position, cursor + 2, [
         cx.elt("HighlightMark", position, position + 2),
@@ -30616,7 +30264,7 @@ ${fence}
   });
 
   // link-annotation.ts
-  function isEscaped4(source, position) {
+  function isEscaped2(source, position) {
     let backslashes = 0;
     for (let cursor = position - 1; cursor >= 0 && source.charCodeAt(cursor) === 92; cursor -= 1) {
       backslashes += 1;
@@ -30632,8 +30280,8 @@ ${fence}
     if (source.slice(linkTo, linkTo + 2) !== "{{") return null;
     for (let cursor = linkTo + 2; cursor + 1 < source.length; cursor += 1) {
       const pair2 = source.slice(cursor, cursor + 2);
-      if (pair2 === "{{" && !isEscaped4(source, cursor)) return null;
-      if (pair2 !== "}}" || isEscaped4(source, cursor)) continue;
+      if (pair2 === "{{" && !isEscaped2(source, cursor)) return null;
+      if (pair2 !== "}}" || isEscaped2(source, cursor)) continue;
       const markdown2 = source.slice(linkTo + 2, cursor);
       if (!hasVisibleMarkdownContent(markdown2)) return null;
       return {
@@ -30648,42 +30296,7 @@ ${fence}
   }
 
   // semantic-projection.ts
-  function projectionRangesFromCatalog(state, blocks, inlines, literals2) {
-    const result = {
-      blocks,
-      inlines,
-      literals: literals2,
-      headingLevelByLineFrom: /* @__PURE__ */ new Map(),
-      paragraphs: [],
-      strong: /* @__PURE__ */ new Set(),
-      emphasis: /* @__PURE__ */ new Set(),
-      links: /* @__PURE__ */ new Set(),
-      wikilinks: /* @__PURE__ */ new Set(),
-      strikethrough: /* @__PURE__ */ new Set(),
-      highlights: /* @__PURE__ */ new Set(),
-      tables: [],
-      callouts: []
-    };
-    for (const block of blocks) {
-      if (block.kind === "heading" && block.headingLevel !== null) {
-        result.headingLevelByLineFrom.set(state.doc.lineAt(block.from).from, block.headingLevel);
-      }
-      if (block.kind === "paragraph") result.paragraphs.push({ from: block.from, to: block.to });
-      if (block.kind === "table") result.tables.push({ from: block.from, to: block.to });
-      if (block.kind === "callout") result.callouts.push({ from: block.from, to: block.to });
-    }
-    for (const inline of inlines) {
-      const key = rangeKey(inline.from, inline.to);
-      if (inline.kind === "strong") result.strong.add(key);
-      if (inline.kind === "emphasis") result.emphasis.add(key);
-      if (inline.kind === "link") result.links.add(key);
-      if (inline.kind === "wikilink") result.wikilinks.add(key);
-      if (inline.kind === "strikethrough") result.strikethrough.add(key);
-      if (inline.kind === "highlight") result.highlights.add(key);
-    }
-    return result;
-  }
-  function mapSemanticProjectionRanges(previous, state, mapPosition) {
+  function mapSemanticProjectionRanges(previous, mapPosition) {
     const mapRange2 = (range) => ({
       from: mapPosition(range.from),
       to: mapPosition(range.to)
@@ -30717,7 +30330,7 @@ ${fence}
       from: mapPosition(literal2.from),
       to: mapPosition(literal2.to)
     }));
-    return projectionRangesFromCatalog(state, blocks, inlines, literals2);
+    return { blocks, inlines, literals: literals2 };
   }
   var blockKinds = /* @__PURE__ */ new Map([
     ["Paragraph", "paragraph"],
@@ -30839,6 +30452,7 @@ ${fence}
     let visibleRanges = complementRanges(node.from, node.to, markerRanges);
     if (kind === "link" || kind === "image") {
       const explicitVisible = childRanges(node, /* @__PURE__ */ new Set(["URL"]));
+      if (explicitVisible.length === 0) return null;
       if (node.name === "Autolink") {
         visibleRanges = explicitVisible;
       } else {
@@ -30906,17 +30520,7 @@ ${fence}
     const result = {
       blocks: [],
       inlines: [],
-      literals: [],
-      headingLevelByLineFrom: /* @__PURE__ */ new Map(),
-      paragraphs: [],
-      strong: /* @__PURE__ */ new Set(),
-      emphasis: /* @__PURE__ */ new Set(),
-      links: /* @__PURE__ */ new Set(),
-      wikilinks: /* @__PURE__ */ new Set(),
-      strikethrough: /* @__PURE__ */ new Set(),
-      highlights: /* @__PURE__ */ new Set(),
-      tables: [],
-      callouts: []
+      literals: []
     };
     if (visibleRanges.length === 0) return result;
     const from = Math.max(0, Math.min(...visibleRanges.map((range) => range.from)) - margin);
@@ -30997,7 +30601,7 @@ ${fence}
         const inlineKind = inlineKinds.get(node.name);
         if (inlineKind) {
           const inline = inlinePresentation(node, inlineKind, source);
-          result.inlines.push(inline);
+          if (inline) result.inlines.push(inline);
         }
         if ([
           "HTMLTag",
@@ -31023,27 +30627,7 @@ ${fence}
     result.blocks.sort((left, right) => left.from - right.from || right.to - left.to || left.kind.localeCompare(right.kind));
     result.inlines.sort((left, right) => left.from - right.from || right.to - left.to || left.kind.localeCompare(right.kind));
     result.literals.sort((left, right) => left.from - right.from || right.to - left.to);
-    return projectionRangesFromCatalog(state, result.blocks, result.inlines, result.literals);
-  }
-
-  // projection.ts
-  function linkTargetAt(source, offset) {
-    const document2 = typeof source === "string" ? Text.of(source.split("\n")) : source;
-    if (offset < 0 || offset > document2.length) return null;
-    const sourceLine = document2.lineAt(offset);
-    const lineFrom = sourceLine.from;
-    const line = sourceLine.text;
-    for (const match of line.matchAll(/!?\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g)) {
-      const from = lineFrom + match.index;
-      const to = from + match[0].length;
-      if (offset >= from && offset < to) return match[1].trim();
-    }
-    for (const match of line.matchAll(/\[[^\]\n]+\]\(([^)\n]+)\)/g)) {
-      const from = lineFrom + match.index;
-      const to = from + match[0].length;
-      if (offset >= from && offset < to) return match[1].trim();
-    }
-    return null;
+    return result;
   }
 
   // projection-index.ts
@@ -32026,6 +31610,212 @@ ${fence}
     return { extension, hide, showAtSelection, showAtPoint };
   }
 
+  // math.ts
+  function scanMath(source, dialect) {
+    if (dialect.inlineDelimiter !== "$" || dialect.displayDelimiter !== "$$") return [];
+    const lines = lineRanges(source);
+    const excluded = markdownLiteralRanges(source, lines);
+    const displays = [];
+    const displayRanges = [];
+    for (let index = 0; index < lines.length; index += 1) {
+      const line = lines[index];
+      const opener = displayFence(source, line);
+      if (!opener || intersects(opener, excluded)) continue;
+      let closingIndex = -1;
+      let closing2 = null;
+      for (let candidateIndex = index + 1; candidateIndex < lines.length; candidateIndex += 1) {
+        const candidate = displayFence(source, lines[candidateIndex]);
+        if (candidate && candidate.to - candidate.from >= opener.to - opener.from && !intersects(candidate, excluded)) {
+          closingIndex = candidateIndex;
+          closing2 = candidate;
+          break;
+        }
+      }
+      if (!closing2 || closingIndex < 0) continue;
+      const contentFrom = line.to;
+      const contentTo = lines[closingIndex].from;
+      const range = { from: opener.from, to: closing2.to };
+      displays.push({
+        kind: "display",
+        content: source.slice(contentFrom, contentTo).replace(/^[\r\n]+|[\r\n]+$/g, ""),
+        delimiterLength: opener.to - opener.from,
+        from: range.from,
+        to: range.to,
+        contentFrom,
+        contentTo
+      });
+      displayRanges.push(range);
+      index = closingIndex;
+    }
+    const inlineExcluded = excluded.concat(displayRanges);
+    const inlines = [];
+    for (let cursor = 0; cursor < source.length; ) {
+      if (source.charCodeAt(cursor) !== 36) {
+        cursor += 1;
+        continue;
+      }
+      const openingStart = cursor;
+      while (cursor < source.length && source.charCodeAt(cursor) === 36) cursor += 1;
+      const delimiterLength = cursor - openingStart;
+      const opening = { from: openingStart, to: cursor };
+      if (isEscaped3(source, openingStart) || intersects(opening, inlineExcluded)) continue;
+      let closingStart = -1;
+      for (let search2 = cursor; search2 < source.length; ) {
+        if (source.charCodeAt(search2) !== 36) {
+          search2 += 1;
+          continue;
+        }
+        const runStart = search2;
+        while (search2 < source.length && source.charCodeAt(search2) === 36) search2 += 1;
+        if (search2 - runStart === delimiterLength && !isEscaped3(source, runStart)) {
+          closingStart = runStart;
+          break;
+        }
+      }
+      if (closingStart <= cursor) continue;
+      const whole = { from: openingStart, to: closingStart + delimiterLength };
+      if (intersects(whole, inlineExcluded)) continue;
+      const raw = source.slice(cursor, closingStart);
+      const content2 = raw.length > 2 && /^\s/.test(raw) && /\s$/.test(raw) && /\S/.test(raw) ? raw.slice(1, -1) : raw;
+      inlines.push({
+        kind: "inline",
+        content: content2,
+        delimiterLength,
+        from: whole.from,
+        to: whole.to,
+        contentFrom: cursor,
+        contentTo: closingStart
+      });
+      cursor = whole.to;
+    }
+    return displays.concat(inlines).sort((left, right) => left.from - right.from);
+  }
+  function displayFence(source, line) {
+    let position = line.from;
+    let indentation2 = 0;
+    while (position < line.contentTo && source.charCodeAt(position) === 32 && indentation2 < 4) {
+      position += 1;
+      indentation2 += 1;
+    }
+    if (indentation2 > 3 || position >= line.contentTo || source.charCodeAt(position) !== 36 || isEscaped3(source, position)) {
+      return null;
+    }
+    const start = position;
+    while (position < line.contentTo && source.charCodeAt(position) === 36) position += 1;
+    const delimiterEnd = position;
+    if (delimiterEnd - start < 2) return null;
+    while (position < line.contentTo && (source.charCodeAt(position) === 32 || source.charCodeAt(position) === 9)) {
+      position += 1;
+    }
+    return position === line.contentTo ? { from: start, to: delimiterEnd } : null;
+  }
+  function lineRanges(source) {
+    const lines = [];
+    for (let from = 0; from <= source.length; ) {
+      let contentTo = from;
+      while (contentTo < source.length && source.charCodeAt(contentTo) !== 10 && source.charCodeAt(contentTo) !== 13) {
+        contentTo += 1;
+      }
+      let to = contentTo;
+      if (to < source.length && source.charCodeAt(to) === 13) to += 1;
+      if (to < source.length && source.charCodeAt(to) === 10) to += 1;
+      lines.push({ from, contentTo, to });
+      if (to >= source.length) break;
+      from = to;
+    }
+    return lines;
+  }
+  function markdownLiteralRanges(source, knownLines = lineRanges(source)) {
+    const lines = knownLines;
+    const ranges = [];
+    const firstLine = lines[0];
+    if (firstLine && source.slice(firstLine.from, firstLine.contentTo).replace(/^\uFEFF/, "") === "---") {
+      for (let index = 1; index < lines.length; index += 1) {
+        const value = source.slice(lines[index].from, lines[index].contentTo);
+        if (value === "---" || value === "...") {
+          ranges.push({ from: firstLine.from, to: lines[index].to });
+          break;
+        }
+      }
+    }
+    for (let index = 0; index < lines.length; index += 1) {
+      const value = source.slice(lines[index].from, lines[index].contentTo);
+      const opening = value.match(/^ {0,3}(`{3,}|~{3,})/);
+      if (!opening) continue;
+      const marker = opening[1][0];
+      const length = opening[1].length;
+      let closingIndex = index;
+      for (let candidate = index + 1; candidate < lines.length; candidate += 1) {
+        const candidateValue = source.slice(lines[candidate].from, lines[candidate].contentTo);
+        const closing2 = candidateValue.match(new RegExp(`^ {0,3}${marker === "`" ? "`" : "~"}{${length},}[ \\t]*$`));
+        if (closing2) {
+          closingIndex = candidate;
+          break;
+        }
+      }
+      ranges.push({ from: lines[index].from, to: lines[closingIndex].to });
+      index = closingIndex;
+    }
+    const blockTags = "address|article|aside|base|basefont|blockquote|body|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|frame|frameset|h[1-6]|head|header|hr|html|iframe|legend|li|link|main|menu|menuitem|nav|noframes|ol|optgroup|option|p|param|search|section|summary|table|tbody|td|tfoot|th|thead|title|tr|track|ul";
+    const blockStart = new RegExp(`^ {0,3}<(${blockTags})(?:[\\t >]|/?>)`, "i");
+    for (let index = 0; index < lines.length; index += 1) {
+      const value = source.slice(lines[index].from, lines[index].contentTo);
+      if (!blockStart.test(value)) continue;
+      let closingIndex = lines.length - 1;
+      for (let candidate = index + 1; candidate < lines.length; candidate += 1) {
+        if (source.slice(lines[candidate].from, lines[candidate].contentTo).trim().length === 0) {
+          closingIndex = candidate - 1;
+          break;
+        }
+      }
+      ranges.push({ from: lines[index].from, to: lines[closingIndex].to });
+      index = closingIndex;
+    }
+    for (const delimiters of [["%%", "%%"], ["<!--", "-->"]]) {
+      for (let from = source.indexOf(delimiters[0]); from >= 0; ) {
+        const end = source.indexOf(delimiters[1], from + delimiters[0].length);
+        if (end < 0) {
+          ranges.push({ from, to: source.length });
+          break;
+        }
+        ranges.push({ from, to: end + delimiters[1].length });
+        from = source.indexOf(delimiters[0], end + delimiters[1].length);
+      }
+    }
+    for (let cursor = 0; cursor < source.length; ) {
+      if (source.charCodeAt(cursor) !== 96) {
+        cursor += 1;
+        continue;
+      }
+      const from = cursor;
+      while (cursor < source.length && source.charCodeAt(cursor) === 96) cursor += 1;
+      const length = cursor - from;
+      if (isEscaped3(source, from)) continue;
+      for (let search2 = cursor; search2 < source.length; ) {
+        if (source.charCodeAt(search2) !== 96) {
+          search2 += 1;
+          continue;
+        }
+        const close = search2;
+        while (search2 < source.length && source.charCodeAt(search2) === 96) search2 += 1;
+        if (search2 - close === length) {
+          ranges.push({ from, to: search2 });
+          cursor = search2;
+          break;
+        }
+      }
+    }
+    return ranges;
+  }
+  function intersects(range, candidates) {
+    return candidates.some((candidate) => candidate.from < range.to && range.from < candidate.to);
+  }
+  function isEscaped3(source, position) {
+    let count2 = 0;
+    for (let cursor = position - 1; cursor >= 0 && source.charCodeAt(cursor) === 92; cursor -= 1) count2 += 1;
+    return count2 % 2 === 1;
+  }
+
   // table-presentation.ts
   function alignmentFor(separator) {
     const value = separator.trim();
@@ -32536,7 +32326,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       title.dir = "auto";
       appendInlineMarkdown(parts.title, title, optionsAt(options, parts.titleFrom));
       heading2.append(title);
-    } else {
+    } else if (!orientationTitleBecomesBody) {
       const title = document2.createElement("span");
       title.className = "scholium-callout-title scholium-callout-default-title";
       title.dir = "auto";
@@ -33506,6 +33296,172 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     return /^(\s*(?:>\s*)+)\[!([^\]]+)\]([+-])?\s*(.*)$/.exec(text);
   }
 
+  // footnote-presentation.ts
+  var scholiumFootnoteDialect = {
+    namedReferenceOpening: "[^",
+    namedReferenceClosing: "]",
+    definitionSeparator: ":",
+    inlineOpening: "^[",
+    continuationIndentSpaces: 2,
+    allowsTabContinuation: true,
+    caseSensitiveIdentifiers: true,
+    ordinalByFirstReference: true
+  };
+  function supportsFootnoteDialect(dialect) {
+    return dialect.namedReferenceOpening === scholiumFootnoteDialect.namedReferenceOpening && dialect.namedReferenceClosing === scholiumFootnoteDialect.namedReferenceClosing && dialect.definitionSeparator === scholiumFootnoteDialect.definitionSeparator && dialect.inlineOpening === scholiumFootnoteDialect.inlineOpening && dialect.continuationIndentSpaces === scholiumFootnoteDialect.continuationIndentSpaces && dialect.allowsTabContinuation === scholiumFootnoteDialect.allowsTabContinuation && dialect.caseSensitiveIdentifiers === scholiumFootnoteDialect.caseSensitiveIdentifiers && dialect.ordinalByFirstReference === scholiumFootnoteDialect.ordinalByFirstReference;
+  }
+  function sourceLines(source) {
+    if (source.length === 0) return [];
+    const lines = [];
+    let from = 0;
+    while (from < source.length) {
+      const newline3 = source.indexOf("\n", from);
+      const contentTo = newline3 < 0 ? source.length : newline3;
+      const to = newline3 < 0 ? source.length : newline3 + 1;
+      const raw = source.slice(from, contentTo);
+      const text = raw.endsWith("\r") ? raw.slice(0, -1) : raw;
+      lines.push({ from, contentTo: from + text.length, to, text });
+      from = to;
+    }
+    return lines;
+  }
+  function overlaps2(ranges, from, to) {
+    return ranges.some((range) => range.from < to && range.to > from);
+  }
+  function isEscaped4(source, offset) {
+    let backslashes = 0;
+    for (let index = offset - 1; index >= 0 && source[index] === "\\"; index -= 1) {
+      backslashes += 1;
+    }
+    return backslashes % 2 === 1;
+  }
+  function footnotePresentation(source, excluded = [], dialect = scholiumFootnoteDialect) {
+    if (!supportsFootnoteDialect(dialect)) return { definitions: [], references: [] };
+    const lines = sourceLines(source);
+    const rawDefinitions = [];
+    for (let index = 0; index < lines.length; index += 1) {
+      const line = lines[index];
+      if (overlaps2(excluded, line.from, line.contentTo)) continue;
+      const match = /^\[\^([^\]\r\n]+)\]:[ \t]*(.*)$/.exec(line.text);
+      if (!match) continue;
+      const parts = [match[2]];
+      const firstLineContentFrom = line.contentTo - match[2].length;
+      let contentFrom = firstLineContentFrom + (match[2].match(/^\s*/)?.[0].length ?? 0);
+      let foundContentStart = /\S/.test(match[2]);
+      let to = line.to;
+      let continuation = index + 1;
+      while (continuation < lines.length) {
+        const candidate = lines[continuation];
+        if (!(candidate.text.startsWith("  ") || candidate.text.startsWith("	") || candidate.text.length === 0)) break;
+        const continuationText = candidate.text.replace(/^(?: {2}|\t)/, "");
+        if (!foundContentStart && /\S/.test(continuationText)) {
+          const removedIndent = candidate.text.length - continuationText.length;
+          const leadingWhitespace = continuationText.match(/^\s*/)?.[0].length ?? 0;
+          contentFrom = candidate.from + removedIndent + leadingWhitespace;
+          foundContentStart = true;
+        }
+        parts.push(continuationText);
+        to = candidate.to;
+        continuation += 1;
+      }
+      rawDefinitions.push({
+        identifier: match[1],
+        content: parts.join("\n").trim(),
+        contentFrom,
+        from: line.from,
+        to,
+        isInline: false,
+        marker: { from: line.from, to: line.contentTo }
+      });
+      index = continuation - 1;
+    }
+    const rawReferences = [];
+    for (const match of source.matchAll(/\[\^([^\]\r\n]+)\]/g)) {
+      const from = match.index;
+      const to = from + match[0].length;
+      if (overlaps2(excluded, from, to) || rawDefinitions.some((definition) => overlaps2([definition.marker], from, to)) || isEscaped4(source, from)) continue;
+      rawReferences.push({
+        identifier: match[1],
+        from,
+        to,
+        isInline: false,
+        inlineContent: null
+      });
+    }
+    let inlineCounter = 0;
+    for (const match of source.matchAll(/\^\[([^\]\r\n]+)\]/g)) {
+      const from = match.index;
+      const to = from + match[0].length;
+      if (overlaps2(excluded, from, to) || isEscaped4(source, from)) continue;
+      inlineCounter += 1;
+      const identifier4 = `inline-${inlineCounter}`;
+      rawReferences.push({
+        identifier: identifier4,
+        from,
+        to,
+        isInline: true,
+        inlineContent: match[1]
+      });
+      rawDefinitions.push({
+        identifier: identifier4,
+        content: match[1],
+        contentFrom: from + scholiumFootnoteDialect.inlineOpening.length,
+        from,
+        to,
+        isInline: true,
+        marker: { from, to }
+      });
+    }
+    rawReferences.sort((left, right) => left.from - right.from);
+    const ordinalByIdentifier = /* @__PURE__ */ new Map();
+    const occurrenceByIdentifier = /* @__PURE__ */ new Map();
+    for (const reference of rawReferences) {
+      if (!ordinalByIdentifier.has(reference.identifier)) {
+        ordinalByIdentifier.set(reference.identifier, ordinalByIdentifier.size + 1);
+      }
+      occurrenceByIdentifier.set(
+        reference.identifier,
+        (occurrenceByIdentifier.get(reference.identifier) ?? 0) + 1
+      );
+    }
+    const firstDefinitionByIdentifier = /* @__PURE__ */ new Map();
+    for (const definition of rawDefinitions) {
+      if (!firstDefinitionByIdentifier.has(definition.identifier)) {
+        firstDefinitionByIdentifier.set(definition.identifier, definition);
+      }
+    }
+    occurrenceByIdentifier.clear();
+    const references = rawReferences.map((reference) => {
+      const occurrence = (occurrenceByIdentifier.get(reference.identifier) ?? 0) + 1;
+      occurrenceByIdentifier.set(reference.identifier, occurrence);
+      const definition = firstDefinitionByIdentifier.get(reference.identifier);
+      return {
+        identifier: reference.identifier,
+        ordinal: ordinalByIdentifier.get(reference.identifier),
+        occurrence,
+        isInline: reference.isInline,
+        definitionFrom: definition?.from ?? null,
+        definitionContentFrom: definition?.contentFrom ?? null,
+        from: reference.from,
+        to: reference.to
+      };
+    });
+    const definitions = [...firstDefinitionByIdentifier.values()].map((definition) => ({
+      identifier: definition.identifier,
+      content: definition.content,
+      contentFrom: definition.contentFrom,
+      ordinal: ordinalByIdentifier.get(definition.identifier) ?? null,
+      isInline: definition.isInline,
+      from: definition.from,
+      to: definition.to
+    })).sort((left, right) => {
+      const leftOrdinal = left.ordinal ?? Number.MAX_SAFE_INTEGER;
+      const rightOrdinal = right.ordinal ?? Number.MAX_SAFE_INTEGER;
+      return leftOrdinal === rightOrdinal ? left.from - right.from : leftOrdinal - rightOrdinal;
+    });
+    return { definitions, references };
+  }
+
   // previews.ts
   function validatedLinkPreviews(value, documentLength) {
     if (!Array.isArray(value)) return [];
@@ -33926,7 +33882,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
   }
   function mapLiveProjectionIndex(index, transaction) {
     const map = (position) => transaction.changes.mapPos(position);
-    const syntax = mapSemanticProjectionRanges(index.syntax, transaction.state, map);
+    const syntax = mapSemanticProjectionRanges(index.syntax, map);
     const footnotes = {
       definitions: index.footnotes.definitions.map((definition) => ({
         ...definition,
@@ -34169,7 +34125,6 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       }
       if (calloutPresentation) {
         classes.add("cm-live-callout");
-        classes.add("cm-live-callout-source");
         classes.add(`cm-live-callout-role-${calloutIdentifier ?? "neutral"}`);
         classes.add(active ? "cm-live-callout-active-line" : "cm-live-callout-projected-line");
         if (state.doc.lineAt(calloutPresentation.from).number === line.number) {
@@ -34182,7 +34137,6 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         if (state.doc.lineAt(calloutPresentation.to).number === line.number) {
           classes.add("cm-live-callout-end");
         }
-        if (calloutIdentifier === "orient") classes.add("cm-live-callout-orient-source");
       }
       if (displayMath) {
         classes.add("cm-live-math-source");
@@ -34244,7 +34198,6 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         if (rule && outsideFrontmatter && !active) classes.add("cm-live-rule");
         if (list && listMarker) {
           classes.add("cm-live-list");
-          if ((list.listDepth ?? 0) > 0) classes.add("cm-live-list-nested");
           if (list.taskMarkerRange) classes.add("cm-live-task-list");
         }
       }
@@ -37474,11 +37427,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
               );
             }
           }
-          const parsedTable = projectionRangesIntersecting(
-            parsedProjection.tables,
-            scanFrom,
-            lineQueryTo
-          )[0];
+          const parsedTable = semanticBlocksOnLine.find((block) => block.kind === "table");
           const activeTable = parsedTable && projectionSelections.some(
             (range) => selectionActivatesSyntax(range, parsedTable)
           );
@@ -37901,6 +37850,57 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       }
     }
   ]);
+  function markdownCommandTransformation(state, command2, argument) {
+    const source = state.doc.toString();
+    const transformed = transformMarkdown(
+      source,
+      editorSelections(state),
+      command2,
+      {
+        argument,
+        protectedRanges: commandProtection(command2, state),
+        taskItems: liveProjectionIndex.index(state).taskItemRanges
+      }
+    );
+    if (!transformed) return null;
+    const transformedSource = applySourceChanges(source, transformed.changes);
+    if (new TextEncoder().encode(transformedSource).byteLength > MAX_SOURCE_UTF8_BYTES) {
+      return null;
+    }
+    return transformed;
+  }
+  function applyMarkdownCommand(view, command2, argument) {
+    if (view.composing) return false;
+    const transformed = markdownCommandTransformation(view.state, command2, argument);
+    if (!transformed) return false;
+    view.dispatch({
+      changes: transformed.changes,
+      selection: EditorSelection.create(
+        transformed.selections.map((range) => EditorSelection.range(range.anchor, range.head))
+      ),
+      annotations: Transaction.userEvent.of(`input.scholium.${command2}`)
+    });
+    lastUndoLabel = transformed.undoLabel;
+    lastRedoLabel = transformed.undoLabel;
+    return true;
+  }
+  var editorMarkdownCommandKeymap = keymap.of([
+    {
+      key: "Mod-b",
+      preventDefault: true,
+      run: (view) => applyMarkdownCommand(view, "bold")
+    },
+    {
+      key: "Mod-i",
+      preventDefault: true,
+      run: (view) => applyMarkdownCommand(view, "emphasis")
+    },
+    {
+      key: "Mod-k",
+      preventDefault: true,
+      run: (view) => applyMarkdownCommand(view, "standardLink")
+    }
+  ]);
   var protectedInteractionNodes = /* @__PURE__ */ new Set([
     "Frontmatter",
     "FencedCode",
@@ -38157,6 +38157,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     // Share Markdown's high precedence while preceding its generic list
     // continuation. Scholium must compose the Callout quote and nested list
     // prefixes before the base Markdown command can consume Return.
+    Prec.high(editorMarkdownCommandKeymap),
     Prec.high(structuralInteractionKeymap),
     Prec.high(lineBoundaryKeymap),
     scholiumNoteLanguage,
@@ -38621,16 +38622,8 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
           if (!payload) return rejected(request.requestID, documentVersion, "pasteMarkdown requires a clipboard payload");
           argument = editingFrontmatterSelection() ? payload.plainText : pasteAsMarkdown(payload);
         }
-        const transformed = transformMarkdown(editor.state.doc.toString(), editorSelections(), operation.command, {
-          argument,
-          protectedRanges: commandProtection(operation.command),
-          taskItems: liveProjectionIndex.index(editor.state).taskItemRanges
-        });
+        const transformed = markdownCommandTransformation(editor.state, operation.command, argument);
         if (!transformed) return rejected(request.requestID, documentVersion, "command is unavailable for the exact selection");
-        const transformedSource = applySourceChanges(editor.state.doc.toString(), transformed.changes);
-        if (new TextEncoder().encode(transformedSource).byteLength > MAX_SOURCE_UTF8_BYTES) {
-          return rejected(request.requestID, documentVersion, "command result is too large");
-        }
         editor.dispatch({
           changes: transformed.changes,
           selection: EditorSelection.create(transformed.selections.map((range) => EditorSelection.range(range.anchor, range.head))),

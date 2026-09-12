@@ -193,7 +193,7 @@ struct SafeMarkdownRendererTests {
         #expect(rendered.contains("data-callout-source=\"state\""))
         #expect(rendered.contains("data-scholium-protected=\"callout\""))
         #expect(rendered.contains("class=\"scholium-callout-heading\" role=\"heading\" aria-level=\"2\""))
-        #expect(rendered.contains("class=\"scholium-callout-role\""))
+        #expect(rendered.contains("class=\"scholium-callout-role scholium-callout-role-context\""))
         #expect(rendered.contains(">Statement</span>"))
         #expect(rendered.contains("class=\"scholium-callout-title\" dir=\"auto\"><em>Fittingness</em></span>"))
         #expect(rendered.contains("without endorsing it"))
@@ -280,7 +280,7 @@ struct SafeMarkdownRendererTests {
 
         #expect(rendered.contains("scholium-callout-orient"))
         #expect(rendered.contains("data-callout=\"orient\""))
-        #expect(rendered.contains("class=\"scholium-callout-role\""))
+        #expect(rendered.contains("class=\"scholium-callout-role scholium-callout-role-context\""))
         #expect(rendered.contains(">Orientation</span>"))
         #expect(rendered.contains("class=\"scholium-callout-title\" dir=\"auto\">Reading route</span>"))
         #expect(rendered.contains("data-scholium-protected=\"callout\""))

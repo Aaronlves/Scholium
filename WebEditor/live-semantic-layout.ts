@@ -235,7 +235,6 @@ export function createLiveSemanticLayout(options: {
     }
     if (calloutPresentation) {
       classes.add("cm-live-callout");
-      classes.add("cm-live-callout-source");
       classes.add(`cm-live-callout-role-${calloutIdentifier ?? "neutral"}`);
       classes.add(active ? "cm-live-callout-active-line" : "cm-live-callout-projected-line");
       if (state.doc.lineAt(calloutPresentation.from).number === line.number) {
@@ -248,7 +247,6 @@ export function createLiveSemanticLayout(options: {
       if (state.doc.lineAt(calloutPresentation.to).number === line.number) {
         classes.add("cm-live-callout-end");
       }
-      if (calloutIdentifier === "orient") classes.add("cm-live-callout-orient-source");
     }
     if (displayMath) {
       classes.add("cm-live-math-source");
@@ -319,7 +317,6 @@ export function createLiveSemanticLayout(options: {
       if (rule && outsideFrontmatter && !active) classes.add("cm-live-rule");
       if (list && listMarker) {
         classes.add("cm-live-list");
-        if ((list.listDepth ?? 0) > 0) classes.add("cm-live-list-nested");
         if (list.taskMarkerRange) classes.add("cm-live-task-list");
       }
     }

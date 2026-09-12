@@ -666,7 +666,7 @@ aside.scholium-callout-quote .scholium-callout-body {
 
 #editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-role-neutral.cm-live-callout-header {
   padding-block-end: .38em;
-  box-shadow: inset 0 -1px var(--scholium-callout-rule);
+  border-block-end: 1px solid var(--scholium-callout-rule);
 }
 
 #editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-role-neutral.cm-live-callout-end {

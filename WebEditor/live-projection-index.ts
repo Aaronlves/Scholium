@@ -512,7 +512,7 @@ function mapLiveProjectionIndex(
   transaction: Transaction,
 ): LiveProjectionIndex {
   const map = (position: number) => transaction.changes.mapPos(position);
-  const syntax = mapSemanticProjectionRanges(index.syntax, transaction.state, map);
+  const syntax = mapSemanticProjectionRanges(index.syntax, map);
   const footnotes: FootnotePresentation = {
     definitions: index.footnotes.definitions.map((definition) => ({
       ...definition,

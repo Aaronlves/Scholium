@@ -5,7 +5,6 @@ import {
   boundedLinePrefix,
   boundedProjectionRanges,
   mapSemanticProjectionRanges,
-  rangeKey,
   semanticProjectionRanges,
 } from "../semantic-projection";
 import {scholiumNoteLanguage} from "../language";
@@ -39,28 +38,36 @@ describe("Lezer-backed semantic projection", () => {
     const linkFrom = source.indexOf("[link]");
     const highlightFrom = source.indexOf("==highlight==");
 
-    expect(ranges.headingLevelByLineFrom.get(0)).toBe(2);
-    expect(ranges.strong.has(rangeKey(strongFrom, strongFrom + "**strong**".length))).toBe(true);
-    expect(ranges.emphasis.has(rangeKey(emphasisFrom, emphasisFrom + "*emphasis*".length))).toBe(true);
-    expect(ranges.links.has(rangeKey(linkFrom, linkFrom + "[link](https://example.test)".length))).toBe(true);
-    expect(ranges.highlights.has(rangeKey(highlightFrom, highlightFrom + "==highlight==".length))).toBe(true);
-    expect(ranges.tables).toHaveLength(1);
+    expect(ranges.blocks.find((block) => block.kind === "heading")?.headingLevel).toBe(2);
+    expect(ranges.inlines.some((inline) =>
+      inline.kind === "strong" && inline.from === strongFrom
+        && inline.to === strongFrom + "**strong**".length)).toBe(true);
+    expect(ranges.inlines.some((inline) =>
+      inline.kind === "emphasis" && inline.from === emphasisFrom
+        && inline.to === emphasisFrom + "*emphasis*".length)).toBe(true);
+    expect(ranges.inlines.some((inline) =>
+      inline.kind === "link" && inline.from === linkFrom
+        && inline.to === linkFrom + "[link](https://example.test)".length)).toBe(true);
+    expect(ranges.inlines.some((inline) =>
+      inline.kind === "highlight" && inline.from === highlightFrom
+        && inline.to === highlightFrom + "==highlight==".length)).toBe(true);
+    expect(ranges.blocks.filter((block) => block.kind === "table")).toHaveLength(1);
   });
 
   it("projects the first H1 after closed frontmatter together with later headings", () => {
     const source = "---\ntitle: Fixture\n---\n# Document title\n\n## Section";
     const ranges = completeProjection(source);
 
-    expect(ranges.headingLevelByLineFrom.get(source.indexOf("# Document"))).toBe(1);
-    expect(ranges.headingLevelByLineFrom.get(source.indexOf("## Section"))).toBe(2);
+    expect(ranges.blocks.find((block) => block.from === source.indexOf("# Document"))?.headingLevel).toBe(1);
+    expect(ranges.blocks.find((block) => block.from === source.indexOf("## Section"))?.headingLevel).toBe(2);
   });
 
   it("does not project malformed markers as semantics", () => {
     const source = "##no heading\n**unfinished\n[broken](";
     const ranges = completeProjection(source);
-    expect(ranges.headingLevelByLineFrom.size).toBe(0);
-    expect(ranges.strong.size).toBe(0);
-    expect(ranges.links.has(rangeKey(source.indexOf("[broken]"), source.length))).toBe(false);
+    expect(ranges.blocks.some((block) => block.kind === "heading")).toBe(false);
+    expect(ranges.inlines.some((inline) => inline.kind === "strong")).toBe(false);
+    expect(ranges.inlines.some((inline) => inline.kind === "link")).toBe(false);
   });
 
   it("distinguishes semantic callout blocks from ordinary quotations", () => {
@@ -68,7 +75,9 @@ describe("Lezer-backed semantic projection", () => {
     const ranges = completeProjection(source);
     const calloutEnd = source.indexOf("\n\n");
 
-    expect(ranges.callouts).toEqual([{from: 0, to: calloutEnd}]);
+    expect(ranges.blocks.filter((block) => block.kind === "callout")).toEqual([
+      expect.objectContaining({from: 0, to: calloutEnd}),
+    ]);
     expect(ranges.blocks.find((block) => block.kind === "callout")?.markerRanges
       .map((range) => source.slice(range.from, range.to))).toEqual([">", "[!state]-", ">"]);
   });
@@ -150,7 +159,6 @@ describe("Lezer-backed semantic projection", () => {
     const transaction = state.update({changes: {from: 0, insert: "A "}});
     const mapped = mapSemanticProjectionRanges(
       projection,
-      transaction.state,
       (position) => transaction.changes.mapPos(position),
     );
 

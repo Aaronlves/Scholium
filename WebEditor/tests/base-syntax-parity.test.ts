@@ -1,6 +1,6 @@
 import {readFileSync} from "node:fs";
 import {describe, expect, it} from "vitest";
-import {projectBaseSyntax, type BaseSyntaxProjection} from "../projection";
+import {projectBaseSyntax, type BaseSyntaxProjection} from "./parity-projection";
 
 interface Fixture extends BaseSyntaxProjection {
   name: string;
