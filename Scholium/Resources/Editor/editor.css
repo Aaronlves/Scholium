@@ -162,12 +162,12 @@ body,
   .cm-live-quote-source-marker, .cm-live-callout-source-marker,
   .cm-live-footnote-source-marker, .cm-live-list-source-prefix),
 .scholium-live-mode .cm-live-syntax-marker * {
-  color: var(--scholium-color-secondary-text);
+  color: var(--scholium-syntax-active-ink);
 }
 
 /* Syntax occupies the document measure. Exact source tokens stay mounted so
    reveal and conceal can share one reversible transition. Line geometry stays
-   deterministic; only opacity and the quiet syntax color are animated. */
+   deterministic outside bounded short-token expansion; long constructs only fade. */
 .scholium-live-mode .cm-syntax-token {
   display: inline-block;
   box-sizing: border-box;
@@ -196,7 +196,7 @@ body,
   pointer-events: none;
 }
 .scholium-live-mode .cm-syntax-token[data-syntax-open="true"] {
-  color: var(--scholium-color-secondary-text);
+  color: var(--scholium-syntax-active-ink);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }

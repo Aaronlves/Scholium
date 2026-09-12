@@ -4043,7 +4043,53 @@ struct MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
-    @Test("Active inline syntax is muted and stays visible through the closing caret boundary")
+    @Test("Short syntax expands while Callout and fence markers only fade")
+    func syntaxMotionRespectsConstructBoundaries() async throws {
+        let source = "Lead.\n\n**Bold**.\n\n> [!long-unsupported-callout-role] Title\n> Body.\n\n```typescript\nlet value = 1;\n```\n\nAfter."
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        _ = try await harness.callPageJavaScript("""
+            window.syntaxMotionFrames = [];
+            const originalAnimate = Element.prototype.animate;
+            Element.prototype.animate = function(frames, options) {
+                if (this.matches('.cm-syntax-token')) {
+                    window.syntaxMotionFrames.push({
+                        callout: !!this.closest('.cm-live-callout'),
+                        code: !!this.closest('.cm-live-codeblock'),
+                        opens: this.dataset.syntaxOpen === 'true',
+                        width: frames.some(frame => 'width' in frame || 'marginInlineStart' in frame),
+                        color: frames.some(frame => 'color' in frame)
+                    });
+                }
+                return originalAnimate.call(this, frames, options);
+            };
+            """)
+        for text in ["Bold", "Title", "let value", "After"] {
+            let offset = try #require(source.range(of: text)?.lowerBound).utf16Offset(in: source)
+            harness.session.revealSourceRange(fromUTF16: offset, toUTF16: offset)
+            try await harness.waitUntilSelection(head: offset, stage: text)
+            _ = try await harness.callPageJavaScript("""
+                await new Promise(resolve => {
+                    requestAnimationFrame(() => requestAnimationFrame(resolve));
+                    setTimeout(resolve, 200);
+                });
+                """)
+        }
+        #expect(try await harness.callPageJavaScript("""
+            const frames = window.syntaxMotionFrames;
+            if (matchMedia('(prefers-reduced-motion: reduce)').matches) return frames.length === 0;
+            return frames.some(f => f.width && !f.callout && !f.code)
+                && frames.some(f => f.callout && f.opens && f.color)
+                && frames.some(f => f.code && f.opens && f.color)
+                && frames.filter(f => f.callout || f.code).every(f => !f.width);
+            """) as? Bool == true)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        #expect(!harness.session.isDirty)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Active inline syntax uses activation color and stays visible through the closing caret boundary")
     func activeInlineSyntaxPresentation() async throws {
         let harness = EditorHarness(source: "\n", laysOutForPointerTesting: true)
         defer { harness.close() }
@@ -4052,7 +4098,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         _ = try await harness.callPageJavaScript("document.execCommand('insertText', false, '*Source-role classification')")
         #expect(try await harness.callPageJavaScript("return document.querySelectorAll('.cm-live-syntax-marker').length") as? Int == 0)
         _ = try await harness.callPageJavaScript("document.execCommand('insertText', false, '*')")
-        func checkMutedMarkers() async throws {
+        func checkActiveMarkers() async throws {
             #expect(
                 try await harness.callPageJavaScript(
                     """
@@ -4064,25 +4110,25 @@ struct MarkdownEditorWebViewIntegrationTests {
                     }
                     const markers = [...document.querySelectorAll('.cm-live-syntax-marker')];
                     const probe = document.createElement('span');
-                    probe.style.color = 'var(--scholium-color-secondary-text)';
+                    probe.style.color = 'var(--scholium-syntax-active-ink)';
                     document.body.appendChild(probe);
-                    const muted = getComputedStyle(probe).color;
+                    const active = getComputedStyle(probe).color;
                     probe.remove();
                     const emphasis = document.querySelector('.cm-live-emphasis');
                     return markers.length === 2 && markers.every(marker => marker.textContent === '*'
-                        && getComputedStyle(marker).color === muted)
+                        && getComputedStyle(marker).color === active)
                         && !!emphasis && getComputedStyle(emphasis).fontStyle === 'italic'
-                        && getComputedStyle(emphasis).color !== muted;
+                        && getComputedStyle(emphasis).color !== active;
                     """) as? Bool == true)
         }
-        try await checkMutedMarkers()
+        try await checkActiveMarkers()
         harness.session.revealSourceRange(fromUTF16: 5, toUTF16: 5)
         try await harness.waitUntilSelection(head: 5, stage: "inside emphasized prose")
-        try await checkMutedMarkers()
+        try await checkActiveMarkers()
         let end = "*Source-role classification*".utf16.count
         harness.session.revealSourceRange(fromUTF16: end, toUTF16: end)
         try await harness.waitUntilSelection(head: end, stage: "after closing delimiter")
-        try await checkMutedMarkers()
+        try await checkActiveMarkers()
         _ = try await harness.callPageJavaScript("document.execCommand('insertText', false, ' ')")
         #expect(try await harness.callPageJavaScript("return document.querySelectorAll('.cm-live-syntax-marker').length") as? Int == 0)
         #expect(try await harness.session.currentText(for: harness.documentID) == "*Source-role classification* \n")

@@ -225,9 +225,13 @@ first visible character is entered.
 
 Recognized Markdown syntax remains visible while a caret is inside its editable
 construct or immediately at either boundary; moving outside hides it. A range selection
-reveals constructs it actually overlaps. Revealed delimiters use readable secondary text
-while authored content keeps its semantic styling; Increase Contrast may strengthen the
-syntax ink. Unrecognized or incomplete inline punctuation remains ordinary source,
+reveals constructs it actually overlaps. Recognized active delimiters use an accessible system-Accent-derived syntax
+color while authored content keeps its semantic styling. Short inline delimiters
+and short heading/quotation prefixes expand and retract with restrained motion.
+Callout markers, code fences, long destinations and technical source never
+animate their width or indentation; they remain quiet or fade. Activation color
+may transition briefly. Typing, composition, selection dragging and Reduce
+Motion finish motion immediately; source, caret and Undo remain authoritative. Unrecognized or incomplete inline punctuation remains ordinary source,
 without inferred styling.
 
 A valid heading keeps its semantic size while typing and when the caret leaves

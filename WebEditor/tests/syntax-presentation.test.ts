@@ -16,10 +16,10 @@ describe("syntax presentation boundaries", () => {
     expect(prefixNeedsMargin(310, 20, 300, 20)).toBe(false);
   });
   it("limits displacement to short single-line tokens", () => {
-    for (const token of ["**", "~~", "`", "###### ", "> [!cite] "]) {
+    for (const token of ["**", "~~", "`", "###### ", "> "]) {
       expect(canDisplaceSyntax(token)).toBe(true);
     }
-    for (const token of ["", "\t>", ">\n>", "中文", "x".repeat(25)]) {
+    for (const token of ["> [!cite] ", "```", "~~~", "(long-target.md)", "", "\t>", ">\n>", "中文", "x".repeat(25)]) {
       expect(canDisplaceSyntax(token)).toBe(false);
     }
   });

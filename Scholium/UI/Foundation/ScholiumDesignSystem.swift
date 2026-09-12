@@ -552,6 +552,7 @@ enum ScholiumWebDesignTokens {
     /// continue to use the raw system Accent.
     static let documentMarkupCSSDeclarations = """
         --scholium-document-accent: color-mix(in srgb, var(--scholium-color-accent) 66%, var(--scholium-color-primary-text));
+        --scholium-syntax-active-ink: var(--scholium-document-accent);
         --scholium-mark-highlight-background: color-mix(in srgb, var(--scholium-color-attention) 20%, transparent);
         --scholium-mark-highlight-edge: color-mix(in srgb, var(--scholium-color-attention) 52%, transparent);
         """

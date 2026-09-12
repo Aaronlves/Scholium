@@ -1,6 +1,6 @@
 import {passageReplacement} from "./passage-replacement";
 import {createSelectionActions} from "./selection-actions";
-import {canDisplaceSyntax, syntaxToken, syntaxPresentation} from "./syntax-presentation";
+import {canRetainSyntax, syntaxToken, syntaxPresentation} from "./syntax-presentation";
 import {editorArrivalHighlight, showEditorArrival} from "./editor-arrival-highlight";
 import {createNativeFloatingBridge} from "./native-floating";
 import {
@@ -812,7 +812,7 @@ function buildLiveDecorations(
   ) => {
     if (to <= from) return;
     const source = doc.sliceString(from, to);
-    const range = (forceSyntaxToken || canDisplaceSyntax(source)
+    const range = (forceSyntaxToken || canRetainSyntax(source)
       ? syntaxToken(source, from, to, false) : hiddenSyntax).range(from, to);
     decorations.push(range);
     if (atomic) atomicRanges.push(range);
@@ -864,7 +864,7 @@ function buildLiveDecorations(
     if (to <= from) return;
     const source = doc.sliceString(from, to);
     const isSyntax = className === "cm-live-syntax-marker" || className.endsWith("-source-marker");
-    decorations.push((isSyntax && canDisplaceSyntax(source)
+    decorations.push((isSyntax && (canRetainSyntax(source) || className === "cm-live-callout-source-marker")
       ? syntaxToken(source, from, to, true,
           className.endsWith("-source-marker") ? "prefix" : "inline", className)
       : liveMark(className)).range(from, to));
@@ -1042,7 +1042,7 @@ function buildLiveDecorations(
           structuralInlineExclusions.push(...sourceMarkers);
           if (!activeLine) {
             for (const marker of sourceMarkers) {
-              addHidden(marker.from, marker.to);
+              addHidden(marker.from, marker.to, true);
             }
           } else {
             for (const marker of sourceMarkers) {

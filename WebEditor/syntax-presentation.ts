@@ -8,6 +8,10 @@ import {
 /** Only short, single-line delimiters may displace prose. Destinations,
  * annotations and technical source retain ordinary wrapping instead. */
 export function canDisplaceSyntax(source: string): boolean {
+  return /^(?:[*_~`=]{1,2}|#{1,6} ?|(?:> ?){1,3}|!?\[|\]|\(|\))$/.test(source);
+}
+
+export function canRetainSyntax(source: string): boolean {
   return source.length > 0 && source.length <= 24 && /^[\x20-\x7e]+$/.test(source);
 }
 
@@ -19,6 +23,7 @@ export function syntaxToken(source: string, from: number, to: number, exposed: b
       "data-syntax-key": `${from}:${to}`,
       "data-syntax-open": String(exposed),
       "data-syntax-kind": kind,
+      "data-syntax-displace": String(canDisplaceSyntax(source)),
       ...(exposed ? {} : {"aria-hidden": "true"}),
       "data-syntax-length": String(source.length),
     },
@@ -26,14 +31,24 @@ export function syntaxToken(source: string, from: number, to: number, exposed: b
 }
 
 interface TokenFrame {
+  color: string;
+  width: number;
+  height: number;
   opacity: number;
+  marginInlineStart: number;
   open: boolean;
+  multiline: boolean;
 }
 
 interface TokenTransition {
+  node: HTMLElement;
   animation: Animation;
+  fromWidth: number;
+  toWidth: number;
   fromOpacity: number;
   toOpacity: number;
+  fromMarginInlineStart: number;
+  toMarginInlineStart: number;
 }
 
 interface FrontmatterFrame {
@@ -85,6 +100,7 @@ export const syntaxPresentation = ViewPlugin.fromClass(class {
       this.frontmatterFrames.clear();
       this.measure(false);
     });
+    view.scrollDOM.addEventListener("scroll", this.stop, {passive: true});
     this.resize.observe(view.scrollDOM);
     this.measure(false);
   }
@@ -107,8 +123,13 @@ export const syntaxPresentation = ViewPlugin.fromClass(class {
       const frame = this.frames.get(key);
       const progress = transition.animation.effect?.getComputedTiming().progress;
       if (frame && typeof progress === "number") {
+        frame.color = getComputedStyle(transition.node).color || frame.color;
+        frame.width = transition.fromWidth
+          + (transition.toWidth - transition.fromWidth) * progress;
         frame.opacity = transition.fromOpacity
           + (transition.toOpacity - transition.fromOpacity) * progress;
+        frame.marginInlineStart = transition.fromMarginInlineStart
+          + (transition.toMarginInlineStart - transition.fromMarginInlineStart) * progress;
       }
     }
     for (const [key, transition] of this.frontmatterTransitions) {
@@ -151,11 +172,15 @@ export const syntaxPresentation = ViewPlugin.fromClass(class {
           const key = node.dataset.syntaxKey!;
           const open = node.dataset.syntaxOpen === "true";
           const width = node.getBoundingClientRect().width;
+          const height = node.getBoundingClientRect().height;
           const line = node.closest<HTMLElement>(".cm-line");
+          const multiline = height > parseFloat(getComputedStyle(node).lineHeight) + 1;
+          const displace = node.dataset.syntaxDisplace === "true"
+            && !line?.matches(".cm-live-callout, .cm-live-codeblock, .cm-live-rule, .scholium-frontmatter-line");
           let borrow = open && this.borrowed.has(key);
           if (borrow && node.getBoundingClientRect().left
             < this.view.scrollDOM.getBoundingClientRect().left + 4) borrow = false;
-          if (open && !this.frames.get(key)?.open && node.dataset.syntaxKind === "prefix"
+          if (displace && open && !this.frames.get(key)?.open && node.dataset.syntaxKind === "prefix"
             && line && getComputedStyle(line).direction === "ltr") {
             const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
             let textWidth = 0;
@@ -173,19 +198,14 @@ export const syntaxPresentation = ViewPlugin.fromClass(class {
               && prefixNeedsMargin(textWidth, width, measure,
                 node.getBoundingClientRect().left - this.view.scrollDOM.getBoundingClientRect().left);
           }
+          const parentStyle = getComputedStyle(node.parentElement!);
           const style = getComputedStyle(node);
-          return {
-            node,
-            key,
-            open,
-            width,
-            borrow,
+          return {node, key, open, width, height, multiline, borrow, displace,
+            activeColor: style.getPropertyValue("--scholium-syntax-active-ink").trim(),
+            secondaryColor: style.getPropertyValue("--scholium-color-secondary-text").trim(),
             opacity: Number.parseFloat(style.opacity) || 0,
-            primaryColor: style.getPropertyValue("--scholium-color-primary-text").trim()
-              || style.color,
-            secondaryColor: style.getPropertyValue("--scholium-color-secondary-text").trim()
-              || style.color,
-          };
+            marginInlineStart: borrow ? -width : 0,
+            fontSize: parentStyle.fontSize, lineHeight: parentStyle.lineHeight};
         })}),
       write: ({tokens, objects, cursor, frontmatter}: {
         tokens: readonly {
@@ -193,10 +213,16 @@ export const syntaxPresentation = ViewPlugin.fromClass(class {
           key: string;
           open: boolean;
           width: number;
+          height: number;
+          multiline: boolean;
+          displace: boolean;
+          activeColor: string;
+          secondaryColor: string;
           borrow: boolean;
           opacity: number;
-          primaryColor: string;
-          secondaryColor: string;
+          marginInlineStart: number;
+          fontSize: string;
+          lineHeight: string;
         }[];
         objects: readonly HTMLElement[];
         cursor: LiveCursorGeometry | null;
@@ -236,9 +262,7 @@ export const syntaxPresentation = ViewPlugin.fromClass(class {
         }
         this.frontmatterFrames = nextFrontmatter;
         const next = new Map<string, TokenFrame>();
-        for (const {
-          node, key, open, width, borrow, primaryColor, secondaryColor,
-        } of tokens) {
+        for (const {node, key, open, width, height, multiline, borrow, fontSize, lineHeight, displace, activeColor, secondaryColor} of tokens) {
           const previous = this.frames.get(key);
           if (borrow) this.borrowed.add(key); else this.borrowed.delete(key);
           const placement = this.placements.get(key);
@@ -253,22 +277,57 @@ export const syntaxPresentation = ViewPlugin.fromClass(class {
             }
           }
           const targetOpacity = open ? 1 : 0;
+          const targetMarginInlineStart = borrow ? -width : 0;
           next.set(key, {
             open,
+            color: open ? activeColor : secondaryColor,
+            width,
+            height,
             opacity: targetOpacity,
+            marginInlineStart: targetMarginInlineStart,
+            multiline,
           });
-          if (!animate || !previous || previous.open === open || typeof node.animate !== "function") continue;
-          const fromColor = previous.open ? secondaryColor : primaryColor;
-          const toColor = open ? secondaryColor : primaryColor;
-          const animation = node.animate([
-            {opacity: previous.opacity, color: fromColor},
-            {opacity: targetOpacity, color: toColor},
-          ], {duration: 120, easing: "cubic-bezier(.2, 0, .2, 1)", fill: "both"});
+          if (!animate || !previous || previous.open === open || previous.multiline || multiline || typeof node.animate !== "function") continue;
+          const motionHeight = open ? height : previous.height;
+          const geometryFrames = [
+            {
+              width: `${previous.width}px`,
+              height: `${motionHeight}px`,
+              fontSize,
+              lineHeight,
+              whiteSpace: "pre",
+              marginInlineStart: `${previous.marginInlineStart}px`,
+              opacity: previous.opacity,
+            },
+            {
+              width: `${width}px`,
+              height: `${motionHeight}px`,
+              fontSize,
+              lineHeight,
+              whiteSpace: "pre",
+              marginInlineStart: `${targetMarginInlineStart}px`,
+              opacity: targetOpacity,
+            },
+          ];
+          const colorFrames = [
+            {opacity: previous.opacity, color: previous.color},
+            {opacity: targetOpacity, color: open ? activeColor : secondaryColor},
+          ];
+          const frames = displace
+            ? geometryFrames.map((frame, index) => ({...frame, ...colorFrames[index]}))
+            : colorFrames;
+          const animation = node.animate(frames,
+            {duration: 140, easing: "cubic-bezier(.2, 0, .2, 1)", fill: "both"});
           this.animations.push(animation);
           this.transitions.set(key, {
+            node,
             animation,
+            fromWidth: previous.width,
+            toWidth: width,
             fromOpacity: previous.opacity,
             toOpacity: targetOpacity,
+            fromMarginInlineStart: previous.marginInlineStart,
+            toMarginInlineStart: targetMarginInlineStart,
           });
         }
         this.frames = next;
@@ -299,6 +358,7 @@ export const syntaxPresentation = ViewPlugin.fromClass(class {
     for (const placement of this.placements.values()) placement.animation.cancel();
     this.placements.clear();
     this.reduced.removeEventListener("change", this.stop);
+    this.view.scrollDOM.removeEventListener("scroll", this.stop);
     this.resize.disconnect();
   }
 }, {eventHandlers: {
