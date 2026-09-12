@@ -2846,11 +2846,11 @@ struct FrontendArchitectureTests {
             encoding: .utf8
         )
 
-        #expect(splitSource.contains("private let tabViewController = NSTabViewController()"))
+        #expect(splitSource.contains("private let tabViewController = ScholiumNativeDocumentTabController()"))
         #expect(splitSource.contains("tabViewController.tabStyle = .unspecified"))
-        #expect(splitSource.contains("tabButtonStack.distribution = .fillEqually"))
-        #expect(splitSource.contains("tabStrip.setAccessibilityElement(true)"))
-        #expect(splitSource.contains("tabStrip.setAccessibilityRole(.group)"))
+        #expect(splitSource.contains("tabSelector.borderShape = .capsule"))
+        #expect(!splitSource.contains("TabSelectorViews"))
+        #expect(splitSource.contains("super.tabView(tabView, shouldSelect: tabViewItem)"))
         #expect(splitSource.contains("let documentTabsController:"))
         #expect(appSource.contains("NSWindow.allowsAutomaticWindowTabbing = false"))
         #expect(!appSource.contains("NativeWindowTabCoordinator"))
@@ -3292,7 +3292,6 @@ struct FrontendArchitectureTests {
         #expect(ScholiumGrid.Spacing.sourceShellInsetCSSPixels == 40)
         #expect(ScholiumGrid.Peripheral.contentInset == 28)
         #expect(ScholiumGrid.Dimension.compactHierarchyRowHeight == 24)
-        #expect(ScholiumGrid.Dimension.documentTabStripHeight == 40)
         #expect(ScholiumGrid.Dimension.regionHeaderHeight == 48)
         #expect(ScholiumGrid.Document.narrowWidthThresholdRootEms == 44)
 
@@ -3318,8 +3317,7 @@ struct FrontendArchitectureTests {
         #expect(!foundation.contains("510.666"))
         #expect(!foundation.contains("32.333"))
         #expect(!foundation.contains("383 CSS-typographic-point"))
-        #expect(tabs.contains("ScholiumGrid.Dimension.documentTabStripHeight"))
-        #expect(tabs.contains("ScholiumGrid.Spacing.regionContentInset"))
+        #expect(tabs.contains(".noTabsNoBorder"))
     }
 
     @Test("Library, Chat and the right Outline have matching View-menu routes")

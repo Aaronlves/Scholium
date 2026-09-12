@@ -93,7 +93,7 @@ struct MCPNoteDisplayTests {
             let shown = await router.handle(.init(tool: .showNote, arguments: args))
             #expect(shown.error == nil && shown.result?.objectValue?["location_requested"]?.boolValue == true)
             #expect(window.currentDocumentDescriptor?.sessionKey.noteID == id && window.documentController.sourceLocationRequest?.range?.line == 3)
-            #expect(window.documentTabController.allTabs.count == 2 && flushes == 0)
+            #expect(window.documentTabController.tabs.count == 2 && flushes == 0)
             let draft = try #require(window.workspaceCatalog?.notes.first { $0.reference.relativePath == "Destination.md" })
             let draftID = try #require(draft.reference.stableNoteID.flatMap(UUID.init(uuidString:)))
             var draftArgs = args
@@ -103,9 +103,9 @@ struct MCPNoteDisplayTests {
             ])
             for key in ["start_utf8", "end_utf8", "expected_text"] { draftArgs[key] = nil }
             #expect(await router.handle(.init(tool: .showNote, arguments: draftArgs)).error == nil)
-            #expect(window.currentDocumentDescriptor?.sessionKey.noteID == draftID && window.documentTabController.allTabs.count == 3)
+            #expect(window.currentDocumentDescriptor?.sessionKey.noteID == draftID && window.documentTabController.tabs.count == 3)
             #expect(await router.handle(.init(tool: .showNote, arguments: args)).error == nil)
-            #expect(window.currentDocumentDescriptor?.sessionKey.noteID == id && window.documentTabController.allTabs.count == 3)
+            #expect(window.currentDocumentDescriptor?.sessionKey.noteID == id && window.documentTabController.tabs.count == 3)
             let current = try #require(window.currentDocumentDescriptor)
             let session = window.documentController.session(for: current)
             session.suppressAutosave = true

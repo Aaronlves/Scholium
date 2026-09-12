@@ -1023,6 +1023,13 @@ private struct ScholiumAfterNewItemCommandContent: View {
     @FocusedValue(\.scholiumEditorActions) private var editorActions
 
     var body: some View {
+        Button("Close Tab") {
+            guard let id = appState?.documentTabController.selectedTabID else { return }
+            appState?.closeDocumentTab(withID: id)
+        }
+        .keyboardShortcut("w", modifiers: [.command, .shift])
+        .disabled(appState?.documentTabController.selectedTabID == nil)
+        Divider()
         Button("New Triptych…") {
             openWindow(
                 id: "scholium-bootstrap",
@@ -1371,6 +1378,19 @@ private struct ScholiumSidebarCommandContent: View {
     @FocusedValue(\.scholiumEditorActions) private var editorActions
 
     var body: some View {
+        Menu("Document Tabs") {
+            ForEach(appState?.documentTabController.tabs ?? []) { tab in
+                Button(tab.title) { appState?.selectDocumentTab(withID: tab.id) }
+            }
+        }
+        .disabled(appState?.documentTabController.tabs.isEmpty != false)
+        Button("Next Tab") { appState?.selectAdjacentDocumentTab(offset: 1) }
+            .keyboardShortcut(.tab, modifiers: [.control])
+            .disabled((appState?.documentTabController.tabs.count ?? 0) < 2)
+        Button("Previous Tab") { appState?.selectAdjacentDocumentTab(offset: -1) }
+            .keyboardShortcut(.tab, modifiers: [.control, .shift])
+            .disabled((appState?.documentTabController.tabs.count ?? 0) < 2)
+        Divider()
         Button("Back") {
             appState?.navigateDocumentHistory(.back)
         }
@@ -1981,6 +2001,7 @@ final class WindowModel: ObservableObject {
         libraryMutationController: libraryMutationController,
         discoveryController: discoveryController,
         documentController: documentController,
+        documentTabController: documentTabController,
         documentNavigationHistoryController: documentNavigationHistoryController,
         workspaceProjectionController: workspaceProjectionController
     )
@@ -2518,8 +2539,8 @@ final class WindowModel: ObservableObject {
         if let role = currentDocumentDescriptor?.reference.vaultRole {
             return role
         }
-        guard currentNote != nil else { return .other }
-        return currentRegisteredVault?.role ?? .other
+        guard let vaultID = documentController.selectedDocument?.vaultID else { return .other }
+        return workspaceAssignment?.vaults.values.first { $0.id == vaultID }?.role ?? .other
     }
 
     var currentDocumentVault: RegisteredVault? {
@@ -2591,8 +2612,14 @@ final class WindowModel: ObservableObject {
         {
             return .workspace(snapshot)
         }
-        guard let selectedDocumentPath else { return nil }
-        return notes.first { $0.relativePath == selectedDocumentPath }
+        guard let selected = documentController.selectedDocument else { return nil }
+        if let vaultID = selected.vaultID {
+            return workspaceProjectionController.cachedNote(
+                vaultID: vaultID, stableNoteID: selected.sessionKey?.noteID,
+                relativePath: selected.relativePath
+            ).map(WindowDocumentLocation.workspace)
+        }
+        return nil
     }
 
     var selectedDocument: VaultQualifiedNoteID? {
@@ -3109,7 +3136,6 @@ final class WindowModel: ObservableObject {
         requestedWorkspaceSelection = slot
         enqueueDocumentTransition { [weak self] in
             guard let self else { return }
-            let targetTab = self.documentTabController.selectedTab(in: slot)
             try await self.prepareWorkspaceSelection(
                 slot,
                 sourceScope: destination.sourceScope,
@@ -3117,19 +3143,8 @@ final class WindowModel: ObservableObject {
                     guard self.requestedWorkspaceSelection == slot else {
                         throw CancellationError()
                     }
-                    if let targetDocument = targetTab?.document {
-                        try self.validateDocumentIsAvailable(targetDocument)
-                    }
                 }
             )
-            if let targetDocument = targetTab?.document {
-                try self.activateDocumentInSelectedWorkspace(
-                    targetDocument,
-                    tabActivation: .preserveTabMembership
-                )
-            } else {
-                self.documentController.clearSelectionAfterClosingLastTab()
-            }
             self.reconcileDocumentSessionLeases()
         } didFinish: { [weak self] in
             guard self?.requestedWorkspaceSelection == slot else { return }
@@ -3442,20 +3457,21 @@ final class WindowModel: ObservableObject {
         }
     }
 
+    func selectAdjacentDocumentTab(offset: Int) {
+        let tabs = documentTabController.tabs
+        guard let index = tabs.firstIndex(where: { $0.id == documentTabController.selectedTabID }),
+            tabs.count > 1 else { return }
+        selectDocumentTab(withID: tabs[(index + offset + tabs.count) % tabs.count].id)
+    }
+
     func selectDocumentTab(withID id: UUID) {
-        let workspace = shellState.selectedWorkspace
-        guard documentTabController.selectedTabID(in: workspace) != id,
-            let tab = documentTabController.tabs(in: workspace).first(where: {
-                $0.id == id
-            })
-        else {
-            return
-        }
         enqueueDocumentTransition { [weak self] in
-            guard let self else { return }
+            guard let self,
+                self.documentTabController.selectedTabID != id,
+                let tab = self.documentTabController.tabs.first(where: { $0.id == id })
+            else { return }
             try await self.activateDocument(
-                tab.document,
-                tabActivation: .preserveTabMembership
+                tab.document, tabActivation: .preserveTabMembership
             )
             self.documentTabController.selectTab(withID: id)
             self.reconcileDocumentSessionLeases()
@@ -3479,24 +3495,21 @@ final class WindowModel: ObservableObject {
     }
 
     func closeDocumentTab(withID id: UUID) {
-        guard let plan = documentTabController.closePlan(forTabWithID: id) else {
-            return
-        }
-        guard plan.workspace == shellState.selectedWorkspace,
-            let closingDocument = documentTabController.tabs(in: plan.workspace)
-                .first(where: { $0.id == id })?.document
-        else {
-            return
-        }
         enqueueDocumentTransition { [weak self] in
-            guard let self else { return }
+            guard let self,
+                let closingDocument = self.documentTabController.tabs.first(where: {
+                    $0.id == id
+                })?.document
+            else { return }
             try await self.documentController.flushBeforeClosing(closingDocument)
+            guard let plan = self.documentTabController.closePlan(forTabWithID: id) else {
+                return
+            }
             if let documentToActivate = plan.documentToActivate {
                 try await self.activateDocument(
-                    documentToActivate,
-                    tabActivation: .preserveTabMembership
+                    documentToActivate, tabActivation: .preserveTabMembership
                 )
-            } else {
+            } else if plan.selectedTabIDAfterClose == nil {
                 self.documentController.clearSelectionAfterClosingLastTab()
             }
             self.documentTabController.apply(plan)
@@ -3693,8 +3706,7 @@ final class WindowModel: ObservableObject {
             // that identity before falling back to the launch-only QA note so
             // multiple fixture windows do not all converge on the same note.
             if let selected =
-                restoredPresentation
-                .workspaceSession(for: selectedWorkspace)?.selectedDocument,
+                restoredPresentation.selectedDocument,
                 selected.vaultID == restoredAssignment.vault(for: selectedWorkspace)?.id
             {
                 openNote(selected.relativePath)
@@ -3730,7 +3742,7 @@ final class WindowModel: ObservableObject {
     private func currentWindowSessionSnapshot() -> WindowSessionSnapshot {
         let workspaceSessions = WorkspaceVaultSlot.allCases.map { workspace in
             let vaultID = workspaceAssignment?.vault(for: workspace)?.id
-            let tabs = documentTabController.tabs(in: workspace)
+            let tabs = documentTabController.tabs.filter { $0.document.vaultID == vaultID }
             let openDocuments = tabs.compactMap {
                 vaultQualifiedID(for: $0.document)
             }
@@ -3741,9 +3753,6 @@ final class WindowModel: ObservableObject {
             return WindowWorkspaceSessionSnapshot(
                 workspace: workspace,
                 vaultID: vaultID,
-                openDocuments: openDocuments,
-                selectedDocument: documentTabController.selectedTab(in: workspace)
-                    .flatMap { vaultQualifiedID(for: $0.document) },
                 documentPresentations: documentPresentations,
                 inspectorMode: shellState.inspectorMode(for: workspace).rawValue,
                 documentMode: documentController.presentationMode(for: workspace).rawValue
@@ -3753,6 +3762,8 @@ final class WindowModel: ObservableObject {
             id: windowSessionID,
             triptychID: workspaceAssignment?.id,
             selectedWorkspace: shellState.selectedWorkspace,
+            openDocuments: documentTabController.tabs.compactMap { vaultQualifiedID(for: $0.document) },
+            selectedDocument: documentTabController.selectedTab.flatMap { vaultQualifiedID(for: $0.document) },
             workspaceSessions: workspaceSessions,
             libraryVisible: sidebarVisible,
             inspectorVisible: researchInspectorVisible,
@@ -4118,9 +4129,7 @@ final class WindowModel: ObservableObject {
             }
             throw error
         }
-        documentController.clearSelectionAfterClosingLastTab()
-        shellState.selectWorkspace(slot)
-        documentController.selectWorkspace(slot)
+        shellState.selectLibraryWorkspace(slot)
         attentionPresentationState.selectWorkspaceSlot(slot)
         await refreshIdentityState()
         scheduleWorkspaceCatalogRefresh()
@@ -5083,7 +5092,7 @@ final class WindowModel: ObservableObject {
                     )
                 ))
         }
-        if let tab = documentTabController.allTabs.first(where: {
+        if let tab = documentTabController.tabs.first(where: {
             $0.document.sessionKey == DocumentSessionKey(vaultID: vaultID, noteID: noteID)
         }), let descriptor = tab.document.workspaceDescriptor {
             let updatedReference = VaultNoteReference(
@@ -5208,6 +5217,10 @@ final class WindowModel: ObservableObject {
             snapshot.stableIdentity.resolvedID != nil,
             let vault = currentRegisteredVault
         {
+            if let workspace = workspaceSlot(for: vault) {
+                documentController.selectWorkspace(workspace)
+                shellState.selectDocumentWorkspace(workspace)
+            }
             documentController.installOpenedDocument(
                 snapshot,
                 vaultName: vault.name,
@@ -5268,29 +5281,27 @@ final class WindowModel: ObservableObject {
                 }
             )
         }
-        try activateDocumentInSelectedWorkspace(
+        try activateResolvedDocument(
             document,
             tabActivation: tabActivation,
             recordsNavigationHistory: recordsNavigationHistory
         )
     }
 
-    private func activateDocumentInSelectedWorkspace(
+    private func activateResolvedDocument(
         _ document: WindowSelectedDocument,
         tabActivation: DocumentTabActivation,
         recordsNavigationHistory: Bool = true
     ) throws {
         switch document {
         case .workspace(let descriptor):
-            try activateWorkspaceReferenceInSelectedWorkspace(
+            try activateResolvedWorkspaceReference(
                 descriptor.reference,
                 tabActivation: tabActivation,
                 recordsNavigationHistory: recordsNavigationHistory
             )
         case .unavailable(let vaultID, let relativePath):
-            guard notes.contains(where: { $0.relativePath == relativePath }) else {
-                throw WindowNavigationError.noteUnavailable(relativePath)
-            }
+            try validateDocumentIsAvailable(document)
             PerformanceProbe.shared.beginReadActivation(documentID: relativePath)
             documentController.selectUnavailableDocument(
                 vaultID: vaultID,
@@ -5348,7 +5359,7 @@ final class WindowModel: ObservableObject {
                 }
             )
         }
-        try activateWorkspaceReferenceInSelectedWorkspace(
+        try activateResolvedWorkspaceReference(
             reference,
             tabActivation: tabActivation,
             recordsNavigationHistory: recordsNavigationHistory,
@@ -5356,7 +5367,7 @@ final class WindowModel: ObservableObject {
         )
     }
 
-    private func activateWorkspaceReferenceInSelectedWorkspace(
+    private func activateResolvedWorkspaceReference(
         _ reference: VaultNoteReference,
         tabActivation: DocumentTabActivation,
         recordsNavigationHistory: Bool = true,
@@ -5365,7 +5376,7 @@ final class WindowModel: ObservableObject {
         guard
             let vault = workspaceAssignment?.vaults.values.first(where: {
                 $0.id == reference.vaultID
-            }), workspaceSlot(for: vault) == shellState.selectedWorkspace
+            })
         else {
             throw WindowNavigationError.vaultUnavailable(reference.vaultName)
         }
@@ -5378,6 +5389,10 @@ final class WindowModel: ObservableObject {
             )
         else {
             throw WindowNavigationError.noteUnavailable(reference.relativePath)
+        }
+        if let workspace = workspaceSlot(for: vault) {
+            documentController.selectWorkspace(workspace)
+            shellState.selectDocumentWorkspace(workspace)
         }
         if managedCreationBodyStartUTF16 == nil {
             PerformanceProbe.shared.beginReadActivation(
@@ -5415,8 +5430,7 @@ final class WindowModel: ObservableObject {
                 document: document,
                 title: presentation.title,
                 toolTip: presentation.toolTip,
-                placement: placement,
-                in: shellState.selectedWorkspace
+                placement: placement
             )
             if !libraryMutationController.isCreatingNote {
                 scheduleLibraryReveal(for: document)
@@ -5523,10 +5537,9 @@ final class WindowModel: ObservableObject {
     }
 
     private func reconcileDocumentSessionLeases() {
-        let workspace = shellState.selectedWorkspace
         documentController.reconcileSessionLeases(
-            leasedDocuments: documentTabController.allTabs.map(\.document),
-            selectedDocument: documentTabController.selectedTab(in: workspace)?.document
+            leasedDocuments: documentTabController.tabs.map(\.document),
+            selectedDocument: documentTabController.selectedTab?.document
         )
     }
 
@@ -5535,7 +5548,7 @@ final class WindowModel: ObservableObject {
         removedPaths: Set<String>
     ) throws {
         let matchingIDs = Set(
-            documentTabController.allTabs.compactMap { tab -> UUID? in
+            documentTabController.tabs.compactMap { tab -> UUID? in
                 guard let descriptor = tab.document.workspaceDescriptor,
                     descriptor.reference.vaultID == vaultID,
                     removedPaths.contains(descriptor.reference.relativePath)
@@ -5562,32 +5575,17 @@ final class WindowModel: ObservableObject {
 
         // Remove inactive pages first so the selected page's close plan can
         // never choose another document that was deleted in the same commit.
-        let currentWorkspace = shellState.selectedWorkspace
-        let selectedIDs = Set(
-            WorkspaceVaultSlot.allCases.compactMap {
-                documentTabController.selectedTabID(in: $0)
-            })
-        for id in matchingIDs where !selectedIDs.contains(id) {
-            if let plan = documentTabController.closePlan(forTabWithID: id) {
-                documentTabController.apply(plan)
-            }
-        }
-        for workspace in WorkspaceVaultSlot.allCases {
-            guard let selectedID = documentTabController.selectedTabID(in: workspace),
-                matchingIDs.contains(selectedID),
-                let plan = documentTabController.closePlan(forTabWithID: selectedID)
-            else {
-                continue
-            }
-            if workspace == currentWorkspace {
-                if let documentToActivate = plan.documentToActivate {
-                    try activateDocumentInSelectedWorkspace(
-                        documentToActivate,
-                        tabActivation: .preserveTabMembership
-                    )
-                } else {
-                    documentController.clearSelectionAfterClosingLastTab()
-                }
+        let selectedID = documentTabController.selectedTabID
+        documentTabController.removeTabs(withIDs: matchingIDs.subtracting(Set([selectedID].compactMap { $0 })))
+        if let selectedID, matchingIDs.contains(selectedID),
+            let plan = documentTabController.closePlan(forTabWithID: selectedID)
+        {
+            if let documentToActivate = plan.documentToActivate {
+                try activateResolvedDocument(
+                    documentToActivate, tabActivation: .preserveTabMembership
+                )
+            } else {
+                documentController.clearSelectionAfterClosingLastTab()
             }
             documentTabController.apply(plan)
         }
@@ -5600,7 +5598,7 @@ final class WindowModel: ObservableObject {
         guard !documents.isEmpty else { return }
         let targets = Set(documents.map(\.editingTarget))
         let matchingIDs = Set(
-            documentTabController.allTabs.compactMap { tab in
+            documentTabController.tabs.compactMap { tab in
                 targets.contains(tab.document.editingTarget) ? tab.id : nil
             })
         do {
@@ -5622,7 +5620,7 @@ final class WindowModel: ObservableObject {
     }
 
     private func refreshDocumentTabProjections() {
-        for tab in documentTabController.allTabs {
+        for tab in documentTabController.tabs {
             guard case .workspace(let descriptor) = tab.document,
                 let snapshot = workspaceProjectionController.cachedNote(
                     vaultID: descriptor.reference.vaultID,
@@ -5665,7 +5663,11 @@ final class WindowModel: ObservableObject {
                 )
                 .map(WindowDocumentLocation.workspace)
             } else {
-                notes.first(where: { $0.relativePath == document.relativePath })
+                document.vaultID.flatMap { vaultID in
+                    workspaceProjectionController.cachedNote(
+                        vaultID: vaultID, stableNoteID: nil, relativePath: document.relativePath
+                    ).map(WindowDocumentLocation.workspace)
+                }
             }
         let fallbackTitle = URL(fileURLWithPath: document.relativePath)
             .deletingPathExtension()
@@ -5726,7 +5728,9 @@ final class WindowModel: ObservableObject {
         // Library refreshes must never reinterpret an existing vault-qualified
         // document through the newly browsed vault, especially when two vaults
         // contain the same relative path.
-        guard documentController.activeDocument == nil else { return }
+        guard documentController.activeDocument == nil,
+            documentController.selectedDocument?.vaultID == currentRegisteredVault?.id
+        else { return }
         if let descriptor = documentDescriptor(for: selectedDocumentPath) {
             documentController.selectDocument(.workspace(descriptor))
         } else if documentController.activeDocument == nil,
@@ -6204,7 +6208,7 @@ final class WindowModel: ObservableObject {
 
         let documentReconciliation = documentController.receive(
             event.snapshot,
-            openDocuments: documentTabController.allTabs.map(\.document)
+            openDocuments: documentTabController.tabs.map(\.document)
         )
         researchController.receive(event.snapshot)
         switch event {

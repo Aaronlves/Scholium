@@ -797,7 +797,7 @@ extension ScholiumUITests {
     }
 
     @MainActor
-    func testOpenInNewTabUsesDocumentRegionTabsAndVisibleClose() throws {
+    func testOpenInNewTabUsesNativeContentTabsAndSharedLibrary() throws {
         waitForCurrentDocumentSurface()
         let secondPath = "QA Autosave B.md"
         let inspectorToggle = inspectorVisibilityControl()
@@ -821,9 +821,9 @@ extension ScholiumUITests {
         // Expanding a large first folder can move root notes outside the lazy
         // Library viewport, which is not evidence about document tabs.
         let sharedFolder = app.descendants(matching: .any)[
-            "scholium.folderRow.Cluster-01"
+            "scholium.folderRow.格式与检索"
         ]
-        let noteList = app.scrollViews["scholium.noteList"].firstMatch
+        let noteList = app.outlines["scholium.noteList"].firstMatch
         for _ in 0..<8 where !sharedFolder.exists {
             noteList.swipeUp(velocity: .slow)
         }
@@ -838,13 +838,15 @@ extension ScholiumUITests {
 
         let documentTabs = app.descendants(matching: .any)["scholium.documentTabs"]
         XCTAssertTrue(documentTabs.waitForExistence(timeout: 8))
-        let firstTab = documentTabs.buttons["QA Autosave A"]
-        let secondTab = documentTabs.buttons["QA Autosave B"]
+        let firstTab = documentTabs.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "QA Autosave A")).firstMatch
+        let secondTab = documentTabs.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "QA Autosave B")).firstMatch
         XCTAssertTrue(firstTab.waitForExistence(timeout: 5))
         XCTAssertTrue(secondTab.waitForExistence(timeout: 5))
-        XCTAssertTrue(documentTabs.buttons["Close QA Autosave A"].exists)
-        XCTAssertTrue(documentTabs.buttons["Close QA Autosave B"].exists)
-        XCTAssertFalse(app.tabGroups.firstMatch.exists)
+
+        let nativeTabsScreenshot = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+        nativeTabsScreenshot.name = "Native content tabs with shared Library and Inspector"
+        nativeTabsScreenshot.lifetime = .keepAlways
+        add(nativeTabsScreenshot)
 
         let sharedFolderIdentifier = sharedFolder.identifier
         func currentSharedFolder() -> XCUIElement {
@@ -869,6 +871,14 @@ extension ScholiumUITests {
             "Opening a document tab must preserve Library disclosure and Apparatus presentation."
         )
 
+        let navigator = app.descendants(matching: .any)["scholium.workspaceNavigator"].firstMatch
+        navigator.descendants(matching: .any)["Topics"].firstMatch.click()
+        XCTAssertTrue(app.descendants(matching: .any)["scholium.noteRow.QA Topic.md"].waitForExistence(timeout: 8))
+        XCTAssertEqual(documentTitle(), "QA Autosave B")
+        XCTAssertTrue(firstTab.exists && secondTab.exists)
+        navigator.descendants(matching: .any)["Analyses"].firstMatch.click()
+        XCTAssertTrue(waitUntil(timeout: 8) { currentSharedFolder().exists })
+
         firstTab.click()
         XCTAssertTrue(
             waitUntil(timeout: 5) {
@@ -880,7 +890,10 @@ extension ScholiumUITests {
             waitUntil(timeout: 5) {
                 sharedPresentationIsPreserved(expectedNote: "QA Autosave B")
             })
-        documentTabs.buttons["Close QA Autosave B"].click()
+        app.menuBars.menuBarItems["File"].click()
+        let closeTab = app.menuItems["Close Tab"].firstMatch
+        XCTAssertTrue(closeTab.waitForExistence(timeout: 3))
+        closeTab.click()
         XCTAssertTrue(
             waitUntil(timeout: 8) {
                 self.app.windows.firstMatch.exists

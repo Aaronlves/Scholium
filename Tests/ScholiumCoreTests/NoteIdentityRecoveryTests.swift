@@ -29,20 +29,21 @@ struct NoteIdentityRecoveryTests {
             WindowSessionSnapshot(
                 id: stores.sessionID,
                 selectedWorkspace: .output,
+                openDocuments: [
+                    VaultQualifiedNoteID(
+                        vaultID: fixture.worksID,
+                        relativePath: "Old.md"
+                    )
+                ],
+                selectedDocument: VaultQualifiedNoteID(
+                    vaultID: fixture.worksID,
+                    relativePath: "Old.md"
+                ),
                 workspaceSessions: [
                     WindowWorkspaceSessionSnapshot(
                         workspace: .output,
                         vaultID: fixture.worksID,
-                        openDocuments: [
-                            VaultQualifiedNoteID(
-                                vaultID: fixture.worksID,
-                                relativePath: "Old.md"
-                            )
-                        ],
-                        selectedDocument: VaultQualifiedNoteID(
-                            vaultID: fixture.worksID,
-                            relativePath: "Old.md"
-                        ),
+
                         documentPresentations: [
                             "Old.md": WindowDocumentPresentationSnapshot(scrollFraction: 0.42)
                         ]
@@ -73,7 +74,7 @@ struct NoteIdentityRecoveryTests {
         #expect(state.failures.isEmpty)
         let session = try #require(try await stores.sessions.load(id: stores.sessionID))
         #expect(
-            session.workspaceSession(for: .output)?.selectedDocument?.relativePath
+            session.selectedDocument?.relativePath
                 == "Folder/New.md"
         )
     }

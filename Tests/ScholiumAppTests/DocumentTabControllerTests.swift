@@ -7,7 +7,6 @@ import Testing
 @Suite("Document tab controller")
 @MainActor
 struct DocumentTabControllerTests {
-    private let workspace = WorkspaceVaultSlot.topicKnowledge
 
     @Test("The first document creates one selected tab")
     func firstDocumentCreatesSelectedTab() throws {
@@ -18,13 +17,12 @@ struct DocumentTabControllerTests {
             document: document,
             title: "Agency",
             toolTip: "Agency — Topics/Agency.md",
-            placement: .replaceSelected,
-            in: workspace
+            placement: .replaceSelected
         )
 
-        let tab = try #require(controller.tabs(in: workspace).first)
-        #expect(controller.tabs(in: workspace).count == 1)
-        #expect(controller.selectedTabID(in: workspace) == tab.id)
+        let tab = try #require(controller.tabs.first)
+        #expect(controller.tabs.count == 1)
+        #expect(controller.selectedTabID == tab.id)
         #expect(tab.document == document)
     }
 
@@ -39,13 +37,12 @@ struct DocumentTabControllerTests {
             document: second,
             title: "Reasons",
             toolTip: "Reasons",
-            placement: .newTab,
-            in: workspace
+            placement: .newTab
         )
-        let secondID = try #require(controller.selectedTabID(in: workspace))
+        let secondID = try #require(controller.selectedTabID)
 
-        #expect(controller.tabs(in: workspace).map(\.document) == [first, second])
-        #expect(controller.selectedTabID(in: workspace) == secondID)
+        #expect(controller.tabs.map(\.document) == [first, second])
+        #expect(controller.selectedTabID == secondID)
     }
 
     @Test("Repeated New Tab activation selects the existing stable document")
@@ -58,13 +55,12 @@ struct DocumentTabControllerTests {
             document: document,
             title: "Updated Agency",
             toolTip: "Updated Agency",
-            placement: .newTab,
-            in: workspace
+            placement: .newTab
         )
 
-        #expect(controller.tabs(in: workspace).count == 1)
-        #expect(controller.tabs(in: workspace).first?.title == "Updated Agency")
-        #expect(controller.selectedTabID(in: workspace) == firstID)
+        #expect(controller.tabs.count == 1)
+        #expect(controller.tabs.first?.title == "Updated Agency")
+        #expect(controller.selectedTabID == firstID)
     }
 
     @Test("Replacing with an already open target preserves both existing tabs")
@@ -80,12 +76,11 @@ struct DocumentTabControllerTests {
             document: second,
             title: "Reasons",
             toolTip: "Reasons",
-            placement: .replaceSelected,
-            in: workspace
+            placement: .replaceSelected
         )
 
-        #expect(controller.tabs(in: workspace).map(\.id) == [firstID, secondID])
-        #expect(controller.selectedTabID(in: workspace) == secondID)
+        #expect(controller.tabs.map(\.id) == [firstID, secondID])
+        #expect(controller.selectedTabID == secondID)
     }
 
     @Test("The same displayed path with different stable identities may coexist")
@@ -106,42 +101,34 @@ struct DocumentTabControllerTests {
         _ = try add(first, to: controller)
         _ = try add(second, to: controller)
 
-        #expect(controller.tabs(in: workspace).count == 2)
+        #expect(controller.tabs.count == 2)
     }
 
-    @Test("One controller retains independent ordered groups for all workspaces")
-    func workspacesRetainIndependentGroups() throws {
+    @Test("Mixed-vault documents share one ordered collection and neighbor selection")
+    func mixedVaultTabs() throws {
         let controller = DocumentTabController()
         let analysis = fixtureDocument(path: "Analysis.md")
         let topic = fixtureDocument(path: "Topic.md")
-        controller.activate(
-            document: analysis,
-            title: "Analysis",
-            toolTip: "Analysis",
-            placement: .newTab,
-            in: .paperAnalysis
-        )
-        let analysisID = try #require(controller.selectedTabID(in: .paperAnalysis))
-        controller.activate(
-            document: topic,
-            title: "Topic",
-            toolTip: "Topic",
-            placement: .newTab,
-            in: .topicKnowledge
-        )
-        let topicID = try #require(controller.selectedTabID(in: .topicKnowledge))
-
-        #expect(controller.tabs(in: .paperAnalysis).map(\.id) == [analysisID])
-        #expect(controller.tabs(in: .topicKnowledge).map(\.id) == [topicID])
-        #expect(controller.tabs(in: .output).isEmpty)
-        #expect(controller.selectedTabID(in: .paperAnalysis) == analysisID)
-        #expect(controller.selectedTabID(in: .topicKnowledge) == topicID)
-
+        let analysisID = try add(analysis, to: controller)
+        let topicID = try add(topic, to: controller)
+        #expect(controller.tabs.map(\.id) == [analysisID, topicID])
+        #expect(controller.selectedTabID == topicID)
         let close = try #require(controller.closePlan(forTabWithID: topicID))
+        #expect(close.documentToActivate == analysis)
         controller.apply(close)
-        #expect(controller.tabs(in: .topicKnowledge).isEmpty)
-        #expect(controller.selectedTabID(in: .paperAnalysis) == analysisID)
-        #expect(controller.allTabs.map(\.id) == [analysisID])
+        #expect(controller.selectedTabID == analysisID)
+    }
+
+    @Test("A close plan cannot overwrite a later selection")
+    func staleClosePlan() throws {
+        let controller = DocumentTabController()
+        let first = try add(fixtureDocument(path: "First.md"), to: controller)
+        let second = try add(fixtureDocument(path: "Second.md"), to: controller)
+        let plan = try #require(controller.closePlan(forTabWithID: second))
+        controller.selectTab(withID: first)
+        controller.apply(plan)
+        #expect(controller.tabs.count == 2)
+        #expect(controller.selectedTabID == first)
     }
 
     @Test("Closing a selected middle tab chooses its next neighbor")
@@ -156,8 +143,8 @@ struct DocumentTabControllerTests {
         #expect(plan.selectedTabIDAfterClose == last)
         controller.apply(plan)
 
-        #expect(controller.selectedTabID(in: workspace) == last)
-        #expect(controller.tabs(in: workspace).map(\.id) == [first, last])
+        #expect(controller.selectedTabID == last)
+        #expect(controller.tabs.map(\.id) == [first, last])
     }
 
     @Test("Closing the last selected tab chooses its previous neighbor")
@@ -170,8 +157,8 @@ struct DocumentTabControllerTests {
         #expect(plan.selectedTabIDAfterClose == first)
         controller.apply(plan)
 
-        #expect(controller.selectedTabID(in: workspace) == first)
-        #expect(controller.tabs(in: workspace).count == 1)
+        #expect(controller.selectedTabID == first)
+        #expect(controller.tabs.count == 1)
     }
 
     @Test("Closing the only tab leaves the document region empty")
@@ -184,8 +171,8 @@ struct DocumentTabControllerTests {
         #expect(plan.documentToActivate == nil)
         controller.apply(plan)
 
-        #expect(controller.tabs(in: workspace).isEmpty)
-        #expect(controller.selectedTabID(in: workspace) == nil)
+        #expect(controller.tabs.isEmpty)
+        #expect(controller.selectedTabID == nil)
     }
 
     @Test("Closing an inactive tab preserves the active tab")
@@ -198,8 +185,8 @@ struct DocumentTabControllerTests {
         #expect(plan.documentToActivate == nil)
         controller.apply(plan)
 
-        #expect(controller.selectedTabID(in: workspace) == active)
-        #expect(controller.tabs(in: workspace).map(\.id) == [active])
+        #expect(controller.selectedTabID == active)
+        #expect(controller.tabs.map(\.id) == [active])
     }
 
     @Test("A proven-missing batch cannot leave a stale selected tab")
@@ -212,8 +199,8 @@ struct DocumentTabControllerTests {
 
         controller.removeTabs(withIDs: [first, selected])
 
-        #expect(controller.tabs(in: workspace).map(\.id) == [surviving])
-        #expect(controller.selectedTabID(in: workspace) == nil)
+        #expect(controller.tabs.map(\.id) == [surviving])
+        #expect(controller.selectedTabID == nil)
     }
 
     @Test("A stable rename updates the retained tab projection")
@@ -240,9 +227,9 @@ struct DocumentTabControllerTests {
             toolTip: "New — Topics/New.md"
         )
 
-        #expect(controller.tabs(in: workspace).count == 1)
-        #expect(controller.tabs(in: workspace).first?.document == renamed)
-        #expect(controller.tabs(in: workspace).first?.title == "New")
+        #expect(controller.tabs.count == 1)
+        #expect(controller.tabs.first?.document == renamed)
+        #expect(controller.tabs.first?.title == "New")
     }
 
     private func add(
@@ -253,11 +240,10 @@ struct DocumentTabControllerTests {
             document: document,
             title: document.relativePath,
             toolTip: document.relativePath,
-            placement: .newTab,
-            in: workspace
+            placement: .newTab
         )
         return try #require(
-            controller.selectedTabID(in: workspace),
+            controller.selectedTabID,
             "Activating a document must select its owned tab."
         )
     }

@@ -65,6 +65,7 @@ final class WindowShellState: ObservableObject {
     @Published private var expandedFoldersByScope: [LibraryDisclosureScope: Set<String>] = [:]
     @Published private(set) var inspector = ResearchInspectorState()
     @Published private(set) var selectedWorkspace: WorkspaceVaultSlot = .paperAnalysis
+    private var inspectorWorkspace: WorkspaceVaultSlot = .paperAnalysis
     @Published private var inspectorModesByWorkspace: [WorkspaceVaultSlot: ResearchInspectorMode]
     @Published private(set) var libraryVisible = true
     @Published private(set) var sidebarContent: SidebarContent = .triptych
@@ -132,7 +133,7 @@ final class WindowShellState: ObservableObject {
     }
 
     func selectInspectorMode(_ mode: ResearchInspectorMode) {
-        inspectorModesByWorkspace[selectedWorkspace] = mode
+        inspectorModesByWorkspace[inspectorWorkspace] = mode
         inspector.mode = mode
     }
 
@@ -141,13 +142,22 @@ final class WindowShellState: ObservableObject {
     }
 
     func selectWorkspace(_ workspace: WorkspaceVaultSlot) {
-        guard selectedWorkspace != workspace else { return }
         selectedWorkspace = workspace
+        selectDocumentWorkspace(workspace)
+    }
+
+    func selectLibraryWorkspace(_ workspace: WorkspaceVaultSlot) {
+        selectedWorkspace = workspace
+    }
+
+    func selectDocumentWorkspace(_ workspace: WorkspaceVaultSlot) {
+        inspectorWorkspace = workspace
         inspector.mode = inspectorMode(for: workspace)
     }
 
     func resetWorkspaceSessions() {
         selectedWorkspace = .paperAnalysis
+        inspectorWorkspace = .paperAnalysis
         var resetInspectorModes: [WorkspaceVaultSlot: ResearchInspectorMode] = [:]
         for workspace in WorkspaceVaultSlot.allCases {
             resetInspectorModes[workspace] = .about
@@ -173,7 +183,7 @@ final class WindowShellState: ObservableObject {
                 ResearchInspectorMode(restoring: modesByWorkspace[workspace])
         }
         inspectorModesByWorkspace = restoredInspectorModes
-        inspector.mode = inspectorMode(for: selectedWorkspace)
+        inspector.mode = inspectorMode(for: inspectorWorkspace)
         inspector.isVisible = isVisible ?? false
     }
 

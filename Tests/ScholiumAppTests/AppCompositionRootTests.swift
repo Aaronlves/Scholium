@@ -177,6 +177,21 @@ struct AppCompositionRootTests {
         await Task.yield()
     }
 
+    private func configurePresentationFixture(store: WorkspaceStore, root: URL) async throws -> UUID {
+        let fixture = root.appendingPathComponent("triptych", isDirectory: true)
+        let urls = ["analyses", "topics", "works"].map {
+            fixture.appendingPathComponent($0, isDirectory: true)
+        }
+        for url in urls {
+            try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        }
+        let configured = try await store.configureTriptychCapabilities(
+            paperAnalysisURL: urls[0], topicKnowledgeURL: urls[1], outputURL: urls[2],
+            portableContainerURL: fixture, triptychName: "Presentation fixture"
+        )
+        return try #require(configured.assignment.vault(for: .paperAnalysis)?.id)
+    }
+
     @Test("Stopped document scrolling persists without invalidating the window model")
     func stoppedDocumentScrollingDoesNotInvalidateWindowModel() async throws {
         let fileManager = FileManager.default
@@ -195,6 +210,7 @@ struct AppCompositionRootTests {
         }
 
         let store = makeTestWorkspaceStore()
+        let fixtureVaultID = try await configurePresentationFixture(store: store, root: isolatedHome)
         let window = WindowModel(workspaceStore: store)
         let sessionID = UUID()
         await window.restoreWindowSession(id: sessionID)
@@ -205,7 +221,7 @@ struct AppCompositionRootTests {
 
         let path = "Fixtures/Scroll.md"
         let document = WindowSelectedDocument.unavailable(
-            vaultID: UUID(),
+            vaultID: fixtureVaultID,
             relativePath: path
         )
         window.documentController.selectDocument(document)
@@ -213,8 +229,7 @@ struct AppCompositionRootTests {
             document: document,
             title: "Scroll",
             toolTip: path,
-            placement: .newTab,
-            in: .paperAnalysis
+            placement: .newTab
         )
 
         var invalidationCount = 0
@@ -262,6 +277,27 @@ struct AppCompositionRootTests {
         #expect(saved.documentTextScale == 1.7)
     }
 
+    @Test("Closing a background tab leaves the active document and its session untouched")
+    func backgroundTabClosePreservesDocument() async throws {
+        let window = WindowModel(workspaceStore: makeTestWorkspaceStore())
+        let first = WindowSelectedDocument.unavailable(vaultID: UUID(), relativePath: "First.md")
+        let second = WindowSelectedDocument.unavailable(vaultID: UUID(), relativePath: "Second.md")
+        for document in [first, second] {
+            window.documentController.selectDocument(document)
+            window.documentTabController.activate(
+                document: document, title: document.relativePath,
+                toolTip: document.relativePath, placement: .newTab
+            )
+        }
+        let session = window.documentController.session(for: second.editingTarget)
+        let backgroundID = try #require(window.documentTabController.tabs.first?.id)
+        window.closeDocumentTab(withID: backgroundID)
+        try await waitUntil("the background tab closed") { window.documentTabController.tabs.count == 1 }
+        #expect(window.documentController.selectedDocument == second)
+        #expect(window.documentTabController.selectedTab?.document == second)
+        #expect(window.documentController.session(for: second.editingTarget) === session)
+    }
+
     @Test("Window close retains open-note focus while explicit tab close forgets it")
     func openNoteFocusLifetimeMatchesTabMembership() async throws {
         let fileManager = FileManager.default
@@ -280,6 +316,7 @@ struct AppCompositionRootTests {
         }
 
         let store = makeTestWorkspaceStore()
+        let fixtureVaultID = try await configurePresentationFixture(store: store, root: isolatedHome)
         let source = "Argument."
         let path = "Fixtures/Focus.md"
 
@@ -287,7 +324,7 @@ struct AppCompositionRootTests {
         let retainedSessionID = UUID()
         await retainedWindow.restoreWindowSession(id: retainedSessionID)
         let retainedDocument = WindowSelectedDocument.unavailable(
-            vaultID: UUID(),
+            vaultID: fixtureVaultID,
             relativePath: path
         )
         retainedWindow.documentController.selectDocument(retainedDocument)
@@ -295,8 +332,7 @@ struct AppCompositionRootTests {
             document: retainedDocument,
             title: "Focus",
             toolTip: path,
-            placement: .newTab,
-            in: .paperAnalysis
+            placement: .newTab
         )
         let retainedSession = retainedWindow.documentController.session(
             for: retainedDocument.editingTarget
@@ -332,7 +368,7 @@ struct AppCompositionRootTests {
         let closedSessionID = UUID()
         await closedWindow.restoreWindowSession(id: closedSessionID)
         let closedDocument = WindowSelectedDocument.unavailable(
-            vaultID: UUID(),
+            vaultID: fixtureVaultID,
             relativePath: path
         )
         closedWindow.documentController.selectDocument(closedDocument)
@@ -340,20 +376,18 @@ struct AppCompositionRootTests {
             document: closedDocument,
             title: "Focus",
             toolTip: path,
-            placement: .newTab,
-            in: .paperAnalysis
+            placement: .newTab
         )
         let tabID = try #require(
-            closedWindow.documentTabController.selectedTabID(in: .paperAnalysis)
+            closedWindow.documentTabController.selectedTabID
         )
         closedWindow.closeDocumentTab(withID: tabID)
         try await waitUntil("the explicit tab close was persisted") {
-            guard closedWindow.documentTabController.tabs(in: .paperAnalysis).isEmpty,
-                let persisted = try await store.windowSession(id: closedSessionID)?
-                    .workspaceSession(for: .paperAnalysis)
+            guard closedWindow.documentTabController.tabs.isEmpty,
+                let persisted = try await store.windowSession(id: closedSessionID)
             else { return false }
             return persisted.openDocuments.isEmpty
-                && persisted.documentPresentations[path] == nil
+                && persisted.workspaceSession(for: .paperAnalysis)?.documentPresentations[path] == nil
         }
     }
 
@@ -971,8 +1005,8 @@ struct AppCompositionRootTests {
                 }) == true
         }
         #expect(firstWindow!.shellState.selectedWorkspace == .topicKnowledge)
-        #expect(firstWindow!.currentDocumentVaultID == nil)
-        #expect(firstWindow!.selectedDocument == nil)
+        #expect(firstWindow!.currentDocumentVaultID == analysesVault.id)
+        #expect(firstWindow!.selectedDocument == originalID)
         #expect(firstWindow!.documentRevisions["Shared.md"] != original.fingerprint)
         #expect(firstWindow!.documentController.retainedSession(for: sessionKey) === firstSession)
         #expect(firstSession.presentationMode == .read)
@@ -980,23 +1014,29 @@ struct AppCompositionRootTests {
         #expect(firstWindow!.currentPresentationMode == .livePreview)
         #expect(firstSession.scrollFraction == 0.42)
 
-        firstWindow!.openNote("Shared.md")
-        try await waitUntil("the Topic document opened in its own tab group") {
+        let retainedSelection = try #require(firstWindow!.documentController.selectedDocument)
+        firstWindow!.documentController.selectDocument(
+            .unavailable(vaultID: analysesVault.id, relativePath: "Shared.md")
+        )
+        #expect(firstWindow!.currentNote?.rawContent == originalSource)
+        #expect(firstWindow!.currentDocumentVaultRole == analysesVault.role)
+        firstWindow!.documentController.selectDocument(retainedSelection)
+
+        firstWindow!.openNote("Shared.md", tabActivation: .place(.newTab))
+        try await waitUntil("the Topic document opened in the shared tab collection") {
             firstWindow?.currentDocumentVaultID == topicsVault.id
         }
         let visibleReference = try #require(firstWindow!.currentDocumentDescriptor?.reference)
         let windowIDBeforeOpeningTab = firstWindow!.nativeWindowID
-        let existingTabCount = firstWindow!.documentTabController.tabs(
-            in: .topicKnowledge
-        ).count
+        let existingTabCount = firstWindow!.documentTabController.tabs.count
         firstWindow!.requestOpenNote(visibleReference, disposition: .newTab)
         try await waitUntil("the existing document tab was selected") {
-            firstWindow?.documentTabController.selectedTab(in: .topicKnowledge)?
+            firstWindow?.documentTabController.selectedTab?
                 .document.relativePath == "Shared.md"
         }
-        #expect(firstWindow!.documentTabController.tabs(in: .topicKnowledge).count == existingTabCount)
+        #expect(firstWindow!.documentTabController.tabs.count == existingTabCount)
         #expect(firstWindow!.nativeWindowID == windowIDBeforeOpeningTab)
-        #expect(firstWindow!.documentTabController.selectedTab(in: .topicKnowledge)?.document.relativePath == "Shared.md")
+        #expect(firstWindow!.documentTabController.selectedTab?.document.relativePath == "Shared.md")
 
         let visibleTarget = try #require(NoteMutationTarget(firstWindow!.currentNote!))
         #expect(visibleTarget.documentID.vaultID == topicsVault.id)
@@ -1011,7 +1051,15 @@ struct AppCompositionRootTests {
         #expect(firstWindow!.selectedDocumentPath == duplicatePath)
 
         firstWindow!.requestTriptychWorkspace(.paperAnalysis)
-        try await waitUntil("the first window restored the Analyses workspace") {
+        try await waitUntil("Library browsed Analyses without replacing the Topic") {
+            firstWindow?.currentRegisteredVault?.id == analysesVault.id
+        }
+        #expect(firstWindow!.selectedDocumentPath == duplicatePath)
+        let analysisTab = try #require(firstWindow!.documentTabController.tabs.first {
+            $0.document.workspaceDescriptor?.sessionKey == sessionKey
+        })
+        firstWindow!.selectDocumentTab(withID: analysisTab.id)
+        try await waitUntil("the first window selected its retained Analysis") {
             firstWindow?.currentRegisteredVault?.id == analysesVault.id
                 && firstWindow?.selectedDocument == originalID
         }
@@ -1130,9 +1178,14 @@ struct AppCompositionRootTests {
         try fileManager.removeItem(
             at: analyses.appendingPathComponent(renamedPath)
         )
-        try await waitUntil("the clean externally deleted tab converged to no document") {
-            secondWindow.documentTabController.tabs(in: .paperAnalysis).isEmpty
-                && secondWindow.selectedDocument == nil
+        do {
+            try await waitUntil("the clean externally deleted tab converged to no document") {
+                secondWindow.documentTabController.tabs.isEmpty
+                    && secondWindow.selectedDocument == nil
+            }
+        } catch {
+            Issue.record("Deletion state: tabs=\(secondWindow.documentTabController.tabs), selected=\(String(describing: secondWindow.documentController.selectedDocument)), dirty=\(secondSession.hasUnsavedChanges), conflict=\(String(describing: secondSession.conflict))")
+            throw error
         }
         #expect(secondWindow.documentController.retainedSession(for: sessionKey) == nil)
 

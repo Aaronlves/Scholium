@@ -175,7 +175,8 @@ toolbar region, after the sidebar tracking boundary and before its secondary-tex
 name. They remain available with the sidebar collapsed and traverse document visits, not
 heading jumps. Visibility and workspace session state are installed before first
 presentation, then native state is authoritative. Each workspace retains Library filters
-and disclosure, selected tab, live Document mode, and Inspector mode. A transition
+and disclosure. Document tabs and selection belong to the window; browsing another
+Library role preserves the active document, its mode, and Inspector context. A document transition
 commits only after source safety succeeds; failure preserves the exact origin workspace
 and buffer.
 
@@ -200,12 +201,21 @@ The Inspector remains hideable whenever visible and showable only with a
 Target. If an already-visible Inspector loses its Document, it presents **No
 Document Selected** without stale content or automatic collapse.
 
-With two or more open documents in the selected workspace, a Document-owned tab
-strip appears only in the middle plane. One window-local controller partitions
-tabs by vault role and presents only the selected workspace's group. A stable
-Note appears at most once per window. Closing flushes safely and selects a
-neighbor only within the current group; closing the last tab returns to the
-no-document state.
+With two or more open documents, a native rounded tab selector spans the top of
+the middle plane, with equal-width labels and system-owned selection rendering. One window-wide ordered collection includes Notes from
+Analyses, Topics, and Works. Changing the Library role neither replaces the
+active Document nor changes tab membership, order, or selection. Library, Chat,
+and Inspector remain shared window regions; tabs never create whole windows.
+AppKit owns tab rendering and page containment. Scholium validates source safety
+before committing a requested selection or close. A stable Note appears at most
+once per window; opening an existing Note selects its tab. Ordinary opening
+replaces the selected tab; Open in New Tab appends a new document.
+Closing a background tab preserves the active Document and focus. Closing the
+selected tab chooses the right neighbor, otherwise the left, across role
+boundaries; closing the last tab returns to No Document Selected. Failure keeps
+the tab and recoverable buffer with Retry. File provides Close Tab, and View
+provides Next Tab, Previous Tab, and a complete Document Tabs menu for overflow.
+Native content tabs do not provide whole-window tab grouping or tear-off.
 
 Closing a window, switching route, or terminating must preserve any failing
 save/conflict buffer and provide Retry. Window-session persistence is

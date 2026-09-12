@@ -69,12 +69,8 @@ struct ContentView: View {
             sidebarContent: shellState.sidebarContent,
             initialLibraryVisible: shellLibraryVisible,
             initialApparatusVisible: shellApparatusVisible,
-            documentTabs: appState.documentTabController.tabs(
-                in: shellState.selectedWorkspace
-            ),
-            selectedDocumentTabID: appState.documentTabController.selectedTabID(
-                in: shellState.selectedWorkspace
-            ),
+            documentTabs: appState.documentTabController.tabs,
+            selectedDocumentTabID: appState.documentTabController.selectedTabID,
             selectDocumentTab: { appState.selectDocumentTab(withID: $0) },
             closeDocumentTab: { appState.closeDocumentTab(withID: $0) },
             libraryVisibilityDidChange: {

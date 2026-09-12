@@ -25,7 +25,6 @@ struct DocumentTabItem: Identifiable, Equatable, Sendable {
 }
 
 struct DocumentTabClosePlan: Equatable, Sendable {
-    let workspace: WorkspaceVaultSlot
     let closingTabID: UUID
     let selectedTabIDAfterClose: UUID?
     let documentToActivate: WindowSelectedDocument?
@@ -50,172 +49,89 @@ private enum DocumentTabKey: Hashable, Sendable {
     }
 }
 
-/// Window-local owner of document-tab order, selection, and document
-/// references. It deliberately owns no editor, Library, Inspector, split-view,
-/// toolbar, repository, or persistence state.
+/// Window-local owner of the single ordered document-tab collection.
+/// Library scope never owns tab membership or selection.
 @MainActor
 final class DocumentTabController: ObservableObject {
-    @Published private var tabsByWorkspace: [WorkspaceVaultSlot: [DocumentTabItem]] = [:]
-    @Published private var selectedTabIDsByWorkspace: [WorkspaceVaultSlot: UUID] = [:]
+    @Published private(set) var tabs: [DocumentTabItem] = []
+    @Published private(set) var selectedTabID: UUID?
 
-    var allTabs: [DocumentTabItem] {
-        WorkspaceVaultSlot.allCases.flatMap { tabs(in: $0) }
-    }
-
-    func tabs(in workspace: WorkspaceVaultSlot) -> [DocumentTabItem] {
-        tabsByWorkspace[workspace] ?? []
-    }
-
-    func selectedTabID(in workspace: WorkspaceVaultSlot) -> UUID? {
-        selectedTabIDsByWorkspace[workspace]
-    }
-
-    func selectedTab(in workspace: WorkspaceVaultSlot) -> DocumentTabItem? {
-        guard let selectedTabID = selectedTabID(in: workspace) else { return nil }
-        return tabs(in: workspace).first { $0.id == selectedTabID }
+    var selectedTab: DocumentTabItem? {
+        tabs.first { $0.id == selectedTabID }
     }
 
     func activate(
         document: WindowSelectedDocument,
         title: String,
         toolTip: String,
-        placement: DocumentTabPlacement,
-        in workspace: WorkspaceVaultSlot
+        placement: DocumentTabPlacement
     ) {
         let key = DocumentTabKey(document)
-        for candidate in WorkspaceVaultSlot.allCases {
-            var candidateTabs = tabs(in: candidate)
-            guard
-                let existingIndex = candidateTabs.firstIndex(where: {
-                    DocumentTabKey($0.document) == key
-                })
-            else { continue }
-            candidateTabs[existingIndex].document = document
-            candidateTabs[existingIndex].title = title
-            candidateTabs[existingIndex].toolTip = toolTip
-            tabsByWorkspace[candidate] = candidateTabs
-            selectedTabIDsByWorkspace[candidate] = candidateTabs[existingIndex].id
-            return
-        }
-
-        var workspaceTabs = tabs(in: workspace)
-        if placement == .replaceSelected,
-            let selectedTabID = selectedTabID(in: workspace),
-            let selectedIndex = workspaceTabs.firstIndex(where: { $0.id == selectedTabID })
+        if let index = tabs.firstIndex(where: { DocumentTabKey($0.document) == key }) {
+            tabs[index].document = document
+            tabs[index].title = title
+            tabs[index].toolTip = toolTip
+            selectedTabID = tabs[index].id
+        } else if placement == .replaceSelected,
+            let index = tabs.firstIndex(where: { $0.id == selectedTabID })
         {
-            workspaceTabs[selectedIndex].document = document
-            workspaceTabs[selectedIndex].title = title
-            workspaceTabs[selectedIndex].toolTip = toolTip
-            tabsByWorkspace[workspace] = workspaceTabs
-            return
+            tabs[index].document = document
+            tabs[index].title = title
+            tabs[index].toolTip = toolTip
+        } else {
+            let tab = DocumentTabItem(document: document, title: title, toolTip: toolTip)
+            tabs.append(tab)
+            selectedTabID = tab.id
         }
-
-        let tab = DocumentTabItem(
-            document: document,
-            title: title,
-            toolTip: toolTip
-        )
-        workspaceTabs.append(tab)
-        tabsByWorkspace[workspace] = workspaceTabs
-        selectedTabIDsByWorkspace[workspace] = tab.id
     }
 
     func selectTab(withID id: UUID) {
-        guard let workspace = workspace(containingTabWithID: id) else { return }
-        selectedTabIDsByWorkspace[workspace] = id
+        guard tabs.contains(where: { $0.id == id }) else { return }
+        selectedTabID = id
     }
 
     func closePlan(forTabWithID id: UUID) -> DocumentTabClosePlan? {
-        guard let workspace = workspace(containingTabWithID: id) else {
-            return nil
-        }
-        let workspaceTabs = tabs(in: workspace)
-        guard let closingIndex = workspaceTabs.firstIndex(where: { $0.id == id }) else {
-            return nil
-        }
-        let selectedTabID = selectedTabID(in: workspace)
+        guard let index = tabs.firstIndex(where: { $0.id == id }) else { return nil }
         guard selectedTabID == id else {
             return DocumentTabClosePlan(
-                workspace: workspace,
-                closingTabID: id,
-                selectedTabIDAfterClose: selectedTabID,
+                closingTabID: id, selectedTabIDAfterClose: selectedTabID,
                 documentToActivate: nil
             )
         }
-
-        let neighbor: DocumentTabItem?
-        if workspaceTabs.indices.contains(closingIndex + 1) {
-            neighbor = workspaceTabs[closingIndex + 1]
-        } else if closingIndex > workspaceTabs.startIndex {
-            neighbor = workspaceTabs[closingIndex - 1]
-        } else {
-            neighbor = nil
-        }
+        let neighbor =
+            tabs.indices.contains(index + 1)
+            ? tabs[index + 1] : (index > 0 ? tabs[index - 1] : nil)
         return DocumentTabClosePlan(
-            workspace: workspace,
-            closingTabID: id,
-            selectedTabIDAfterClose: neighbor?.id,
+            closingTabID: id, selectedTabIDAfterClose: neighbor?.id,
             documentToActivate: neighbor?.document
         )
     }
 
     func apply(_ plan: DocumentTabClosePlan) {
-        var workspaceTabs = tabs(in: plan.workspace)
-        guard workspaceTabs.contains(where: { $0.id == plan.closingTabID }) else { return }
-        workspaceTabs.removeAll { $0.id == plan.closingTabID }
-        tabsByWorkspace[plan.workspace] = workspaceTabs
-        if let selectedTabIDAfterClose = plan.selectedTabIDAfterClose,
-            workspaceTabs.contains(where: { $0.id == selectedTabIDAfterClose })
-        {
-            selectedTabIDsByWorkspace[plan.workspace] = selectedTabIDAfterClose
-        } else {
-            selectedTabIDsByWorkspace[plan.workspace] = nil
-        }
+        guard closePlan(forTabWithID: plan.closingTabID) == plan else { return }
+        tabs.removeAll { $0.id == plan.closingTabID }
+        selectedTabID = plan.selectedTabIDAfterClose
     }
 
-    /// Removes a proven-missing batch without inventing a replacement
-    /// selection. WindowModel first attempts the ordinary close plan so a
-    /// surviving adjacent tab can be activated; this is the safe fallback if
-    /// that projection can no longer be activated.
+    /// Removes proven-missing documents without inventing a replacement selection.
     func removeTabs(withIDs ids: Set<UUID>) {
-        guard !ids.isEmpty else { return }
-        for workspace in WorkspaceVaultSlot.allCases {
-            var workspaceTabs = tabs(in: workspace)
-            workspaceTabs.removeAll { ids.contains($0.id) }
-            tabsByWorkspace[workspace] = workspaceTabs
-            if selectedTabID(in: workspace).map(ids.contains) == true {
-                selectedTabIDsByWorkspace[workspace] = nil
-            }
-        }
+        tabs.removeAll { ids.contains($0.id) }
+        if selectedTabID.map(ids.contains) == true { selectedTabID = nil }
     }
 
     func updateDocumentProjection(
-        _ document: WindowSelectedDocument,
-        title: String,
-        toolTip: String
+        _ document: WindowSelectedDocument, title: String, toolTip: String
     ) {
         let key = DocumentTabKey(document)
-        for workspace in WorkspaceVaultSlot.allCases {
-            var workspaceTabs = tabs(in: workspace)
-            for index in workspaceTabs.indices
-            where DocumentTabKey(workspaceTabs[index].document) == key {
-                workspaceTabs[index].document = document
-                workspaceTabs[index].title = title
-                workspaceTabs[index].toolTip = toolTip
-            }
-            tabsByWorkspace[workspace] = workspaceTabs
+        for index in tabs.indices where DocumentTabKey(tabs[index].document) == key {
+            tabs[index].document = document
+            tabs[index].title = title
+            tabs[index].toolTip = toolTip
         }
     }
 
     func removeAll() {
-        tabsByWorkspace = [:]
-        selectedTabIDsByWorkspace = [:]
+        tabs = []
+        selectedTabID = nil
     }
-
-    private func workspace(containingTabWithID id: UUID) -> WorkspaceVaultSlot? {
-        WorkspaceVaultSlot.allCases.first { workspace in
-            tabs(in: workspace).contains { $0.id == id }
-        }
-    }
-
 }

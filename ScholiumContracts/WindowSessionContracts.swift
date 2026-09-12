@@ -45,8 +45,6 @@ public struct WindowDocumentPresentationSnapshot: Codable, Hashable, Sendable {
 public struct WindowWorkspaceSessionSnapshot: Codable, Hashable, Sendable {
     public let workspace: WorkspaceVaultSlot
     public var vaultID: UUID?
-    public var openDocuments: [VaultQualifiedNoteID]
-    public var selectedDocument: VaultQualifiedNoteID?
     public var documentPresentations: [String: WindowDocumentPresentationSnapshot]
     public var inspectorMode: String
     public var documentMode: String
@@ -54,19 +52,12 @@ public struct WindowWorkspaceSessionSnapshot: Codable, Hashable, Sendable {
     public init(
         workspace: WorkspaceVaultSlot,
         vaultID: UUID? = nil,
-        openDocuments: [VaultQualifiedNoteID] = [],
-        selectedDocument: VaultQualifiedNoteID? = nil,
         documentPresentations: [String: WindowDocumentPresentationSnapshot] = [:],
         inspectorMode: String = "overview",
         documentMode: String = "read"
     ) {
         self.workspace = workspace
-        self.vaultID =
-            vaultID
-            ?? selectedDocument?.vaultID
-            ?? openDocuments.first?.vaultID
-        self.openDocuments = openDocuments
-        self.selectedDocument = selectedDocument
+        self.vaultID = vaultID
         self.documentPresentations = documentPresentations
         self.inspectorMode = inspectorMode
         self.documentMode = documentMode
@@ -74,14 +65,6 @@ public struct WindowWorkspaceSessionSnapshot: Codable, Hashable, Sendable {
 
     public func normalized(availablePaths: Set<String>) -> Self {
         var result = self
-        result.openDocuments = openDocuments.filter {
-            availablePaths.contains($0.relativePath)
-        }
-        if let selectedDocument,
-            !result.openDocuments.contains(selectedDocument)
-        {
-            result.selectedDocument = nil
-        }
         result.documentPresentations = documentPresentations.filter {
             availablePaths.contains($0.key)
         }
@@ -94,23 +77,6 @@ public struct WindowWorkspaceSessionSnapshot: Codable, Hashable, Sendable {
         to destinationPath: String
     ) -> Self {
         var result = self
-        result.openDocuments = openDocuments.map { document in
-            guard document.vaultID == vaultID,
-                document.relativePath == sourcePath
-            else { return document }
-            return VaultQualifiedNoteID(
-                vaultID: vaultID,
-                relativePath: destinationPath
-            )
-        }
-        if selectedDocument?.vaultID == vaultID,
-            selectedDocument?.relativePath == sourcePath
-        {
-            result.selectedDocument = VaultQualifiedNoteID(
-                vaultID: vaultID,
-                relativePath: destinationPath
-            )
-        }
         if self.vaultID == vaultID,
             let presentation = result.documentPresentations.removeValue(
                 forKey: sourcePath
@@ -122,13 +88,14 @@ public struct WindowWorkspaceSessionSnapshot: Codable, Hashable, Sendable {
     }
 }
 
-/// Committed presentation state for one configured window. Each Triptych role
-/// keeps its own Library, tabs, Document mode, and Inspector mode while native
-/// split geometry and visibility remain window-wide.
+/// Committed window-wide tab order and selection, with role-local presentation.
+/// Editor bytes and Undo remain in the live document sessions.
 public struct WindowSessionSnapshot: Codable, Hashable, Sendable {
     public let id: UUID
     public var triptychID: UUID?
     public var selectedWorkspace: WorkspaceVaultSlot
+    public var openDocuments: [VaultQualifiedNoteID]
+    public var selectedDocument: VaultQualifiedNoteID?
     public var workspaceSessions: [WindowWorkspaceSessionSnapshot]
     public var libraryVisible: Bool?
     public var inspectorVisible: Bool?
@@ -139,6 +106,8 @@ public struct WindowSessionSnapshot: Codable, Hashable, Sendable {
         id: UUID = UUID(),
         triptychID: UUID? = nil,
         selectedWorkspace: WorkspaceVaultSlot = .paperAnalysis,
+        openDocuments: [VaultQualifiedNoteID] = [],
+        selectedDocument: VaultQualifiedNoteID? = nil,
         workspaceSessions: [WindowWorkspaceSessionSnapshot] = [],
         libraryVisible: Bool? = nil,
         inspectorVisible: Bool? = nil,
@@ -148,6 +117,8 @@ public struct WindowSessionSnapshot: Codable, Hashable, Sendable {
         self.id = id
         self.triptychID = triptychID
         self.selectedWorkspace = selectedWorkspace
+        self.openDocuments = openDocuments
+        self.selectedDocument = selectedDocument
         self.workspaceSessions = workspaceSessions
         self.libraryVisible = libraryVisible
         self.inspectorVisible = inspectorVisible
@@ -166,6 +137,12 @@ public struct WindowSessionSnapshot: Codable, Hashable, Sendable {
         availablePathsByVault: [UUID: Set<String>]
     ) -> WindowSessionSnapshot {
         var result = self
+        result.openDocuments = openDocuments.filter {
+            availablePathsByVault[$0.vaultID]?.contains($0.relativePath) == true
+        }
+        if let selectedDocument, !result.openDocuments.contains(selectedDocument) {
+            result.selectedDocument = nil
+        }
         result.workspaceSessions = workspaceSessions.map { session in
             guard let vaultID = session.vaultID else { return session }
             return session.normalized(
@@ -181,6 +158,14 @@ public struct WindowSessionSnapshot: Codable, Hashable, Sendable {
         to destinationPath: String
     ) -> WindowSessionSnapshot {
         var result = self
+        func migrated(_ document: VaultQualifiedNoteID) -> VaultQualifiedNoteID {
+            guard document.vaultID == vaultID, document.relativePath == sourcePath else {
+                return document
+            }
+            return VaultQualifiedNoteID(vaultID: vaultID, relativePath: destinationPath)
+        }
+        result.openDocuments = openDocuments.map(migrated)
+        result.selectedDocument = selectedDocument.map(migrated)
         result.workspaceSessions = workspaceSessions.map {
             $0.migratingPath(
                 vaultID: vaultID,

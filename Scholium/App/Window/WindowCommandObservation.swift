@@ -16,6 +16,7 @@ final class WindowCommandObservation: ObservableObject {
         libraryMutationController: WindowLibraryMutationController,
         discoveryController: DiscoveryController,
         documentController: DocumentController,
+        documentTabController: DocumentTabController,
         documentNavigationHistoryController: DocumentNavigationHistoryController,
         workspaceProjectionController: WindowWorkspaceProjectionController
     ) {
@@ -52,6 +53,7 @@ final class WindowCommandObservation: ObservableObject {
             changes(libraryMutationController.$isMutatingFolder),
             discoveryChanges,
             documentNavigationChanges,
+            documentTabController.objectWillChange.map { _ in () }.eraseToAnyPublisher(),
             changes(documentController.$selectedDocument),
             changes(documentController.$snapshots),
             changes(documentController.$editingDocumentPath),

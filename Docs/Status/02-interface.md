@@ -53,6 +53,9 @@ already-visible Chat does not toggle the Sidebar closed.
 
 ## Library, Document, and Inspector
 
+- A window-wide native content-tab collection retains documents across Library
+  role changes. AppKit renders tabs; guarded selection and close retain source
+  safety. File exposes Close Tab and View exposes tab navigation and overflow.
 - Library presents Analyses, Topics, and Works through native single-choice
   segments. Complete localized labels adapt to role symbols at narrow widths;
   selection and disabled-workspace semantics remain native. The file tree keeps

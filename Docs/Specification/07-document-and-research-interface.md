@@ -8,8 +8,8 @@ to [Scholium Design](../../Design.md).
 
 Review, Edit, and Source are modes over one Document, not tabs. Each live
 Triptych workspace session owns one current mode, starting in Edit and retained
-across its Note/tab changes. Switching workspace restores that workspace's
-selection. Mode state never becomes a Note, vault, or Markdown fact.
+across its Note/tab changes. Activating a Note applies its role's mode; merely
+browsing another Library role does not change the active Document mode. Mode state never becomes a Note, vault, or Markdown fact.
 
 Review owns read selection; Edit owns formatting. Selection remains source-local without creating a separate annotation or
 collaboration object.

@@ -521,46 +521,31 @@ enum ScholiumWorkspaceSplitViewIdentifier {
     static let value = NSUserInterfaceItemIdentifier("scholium.workspaceSplitView")
 }
 
-private enum ScholiumDocumentTabLayout {
-    static let stripHeight = ScholiumGrid.Dimension.documentTabStripHeight
-    static let stripTopInset = ScholiumGrid.Spacing.inlineControlGap
-    static let stripHorizontalInset = ScholiumGrid.Spacing.regionContentInset
-    static let tabHorizontalInset = ScholiumGrid.Spacing.inlineControlGap
-    static let titleSpacing = ScholiumGrid.Spacing.labelAccessoryGap
-    static let balancedControlWidth = ScholiumGrid.Dimension.minimumCustomTarget
-    static let selectionRuleHeight: CGFloat = 1
+/// AppKit owns tab rendering and page containment. Selection requests pass
+/// through the window's asynchronous source-safety guard before being applied.
+@MainActor
+private final class ScholiumNativeDocumentTabController: NSTabViewController {
+    var isApplyingSelection = false
+    var requestSelection: ((UUID) -> Void)?
+
+    override func tabView(_ tabView: NSTabView, shouldSelect tabViewItem: NSTabViewItem?) -> Bool {
+        let allowed = super.tabView(tabView, shouldSelect: tabViewItem)
+        guard allowed else { return false }
+        guard !isApplyingSelection, let id = tabViewItem?.identifier as? UUID else {
+            return true
+        }
+        requestSelection?(id)
+        return false
+    }
 }
 
-/// AppKit content-tab container installed only in the middle split item. The
-/// `.unspecified` style is the ownership boundary that prevents this controller
-/// from replacing Scholium's existing native toolbar.
 @MainActor
 final class ScholiumDocumentTabsViewController<Document: View>: NSViewController {
-    private final class TabButton: ScholiumPointingHandButton {
-        var tabID: UUID?
-    }
-
-    private final class TabSelectorViews {
-        let container: NSView
-        let title: TabButton
-        let close: TabButton
-        let selectionRule: NSView
-
-        init(container: NSView, title: TabButton, close: TabButton, selectionRule: NSView) {
-            self.container = container
-            self.title = title
-            self.close = close
-            self.selectionRule = selectionRule
-        }
-    }
-
-    private let tabViewController = NSTabViewController()
-    private let tabButtonStack = NSStackView()
-    private let tabStrip = NSView()
-    private var tabStripHeightConstraint: NSLayoutConstraint!
+    private let tabViewController = ScholiumNativeDocumentTabController()
+    private let tabSelector = NSSegmentedControl()
+    private let tabHeader = NSStackView()
     private var pageHosts: [UUID: NSHostingController<Document>] = [:]
     private var pageItems: [UUID: NSTabViewItem] = [:]
-    private var selectorViews: [UUID: TabSelectorViews] = [:]
     private var placeholderHost: NSHostingController<Document>
     private var placeholderItem: NSTabViewItem
     private var tabs: [DocumentTabItem]
@@ -600,49 +585,45 @@ final class ScholiumDocumentTabsViewController<Document: View>: NSViewController
         tabViewController.canPropagateSelectedChildViewControllerTitle = false
         addChild(tabViewController)
 
-        tabButtonStack.orientation = .horizontal
-        tabButtonStack.alignment = .height
-        tabButtonStack.distribution = .fillEqually
-        tabButtonStack.spacing = 0
-        tabButtonStack.translatesAutoresizingMaskIntoConstraints = false
-        tabButtonStack.setHuggingPriority(.defaultLow, for: .horizontal)
-        tabButtonStack.setAccessibilityIdentifier("scholium.documentTabSelector")
-
-        tabStrip.translatesAutoresizingMaskIntoConstraints = false
-        tabStrip.setAccessibilityElement(true)
-        tabStrip.setAccessibilityRole(.group)
-        tabStrip.setAccessibilityLabel("Document Tabs")
-        tabStrip.setAccessibilityIdentifier("scholium.documentTabs")
-        tabStrip.addSubview(tabButtonStack)
-
+        tabViewController.requestSelection = { [weak self] id in self?.selectTab(id) }
         let tabContent = tabViewController.view
         tabContent.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(tabStrip)
-        view.addSubview(tabContent)
-
-        tabStripHeightConstraint = tabStrip.heightAnchor.constraint(equalToConstant: 0)
+        tabViewController.tabView.tabViewType = .noTabsNoBorder
+        tabViewController.tabView.setAccessibilityIdentifier("scholium.documentPage")
+        tabSelector.trackingMode = .selectOne
+        tabSelector.segmentStyle = .automatic
+        tabSelector.borderShape = .capsule
+        tabSelector.controlSize = .large
+        tabSelector.segmentDistribution = .fillEqually
+        if #available(macOS 27.0, *) { tabSelector.role = .tabs }
+        tabSelector.target = self
+        tabSelector.action = #selector(selectDocumentTab(_:))
+        tabSelector.setAccessibilityIdentifier("scholium.documentTabs")
+        tabSelector.setAccessibilityLabel(
+            String(localized: "Document Tabs", table: "Localizable", bundle: .module)
+        )
+        tabSelector.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        tabSelector.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        tabHeader.orientation = .horizontal
+        tabHeader.distribution = .fill
+        let inset = ScholiumGrid.Spacing.inlineControlGap
+        tabHeader.edgeInsets = NSEdgeInsets(top: inset, left: inset, bottom: inset, right: inset)
+        tabHeader.addArrangedSubview(tabSelector)
+        tabHeader.setContentHuggingPriority(.required, for: .vertical)
+        let column = NSStackView(views: [tabHeader, tabContent])
+        column.orientation = .vertical
+        column.alignment = .width
+        column.distribution = .fill
+        column.spacing = 0
+        column.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(column)
         NSLayoutConstraint.activate([
-            tabStrip.topAnchor.constraint(equalTo: view.topAnchor),
-            tabStrip.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            tabStrip.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            tabStripHeightConstraint,
-            tabButtonStack.topAnchor.constraint(
-                equalTo: tabStrip.topAnchor,
-                constant: ScholiumDocumentTabLayout.stripTopInset
-            ),
-            tabButtonStack.leadingAnchor.constraint(
-                equalTo: tabStrip.leadingAnchor,
-                constant: ScholiumDocumentTabLayout.stripHorizontalInset
-            ),
-            tabButtonStack.trailingAnchor.constraint(
-                equalTo: tabStrip.trailingAnchor,
-                constant: -ScholiumDocumentTabLayout.stripHorizontalInset
-            ),
-            tabButtonStack.bottomAnchor.constraint(equalTo: tabStrip.bottomAnchor),
-            tabContent.topAnchor.constraint(equalTo: tabStrip.bottomAnchor),
-            tabContent.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            tabContent.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            tabContent.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            tabHeader.widthAnchor.constraint(equalTo: column.widthAnchor),
+            tabSelector.widthAnchor.constraint(equalTo: tabHeader.widthAnchor, constant: -2 * inset),
+            column.topAnchor.constraint(equalTo: view.topAnchor),
+            column.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            column.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            column.bottomAnchor.constraint(equalTo: view.bottomAnchor),
         ])
         synchronize(document: placeholderHost.rootView)
     }
@@ -666,6 +647,28 @@ final class ScholiumDocumentTabsViewController<Document: View>: NSViewController
     }
 
     private func synchronize(document: Document) {
+        tabViewController.isApplyingSelection = true
+        defer { tabViewController.isApplyingSelection = false }
+        tabHeader.isHidden = tabs.count < 2
+        if tabSelector.segmentCount != tabs.count { tabSelector.segmentCount = tabs.count }
+        for (index, tab) in tabs.enumerated() {
+            tabSelector.setLabel(tab.title, forSegment: index)
+            tabSelector.setToolTip(tab.toolTip, forSegment: index)
+            tabSelector.setWidth(0, forSegment: index)
+        }
+        tabSelector.selectedSegment = tabs.firstIndex { $0.id == selectedTabID } ?? -1
+        let menu = NSMenu()
+        for tab in tabs {
+            let item = NSMenuItem(
+                title: String(localized: "Close Tab", table: "Localizable", bundle: .module)
+                    + " — " + tab.title,
+                action: #selector(closeDocumentTab(_:)), keyEquivalent: ""
+            )
+            item.target = self
+            item.representedObject = tab.id
+            menu.addItem(item)
+        }
+        tabSelector.menu = menu
         let showsPlaceholder = tabs.isEmpty || selectedTabID == nil
         if showsPlaceholder {
             placeholderHost.rootView = document
@@ -723,177 +726,26 @@ final class ScholiumDocumentTabsViewController<Document: View>: NSViewController
         {
             tabViewController.selectedTabViewItemIndex = placeholderIndex
         }
-        rebuildSelector()
     }
 
-    private func rebuildSelector() {
-        let currentIDs = Set(tabs.map(\.id))
-        for staleID in Set(selectorViews.keys).subtracting(currentIDs) {
-            guard let stale = selectorViews.removeValue(forKey: staleID) else { continue }
-            tabButtonStack.removeArrangedSubview(stale.container)
-            stale.container.removeFromSuperview()
-        }
-        for (index, tab) in tabs.enumerated() {
-            let selector = selectorViews[tab.id] ?? makeTabItem(for: tab)
-            selectorViews[tab.id] = selector
-            if !tabButtonStack.arrangedSubviews.contains(where: { $0 === selector.container }) {
-                tabButtonStack.insertArrangedSubview(selector.container, at: index)
-            } else if let currentIndex = tabButtonStack.arrangedSubviews.firstIndex(
-                where: { $0 === selector.container }
-            ), currentIndex != index {
-                tabButtonStack.removeArrangedSubview(selector.container)
-                tabButtonStack.insertArrangedSubview(selector.container, at: index)
-            }
-            update(selector, for: tab, isSelected: tab.id == selectedTabID)
-        }
-        let showsTabStrip = tabs.count > 1
-        tabStrip.isHidden = !showsTabStrip
-        tabStripHeightConstraint.constant =
-            showsTabStrip
-            ? ScholiumDocumentTabLayout.stripHeight
-            : 0
+    @objc private func selectDocumentTab(_ sender: NSSegmentedControl) {
+        let index = sender.selectedSegment
+        sender.selectedSegment = tabs.firstIndex { $0.id == selectedTabID } ?? -1
+        guard tabs.indices.contains(index), tabs[index].id != selectedTabID else { return }
+        selectTab(tabs[index].id)
     }
 
-    private func makeTabItem(for tab: DocumentTabItem) -> TabSelectorViews {
-        let item = NSView()
-
-        let leadingBalance = NSView()
-        leadingBalance.translatesAutoresizingMaskIntoConstraints = false
-        leadingBalance.setAccessibilityElement(false)
-
-        let titleButton = TabButton(
-            title: tab.title,
-            target: self,
-            action: #selector(selectDocumentTab(_:))
-        )
-        titleButton.tabID = tab.id
-        titleButton.isBordered = false
-        titleButton.alignment = .center
-        titleButton.font = .systemFont(
-            ofSize: NSFont.systemFontSize,
-            weight: .regular
-        )
-        titleButton.contentTintColor = ScholiumColorRole.secondaryText.nsColor
-        titleButton.toolTip = tab.toolTip
-        titleButton.lineBreakMode = .byTruncatingTail
-        titleButton.translatesAutoresizingMaskIntoConstraints = false
-        titleButton.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        titleButton.setAccessibilityLabel(tab.title)
-        titleButton.setAccessibilityValue("")
-
-        let closeLabel = "Close \(tab.title)"
-        let closeButton = TabButton(
-            image: NSImage(
-                systemSymbolName: "xmark",
-                accessibilityDescription: closeLabel
-            ) ?? NSImage(),
-            target: self,
-            action: #selector(closeDocumentTab(_:))
-        )
-        closeButton.tabID = tab.id
-        closeButton.isBordered = false
-        closeButton.imagePosition = .imageOnly
-        closeButton.contentTintColor = ScholiumColorRole.secondaryText.nsColor
-        closeButton.toolTip = closeLabel
-        closeButton.translatesAutoresizingMaskIntoConstraints = false
-        closeButton.setAccessibilityLabel(closeLabel)
-        closeButton.setContentCompressionResistancePriority(.required, for: .horizontal)
-
-        let selectionRule = NSView()
-        selectionRule.wantsLayer = true
-        selectionRule.layer?.backgroundColor = NSColor.clear.cgColor
-        selectionRule.translatesAutoresizingMaskIntoConstraints = false
-
-        item.addSubview(leadingBalance)
-        item.addSubview(titleButton)
-        item.addSubview(closeButton)
-        item.addSubview(selectionRule)
-
-        NSLayoutConstraint.activate([
-            leadingBalance.leadingAnchor.constraint(
-                equalTo: item.leadingAnchor,
-                constant: ScholiumDocumentTabLayout.tabHorizontalInset
-            ),
-            leadingBalance.widthAnchor.constraint(
-                equalToConstant: ScholiumDocumentTabLayout.balancedControlWidth
-            ),
-            titleButton.leadingAnchor.constraint(
-                equalTo: leadingBalance.trailingAnchor,
-                constant: ScholiumDocumentTabLayout.titleSpacing
-            ),
-            titleButton.trailingAnchor.constraint(
-                equalTo: closeButton.leadingAnchor,
-                constant: -ScholiumDocumentTabLayout.titleSpacing
-            ),
-            titleButton.centerYAnchor.constraint(equalTo: closeButton.centerYAnchor),
-            closeButton.trailingAnchor.constraint(
-                equalTo: item.trailingAnchor,
-                constant: -ScholiumDocumentTabLayout.tabHorizontalInset
-            ),
-            closeButton.centerYAnchor.constraint(equalTo: item.centerYAnchor, constant: -1),
-            closeButton.widthAnchor.constraint(
-                equalToConstant: ScholiumDocumentTabLayout.balancedControlWidth
-            ),
-            closeButton.heightAnchor.constraint(
-                equalToConstant: ScholiumDocumentTabLayout.balancedControlWidth
-            ),
-            selectionRule.leadingAnchor.constraint(equalTo: item.leadingAnchor),
-            selectionRule.trailingAnchor.constraint(equalTo: item.trailingAnchor),
-            selectionRule.bottomAnchor.constraint(equalTo: item.bottomAnchor),
-            selectionRule.heightAnchor.constraint(
-                equalToConstant: ScholiumDocumentTabLayout.selectionRuleHeight
-            ),
-        ])
-        return TabSelectorViews(
-            container: item,
-            title: titleButton,
-            close: closeButton,
-            selectionRule: selectionRule
-        )
-    }
-
-    private func update(
-        _ selector: TabSelectorViews,
-        for tab: DocumentTabItem,
-        isSelected: Bool
-    ) {
-        selector.title.title = tab.title
-        selector.title.toolTip = tab.toolTip
-        selector.title.font = .systemFont(
-            ofSize: NSFont.systemFontSize,
-            weight: isSelected ? .medium : .regular
-        )
-        selector.title.contentTintColor =
-            isSelected
-            ? ScholiumColorRole.primaryText.nsColor
-            : ScholiumColorRole.secondaryText.nsColor
-        selector.title.setAccessibilityLabel(tab.title)
-        selector.title.setAccessibilityValue(isSelected ? "Selected" : "")
-        let closeLabel = "Close \(tab.title)"
-        selector.close.toolTip = closeLabel
-        selector.close.setAccessibilityLabel(closeLabel)
-        selector.selectionRule.layer?.backgroundColor =
-            isSelected
-            ? ScholiumColorRole.accent.nsColor.cgColor
-            : NSColor.clear.cgColor
+    @objc private func closeDocumentTab(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? UUID else { return }
+        closeTab(id)
     }
 
     #if DEBUG
         func testingPageHost(for id: UUID) -> AnyObject? { pageHosts[id] }
         func testingPageItem(for id: UUID) -> AnyObject? { pageItems[id] }
-        func testingSelectorView(for id: UUID) -> AnyObject? { selectorViews[id]?.container }
+        var testingNativeTabView: NSTabView { tabViewController.tabView }
+        var testingTabSelector: NSSegmentedControl { tabSelector }
         func testingPageLabel(for id: UUID) -> String? { pageItems[id]?.label }
     #endif
 
-    @objc
-    private func selectDocumentTab(_ sender: NSButton) {
-        guard let tabID = (sender as? TabButton)?.tabID else { return }
-        selectTab(tabID)
-    }
-
-    @objc
-    private func closeDocumentTab(_ sender: NSButton) {
-        guard let tabID = (sender as? TabButton)?.tabID else { return }
-        closeTab(tabID)
-    }
 }

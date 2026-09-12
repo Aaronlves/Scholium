@@ -716,7 +716,7 @@ struct WindowLifecycleTests {
         window.close()
     }
 
-    @Test("Document tab updates preserve page hosts and selector identities")
+    @Test("Document tab updates preserve page hosts and native item identities")
     func documentTabAdapterUpdatesIncrementally() {
         let firstID = UUID()
         let secondID = UUID()
@@ -732,17 +732,29 @@ struct WindowLifecycleTests {
             title: "Second",
             toolTip: "Second.md"
         )
+        var requestedSelection: UUID?
         let controller = ScholiumDocumentTabsViewController(
             document: Text("First projection"),
             tabs: [first, second],
             selectedTabID: firstID,
-            selectTab: { _ in },
+            selectTab: { requestedSelection = $0 },
             closeTab: { _ in }
         )
         controller.loadViewIfNeeded()
         let firstHost = controller.testingPageHost(for: firstID)
         let firstItem = controller.testingPageItem(for: firstID)
-        let firstSelector = controller.testingSelectorView(for: firstID)
+        #expect(controller.testingNativeTabView.tabViewType == .noTabsNoBorder)
+        #expect(controller.testingTabSelector.segmentDistribution == .fillEqually)
+        #expect(controller.testingTabSelector.borderShape == .capsule)
+        controller.view.frame = NSRect(x: 0, y: 0, width: 800, height: 600)
+        controller.view.layoutSubtreeIfNeeded()
+        #expect(controller.testingTabSelector.frame.width >= 780)
+        controller.testingTabSelector.selectedSegment = 1
+        controller.testingTabSelector.sendAction(
+            controller.testingTabSelector.action!, to: controller.testingTabSelector.target
+        )
+        #expect(requestedSelection == secondID)
+        #expect(controller.testingNativeTabView.selectedTabViewItem === firstItem)
         var renamed = first
         renamed.title = "Renamed"
         renamed.toolTip = "Renamed.md"
@@ -757,7 +769,7 @@ struct WindowLifecycleTests {
 
         #expect(controller.testingPageHost(for: firstID) === firstHost)
         #expect(controller.testingPageItem(for: firstID) === firstItem)
-        #expect(controller.testingSelectorView(for: firstID) === firstSelector)
+        #expect(controller.testingNativeTabView.selectedTabViewItem === firstItem)
         #expect(controller.testingPageLabel(for: firstID) == "Renamed")
     }
 

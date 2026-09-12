@@ -322,14 +322,14 @@ selection and document workflow state; `ResearchController` owns Settlement,
 durable-recovery projection, and the window-borrowed machine-local
 Agent Change list used for presence and presentation. It neither republishes
 nor duplicates document or shell state.
-`DocumentTransitionCoordinator` serializes workspace and document replacement,
-flushes the exact active editor before mutation, coalesces rapid workspace input
-to the last requested destination, and commits only after the destination
-Library projection and retained selected tab are valid. `WindowModel` then
-changes the Shell selection, Document mode owner, active tab group, selected
-Document, and Inspector projection in one main-actor commit. A preparation,
-save, conflict, or destination-validation failure leaves the originating
-workspace session selected and unchanged.
+`DocumentTransitionCoordinator` serializes document replacement and guarded
+Library transitions. A staged Library role change commits only its browse
+projection and shell selection, preserving the current Document and tab order.
+Document selection and close resolve their current tab identity inside the
+serialized operation after source safety. Background closes preserve selection;
+a selected close activates an adjacent vault-qualified document before removal.
+A preparation, save, conflict, or destination-validation failure retains the
+originating source and recovery state.
 `WindowWorkspaceProjectionController` is the exact-window owner of the
 immutable research catalog, resolved Metadata catalog, per-vault snapshots, selected Library's
 Notes/tags/authors/revisions and property-filter options, graph, Note
@@ -524,8 +524,8 @@ source at its destination as an explicit source-ahead projection, activates and
 reveals it immediately, and lets the complete derived refresh converge in the
 background.
 Document, Search, and presentation are window-local. Library hierarchy,
-filters, sort, Document tabs, live Document mode, and Inspector mode
-are partitioned by the three Triptych workspaces; Sidebar/Inspector visibility,
+filters and sort retain the three Library scopes; Document mode and Inspector mode
+retain role-local preferences. Tab membership and selection, Sidebar/Inspector visibility,
 split geometry, toolbar, and window frame remain outer-window state. Controllers
 do not mutate one another. Separate
 `WorkspaceSettingsModel` groups workspace, machine, Zotero, and integration
@@ -536,25 +536,26 @@ silently last-writer-win.
 
 ### Document tabs and native shell
 
-Each window has one `DocumentTabController`, partitioned internally into
-Analyses, Topics, and Works groups with one selected page per group. An `.unspecified`
-`NSTabViewController` in the middle split item hosts document pages; a
-Document-owned selector renders the tabs. `.toolbar` is forbidden because it
-would replace `NSWindow.toolbar` and create a second toolbar owner. Tabs create
-no window, model, split, Library, or Apparatus. The controller owns only order,
-per-workspace selection, and document references; inactive groups remain
-retained but are not projected into the native container. `DocumentController` and
-`DocumentSessionStore` retain sessions and apply the flush/reconstruction guard.
-Apparatus derives from the active document, keeps window-owned visibility, and
-restores the selected workspace's mode. Only New Window creates a shell. The
-Document presentation owns one live Review/Edit/Source selection per workspace,
-defaults writable workspaces to Edit, and carries that selection across Note and tab changes.
-`WindowSessionSnapshot` stores the selected workspace plus three
-`WindowWorkspaceSessionSnapshot` values containing role-partitioned tab order,
-selection, Document mode, Inspector mode, and lightweight presentation for
-each still-open document: normalized scroll plus source-fingerprint-bound
-editor ranges and title/body focus. It stores no source bytes, Undo state, or
-presentation for tabs already closed.
+Each window has one `DocumentTabController` with one ordered collection and
+selected identity across all three vault roles. An `.unspecified`
+`NSTabViewController` in the middle split item keeps its content view borderless.
+A full-width native `NSSegmentedControl` uses automatic styling, a capsule border,
+large control size and equal segment distribution; macOS 27 adds its tabs role.
+It is hidden when fewer than two documents remain. AppKit owns the control's
+shape, selection rendering and adaptation. Its action and the native delegate
+translate selection into the window's guarded intent;
+only a committed model projection may change the native selected page. It never
+replaces `NSWindow.toolbar`. Tabs create no window, model, split, Library, or
+Apparatus. `DocumentController` and `DocumentSessionStore` retain sessions and
+apply the flush/reconstruction guard. Apparatus derives from the active Document;
+browsing Library leaves that Document and its mode intact. Only New Window creates
+a shell. Document presentation retains one Review/Edit/Source preference per role,
+defaulting writable roles to Edit and applying it when a Note is activated.
+`WindowSessionSnapshot` stores window-wide tab order and selection independently
+of the browsed role. `WindowWorkspaceSessionSnapshot` retains mode preferences
+and lightweight presentation for each still-open document in its vault: normalized
+scroll plus source-fingerprint-bound editor ranges and title/body focus.
+It stores no source bytes, Undo state, or presentation for closed tabs.
 Unsupported session bytes fail closed rather than entering a compatibility
 decoder.
 

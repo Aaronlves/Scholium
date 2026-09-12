@@ -1563,7 +1563,7 @@ struct WindowControllerArchitectureTests {
 
         let selectedActivationStart = try #require(
             windowModelSource.range(
-                of: "private func activateWorkspaceReferenceInSelectedWorkspace("
+                of: "private func activateResolvedWorkspaceReference("
             ))
         let selectedActivationEnd = try #require(
             windowModelSource.range(
@@ -2034,7 +2034,7 @@ struct WindowControllerArchitectureTests {
             ))
         #expect(
             !restoreSource.contains(
-                "activateWorkspaceReferenceInSelectedWorkspace("
+                "activateResolvedWorkspaceReference("
             ))
         #expect(!restoreSource.contains("documentTabController.restoreTabs"))
         #expect(!restoreSource.contains("restoredDocumentTab"))

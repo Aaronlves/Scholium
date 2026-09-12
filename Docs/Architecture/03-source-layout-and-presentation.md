@@ -72,9 +72,9 @@ window. Its bounded AppKit bridge creates the three-item split described above;
 role-owned backgrounds fill each container while Library, Document, and
 Apparatus content stays foreground in the live safe area. Bootstrap never
 constructs this split. Loading and document states replace hosted content, not
-the shell. Only the selected Triptych workspace's tab group enters the one
-central `NSTabViewController`; inactive groups stay in the window-local
-`DocumentTabController` and receive no native host or accessibility projection.
+the shell. The window-wide document collection enters one central
+`NSTabViewController`; its native content tabs render selection while the
+window-local `DocumentTabController` retains membership and guarded selection.
 The composition root passes the complete `WindowModel` explicitly;
 `ContentView` observes the presentation, Search, Research, Document, tab,
 projection, CSS, and workspace-session owners it actually
@@ -180,8 +180,8 @@ Ordinary workspace navigation uses a workspace-keyed
 one Library state and one in-flight request per Triptych workspace, so a later
 request supersedes only the same workspace. `WindowModel` first flushes the
 active editor, stages the destination vault and Library projection, validates
-its retained selected tab, and only then commits Shell selection, the
-destination tab group, Document mode, and Inspector mode. Rapid requests
+the request identity, and only then commits Library and Shell selection.
+The current Document, tabs, and document mode remain unchanged. Rapid requests
 converge on the last requested workspace.
 
 `ResearchInspectorView` lives with the Sidebar views, separately from the

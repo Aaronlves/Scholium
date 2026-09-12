@@ -468,20 +468,21 @@ private struct RuntimeMembershipFixture: Sendable {
             id: UUID(),
             triptychID: assignment.id,
             selectedWorkspace: .paperAnalysis,
+            openDocuments: [
+                VaultQualifiedNoteID(
+                    vaultID: analysesIdentity.id,
+                    relativePath: "Agency.md"
+                )
+            ],
+            selectedDocument: VaultQualifiedNoteID(
+                vaultID: analysesIdentity.id,
+                relativePath: "Agency.md"
+            ),
             workspaceSessions: [
                 WindowWorkspaceSessionSnapshot(
                     workspace: .paperAnalysis,
                     vaultID: analysesIdentity.id,
-                    openDocuments: [
-                        VaultQualifiedNoteID(
-                            vaultID: analysesIdentity.id,
-                            relativePath: "Agency.md"
-                        )
-                    ],
-                    selectedDocument: VaultQualifiedNoteID(
-                        vaultID: analysesIdentity.id,
-                        relativePath: "Agency.md"
-                    ),
+
                     documentPresentations: [
                         "Agency.md": WindowDocumentPresentationSnapshot(
                             scrollFraction: 0.25

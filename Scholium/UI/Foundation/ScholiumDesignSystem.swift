@@ -1298,7 +1298,6 @@ enum ScholiumGrid {
         static let minimumCustomTarget = foundationUnit * 5
         static let compactHierarchyRowHeight = foundationUnit * 6
         static let preferredCustomTarget = foundationUnit * 7
-        static let documentTabStripHeight = foundationUnit * 10
         static let regionHeaderHeight = foundationUnit * 12
         static let iconTrackWidth = foundationUnit * 4
     }

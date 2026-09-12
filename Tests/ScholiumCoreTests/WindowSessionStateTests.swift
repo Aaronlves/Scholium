@@ -13,7 +13,7 @@ struct WindowSessionStateTests {
         #expect(snapshot.workspaceSessions.isEmpty)
     }
 
-    @Test("Role-partitioned tabs and modes round-trip outside research vaults")
+    @Test("Window-wide tabs and role-local modes round-trip outside research vaults")
     func roundTrip() async throws {
         let root = temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: root) }
@@ -34,12 +34,13 @@ struct WindowSessionStateTests {
             id: id,
             triptychID: triptychID,
             selectedWorkspace: .topicKnowledge,
+            openDocuments: [analysis, topic],
+            selectedDocument: topic,
             workspaceSessions: [
                 WindowWorkspaceSessionSnapshot(
                     workspace: .paperAnalysis,
                     vaultID: analysesVaultID,
-                    openDocuments: [analysis],
-                    selectedDocument: analysis,
+
                     documentPresentations: [
                         "A.md": WindowDocumentPresentationSnapshot(
                             scrollFraction: 0.25,
@@ -54,8 +55,7 @@ struct WindowSessionStateTests {
                 WindowWorkspaceSessionSnapshot(
                     workspace: .topicKnowledge,
                     vaultID: topicsVaultID,
-                    openDocuments: [topic],
-                    selectedDocument: topic,
+
                     inspectorMode: "actions",
                     documentMode: "livePreview"
                 ),
@@ -76,12 +76,13 @@ struct WindowSessionStateTests {
         let present = VaultQualifiedNoteID(vaultID: vaultID, relativePath: "Present.md")
         let missing = VaultQualifiedNoteID(vaultID: vaultID, relativePath: "Missing.md")
         let snapshot = WindowSessionSnapshot(
+            openDocuments: [present, missing],
+            selectedDocument: missing,
             workspaceSessions: [
                 WindowWorkspaceSessionSnapshot(
                     workspace: .paperAnalysis,
                     vaultID: vaultID,
-                    openDocuments: [present, missing],
-                    selectedDocument: missing,
+
                     documentPresentations: [
                         "Present.md": WindowDocumentPresentationSnapshot(scrollFraction: 0.8),
                         "Missing.md": WindowDocumentPresentationSnapshot(scrollFraction: 0.2),
@@ -96,8 +97,8 @@ struct WindowSessionStateTests {
         let session = try #require(
             normalized.workspaceSession(for: .paperAnalysis)
         )
-        #expect(session.openDocuments == [present])
-        #expect(session.selectedDocument == nil)
+        #expect(normalized.openDocuments == [present])
+        #expect(normalized.selectedDocument == nil)
         #expect(
             session.documentPresentations == [
                 "Present.md": WindowDocumentPresentationSnapshot(scrollFraction: 0.8)
@@ -141,12 +142,13 @@ struct WindowSessionStateTests {
             relativePath: "Old.md"
         )
         let snapshot = WindowSessionSnapshot(
+            openDocuments: [matchingDocument, peerDocument],
+            selectedDocument: peerDocument,
             workspaceSessions: [
                 WindowWorkspaceSessionSnapshot(
                     workspace: .paperAnalysis,
                     vaultID: vaultID,
-                    openDocuments: [matchingDocument],
-                    selectedDocument: matchingDocument,
+
                     documentPresentations: [
                         "Old.md": WindowDocumentPresentationSnapshot(scrollFraction: 0.6)
                     ]
@@ -154,8 +156,7 @@ struct WindowSessionStateTests {
                 WindowWorkspaceSessionSnapshot(
                     workspace: .topicKnowledge,
                     vaultID: peerVaultID,
-                    openDocuments: [peerDocument],
-                    selectedDocument: peerDocument
+
                 ),
             ]
         )
@@ -174,12 +175,12 @@ struct WindowSessionStateTests {
         let topics = try #require(
             migrated.workspaceSession(for: .topicKnowledge)
         )
-        #expect(analyses.selectedDocument?.relativePath == "New.md")
+        #expect(migrated.openDocuments.first?.relativePath == "New.md")
         #expect(
             analyses.documentPresentations == [
                 "New.md": WindowDocumentPresentationSnapshot(scrollFraction: 0.6)
             ])
-        #expect(topics.selectedDocument == peerDocument)
+        #expect(migrated.selectedDocument == peerDocument)
     }
 
     @Test("Removing a session is idempotent")
