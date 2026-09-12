@@ -295,7 +295,6 @@ enum DocumentAppearanceStyles {
                   margin-inline-start: \(number(callout.startInsetEm ?? defaults.startInsetEm ?? callout.inlineInsetEm))em;
                   margin-inline-end: \(number(callout.endInsetEm ?? defaults.endInsetEm ?? callout.inlineInsetEm))em;
                 }
-                \(selectors.review) .scholium-callout-body { margin-block-start: 0; }
                 """
         case .connections:
             css += """
@@ -306,7 +305,7 @@ enum DocumentAppearanceStyles {
                   margin-inline: \(number(callout.inlineInsetEm))em;
                 }
                 \(selectors.live).cm-live-callout-body-line {
-                  padding-inline-start: calc(.9em + var(--scholium-callout-connect-content-indent));
+                  padding-inline-start: calc(var(--scholium-callout-inline-inset) + var(--scholium-callout-connect-content-indent));
                 }
                 """
         case .statement:
@@ -320,8 +319,6 @@ enum DocumentAppearanceStyles {
             css += """
 
                 \(selectors.review) {
-                  grid-template-columns: \(number(callout.titleColumnEm ?? defaults.titleColumnEm ?? 6.4))em minmax(0, 1fr);
-                  column-gap: \(number(callout.columnGapEm ?? defaults.columnGapEm ?? 0.85))em;
                   margin-inline: \(number(callout.inlineInsetEm))em;
                 }
                 \(selectors.live) {
@@ -349,7 +346,7 @@ enum DocumentAppearanceStyles {
                 \(selectors.review),
                 \(selectors.live) { margin-inline: \(number(callout.inlineInsetEm))em; }
                 \(selectors.review) > .scholium-callout-body { margin-inline-start: \(number(callout.contentIndentEm ?? defaults.contentIndentEm ?? 0.5))em; }
-                \(selectors.live).cm-live-callout-body-line { padding-inline-start: \(number(callout.contentIndentEm ?? defaults.contentIndentEm ?? 0.5))em; }
+                \(selectors.live).cm-live-callout-body-line { padding-inline-start: calc(var(--scholium-callout-inline-inset) + \(number(callout.contentIndentEm ?? defaults.contentIndentEm ?? 0.5))em); }
                 """
         case .quotation:
             css += """

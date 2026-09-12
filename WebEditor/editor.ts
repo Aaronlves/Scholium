@@ -1052,10 +1052,7 @@ function buildLiveDecorations(
           if (parsedCallout && parsedCallout.from === line.from) {
             const opening = calloutHeader(doc.sliceString(line.from, line.to));
             const authoredTitle = opening?.[4] ?? "";
-            const roleIdentifier = opening
-              ? calloutDefinition(opening[2]).identifier
-              : "neutral";
-            if (roleIdentifier !== "orient" && authoredTitle.length > 0) {
+            if (authoredTitle.length > 0) {
               const titleFrom = line.to - authoredTitle.length;
               addMark(
                 Math.max(scanFrom, titleFrom),

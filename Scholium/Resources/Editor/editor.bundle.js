@@ -32313,20 +32313,19 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     heading2.className = "scholium-callout-heading";
     heading2.setAttribute("role", "heading");
     heading2.setAttribute("aria-level", "2");
-    const orientationTitleBecomesBody = parts.definition.identifier === "orient" && parts.title.length > 0 && parts.body.trim().length === 0;
     const role = document2.createElement("span");
     role.className = "scholium-callout-role scholium-callout-role-context";
     role.dir = "auto";
     role.title = parts.definition.meaning;
     role.textContent = parts.definition.label;
     heading2.append(role);
-    if (parts.title && !orientationTitleBecomesBody) {
+    if (parts.title) {
       const title = document2.createElement("span");
       title.className = "scholium-callout-title";
       title.dir = "auto";
       appendInlineMarkdown(parts.title, title, optionsAt(options, parts.titleFrom));
       heading2.append(title);
-    } else if (!orientationTitleBecomesBody) {
+    } else {
       const title = document2.createElement("span");
       title.className = "scholium-callout-title scholium-callout-default-title";
       title.dir = "auto";
@@ -32350,15 +32349,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       destination.dir = "auto";
       content2.append(destination);
     }
-    if (orientationTitleBecomesBody) {
-      const paragraph = document2.createElement("p");
-      paragraph.className = "scholium-callout-orient-title-body";
-      paragraph.dir = "auto";
-      appendInlineMarkdown(parts.title, paragraph, optionsAt(options, parts.titleFrom));
-      destination.append(paragraph);
-    } else {
-      appendMarkdownBlocks(parts.body, destination, optionsWithMap(options, parts.bodyOffsets));
-    }
+    appendMarkdownBlocks(parts.body, destination, optionsWithMap(options, parts.bodyOffsets));
     body.append(content2);
     callout.append(headingContainer, body);
     parent.append(callout);
@@ -34812,7 +34803,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
           const button = document.createElement("button");
           button.type = "button";
           button.className = "cm-live-callout-disclosure";
-          button.textContent = this.collapsed ? "\u25B8" : "\u25BE";
+          button.textContent = "";
           button.setAttribute("aria-expanded", String(!this.collapsed));
           button.setAttribute("aria-label", `${localized("Callout")}: ${this.title || this.label}`);
           button.addEventListener("mousedown", (event) => event.preventDefault());
@@ -34828,7 +34819,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         }
         if (this.label) {
           const label = document.createElement("span");
-          label.className = "cm-live-callout-role-label";
+          label.className = this.title ? "cm-live-callout-role-label" : "scholium-callout-default-title scholium-callout-title";
           label.textContent = `${this.label} `;
           root.append(label);
         }
@@ -34836,15 +34827,18 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       }
       updateDOM(root) {
         const button = root.querySelector("button");
-        const label = root.querySelector(".cm-live-callout-role-label");
+        const label = root.querySelector(".cm-live-callout-role-label, .scholium-callout-default-title");
         if (!!button !== this.foldable || !!label !== !!this.label) return false;
         root.dataset.calloutFrom = String(this.from);
         if (button) {
-          button.textContent = this.collapsed ? "\u25B8" : "\u25BE";
+          button.textContent = "";
           button.setAttribute("aria-expanded", String(!this.collapsed));
           button.setAttribute("aria-label", `${localized("Callout")}: ${this.title || this.label}`);
         }
-        if (label) label.textContent = `${this.label} `;
+        if (label) {
+          label.className = this.title ? "cm-live-callout-role-label" : "scholium-callout-default-title scholium-callout-title";
+          label.textContent = `${this.label} `;
+        }
         return true;
       }
       ignoreEvent() {
@@ -34862,7 +34856,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         const bodyActive = selections.some((range) => range.empty ? range.head > header.to && range.head <= presentation.to : range.from < presentation.to && range.to > header.to);
         const collapsed = foldable2 && !bodyActive && (folds.get(presentation.from) ?? opening[3] === "-");
         const label = resolveCallout(opening[2]).label;
-        if (foldable2) decorations2.push(Decoration.widget({
+        if (foldable2 || !opening[4]) decorations2.push(Decoration.widget({
           widget: new CalloutHeadingWidget(presentation.from, label, opening[4], foldable2, collapsed),
           side: 1
         }).range(header.to - opening[4].length));
@@ -37349,8 +37343,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
             if (parsedCallout && parsedCallout.from === line.from) {
               const opening = calloutHeader(doc2.sliceString(line.from, line.to));
               const authoredTitle = opening?.[4] ?? "";
-              const roleIdentifier = opening ? calloutDefinition2(opening[2]).identifier : "neutral";
-              if (roleIdentifier !== "orient" && authoredTitle.length > 0) {
+              if (authoredTitle.length > 0) {
                 const titleFrom = line.to - authoredTitle.length;
                 addMark(
                   Math.max(scanFrom, titleFrom),

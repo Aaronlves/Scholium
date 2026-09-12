@@ -243,10 +243,24 @@ Edit prose. Ordinary prose follows language-aware line-breaking rules, and
 closing punctuation is not left alone at a visual-line start merely because it
 follows an interactive inline projection.
 
+Review and Edit Callouts share role-specific title colors, typography, quiet surfaces,
+and a single-column header/body order. Examples do not acquire a Review-only
+column layout, and quotation titles retain their authored position above the
+passage. Untitled Callouts share a default role title while inactive; activating
+the Edit header replaces that projection with exact source. Active syntax and
+addressable source rows remain the bounded editing exceptions described above.
+
 Edit Callouts retain their exact authored markers when active, but do not repeat
 generated role names such as `Caution`, `Statement`, or `Quotation` as visible
-prose beside the authored title. Their role-specific surface and structure
-carry the semantic distinction; the role name remains available to assistive
+prose beside the authored title. Semantic title colors and typography distinguish research roles without
+using warning or success meanings. Orientation, literature and connection
+body prose uses accessible secondary text; claims, examples, quotations and
+qualifications retain primary reading ink. Callouts do not accumulate
+decorative rules or full frames. Open indents distinguish orientation and
+connections; literature uses compact grouping; statements gain typographic
+weight; examples use an inset; quotations retain italic prose and a quiet
+attribution; qualifications use restrained grouping. Color is supplementary.
+The role name remains available to assistive
 technology, and Source always exposes the complete authored text.
 
 Outline and document statistics currently have no interface entry, including

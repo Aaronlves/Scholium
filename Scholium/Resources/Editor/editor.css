@@ -223,10 +223,10 @@ body,
    source selection when Live Preview changes inline geometry. It has no
    independent CSS transition that could lag behind the syntax it follows. */
 
-.cm-live-callout-start {
+#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-start {
   padding-block-start: var(--scholium-callout-live-start-inset, .55em);
 }
-.cm-live-callout-end {
+#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-end {
   padding-block-end: var(--scholium-callout-live-end-inset, .55em);
 }
 .cm-live-callout-body-line { min-block-size: 1lh; }

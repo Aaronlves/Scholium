@@ -158,7 +158,7 @@ export function createLiveStructuredBlockProjections(options: {
         const button = document.createElement("button");
         button.type = "button";
         button.className = "cm-live-callout-disclosure";
-        button.textContent = this.collapsed ? "▸" : "▾";
+        button.textContent = "";
         button.setAttribute("aria-expanded", String(!this.collapsed));
         button.setAttribute("aria-label", `${localized("Callout")}: ${this.title || this.label}`);
         button.addEventListener("mousedown", event => event.preventDefault());
@@ -174,7 +174,7 @@ export function createLiveStructuredBlockProjections(options: {
       }
       if (this.label) {
         const label = document.createElement("span");
-        label.className = "cm-live-callout-role-label";
+        label.className = this.title ? "cm-live-callout-role-label" : "scholium-callout-default-title scholium-callout-title";
         label.textContent = `${this.label} `;
         // Keep the role name available to assistive technology without
         // repeating it as visible prose beside the authored callout title.
@@ -184,15 +184,18 @@ export function createLiveStructuredBlockProjections(options: {
     }
     updateDOM(root: HTMLElement) {
       const button = root.querySelector("button");
-      const label = root.querySelector(".cm-live-callout-role-label");
+      const label = root.querySelector(".cm-live-callout-role-label, .scholium-callout-default-title");
       if (!!button !== this.foldable || !!label !== !!this.label) return false;
       root.dataset.calloutFrom = String(this.from);
       if (button) {
-        button.textContent = this.collapsed ? "▸" : "▾";
+        button.textContent = "";
         button.setAttribute("aria-expanded", String(!this.collapsed));
         button.setAttribute("aria-label", `${localized("Callout")}: ${this.title || this.label}`);
       }
-      if (label) label.textContent = `${this.label} `;
+      if (label) {
+        label.className = this.title ? "cm-live-callout-role-label" : "scholium-callout-default-title scholium-callout-title";
+        label.textContent = `${this.label} `;
+      }
       return true;
     }
     ignoreEvent() { return true; }
@@ -213,11 +216,9 @@ export function createLiveStructuredBlockProjections(options: {
       const collapsed = foldable && !bodyActive
         && (folds.get(presentation.from) ?? opening[3] === "-");
       const label = resolveCallout(opening[2]).label;
-      // A fixed callout has no editable heading widget. Its authored title
-      // stays in the source line; when absent, Edit must not materialize the
-      // Review-only default title. Foldable callouts still need the native
-      // disclosure control and its hidden role metadata.
-      if (foldable) decorations.push(Decoration.widget({
+      // Untitled inactive headers share Review's role title. Active syntax
+      // hides this projection without inserting text into the source.
+      if (foldable || !opening[4]) decorations.push(Decoration.widget({
         widget: new CalloutHeadingWidget(presentation.from, label, opening[4], foldable, collapsed),
         side: 1,
       }).range(header.to - opening[4].length));

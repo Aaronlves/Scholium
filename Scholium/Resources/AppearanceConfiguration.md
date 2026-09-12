@@ -82,7 +82,6 @@ Common fields: `inlineInsetEm` (0–4), `blockGapEm` (0–4),
 | `orientation` | `startInsetEm`, `endInsetEm` (0–6); `lineHeight` (1.1–2.4) |
 | `connections`, `folded` | `contentIndentEm` (0–4) |
 | `statement` | `titleGapEm` (0–2) |
-| `illustration` | `titleColumnEm` (3–16); `columnGapEm` (0–4) |
 | `caution`, `source` | `paddingBlockEm` (0–3); `paddingInlineEm` (0–4) |
 | `quotation` | `quotationScale` (0.8–1.5); `attributionScale` (0.6–1.2) |
 

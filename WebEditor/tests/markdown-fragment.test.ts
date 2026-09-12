@@ -133,7 +133,22 @@ describe("appendMarkdownBlocks", () => {
     expect(root.querySelector(".scholium-math-display .katex")?.textContent).toBe("x + y");
   });
 
-  it("keeps title-only Callouts visible and treats an Orient title as body prose", () => {
+  it("falls back only when a Callout has no authored title", () => {
+    const {document} = parseHTML("<html><body><div id='root'></div></body></html>");
+    const root = document.querySelector<HTMLElement>("#root")!;
+    const resolveCallout = (identifier: string) => ({identifier, label: "Default", meaning: "Role"});
+    for (const fold of ["", "+", "-"]) {
+      for (const title of ["", "   ", "Authored **title**"]) {
+        root.replaceChildren();
+        appendMarkdownBlocks(`> [!orient]${fold} ${title}`, root, {resolveCallout});
+        expect(root.querySelector(".scholium-callout-title")?.textContent)
+          .toBe(title.trim() ? "Authored title" : "Default");
+        expect(root.querySelectorAll(".scholium-callout-default-title")).toHaveLength(title.trim() ? 0 : 1);
+      }
+    }
+  });
+
+  it("preserves authored titles for title-only Callouts", () => {
     const {document} = parseHTML("<html><body><div id='root'></div></body></html>");
     const root = document.querySelector<HTMLElement>("#root")!;
     const resolveCallout = (rawKind: string) => ({
@@ -147,11 +162,9 @@ describe("appendMarkdownBlocks", () => {
 
     expect(root.querySelector(".scholium-callout-state .scholium-callout-title")?.textContent)
       .toBe("Title only");
-    expect(root.querySelector(".scholium-callout-orient .scholium-callout-title"))
-      .toBeNull();
-    expect(root.querySelector(".scholium-callout-orient-title-body")?.textContent)
+    expect(root.querySelector(".scholium-callout-orient .scholium-callout-title")?.textContent)
       .toBe("Reading route");
-    expect(root.querySelector(".scholium-callout-orient-title-body strong")?.textContent)
+    expect(root.querySelector(".scholium-callout-orient .scholium-callout-title strong")?.textContent)
       .toBe("route");
   });
 });

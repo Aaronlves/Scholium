@@ -6,6 +6,48 @@ import notify
 
 extension ScholiumUITests {
     @MainActor
+    func testCalloutModesPreserveSemanticOrderAndExactSource() throws {
+        func attachWindowScreenshot(_ label: String) {
+            let screenshot = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+            screenshot.name = label
+            screenshot.lifetime = .keepAlways
+            add(screenshot)
+        }
+        let noteURL = triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md")
+        let roles = ["orient", "cite", "connect", "state", "illustrate", "quote", "flag", "neutral"]
+        let content = "Callout presentation fixture\n\n" + roles.map {
+            "> [!\($0)] \($0) · 语义标题\n> Synthetic passage · 可编辑正文。"
+        }.joined(separator: "\n\n") + "\n\n> [!cite]\n> Untitled source.\n\n> [!flag]- Folded limitation\n> Hidden fixture body.\n"
+        try write(content, to: noteURL)
+        let editor = app.descendants(matching: .any)["Markdown editor, Edit mode"].firstMatch
+        XCTAssertTrue(waitUntil(timeout: 12) { (editor.value as? String)?.contains("Untitled source.") == true })
+        attachWindowScreenshot("Callouts — Edit — authored order")
+        selectDocumentMode("Review")
+        waitForCurrentDocumentSurface()
+        attachWindowScreenshot("Callouts — Review — matching structure")
+        selectDocumentMode("Edit")
+        waitForCurrentDocumentSurface()
+        XCTAssertTrue(waitUntil(timeout: 5) { (editor.value as? String)?.contains("Untitled source.") == true })
+        XCTAssertEqual(try source(at: noteURL), content)
+        selectDocumentMode("Source")
+        waitForCurrentDocumentSurface()
+        XCTAssertEqual(try source(at: noteURL), content)
+        app.terminate()
+        sessionID = UUID()
+        app = configuredApplication(sessionID: sessionID, initialWorkspaceWidth: 900, appearance: .dark)
+        app.launch()
+        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 15))
+        waitForCurrentDocumentSurface()
+        selectDocumentMode("Review")
+        waitForCurrentDocumentSurface()
+        attachWindowScreenshot("Callouts — Dark Review — narrow width")
+        selectDocumentMode("Edit")
+        waitForCurrentDocumentSurface()
+        attachWindowScreenshot("Callouts — Dark Edit — narrow width")
+        XCTAssertEqual(try source(at: noteURL), content)
+    }
+
+    @MainActor
     func testInlineSyntaxRemainsVisibleAtClosingBoundary() throws {
         try enterLivePreviewAndAppend("\n\n*Source-role classification")
         let editor = app.descendants(matching: .any)["Markdown editor, Edit mode"].firstMatch

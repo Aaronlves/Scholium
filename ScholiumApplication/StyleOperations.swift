@@ -568,7 +568,7 @@ public actor StyleOperations: StyleUseCases {
     private func rejectUnknownConfigurationKeys(_ input: Any, decoded: Any, path: String) throws {
         if let input = input as? [String: Any], let decoded = decoded as? [String: Any] {
             let optionalCalloutKeys: Set<String> = [
-                "lineHeight", "startInsetEm", "endInsetEm", "titleGapEm", "titleColumnEm", "columnGapEm", "paddingBlockEm", "paddingInlineEm",
+                "lineHeight", "startInsetEm", "endInsetEm", "titleGapEm", "paddingBlockEm", "paddingInlineEm",
                 "contentIndentEm", "quotationScale", "attributionScale",
             ]
             for (key, value) in input {
@@ -637,8 +637,6 @@ public actor StyleOperations: StyleUseCases {
         callout.startInsetEm = callout.startInsetEm?.clamped(to: 0...6)
         callout.endInsetEm = callout.endInsetEm?.clamped(to: 0...6)
         callout.titleGapEm = callout.titleGapEm?.clamped(to: 0...2)
-        callout.titleColumnEm = callout.titleColumnEm?.clamped(to: 3...16)
-        callout.columnGapEm = callout.columnGapEm?.clamped(to: 0...4)
         callout.paddingBlockEm = callout.paddingBlockEm?.clamped(to: 0...3)
         callout.paddingInlineEm = callout.paddingInlineEm?.clamped(to: 0...4)
         callout.contentIndentEm = callout.contentIndentEm?.clamped(to: 0...4)

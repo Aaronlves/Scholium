@@ -1,116 +1,83 @@
-/*
- * Scholium protected Callout presentation.
- *
- * Review uses the `.scholium-callout` component and may show a default title
- * for a title-less callout. Edit retains the authored source line; only a
- * foldable callout receives a functional disclosure control and hidden role
- * metadata. Keep research roles distinct through typography, structure and
- * content rhythm rather than generated visible prose or color alone.
- */
-
-/* ------------------------------------------------------------------------- */
-/* Shared Read and Live Preview component                                    */
-/* ------------------------------------------------------------------------- */
-
+/* One semantic presentation for Review and the exact-source Edit projection.
+   Native-resolved title colors identify research roles; body prose retains ink.
+   Authored titles take precedence, with a source-neutral fallback when absent. */
 .scholium-callout,
 #editor .cm-editor.scholium-live-mode {
   --scholium-callout-block-gap: 1.18em;
   --scholium-callout-ink: var(--scholium-color-primary-text, CanvasText);
   --scholium-callout-secondary-ink: var(--scholium-color-secondary-text, CanvasText);
-  --scholium-callout-rule: var(--scholium-color-separator, GrayText);
-  --scholium-callout-surface: color-mix(
-    in srgb,
+  --scholium-callout-live-start-inset: .65em;
+  --scholium-callout-live-end-inset: .65em;
+  --scholium-callout-inline-inset: .9em;
+  --scholium-callout-surface: color-mix(in srgb,
     var(--scholium-color-primary-text, CanvasText) 4.5%,
-    var(--scholium-color-document-background, Canvas)
-  );
-  --scholium-callout-frame: color-mix(
-    in srgb,
-    var(--scholium-color-primary-text, CanvasText) 24%,
-    var(--scholium-color-separator, GrayText)
-  );
-  --scholium-callout-live-start-inset: .55em;
-  --scholium-callout-live-end-inset: .55em;
+    var(--scholium-color-document-background, Canvas));
 }
-
 .scholium-callout {
-  position: relative;
-  display: block;
   box-sizing: border-box;
   min-width: 0;
   margin: var(--scholium-callout-block-gap) 0;
-  padding: 0;
-  overflow: visible;
-  color: var(--scholium-callout-ink);
-  background: transparent;
+  padding: .65em var(--scholium-callout-inline-inset);
   border: 0;
-  /* The document Body role is 12pt at 100%; Callouts inherit its scaling. */
+  border-radius: var(--scholium-corner-document-callout-surface);
+  background: var(--scholium-callout-surface);
+  color: var(--scholium-callout-ink);
   font-size: 100%;
   line-height: inherit;
+  overflow-wrap: anywhere;
+  text-align: start;
 }
-
+#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout {
+  padding-inline: var(--scholium-callout-inline-inset);
+  background: var(--scholium-callout-surface);
+  color: var(--scholium-callout-ink);
+}
+#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-start {
+  border-start-start-radius: var(--scholium-corner-document-callout-surface);
+  border-start-end-radius: var(--scholium-corner-document-callout-surface);
+}
+#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-end {
+  border-end-start-radius: var(--scholium-corner-document-callout-surface);
+  border-end-end-radius: var(--scholium-corner-document-callout-surface);
+}
+#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-header + .cm-live-callout-body-line {
+  padding-block-start: .35em;
+}
 .scholium-callout > header,
 .scholium-callout > summary {
-  box-sizing: border-box;
   margin: 0;
   padding: 0;
-  color: inherit;
+  border: 0;
 }
-
 .scholium-callout > summary {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 1.7rem;
+  grid-template-columns: minmax(0, 1fr) 28px;
   align-items: center;
-  gap: .65rem;
-  min-height: 1.7rem;
+  gap: .5em;
+  min-height: 28px;
   cursor: pointer;
   list-style: none;
-  -webkit-tap-highlight-color: transparent;
 }
-
-.scholium-callout > summary::-webkit-details-marker {
-  display: none;
-}
-
-.scholium-callout > summary::marker {
-  content: "";
-}
-
+.scholium-callout > summary::-webkit-details-marker { display: none; }
+.scholium-callout > summary::marker { content: ""; }
 .scholium-callout > summary:focus-visible {
-  border-radius: var(--scholium-corner-callout-disclosure-focus);
   outline: 2px solid var(--scholium-content-focus-ring, Highlight);
-  outline-offset: 4px;
+  outline-offset: 3px;
+  border-radius: var(--scholium-corner-callout-disclosure-focus);
 }
-
-.scholium-callout-heading {
-  display: grid;
-  align-items: start;
-  gap: .22rem;
-  min-width: 0;
-  margin: 0;
-  font-size: 100%;
-  line-height: inherit;
-  text-wrap: pretty;
-}
-
+.scholium-callout-heading { display: block; min-width: 0; }
 .scholium-callout-role,
 .scholium-callout-title {
-  color: var(--scholium-callout-ink);
+  color: var(--scholium-callout-title-ink, var(--scholium-callout-ink));
   text-transform: none;
 }
-
-.scholium-callout-role {
-  display: block;
-  padding: 0;
-  margin: 0;
-  color: var(--scholium-callout-secondary-ink);
-  border: 0;
-  font: 600 70%/1.25 system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-  letter-spacing: .02em;
+.scholium-callout-title {
+  font-family: inherit;
+  font-size: 100%;
+  line-height: inherit;
+  font-weight: 650;
+  letter-spacing: 0;
 }
-
-/* In Review the role remains in the accessibility tree as metadata and the
-   visible heading is either the authored title or the explicit default title.
-   Edit does not create this title when the source has no authored title. */
 .scholium-callout-role-context {
   position: absolute;
   inline-size: 1px;
@@ -118,679 +85,137 @@
   padding: 0;
   margin: -1px;
   overflow: hidden;
-  clip: rect(0 0 0 0);
   clip-path: inset(50%);
   white-space: nowrap;
-  border: 0;
 }
-
-.scholium-callout-title {
-  font-family: inherit;
+.scholium-callout-body {
+  margin-block-start: .35em;
   font-size: 100%;
   line-height: inherit;
-  font-style: inherit;
-  font-weight: 650;
-  letter-spacing: 0;
 }
-
-.scholium-callout-body {
-  margin-top: .44rem;
-  font-size: 100%;
-  line-height: 1.62;
-  overflow-wrap: anywhere;
-  text-wrap: pretty;
+.scholium-callout-body:has(> .scholium-callout-content:empty),
+.scholium-callout-body:has(> .scholium-callout-content > .scholium-callout-quotation:empty) {
+  display: none;
 }
-
-.scholium-callout-content > :first-child,
-.scholium-callout-quotation > :first-child {
-  margin-top: 0;
-}
-
-.scholium-callout-content > :last-child,
-.scholium-callout-quotation > :last-child {
-  margin-bottom: 0;
-}
-
 .scholium-callout-content,
-.scholium-callout-quotation {
-  min-width: 0;
+.scholium-callout-quotation { min-width: 0; }
+.scholium-callout-body p { padding-block: 0; }
+.scholium-callout-content > :first-child,
+.scholium-callout-quotation > :first-child { margin-block-start: 0; }
+.scholium-callout-content > :last-child,
+.scholium-callout-quotation > :last-child { margin-block-end: 0; }
+.scholium-callout-content > :is(ul, ol) { margin-block: .28em 0; }
+.scholium-callout-content > :is(p, ul, ol) + :is(p, ul, ol) { margin-block-start: .42em; }
+.scholium-callout-content > .scholium-callout { margin-block: .65em; }
+.scholium-callout a { color: var(--scholium-document-accent, LinkText); }
+
+/* Color is supplementary: title, type metadata and typography retain meaning. */
+.scholium-callout-orient,
+.cm-live-callout-role-orient {
+  --scholium-callout-surface: transparent;
+  --scholium-callout-inline-inset: 1.3em;
+  --scholium-callout-title-ink: var(--scholium-callout-orient-title);
+}
+.scholium-callout-cite,
+.cm-live-callout-role-cite {
+  --scholium-callout-title-ink: var(--scholium-callout-cite-title);
+}
+.scholium-callout-connect,
+.cm-live-callout-role-connect {
+  --scholium-callout-surface: transparent;
+  --scholium-callout-title-ink: var(--scholium-callout-connect-title);
+}
+.scholium-callout-state,
+.cm-live-callout-role-state {
+  --scholium-callout-title-ink: var(--scholium-callout-state-title);
+}
+.scholium-callout-illustrate,
+.cm-live-callout-role-illustrate {
+  --scholium-callout-surface: transparent;
+  --scholium-callout-inline-inset: 1.5em;
+  --scholium-callout-title-ink: var(--scholium-callout-illustrate-title);
+}
+.scholium-callout-quote,
+.cm-live-callout-role-quote {
+  --scholium-callout-surface: transparent;
+  --scholium-callout-inline-inset: 1.6em;
+  --scholium-callout-title-ink: var(--scholium-callout-quote-title);
+}
+.scholium-callout-flag,
+.cm-live-callout-role-flag {
+  --scholium-callout-title-ink: var(--scholium-callout-flag-title);
+}
+.scholium-callout-neutral,
+.cm-live-callout-role-neutral {
+  --scholium-callout-title-ink: var(--scholium-callout-neutral-title);
+}
+.scholium-callout-quote .scholium-callout-quotation {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  color: inherit;
+  font-style: italic;
+  line-height: inherit;
+}
+#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-role-quote.cm-live-callout-body-line {
+  font-style: italic;
+}
+.scholium-callout-orient .scholium-callout-title,
+.cm-live-callout-role-orient .scholium-callout-title,
+.scholium-callout-illustrate .scholium-callout-title,
+.cm-live-callout-role-illustrate .scholium-callout-title {
+  font-style: italic;
+}
+.scholium-callout-connect .scholium-callout-body {
+  margin-inline-start: var(--scholium-callout-connect-content-indent, 0);
 }
 
-/* Callout owns its internal rhythm. Do not let the document-level paragraph
-   padding add a second, invisible line below the final body paragraph. */
-.scholium-callout-body p {
-  padding-block: 0;
-}
-
-/* Content inside a Callout remains ordinary Markdown. Give nested lists and
-   quotations their own small rhythm so the outer role treatment never makes
-   their first line look fused to the heading or to the preceding paragraph. */
-.scholium-callout-content > :is(ul, ol) {
-  margin-block: .28rem 0;
-}
-
-.scholium-callout-content > :is(p, ul, ol) + :is(p, ul, ol) {
-  margin-block-start: .42rem;
-}
-
-.scholium-callout-content > blockquote:not(.scholium-callout-quotation) {
-  margin-block: .62rem;
-  padding-inline-start: .78rem;
-  border-inline-start: 1px solid var(--scholium-callout-rule);
+/* Supporting prose is quieter; claims and quoted wording keep primary ink. */
+.scholium-callout-orient > .scholium-callout-body,
+.scholium-callout-cite > .scholium-callout-body,
+.scholium-callout-connect > .scholium-callout-body,
+#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-role-orient.cm-live-callout-body-line,
+#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-role-cite.cm-live-callout-body-line,
+#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-role-connect.cm-live-callout-body-line {
   color: var(--scholium-callout-secondary-ink);
 }
 
-.scholium-callout-content > .scholium-callout {
-  margin-block: .72rem;
+.scholium-callout-state > .scholium-callout-body,
+#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-role-state.cm-live-callout-body-line {
+  font-weight: 500;
 }
 
-.scholium-callout a:not(.wiki-link) {
-  color: var(--scholium-document-accent, var(--scholium-color-accent));
-  font-weight: 620;
-  text-decoration-line: underline;
-  text-decoration-color: var(--scholium-callout-rule);
-  text-decoration-thickness: 1px;
-  text-underline-offset: .15em;
-}
-
-.scholium-callout a.wiki-link {
-  color: var(--scholium-document-accent, var(--scholium-color-accent));
-  font-weight: 620;
-  text-decoration: none;
-}
-
-/* A single functional mark communicates disclosure; it is not a role motif. */
+/* One trailing disclosure mark; it does not decorate nonfoldable Callouts. */
 .scholium-callout-fold-mark {
-  --scholium-callout-fold-surface: transparent;
-  --scholium-callout-fold-surface-opacity: 0;
-  position: relative;
   display: grid;
   place-items: center;
-  justify-self: end;
-  width: 1.58rem;
-  height: 1.58rem;
-  color: var(--scholium-callout-secondary-ink);
-  isolation: isolate;
+  inline-size: 28px;
+  block-size: 28px;
+  color: var(--scholium-callout-title-ink);
 }
-
-.scholium-callout-fold-mark::before {
-  z-index: 1;
-  width: .37rem;
-  height: .37rem;
+.cm-live-callout-disclosure { float: inline-end; }
+.scholium-callout-fold-mark::before,
+.cm-live-callout-disclosure::before {
+  display: inline-block;
+  width: .37em;
+  height: .37em;
   border-right: 1.3px solid currentColor;
   border-bottom: 1.3px solid currentColor;
   content: "";
   transform: rotate(-45deg);
 }
-
-.scholium-callout-fold-mark::after {
-  position: absolute;
-  z-index: 0;
-  inset: -.18rem;
-  background: radial-gradient(
-    circle,
-    var(--scholium-callout-fold-surface) 0%,
-    transparent 72%
-  );
-  content: "";
-  opacity: var(--scholium-callout-fold-surface-opacity);
-  pointer-events: none;
-}
-
-[dir="rtl"] .scholium-callout-fold-mark::before {
-  transform: rotate(135deg);
-}
-
 .scholium-callout[open] > summary .scholium-callout-fold-mark::before,
-[dir="rtl"] .scholium-callout[open] > summary .scholium-callout-fold-mark::before {
-  transform: rotate(45deg);
-}
-
-.scholium-callout > summary:hover .scholium-callout-fold-mark {
-  color: var(--scholium-callout-ink);
-  --scholium-callout-fold-surface: var(--scholium-content-hover-surface, transparent);
-  --scholium-callout-fold-surface-opacity: 1;
-}
-
-.scholium-callout > summary:focus-visible .scholium-callout-fold-mark {
-  color: var(--scholium-callout-ink);
-  --scholium-callout-fold-surface: var(
-    --scholium-content-keyboard-focus-surface,
-    transparent
-  );
-  --scholium-callout-fold-surface-opacity: 1;
-}
-
-/* ------------------------------------------------------------------------- */
-/* Role treatments: typography and editorial spacing, not chromatic motifs  */
-/* ------------------------------------------------------------------------- */
-
-/*
- * Indented roles remain boundary-free. A neutral surface appears only where
- * its outer edge stays aligned with the document measure.
- */
-
-/* Orientation — a boundary-free reading route with one quiet editorial rule. */
-.scholium-callout-orient {
-  margin-inline: 0;
-  padding-block: .14rem .18rem;
-  padding-inline-start: .9rem;
-  border-inline-start: 2px solid var(--scholium-callout-rule);
-}
-
-.scholium-callout-orient .scholium-callout-title,
-.cm-live-callout-role-orient .scholium-callout-title {
-  font-style: italic;
-  font-weight: 590;
-}
-
-.scholium-callout-orient .scholium-callout-body {
-  max-width: none;
-  margin-top: .5rem;
-  color: inherit;
-  font-size: 100%;
-  line-height: inherit;
-  text-align: start;
-}
-
-/* Literature — a grouped neutral surface with hanging bibliographic lines. */
-.scholium-callout-cite {
-  padding: .72rem .88rem .78rem;
-  border-radius: var(--scholium-corner-document-callout-surface);
-  background: var(--scholium-callout-surface);
-}
-
-.scholium-callout-cite > header,
-.scholium-callout-cite > summary {
-  padding-block-end: .48rem;
-  border-block-end: 1px solid var(--scholium-callout-rule);
-}
-
-#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-start {
-  border-start-start-radius: var(--scholium-corner-document-callout-surface);
-  border-start-end-radius: var(--scholium-corner-document-callout-surface);
-}
-
-#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-end {
-  border-end-start-radius: var(--scholium-corner-document-callout-surface);
-  border-end-end-radius: var(--scholium-corner-document-callout-surface);
-}
-
-#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-role-orient {
-  border-inline-start: 2px solid var(--scholium-callout-rule);
-  --scholium-callout-live-start-inset: .14em;
-  --scholium-callout-live-end-inset: .18em;
-}
-
-#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-role-cite {
-  background: var(--scholium-callout-surface);
-}
-
-#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-role-cite.cm-live-callout-header {
-  box-shadow: inset 0 -1px var(--scholium-callout-rule);
-}
-
-#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-role-connect,
-#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-role-cite.cm-live-callout-body-line {
-  color: var(--scholium-callout-secondary-ink);
-}
-
-#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-role-connect {
-  --scholium-callout-live-start-inset: 0;
-  --scholium-callout-live-end-inset: 0;
-}
-
-#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-role-connect.cm-live-callout-body-line {
-  padding-inline-start: calc(.9em + var(--scholium-callout-connect-content-indent, .72em));
-}
-
-#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-role-state {
-  border-inline-start: 0;
-  padding-inline: .9em;
-  --scholium-callout-live-start-inset: .55em;
-  --scholium-callout-live-end-inset: .62em;
-}
-
-#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-role-state.cm-live-callout-start {
-  border-block-start: 1px solid var(--scholium-callout-rule);
-}
-
-#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-role-state.cm-live-callout-header {
-  padding-block-end: .42em;
-  border-block-end: 1px solid var(--scholium-callout-rule);
-}
-
-#editor .cm-editor.scholium-live-mode
-  .cm-line.cm-live-callout-role-state.cm-live-callout-header
-  + .cm-line.cm-live-callout-role-state.cm-live-callout-body-line {
-  padding-block-start: .48em;
-}
-
-#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-role-state.cm-live-callout-end {
-  padding-block-end: .62em;
-  border-block-end: 1px solid var(--scholium-callout-rule);
-}
-
-#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-role-illustrate.cm-live-callout-start {
-  border-block-start: 1px solid var(--scholium-callout-rule);
-}
-
-#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-role-illustrate {
-  --scholium-callout-live-start-inset: .72em;
-  --scholium-callout-live-end-inset: .72em;
-}
-
-#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-role-illustrate.cm-live-callout-end {
-  border-block-end: 1px solid var(--scholium-callout-rule);
-}
-
-#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-role-quote.cm-live-callout-body-line {
-  font-style: italic;
-}
-
-#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-role-flag {
-  border-inline: 1px solid var(--scholium-callout-frame);
-  --scholium-callout-live-start-inset: .72em;
-  --scholium-callout-live-end-inset: .78em;
-}
-
-#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-role-flag.cm-live-callout-start {
-  border-block-start: 1px solid var(--scholium-callout-frame);
-}
-
-#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-role-flag.cm-live-callout-end {
-  border-block-end: 1px solid var(--scholium-callout-frame);
-}
-
-.scholium-callout-cite .scholium-callout-role,
-.scholium-callout-cite .scholium-callout-title,
-.cm-live-callout-role-cite .scholium-callout-title {
-  font-weight: 650;
-}
-
-.scholium-callout-cite .scholium-callout-body {
-  margin-top: .52rem;
-  color: var(--scholium-callout-secondary-ink);
-  line-height: 1.58;
-}
-
-.scholium-callout-cite .scholium-callout-content > p {
-  margin: 0;
-  padding-inline-start: 1.15em;
-  text-indent: -1.15em;
-}
-
-.scholium-callout-cite .scholium-callout-content > p + p {
-  margin-top: .34rem;
-}
-
-.scholium-callout-cite .scholium-callout-content > p strong:first-child {
-  color: var(--scholium-callout-ink);
-  font-variant-numeric: lining-nums tabular-nums;
-}
-
-/*
- * Connections — an editorial relation note. The supplied title acts as a
- * quiet lead; content hierarchy and spacing carry the role without a marker,
- * border, or colored surface.
- */
-.scholium-callout-connect {
-  --scholium-callout-connect-content-indent: .72em;
-}
-
-.scholium-callout-connect .scholium-callout-title,
-.cm-live-callout-role-connect .scholium-callout-title {
-  font-size: 100%;
-  font-style: italic;
-  font-weight: 550;
-  letter-spacing: .01em;
-}
-
-.scholium-callout-connect .scholium-callout-body {
-  margin-top: .34rem;
-  margin-inline-start: var(--scholium-callout-connect-content-indent);
-  color: var(--scholium-callout-secondary-ink);
-}
-
-.scholium-callout-connect .scholium-callout-content > ul {
-  margin: 0;
-  padding: 0;
-  border-block-start: 1px solid var(--scholium-callout-rule);
-  list-style: none;
-}
-
-.scholium-callout-connect .scholium-callout-content > ul > li {
-  margin: 0;
-  padding: .4rem 0;
-  border-block-end: 1px solid var(--scholium-callout-rule);
-}
-
-.scholium-callout-connect .scholium-callout-content > ul > li + li {
-  margin-top: 0;
-}
-
-.scholium-callout-connect .scholium-callout-content > ul > li > strong:first-child {
-  color: var(--scholium-callout-ink);
-  font-weight: 600;
-}
-
-/* Statement — a proposition gets typographic emphasis and horizontal rules,
-   with no alert-like rail or rounded enclosure. */
-.scholium-callout-state .scholium-callout-title,
-.cm-live-callout-role-state .scholium-callout-title {
-  font-size: 100%;
-  font-weight: 700;
-}
-
-.scholium-callout-state {
-  padding: .55rem .9rem .62rem;
-  border-block: 1px solid var(--scholium-callout-rule);
-}
-
-.scholium-callout-state > header,
-.scholium-callout-state > summary {
-  padding-block-end: .42rem;
-  border-block-end: 1px solid var(--scholium-callout-rule);
-}
-
-.scholium-callout-state .scholium-callout-heading {
-  gap: .28rem;
-}
-
-aside.scholium-callout-state .scholium-callout-body {
-  max-width: none;
-  margin-top: .48rem;
-}
-
-aside.scholium-callout-state .scholium-callout-content > p:first-child {
-  margin: 0;
-}
-
-aside.scholium-callout-state .scholium-callout-content > p:not(:first-child) {
-  margin: .62rem 0 0;
-}
-
-details.scholium-callout-state .scholium-callout-body {
-  margin-inline-start: .72rem;
-}
-
-/* Illustration — a title column and a content column, without a separator. */
-.scholium-callout-illustrate .scholium-callout-title,
-.cm-live-callout-role-illustrate .scholium-callout-title {
-  font-size: 100%;
-  font-style: italic;
-  font-weight: 600;
-}
-
-aside.scholium-callout-illustrate {
-  display: grid;
-  grid-template-columns: minmax(6.4em, 22%) minmax(0, 1fr);
-  align-items: start;
-  column-gap: .85rem;
-  padding-block: .72rem;
-  border-block: 1px solid var(--scholium-callout-rule);
-}
-
-aside.scholium-callout-illustrate > header {
-  grid-column: 1;
-}
-
-aside.scholium-callout-illustrate .scholium-callout-heading {
-  display: block;
-  text-align: end;
-}
-
-aside.scholium-callout-illustrate .scholium-callout-body {
-  grid-column: 2;
-  max-width: none;
-  margin: 0;
-}
-
-/* Quotation — source wording first, supplied attribution at lower right. */
-.scholium-callout-quote .scholium-callout-role,
-.scholium-callout-quote .scholium-callout-title,
-.cm-live-callout-role-quote .scholium-callout-title {
-  font-family: inherit;
-  font-size: 82%;
-  line-height: inherit;
-  font-weight: 600;
-  letter-spacing: .02em;
-}
-
-aside.scholium-callout-quote {
-  display: flex;
-  flex-direction: column;
-  margin-inline: 0;
-  padding-inline: 1rem .35rem;
-}
-
-aside.scholium-callout-quote::before {
-  position: absolute;
-  inset-block-start: -.35rem;
-  inset-inline-start: -.1rem;
-  color: var(--scholium-callout-rule);
-  content: "“";
-  font-family: var(--scholium-document-body-font-family);
-  font-size: 3rem;
-  font-weight: 500;
-  line-height: 1;
-  pointer-events: none;
-}
-
-.scholium-callout-quote .scholium-callout-role {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  clip-path: inset(50%);
-  white-space: nowrap;
-  border: 0;
-}
-
-aside.scholium-callout-quote > header {
-  order: 2;
-  margin-top: .42rem;
-}
-
-aside.scholium-callout-quote .scholium-callout-heading {
-  justify-content: flex-end;
-  text-align: end;
-}
-
-aside.scholium-callout-quote .scholium-callout-body {
-  order: 1;
-  max-width: none;
-  margin: 0;
-}
-
-.scholium-callout-quote .scholium-callout-quotation,
-.scholium-callout-quote .scholium-callout-content > blockquote {
-  margin: 0;
-  padding: 0;
-  color: var(--scholium-callout-secondary-ink);
-  border: 0;
-  font-size: 103%;
-  font-style: italic;
-  line-height: 1.64;
-  hanging-punctuation: first;
-}
-
-/* Qualification — a complete hairline frame marks the passage's limited scope. */
-.scholium-callout-flag {
-  padding: .72rem .88rem .78rem;
-  border: 1px solid var(--scholium-callout-frame);
-  border-radius: var(--scholium-corner-document-callout-surface);
-  background: transparent;
-}
-
-.scholium-callout-flag .scholium-callout-role,
-.scholium-callout-flag .scholium-callout-title,
-.cm-live-callout-role-flag .scholium-callout-title {
-  font-weight: 650;
-}
-
-/* Neutral / Note — a quiet, bounded reading surface for an unclassified note.
-   It has a real visual container without borrowing the warning treatment. The
-   line-backed Live projection paints the same surface and rules as Review. */
-.scholium-callout-neutral {
-  padding: .6rem .82rem .68rem;
-  border-block: 1px solid var(--scholium-callout-rule);
-  background: var(--scholium-callout-surface);
-}
-
-.scholium-callout-neutral > header,
-.scholium-callout-neutral > summary {
-  padding-block-end: .38rem;
-  border-block-end: 1px solid var(--scholium-callout-rule);
-}
-
-.scholium-callout-neutral .scholium-callout-body {
-  margin-inline-start: 0;
-  margin-top: .44rem;
-}
-
-#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-role-neutral {
-  padding-inline: .82em;
-  background: var(--scholium-callout-surface);
-  --scholium-callout-live-start-inset: .6em;
-  --scholium-callout-live-end-inset: .68em;
-}
-
-#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-role-neutral.cm-live-callout-start {
-  padding-block-start: .6em;
-  border-block-start: 1px solid var(--scholium-callout-rule);
-}
-
-#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-role-neutral.cm-live-callout-header {
-  padding-block-end: .38em;
-  border-block-end: 1px solid var(--scholium-callout-rule);
-}
-
-#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-role-neutral.cm-live-callout-end {
-  padding-block-end: .68em;
-  border-block-end: 1px solid var(--scholium-callout-rule);
-}
-
-#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-role-quote {
-  --scholium-callout-live-start-inset: 0;
-  --scholium-callout-live-end-inset: 0;
-}
-
-#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-role-cite {
-  --scholium-callout-live-start-inset: .72em;
-  --scholium-callout-live-end-inset: .78em;
-}
-
-/* Unknown identifiers stay deliberately neutral and claim no warning role. */
-.scholium-callout-neutral .scholium-callout-title,
-.cm-live-callout-role-neutral .scholium-callout-title {
-  color: var(--scholium-callout-secondary-ink);
-  font-size: 100%;
-  font-style: italic;
-  font-weight: 550;
-}
-
-/* ------------------------------------------------------------------------- */
-/* Accessibility, responsive, and print adaptations                         */
-/* ------------------------------------------------------------------------- */
-
+.cm-live-callout-disclosure[aria-expanded="true"]::before { transform: rotate(45deg); }
+.cm-live-callout-active-line .scholium-callout-default-title { display: none; }
 @media (prefers-contrast: more) {
   .scholium-callout,
   #editor .cm-editor.scholium-live-mode {
-    --scholium-callout-rule: var(--scholium-color-primary-text, CanvasText);
-    --scholium-callout-secondary-ink: var(--scholium-color-primary-text, CanvasText);
-    --scholium-callout-surface: color-mix(
-      in srgb,
-      var(--scholium-color-primary-text, CanvasText) 9%,
-      var(--scholium-color-document-background, Canvas)
-    );
-    --scholium-callout-frame: var(--scholium-color-primary-text, CanvasText);
-  }
-
-  .scholium-callout a:not(.wiki-link) {
-    text-decoration-color: currentColor;
-    text-decoration-thickness: 2px;
+    --scholium-callout-surface: var(--scholium-color-document-background, Canvas);
   }
 }
-
-@media (max-width: 700px) {
-  .scholium-callout {
-    margin-block: 1.12em;
-  }
-
-  .scholium-callout-cite,
-  .scholium-callout-flag {
-    padding: .68rem .78rem .72rem;
-  }
-
-  .scholium-callout-connect .scholium-callout-body,
-  details.scholium-callout-state .scholium-callout-body {
-    margin-inline-start: .48rem;
-  }
-
-  aside.scholium-callout-illustrate {
-    column-gap: .75rem;
-  }
-}
-
-@media (max-width: 430px) {
-  .scholium-callout-orient,
-  aside.scholium-callout-quote {
-    padding-inline-start: .65rem;
-  }
-
-  .scholium-callout-state {
-    padding-inline: .65rem;
-  }
-
-  #editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-role-state {
-    padding-inline: .65rem;
-  }
-
-  .scholium-callout-connect .scholium-callout-body,
-  details.scholium-callout-state .scholium-callout-body,
-  .scholium-callout-neutral .scholium-callout-body {
-    margin-inline-start: 0;
-  }
-
-  aside.scholium-callout-illustrate {
-    grid-template-columns: minmax(0, 1fr);
-    row-gap: .28rem;
-    margin-inline: .5rem;
-  }
-
-  aside.scholium-callout-illustrate > header,
-  aside.scholium-callout-illustrate .scholium-callout-body {
-    grid-column: 1;
-  }
-
-  aside.scholium-callout-illustrate .scholium-callout-heading {
-    text-align: start;
-  }
-}
-
 @media print {
-  .scholium-callout {
-    --scholium-callout-ink: CanvasText;
-    --scholium-callout-secondary-ink: CanvasText;
-    --scholium-callout-rule: CanvasText;
-    --scholium-callout-surface: transparent;
-    --scholium-callout-frame: CanvasText;
-  }
-
-  .scholium-callout-fold-mark {
-    display: none;
-  }
-
-  .scholium-callout > summary {
-    grid-template-columns: minmax(0, 1fr);
-    cursor: default;
-  }
-
-  .scholium-callout:not([open]) > .scholium-callout-body {
-    display: block;
-  }
+  .scholium-callout { background: transparent; }
+  .scholium-callout-title { color: CanvasText; }
+  .scholium-callout-fold-mark { display: none; }
+  .scholium-callout:not([open]) > .scholium-callout-body { display: block; }
 }

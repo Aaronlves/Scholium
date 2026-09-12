@@ -77,27 +77,10 @@ if ! rg -q '^\.scholium-callout-fold-mark' "$callout_styles" || \
   exit 1
 fi
 
-if rg -q '^\.cm-live-callout-(orient|cite|connect|state|illustrate|quote|flag|neutral)' "$callout_styles" || \
-   ! rg -q '^\.scholium-callout-role,$' "$callout_styles" || \
-   ! rg -q '^\.scholium-callout-title \{' "$callout_styles" || \
-   ! rg -q '^\.scholium-callout-cite \.scholium-callout-content > p' "$callout_styles" || \
-   ! rg -q '^\.scholium-callout-quote \.scholium-callout-quotation' "$callout_styles"; then
-  print -u2 "The shared typographic Callout contract is incomplete or duplicated."
-  exit 1
-fi
-
-if ! rg -q -F -- '--scholium-document-accent: color-mix(in srgb, var(--scholium-color-accent)' "$design_system"; then
-  print -u2 "The shared document Accent projection is missing."
-  exit 1
-fi
-
-if ! rg -U -q '^\.scholium-callout-role \{\n  display: block;' "$callout_styles" || \
-   ! rg -U -q '^\.scholium-callout-cite \{[^}]*background: var\(--scholium-callout-surface\);' "$callout_styles" || \
-   ! rg -U -q '^\.scholium-callout-flag \{[^}]*border: 1px solid var\(--scholium-callout-frame\);[^}]*background: transparent;' "$callout_styles" || \
-   ! rg -q '^#editor \.cm-editor\.scholium-live-mode \.cm-line\.cm-live-callout-role-flag \{' "$callout_styles" || \
-   ! rg -U -q '^\.scholium-callout-state \{[^}]*padding: \.55rem \.9rem \.62rem;[^}]*border-block: 1px solid var\(--scholium-callout-rule\);' "$callout_styles" || \
-   rg -U -q '^\.scholium-callout-state \{[^}]*border-inline-start:' "$callout_styles"; then
-  print -u2 "The semantic Callout role treatments are missing or incomplete."
+if ! rg -q -- '--scholium-callout-title-ink' "$callout_styles" || \
+   ! rg -q 'calloutTitleColor' "$design_system" || \
+   rg -q 'orientationTitleBecomesBody' "$renderer"; then
+  print -u2 "Shared semantic Callout color or authored-title precedence is missing."
   exit 1
 fi
 

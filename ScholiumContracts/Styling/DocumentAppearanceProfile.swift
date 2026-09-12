@@ -182,8 +182,6 @@ public struct DocumentCalloutAppearance: Codable, Hashable, Identifiable, Sendab
     public var startInsetEm: Double?
     public var endInsetEm: Double?
     public var titleGapEm: Double?
-    public var titleColumnEm: Double?
-    public var columnGapEm: Double?
     public var paddingBlockEm: Double?
     public var paddingInlineEm: Double?
     public var contentIndentEm: Double?
@@ -201,8 +199,6 @@ public struct DocumentCalloutAppearance: Codable, Hashable, Identifiable, Sendab
         startInsetEm: Double? = nil,
         endInsetEm: Double? = nil,
         titleGapEm: Double? = nil,
-        titleColumnEm: Double? = nil,
-        columnGapEm: Double? = nil,
         paddingBlockEm: Double? = nil,
         paddingInlineEm: Double? = nil,
         contentIndentEm: Double? = nil,
@@ -219,8 +215,6 @@ public struct DocumentCalloutAppearance: Codable, Hashable, Identifiable, Sendab
         self.startInsetEm = startInsetEm
         self.endInsetEm = endInsetEm
         self.titleGapEm = titleGapEm
-        self.titleColumnEm = titleColumnEm
-        self.columnGapEm = columnGapEm
         self.paddingBlockEm = paddingBlockEm
         self.paddingInlineEm = paddingInlineEm
         self.contentIndentEm = contentIndentEm
@@ -299,9 +293,7 @@ public struct DocumentAppearanceSettings: Codable, Hashable, Sendable {
             role: .illustration,
             inlineInsetEm: 0,
             blockGapEm: 1.18,
-            titleWeight: 600,
-            titleColumnEm: 6.4,
-            columnGapEm: 0.85
+            titleWeight: 600
         ),
         .init(
             role: .caution,
@@ -330,6 +322,7 @@ public struct DocumentAppearanceSettings: Codable, Hashable, Sendable {
             role: .source,
             inlineInsetEm: 0,
             blockGapEm: 1.18,
+            fontScale: 0.95,
             titleWeight: 650,
             paddingBlockEm: 0.72,
             paddingInlineEm: 0.88

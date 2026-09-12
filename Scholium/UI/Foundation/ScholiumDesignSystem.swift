@@ -372,6 +372,36 @@ struct ScholiumColorResolver: Sendable {
         )
     }
 
+    /// Document role hues come from macOS; the shared contrast resolver adapts
+    /// them to Paper. These labels do not imply warning, success or authorship.
+    func calloutTitleColor(_ role: String, isDark: Bool, increasedContrast: Bool) -> UInt32 {
+        let color: NSColor = switch role {
+        case "orient": .systemBlue
+        case "cite": .systemIndigo
+        case "connect": .systemTeal
+        case "state": .systemPurple
+        case "illustrate": .systemBrown
+        case "flag": .systemGray
+        default: .secondaryLabelColor
+        }
+        var anchor: UInt32 = 0
+        let appearance = NSAppearance(named: isDark ? .darkAqua : .aqua)!
+        appearance.performAsCurrentDrawingAppearance {
+            if let rgb = color.usingColorSpace(.sRGB) {
+                anchor = (UInt32((rgb.redComponent * 255).rounded()) << 16)
+                    | (UInt32((rgb.greenComponent * 255).rounded()) << 8)
+                    | UInt32((rgb.blueComponent * 255).rounded())
+            }
+        }
+        let palette = resolve(isDark: isDark, increasedContrast: increasedContrast)
+        return Self.contrastColor(
+            Self.oklch(from: anchor), startingLightness: isDark ? 0.84 : 0.40,
+            chromaLimit: 0.12,
+            backgrounds: [palette.documentBackground, palette.surfaceBackground],
+            target: 7, preferLight: isDark
+        )
+    }
+
     private enum FunctionalAnchor {
         static let information: UInt32 = 0x466C82
         static let attention: UInt32 = 0xA16E2C
@@ -637,13 +667,18 @@ enum ScholiumWebDesignTokens {
             isDark: isDark,
             increasedContrast: increasedContrast
         )
-        return ScholiumColorRole.allCases.map { role in
+        let colors = ScholiumColorRole.allCases.map { role in
             if role == .accent {
                 return "\(role.cssVariableName): \(systemAccentCSSValue);"
             }
             let value = String(format: "#%06x", palette[role])
             return "\(role.cssVariableName): \(value);"
         }.joined(separator: "\n")
+        let callouts = ["orient", "cite", "connect", "state", "illustrate", "quote", "flag", "neutral"].map { role in
+            let value = colorResolver.calloutTitleColor(role, isDark: isDark, increasedContrast: increasedContrast)
+            return "--scholium-callout-\(role)-title: \(String(format: "#%06x", value));"
+        }.joined(separator: "\n")
+        return colors + "\n" + callouts
     }
 
     private static func elevationDeclarations(

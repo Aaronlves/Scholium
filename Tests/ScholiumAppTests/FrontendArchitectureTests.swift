@@ -4330,70 +4330,18 @@ struct FrontendArchitectureTests {
         #expect(css.contains(calloutCSS))
         #expect(editorHTML.contains(calloutCSS))
         #expect(editorHTML.contains(".cm-live-callout-role-label"))
-        #expect(projectionSource.contains("if (foldable) decorations.push(Decoration.widget({"))
+        #expect(projectionSource.contains("if (foldable || !opening[4]) decorations.push(Decoration.widget({"))
         #expect(!projectionSource.contains("if (foldable || label) decorations.push"))
-        #expect(!projectionSource.contains("scholium-callout-default-title"))
-        #expect(calloutCSS.contains(".scholium-callout-role,\n.scholium-callout-title"))
-        #expect(calloutCSS.contains(".scholium-callout-role {\n  display: block;"))
-        #expect(!calloutCSS.contains(".cm-live-callout-role {"))
-        #expect(calloutCSS.contains("--scholium-callout-surface: color-mix("))
-        #expect(calloutCSS.contains("--scholium-callout-frame: color-mix("))
-        #expect(calloutCSS.contains("background: transparent;"))
-        #expect(calloutCSS.contains(".scholium-callout-cite {\n  padding: .72rem .88rem .78rem;"))
-        #expect(calloutCSS.contains("background: var(--scholium-callout-surface);"))
-        #expect(
-            calloutCSS.contains(
-                ".scholium-callout-flag {\n  padding: .72rem .88rem .78rem;\n  border: 1px solid var(--scholium-callout-frame);")
-        )
-        #expect(
-            calloutCSS.contains(
-                "#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-role-flag {\n  border-inline: 1px solid var(--scholium-callout-frame);"))
-        #expect(
-            calloutCSS.contains(
-                ".scholium-callout-orient {\n  margin-inline: 0;\n  padding-block: .14rem .18rem;\n  padding-inline-start: .9rem;\n  border-inline-start: 2px solid var(--scholium-callout-rule);"
-            ))
-        #expect(
-            calloutCSS.contains(
-                ".scholium-callout-state {\n  padding: .55rem .9rem .62rem;\n  border-block: 1px solid var(--scholium-callout-rule);"
-            ))
-        #expect(!calloutCSS.contains(".scholium-callout-state {\n  padding-block: .14rem .18rem;"))
-        #expect(!calloutCSS.contains(".scholium-callout-state {\n  padding: .55rem .9rem .62rem;\n  border-inline-start:"))
-        #expect(calloutCSS.contains(".scholium-callout-state > header,\n.scholium-callout-state > summary"))
-        #expect(calloutCSS.contains(".cm-live-callout-role-state.cm-live-callout-start"))
-        #expect(calloutCSS.contains("border-block-start: 1px solid var(--scholium-callout-rule);"))
-        #expect(calloutCSS.contains("font-family: inherit;\n  font-size: 100%;\n  line-height: inherit;"))
-        #expect(calloutCSS.contains("--scholium-callout-connect-content-indent: .72em;"))
-        #expect(
-            calloutCSS.contains(
-                ".scholium-callout-connect .scholium-callout-body {\n  margin-top: .34rem;"))
-        #expect(calloutCSS.contains("color: var(--scholium-callout-secondary-ink);"))
-        #expect(
-            calloutCSS.contains(
-                ".scholium-callout-connect .scholium-callout-content > ul > li + li {"))
-        #expect(
-            !calloutCSS.contains(
-                ".scholium-callout-connect .scholium-callout-content > ul > li::before"))
-        #expect(!calloutCSS.contains("content: \"—\";"))
-        #expect(
-            calloutCSS.contains(
-                "aside.scholium-callout-state .scholium-callout-body {\n  max-width: none;\n  margin-top: .48rem;"))
-        #expect(calloutCSS.contains(".scholium-callout-content > :is(ul, ol)"))
-        #expect(calloutCSS.contains(".scholium-callout-content > blockquote:not(.scholium-callout-quotation)"))
-        #expect(calloutCSS.contains(".scholium-callout-content > .scholium-callout"))
-        #expect(calloutCSS.contains("aside.scholium-callout-illustrate {\n  display: grid;"))
-        #expect(calloutCSS.contains("border-block: 1px solid var(--scholium-callout-rule);"))
-        #expect(calloutCSS.contains("aside.scholium-callout-quote > header {\n  order: 2;"))
-        #expect(calloutCSS.contains("aside.scholium-callout-quote::before {"))
-        #expect(calloutCSS.contains(".scholium-callout-quote .scholium-callout-quotation,"))
-        #expect(calloutCSS.contains("background: radial-gradient("))
-        #expect(calloutCSS.contains("var(--scholium-callout-fold-surface) 0%"))
-        #expect(!calloutCSS.contains("linear-gradient("))
-        #expect(!calloutCSS.contains("clip-path: polygon("))
-        #expect(!calloutCSS.contains("border-radius: 50%"))
-        #expect(!calloutCSS.contains("max-width: 72ch"))
-        #expect(calloutCSS.contains("text-align: start;"))
-        #expect(!calloutCSS.contains("text-align: justify;"))
-        #expect(!calloutCSS.contains("text-align-last:"))
+        #expect(projectionSource.contains("scholium-callout-default-title"))
+        #expect(calloutCSS.contains("--scholium-callout-title-ink"))
+        #expect(!calloutCSS.contains("border-block: 1px"))
+        #expect(!calloutCSS.contains("order: 2;"))
+        #expect(!calloutCSS.contains("display: grid;\n  grid-template-columns: minmax(6.4em"))
+        #expect(calloutCSS.contains(".cm-live-callout-active-line .scholium-callout-default-title"))
+        for role in ["orient", "cite", "connect", "state", "illustrate", "quote", "flag", "neutral"] {
+            #expect(calloutCSS.contains(".scholium-callout-\(role),\n.cm-live-callout-role-\(role)"))
+            #expect(ScholiumWebDesignTokens.rootCSSDeclarations.contains("--scholium-callout-\(role)-title:"))
+        }
         #expect(
             ScholiumWebDesignTokens.documentPresentationCSS.contains(
                 "cm-live-quote.cm-live-quote-nested"

@@ -2234,7 +2234,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         let titleOnly = try await harness.session.testingCalloutProjectionSnapshot(
             containing: "Reading route"
         )
-        #expect(titleOnly.renderedTitleText.isEmpty)
+        #expect(titleOnly.renderedTitleText.hasPrefix("Reading"))
         #expect(titleOnly.renderedText.contains("Reading route"))
 
         harness.session.revealSourceRange(fromUTF16: headerEnd, toUTF16: headerEnd)
@@ -3092,7 +3092,10 @@ struct MarkdownEditorWebViewIntegrationTests {
         let source =
             "> [!warning]+ Limitation\n> First body.\n\n"
             + "> [!state]+ Claim\n> Second body.\n\n"
-            + "> [!quote]+ Source\n> Third body.\n"
+            + "> [!quote]+ Source\n> Third body.\n\n"
+            + "> [!orient] Route\n> Supporting prose.\n\n"
+            + "> [!cite] Literature\n> Supporting prose.\n\n"
+            + "> [!connect] Connection\n> Supporting prose.\n"
         let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
         defer { harness.close() }
         try await harness.waitUntilReady()
@@ -3109,13 +3112,25 @@ struct MarkdownEditorWebViewIntegrationTests {
                   return rect.width <= 1.5 && rect.height <= 1.5
                     && style.position === 'absolute';
                 });
+                const probe = document.createElement('span');
+                probe.style.color = 'var(--scholium-color-secondary-text)';
+                document.querySelector('.cm-content').append(probe);
+                const secondary = getComputedStyle(probe).color;
+                probe.remove();
+                const quietBodies = ['orient', 'cite', 'connect'].every(role => {
+                  const line = document.querySelector(`.cm-live-callout-role-${role}.cm-live-callout-body-line`);
+                  return line && getComputedStyle(line).color === secondary
+                    && getComputedStyle(line).opacity === '1';
+                });
                 return {
+                  quietBodies,
                   labelCount: labels.length,
                   visuallyHidden,
                   roleClasses,
                 };
                 """
             ) as? [String: Any])
+        #expect(result["quietBodies"] as? Bool == true)
         #expect((result["labelCount"] as? NSNumber)?.intValue == 3)
         #expect(result["visuallyHidden"] as? Bool == true)
         #expect(result["roleClasses"] as? [Bool] == [true, true, true])
@@ -3123,8 +3138,8 @@ struct MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
-    @Test("Edit callouts do not materialize a default title")
-    func editCalloutsDoNotMaterializeDefaultTitle() async throws {
+    @Test("Edit callouts project default titles only for untitled source")
+    func editCalloutsProjectDefaultTitleOnlyWhenUntitled() async throws {
         let source = "> [!warning]\n> Warning body.\n\n> [!warning]-\n> Foldable body.\n"
         let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
         defer { harness.close() }
@@ -3139,7 +3154,7 @@ struct MarkdownEditorWebViewIntegrationTests {
                 const sourceLines = [...document.querySelectorAll('.cm-line.cm-live-callout')]
                   .map(line => {
                     const clone = line.cloneNode(true);
-                    clone.querySelectorAll('.cm-live-callout-role-label').forEach(label => label.remove());
+                    clone.querySelectorAll('.cm-live-callout-role-label, .scholium-callout-default-title').forEach(label => label.remove());
                     return clone.textContent ?? '';
                   }).join('\\n');
                 return {
@@ -3150,8 +3165,8 @@ struct MarkdownEditorWebViewIntegrationTests {
                 };
                 """
             ) as? [String: Any])
-        #expect((result["defaultTitleCount"] as? NSNumber)?.intValue == 0)
-        #expect((result["roleLabelCount"] as? NSNumber)?.intValue == 1)
+        #expect((result["defaultTitleCount"] as? NSNumber)?.intValue == 2)
+        #expect((result["roleLabelCount"] as? NSNumber)?.intValue == 0)
         #expect((result["disclosureCount"] as? NSNumber)?.intValue == 1)
         #expect(result["sourceContainsGeneratedRole"] as? Bool == false)
         #expect(try await harness.session.currentText(for: harness.documentID) == source)

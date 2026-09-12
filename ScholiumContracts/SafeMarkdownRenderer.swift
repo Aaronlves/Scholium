@@ -254,22 +254,14 @@ public enum SafeMarkdownRenderer {
         let roleHTML =
             "<span class=\"scholium-callout-role scholium-callout-role-context\" dir=\"auto\" "
             + "title=\"\(purpose)\" aria-label=\"\(accessibleRole)\">\(roleLabel)</span>"
-        let orientationTitleBecomesBody =
-            callout.role == .orient
-            && callout.title != nil
-            && callout.bodySource.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         let titleHTML =
-            if let title = callout.title, !orientationTitleBecomesBody {
+            if let title = callout.title {
                 "<span class=\"scholium-callout-title\" dir=\"auto\">\(renderInlineMarkdown(title))</span>"
             } else {
                 "<span class=\"scholium-callout-title scholium-callout-default-title\" dir=\"auto\">\(roleLabel)</span>"
             }
         let heading = "<span class=\"scholium-callout-heading\" role=\"heading\" aria-level=\"2\">\(roleHTML)\(titleHTML)</span>"
-        // Orient's title-only form is an authored reading route, not an empty
-        // titled box. Live Preview moves that title into the body as prose;
-        // Review must use the same projection.
-        let bodySource = orientationTitleBecomesBody ? (callout.title ?? "") : callout.bodySource
-        let fragment = NoteDocument(relativePath: "callout.md", rawContent: bodySource)
+        let fragment = NoteDocument(relativePath: "callout.md", rawContent: callout.bodySource)
         let fragmentSemantic = MarkdownSemanticDocument(parsing: fragment)
         let renderedBody = renderBody(
             document: fragment,
