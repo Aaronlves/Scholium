@@ -163,11 +163,12 @@ struct HotkeySettingsView: View {
             !ScholiumHotkeyPreferences.isCustomized(
                 command,
                 data: preferencesData
-            ) || command.defaultBinding.map {
-                ScholiumHotkeyPreferences.validationIssue(
-                    for: $0, command: command, data: preferencesData
-                ) != nil
-            } == true)
+            )
+                || command.defaultBinding.map {
+                    ScholiumHotkeyPreferences.validationIssue(
+                        for: $0, command: command, data: preferencesData
+                    ) != nil
+                } == true)
     }
 
     private func binding(
@@ -359,7 +360,8 @@ private struct HotkeyRecorderControl: NSViewRepresentable {
                 clear?()
                 return
             }
-            guard let characters = event.characters(byApplyingModifiers: .command)
+            guard
+                let characters = event.characters(byApplyingModifiers: .command)
                     ?? event.charactersIgnoringModifiers,
                 let character = characters.first,
                 let binding = ScholiumHotkeyBinding(

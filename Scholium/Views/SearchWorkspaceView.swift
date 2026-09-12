@@ -556,7 +556,9 @@ struct ResearchSearchView<Library: View>: View {
         _ presentation: SearchStateBannerPresentation
     ) -> some View {
         if !isAdvanced {
-            ScholiumSidebarState(Text(presentation.title), detail: Text(presentation.message), indicator: .symbol(presentation.systemImage, role: presentation.meaning.colorRole)) {
+            ScholiumSidebarState(
+                Text(presentation.title), detail: Text(presentation.message), indicator: .symbol(presentation.systemImage, role: presentation.meaning.colorRole)
+            ) {
                 if let action = presentation.action {
                     Button(action.title) { Task { await context.refresh() } }
                 }
@@ -657,8 +659,10 @@ struct ResearchSearchView<Library: View>: View {
             }
             .accessibilityIdentifier("scholium.searchUnavailable")
         } else if controller.search.results.isEmpty {
-            ScholiumSidebarState(Text("No Search Results"), detail: Text("No results match the current query and scope."), indicator: .symbol("magnifyingglass"))
-                .accessibilityIdentifier("scholium.searchEmpty")
+            ScholiumSidebarState(
+                Text("No Search Results"), detail: Text("No results match the current query and scope."), indicator: .symbol("magnifyingglass")
+            )
+            .accessibilityIdentifier("scholium.searchEmpty")
         }
     }
 
@@ -837,8 +841,8 @@ struct ResearchSearchView<Library: View>: View {
         case .structured(let field, let value, let excluded):
             return (excluded ? "not " : "") + "\(field.rawValue) is \(value)"
         case .property(let key, let value):
-            return value.map { "Metadata \(key) equals ‘\($0)’" }
-                ?? "Metadata \(key) is present"
+            return value.map { "Property \(key) equals ‘\($0)’" }
+                ?? "Property \(key) is present"
         case .link(let direction, let identity):
             return direction == .fromNote
                 ? "is a direct destination of a link authored in ‘\(identity)’"
@@ -981,7 +985,7 @@ private extension NoteSearchResult {
     var hasYAMLMatch: Bool {
         if matchedField == .summary || matchedField == .tag { return true }
         return matchReasons.contains {
-            if case .property(let property) = $0 { return property.key == "summary" || property.key == "keywords" }
+            if case .property(let property) = $0 { return property.keySourceRange != nil }
             return false
         }
     }

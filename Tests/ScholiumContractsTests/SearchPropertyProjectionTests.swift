@@ -5,8 +5,8 @@ import Testing
 
 @Suite("Search property projection")
 struct SearchPropertyProjectionTests {
-    @Test("Indexes only authored YAML allowlist fields with exact source ranges")
-    func authoredYAMLAllowlist() throws {
+    @Test("Indexes custom YAML fields without a managed catalog and preserves exact ranges")
+    func arbitraryAuthoredYAML() throws {
         let source = """
             ---
             summary: A navigation summary
@@ -21,9 +21,9 @@ struct SearchPropertyProjectionTests {
             profile: .topicMarkdown
         )
 
-        #expect(projection.entries.map(\.key) == ["keywords", "summary"])
-        #expect(projection.entry(forExactKey: "title") == nil)
-        #expect(projection.entry(forExactKey: "custom") == nil)
+        #expect(projection.entries.map(\.key) == ["custom", "keywords", "summary", "title"])
+        #expect(projection.entry(forExactKey: "title")?.stringMembers.first?.value == "Retired YAML title")
+        #expect(projection.entry(forExactKey: "custom")?.stringMembers.first?.value == "keep exact but ignore")
         let summary = try #require(projection.entry(forExactKey: "summary"))
         let summaryRange = try #require(summary.stringMembers.first?.sourceRange)
         #expect(sourceText(source, in: summaryRange) == "A navigation summary")
@@ -35,94 +35,57 @@ struct SearchPropertyProjectionTests {
             } == ["Akrasia", "\"Weakness of Will\""])
     }
 
-    @Test("Managed fields are queryable without claiming Markdown source ranges")
-    func managedMetadataHasNoSourceRanges() throws {
-        let noteID = UUID()
-        let record = NoteMetadataRecord(
-            noteID: noteID,
-            fields: [
-                "type": .string("journal_article"),
-                "language": .string("Ancient Greek"),
-                "authors": .array([
-                    .object([
-                        "family": .string("Scanlon")
-                    ])
-                ]),
-            ]
-        )
-        let metadata = NoteMetadataSnapshot(
-            record: record,
-            revision: DocumentFingerprint(data: try record.encodedPortableData())
-        )
-        let projection = SearchPropertyProjection(
-            document: NoteDocument(
-                relativePath: "Analysis.md",
-                rawContent: "---\nsummary: Authored\nlegacy: exact\n---\n# Body\n"
-            ),
-            profile: .analysis,
-            metadata: metadata
-        )
-
-        #expect(
-            projection.entries.map(\.key)
-                == ["authors", "language", "summary", "type"])
-        let language = try #require(projection.entry(forExactKey: "language"))
-        #expect(language.keySourceRange == nil)
-        #expect(language.stringMembers.first?.value == "Ancient Greek")
-        #expect(language.stringMembers.first?.sourceRange == nil)
-        #expect(projection.entry(forExactKey: "legacy") == nil)
+    @Test("Quoted Unicode keys and direct mixed-list members retain their own scalar tokens")
+    func arbitraryKeysAndScalars() throws {
+        let source =
+            "\u{FEFF}---\r\n\"研究 问题\": \"行动理由\"\r\nyear: 1962\r\nflag: true\r\nitems: [ethics, 42, false, null, {nested: hidden}]\r\npunctuation: a,b]c\r\nempty: null\r\n---\r\nBody"
+        let document = NoteDocument(relativePath: "Mixed.md", rawContent: source)
+        let projection = SearchPropertyProjection(document: document)
+        let key = try #require(projection.entry(forExactKey: "研究 问题"))
+        #expect(sourceText(source, in: try #require(key.keySourceRange)) == "\"研究 问题\"")
+        #expect(key.stringMembers.first?.value == "行动理由")
+        #expect(projection.entry(forExactKey: "year")?.valueKind == .scalar)
+        #expect(projection.entry(forExactKey: "year")?.stringMembers.first?.value == "1962")
+        #expect(projection.entry(forExactKey: "flag")?.stringMembers.first?.value == "true")
+        let members = try #require(projection.entry(forExactKey: "items")).stringMembers
+        #expect(members.map(\.value) == ["ethics", "42", "false"])
+        #expect(try members.map { sourceText(source, in: try #require($0.sourceRange)) } == ["ethics", "42", "false"])
+        #expect(projection.entry(forExactKey: "punctuation")?.stringMembers.first?.value == "a,b]c")
+        #expect(projection.entry(forExactKey: "empty")?.isEmpty == true)
+        #expect(document.sourceBytes == Data(source.utf8))
     }
 
-    @Test("Search indexes resolved custom Metadata but ignores unmanaged record keys")
-    func customMetadataRequiresCatalogAuthority() throws {
-        let record = NoteMetadataRecord(
-            noteID: UUID(),
-            fields: [
-                "argument_stage": .string("objection"),
-                "unmanaged_record_key": .string("must stay hidden"),
-            ]
-        )
-        let metadata = NoteMetadataSnapshot(
-            record: record,
-            revision: DocumentFingerprint(data: try record.encodedPortableData())
-        )
-        let catalog = NoteMetadataCatalog(customFieldsByRole: [
-            .paperAnalysis: [
-                MetadataFieldDefinition(key: "argument_stage", valueKind: .text)
-            ]
-        ])
-        let projection = SearchPropertyProjection(
-            document: NoteDocument(relativePath: "Analysis.md", rawContent: "Body\n"),
-            profile: .analysis,
-            metadata: metadata,
-            metadataCatalog: catalog
-        )
-
-        #expect(
-            projection.entry(forExactKey: "argument_stage")?.stringMembers
-                .map(\.value) == ["objection"])
-        #expect(projection.entry(forExactKey: "unmanaged_record_key") == nil)
+    @Test("Block scalar ranges include the full authored token and exclude neighboring fields")
+    func blockScalarSpans() throws {
+        for newline in ["\n", "\r\n"] {
+            for indicator in ["|", "|-", "|+", ">", ">-", "|2-"] {
+                let source = ["---", "summary: \(indicator)", "  第一行 😀", "  second line", "next: untouched", "---", "Body"].joined(separator: newline)
+                let document = NoteDocument(relativePath: "Block.md", rawContent: source)
+                let projection = SearchPropertyProjection(document: document)
+                let member = try #require(projection.entry(forExactKey: "summary")?.stringMembers.first)
+                let span = try #require(member.sourceRange)
+                #expect(sourceText(source, in: span) == [indicator, "  第一行 😀", "  second line", ""].joined(separator: newline))
+                #expect(span.line == 2)
+                #expect(span.endLine == 5)
+                #expect(projection.entry(forExactKey: "next")?.stringMembers.first?.value == "untouched")
+                #expect(document.sourceBytes == Data(source.utf8))
+            }
+        }
     }
 
-    @Test("Malformed YAML does not hide independent managed metadata")
-    func malformedYAMLIsIndependent() throws {
-        let record = NoteMetadataRecord(
-            noteID: UUID(),
-            fields: ["aliases": .array([.string("Practical agency")])]
-        )
-        let projection = SearchPropertyProjection(
-            document: NoteDocument(
-                relativePath: "Topic.md",
-                rawContent: "---\nsummary: [unfinished\n---\nBody\n"
-            ),
-            profile: .topicMarkdown,
-            metadata: NoteMetadataSnapshot(
-                record: record,
-                revision: DocumentFingerprint(data: try record.encodedPortableData())
-            )
-        )
-        #expect(projection.entries.map(\.key) == ["aliases"])
+    @Test("Duplicate decoded keys and unsupported aliases never invent a field value")
+    func duplicateAndAliasBoundaries() throws {
+        let source = "---\ncustom: first\n\"custom\": second\nbase: &source original\ncopy: *source\nmap: {inside: hidden}\n---\nBody"
+        let projection = SearchPropertyProjection(document: NoteDocument(relativePath: "Duplicate.md", rawContent: source))
+        #expect(projection.entry(forExactKey: "custom") == nil)
         #expect(projection.issues == [.invalidYAML])
+        let aliases = SearchPropertyProjection(
+            document: NoteDocument(
+                relativePath: "Aliases.md",
+                rawContent: "---\nbase: &source original\ncopy: *source\nmap: {inside: hidden}\n---\nBody"))
+        #expect(aliases.entry(forExactKey: "copy")?.stringMembers.isEmpty == true)
+        #expect(aliases.entry(forExactKey: "map")?.valueKind == .mapping)
+        #expect(aliases.entry(forExactKey: "inside") == nil)
     }
 
     private func sourceText(_ text: String, in range: SearchSourceRange) -> String? {

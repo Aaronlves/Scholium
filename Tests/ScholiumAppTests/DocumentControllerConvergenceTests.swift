@@ -17,9 +17,7 @@ struct DocumentControllerConvergenceTests {
         controller.installOpenedDocument(original, vaultName: "Analyses", vaultRole: .sourceCorpus)
         let session = try #require(controller.retainedSession(for: .init(vaultID: vault, noteID: id)))
         session.editingSource = "Researcher's unsaved draft\n"
-        let generation = session.documentAttachmentsGeneration
         _ = controller.receive(workspace(vaultID: vault, notes: [original]))
-        #expect(session.documentAttachmentsGeneration > generation)
         #expect(session.editingSource == "Researcher's unsaved draft\n")
         #expect(session.editingRevision == original.fingerprint)
     }

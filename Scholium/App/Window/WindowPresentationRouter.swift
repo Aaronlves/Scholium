@@ -18,7 +18,6 @@ enum WindowSheetRoute: Identifiable {
     case systemTrash(SystemTrashDeletionPreview)
     case transactionRecovery
     case identityResolution(NoteIdentityAmbiguity)
-    case zoteroBinding(ZoteroBindingPanelRoute)
     case agentChanges(scope: AgentChangesScope)
 
     var id: String {
@@ -29,34 +28,8 @@ enum WindowSheetRoute: Identifiable {
             "system-trash:\(preview.id.uuidString.lowercased())"
         case .transactionRecovery: "transaction-recovery"
         case .identityResolution(let ambiguity): "identity-resolution:\(ambiguity.id)"
-        case .zoteroBinding(let route): route.id
         case .agentChanges: "agent-changes"
         }
-    }
-}
-
-enum ZoteroBindingPanelMode: String, Hashable {
-    case manage
-    case refresh
-}
-
-struct ZoteroBindingPanelRoute: Identifiable, Hashable {
-    let noteID: UUID
-    let currentBinding: AnalysisZoteroBinding?
-    let mode: ZoteroBindingPanelMode
-
-    init(
-        noteID: UUID,
-        currentBinding: AnalysisZoteroBinding?,
-        mode: ZoteroBindingPanelMode = .manage
-    ) {
-        self.noteID = noteID
-        self.currentBinding = currentBinding
-        self.mode = mode
-    }
-
-    var id: String {
-        "zotero-binding:\(mode.rawValue):\(noteID.uuidString.lowercased())"
     }
 }
 

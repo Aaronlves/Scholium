@@ -14,7 +14,6 @@ enum WorkspaceAccessKind: String, Hashable, Sendable {
     case vault
     case portableControl
     case unsupportedPortableControl
-    case invalidNoteMetadataRecord
 }
 
 /// One narrowly scoped authorization repair for an already configured
@@ -23,22 +22,19 @@ struct WorkspaceAccessRecovery: Identifiable, Hashable, Sendable {
     let kind: WorkspaceAccessKind
     let expectedPath: String
     let reason: String?
-    let noteMetadataIssue: NoteMetadataRecoveryIssue?
 
     init(
         kind: WorkspaceAccessKind,
         expectedPath: String,
-        reason: String? = nil,
-        noteMetadataIssue: NoteMetadataRecoveryIssue? = nil
+        reason: String? = nil
     ) {
         self.kind = kind
         self.expectedPath = expectedPath
         self.reason = reason
-        self.noteMetadataIssue = noteMetadataIssue
     }
 
     var id: String {
-        "\(kind.rawValue):\(expectedPath):\(reason ?? ""):\(noteMetadataIssue?.fingerprint.sha256 ?? "")"
+        "\(kind.rawValue):\(expectedPath):\(reason ?? "")"
     }
 }
 

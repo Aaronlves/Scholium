@@ -87,11 +87,22 @@ public struct SearchCapabilities: Codable, Hashable, Sendable {
                 examples: [
                     #"title:"reflective equilibrium" autonomy"#,
                     #"property:language="Greek""#,
+                    #"property:keywords="practical reason""#,
+                    #"property:"研究问题"="行动理由""#,
                     #"from-note:"Groundwork" duty"#,
                 ]
             )
         ]
     )
+
+    /// Shared operator semantics for CLI help and the MCP query parameter.
+    public var propertyQueryHelp: String {
+        "property:key tests presence in top-level YAML. "
+            + "property:key=value matches normalized whole scalar text or a direct list member. "
+            + "Custom YAML needs no field registration. Double-quote keys containing spaces or punctuation. "
+            + "Keys are case-sensitive; numbers and Booleans use text spelling, not numeric comparisons. "
+            + "Nested paths and ranges are not supported."
+    }
 
     private static let noteFields: [SearchFieldCapability] =
         [

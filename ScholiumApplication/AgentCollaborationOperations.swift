@@ -420,7 +420,6 @@ extension WorkspaceHandle {
         try requireActive()
         let evidence = try await services.agentChangeStore.evidence(id: id)
         let change = evidence.change
-        if change.operation.isRecordMutation { return try await reviewAgentRecord(evidence) }
         if change.operation == .move { return try await reviewAgentMove(evidence) }
         let comparison =
             change.operation == .update
@@ -481,9 +480,7 @@ extension WorkspaceHandle {
     }
 
     func previewAgentChangeUndo(id: UUID, expectedAfterFingerprint: DocumentFingerprint) async throws -> AgentNoteUpdatePreview {
-        if try await services.agentChangeStore.change(id: id).operation.isRecordMutation {
-            return try await previewAgentRecordUndo(id: id, expected: expectedAfterFingerprint)
-        }
+
         if try await services.agentChangeStore.change(id: id).operation == .move {
             return try await previewAgentMoveUndo(id: id, expectedAfterFingerprint: expectedAfterFingerprint)
         }
@@ -495,9 +492,7 @@ extension WorkspaceHandle {
     }
 
     func undoAgentChange(id: UUID, expectedAfterFingerprint: DocumentFingerprint) async throws -> AgentChangeUndoResult {
-        if try await services.agentChangeStore.change(id: id).operation.isRecordMutation {
-            return try await undoAgentRecord(id: id, expected: expectedAfterFingerprint)
-        }
+
         if try await services.agentChangeStore.change(id: id).operation == .move {
             return try await undoAgentMove(id: id, expectedAfterFingerprint: expectedAfterFingerprint)
         }

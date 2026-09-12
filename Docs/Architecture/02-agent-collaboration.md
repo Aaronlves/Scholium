@@ -34,7 +34,7 @@ surface includes:
 - exact Note create, update, move, and system-Trash mutations; and
 - Agent Change listing, comparison reads and fingerprint-guarded Undo; and
 - read-only, revision-bound move impact previews; and
-- revision-checked managed Metadata patches and document-attachment relationships.
+- revision-checked source updates, including authored properties and file links.
 
 The external MCP server exposes no Resources, Prompts, Tasks, model operation,
 Handoff, Research Action, acceptance, Review, Settle, or research-result
@@ -48,12 +48,10 @@ without a second index. `WorkspaceLibraryVisibility` owns the shared Library/MCP
 attachment-storage exclusion. A sorted exact listing plus Triptych/role/directory
 scope produces the continuation fingerprint; changed listings reject old pages.
 Read slices retain their complete-source UTF-8 offsets for exact update ranges.
-Optional Note context uses `AgentNoteContextOperations` to read existing validated
-portable Metadata, the selected Analysis binding and `AgentAttachmentOperations`
-relationships. It rechecks source identity/revision and record snapshots before
-returning. The App router projects fields as plain typed JSON, separate from
-source, and shares the attachment listing serializer and continuation fingerprint.
-There is no context store, secondary catalog or Zotero network read.
+Optional Note context uses `AgentNoteContextOperations` and the shared
+source-derived attachment listing. The complete Note fingerprint is rechecked;
+context contains no bibliography record or Zotero binding. Attachment bytes
+require a separate scoped read, and no automatic Zotero call occurs.
 `AgentNoteMoveOperations` projects the existing workspace move plan and shares
 `TriptychMoveCoordinator.prepareMove` validation with the actual writer. Its
 fingerprint binds all effect identities, paths, source revisions and blocked
@@ -99,23 +97,6 @@ existing currency-aware transition queue, editor preparation, tabs and source
 location request; every suspension rechecks scope/source and supersession.
 Cancellation settles the waiting bridge call even when its queue entry is skipped.
 This activates navigation; it is not rendered-selection or focus evidence.
-
-`AgentRecordOperations` prepares Metadata patches and attachment relationship
-changes, then acquires the existing source-operation lease and rechecks their
-inputs without recursively entering refresh. `commitNoteMetadata` and its shared
-field validator remain the ordinary Metadata writer. The attachment planner
-reads only registered, scoped originals, retaining bounded immutable bytes;
-`VaultAttachmentStore.copyDocumentSnapshot` shares the existing no-replacement
-copy path. `TriptychControlStore.replaceDocumentAttachment` uses its coordinated
-exact-file swap. Removing a relationship never deletes its file.
-
-`AgentRecordChange` binds serialized record preimages/endings into the existing
-Agent Change store with distinct operation kinds. Preview, current-ending review
-and Undo use those records rather than Note source. `AgentRecordRecovery` restores
-through the existing portable owners; no secondary journal or receipt is created.
-Receipt confirmation and uncertain outcomes preserve the normal evidence boundary.
-Committed record mutations publish through workspace refresh; retained Document
-sessions invalidate their attachment-list task on accepted workspace generations.
 
 ## Note mutation authority and evidence
 
@@ -302,7 +283,7 @@ permanent deletion removes the conversation and execution entry. Machine path di
 connection have one controller entry point; Settings receives the selected Triptych
 controller from its composition root through environment injection, without giving
 Settings a workspace runtime. The connection form and native file picker live only in
-the Settings surface. The left selector is Library/Chat; Inspector exposes About/Links. Window close flushes drafts; runtime shutdown persists input and closes
+the Settings surface. The left selector is Library/Chat; Inspector exposes Links/Related Material. Window close flushes drafts; runtime shutdown persists input and closes
 its connection without global logout.
 
 Conversation-token bridge requests allow 590 seconds for researcher input and

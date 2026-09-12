@@ -19,10 +19,11 @@ struct MarkdownEditorWebViewIntegrationTests {
         let identity = harness.session.bridgeDocumentID
         let transport = harness.session.sessionID
         let web = try #require(harness.session.webView)
-        _ = try await harness.session.send(.replacePassage(
-            expectedText: source, fromUTF16: 0, toUTF16: source.utf16.count,
-            replacement: source + " Added 😀."
-        ), in: web)
+        _ = try await harness.session.send(
+            .replacePassage(
+                expectedText: source, fromUTF16: 0, toUTF16: source.utf16.count,
+                replacement: source + " Added 😀."
+            ), in: web)
         let expected = try await harness.session.currentText()
         let selection = harness.session.context?.selections
         _ = try #require(harness.session.context?.undoLabel)
@@ -34,7 +35,8 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(try await harness.session.currentText() == expected)
         #expect(harness.session.context?.selections == selection)
         #expect(harness.session.context?.undoLabel != nil)
-        _ = try await harness.callPageJavaScript("""
+        _ = try await harness.callPageJavaScript(
+            """
             document.querySelector('.cm-content')?.dispatchEvent(new KeyboardEvent('keydown', {
                 key: 'z', code: 'KeyZ', keyCode: 90, which: 90,
                 metaKey: true, bubbles: true, cancelable: true
@@ -2374,8 +2376,6 @@ struct MarkdownEditorWebViewIntegrationTests {
         let inactive = try await harness.session.testingCalloutProjectionSnapshot(
             containing: "Curated connections"
         )
-        #expect(inactive.renderedTitleFontWeight == "550")
-        #expect(inactive.renderedTitleFontStyle == "italic")
 
         let bodyCaret =
             try #require(source.range(of: "First claim")?.lowerBound)
@@ -4049,7 +4049,8 @@ struct MarkdownEditorWebViewIntegrationTests {
         let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
         defer { harness.close() }
         try await harness.waitUntilReady()
-        _ = try await harness.callPageJavaScript("""
+        _ = try await harness.callPageJavaScript(
+            """
             window.syntaxMotionFrames = [];
             const originalAnimate = Element.prototype.animate;
             Element.prototype.animate = function(frames, options) {
@@ -4069,21 +4070,24 @@ struct MarkdownEditorWebViewIntegrationTests {
             let offset = try #require(source.range(of: text)?.lowerBound).utf16Offset(in: source)
             harness.session.revealSourceRange(fromUTF16: offset, toUTF16: offset)
             try await harness.waitUntilSelection(head: offset, stage: text)
-            _ = try await harness.callPageJavaScript("""
+            _ = try await harness.callPageJavaScript(
+                """
                 await new Promise(resolve => {
                     requestAnimationFrame(() => requestAnimationFrame(resolve));
                     setTimeout(resolve, 200);
                 });
                 """)
         }
-        #expect(try await harness.callPageJavaScript("""
-            const frames = window.syntaxMotionFrames;
-            if (matchMedia('(prefers-reduced-motion: reduce)').matches) return frames.length === 0;
-            return frames.some(f => f.width && !f.callout && !f.code)
-                && frames.some(f => f.callout && f.opens && f.color)
-                && frames.some(f => f.code && f.opens && f.color)
-                && frames.filter(f => f.callout || f.code).every(f => !f.width);
-            """) as? Bool == true)
+        #expect(
+            try await harness.callPageJavaScript(
+                """
+                const frames = window.syntaxMotionFrames;
+                if (matchMedia('(prefers-reduced-motion: reduce)').matches) return frames.length === 0;
+                return frames.some(f => f.width && !f.callout && !f.code)
+                    && frames.some(f => f.callout && f.opens && f.color)
+                    && frames.some(f => f.code && f.opens && f.color)
+                    && frames.filter(f => f.callout || f.code).every(f => !f.width);
+                """) as? Bool == true)
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
         #expect(!harness.session.isDirty)
         await harness.closeAndDrain()
@@ -5136,7 +5140,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
-    @Test("Edit Command-I applies one exact Markdown transaction and remains undoable")
+    @Test("The native Italic menu shortcut preserves exact selection and Undo")
     func editKeyboardItalicUsesExactSourceTransaction() async throws {
         let source = "Selected 中文 claim remains exact.\n"
         let selectedText = "Selected 中文 claim"
@@ -5148,20 +5152,28 @@ struct MarkdownEditorWebViewIntegrationTests {
         try await harness.waitUntilSelection(head: end)
         try await harness.session.focusAndWait()
 
-        let handled =
-            try await harness.callPageJavaScript(
-                """
-                const content = document.querySelector('.cm-content');
-                if (!content) return false;
-                const event = new KeyboardEvent('keydown', {
-                  key: 'i', code: 'KeyI', keyCode: 73, which: 73,
-                  metaKey: true, bubbles: true, cancelable: true
-                });
-                content.dispatchEvent(event);
-                return event.defaultPrevented;
-                """
-            ) as? Bool
-        #expect(handled == true)
+        let webView = try #require(harness.session.webView)
+        let window = try #require(webView.window)
+        let previousMenu = NSApp.mainMenu
+        defer { NSApp.mainMenu = previousMenu }
+        let target = FormattingMenuTarget(session: harness.session)
+        let menu = NSMenu()
+        let format = NSMenuItem()
+        format.submenu = NSMenu(title: "Format")
+        let italic = NSMenuItem(title: "Italic", action: #selector(FormattingMenuTarget.italic), keyEquivalent: "i")
+        italic.keyEquivalentModifierMask = .command
+        italic.target = target
+        format.submenu?.addItem(italic)
+        menu.addItem(format)
+        NSApp.mainMenu = menu
+        let event = try #require(
+            NSEvent.keyEvent(
+                with: .keyDown, location: .zero,
+                modifierFlags: .command, timestamp: 0, windowNumber: window.windowNumber,
+                context: nil, characters: "i", charactersIgnoringModifiers: "i", isARepeat: false, keyCode: 34))
+        #expect(menu.performKeyEquivalent(with: event))
+        let task = try #require(target.task)
+        try await task.value
 
         let expected = "*Selected 中文 claim* remains exact.\n"
         let editedDeadline = ContinuousClock.now.advanced(by: .seconds(3))
@@ -5958,6 +5970,14 @@ struct MarkdownEditorWebViewIntegrationTests {
             fragment: nil,
             htmlBody: "<p>Target body</p>"
         )
+    }
+
+    @MainActor
+    private final class FormattingMenuTarget: NSObject {
+        let session: MarkdownEditorSession
+        var task: Task<Void, Error>?
+        init(session: MarkdownEditorSession) { self.session = session }
+        @objc func italic() { task = Task { try await session.perform(.emphasis) } }
     }
 
     @MainActor

@@ -428,7 +428,7 @@ extension ScholiumUITests {
 
         if mode == "overview" {
             XCTAssertTrue(
-                app.descendants(matching: .any)["scholium.about"]
+                app.descendants(matching: .any)["scholium.connections.empty"]
                     .waitForExistence(timeout: 8)
             )
         } else {
@@ -1096,10 +1096,7 @@ extension ScholiumUITests {
         let needsRankingAlias = name.contains(
             "testSearchExplainsTitleAliasHeadingAndBodyRanking"
         )
-        let needsZoteroBinding = name.contains(
-            "testOverviewRoutesZoteroOnlyFromCurrentAnalysis"
-        )
-        guard needsDefaultAliases || needsRankingAlias || needsZoteroBinding else {
+        guard needsDefaultAliases || needsRankingAlias else {
             return
         }
 
@@ -1129,7 +1126,7 @@ extension ScholiumUITests {
         app.terminate()
 
         if needsDefaultAliases {
-            try seedManagedTopicAliases(
+            try seedAuthoredTopicAliases(
                 relativePath: "QA Topic.md",
                 aliases: [
                     "Synthetic Topic Alias 001",
@@ -1139,17 +1136,12 @@ extension ScholiumUITests {
             )
         }
         if needsRankingAlias {
-            try seedManagedTopicAliases(
+            try seedAuthoredTopicAliases(
                 relativePath: "QA Topic.md",
                 aliases: ["Deliberative Autonomy"]
             )
         }
-        if needsZoteroBinding {
-            try seedAnalysisZoteroBinding(
-                relativePath: "QA Autosave A.md",
-                itemKey: "QAITEM01"
-            )
-        }
+
     }
 
     func write(_ string: String, to url: URL) throws {
@@ -1289,59 +1281,19 @@ extension ScholiumUITests {
         ).firstMatch
     }
 
-    private func seedManagedTopicAliases(
-        relativePath: String,
-        aliases: [String]
-    ) throws {
-        let controlDirectory = triptychDirectory.appendingPathComponent(
-            ".scholium",
-            isDirectory: true
-        )
-        let identityDocument = try XCTUnwrap(
-            try JSONSerialization.jsonObject(
-                with: Data(
-                    contentsOf: controlDirectory.appendingPathComponent(
-                        "identities.json"
-                    ))
-            ) as? [String: Any]
-        )
-        let matchingRecords = (identityDocument["records"] as? [[String: Any]] ?? [])
-            .filter { $0["relativePath"] as? String == relativePath }
-        let noteID = try XCTUnwrap(
-            matchingRecords.count == 1 ? matchingRecords.first?["id"] as? String : nil,
-            "The managed Topic alias fixture requires one exact stable Note identity."
-        )
-        let encodedAliases = aliases.map { alias in
-            ["string": ["_0": alias]]
+    private func seedAuthoredTopicAliases(relativePath: String, aliases: [String]) throws {
+        let url = triptychDirectory.appendingPathComponent("02-topics").appendingPathComponent(relativePath)
+        let original = try source(at: url)
+        let encoded = try JSONSerialization.data(withJSONObject: aliases)
+        let line = "aliases: " + String(decoding: encoded, as: UTF8.self) + "\n"
+        let updated: String
+        if original.hasPrefix("---\n") {
+            updated = "---\n" + line + String(original.dropFirst(4))
+        } else {
+            updated = "---\n" + line + "---\n" + original
         }
-        let record: [String: Any] = [
-            "schemaVersion": 1,
-            "noteID": noteID,
-            "fields": [
-                "aliases": [
-                    "array": ["_0": encodedAliases]
-                ]
-            ],
-        ]
-        let destinationDirectory = controlDirectory.appendingPathComponent(
-            "note-metadata/v1",
-            isDirectory: true
-        )
-        try FileManager.default.createDirectory(
-            at: destinationDirectory,
-            withIntermediateDirectories: true
-        )
-        let destination = destinationDirectory.appendingPathComponent(
-            "\(noteID.lowercased()).json"
-        )
-        try JSONSerialization.data(
-            withJSONObject: record,
-            options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
-        ).write(to: destination, options: .atomic)
-        try FileManager.default.setAttributes(
-            [.posixPermissions: NSNumber(value: 0o600)],
-            ofItemAtPath: destination.path
-        )
+        try write(updated, to: url)
+        try updateStoredNoteFingerprint(relativePath: relativePath, source: updated)
     }
 
     /// Test-owned source extensions must update the matching identity record
@@ -1380,48 +1332,6 @@ extension ScholiumUITests {
         )
     }
 
-    private func seedAnalysisZoteroBinding(
-        relativePath: String,
-        itemKey: String
-    ) throws {
-        let controlDirectory = triptychDirectory.appendingPathComponent(
-            ".scholium",
-            isDirectory: true
-        )
-        let identityDocument = try XCTUnwrap(
-            try JSONSerialization.jsonObject(
-                with: Data(contentsOf: controlDirectory.appendingPathComponent("identities.json"))
-            ) as? [String: Any]
-        )
-        let matchingRecords = (identityDocument["records"] as? [[String: Any]] ?? [])
-            .filter { $0["relativePath"] as? String == relativePath }
-        let identity = try XCTUnwrap(
-            matchingRecords.count == 1 ? matchingRecords.first : nil,
-            "The Zotero UI fixture requires one exact stable Analysis identity."
-        )
-        let noteID = try XCTUnwrap(identity["id"] as? String)
-        let bindings: [String: Any] = [
-            "schemaVersion": 1,
-            "bindings": [
-                [
-                    "note_id": noteID,
-                    "library": ["kind": "user"],
-                    "item_key": itemKey,
-                ]
-            ],
-        ]
-        let destination = controlDirectory.appendingPathComponent(
-            "analysis-zotero-bindings.json"
-        )
-        try JSONSerialization.data(
-            withJSONObject: bindings,
-            options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
-        ).write(to: destination, options: .atomic)
-        try FileManager.default.setAttributes(
-            [.posixPermissions: NSNumber(value: 0o600)],
-            ofItemAtPath: destination.path
-        )
-    }
 }
 
 @MainActor

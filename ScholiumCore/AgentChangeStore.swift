@@ -332,7 +332,7 @@ public actor AgentChangeStore {
     ) throws -> AgentChange {
         try locked {
             let current = try readPayload(id)
-            guard current.operation == .update || current.operation == .move || current.operation.isRecordMutation,
+            guard current.operation == .update || current.operation == .move,
                 current.state == .confirmed,
                 current.beforeFingerprint == restoredFingerprint,
                 restoredMoveFingerprints == current.move.map({ Dictionary(uniqueKeysWithValues: $0.effects.map { ($0.noteID, $0.beforeFingerprint) }) })
@@ -409,10 +409,7 @@ public actor AgentChangeStore {
 
     private func validate(_ payload: Payload) throws {
         try validateMove(payload)
-        if payload.operation.isRecordMutation {
-            guard let before = payload.beforeData, let after = payload.afterData else { throw AgentChangeError.invalid(payload.id) }
-            try AgentRecordChange.validate(operation: payload.operation, noteID: payload.noteID, before: before, after: after)
-        }
+
         let shapeIsValid: Bool =
             switch payload.operation {
             case .create:
@@ -420,7 +417,7 @@ public actor AgentChangeStore {
                     && payload.afterData != nil && payload.afterFingerprint != nil
                     && payload.originalRelativePath == nil
                     && payload.finalRelativePath != nil
-            case .update, .metadata, .attachment:
+            case .update:
                 payload.beforeData != nil && payload.beforeFingerprint != nil
                     && payload.afterData != nil && payload.afterFingerprint != nil
                     && payload.originalRelativePath != nil
@@ -442,7 +439,7 @@ public actor AgentChangeStore {
             case .confirmed:
                 payload.confirmedAt != nil && payload.undoneAt == nil
             case .undone:
-                (payload.operation == .update || payload.operation == .move || payload.operation.isRecordMutation) && payload.confirmedAt != nil
+                (payload.operation == .update || payload.operation == .move) && payload.confirmedAt != nil
                     && payload.undoneAt != nil
             }
         guard payload.schemaVersion == Payload.currentSchemaVersion,

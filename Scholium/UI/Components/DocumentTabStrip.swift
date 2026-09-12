@@ -37,7 +37,10 @@ final class DocumentTabStrip: NSView, NSDraggingSource {
         }
         for tab in tabs {
             let cell = cells[tab.id] ?? DocumentTabCell(tab: tab, strip: self)
-            if cell.superview == nil { addSubview(cell); cells[tab.id] = cell }
+            if cell.superview == nil {
+                addSubview(cell)
+                cells[tab.id] = cell
+            }
             cell.tab = tab
             cell.toolTip = tab.toolTip
             cell.setAccessibilityLabel(tab.title)
@@ -110,7 +113,10 @@ final class DocumentTabStrip: NSView, NSDraggingSource {
         }
         // The drag server receives an immutable bitmap, with no deferred draw
         // callback into a live AppKit view or its actor-owned presentation.
-        guard let data = drawing.tiffRepresentation, let image = NSImage(data: data) else { clearDrag(); return }
+        guard let data = drawing.tiffRepresentation, let image = NSImage(data: data) else {
+            clearDrag()
+            return
+        }
         let pasteboard = NSPasteboardItem()
         pasteboard.setString(cell.tab.id.uuidString, forType: Self.pasteboardType)
         let item = NSDraggingItem(pasteboardWriter: pasteboard)
@@ -127,7 +133,10 @@ final class DocumentTabStrip: NSView, NSDraggingSource {
         } else {
             session = nil
         }
-        guard let session else { clearDrag(); return }
+        guard let session else {
+            clearDrag()
+            return
+        }
         session.draggingFormation = .none
         cell.isDragPlaceholder = true
     }
@@ -139,10 +148,15 @@ final class DocumentTabStrip: NSView, NSDraggingSource {
     override func draggingUpdated(_ sender: any NSDraggingInfo) -> NSDragOperation {
         guard sender.draggingSource as? DocumentTabStrip === self, let id = draggedID,
             sender.draggingPasteboard.string(forType: Self.pasteboardType) == id.uuidString,
-            let index = index(at: convert(sender.draggingLocation, from: nil)) else { return [] }
+            let index = index(at: convert(sender.draggingLocation, from: nil))
+        else { return [] }
         var order = tabs.map(\.id).filter { $0 != id }
         order.insert(id, at: min(index, order.count))
-        if previewOrder != order { previewOrder = order; needsLayout = true; layoutSubtreeIfNeeded() }
+        if previewOrder != order {
+            previewOrder = order
+            needsLayout = true
+            layoutSubtreeIfNeeded()
+        }
         return .move
     }
     override func draggingExited(_ sender: (any NSDraggingInfo)?) {
@@ -154,7 +168,8 @@ final class DocumentTabStrip: NSView, NSDraggingSource {
     }
     override func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
         guard prepareForDragOperation(sender), let id = draggedID,
-            let index = previewOrder?.firstIndex(of: id) else { return false }
+            let index = previewOrder?.firstIndex(of: id)
+        else { return false }
         reorder(id, index)
         return true
     }
@@ -181,7 +196,10 @@ final class DocumentTabStrip: NSView, NSDraggingSource {
 final class DocumentTabCell: NSControl, NSGestureRecognizerDelegate {
     var tab: DocumentTabItem
     var isDragPlaceholder = false {
-        didSet { needsDisplay = true; updateCloseVisibility() }
+        didSet {
+            needsDisplay = true
+            updateCloseVisibility()
+        }
     }
     private weak var strip: DocumentTabStrip?
     private var mouseDownEvent: NSEvent?
@@ -220,7 +238,8 @@ final class DocumentTabCell: NSControl, NSGestureRecognizerDelegate {
     override func layout() {
         super.layout()
         let size = ScholiumDocumentTabStyle.closeSize
-        closeButton.frame = NSRect(x: ScholiumDocumentTabStyle.closeInset,
+        closeButton.frame = NSRect(
+            x: ScholiumDocumentTabStyle.closeInset,
             y: bounds.midY - size / 2, width: size, height: size)
     }
     override func updateTrackingAreas() {
@@ -230,10 +249,22 @@ final class DocumentTabCell: NSControl, NSGestureRecognizerDelegate {
         addTrackingArea(area)
         hoverTrackingArea = area
     }
-    override func mouseEntered(with event: NSEvent) { pointerIsInside = true; updateCloseVisibility() }
-    override func mouseExited(with event: NSEvent) { pointerIsInside = false; updateCloseVisibility() }
-    override func becomeFirstResponder() -> Bool { closeButton.isHidden = false; return true }
-    override func resignFirstResponder() -> Bool { updateCloseVisibility(); return true }
+    override func mouseEntered(with event: NSEvent) {
+        pointerIsInside = true
+        updateCloseVisibility()
+    }
+    override func mouseExited(with event: NSEvent) {
+        pointerIsInside = false
+        updateCloseVisibility()
+    }
+    override func becomeFirstResponder() -> Bool {
+        closeButton.isHidden = false
+        return true
+    }
+    override func resignFirstResponder() -> Bool {
+        updateCloseVisibility()
+        return true
+    }
     private func updateCloseVisibility() {
         closeButton.isHidden = isDragPlaceholder || (!pointerIsInside && window?.firstResponder !== self && window?.firstResponder !== closeButton)
     }
@@ -241,7 +272,10 @@ final class DocumentTabCell: NSControl, NSGestureRecognizerDelegate {
     override func accessibilityCustomActions() -> [NSAccessibilityCustomAction]? {
         [NSAccessibilityCustomAction(name: ScholiumL10n.string("Close Tab"), target: self, selector: #selector(accessibilityClose))]
     }
-    @objc private func accessibilityClose() -> Bool { closeDocument(); return true }
+    @objc private func accessibilityClose() -> Bool {
+        closeDocument()
+        return true
+    }
 
     override func draw(_ dirtyRect: NSRect) {
         guard !isDragPlaceholder else { return }
@@ -249,21 +283,31 @@ final class DocumentTabCell: NSControl, NSGestureRecognizerDelegate {
     }
     static func draw(tab: DocumentTabItem, selected: Bool, in rect: NSRect) {
         if selected {
-            let shape = NSBezierPath(roundedRect: rect.insetBy(dx: ScholiumDocumentTabStyle.borderInset, dy: ScholiumDocumentTabStyle.borderInset), xRadius: rect.height / 2, yRadius: rect.height / 2)
-            ScholiumDocumentTabStyle.selectedFill.setFill(); shape.fill()
-            ScholiumDocumentTabStyle.border.setStroke(); shape.lineWidth = ScholiumDocumentTabStyle.borderWidth; shape.stroke()
+            let shape = NSBezierPath(
+                roundedRect: rect.insetBy(dx: ScholiumDocumentTabStyle.borderInset, dy: ScholiumDocumentTabStyle.borderInset), xRadius: rect.height / 2,
+                yRadius: rect.height / 2)
+            ScholiumDocumentTabStyle.selectedFill.setFill()
+            shape.fill()
+            ScholiumDocumentTabStyle.border.setStroke()
+            shape.lineWidth = ScholiumDocumentTabStyle.borderWidth
+            shape.stroke()
         }
         let paragraph = NSMutableParagraphStyle()
         paragraph.alignment = .center
         paragraph.lineBreakMode = .byTruncatingTail
         let font = ScholiumDocumentTabStyle.font
         let height = font.ascender - font.descender
-        let label = NSRect(x: rect.minX + ScholiumDocumentTabStyle.labelInset,
+        let label = NSRect(
+            x: rect.minX + ScholiumDocumentTabStyle.labelInset,
             y: rect.midY - height / 2, width: max(0, rect.width - 2 * ScholiumDocumentTabStyle.labelInset), height: height)
-        (tab.title as NSString).draw(in: label, withAttributes: [.font: font, .foregroundColor: ScholiumDocumentTabStyle.foreground, .paragraphStyle: paragraph])
+        (tab.title as NSString).draw(
+            in: label, withAttributes: [.font: font, .foregroundColor: ScholiumDocumentTabStyle.foreground, .paragraphStyle: paragraph])
     }
     override func drawFocusRingMask() {
-        NSBezierPath(roundedRect: bounds.insetBy(dx: ScholiumDocumentTabStyle.borderInset, dy: ScholiumDocumentTabStyle.borderInset), xRadius: bounds.height / 2, yRadius: bounds.height / 2).fill()
+        NSBezierPath(
+            roundedRect: bounds.insetBy(dx: ScholiumDocumentTabStyle.borderInset, dy: ScholiumDocumentTabStyle.borderInset), xRadius: bounds.height / 2,
+            yRadius: bounds.height / 2
+        ).fill()
     }
     override var focusRingMaskBounds: NSRect { bounds }
     func gestureRecognizer(_ gestureRecognizer: NSGestureRecognizer, shouldAttemptToRecognizeWith event: NSEvent) -> Bool {
@@ -284,7 +328,10 @@ final class DocumentTabCell: NSControl, NSGestureRecognizerDelegate {
         mouseDownEvent = nil
     }
     override func menu(for event: NSEvent) -> NSMenu? { strip?.menu(for: tab) }
-    override func accessibilityPerformPress() -> Bool { strip?.select(tab.id); return true }
+    override func accessibilityPerformPress() -> Bool {
+        strip?.select(tab.id)
+        return true
+    }
     override func keyDown(with event: NSEvent) {
         switch event.keyCode {
         case 123, 124:

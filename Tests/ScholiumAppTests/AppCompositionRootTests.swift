@@ -56,14 +56,6 @@ struct AppCompositionRootTests {
         #expect(ObjectIdentifier(first.cssSnippetStore) == ObjectIdentifier(workspaceStore.cssSnippetStore))
         #expect(ObjectIdentifier(second.cssSnippetStore) == ObjectIdentifier(workspaceStore.cssSnippetStore))
         #expect(
-            ObjectIdentifier(first.zoteroCoordinator.bridge)
-                == ObjectIdentifier(workspaceStore.zoteroBridge)
-        )
-        #expect(
-            ObjectIdentifier(second.zoteroCoordinator.bridge)
-                == ObjectIdentifier(workspaceStore.zoteroBridge)
-        )
-        #expect(
             workspaceStore.applicationSupportURL
                 == isolatedHome.appendingPathComponent(
                     "ApplicationSupport",
@@ -314,7 +306,8 @@ struct AppCompositionRootTests {
         try FileManager.default.createDirectory(at: analyses, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
         for path in ["First.md", "Second.md"] {
-            try "---\nid: \(UUID().uuidString.lowercased())\n---\n\nFixture.".write(to: analyses.appendingPathComponent(path), atomically: true, encoding: .utf8)
+            try "---\nid: \(UUID().uuidString.lowercased())\n---\n\nFixture.".write(
+                to: analyses.appendingPathComponent(path), atomically: true, encoding: .utf8)
         }
         let store = makeTestWorkspaceStore()
         let vaultID = try await configurePresentationFixture(store: store, root: root)
@@ -328,7 +321,8 @@ struct AppCompositionRootTests {
         let second = WindowSelectedDocument.unavailable(vaultID: vaultID, relativePath: "Second.md")
         for document in [first, second] {
             window.documentController.selectDocument(document)
-            window.documentTabController.activate(document: document, title: document.relativePath,
+            window.documentTabController.activate(
+                document: document, title: document.relativePath,
                 toolTip: document.relativePath, placement: .newTab)
         }
         let session = window.documentController.session(for: second.editingTarget)
@@ -351,14 +345,18 @@ struct AppCompositionRootTests {
         let separate = WindowModel(workspaceStore: store)
         separate.isDetachedDocumentWindow = true
         let key = DocumentSessionKey(vaultID: UUID(), noteID: UUID())
-        let reference = VaultNoteReference(vaultID: key.vaultID, vaultName: "Fixture", vaultRole: .topicKnowledge,
+        let reference = VaultNoteReference(
+            vaultID: key.vaultID, vaultName: "Fixture", vaultRole: .topicKnowledge,
             relativePath: "Separate.md", stableNoteID: key.noteID.uuidString)
         let document = WindowSelectedDocument.workspace(WindowDocumentDescriptor(sessionKey: key, reference: reference))
         separate.documentController.selectDocument(document)
         separate.documentTabController.activate(document: document, title: "Separate", toolTip: "Separate", placement: .newTab)
         store.documentLocations.register(main)
         store.documentLocations.register(separate)
-        defer { store.documentLocations.unregister(main); store.documentLocations.unregister(separate) }
+        defer {
+            store.documentLocations.unregister(main)
+            store.documentLocations.unregister(separate)
+        }
         let result = try await store.documentLocations.openSeparate(reference, from: main)
         #expect(result === separate)
         #expect(main.documentTabController.tabs.isEmpty)
@@ -372,10 +370,13 @@ struct AppCompositionRootTests {
         let main = WindowModel(workspaceStore: store)
         let separate = WindowModel(workspaceStore: store)
         let key = DocumentSessionKey(vaultID: UUID(), noteID: UUID())
-        let document = WindowSelectedDocument.workspace(WindowDocumentDescriptor(
-            sessionKey: key, reference: VaultNoteReference(vaultID: key.vaultID,
-                vaultName: "Fixture", vaultRole: .topicKnowledge,
-                relativePath: "Moved.md", stableNoteID: key.noteID.uuidString)))
+        let document = WindowSelectedDocument.workspace(
+            WindowDocumentDescriptor(
+                sessionKey: key,
+                reference: VaultNoteReference(
+                    vaultID: key.vaultID,
+                    vaultName: "Fixture", vaultRole: .topicKnowledge,
+                    relativePath: "Moved.md", stableNoteID: key.noteID.uuidString)))
         let other = WindowSelectedDocument.unavailable(vaultID: UUID(), relativePath: "Current.md")
         main.documentController.selectDocument(other)
         main.documentTabController.activate(document: other, title: "Current", toolTip: "Current", placement: .newTab)
@@ -383,7 +384,10 @@ struct AppCompositionRootTests {
         separate.documentTabController.activate(document: document, title: "Moved", toolTip: "Moved", placement: .newTab)
         store.documentLocations.register(main)
         store.documentLocations.register(separate)
-        defer { store.documentLocations.unregister(main); store.documentLocations.unregister(separate) }
+        defer {
+            store.documentLocations.unregister(main)
+            store.documentLocations.unregister(separate)
+        }
         main.documentNavigationHistoryController.record(document)
         main.documentNavigationHistoryController.record(other)
         main.navigateDocumentHistory(.back)
@@ -1151,9 +1155,10 @@ struct AppCompositionRootTests {
             firstWindow?.currentRegisteredVault?.id == analysesVault.id
         }
         #expect(firstWindow!.selectedDocumentPath == duplicatePath)
-        let analysisTab = try #require(firstWindow!.documentTabController.tabs.first {
-            $0.document.workspaceDescriptor?.sessionKey == sessionKey
-        })
+        let analysisTab = try #require(
+            firstWindow!.documentTabController.tabs.first {
+                $0.document.workspaceDescriptor?.sessionKey == sessionKey
+            })
         firstWindow!.selectDocumentTab(withID: analysisTab.id)
         try await waitUntil("the first window selected its retained Analysis") {
             firstWindow?.currentRegisteredVault?.id == analysesVault.id
@@ -1280,7 +1285,9 @@ struct AppCompositionRootTests {
                     && secondWindow.selectedDocument == nil
             }
         } catch {
-            Issue.record("Deletion state: tabs=\(secondWindow.documentTabController.tabs), selected=\(String(describing: secondWindow.documentController.selectedDocument)), dirty=\(secondSession.hasUnsavedChanges), conflict=\(String(describing: secondSession.conflict))")
+            Issue.record(
+                "Deletion state: tabs=\(secondWindow.documentTabController.tabs), selected=\(String(describing: secondWindow.documentController.selectedDocument)), dirty=\(secondSession.hasUnsavedChanges), conflict=\(String(describing: secondSession.conflict))"
+            )
             throw error
         }
         #expect(secondWindow.documentController.retainedSession(for: sessionKey) == nil)
@@ -1454,133 +1461,6 @@ struct AppCompositionRootTests {
         #expect(try Data(contentsOf: retainedSource) == retainedBytes)
         #expect(try Data(contentsOf: manifestURL) == unsupportedManifest)
         await store.shutdownApplicationRuntime()
-    }
-
-    @Test("Inspector navigation preserves mode and About rejects stale metadata drafts")
-    func inspectorNavigationAndMetadataRevision() async throws {
-        let fm = FileManager.default
-        let root = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent(".build/inspector-tests/\(UUID().uuidString)")
-        let analyses = root.appendingPathComponent("Analyses")
-        let topics = root.appendingPathComponent("Topics")
-        let works = root.appendingPathComponent("Works")
-        for directory in [analyses, topics, works] {
-            try fm.createDirectory(at: directory, withIntermediateDirectories: true)
-        }
-        try Data("# Work\n".utf8).write(to: works.appendingPathComponent("Work.md"))
-        let source = "# Source\n\n[[Target#Passage]]\n"
-        try Data(source.utf8).write(to: analyses.appendingPathComponent("Source.md"))
-        try Data("# Target\n\n## Passage\n\nTarget text.\n".utf8)
-            .write(to: analyses.appendingPathComponent("Target.md"))
-        let previousHome = ProcessInfo.processInfo.environment["SCHOLIUM_HOME"]
-        setenv("SCHOLIUM_HOME", root.appendingPathComponent("home").path, 1)
-        defer {
-            if let previousHome { setenv("SCHOLIUM_HOME", previousHome, 1) } else { unsetenv("SCHOLIUM_HOME") }
-            try? fm.removeItem(at: root)
-        }
-        let store = makeTestWorkspaceStore()
-        let configured = try await store.configureTriptychCapabilities(
-            paperAnalysisURL: analyses, topicKnowledgeURL: topics, outputURL: works,
-            portableContainerURL: root, triptychName: "Inspector Fixture"
-        )
-        let window = WindowModel(workspaceStore: store, requestedTriptychID: configured.id)
-        await window.refreshWorkspaceAssignment(preferredTriptychID: configured.id)
-        try await window.openWorkspaceVault(.paperAnalysis)
-        let vault = try #require(configured.assignment.vault(for: .paperAnalysis))
-        let snapshot = try #require(
-            try await window.documentController.noteSnapshot(
-                VaultQualifiedNoteID(vaultID: vault.id, relativePath: "Source.md")
-            ))
-        window.documentController.installOpenedDocument(
-            snapshot, vaultName: vault.name, vaultRole: vault.role
-        )
-        let target = try #require(
-            try await window.documentController.noteSnapshot(
-                VaultQualifiedNoteID(vaultID: vault.id, relativePath: "Target.md")
-            ))
-        let reference = VaultNoteReference(
-            vaultID: vault.id, vaultName: vault.name, vaultRole: vault.role,
-            relativePath: "Target.md",
-            stableNoteID: try #require(target.stableIdentity.resolvedID).uuidString.lowercased()
-        )
-        for mode in [NotePresentationMode.read, .livePreview, .source] {
-            window.rememberPresentationMode(mode)
-            window.documentController.installOpenedDocument(
-                snapshot, vaultName: vault.name, vaultRole: vault.role
-            )
-            if let editorMode = mode.editorMode {
-                let selected = try #require(window.documentController.selectedDocument)
-                window.documentController.beginEditing(
-                    session: window.documentController.session(for: selected.editingTarget),
-                    target: selected.editingTarget,
-                    source: snapshot.document.rawContent,
-                    revision: snapshot.fingerprint,
-                    mode: editorMode
-                )
-            }
-            try await waitUntil("the selected editor mode reaches chrome") {
-                window.presentedDocumentMode == mode
-            }
-            let before = window.presentedDocumentMode
-            #expect(before == mode)
-            await window.openWorkspaceReference(reference, line: 3)
-            await window.waitForPendingDocumentTransitionsForTesting()
-            #expect(window.currentNote?.relativePath == "Target.md")
-            #expect(window.requestPresentationMode == before)
-            #expect(window.documentController.sourceLocationRequest?.line == 3)
-            window.requestPresentationMode = nil
-            if let request = window.documentController.sourceLocationRequest { window.documentController.consumeSourceLocation(request.id) }
-        }
-        let note = try #require(window.currentNote)
-        let revision = note.workspaceSnapshot?.metadata?.revision
-        try await window.saveMetadata(
-            for: note, proposedFields: ["title": .string("First value")], expectedRevision: revision
-        )
-        do {
-            try await window.saveMetadata(
-                for: note, proposedFields: ["title": .string("Stale overwrite")], expectedRevision: revision
-            )
-            Issue.record("A stale About draft overwrote newer Metadata")
-        } catch let error as NoteMetadataError {
-            guard case .revisionConflict = error else { throw error }
-        }
-        let stored = try #require(try await window.documentController.metadata(target.id))
-        #expect(stored.record.fields["title"] == .string("First value"))
-        let metadataFile = root.appendingPathComponent(
-            ".scholium/note-metadata/v1/\(stored.record.noteID.uuidString.lowercased()).json"
-        )
-        try fm.removeItem(at: metadataFile)
-        let reloaded = try await window.reloadMetadata(for: "Target.md")
-        #expect(reloaded.revision == nil)
-        #expect(reloaded.note.managedMetadataValue(named: "title") == nil)
-        let workVault = try #require(configured.assignment.vault(for: .output))
-        let work = try #require(
-            try await window.documentController.noteSnapshot(
-                VaultQualifiedNoteID(vaultID: workVault.id, relativePath: "Work.md")
-            ))
-        let workReference = VaultNoteReference(
-            vaultID: workVault.id, vaultName: workVault.name, vaultRole: workVault.role,
-            relativePath: "Work.md",
-            stableNoteID: try #require(work.stableIdentity.resolvedID).uuidString.lowercased()
-        )
-        let modeBeforeCrossVaultLink = window.presentedDocumentMode
-        let metadataToken = UUID()
-        window.registerMetadataEditorFlush(for: "Target.md", token: metadataToken) {
-            throw CocoaError(.fileWriteUnknown)
-        }
-        await window.openWorkspaceReference(workReference)
-        await window.waitForPendingDocumentTransitionsForTesting()
-        #expect(window.currentNote?.relativePath == "Target.md")
-        let retainedIssue = try #require(window.shellState.operationIssues.last)
-        #expect(window.discoveryController.libraryRevealRequest?.relativePath == "Target.md")
-        window.unregisterMetadataEditorFlush(token: metadataToken)
-        await window.openWorkspaceReference(workReference)
-        await window.waitForPendingDocumentTransitionsForTesting()
-        #expect(!window.shellState.operationIssues.contains { $0.id == retainedIssue.id })
-        #expect(window.requestPresentationMode == modeBeforeCrossVaultLink)
-        #expect(window.documentController.sourceLocationRequest?.line == nil)
-        #expect(try Data(contentsOf: analyses.appendingPathComponent("Source.md")) == Data(source.utf8))
     }
 
     private func waitUntil(

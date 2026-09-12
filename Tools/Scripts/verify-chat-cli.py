@@ -30,7 +30,7 @@ try:
         'scholium_read_attachment', 'scholium_list_links', 'scholium_create_note',
         'scholium_update_note', 'scholium_preview_move', 'scholium_move_note',
         'scholium_list_changes', 'scholium_read_change', 'scholium_undo_change',
-        'scholium_trash_note', 'scholium_update_metadata', 'scholium_update_attachment',
+        'scholium_trash_note',
         'scholium_capabilities', 'scholium_configure_skill', 'scholium_configure_tool',
         'scholium_configure_chat',
     }, names
@@ -44,7 +44,7 @@ try:
     assert process.returncode == 0, process.stderr.read().decode(errors='replace')
     rejected = subprocess.run([str(args.executable.resolve()), 'mcp', 'serve', '--conversation-token', 'invalid'], input=b'', capture_output=True, env=env, timeout=5)
     assert rejected.returncode != 0, 'An invalid conversation identity was accepted.'
-    print('Chat CLI: live twenty-two-tool discovery, isolated absent-App refusal, and malformed-token rejection passed.')
+    print(f'Chat CLI: live {len(names)}-tool discovery, isolated absent-App refusal, and malformed-token rejection passed.')
     zotero_requests = [
         {'jsonrpc': '2.0', 'id': 1, 'method': 'tools/list', 'params': {}},
         {'jsonrpc': '2.0', 'id': 2, 'method': 'tools/call', 'params': {

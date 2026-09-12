@@ -47,7 +47,6 @@ public struct WorkspaceGraphCounts: Codable, Hashable, Sendable {
 public enum WorkspaceNoteDerivedProjectionState: String, Codable, Hashable, Sendable {
     case current
     case sourceAhead
-    case portableMetadataAhead
 }
 
 /// Portable note identity is distinct from the note's current vault-qualified
@@ -90,13 +89,7 @@ public struct WorkspaceNoteSnapshot: Hashable, Sendable {
     public let fileMetadata: WorkspaceFileMetadata
     public let graphCounts: WorkspaceGraphCounts
     public let derivedProjectionState: WorkspaceNoteDerivedProjectionState
-    /// Portable researcher-owned structured metadata joined by stable Note
-    /// identity. It is authoritative for managed fields and is never derived
-    /// from same-named YAML keys.
-    public let metadata: NoteMetadataSnapshot?
-    /// Source-bound heading projection prepared by the workspace catalog for
-    /// this exact fingerprint. Presentation consumers must not parse Markdown
-    /// again merely to build document navigation.
+
     public let headings: [HeadingNode]
     /// Exact-fingerprint derived semantics prepared by the workspace opening
     /// generation. Package consumers may reuse it but never write from it.
@@ -129,7 +122,6 @@ public struct WorkspaceNoteSnapshot: Hashable, Sendable {
         document: NoteDocument,
         fileMetadata: WorkspaceFileMetadata,
         graphCounts: WorkspaceGraphCounts,
-        metadata: NoteMetadataSnapshot? = nil,
         headings: [HeadingNode] = [],
         derivedProjectionState: WorkspaceNoteDerivedProjectionState = .current
     ) {
@@ -140,7 +132,6 @@ public struct WorkspaceNoteSnapshot: Hashable, Sendable {
             document: document,
             fileMetadata: fileMetadata,
             graphCounts: graphCounts,
-            metadata: metadata,
             headings: headings,
             derivedProjectionState: derivedProjectionState,
             cachedSemanticDocument: nil,
@@ -155,7 +146,6 @@ public struct WorkspaceNoteSnapshot: Hashable, Sendable {
         document: NoteDocument,
         fileMetadata: WorkspaceFileMetadata,
         graphCounts: WorkspaceGraphCounts,
-        metadata: NoteMetadataSnapshot? = nil,
         headings: [HeadingNode],
         derivedProjectionState: WorkspaceNoteDerivedProjectionState = .current,
         cachedSemanticDocument: MarkdownSemanticDocument? = nil,
@@ -167,7 +157,6 @@ public struct WorkspaceNoteSnapshot: Hashable, Sendable {
         self.document = document
         self.fileMetadata = fileMetadata
         self.graphCounts = graphCounts
-        self.metadata = metadata
         self.headings = headings
         self.derivedProjectionState = derivedProjectionState
         self.cachedSemanticDocument =
@@ -187,7 +176,6 @@ public struct WorkspaceNoteSnapshot: Hashable, Sendable {
             && lhs.fingerprint == rhs.fingerprint
             && lhs.fileMetadata == rhs.fileMetadata
             && lhs.graphCounts == rhs.graphCounts
-            && lhs.metadata?.revision == rhs.metadata?.revision
             && lhs.derivedProjectionState == rhs.derivedProjectionState
     }
 
@@ -198,32 +186,13 @@ public struct WorkspaceNoteSnapshot: Hashable, Sendable {
         hasher.combine(fingerprint)
         hasher.combine(fileMetadata)
         hasher.combine(graphCounts)
-        hasher.combine(metadata?.revision)
         hasher.combine(derivedProjectionState)
     }
 
     /// Immediate window projection after a checked portable Metadata read or commit.
     /// Source bytes remain unchanged; workspace-wide Search and catalog state
     /// catch up in the owning refresh generation.
-    public func applyingCommittedMetadata(
-        _ metadata: NoteMetadataSnapshot?
-    ) -> WorkspaceNoteSnapshot {
-        WorkspaceNoteSnapshot(
-            id: id,
-            vaultRole: vaultRole,
-            stableIdentity: stableIdentity,
-            document: document,
-            fileMetadata: fileMetadata,
-            graphCounts: graphCounts,
-            metadata: metadata,
-            headings: headings,
-            derivedProjectionState: .portableMetadataAhead,
-            cachedSemanticDocument: cachedSemanticDocument,
-            cachedTitleProjection: cachedSemanticDocument.map { _ in
-                WorkspaceNoteTitleProjection(document: document)
-            }
-        )
-    }
+
 }
 
 /// The exact result of direct untitled-note creation before disposable
@@ -234,20 +203,17 @@ public struct WorkspaceManagedNoteCommit: Sendable {
     public let vaultRole: VaultRole
     public let stableIdentity: WorkspaceNoteIdentityState
     public let document: NoteDocument
-    public let metadata: NoteMetadataSnapshot?
 
     public init(
         id: VaultQualifiedNoteID,
         vaultRole: VaultRole,
         stableIdentity: WorkspaceNoteIdentityState,
-        document: NoteDocument,
-        metadata: NoteMetadataSnapshot? = nil
+        document: NoteDocument
     ) {
         self.id = id
         self.vaultRole = vaultRole
         self.stableIdentity = stableIdentity
         self.document = document
-        self.metadata = metadata
     }
 
     /// A bounded window presentation while the matching complete Workspace
@@ -270,7 +236,6 @@ public struct WorkspaceManagedNoteCommit: Sendable {
                 broken: 0,
                 ambiguous: 0
             ),
-            metadata: metadata,
             headings: [],
             derivedProjectionState: .sourceAhead
         )
@@ -406,7 +371,6 @@ public struct WorkspaceSnapshot: Sendable {
     public let mode: WorkspaceConfigurationMode
     public let phase: WorkspaceSnapshotPhase
     public let generatedAt: Date
-    public let metadataCatalog: NoteMetadataCatalog
     public let vaults: [WorkspaceVaultSnapshot]
     public let discovery: WorkspaceDiscoverySnapshot
     public let research: WorkspaceResearchSnapshot
@@ -416,7 +380,6 @@ public struct WorkspaceSnapshot: Sendable {
         mode: WorkspaceConfigurationMode,
         phase: WorkspaceSnapshotPhase = .complete,
         generatedAt: Date,
-        metadataCatalog: NoteMetadataCatalog = .builtIn,
         vaults: [WorkspaceVaultSnapshot],
         discovery: WorkspaceDiscoverySnapshot,
         research: WorkspaceResearchSnapshot
@@ -425,7 +388,6 @@ public struct WorkspaceSnapshot: Sendable {
         self.mode = mode
         self.phase = phase
         self.generatedAt = generatedAt
-        self.metadataCatalog = metadataCatalog
         self.vaults = vaults
         self.discovery = discovery
         self.research = research
@@ -737,18 +699,15 @@ public struct WorkspaceMutationOutcome<CommittedValue: Sendable>: Sendable {
     public let committedValue: CommittedValue
     public let derivedRefreshWarning: String?
     public let identityRecoveryWarning: String?
-    public let portableMetadataRecoveryWarning: String?
 
     public init(
         committedValue: CommittedValue,
         derivedRefreshWarning: String? = nil,
-        identityRecoveryWarning: String? = nil,
-        portableMetadataRecoveryWarning: String? = nil
+        identityRecoveryWarning: String? = nil
     ) {
         self.committedValue = committedValue
         self.derivedRefreshWarning = derivedRefreshWarning
         self.identityRecoveryWarning = identityRecoveryWarning
-        self.portableMetadataRecoveryWarning = portableMetadataRecoveryWarning
     }
 }
 
@@ -763,10 +722,6 @@ public enum ScholiumApplicationError: LocalizedError, Sendable {
     case workspaceStillLoading(UUID)
     case workspaceRegistrationInUse(UUID)
     case portableControlRecoveryRequired(controlPath: String, reason: String)
-    case noteMetadataRecoveryRequired(
-        controlPath: String,
-        issue: NoteMetadataRecoveryIssue
-    )
     case manifestIdentityMismatch(expected: UUID, actual: UUID)
     case operationCommittedButRefreshFailed(operation: String, reason: String)
     case operationCommitUncertain(operation: String, reason: String)
@@ -833,8 +788,6 @@ public enum ScholiumApplicationError: LocalizedError, Sendable {
             "Scholium cannot remove Triptych registration \(id.uuidString) while that Triptych is open. Close its other windows and try again."
         case .portableControlRecoveryRequired(let controlPath, let reason):
             "The portable control folder at \(controlPath) is incompatible or damaged. Preserve the entire folder before Scholium creates current control state. \(reason)"
-        case .noteMetadataRecoveryRequired(let controlPath, let issue):
-            "The portable Note metadata record \(issue.fileName) under \(controlPath) requires recovery. Archive only this exact record before reloading the Triptych. \(issue.explanation)"
         case .manifestIdentityMismatch(let expected, let actual):
             "The portable Triptych identity is \(actual.uuidString), not \(expected.uuidString)."
         case .operationCommittedButRefreshFailed(let operation, let reason):

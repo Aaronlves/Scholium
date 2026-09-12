@@ -328,23 +328,23 @@ final class DocumentController: ObservableObject {
     func importImageAttachment(
         at sourceURL: URL,
         for note: VaultQualifiedNoteID
-    ) async throws -> PreparedImageAttachment {
+    ) async throws -> PreparedSourceAttachment {
         try await requireOperations().importImageAttachment(
             at: sourceURL,
             for: note
         )
     }
 
-    func rollbackImageAttachment(
-        _ preparation: PreparedImageAttachment
+    func rollbackSourceAttachment(
+        _ preparation: PreparedSourceAttachment
     ) async throws {
-        try await requireOperations().rollbackImageAttachment(preparation)
+        try await requireOperations().rollbackSourceAttachment(preparation)
     }
 
     func indexImageAttachment(
         at sourceURL: URL,
         for note: VaultQualifiedNoteID
-    ) async throws -> PreparedImageAttachment {
+    ) async throws -> PreparedSourceAttachment {
         try await requireOperations().indexImageAttachment(
             at: sourceURL,
             for: note
@@ -354,7 +354,7 @@ final class DocumentController: ObservableObject {
     func importPastedImageAttachment(
         at sourceURL: URL,
         for note: VaultQualifiedNoteID
-    ) async throws -> PreparedImageAttachment {
+    ) async throws -> PreparedSourceAttachment {
         try await requireOperations().importPastedImageAttachment(
             at: sourceURL,
             for: note
@@ -365,7 +365,7 @@ final class DocumentController: ObservableObject {
         data: Data,
         preferredFilename: String,
         for note: VaultQualifiedNoteID
-    ) async throws -> PreparedImageAttachment {
+    ) async throws -> PreparedSourceAttachment {
         try await requireOperations().importPastedImageAttachment(
             data: data,
             preferredFilename: preferredFilename,
@@ -381,39 +381,25 @@ final class DocumentController: ObservableObject {
         )
     }
 
+    func sourceAttachment(for destination: String, target: SourceAttachmentTarget) async throws -> DocumentAttachmentSnapshot? {
+        try await requireOperations().sourceAttachment(for: destination, target: target)
+    }
+
     func documentAttachments(
-        for target: NoteDocumentAttachmentTarget
+        for target: SourceAttachmentTarget
     ) async throws -> [DocumentAttachmentSnapshot] {
         try await requireOperations().documentAttachments(for: target)
     }
 
-    func refreshDocumentAttachments(for target: NoteDocumentAttachmentTarget, session: DocumentSessionModel) async throws {
-        guard session.key == DocumentSessionKey(vaultID: target.vaultID, noteID: target.noteID) else { return }
-        let requestID = UUID()
-        session.documentAttachmentsRequestID = requestID
-        session.documentAttachmentsLoading = true
-        session.documentAttachmentsError = nil
-        defer { if session.documentAttachmentsRequestID == requestID { session.documentAttachmentsLoading = false } }
-        do {
-            let attachments = try await documentAttachments(for: target)
-            try Task.checkCancellation()
-            guard session.documentAttachmentsRequestID == requestID else { return }
-            session.documentAttachments = attachments
-        } catch is CancellationError { throw CancellationError() } catch {
-            if session.documentAttachmentsRequestID == requestID { session.documentAttachmentsError = error.localizedDescription }
-            throw error
-        }
-    }
-
     func selectDocumentAttachment(
         _ mode: DocumentAttachmentSelectionMode,
-        for target: NoteDocumentAttachmentTarget,
+        for target: SourceAttachmentTarget,
         session: DocumentSessionModel,
         presenter: ScholiumFileSelectionPresenter?
-    ) async throws {
+    ) async throws -> PreparedSourceAttachment? {
         guard session.key == DocumentSessionKey(vaultID: target.vaultID, noteID: target.noteID),
             !session.isAttachingDocument
-        else { return }
+        else { return nil }
         guard let presenter else { throw ScholiumFileSelectionError.presenterUnavailable }
         session.isAttachingDocument = true
         defer { session.isAttachingDocument = false }
@@ -424,27 +410,19 @@ final class DocumentController: ObservableObject {
                 ? String(localized: "Choose a document to copy into this Triptych's Attachments folder.")
                 : String(localized: "Choose a document to reference in its current Finder location."),
             prompt: String(localized: "Attach"), kind: .files(allowedContentTypes: [.content]))
-        guard let sourceURL = try await presenter.selectURL(request) else { return }
+        guard let sourceURL = try await presenter.selectURL(request) else { return nil }
         try Task.checkCancellation()
-        let attachment = try await attachDocument(
+        return try await prepareDocumentAttachment(
             at: sourceURL, to: target,
             management: copiesFile ? .copyIntoTriptych : .referenceOriginal)
-        var attachments = session.documentAttachments.filter { $0.record.id != attachment.record.id }
-        attachments.append(attachment)
-        attachments.sort {
-            let order = $0.record.filename.localizedStandardCompare($1.record.filename)
-            return order == .orderedSame ? $0.record.id.uuidString < $1.record.id.uuidString : order == .orderedAscending
-        }
-        session.documentAttachments = attachments
-        AccessibilityNotification.Announcement(String(localized: "Document attached.")).post()
     }
 
-    func attachDocument(
+    func prepareDocumentAttachment(
         at sourceURL: URL,
-        to target: NoteDocumentAttachmentTarget,
+        to target: SourceAttachmentTarget,
         management: DocumentAttachmentManagement
-    ) async throws -> DocumentAttachmentSnapshot {
-        try await requireOperations().attachDocument(
+    ) async throws -> PreparedSourceAttachment {
+        try await requireOperations().prepareDocumentAttachment(
             at: sourceURL,
             to: target,
             management: management
@@ -453,7 +431,7 @@ final class DocumentController: ObservableObject {
 
     func prepareDocumentAttachmentPreview(
         attachmentID: UUID,
-        for target: NoteDocumentAttachmentTarget
+        for target: SourceAttachmentTarget
     ) async throws -> DocumentAttachmentPreviewLease {
         try await requireOperations().prepareDocumentAttachmentPreview(
             attachmentID: attachmentID,
@@ -478,24 +456,6 @@ final class DocumentController: ObservableObject {
             changeSet: changeSet,
             expectedRevision: expectedRevision
         )
-    }
-
-    func saveMetadata(
-        _ id: VaultQualifiedNoteID,
-        fields: [String: YAMLValue],
-        expectedRevision: DocumentFingerprint?
-    ) async throws -> WorkspaceMutationOutcome<NoteMetadataSnapshot> {
-        try await requireOperations().saveMetadata(
-            id,
-            fields: fields,
-            expectedRevision: expectedRevision
-        )
-    }
-
-    func metadata(
-        _ id: VaultQualifiedNoteID
-    ) async throws -> NoteMetadataSnapshot? {
-        try await requireOperations().metadata(id)
     }
 
     func commit(
@@ -1821,7 +1781,6 @@ final class DocumentController: ObservableObject {
         for document in documents {
             switch publishedLocation(of: document, in: workspace) {
             case .located(let vault, let note):
-                sessions.retainedSession(for: document.editingTarget)?.documentAttachmentsGeneration &+= 1
                 recordPublishedLocation(
                     document: document,
                     vault: vault,

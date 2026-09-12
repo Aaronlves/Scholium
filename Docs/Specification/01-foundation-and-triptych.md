@@ -22,9 +22,8 @@
 - **Connect** presents authored link occurrences and their annotations.
   **Attention** presents recoverable
   derived warnings without philosophical judgment.
-- **Metadata** is the researcher-owned structured state managed by Scholium.
-  About presents managed values without interpreting authored YAML or becoming
-  another status model.
+- **Source properties** are user-authored YAML within exact Markdown.
+  Search reads them without a separate catalog, record or field editor.
 
 ## 2. Product role and authority
 
@@ -32,7 +31,7 @@
 
 Scholium is a local-first macOS environment for sustained humanities research.
 Exact researcher-governed Markdown is the primary interface and sole writable
-research-content authority. Rendered views, YAML projections, Metadata,
+research-content authority. Rendered views, YAML projections,
 indexes, diagnostics, and external Agent output must not reconstruct
 or silently replace it.
 
@@ -75,8 +74,8 @@ role and location; Settlement state; Agent attribution; external conversation;
 research history authored in Notes; and Agent Changes. Later editing, incorporation, or Settle
 never erases provenance.
 
-Use sparse visible labels. Vault placement communicates Note role; About
-carries Note detail, and reminders appear only when the current revision
+Use sparse visible labels. Vault placement communicates Note role; the Document
+carries authored detail, and reminders appear only when the current revision
 requires a researcher action.
 
 ## 3. The Scholium Triptych
@@ -120,8 +119,7 @@ interpret the same Triptych:
 
 - manifest and stable identity mappings;
 - the Triptych Guide and Triptych-local settings;
-- Metadata profiles and identity-keyed Note Metadata;
-- Analysis–Zotero bindings and attachment identity/location catalogs;
+- attachment file identity/location catalogs, without Note relationships;
 - fingerprint-bound Settlement judgments.
 
 Researcher-authored research content belongs in ordinary Markdown Notes.

@@ -165,7 +165,7 @@ struct MCPAppBridgeRequestRouterTests {
             await router.handle(.init(tool: tool, arguments: base.merging(arguments) { _, new in new }))
         }
         let creation = try result(
-            await call(.createNote, ["role": .string("topics"), "relative_path": .string("Created Evidence.md"), "body": .string("Created source.")]))
+            await call(.createNote, ["role": .string("topics"), "relative_path": .string("Created Evidence.md"), "content": .string("Created source.")]))
         let receipt = try #require(creation["change_id"])
         let read = try result(await call(.readChange, ["change_id": receipt]))
         #expect(read["comparison"] == .null && read["can_undo"]?.boolValue == false)
@@ -826,7 +826,7 @@ struct MCPAppBridgeRequestRouterTests {
                         "triptych_id": .string(triptychID),
                         "role": .string("topics"),
                         "relative_path": .string("Nested/Exact.md"),
-                        "body": .string("\n# Line 1\r\nLine 2\r\n"),
+                        "content": .string("\n# Line 1\r\nLine 2\r\n"),
                     ]
                 )))
         let noteIDString = try #require(created["note_id"]?.stringValue)

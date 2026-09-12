@@ -39,13 +39,6 @@ public actor DocumentOperations: DocumentUseCases {
         return try await handle.loadDocument(id)
     }
 
-    public func metadata(
-        _ id: VaultQualifiedNoteID
-    ) async throws -> NoteMetadataSnapshot? {
-        let handle = try await reference.requireHandle()
-        return try await handle.noteMetadata(id)
-    }
-
     public func documentPreviewCatalog(
         source: VaultQualifiedNoteID,
         sourceFingerprint: DocumentFingerprint,
@@ -73,7 +66,7 @@ public actor DocumentOperations: DocumentUseCases {
     public func importImageAttachment(
         at sourceURL: URL,
         for note: VaultQualifiedNoteID
-    ) async throws -> PreparedImageAttachment {
+    ) async throws -> PreparedSourceAttachment {
         let handle = try await reference.requireHandle()
         return try await handle.importImageAttachment(
             at: sourceURL,
@@ -81,17 +74,17 @@ public actor DocumentOperations: DocumentUseCases {
         )
     }
 
-    public func rollbackImageAttachment(
-        _ preparation: PreparedImageAttachment
+    public func rollbackSourceAttachment(
+        _ preparation: PreparedSourceAttachment
     ) async throws {
         let handle = try await reference.requireHandle()
-        try await handle.rollbackImageAttachment(preparation)
+        try await handle.rollbackSourceAttachment(preparation)
     }
 
     public func indexImageAttachment(
         at sourceURL: URL,
         for note: VaultQualifiedNoteID
-    ) async throws -> PreparedImageAttachment {
+    ) async throws -> PreparedSourceAttachment {
         let handle = try await reference.requireHandle()
         return try await handle.indexImageAttachment(
             at: sourceURL,
@@ -102,7 +95,7 @@ public actor DocumentOperations: DocumentUseCases {
     public func importPastedImageAttachment(
         at sourceURL: URL,
         for note: VaultQualifiedNoteID
-    ) async throws -> PreparedImageAttachment {
+    ) async throws -> PreparedSourceAttachment {
         let handle = try await reference.requireHandle()
         return try await handle.importPastedImageAttachment(
             at: sourceURL,
@@ -114,7 +107,7 @@ public actor DocumentOperations: DocumentUseCases {
         data: Data,
         preferredFilename: String,
         for note: VaultQualifiedNoteID
-    ) async throws -> PreparedImageAttachment {
+    ) async throws -> PreparedSourceAttachment {
         let handle = try await reference.requireHandle()
         return try await handle.importPastedImageAttachment(
             data: data,
@@ -132,20 +125,25 @@ public actor DocumentOperations: DocumentUseCases {
         )
     }
 
+    public func sourceAttachment(for destination: String, target: SourceAttachmentTarget) async throws -> DocumentAttachmentSnapshot? {
+        let handle = try await reference.requireHandle()
+        return try await handle.sourceAttachment(for: destination, target: target)
+    }
+
     public func documentAttachments(
-        for target: NoteDocumentAttachmentTarget
+        for target: SourceAttachmentTarget
     ) async throws -> [DocumentAttachmentSnapshot] {
         let handle = try await reference.requireHandle()
         return try await handle.documentAttachments(for: target)
     }
 
-    public func attachDocument(
+    public func prepareDocumentAttachment(
         at sourceURL: URL,
-        to target: NoteDocumentAttachmentTarget,
+        to target: SourceAttachmentTarget,
         management: DocumentAttachmentManagement
-    ) async throws -> DocumentAttachmentSnapshot {
+    ) async throws -> PreparedSourceAttachment {
         let handle = try await reference.requireHandle()
-        return try await handle.attachDocument(
+        return try await handle.prepareDocumentAttachment(
             at: sourceURL,
             to: target,
             management: management
@@ -154,7 +152,7 @@ public actor DocumentOperations: DocumentUseCases {
 
     public func prepareDocumentAttachmentPreview(
         attachmentID: UUID,
-        for target: NoteDocumentAttachmentTarget
+        for target: SourceAttachmentTarget
     ) async throws -> DocumentAttachmentPreviewLease {
         let handle = try await reference.requireHandle()
         return try await handle.prepareDocumentAttachmentPreview(
@@ -270,19 +268,6 @@ public actor DocumentOperations: DocumentUseCases {
         return try await handle.saveDocument(
             id,
             changeSet: changeSet,
-            expectedRevision: expectedRevision
-        )
-    }
-
-    public func saveMetadata(
-        _ id: VaultQualifiedNoteID,
-        fields: [String: YAMLValue],
-        expectedRevision: DocumentFingerprint?
-    ) async throws -> WorkspaceMutationOutcome<NoteMetadataSnapshot> {
-        let handle = try await reference.requireHandle()
-        return try await handle.saveNoteMetadata(
-            id,
-            fields: fields,
             expectedRevision: expectedRevision
         )
     }

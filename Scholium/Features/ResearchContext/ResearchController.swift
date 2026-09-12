@@ -3,19 +3,17 @@ import Foundation
 import ScholiumContracts
 
 enum ResearchInspectorMode: String, CaseIterable, Identifiable, Sendable {
-    case about
     case links
     case related
 
     var id: Self { self }
 
     init(restoring rawValue: String?) {
-        self = rawValue.flatMap(Self.init(rawValue:)) ?? .about
+        self = rawValue.flatMap(Self.init(rawValue:)) ?? .links
     }
 
     var interfaceTitleResource: LocalizedStringResource {
         switch self {
-        case .about: "About"
         case .links: "Links"
         case .related: "Related Material"
         }
@@ -23,7 +21,6 @@ enum ResearchInspectorMode: String, CaseIterable, Identifiable, Sendable {
 
     var systemImage: String {
         switch self {
-        case .about: "info.circle"
         case .links: "link"
         case .related: "text.magnifyingglass"
         }
@@ -31,7 +28,7 @@ enum ResearchInspectorMode: String, CaseIterable, Identifiable, Sendable {
 }
 
 struct ResearchInspectorState: Equatable, Sendable {
-    var mode: ResearchInspectorMode = .about
+    var mode: ResearchInspectorMode = .links
     var isVisible = false
 }
 
@@ -266,15 +263,6 @@ final class ResearchController: ObservableObject {
                             column: 1
                         )
                     }
-                )))
-    }
-
-    func requestEditAtSource(_ reference: VaultNoteReference, line: Int) {
-        intentHandler(
-            .revealSourceLocator(
-                vaultID: reference.vaultID,
-                locator: SourceLocator(
-                    file: reference.relativePath, line: line, column: 1
                 )))
     }
 

@@ -88,9 +88,12 @@ struct AgentChatView: View {
                 conversationDetail
             }
         }
-        .alert("Delete Conversation?", isPresented: Binding(
-            get: { deletionTarget != nil }, set: { if !$0 { deletionTarget = nil } }
-        )) {
+        .alert(
+            "Delete Conversation?",
+            isPresented: Binding(
+                get: { deletionTarget != nil }, set: { if !$0 { deletionTarget = nil } }
+            )
+        ) {
             Button("Cancel", role: .cancel) { deletionTarget = nil }
             Button("Delete", role: .destructive) {
                 if let id = deletionTarget { controller.deleteConversation(id) }
@@ -403,47 +406,51 @@ struct AgentChatView: View {
     private func conversationRow(_ conversation: AgentChatConversation) -> some View {
         let row = AgentChatConversationRow(
             conversation: conversation, query: AgentChatSearch.query(conversationQuery),
-            status: AgentChatListPresentation.status(conversation,
+            status: AgentChatListPresentation.status(
+                conversation,
                 questions: controller.questionCount(in: conversation.id),
                 approvals: controller.approvalCount(in: conversation.id),
                 busy: controller.isBusy(in: conversation.id)))
-        Button { openConversation(conversation) } label: {
+        Button {
+            openConversation(conversation)
+        } label: {
             row.contentShape(Rectangle())
         }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("scholium.chat.conversation.\(conversation.id)")
-                .contextMenu { conversationActions(conversation) }
-                .accessibilityActions { conversationActions(conversation) }
-                .swipeActions(edge: .trailing, allowsFullSwipe: conversation.archivedAt == nil) {
-                    if conversation.archivedAt != nil {
-                        Button("Delete", systemImage: "trash", role: .destructive) { deletionTarget = conversation.id }
-                            .disabled(!controller.canArchive(conversation.id))
-                    }
-                    Button(conversation.archivedAt == nil ? "Archive" : "Restore", systemImage: "archivebox") {
-                        controller.setArchived(conversation.id, archived: conversation.archivedAt == nil)
-                    }
-                    .tint(ScholiumNativeColorRole.archiveAction.color)
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("scholium.chat.conversation.\(conversation.id)")
+        .contextMenu { conversationActions(conversation) }
+        .accessibilityActions { conversationActions(conversation) }
+        .swipeActions(edge: .trailing, allowsFullSwipe: conversation.archivedAt == nil) {
+            if conversation.archivedAt != nil {
+                Button("Delete", systemImage: "trash", role: .destructive) { deletionTarget = conversation.id }
                     .disabled(!controller.canArchive(conversation.id))
-                }
-                .swipeActions(edge: .leading) {
-                    Button(conversation.unreadAt == nil ? "Unread" : "Read", systemImage: conversation.unreadAt == nil ? "envelope.badge" : "envelope.open") {
-                        controller.setUnread(conversation.id, unread: conversation.unreadAt == nil)
-                    }
-                    .accessibilityLabel(conversation.unreadAt == nil ? "Mark as Unread" : "Mark as Read")
-                    .tint(ScholiumNativeColorRole.unreadAction.color)
-                    Button(conversation.importantAt == nil ? "Important" : "Unmark", systemImage: conversation.importantAt == nil ? "star" : "star.slash") {
-                        controller.setImportant(conversation.id, important: conversation.importantAt == nil)
-                    }
-                    .accessibilityLabel(conversation.importantAt == nil ? "Mark as Important" : "Unmark Important")
-                    .tint(ScholiumNativeColorRole.importantAction.color)
-                }
+            }
+            Button(conversation.archivedAt == nil ? "Archive" : "Restore", systemImage: "archivebox") {
+                controller.setArchived(conversation.id, archived: conversation.archivedAt == nil)
+            }
+            .tint(ScholiumNativeColorRole.archiveAction.color)
+            .disabled(!controller.canArchive(conversation.id))
+        }
+        .swipeActions(edge: .leading) {
+            Button(conversation.unreadAt == nil ? "Unread" : "Read", systemImage: conversation.unreadAt == nil ? "envelope.badge" : "envelope.open") {
+                controller.setUnread(conversation.id, unread: conversation.unreadAt == nil)
+            }
+            .accessibilityLabel(conversation.unreadAt == nil ? "Mark as Unread" : "Mark as Read")
+            .tint(ScholiumNativeColorRole.unreadAction.color)
+            Button(conversation.importantAt == nil ? "Important" : "Unmark", systemImage: conversation.importantAt == nil ? "star" : "star.slash") {
+                controller.setImportant(conversation.id, important: conversation.importantAt == nil)
+            }
+            .accessibilityLabel(conversation.importantAt == nil ? "Mark as Important" : "Unmark Important")
+            .tint(ScholiumNativeColorRole.importantAction.color)
+        }
     }
 
     private var conversationEmptyState: some View {
         let isFiltered = conversationFilter != .all || !AgentChatSearch.query(conversationQuery).isEmpty
         return ScholiumSidebarState(
             isFiltered ? Text("No Matching Conversations") : showsArchived ? Text("No Archived Chats") : Text("No Conversations"),
-            detail: isFiltered ? Text("Try another search or clear the conversation filter.")
+            detail: isFiltered
+                ? Text("Try another search or clear the conversation filter.")
                 : showsArchived ? Text("Archived conversations appear here.") : Text("Start a conversation about your research."),
             indicator: .symbol(isFiltered ? "magnifyingglass" : showsArchived ? "archivebox" : "bubble.left.and.bubble.right")
         )
@@ -1029,7 +1036,7 @@ struct AgentChatView: View {
                                                 Button(AgentChangePresentation.displayName(for: change)) {
                                                     _ = openReference(AgentChatReference.url(noteID: change.noteID))
                                                 }.buttonStyle(.link).help("Open Note")
-                                                .contextMenu { AgentChatNoteMenu(url: AgentChatReference.url(noteID: change.noteID)) }
+                                                    .contextMenu { AgentChatNoteMenu(url: AgentChatReference.url(noteID: change.noteID)) }
                                             } else {
                                                 Text(AgentChangePresentation.displayName(for: change))
                                             }

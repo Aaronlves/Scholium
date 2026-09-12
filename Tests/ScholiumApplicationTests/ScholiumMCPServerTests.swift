@@ -6,6 +6,22 @@ import Testing
 
 @Suite("Scholium stdio MCP")
 struct ScholiumMCPServerTests {
+    @Test("Search tool advertises the shared generic YAML query contract")
+    func searchPropertyCapability() async throws {
+        let server = ScholiumMCPServer { _ in .object([:]) }
+        let listed = try await rpc(server, id: 1, method: "tools/list", params: [:])
+        let tools = try #require(object(listed["result"])["tools"] as? [[String: Any]])
+        let search = try #require(tools.first { $0["name"] as? String == "scholium_search" })
+        let schema = try object(search["inputSchema"])
+        let query = try object(object(schema["properties"])["query"])
+        let description = try #require(query["description"] as? String)
+        #expect(description.contains(SearchCapabilities.current.propertyQueryHelp))
+        for example in SearchCapabilities.current.capability(for: .note)?.examples ?? [] {
+            #expect(description.contains(example))
+            #expect(SearchQueryParser.parse(example).isValid)
+        }
+    }
+
     @Test("Attachment images reach MCP as native image content while text describes their scope")
     func attachmentImageDelivery() async throws {
         let image: MCPJSONValue = .object(["mime_type": .string("image/png"), "data": .string("cG5n"), "pixel_width": .integer(1), "pixel_height": .integer(1)])

@@ -87,11 +87,11 @@ if rg -n --glob '*.swift' \
   exit 1
 fi
 
-# The shared enum is closed: eighteen external research tools plus four
+# The shared enum is closed: sixteen external research tools plus four
 # in-app Chat capability controls. The latter are filtered from the standalone
 # server surface by ScholiumMCPToolName.isChatControl.
-if [[ "$(rg -c 'case [A-Za-z]+ = "scholium_' "${ROOT}/ScholiumContracts/ScholiumMCPContracts.swift")" != "22" ]]; then
-  echo "MCP surface guard failed: expected 22 identities (18 external plus 4 Chat controls)." >&2
+if [[ "$(rg -c 'case [A-Za-z]+ = "scholium_' "${ROOT}/ScholiumContracts/ScholiumMCPContracts.swift")" != "20" ]]; then
+  echo "MCP surface guard failed: expected 20 identities (16 external plus 4 Chat controls)." >&2
   exit 1
 fi
 

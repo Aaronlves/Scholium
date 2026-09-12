@@ -6,52 +6,6 @@ import Testing
 
 @Suite("Headless workspace runtime")
 struct WorkspaceRuntimeTests {
-    @Test("Portable Analysis Zotero bindings project through a reopened workspace")
-    func portableAnalysisZoteroBindingProjectsOnOpen() async throws {
-        let fixture = try await ApplicationFixture.make()
-        defer { fixture.remove() }
-        let firstRuntime = try await WorkspaceRuntime.snapshot(
-            applicationSupportURL: fixture.applicationSupportURL,
-            workspaceRegistryStorageURL: fixture.registryStorageURL
-        )
-        let firstHandle = try await firstRuntime.openWorkspace(id: fixture.assignment.id)
-        let firstSnapshot = try await firstHandle.snapshot()
-        let firstProjection = try #require(
-            firstSnapshot.discovery.catalog.notes.first {
-                $0.reference.vaultID == fixture.analysisNoteID.vaultID
-                    && $0.reference.relativePath == fixture.analysisNoteID.relativePath
-            })
-        let noteID = try #require(
-            firstProjection.reference.stableNoteID.flatMap(UUID.init(uuidString:))
-        )
-        let original = try await firstHandle.zoteroBindings.zoteroBindings()
-        let expected = try AnalysisZoteroBinding(
-            noteID: noteID,
-            library: .user,
-            itemKey: "QAITEM01"
-        )
-        _ = try await firstHandle.setPortableZoteroBinding(
-            expected,
-            expectedRevision: original.revision
-        )
-        await firstRuntime.shutdown()
-
-        let runtime = try await WorkspaceRuntime.snapshot(
-            applicationSupportURL: fixture.applicationSupportURL,
-            workspaceRegistryStorageURL: fixture.registryStorageURL
-        )
-        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let snapshot = try await handle.snapshot()
-        let projected = try #require(
-            snapshot.discovery.catalog.notes.first {
-                $0.reference.vaultID == fixture.analysisNoteID.vaultID
-                    && $0.reference.relativePath == fixture.analysisNoteID.relativePath
-            })
-
-        #expect(projected.reference.stableNoteID == noteID.uuidString.lowercased())
-        #expect(projected.zoteroBinding == expected)
-        await runtime.shutdown()
-    }
 
     @Test("Fresh machine registration preserves a portable Triptych and vault identities")
     func freshRegistrationPreservesPortableIdentities() async throws {

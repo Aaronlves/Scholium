@@ -21,10 +21,17 @@ struct SidebarStateVisualEvidenceTests {
                     ScholiumSidebarState(copy("No Notes"), detail: copy("Create a Note to begin."), indicator: .symbol("doc.text"))
                     ScholiumSidebarState(copy("No Matching Notes"), detail: copy("No notes match the current filters."), indicator: .symbol("magnifyingglass"))
                     ScholiumSidebarState(copy("Loading Library…"), indicator: .progress)
-                    ScholiumSidebarState(copy("Could Not Open Library"), detail: Text(language == "en" ? "The selected folder is unavailable." : "所选文件夹目前无法访问。"), indicator: .symbol("exclamationmark.triangle", role: .attention)) {
-                        Button {} label: { copy("Retry") }
+                    ScholiumSidebarState(
+                        copy("Could Not Open Library"), detail: Text(language == "en" ? "The selected folder is unavailable." : "所选文件夹目前无法访问。"),
+                        indicator: .symbol("exclamationmark.triangle", role: .attention)
+                    ) {
+                        Button {
+                        } label: {
+                            copy("Retry")
+                        }
                     }
-                    ScholiumSidebarState(copy("No Conversations"), detail: copy("Start a conversation about your research."), indicator: .symbol("bubble.left.and.bubble.right"))
+                    ScholiumSidebarState(
+                        copy("No Conversations"), detail: copy("Start a conversation about your research."), indicator: .symbol("bubble.left.and.bubble.right"))
                     ScholiumSidebarState(copy("No Archived Chats"), detail: copy("Archived conversations appear here."), indicator: .symbol("archivebox"))
                 }
                 .frame(width: 300)

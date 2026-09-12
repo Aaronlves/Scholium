@@ -43,7 +43,8 @@ final class DocumentWindowLocationStore {
     }
 
     private func resolvedKey(for reference: VaultNoteReference, in source: WindowModel) -> DocumentSessionKey? {
-        let id = reference.stableNoteID.flatMap(UUID.init(uuidString:))
+        let id =
+            reference.stableNoteID.flatMap(UUID.init(uuidString:))
             ?? source.workspaceProjectionController.cachedNote(
                 vaultID: reference.vaultID, stableNoteID: nil, relativePath: reference.relativePath
             )?.stableIdentity.resolvedID
@@ -52,7 +53,10 @@ final class DocumentWindowLocationStore {
 
     private func existingOwner(key: DocumentSessionKey, excluding source: WindowModel) -> WindowModel? {
         if let owner = moving[key], owner !== source,
-            owner.workspaceAssignment?.id == source.workspaceAssignment?.id { return owner }
+            owner.workspaceAssignment?.id == source.workspaceAssignment?.id
+        {
+            return owner
+        }
         return windows.values.compactMap(\.model).first { model in
             model !== source && !model.windowCloseCoordinator.isFinalized
                 && model.workspaceAssignment?.id == source.workspaceAssignment?.id
@@ -87,7 +91,10 @@ final class DocumentWindowLocationStore {
         else { throw DocumentControllerError.documentUnavailable }
         source.transferInProgress = true
         moving[key] = source
-        defer { source.transferInProgress = false; moving[key] = nil }
+        defer {
+            source.transferInProgress = false
+            moving[key] = nil
+        }
         let destination = try await makeDocumentWindow(triptychID: triptychID, registry: registry)
         do {
             moving[key] = destination.model
@@ -95,7 +102,8 @@ final class DocumentWindowLocationStore {
             guard destination.model.documentController.selectedDocument?.sessionKey == key else {
                 throw DocumentControllerError.documentUnavailable
             }
-            origins[destination.model.nativeWindowID] = source.isDetachedDocumentWindow
+            origins[destination.model.nativeWindowID] =
+                source.isDetachedDocumentWindow
                 ? origins[source.nativeWindowID] : source.nativeWindowID
             destination.controller.showWindow(nil)
             destination.model.nativeWindowCoordinator?.makeKeyAndOrderFront()
@@ -119,7 +127,10 @@ final class DocumentWindowLocationStore {
         else { throw DocumentControllerError.editorUnavailable }
         source.transferInProgress = true
         moving[key] = source
-        defer { source.transferInProgress = false; moving[key] = nil }
+        defer {
+            source.transferInProgress = false
+            moving[key] = nil
+        }
         await source.waitForDocumentTransitions()
         let destination = try await makeDocumentWindow(
             triptychID: triptychID, registry: coordinator.registry
@@ -151,7 +162,10 @@ final class DocumentWindowLocationStore {
         else { throw DocumentControllerError.editorUnavailable }
         source.transferInProgress = true
         moving[key] = source
-        defer { source.transferInProgress = false; moving[key] = nil }
+        defer {
+            source.transferInProgress = false
+            moving[key] = nil
+        }
         await source.waitForDocumentTransitions()
         let original = origins[source.nativeWindowID].flatMap { windows[$0]?.model }
         let existing = ([original] + windows.values.map(\.model)).compactMap { $0 }.first {
@@ -189,7 +203,8 @@ final class DocumentWindowLocationStore {
             !destination.documentTabController.tabs.contains(where: { $0.document.editingTarget == tab.document.editingTarget })
         else { throw DocumentControllerError.documentUnavailable }
         if let current = destination.documentController.selectedDocument,
-            destination.documentController.session(for: current.editingTarget).editorSession.isComposing {
+            destination.documentController.session(for: current.editingTarget).editorSession.isComposing
+        {
             throw DocumentControllerError.editorUnavailable
         }
         destination.transferInProgress = true
@@ -207,7 +222,8 @@ final class DocumentWindowLocationStore {
         }
         try await source.documentController.prepareSessionTransfer(tab.document)
         guard source.documentTabController.tabs.contains(tab),
-            destination.documentController.canReceiveSessionTransfer(tab.document) else {
+            destination.documentController.canReceiveSessionTransfer(tab.document)
+        else {
             throw DocumentControllerError.documentUnavailable
         }
         let originalIndex = source.documentTabController.tabs.firstIndex { $0.id == tab.id } ?? 0
@@ -230,7 +246,8 @@ final class DocumentWindowLocationStore {
     }
 
     private func makeDocumentWindow(triptychID: UUID, registry: ScholiumWindowLifecycleRegistry) async throws
-        -> (model: WindowModel, controller: NSWindowController) {
+        -> (model: WindowModel, controller: NSWindowController)
+    {
         let id = UUID()
         let model = WindowModel(workspaceStore: workspaceStore, nativeWindowID: id, requestedTriptychID: triptychID)
         model.isDetachedDocumentWindow = true
@@ -243,7 +260,8 @@ final class DocumentWindowLocationStore {
             appState: model, windowCoordinator: coordinator,
             route: TriptychWindowRoute(windowID: id, triptychID: triptychID), lifecycleRegistry: registry
         )
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 780),
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 760, height: 780),
             styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         window.minSize = NSSize(width: 420, height: 360)

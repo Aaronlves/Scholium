@@ -96,15 +96,13 @@ research contracts are shared by external hosts and in-app Chat:
 | `scholium_workspace_status` | optional `triptych_id` | open Triptych candidates or one reconciled current Triptych with three-vault, source, Search, and graph generations |
 | `scholium_browse` | `triptych_id`; optional `role`, `directory`, `limit`, `offset`, `expected_listing_fingerprint` | bounded role roots or immediate directory/Note children, stable identities, exact source fingerprints, totals and listing fingerprint |
 | `scholium_search` | `triptych_id`, `query`; optional `roles`, `limit`, and `offset` | Note candidates with totals, continuation, freshness, identities, match reasons, snippets, and exact source fingerprints |
-| `scholium_read_note` | `triptych_id`, `note_id`; optional `start_line`, `line_count`, `include_context` | an exact current Markdown slice, continuation and full Note fingerprint; requested local Metadata, Zotero binding and attachment pointers separately |
-| `scholium_list_attachments` | `triptych_id`, `note_id`; optional `offset`, `limit`, `expected_listing_fingerprint` | paged existing document relationships and registered authored images, availability and Note/listing fingerprints; metadata only |
+| `scholium_read_note` | `triptych_id`, `note_id`; optional `start_line`, `line_count`, `include_context` | an exact current Markdown slice, continuation and full Note fingerprint; optional source-derived attachment pointers separately |
+| `scholium_list_attachments` | `triptych_id`, `note_id`; optional `offset`, `limit`, `expected_listing_fingerprint` | paged authored file links and images, availability and Note/listing fingerprints; metadata only |
 | `scholium_read_attachment` | `triptych_id`, `note_id`, `attachment_id`, `expected_note_fingerprint`, `mode`; optional `expected_fingerprint`, `page`, `start_utf8`, `max_utf8` | bounded current text or one image/PDF page, exact file fingerprint and explicit extraction/rendering coverage |
 | `scholium_show_note` | `triptych_id`, `note_id`, `expected_fingerprint`; optional `window_id` and complete `start_utf8`, `end_utf8`, `expected_text` range | named live-window navigation and exact passage-location request; no Note mutation or claim of rendered/assistive-technology arrival |
 | `scholium_list_links` | `triptych_id`, `note_id`, `direction`; optional `limit`, `offset` | raw incoming/outgoing authored occurrences with source/destination identities, exact link and optional annotation markup/text, local context, fingerprints, and whole/link/annotation source locators |
-| `scholium_create_note` | `triptych_id`, `role`, `relative_path`, `body`; optional `summary`, `keywords` | created stable Note identity, path, fingerprint, and `change_id` |
+| `scholium_create_note` | `triptych_id`, `role`, `relative_path`, `content` | created stable Note identity, path, fingerprint, and `change_id` |
 | `scholium_update_note` | `triptych_id`, `note_id`, `expected_fingerprint`, `mode`; mode-specific `content` or `edits` | before/after fingerprints, path, readback state, and `change_id` |
-| `scholium_update_metadata` | `triptych_id`, `note_id`, `expected_fingerprint`, explicit nullable `expected_metadata_fingerprint`; `set` and/or `remove` | targeted managed-field changes, record comparison fingerprints, readback and `change_id` |
-| `scholium_update_attachment` | `triptych_id`, `note_id`, `expected_fingerprint`, `expected_listing_fingerprint`, `action`, `attachment_id`; `source` for add/replace | one document relationship added/replaced/removed, record comparison fingerprints, readback and `change_id` |
 | `scholium_preview_move` | `triptych_id`, `note_id`, `expected_fingerprint`, `relative_path`; optional `offset`, `limit`, `expected_plan_fingerprint` | paged paths, identities, source revisions, link counts, blockers and plan fingerprint |
 | `scholium_move_note` | `triptych_id`, `note_id`, `expected_fingerprint`, `relative_path`, `expected_plan_fingerprint` | identity-preserving same-role move with exact linked-source effects, one Agent Change, readback and recovery details |
 | `scholium_list_changes` | `triptych_id`; optional `note_id`, `limit`, `offset`, `expected_listing_fingerprint` | bounded machine-local mutation receipts and revision-bound continuation; no source bodies |
@@ -133,21 +131,11 @@ the next line when more remains. Every slice also returns zero-based full-source
 `start_utf8` and exclusive `end_utf8`, including BOM and YAML, so exact edits
 can use the returned version and location. Repeated reads can retrieve the complete Note.
 
-`include_context` defaults to false (`context: null`). When requested, context
-separates validated managed Metadata fields and their own fingerprint from the
-exact Markdown/YAML source; absent records return null. It returns only the
-selected Analysis's local Zotero library/item binding and canonical reference,
-with the binding-catalog fingerprint even when no binding exists. Other roles
-have no Zotero binding or binding fingerprint. It does not contact Zotero, infer
-a match, refresh bibliography or read paper content. Saved bibliography is not
-primary-text evidence. Context also returns the first 20 attachment pointers in
-the ordinary attachment-list shape; continue with that listing's fingerprint
-through `scholium_list_attachments`. No attachment text enters this read.
-The Application rechecks Note identity/source and these local records before
-returning; detected drift or invalid records fail explicitly, never masquerading
-as absence. Context is bounded to 128 KiB without truncating field values;
-oversized context can be omitted to read source and list attachments separately.
-These observations grant no Metadata, binding, attachment or Note write authority.
+With `include_context`, Note reads return a bounded first page of source-derived
+attachment pointers with Note/listing fingerprints. They do not fetch Zotero,
+read attachment bytes, or introduce a separate property authority. Continue
+through `scholium_list_attachments` using its listing fingerprint. Exact Note
+identity and source are rechecked before returning; drift fails explicitly.
 
 Link results expose one row per authored occurrence. Each row states requested
 and occurrence direction, source and destination identity/role/path when
@@ -160,8 +148,8 @@ prose.
 
 Create accepts one exact relative `.md` path inside the selected role vault.
 Absolute paths, traversal, collision, and automatic renaming are invalid. It
-uses the common managed New Note scaffold; omitted `summary` and `keywords`
-remain empty authored values. It creates no bibliographic Metadata.
+accepts complete exact Markdown `content`, including optional authored YAML.
+No fields or scaffold are generated and no separate bibliography is stored.
 
 Update has three mutually exclusive payload modes:
 
@@ -188,36 +176,13 @@ destination Notes, Metadata, links, or Settlement. Editing a link
 annotation is an ordinary source-Note update guarded by that Note's current
 fingerprint.
 
-Metadata writes patch only named managed fields, preserve other values and every
-Markdown/YAML byte, and use the shared role catalog and archived-field rules.
-`set` is a typed field mapping; `remove` lists keys. Their disjoint union permits
-at most 128 edits and the request is bounded to 128 KiB. A current Metadata
-fingerprint is required; explicit null asserts record absence. Invalid fields,
-wrong shapes, stale records and no-op edits cause no write or receipt.
-
-Attachment writes manage document relationships, never inline image markup or
-original-file bytes. Add takes a new relationship UUID; replace/remove take an
-existing one owned by the named Note. Add/replace select `source.note_id`,
-`source.attachment_id`, its `expected_listing_fingerprint` and exact file
-`expected_fingerprint` from prior attachment reads. Only existing registered
-document material in the selected Triptych is admitted. External material first
-uses the App's file-selection attachment route; arbitrary caller paths and URLs
-provide no file authority. Source bytes are bounded to 20 MiB and checked through
-the existing access/containment owner. Same-vault contained files may be shared;
-cross-vault or externally referenced files are copied from the verified snapshot
-without overwriting a file. Source relationships and target revisions are
-rechecked at admission. Duplicate relationships and stale targets are refused.
-Remove only unlinks; replace preserves the earlier file. Neither rewrites source,
-loses editor state, nor deletes originals or retained copies. These are individual
-operations, not a cross-Note atomic transaction.
-
-Each successful Metadata or attachment operation produces one Agent Change.
-Its fingerprints and comparison identify the serialized managed record, not
-Markdown; null denotes record absence. Ask uses the same preview and scoped
-permission as source edits. Undo restores the retained record values or absence
-only while the current record equals the ending; it never deletes attachment
-files. Invalid preimages or ambiguous identities cannot authorize recovery.
-Uncertain write/readback retains evidence and forbids blind replay.
+Properties and attachment relationships change only through the ordinary
+revision-checked Markdown update path. A file catalog/bookmark grants access,
+not a relationship: list/read requires a current authored file link or image.
+Manual contained file links need no prior registry entry. External references
+require existing exact machine-local access; a caller path cannot grant it.
+Removing a source link preserves file bytes. Agent Changes compare exact
+Markdown preimages/readbacks and use the existing source Undo boundary.
 
 Knowledge-base construction also provides bounded, paginated role/directory/Note
 browsing through the current Library inventory; identity-preserving Note move
@@ -333,7 +298,7 @@ write lock. The App retains its ordinary dirty-editor, external-change,
 multiwindow, containment, atomic replacement, exact readback, and conflict
 owners.
 
-Every successful MCP Note, Metadata or attachment mutation creates one
+Every successful MCP Note mutation creates one
 machine-local **Agent Change** with a stable `change_id`, operation, Note identity and location, exact
 before/after evidence where applicable, and recovery state. It exists only to
 support accurate comparison, Earlier Revision presentation, and eligible

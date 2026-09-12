@@ -34,7 +34,7 @@ must not create alternative product rules.
 | [Scholium Design](../Design.md) | §19: stable global design philosophy, native/Liquid Glass relationship, background and Accent identity. |
 | [Accessibility and Adaptation](Specification/09-accessibility-and-adaptation.md) | §20: cross-cutting accessibility and adaptation. |
 | [Release and Open Decisions](Specification/10-release-and-open-decisions.md) | §§21–22: release requirements and unresolved target questions. |
-| [Metadata](Specification/11-metadata.md) | Appendix A: metadata catalogs and settings. |
+| [Source Properties](Specification/11-source-properties.md) | Appendix A: source-owned YAML properties and retrieval. |
 
 ## Reading routes
 
@@ -52,7 +52,7 @@ Architecture owns parser, module, runtime, and persistence mechanics.
 | Global design philosophy and identity | Design (§19); Agent edit admission and size limits are owned by AGENTS.md. |
 | Research meaning, authority and operations | Owning workflow chapter (§§1–17); interface chapters link to it. |
 | Feature layout, interaction and state wording | Owning interface section (§§18.1–18.7). |
-| Metadata keys, shapes and field configuration | Appendix A. |
+| Authored YAML properties and retrieval | Appendix A. |
 | Accessibility requirements and human acceptance method | §20; feature chapters add no parallel checklist. |
 | Release profiles, gates and artifact requirements | §21; status records evidence only. |
 | Current implementation owners and mechanisms | Architecture set; source holds exact local defaults. |

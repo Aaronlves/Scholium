@@ -71,21 +71,9 @@ struct WorkspaceCatalogTests {
     @Test("Analysis catalog notes project portable managed academic identity fields")
     func analysisAcademicIdentity() throws {
         let analyses = vault("Analyses", .sourceCorpus)
-        let document = note("Scanlon.md", "Analysis")
+        let document = note(
+            "Scanlon.md", "---\ntitle: What We Owe to Each Other\nauthors: [T. M. Scanlon]\npublication_date: '1998-01-01T00:00:00.000Z'\n---\nAnalysis")
         let noteID = UUID()
-        let record = NoteMetadataRecord(
-            noteID: noteID,
-            fields: [
-                "title": .string("What We Owe to Each Other"),
-                "authors": .array([
-                    .object([
-                        "family": .string("Scanlon"),
-                        "given": .string("T. M."),
-                    ])
-                ]),
-                "publication_date": .string("1998-01-01T00:00:00.000Z"),
-            ]
-        )
         let qualifiedID = VaultQualifiedNoteID(
             vaultID: analyses.id,
             relativePath: document.relativePath
@@ -94,12 +82,7 @@ struct WorkspaceCatalogTests {
             vaults: [analyses],
             documents: [analyses.id: [document]],
             stableNoteIDs: [qualifiedID: noteID],
-            noteMetadataByID: [
-                noteID: NoteMetadataSnapshot(
-                    record: record,
-                    revision: DocumentFingerprint(data: try record.encodedPortableData())
-                )
-            ]
+
         )
         let result = try #require(catalog.notes.first)
         #expect(result.authors == ["T. M. Scanlon"])
@@ -280,66 +263,6 @@ struct WorkspaceCatalogTests {
         #expect(item?.note.relativePath == document.relativePath)
         #expect(item?.message == "Multiple candidates")
         #expect(item?.severity == .warning)
-    }
-
-    @Test("Only a stable-ID Analysis binding enters the catalog")
-    func portableAnalysisZoteroBindingOnly() throws {
-        let analysisVault = vault("Analyses", .sourceCorpus)
-        let topicVault = vault("Topics", .topicKnowledge)
-        let worksVault = vault("Works", .draftProject)
-        let canonical = note(
-            "Canonical.md",
-            "---\ntitle: Canonical\nzotero_item_key: CANON001\n---\nAnalysis"
-        )
-        let unbound = note(
-            "Unbound.md",
-            "---\ntitle: Unbound\nzotero_item_key: YAML001\n---\nAnalysis"
-        )
-        let topic = note(
-            "Topic.md",
-            "---\nzotero_item_key: TOPIC001\n---\n# Topic"
-        )
-        let work = note(
-            "Work.md",
-            "---\nzotero_item_key: WORK001\n---\n# Work"
-        )
-        let analysisID = UUID()
-        let topicID = UUID()
-        let analysisBinding = try AnalysisZoteroBinding(
-            noteID: analysisID,
-            library: .user,
-            itemKey: "bound001"
-        )
-        let topicBinding = try AnalysisZoteroBinding(
-            noteID: topicID,
-            library: .user,
-            itemKey: "topic001"
-        )
-        let snapshot = WorkspaceCatalogBuilder.build(
-            vaults: [analysisVault, topicVault, worksVault],
-            documents: [
-                analysisVault.id: [canonical, unbound],
-                topicVault.id: [topic],
-                worksVault.id: [work],
-            ],
-            stableNoteIDs: [
-                VaultQualifiedNoteID(vaultID: analysisVault.id, relativePath: canonical.relativePath): analysisID,
-                VaultQualifiedNoteID(vaultID: topicVault.id, relativePath: topic.relativePath): topicID,
-            ],
-            zoteroBindingsByNoteID: [
-                analysisID: analysisBinding,
-                topicID: topicBinding,
-            ]
-        )
-        let notesByPath = Dictionary(
-            uniqueKeysWithValues: snapshot.notes.map {
-                ($0.reference.relativePath, $0)
-            })
-
-        #expect(notesByPath["Canonical.md"]?.zoteroBinding == analysisBinding)
-        #expect(notesByPath["Unbound.md"]?.zoteroBinding == nil)
-        #expect(notesByPath["Topic.md"]?.zoteroBinding == nil)
-        #expect(notesByPath["Work.md"]?.zoteroBinding == nil)
     }
 
     private func vault(_ name: String, _ role: VaultRole) -> RegisteredVault {

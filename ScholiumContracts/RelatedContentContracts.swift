@@ -65,23 +65,17 @@ public struct RelatedContentSeedSnapshot: Codable, Hashable, Sendable {
     public let noteID: VaultQualifiedNoteID
     public let source: String
     public let focuses: [RelatedContentSeedFocus]
-    public let metadata: NoteMetadataSnapshot?
-    public let metadataCatalog: NoteMetadataCatalog
 
     public init(
         noteID: VaultQualifiedNoteID,
         source: String,
-        focuses: [RelatedContentSeedFocus] = [],
-        metadata: NoteMetadataSnapshot? = nil,
-        metadataCatalog: NoteMetadataCatalog = .builtIn
+        focuses: [RelatedContentSeedFocus] = []
     ) {
         self.noteID = noteID
         self.source = source
         self.focuses = RelatedContentSeedKind.rankingOrder.compactMap { kind in
             focuses.first { $0.kind == kind }
         }
-        self.metadata = metadata
-        self.metadataCatalog = metadataCatalog
     }
 
     public var fingerprint: DocumentFingerprint {

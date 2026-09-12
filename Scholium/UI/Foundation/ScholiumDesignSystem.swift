@@ -379,20 +379,22 @@ struct ScholiumColorResolver: Sendable {
     /// Document role hues come from macOS; the shared contrast resolver adapts
     /// them to Paper. These labels do not imply warning, success or authorship.
     func calloutTitleColor(_ role: String, isDark: Bool, increasedContrast: Bool) -> UInt32 {
-        let color: NSColor = switch role {
-        case "orient": .systemBlue
-        case "cite": .systemIndigo
-        case "connect": .systemTeal
-        case "state": .systemPurple
-        case "illustrate": .systemBrown
-        case "flag": .systemGray
-        default: .secondaryLabelColor
-        }
+        let color: NSColor =
+            switch role {
+            case "orient": .systemBlue
+            case "cite": .systemIndigo
+            case "connect": .systemTeal
+            case "state": .systemPurple
+            case "illustrate": .systemBrown
+            case "flag": .systemGray
+            default: .secondaryLabelColor
+            }
         var anchor: UInt32 = 0
         let appearance = NSAppearance(named: isDark ? .darkAqua : .aqua)!
         appearance.performAsCurrentDrawingAppearance {
             if let rgb = color.usingColorSpace(.sRGB) {
-                anchor = (UInt32((rgb.redComponent * 255).rounded()) << 16)
+                anchor =
+                    (UInt32((rgb.redComponent * 255).rounded()) << 16)
                     | (UInt32((rgb.greenComponent * 255).rounded()) << 8)
                     | UInt32((rgb.blueComponent * 255).rounded())
             }
@@ -3138,7 +3140,6 @@ enum ScholiumChatAppearance {
 
     static var userMessageBackground: Color { ScholiumColorRole.accent.color.opacity(0.14) }
 }
-
 
 /// Content-tab geometry and semantic system colors. No window chrome is copied.
 @MainActor

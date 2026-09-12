@@ -21,16 +21,6 @@ struct TriptychSearchIndexTests {
             triptychID: fixture.triptychID,
             vaults: [fixture.analyses, fixture.topics, fixture.works, other]
         )
-        let outcomeRecord = NoteMetadataRecord(
-            noteID: UUID(),
-            fields: ["aliases": .array([.string("Consequentialism")])]
-        )
-        let outcomeMetadata = NoteMetadataSnapshot(
-            record: outcomeRecord,
-            revision: DocumentFingerprint(
-                data: try outcomeRecord.encodedPortableData()
-            )
-        )
         let documents = [
             fixture.item(
                 vault: fixture.analyses,
@@ -50,8 +40,7 @@ struct TriptychSearchIndexTests {
             fixture.item(
                 vault: fixture.topics,
                 path: "Outcome Theory.md",
-                source: "# Outcome Theory\n\nOutcome theory evaluates consequences.",
-                metadata: outcomeMetadata
+                source: "---\naliases: [Consequentialism]\n---\n# Outcome Theory\n\nOutcome theory evaluates consequences."
             ),
             fixture.item(
                 vault: fixture.works,
@@ -1027,7 +1016,6 @@ struct TriptychSearchIndexTests {
             path: String,
             source: String,
             broken: Bool = false,
-            metadata: NoteMetadataSnapshot? = nil,
             stableNoteID: String? = nil
         ) -> SearchIndexDocument {
             SearchIndexDocument(
@@ -1036,7 +1024,6 @@ struct TriptychSearchIndexTests {
                 vaultRole: vault.role,
                 document: NoteDocument(relativePath: path, rawContent: source),
                 stableNoteID: stableNoteID,
-                metadata: metadata,
                 hasBrokenLink: broken
             )
         }

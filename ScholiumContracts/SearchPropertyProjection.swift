@@ -1,8 +1,7 @@
 import Foundation
 import Yams
 
-/// A read-only projection of canonical structured Note fields. Authored YAML
-/// retains exact ranges; managed Metadata deliberately has no Markdown range.
+/// A read-only projection of user-authored YAML, retaining exact source ranges.
 public struct SearchPropertyProjection: Hashable, Sendable {
     public enum ValueKind: String, Codable, Hashable, Sendable {
         case null
@@ -57,7 +56,7 @@ public struct SearchPropertyProjection: Hashable, Sendable {
         case nonMappingRoot
         case duplicateKey(String)
         case unboundedKey
-        case unboundedStringValue(String)
+        case unboundedScalarValue(String)
     }
 
     public let entries: [Entry]
@@ -65,19 +64,10 @@ public struct SearchPropertyProjection: Hashable, Sendable {
 
     public init(
         document: NoteDocument,
-        profile: SchemaProfileID = .genericMarkdown,
-        metadata: NoteMetadataSnapshot? = nil,
-        metadataCatalog: NoteMetadataCatalog = .builtIn
+        profile: SchemaProfileID = .genericMarkdown
     ) {
-        let managedEntries = Self.managedEntries(
-            metadata,
-            profile: profile,
-            catalog: metadataCatalog
-        )
-        guard let frontmatter = document.rawFrontmatter,
-            document.validationWarnings.isEmpty
-        else {
-            entries = managedEntries
+        guard let frontmatter = document.rawFrontmatter else {
+            entries = []
             issues = document.rawFrontmatter == nil ? [] : [.invalidYAML]
             return
         }
@@ -86,62 +76,47 @@ public struct SearchPropertyProjection: Hashable, Sendable {
         do {
             root = try Yams.compose(yaml: frontmatter)
         } catch {
-            entries = managedEntries
+            entries = []
             issues = [.invalidYAML]
             return
         }
         guard let root else {
-            entries = managedEntries
+            entries = []
             issues = []
             return
         }
         guard case .mapping(let mapping) = root else {
-            entries = managedEntries
+            entries = []
             issues = [.nonMappingRoot]
             return
         }
 
         let source = Source(document: document, frontmatter: frontmatter)
-        let authoredKeys = Set(
-            PropertyContractCatalog.contracts(for: profile).map(\.canonicalKey)
-        )
-        var projected: [Entry] = managedEntries
+        var projected: [Entry] = []
         var projectionIssues: [Issue] = []
         var keyCounts: [String: Int] = [:]
 
         for pair in mapping {
             guard case .scalar(let keyScalar) = pair.key,
-                keyScalar.style == .plain,
-                let rawKey = pair.key.string,
-                authoredKeys.contains(
-                    rawKey.precomposedStringWithCanonicalMapping
-                )
-            else {
-                continue
-            }
-            guard Self.isQueryableKey(keyScalar.string),
-                let keyRange = source.range(
-                    startingAt: keyScalar.mark,
-                    tokenUTF16Length: keyScalar.string.utf16.count
-                ),
-                source.substring(in: keyRange) == keyScalar.string
+                pair.key.tag.rawValue == Tag.Name.str.rawValue,
+                !keyScalar.string.isEmpty,
+                !keyScalar.string.contains(where: { $0.isNewline })
             else {
                 projectionIssues.append(.unboundedKey)
                 continue
             }
             let key = keyScalar.string.precomposedStringWithCanonicalMapping
             keyCounts[key, default: 0] += 1
-            let projectedValue = Self.project(
-                pair.value,
-                key: key,
-                source: source
-            )
+            guard let keyRange = source.keyTokenRange(keyScalar) else {
+                projectionIssues.append(.unboundedKey)
+                continue
+            }
+            let projectedValue = Self.project(pair.value, key: key, source: source)
             projected.append(
                 Entry(
                     key: key,
                     keySourceRange: source.searchRange(for: keyRange),
-                    valueKind: projectedValue.kind,
-                    isEmpty: projectedValue.isEmpty,
+                    valueKind: projectedValue.kind, isEmpty: projectedValue.isEmpty,
                     stringMembers: projectedValue.members
                 ))
             projectionIssues.append(contentsOf: projectedValue.issues)
@@ -151,12 +126,12 @@ public struct SearchPropertyProjection: Hashable, Sendable {
             keyCounts.compactMap { key, count in
                 count > 1 ? key : nil
             })
-        projected.removeAll { duplicates.contains($0.key) }
+        projected.removeAll { $0.keySourceRange != nil && duplicates.contains($0.key) }
         projectionIssues.append(contentsOf: duplicates.sorted().map(Issue.duplicateKey))
         entries = projected.sorted {
             if $0.key != $1.key { return $0.key < $1.key }
-            return ($0.keySourceRange?.utf16LowerBound ?? -1)
-                < ($1.keySourceRange?.utf16LowerBound ?? -1)
+            return ($0.keySourceRange?.utf16LowerBound ?? Int.max)
+                < ($1.keySourceRange?.utf16LowerBound ?? Int.max)
         }
         issues = projectionIssues
     }
@@ -166,60 +141,8 @@ public struct SearchPropertyProjection: Hashable, Sendable {
         return entries.first { $0.key == exact }
     }
 
-    private static func managedEntries(
-        _ metadata: NoteMetadataSnapshot?,
-        profile: SchemaProfileID,
-        catalog: NoteMetadataCatalog
-    ) -> [Entry] {
-        guard let metadata else { return [] }
-        let recognized = Set(catalog.contracts(for: profile).map(\.canonicalKey))
-        return metadata.record.fields.keys.filter(recognized.contains).sorted().compactMap { key in
-            guard let value = metadata.record.fields[key] else { return nil }
-            let kind: ValueKind
-            let values: [String]
-            let isEmpty: Bool
-            switch value {
-            case .null:
-                kind = .null
-                values = []
-                isEmpty = true
-            case .string(let text):
-                kind = .string
-                values = [text]
-                isEmpty = SearchTextNormalization.normalize(text).isEmpty
-            case .array(let members):
-                let strings = members.compactMap(\.scalarString)
-                if strings.count == members.count {
-                    kind = .stringSequence
-                    values = strings
-                } else {
-                    kind = .sequence
-                    values = []
-                }
-                isEmpty = members.isEmpty
-            case .object(let members):
-                kind = .mapping
-                values = []
-                isEmpty = members.isEmpty
-            case .integer, .double, .boolean:
-                kind = .scalar
-                values = value.scalarString.map { [$0] } ?? []
-                isEmpty = false
-            }
-            return Entry(
-                key: key,
-                keySourceRange: nil,
-                valueKind: kind,
-                isEmpty: isEmpty,
-                stringMembers: values.map {
-                    StringMember(
-                        value: $0,
-                        normalizedValue: SearchTextNormalization.normalize($0),
-                        sourceRange: nil
-                    )
-                }
-            )
-        }
+    public func textValues(forExactKey key: String) -> [String] {
+        entry(forExactKey: key)?.stringMembers.map(\.value) ?? []
     }
 
     private static func project(
@@ -229,24 +152,20 @@ public struct SearchPropertyProjection: Hashable, Sendable {
     ) -> (kind: ValueKind, members: [StringMember], isEmpty: Bool, issues: [Issue]) {
         switch node {
         case .scalar(let scalar):
-            guard node.tag.rawValue == Tag.Name.str.rawValue else {
-                return (
-                    node.tag.rawValue == Tag.Name.null.rawValue ? .null : .scalar,
-                    [],
-                    node.tag.rawValue == Tag.Name.null.rawValue,
-                    []
-                )
+            let isString = node.tag.rawValue == Tag.Name.str.rawValue
+            guard node.tag.rawValue != Tag.Name.null.rawValue else {
+                return (.null, [], true, [])
             }
             guard let range = source.scalarTokenRange(scalar) else {
                 return (
-                    .string,
+                    isString ? .string : .scalar,
                     [],
                     SearchTextNormalization.normalize(scalar.string).isEmpty,
-                    [.unboundedStringValue(key)]
+                    [.unboundedScalarValue(key)]
                 )
             }
             return (
-                .string,
+                isString ? .string : .scalar,
                 [
                     StringMember(
                         value: scalar.string,
@@ -263,14 +182,15 @@ public struct SearchPropertyProjection: Hashable, Sendable {
             var issues: [Issue] = []
             for child in sequence {
                 guard case .scalar(let scalar) = child,
-                    child.tag.rawValue == Tag.Name.str.rawValue
+                    child.tag.rawValue != Tag.Name.null.rawValue
                 else {
                     allStrings = false
                     continue
                 }
+                if child.tag.rawValue != Tag.Name.str.rawValue { allStrings = false }
                 guard let range = source.scalarTokenRange(scalar) else {
                     allStrings = false
-                    issues.append(.unboundedStringValue(key))
+                    issues.append(.unboundedScalarValue(key))
                     continue
                 }
                 members.append(
@@ -282,7 +202,7 @@ public struct SearchPropertyProjection: Hashable, Sendable {
             }
             return (
                 allStrings ? .stringSequence : .sequence,
-                allStrings ? members : [],
+                members,
                 sequence.isEmpty,
                 issues
             )
@@ -290,18 +210,6 @@ public struct SearchPropertyProjection: Hashable, Sendable {
             return (.mapping, [], mapping.isEmpty, [])
         case .alias:
             return (.alias, [], false, [])
-        }
-    }
-
-    private static func isQueryableKey(_ key: String) -> Bool {
-        guard let first = key.unicodeScalars.first,
-            CharacterSet.letters.contains(first) || first == "_"
-        else {
-            return false
-        }
-        return key.unicodeScalars.dropFirst().allSatisfy { scalar in
-            CharacterSet.alphanumerics.contains(scalar)
-                || scalar == "_" || scalar == "-"
         }
     }
 }
@@ -337,6 +245,16 @@ private extension SearchPropertyProjection {
             return start..<upper
         }
 
+        func keyTokenRange(_ scalar: Node.Scalar) -> Range<Int>? {
+            if scalar.style == .plain {
+                guard let range = range(startingAt: scalar.mark, tokenUTF16Length: scalar.string.utf16.count),
+                    substring(in: range) == scalar.string
+                else { return nil }
+                return range
+            }
+            return scalarTokenRange(scalar)
+        }
+
         func scalarTokenRange(_ scalar: Node.Scalar) -> Range<Int>? {
             guard let start = utf16Offset(for: scalar.mark),
                 let startIndex = complete.utf16.index(
@@ -354,12 +272,19 @@ private extension SearchPropertyProjection {
             case .doubleQuoted:
                 return quotedRange(start: stringStart, quote: "\"", doublesQuote: false)
             case .plain, .any:
-                return plainScalarRange(start: stringStart)
+                // A plain scalar has no escape spelling. Prove the complete
+                // decoded text at the parser's start mark; never return a
+                // truncated prefix for commas, flow syntax or folded lines.
+                guard
+                    let range = range(
+                        startingAt: scalar.mark,
+                        tokenUTF16Length: scalar.string.utf16.count),
+                    !scalar.string.isEmpty,
+                    substring(in: range) == scalar.string
+                else { return nil }
+                return range
             case .literal, .folded:
-                // Block scalars retain presence but exact-value Search is
-                // intentionally unavailable until their full source span can
-                // be proved without reconstructing YAML.
-                return nil
+                return blockScalarRange(start: stringStart, scalar: scalar)
             }
         }
 
@@ -454,28 +379,44 @@ private extension SearchPropertyProjection {
             return nil
         }
 
-        private func plainScalarRange(start: String.Index) -> Range<Int>? {
-            var cursor = start
-            var lastNonWhitespace = start
-            var sawContent = false
-            var precedingWhitespace = false
-            while cursor < complete.endIndex {
-                let character = complete[cursor]
-                if character == "\n" || character == "\r" || character == "," || character == "]" {
-                    break
+        private func blockScalarRange(start: String.Index, scalar: Node.Scalar) -> Range<Int>? {
+            guard complete[start] == "|" || complete[start] == ">" else { return nil }
+            let yamlEnd = frontmatterStartUTF16 + frontmatter.utf16.count
+            let prefix = complete[..<start]
+            let lineStart =
+                prefix.lastIndex(where: { $0.isNewline }).map { complete.index(after: $0) }
+                ?? complete.startIndex
+            let parentIndent = complete[lineStart..<start].prefix(while: { $0 == " " }).count
+            var end = start
+            var firstLine = true
+            while end < complete.endIndex, end.utf16Offset(in: complete) < yamlEnd {
+                let lineEnd =
+                    complete[end...].firstIndex(where: { $0.isNewline })
+                    .map { complete.index(after: $0) } ?? complete.endIndex
+                let line = complete[end..<lineEnd]
+                if !firstLine {
+                    let nonblank = !line.allSatisfy(\.isWhitespace)
+                    let indent = line.prefix(while: { $0 == " " }).count
+                    if nonblank && indent <= parentIndent { break }
                 }
-                if character == "#", precedingWhitespace { break }
-                if character.isWhitespace {
-                    precedingWhitespace = true
-                } else {
-                    precedingWhitespace = false
-                    sawContent = true
-                    lastNonWhitespace = complete.index(after: cursor)
-                }
-                cursor = complete.index(after: cursor)
+                firstLine = false
+                end = lineEnd
             }
-            guard sawContent else { return nil }
-            return utf16Range(start..<lastNonWhitespace)
+            let boundedEnd = min(end.utf16Offset(in: complete), yamlEnd)
+            let result = start.utf16Offset(in: complete)..<boundedEnd
+            guard let token = substring(in: result) else { return nil }
+            let lines = token.components(separatedBy: "\n")
+            let rebased = lines.enumerated().map { index, line in
+                index == 0 ? line : String(line.dropFirst(min(parentIndent, line.prefix(while: { $0 == " " }).count)))
+            }.joined(separator: "\n")
+            guard let root = try? Yams.compose(yaml: "value: " + rebased),
+                case .mapping(let mapping) = root,
+                let value = mapping.first?.value,
+                case .scalar(let parsed) = value,
+                parsed.string == scalar.string,
+                value.tag.rawValue == scalar.tag.rawValue
+            else { return nil }
+            return result
         }
 
         private func utf16Range(_ range: Range<String.Index>) -> Range<Int> {
@@ -488,10 +429,10 @@ private extension SearchPropertyProjection {
             let bounded = min(max(0, offset), complete.utf16.count)
             let prefix = String(complete.utf16.prefix(bounded)) ?? ""
             let line = prefix.reduce(into: 1) { count, character in
-                if character == "\n" { count += 1 }
+                if character.isNewline { count += 1 }
             }
             let lastLine =
-                prefix.split(separator: "\n", omittingEmptySubsequences: false).last
+                prefix.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline).last
                 .map(String.init) ?? ""
             return (line, lastLine.utf16.count + 1)
         }

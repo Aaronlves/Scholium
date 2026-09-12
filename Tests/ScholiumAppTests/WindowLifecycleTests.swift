@@ -729,9 +729,10 @@ struct WindowLifecycleTests {
                 title: title, toolTip: title, placement: .newTab
             )
         }
-        let host = NSHostingController(rootView: ContentView(
-            appState: model, windowCoordinator: coordinator
-        ))
+        let host = NSHostingController(
+            rootView: ContentView(
+                appState: model, windowCoordinator: coordinator
+            ))
         host.sceneBridgingOptions = []
         host.sizingOptions = []
         let window = testWindow()
@@ -821,9 +822,10 @@ struct WindowLifecycleTests {
 
         let cells = selector.subviews.compactMap { $0 as? DocumentTabCell }
         #expect(cells.count == 2)
-        #expect(cells.allSatisfy { cell in
-            cell.subviews.compactMap { $0 as? NSButton }.contains { $0.frame.width > 0 && $0.frame.height > 0 }
-        })
+        #expect(
+            cells.allSatisfy { cell in
+                cell.subviews.compactMap { $0 as? NSButton }.contains { $0.frame.width > 0 && $0.frame.height > 0 }
+            })
         #expect(cells[0].frame.width == cells[1].frame.width)
         _ = cells.first(where: { $0.tab.id == secondID })?.accessibilityPerformPress()
         #expect(requestedSelection == secondID)
@@ -844,7 +846,8 @@ struct WindowLifecycleTests {
         #expect(controller.testingPageItem(for: firstID) === firstItem)
         #expect(controller.testingNativeTabView.selectedTabViewItem === firstItem)
         #expect(controller.testingPageLabel(for: firstID) == "Renamed")
-        controller.update(document: Text("Singleton"), tabs: [renamed], selectedTabID: firstID,
+        controller.update(
+            document: Text("Singleton"), tabs: [renamed], selectedTabID: firstID,
             selectTab: { _ in }, closeTab: { _ in })
         controller.view.layoutSubtreeIfNeeded()
         #expect(selector.isHidden)

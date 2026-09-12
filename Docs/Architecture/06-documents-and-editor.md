@@ -573,15 +573,14 @@ validates both before `moveNote`. Success follows stable identity; failure
 retains the accessible draft error. It never writes Markdown; headings stay
 below it and Source has no title projection.
 
-`NoteContentView` loads attachments into the retained Document session. Overview
-renders Quick Look thumbnails with leases released on completion/cancellation.
-SwiftUI's `quickLookPreview` owns the system window and opening actions.
-`DocumentAttachmentQuickLookSession` only retains the URL and read lease;
-system dismissal, replacement, and sidebar teardown release it once.
-No custom preview panel, toolbar, or external-opening controller remains.
-Overview and File share DocumentController's attachment operation and session
-busy state. No attachment widget or message remains in the editor/reader bridge.
-
+`NoteContentView` inserts prepared attachment links through editor protocol 31's
+`insertAttachment` transaction. File-menu copy/reference shares the existing
+preparation and exact rollback owner. Links and embeds in Markdown are the only
+Note-to-file relationships; no retained sidebar attachment list exists.
+File activation checks the current source, then acquires a scoped Quick Look
+lease. SwiftUI owns the system preview window and opening actions;
+`DocumentAttachmentQuickLookSession` retains only its URL and lease, releasing
+on dismissal, replacement or document teardown.
 
 Review page identity excludes asynchronously derived link previews. Only fingerprint, CSS, or capability changes replace the page;
 in-page updates are read-only and preserve selection and scroll.

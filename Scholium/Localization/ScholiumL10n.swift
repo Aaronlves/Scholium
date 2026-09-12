@@ -64,16 +64,6 @@ enum ScholiumL10n {
             )
         }
 
-        static var metadata: LocalizedStringResource {
-            LocalizedStringResource(
-                "settings.tab.metadata",
-                defaultValue: "Metadata",
-                table: "Interface",
-                bundle: .module,
-                comment: "Settings tab for managed field definitions and About profiles."
-            )
-        }
-
         static var notifications: LocalizedStringResource {
             LocalizedStringResource(
                 "settings.tab.notifications",

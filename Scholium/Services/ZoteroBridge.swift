@@ -39,14 +39,4 @@ actor ZoteroBridge {
         #endif
     }
 
-    func openInZotero(binding: AnalysisZoteroBinding) {
-        guard let url = Self.itemURL(binding: binding) else { return }
-        #if canImport(AppKit)
-            NSWorkspace.shared.open(url)
-        #endif
-    }
-
-    nonisolated static func itemURL(binding: AnalysisZoteroBinding) -> URL? {
-        try? ZoteroReference(library: binding.library, itemKey: binding.itemKey).url
-    }
 }

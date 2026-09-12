@@ -8,6 +8,16 @@ import Testing
 struct LinkGraphTests {
     private let vaultID = UUID(uuidString: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee")!
 
+    @Test("Authored files and Zotero references do not create broken Note edges")
+    func resourceLinksAreNotNoteEdges() {
+        let source = NoteDocument(
+            relativePath: "A.md",
+            rawContent: "[File](Attachments/manual.pdf)\n![Image](Attachments/figure.png)\n[Zotero](zotero://select/library/items/QAITEM01)\n[[B]]")
+        let snapshot = build([source, NoteDocument(relativePath: "B.md", rawContent: "Body")])
+        #expect(snapshot.outgoing[id(source)]?.count == 1)
+        #expect(snapshot.diagnostics.isEmpty)
+    }
+
     @Test("Every authored occurrence remains a distinct outgoing and incoming edge")
     func occurrenceIdentityAndAnnotations() throws {
         let source = NoteDocument(
@@ -21,7 +31,7 @@ struct LinkGraphTests {
         let outgoing = snapshot.outgoing[sourceID] ?? []
         let incoming = snapshot.incoming[targetID] ?? []
 
-        #expect(snapshot.contractVersion == 6)
+        #expect(snapshot.contractVersion == GraphSnapshot.currentContractVersion)
         #expect(outgoing.count == 2)
         #expect(incoming == outgoing)
         #expect(

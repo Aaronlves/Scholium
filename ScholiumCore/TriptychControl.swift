@@ -68,43 +68,6 @@ public actor TriptychControlStore {
         var data: Data
     }
 
-    private struct AnalysisZoteroBindingFile: Codable {
-        static let currentSchemaVersion = 1
-
-        let schemaVersion: Int
-        var bindings: [AnalysisZoteroBinding]
-
-        init(bindings: [AnalysisZoteroBinding]) {
-            schemaVersion = Self.currentSchemaVersion
-            self.bindings = bindings.sorted { $0.noteID.uuidString < $1.noteID.uuidString }
-        }
-
-        private enum CodingKeys: String, CodingKey {
-            case schemaVersion
-            case bindings
-        }
-
-        init(from decoder: Decoder) throws {
-            let container = try decoder.container(keyedBy: CodingKeys.self)
-            schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
-            guard schemaVersion == Self.currentSchemaVersion else {
-                throw DecodingError.dataCorruptedError(
-                    forKey: .schemaVersion,
-                    in: container,
-                    debugDescription: "Unsupported Zotero binding schema \(schemaVersion)."
-                )
-            }
-            bindings = try container.decode([AnalysisZoteroBinding].self, forKey: .bindings)
-            guard Set(bindings.map(\.noteID)).count == bindings.count else {
-                throw DecodingError.dataCorruptedError(
-                    forKey: .bindings,
-                    in: container,
-                    debugDescription: "A Note may have at most one Zotero binding."
-                )
-            }
-        }
-    }
-
     public let controlURL: URL
 
     /// Preserves the entire unsupported portable-control owner as one opaque
@@ -192,14 +155,12 @@ public actor TriptychControlStore {
             switch error {
             case .invalidManifest, .settingsMissing, .settingsOldSchema,
                 .settingsFutureSchema, .settingsCorrupted,
-                .invalidZoteroBindings, .invalidIdentities,
+                .invalidIdentities,
                 .invalidAttachmentCatalog:
                 return true
             default:
                 throw error
             }
-        } catch is NoteMetadataError {
-            return true
         }
     }
 
@@ -280,10 +241,7 @@ public actor TriptychControlStore {
     private let manifestURL: URL
     private let settingsURL: URL
     private let identitiesURL: URL
-    private let analysisZoteroBindingsURL: URL
     private let attachmentCatalogURL: URL
-    private let documentAttachmentCatalogURL: URL
-    private let noteMetadataCatalogURL: URL
     private let fileManager: FileManager
     private let controlWriteHook: (@Sendable (URL) throws -> Void)?
     private let controlPostSwapHook: (@Sendable (URL) throws -> Void)?
@@ -296,12 +254,6 @@ public actor TriptychControlStore {
             .appendingPathComponent("v1", isDirectory: true)
     }
 
-    private var legacyDocumentAttachmentCatalogURL: URL {
-        controlURL
-            .appendingPathComponent("document-attachments", isDirectory: true)
-            .appendingPathComponent("v1", isDirectory: true)
-    }
-
     public init(worksVaultURL: URL, fileManager: FileManager = .default) {
         controlURL = worksVaultURL.standardizedFileURL
             .deletingLastPathComponent()
@@ -309,19 +261,10 @@ public actor TriptychControlStore {
         manifestURL = controlURL.appendingPathComponent("manifest.json")
         settingsURL = controlURL.appendingPathComponent("settings.json")
         identitiesURL = controlURL.appendingPathComponent("identities.json")
-        analysisZoteroBindingsURL = controlURL.appendingPathComponent("analysis-zotero-bindings.json")
         attachmentCatalogURL =
             controlURL
             .appendingPathComponent("attachments", isDirectory: true)
             .appendingPathComponent("v2", isDirectory: true)
-        documentAttachmentCatalogURL =
-            controlURL
-            .appendingPathComponent("document-attachments", isDirectory: true)
-            .appendingPathComponent("v2", isDirectory: true)
-        noteMetadataCatalogURL =
-            controlURL
-            .appendingPathComponent("note-metadata", isDirectory: true)
-            .appendingPathComponent("v1", isDirectory: true)
         self.fileManager = fileManager
         controlWriteHook = nil
         controlPostSwapHook = nil
@@ -340,19 +283,10 @@ public actor TriptychControlStore {
         manifestURL = controlURL.appendingPathComponent("manifest.json")
         settingsURL = controlURL.appendingPathComponent("settings.json")
         identitiesURL = controlURL.appendingPathComponent("identities.json")
-        analysisZoteroBindingsURL = controlURL.appendingPathComponent("analysis-zotero-bindings.json")
         attachmentCatalogURL =
             controlURL
             .appendingPathComponent("attachments", isDirectory: true)
             .appendingPathComponent("v2", isDirectory: true)
-        documentAttachmentCatalogURL =
-            controlURL
-            .appendingPathComponent("document-attachments", isDirectory: true)
-            .appendingPathComponent("v2", isDirectory: true)
-        noteMetadataCatalogURL =
-            controlURL
-            .appendingPathComponent("note-metadata", isDirectory: true)
-            .appendingPathComponent("v1", isDirectory: true)
         self.fileManager = fileManager
         controlWriteHook = nil
         controlPostSwapHook = nil
@@ -389,19 +323,10 @@ public actor TriptychControlStore {
         manifestURL = controlURL.appendingPathComponent("manifest.json")
         settingsURL = controlURL.appendingPathComponent("settings.json")
         identitiesURL = controlURL.appendingPathComponent("identities.json")
-        analysisZoteroBindingsURL = controlURL.appendingPathComponent("analysis-zotero-bindings.json")
         attachmentCatalogURL =
             controlURL
             .appendingPathComponent("attachments", isDirectory: true)
             .appendingPathComponent("v2", isDirectory: true)
-        documentAttachmentCatalogURL =
-            controlURL
-            .appendingPathComponent("document-attachments", isDirectory: true)
-            .appendingPathComponent("v2", isDirectory: true)
-        noteMetadataCatalogURL =
-            controlURL
-            .appendingPathComponent("note-metadata", isDirectory: true)
-            .appendingPathComponent("v1", isDirectory: true)
         self.fileManager = fileManager
         self.controlWriteHook = controlWriteHook
         self.controlPostSwapHook = controlPostSwapHook
@@ -421,19 +346,10 @@ public actor TriptychControlStore {
         manifestURL = controlURL.appendingPathComponent("manifest.json")
         settingsURL = controlURL.appendingPathComponent("settings.json")
         identitiesURL = controlURL.appendingPathComponent("identities.json")
-        analysisZoteroBindingsURL = controlURL.appendingPathComponent("analysis-zotero-bindings.json")
         attachmentCatalogURL =
             controlURL
             .appendingPathComponent("attachments", isDirectory: true)
             .appendingPathComponent("v2", isDirectory: true)
-        documentAttachmentCatalogURL =
-            controlURL
-            .appendingPathComponent("document-attachments", isDirectory: true)
-            .appendingPathComponent("v2", isDirectory: true)
-        noteMetadataCatalogURL =
-            controlURL
-            .appendingPathComponent("note-metadata", isDirectory: true)
-            .appendingPathComponent("v1", isDirectory: true)
         self.fileManager = fileManager
         self.controlWriteHook = controlWriteHook
         controlPostSwapHook = nil
@@ -465,8 +381,7 @@ public actor TriptychControlStore {
         guard Set(vaultIDs.keys) == Set(WorkspaceVaultSlot.allCases) else {
             throw TriptychControlError.invalidManifest
         }
-        guard !fileManager.fileExists(atPath: legacyAttachmentCatalogURL.path),
-            !fileManager.fileExists(atPath: legacyDocumentAttachmentCatalogURL.path)
+        guard !fileManager.fileExists(atPath: legacyAttachmentCatalogURL.path)
         else {
             throw TriptychControlError.invalidAttachmentCatalog
         }
@@ -477,13 +392,7 @@ public actor TriptychControlStore {
                 throw TriptychControlError.invalidAttachmentCatalog
             }
         }
-        if fileManager.fileExists(atPath: documentAttachmentCatalogURL.path) {
-            do {
-                _ = try documentAttachmentRecords()
-            } catch {
-                throw TriptychControlError.invalidAttachmentCatalog
-            }
-        }
+
         try fileManager.createDirectory(at: controlURL, withIntermediateDirectories: true)
 
         let now = Date()
@@ -501,13 +410,7 @@ public actor TriptychControlStore {
             IdentityFile(records: []),
             at: identitiesURL
         )
-        try createEncodedFileIfMissing(
-            AnalysisZoteroBindingFile(bindings: []),
-            at: analysisZoteroBindingsURL
-        )
         try ensureAttachmentCatalogDirectory()
-        try ensureDocumentAttachmentCatalogDirectory()
-        try ensureNoteMetadataCatalogDirectory()
 
         let manifestData = try Data(
             contentsOf: manifestURL,
@@ -554,11 +457,8 @@ public actor TriptychControlStore {
             throw TriptychControlError.settingsCorrupted
         }
         _ = try identitySnapshot()
-        _ = try zoteroBindings()
-        _ = try noteMetadataRecords(catalog: metadataCatalog())
         do {
             _ = try attachmentRecords()
-            _ = try documentAttachmentRecords()
         } catch {
             throw TriptychControlError.invalidAttachmentCatalog
         }
@@ -567,8 +467,7 @@ public actor TriptychControlStore {
 
     public func manifest() throws -> TriptychManifest {
         do {
-            guard !fileManager.fileExists(atPath: legacyAttachmentCatalogURL.path),
-                !fileManager.fileExists(atPath: legacyDocumentAttachmentCatalogURL.path)
+            guard !fileManager.fileExists(atPath: legacyAttachmentCatalogURL.path)
             else {
                 throw TriptychControlError.invalidAttachmentCatalog
             }
@@ -605,14 +504,8 @@ public actor TriptychControlStore {
         if fileManager.fileExists(atPath: identitiesURL.path) {
             _ = try identitySnapshot()
         }
-        if fileManager.fileExists(atPath: analysisZoteroBindingsURL.path) {
-            _ = try zoteroBindings()
-        }
-        if fileManager.fileExists(atPath: noteMetadataCatalogURL.path) {
-            _ = try noteMetadataRecords(catalog: metadataCatalog())
-        }
-        guard !fileManager.fileExists(atPath: legacyAttachmentCatalogURL.path),
-            !fileManager.fileExists(atPath: legacyDocumentAttachmentCatalogURL.path)
+
+        guard !fileManager.fileExists(atPath: legacyAttachmentCatalogURL.path)
         else {
             throw TriptychControlError.invalidAttachmentCatalog
         }
@@ -623,13 +516,7 @@ public actor TriptychControlStore {
                 throw TriptychControlError.invalidAttachmentCatalog
             }
         }
-        if fileManager.fileExists(atPath: documentAttachmentCatalogURL.path) {
-            do {
-                _ = try documentAttachmentRecords()
-            } catch {
-                throw TriptychControlError.invalidAttachmentCatalog
-            }
-        }
+
     }
 
     public func settings() throws -> TriptychSettingsSnapshot {
@@ -655,24 +542,6 @@ public actor TriptychControlStore {
         }
         let data = try Data(contentsOf: settingsURL, options: [.mappedIfSafe])
         return decodeSettingsLoadState(data)
-    }
-
-    /// Resolves the one workspace Metadata catalog. A current-schema settings
-    /// candidate may still authorize its independently valid definitions while
-    /// About settings await repair; unsupported envelopes expose built-ins only
-    /// and never invent custom definitions.
-    public func metadataCatalog() throws -> NoteMetadataCatalog {
-        switch try settingsLoadState() {
-        case .current(let snapshot):
-            return NoteMetadataCatalog(settings: snapshot.settings)
-        case .needsReview(let settings, _, _):
-            try TriptychSettingsValidator.validateMetadataFieldDefinitions(
-                settings.metadataFields
-            )
-            return NoteMetadataCatalog(settings: settings)
-        case .missing, .oldSchema, .futureSchema, .corrupted:
-            return .builtIn
-        }
     }
 
     @discardableResult
@@ -701,14 +570,6 @@ public actor TriptychControlStore {
         else {
             throw TriptychControlError.settingsCorrupted
         }
-        do {
-            try TriptychSettingsValidator.validateTransition(
-                from: currentSettings,
-                to: settings
-            )
-        } catch {
-            throw TriptychControlError.settingsNeedsReview(error.localizedDescription)
-        }
         let candidate = try encodedData(settings)
         let readback = try replaceExactFile(
             at: settingsURL,
@@ -725,20 +586,6 @@ public actor TriptychControlStore {
         return TriptychSettingsSnapshot(
             settings: decoded,
             revision: SettingsRevision(fingerprint: DocumentFingerprint(data: readback))
-        )
-    }
-
-    public func zoteroBindings() throws -> AnalysisZoteroBindingsSnapshot {
-        guard fileManager.fileExists(atPath: analysisZoteroBindingsURL.path) else {
-            throw TriptychControlError.invalidZoteroBindings
-        }
-        let data = try Data(contentsOf: analysisZoteroBindingsURL, options: [.mappedIfSafe])
-        guard let payload = try? decoder().decode(AnalysisZoteroBindingFile.self, from: data) else {
-            throw TriptychControlError.invalidZoteroBindings
-        }
-        return AnalysisZoteroBindingsSnapshot(
-            bindings: payload.bindings,
-            revision: DocumentFingerprint(data: data)
         )
     }
 
@@ -876,507 +723,7 @@ public actor TriptychControlStore {
         }
     }
 
-    public func documentAttachmentRecords(
-        noteID: UUID? = nil
-    ) throws -> [DocumentAttachmentRecord] {
-        guard fileManager.fileExists(atPath: documentAttachmentCatalogURL.path) else {
-            return []
-        }
-        try validateDocumentAttachmentCatalogDirectory()
-        let urls = try fileManager.contentsOfDirectory(
-            at: documentAttachmentCatalogURL,
-            includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey],
-            options: [.skipsHiddenFiles]
-        ).filter { $0.pathExtension == "json" }
-        var records: [DocumentAttachmentRecord] = []
-        for url in urls {
-            let values = try url.resourceValues(forKeys: [
-                .isRegularFileKey,
-                .isSymbolicLinkKey,
-            ])
-            guard values.isRegularFile == true,
-                values.isSymbolicLink != true,
-                let record = try? decoder().decode(
-                    DocumentAttachmentRecord.self,
-                    from: Data(contentsOf: url, options: [.mappedIfSafe])
-                ),
-                url.deletingPathExtension().lastPathComponent
-                    == record.id.uuidString.lowercased()
-            else {
-                throw DocumentAttachmentError.invalidCatalog
-            }
-            records.append(record)
-        }
-        let relativeKeys = records.compactMap { record -> String? in
-            guard case .vaultRelative(let path) = record.location else {
-                return nil
-            }
-            return "\(record.noteID.uuidString):\(record.vaultID.uuidString):\(path.rawValue)"
-        }
-        guard Set(records.map(\.id)).count == records.count,
-            Set(relativeKeys).count == relativeKeys.count
-        else {
-            throw DocumentAttachmentError.invalidCatalog
-        }
-        return
-            records
-            .filter { noteID == nil || $0.noteID == noteID }
-            .sorted {
-                let order = $0.filename.localizedStandardCompare($1.filename)
-                return order == .orderedSame
-                    ? $0.id.uuidString < $1.id.uuidString
-                    : order == .orderedAscending
-            }
-    }
-
-    public func registerDocumentAttachment(
-        noteID: UUID,
-        vaultID: UUID,
-        location: AttachmentLocation,
-        preferredID: UUID = UUID()
-    ) throws -> (record: DocumentAttachmentRecord, created: Bool) {
-        try withPortableControlLock {
-            try ensureDocumentAttachmentCatalogDirectory()
-            if case .vaultRelative = location,
-                let existing = try documentAttachmentRecords(noteID: noteID).first(where: {
-                    $0.vaultID == vaultID && $0.location == location
-                })
-            {
-                return (existing, false)
-            }
-            let record = DocumentAttachmentRecord(
-                id: preferredID,
-                noteID: noteID,
-                vaultID: vaultID,
-                location: location
-            )
-            guard !record.filename.isEmpty else {
-                throw DocumentAttachmentError.invalidCatalog
-            }
-            let url = documentAttachmentRecordURL(id: record.id)
-            guard !fileManager.fileExists(atPath: url.path) else {
-                throw DocumentAttachmentError.catalogConflict
-            }
-            let candidate = try encodedData(record)
-            try controlCreateHook?(url)
-            do {
-                try candidate.write(to: url, options: .withoutOverwriting)
-            } catch let error as CocoaError where error.code == .fileWriteFileExists {
-                throw DocumentAttachmentError.catalogConflict
-            } catch {
-                if let current = try? Data(contentsOf: url, options: [.mappedIfSafe]) {
-                    if current == candidate { return (record, true) }
-                    throw DocumentAttachmentError.catalogCommitUncertain(
-                        error.localizedDescription
-                    )
-                }
-                throw error
-            }
-            let readback: Data
-            do {
-                readback = try Data(contentsOf: url, options: [.mappedIfSafe])
-            } catch {
-                throw DocumentAttachmentError.catalogCommitUncertain(
-                    error.localizedDescription
-                )
-            }
-            guard readback == candidate,
-                (try? decoder().decode(DocumentAttachmentRecord.self, from: readback))
-                    == record
-            else {
-                throw DocumentAttachmentError.catalogCommitUncertain(
-                    "The record readback did not match the exact candidate bytes."
-                )
-            }
-            return (record, true)
-        }
-    }
-
     /// Replaces one existing relationship atomically. Files are never removed.
-    public func replaceDocumentAttachment(_ expected: DocumentAttachmentRecord, with replacement: DocumentAttachmentRecord) throws {
-        try withPortableControlLock {
-            guard expected.id == replacement.id, expected.noteID == replacement.noteID,
-                expected.vaultID == replacement.vaultID,
-                let identity = try identityRecord(id: expected.noteID), identity.vaultID == expected.vaultID
-            else {
-                throw DocumentAttachmentError.catalogConflict
-            }
-            let records = try documentAttachmentRecords()
-            let duplicateVaultRelativeLocation = records.contains { record in
-                guard record.id != expected.id,
-                    record.noteID == replacement.noteID,
-                    case .vaultRelative = replacement.location
-                else {
-                    return false
-                }
-                return record.location == replacement.location
-            }
-            guard records.first(where: { $0.id == expected.id }) == expected,
-                !duplicateVaultRelativeLocation
-            else {
-                throw DocumentAttachmentError.catalogConflict
-            }
-            let url = documentAttachmentRecordURL(id: expected.id)
-            let current = try Data(contentsOf: url, options: [.mappedIfSafe])
-            guard try decoder().decode(DocumentAttachmentRecord.self, from: current) == expected else {
-                throw DocumentAttachmentError.catalogConflict
-            }
-            do {
-                let candidate = try encodedData(replacement)
-                let readback = try replaceExactFile(
-                    at: url, expected: current, candidate: candidate,
-                    conflict: DocumentAttachmentError.catalogConflict)
-                guard readback == candidate else { throw DocumentAttachmentError.catalogCommitUncertain("Relationship readback differs.") }
-            } catch let error as TriptychControlError {
-                if case .controlFileCommitUncertain(let reason) = error { throw DocumentAttachmentError.catalogCommitUncertain(reason) }
-                throw error
-            }
-        }
-    }
-
-    public func removeDocumentAttachment(
-        _ expected: DocumentAttachmentRecord
-    ) throws {
-        try withPortableControlLock {
-            let url = documentAttachmentRecordURL(id: expected.id)
-            guard fileManager.fileExists(atPath: url.path) else { throw DocumentAttachmentError.catalogConflict }
-            let expectedData = try encodedData(expected)
-            let coordinator = NSFileCoordinator(filePresenter: nil)
-            var coordinationError: NSError?
-            var outcome: Result<Void, Error>?
-            coordinator.coordinate(
-                writingItemAt: url,
-                options: .forDeleting,
-                error: &coordinationError
-            ) { coordinatedURL in
-                outcome = Result {
-                    let current = try Data(
-                        contentsOf: coordinatedURL,
-                        options: [.mappedIfSafe]
-                    )
-                    guard current == expectedData else {
-                        throw DocumentAttachmentError.catalogConflict
-                    }
-                    try self.fileManager.removeItem(at: coordinatedURL)
-                    guard !self.fileManager.fileExists(atPath: coordinatedURL.path) else {
-                        throw DocumentAttachmentError.catalogConflict
-                    }
-                }
-            }
-            if let coordinationError { throw coordinationError }
-            guard let outcome else { throw DocumentAttachmentError.catalogConflict }
-            try outcome.get()
-        }
-    }
-
-    /// Reads every portable Note metadata file as an immutable snapshot. A
-    /// damaged record fails the complete projection with exact single-record
-    /// recovery authority; callers never publish a silently partial catalog.
-    public func noteMetadataRecords(
-        catalog: NoteMetadataCatalog
-    ) throws -> [NoteMetadataSnapshot] {
-        guard fileManager.fileExists(atPath: noteMetadataCatalogURL.path) else {
-            return []
-        }
-        try validateNoteMetadataCatalogDirectory()
-        let urls = try fileManager.contentsOfDirectory(
-            at: noteMetadataCatalogURL,
-            includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey],
-            options: [.skipsHiddenFiles]
-        ).filter { $0.pathExtension == "json" }.sorted { $0.lastPathComponent < $1.lastPathComponent }
-        let identities = Dictionary(
-            uniqueKeysWithValues: try identityPayload().records.map { ($0.id, $0) }
-        )
-        let profilesByVaultID = try noteMetadataProfilesByVaultID()
-        var snapshots: [NoteMetadataSnapshot] = []
-        for url in urls {
-            let values = try url.resourceValues(forKeys: [
-                .isRegularFileKey,
-                .isSymbolicLinkKey,
-            ])
-            guard values.isRegularFile == true,
-                values.isSymbolicLink != true
-            else {
-                throw NoteMetadataError.invalidCatalog
-            }
-            let data = try Data(contentsOf: url, options: [.mappedIfSafe])
-            let record = try decodedNoteMetadataRecord(
-                at: url,
-                data: data,
-                identities: identities,
-                profilesByVaultID: profilesByVaultID,
-                catalog: catalog
-            )
-            snapshots.append(
-                NoteMetadataSnapshot(
-                    record: record,
-                    revision: DocumentFingerprint(data: data)
-                ))
-        }
-        guard Set(snapshots.map(\.record.noteID)).count == snapshots.count else {
-            throw NoteMetadataError.invalidCatalog
-        }
-        return snapshots.sorted {
-            $0.record.noteID.uuidString < $1.record.noteID.uuidString
-        }
-    }
-
-    public func noteMetadata(noteID: UUID) throws -> NoteMetadataSnapshot? {
-        let url = noteMetadataRecordURL(noteID: noteID)
-        guard fileManager.fileExists(atPath: url.path) else { return nil }
-        try validateNoteMetadataCatalogDirectory()
-        let values = try url.resourceValues(forKeys: [
-            .isRegularFileKey,
-            .isSymbolicLinkKey,
-        ])
-        guard values.isRegularFile == true, values.isSymbolicLink != true else {
-            throw NoteMetadataError.invalidRecord(noteID)
-        }
-        let data = try Data(contentsOf: url, options: [.mappedIfSafe])
-        let identities = Dictionary(
-            uniqueKeysWithValues: try identityPayload().records.map { ($0.id, $0) }
-        )
-        let record = try decodedNoteMetadataRecord(
-            at: url,
-            data: data,
-            identities: identities,
-            profilesByVaultID: try noteMetadataProfilesByVaultID(),
-            catalog: try metadataCatalog()
-        )
-        return NoteMetadataSnapshot(
-            record: record,
-            revision: DocumentFingerprint(data: data)
-        )
-    }
-
-    /// Moves exactly the fingerprinted invalid record to a unique non-record
-    /// sibling name. The preserved bytes remain portable and inspectable; no
-    /// valid record, Markdown source, or other control file is touched.
-    @discardableResult
-    public func archiveInvalidNoteMetadataRecord(
-        _ issue: NoteMetadataRecoveryIssue
-    ) throws -> URL {
-        try withPortableControlLock {
-            guard issue.fileName == URL(fileURLWithPath: issue.fileName).lastPathComponent,
-                !issue.fileName.isEmpty,
-                (issue.fileName as NSString).pathExtension == "json"
-            else {
-                throw NoteMetadataError.recoveryIssueChanged
-            }
-            try validateNoteMetadataCatalogDirectory()
-            let sourceURL = noteMetadataCatalogURL.appendingPathComponent(
-                issue.fileName,
-                isDirectory: false
-            )
-            do {
-                return try ExactStatePreserver.preserve(
-                    sourceURL,
-                    kind: .regularFile,
-                    recoveryStem: "\(issue.fileName).unsupported",
-                    fileEligibility: { data in
-                        DocumentFingerprint(data: data) == issue.fingerprint
-                    },
-                    fileManager: fileManager
-                )
-            } catch ExactStatePreservationError.missing,
-                ExactStatePreservationError.unsafe
-            {
-                throw NoteMetadataError.recoveryIssueChanged
-            } catch ExactStatePreservationError.preservationFailed(let reason) {
-                if reason == "The file changed and no longer qualifies for recovery. Reload its current state." {
-                    throw NoteMetadataError.recoveryIssueChanged
-                }
-                throw NoteMetadataError.recoveryArchiveFailed(reason)
-            }
-        }
-    }
-
-    /// Creates or compare-and-swap replaces one metadata record. `nil`
-    /// expected revision authorizes only creation; it never overwrites a
-    /// record that appeared concurrently through another Scholium instance or
-    /// a sync participant.
-    @discardableResult
-    public func saveNoteMetadata(
-        noteID: UUID,
-        fields: [String: YAMLValue],
-        expectedRevision: DocumentFingerprint?
-    ) throws -> NoteMetadataSnapshot {
-        try withPortableControlLock {
-            guard let identity = try identityRecord(id: noteID) else {
-                throw NoteMetadataError.identityUnavailable(noteID)
-            }
-            let profilesByVaultID = try noteMetadataProfilesByVaultID()
-            let catalog = try metadataCatalog()
-            guard let profile = profilesByVaultID[identity.vaultID],
-                catalog.validate(
-                    fields: fields,
-                    profile: profile
-                ).isEmpty
-            else {
-                throw NoteMetadataError.invalidRecord(noteID)
-            }
-            try ensureNoteMetadataCatalogDirectory()
-            let record = NoteMetadataRecord(noteID: noteID, fields: fields)
-            let candidate = try record.encodedPortableData()
-            let url = noteMetadataRecordURL(noteID: noteID)
-            let readback: Data
-            if fileManager.fileExists(atPath: url.path) {
-                let current = try Data(contentsOf: url, options: [.mappedIfSafe])
-                guard let expectedRevision,
-                    DocumentFingerprint(data: current) == expectedRevision
-                else {
-                    throw NoteMetadataError.revisionConflict(noteID)
-                }
-                do {
-                    readback = try replaceExactFile(
-                        at: url,
-                        expected: current,
-                        candidate: candidate,
-                        conflict: NoteMetadataError.revisionConflict(noteID)
-                    )
-                } catch let error as TriptychControlError {
-                    if case .controlFileCommitUncertain(let reason) = error {
-                        throw NoteMetadataError.commitUncertain(noteID, reason)
-                    }
-                    throw error
-                }
-            } else {
-                guard expectedRevision == nil else {
-                    throw NoteMetadataError.revisionConflict(noteID)
-                }
-                try controlCreateHook?(url)
-                do {
-                    try candidate.write(to: url, options: .withoutOverwriting)
-                } catch let error as CocoaError where error.code == .fileWriteFileExists {
-                    throw NoteMetadataError.revisionConflict(noteID)
-                } catch {
-                    if let current = try? Data(contentsOf: url, options: [.mappedIfSafe]),
-                        current == candidate
-                    {
-                        readback = current
-                    } else if fileManager.fileExists(atPath: url.path) {
-                        throw NoteMetadataError.commitUncertain(
-                            noteID,
-                            error.localizedDescription
-                        )
-                    } else {
-                        throw error
-                    }
-                    guard
-                        let decoded = try? decoder().decode(
-                            NoteMetadataRecord.self,
-                            from: readback
-                        ), decoded == record
-                    else {
-                        throw NoteMetadataError.commitUncertain(
-                            noteID,
-                            "The record readback did not match the candidate."
-                        )
-                    }
-                    return NoteMetadataSnapshot(
-                        record: decoded,
-                        revision: DocumentFingerprint(data: readback)
-                    )
-                }
-                do {
-                    readback = try Data(contentsOf: url, options: [.mappedIfSafe])
-                } catch {
-                    throw NoteMetadataError.commitUncertain(
-                        noteID,
-                        error.localizedDescription
-                    )
-                }
-            }
-            guard readback == candidate,
-                let decoded = try? decoder().decode(
-                    NoteMetadataRecord.self,
-                    from: readback
-                ), decoded == record
-            else {
-                throw NoteMetadataError.commitUncertain(
-                    noteID,
-                    "The record readback did not match the exact candidate bytes."
-                )
-            }
-            return NoteMetadataSnapshot(
-                record: decoded,
-                revision: DocumentFingerprint(data: readback)
-            )
-        }
-    }
-
-    /// Removes only the exact loaded metadata revision. This is used by
-    /// bounded creation rollback and exact Agent Change Undo; ordinary field edits
-    /// retain an empty record instead of turning absence into an ambiguous
-    /// write state.
-    public func removeNoteMetadata(_ expected: NoteMetadataSnapshot) throws {
-        try withPortableControlLock {
-            let id = expected.record.noteID
-            let url = noteMetadataRecordURL(noteID: id)
-            guard fileManager.fileExists(atPath: url.path) else { throw NoteMetadataError.revisionConflict(id) }
-            let coordinator = NSFileCoordinator(filePresenter: nil)
-            var coordinationError: NSError?
-            var outcome: Result<Void, Error>?
-            coordinator.coordinate(
-                writingItemAt: url,
-                options: .forDeleting,
-                error: &coordinationError
-            ) { coordinatedURL in
-                outcome = Result {
-                    let current = try Data(
-                        contentsOf: coordinatedURL,
-                        options: [.mappedIfSafe]
-                    )
-                    guard DocumentFingerprint(data: current) == expected.revision else {
-                        throw NoteMetadataError.revisionConflict(id)
-                    }
-                    try self.fileManager.removeItem(at: coordinatedURL)
-                    guard !self.fileManager.fileExists(atPath: coordinatedURL.path) else {
-                        throw NoteMetadataError.commitUncertain(
-                            id,
-                            "The record still exists after deletion."
-                        )
-                    }
-                }
-            }
-            if let coordinationError { throw coordinationError }
-            guard let outcome else {
-                throw NoteMetadataError.commitUncertain(
-                    id,
-                    "The coordinated deletion produced no result."
-                )
-            }
-            try outcome.get()
-        }
-    }
-
-    @discardableResult
-    public func setZoteroBinding(
-        _ binding: AnalysisZoteroBinding,
-        expectedRevision: DocumentFingerprint
-    ) throws -> AnalysisZoteroBindingsSnapshot {
-        try withPortableControlLock {
-            guard try identityRecord(id: binding.noteID) != nil else {
-                throw TriptychControlError.invalidIdentityCandidate(binding.noteID)
-            }
-            return try updateZoteroBindings(expectedRevision: expectedRevision) { bindings in
-                bindings.removeAll { $0.noteID == binding.noteID }
-                bindings.append(binding)
-            }
-        }
-    }
-
-    @discardableResult
-    public func clearZoteroBinding(
-        for noteID: UUID,
-        expectedRevision: DocumentFingerprint
-    ) throws -> AnalysisZoteroBindingsSnapshot {
-        try withPortableControlLock {
-            try updateZoteroBindings(expectedRevision: expectedRevision) { bindings in
-                bindings.removeAll { $0.noteID == noteID }
-            }
-        }
-    }
 
     public func identity(
         forVaultID vaultID: UUID,
@@ -1698,28 +1045,7 @@ public actor TriptychControlStore {
         )
         payload.records.append(duplicate)
         try commitIdentityPayload(payload, replacing: &snapshot)
-        if let sourceBinding = try zoteroBindings().binding(for: sourceID) {
-            do {
-                let duplicateBinding = try AnalysisZoteroBinding(
-                    noteID: duplicate.id,
-                    library: sourceBinding.library,
-                    itemKey: sourceBinding.itemKey
-                )
-                let bindingSnapshot = try zoteroBindings()
-                _ = try setZoteroBinding(
-                    duplicateBinding,
-                    expectedRevision: bindingSnapshot.revision
-                )
-            } catch {
-                var rollbackPayload = snapshot.payload
-                rollbackPayload.records.removeAll { $0.id == duplicate.id }
-                try? commitIdentityPayload(
-                    rollbackPayload,
-                    replacing: &snapshot
-                )
-                throw error
-            }
-        }
+
         return duplicate
     }
 
@@ -1742,12 +1068,7 @@ public actor TriptychControlStore {
             guard record.vaultID == vaultID, record.relativePath == relativePath else {
                 throw TriptychControlError.invalidIdentityCandidate(id)
             }
-            guard try zoteroBindings().binding(for: id) == nil else {
-                // Creation recovery cannot turn an uncertain observation into
-                // integration-deletion authority. Permanent deletion uses its
-                // durable exact preimage overload below.
-                throw TriptychControlError.invalidIdentityCandidate(id)
-            }
+
             payload.records.removeAll { $0.id == id }
             payload.pendingRebindings.removeAll { $0.noteID == id }
             payload.unresolvedAmbiguities = payload.unresolvedAmbiguities.compactMap {
@@ -1779,7 +1100,6 @@ public actor TriptychControlStore {
         return try portableControlLock.withExclusiveLock {
             var snapshot = try identitySnapshot()
             let originalPayload = snapshot.payload
-            let bindingSnapshot = try zoteroBindings()
             var payload = snapshot.payload
             let pathIdentity = payload.records.first(where: {
                 $0.vaultID == vaultID && $0.relativePath == relativePath
@@ -1805,7 +1125,6 @@ public actor TriptychControlStore {
                     )
                 }
                 guard pathIdentity == nil,
-                    bindingSnapshot.binding(for: reservedIdentityID) == nil,
                     !payload.pendingRebindings.contains(where: {
                         $0.noteID == reservedIdentityID
                     }),
@@ -1835,7 +1154,7 @@ public actor TriptychControlStore {
                         pathIdentity?.id ?? reservedIdentityID
                     )
                 }
-                guard bindingSnapshot.binding(for: reservedIdentityID) == nil,
+                guard
                     !payload.pendingRebindings.contains(where: {
                         $0.noteID == reservedIdentityID
                     }),
@@ -1853,10 +1172,7 @@ public actor TriptychControlStore {
             }
 
             try commitIdentityPayload(payload, replacing: &snapshot)
-            guard try zoteroBindings().revision == bindingSnapshot.revision else {
-                try commitIdentityPayload(originalPayload, replacing: &snapshot)
-                throw TriptychControlError.invalidZoteroBindings
-            }
+
             let final = snapshot.payload.records.first(where: {
                 $0.id == reservedIdentityID
             })
@@ -1901,9 +1217,7 @@ public actor TriptychControlStore {
             guard current != reconciliation.previousReservedIdentity else { return }
             var payload = snapshot.payload
             if let current {
-                guard try zoteroBindings().binding(for: current.id) == nil else {
-                    throw TriptychControlError.invalidZoteroBindings
-                }
+
                 payload.records.removeAll { $0.id == current.id }
             }
             if let previous = reconciliation.previousReservedIdentity {
@@ -2236,121 +1550,6 @@ public actor TriptychControlStore {
         try validateAttachmentCatalogDirectory()
     }
 
-    private func ensureDocumentAttachmentCatalogDirectory() throws {
-        try ensureControlDirectory()
-        try fileManager.createDirectory(
-            at: documentAttachmentCatalogURL,
-            withIntermediateDirectories: true
-        )
-        try validateDocumentAttachmentCatalogDirectory()
-    }
-
-    private func ensureNoteMetadataCatalogDirectory() throws {
-        try ensureControlDirectory()
-        try fileManager.createDirectory(
-            at: noteMetadataCatalogURL,
-            withIntermediateDirectories: true
-        )
-        try validateNoteMetadataCatalogDirectory()
-    }
-
-    private func validateNoteMetadataCatalogDirectory() throws {
-        let ownerURL = noteMetadataCatalogURL.deletingLastPathComponent()
-        for url in [controlURL, ownerURL, noteMetadataCatalogURL] {
-            let values = try url.resourceValues(forKeys: [
-                .isDirectoryKey,
-                .isSymbolicLinkKey,
-            ])
-            guard values.isDirectory == true, values.isSymbolicLink != true else {
-                throw NoteMetadataError.invalidCatalog
-            }
-        }
-        let canonicalControl = controlURL.resolvingSymlinksInPath().standardizedFileURL
-        let canonicalCatalog =
-            noteMetadataCatalogURL
-            .resolvingSymlinksInPath()
-            .standardizedFileURL
-        let rootPath =
-            canonicalControl.path.hasSuffix("/")
-            ? canonicalControl.path
-            : canonicalControl.path + "/"
-        guard canonicalCatalog.path.hasPrefix(rootPath) else {
-            throw NoteMetadataError.invalidCatalog
-        }
-    }
-
-    private func noteMetadataRecordURL(noteID: UUID) -> URL {
-        noteMetadataCatalogURL.appendingPathComponent(
-            "\(noteID.uuidString.lowercased()).json",
-            isDirectory: false
-        )
-    }
-
-    private func noteMetadataProfilesByVaultID() throws -> [UUID: SchemaProfileID] {
-        Dictionary(
-            uniqueKeysWithValues: try manifest().vaultIDs.map { slot, vaultID in
-                let profile: SchemaProfileID =
-                    switch slot {
-                    case .paperAnalysis: .analysis
-                    case .topicKnowledge: .topicMarkdown
-                    case .output: .draftProject
-                    }
-                return (vaultID, profile)
-            })
-    }
-
-    private func decodedNoteMetadataRecord(
-        at url: URL,
-        data: Data,
-        identities: [UUID: NoteIdentityRecord],
-        profilesByVaultID: [UUID: SchemaProfileID],
-        catalog: NoteMetadataCatalog
-    ) throws -> NoteMetadataRecord {
-        let fingerprint = DocumentFingerprint(data: data)
-        guard let record = try? decoder().decode(NoteMetadataRecord.self, from: data) else {
-            throw NoteMetadataError.recoveryRequired(
-                NoteMetadataRecoveryIssue(
-                    fileName: url.lastPathComponent,
-                    fingerprint: fingerprint,
-                    noteID: nil,
-                    reason: .invalidEnvelope
-                ))
-        }
-        guard
-            url.deletingPathExtension().lastPathComponent
-                == record.noteID.uuidString.lowercased()
-        else {
-            throw NoteMetadataError.recoveryRequired(
-                NoteMetadataRecoveryIssue(
-                    fileName: url.lastPathComponent,
-                    fingerprint: fingerprint,
-                    noteID: record.noteID,
-                    reason: .fileIdentityMismatch
-                ))
-        }
-        guard let identity = identities[record.noteID] else {
-            throw NoteMetadataError.recoveryRequired(
-                NoteMetadataRecoveryIssue(
-                    fileName: url.lastPathComponent,
-                    fingerprint: fingerprint,
-                    noteID: record.noteID,
-                    reason: .orphanedNoteIdentity
-                ))
-        }
-        guard let profile = profilesByVaultID[identity.vaultID],
-            catalog.validate(fields: record.fields, profile: profile).isEmpty
-        else {
-            throw NoteMetadataError.recoveryRequired(
-                NoteMetadataRecoveryIssue(
-                    fileName: url.lastPathComponent,
-                    fingerprint: fingerprint,
-                    noteID: record.noteID,
-                    reason: .invalidRoleOrFields
-                ))
-        }
-        return record
-    }
-
     private func validateAttachmentCatalogDirectory() throws {
         let attachmentsURL = attachmentCatalogURL.deletingLastPathComponent()
         for url in [controlURL, attachmentsURL, attachmentCatalogURL] {
@@ -2376,40 +1575,8 @@ public actor TriptychControlStore {
         }
     }
 
-    private func validateDocumentAttachmentCatalogDirectory() throws {
-        let ownerURL = documentAttachmentCatalogURL.deletingLastPathComponent()
-        for url in [controlURL, ownerURL, documentAttachmentCatalogURL] {
-            let values = try url.resourceValues(forKeys: [
-                .isDirectoryKey,
-                .isSymbolicLinkKey,
-            ])
-            guard values.isDirectory == true, values.isSymbolicLink != true else {
-                throw DocumentAttachmentError.invalidCatalog
-            }
-        }
-        let canonicalControl = controlURL.resolvingSymlinksInPath().standardizedFileURL
-        let canonicalCatalog =
-            documentAttachmentCatalogURL
-            .resolvingSymlinksInPath()
-            .standardizedFileURL
-        let rootPath =
-            canonicalControl.path.hasSuffix("/")
-            ? canonicalControl.path
-            : canonicalControl.path + "/"
-        guard canonicalCatalog.path.hasPrefix(rootPath) else {
-            throw DocumentAttachmentError.invalidCatalog
-        }
-    }
-
     private func attachmentRecordURL(id: UUID) -> URL {
         attachmentCatalogURL.appendingPathComponent(
-            "\(id.uuidString.lowercased()).json",
-            isDirectory: false
-        )
-    }
-
-    private func documentAttachmentRecordURL(id: UUID) -> URL {
-        documentAttachmentCatalogURL.appendingPathComponent(
             "\(id.uuidString.lowercased()).json",
             isDirectory: false
         )
@@ -2632,42 +1799,6 @@ public actor TriptychControlStore {
             throw CocoaError(.fileWriteUnknown)
         }
         return try outcome.get()
-    }
-
-    private func updateZoteroBindings(
-        expectedRevision: DocumentFingerprint,
-        change: (inout [AnalysisZoteroBinding]) -> Void
-    ) throws -> AnalysisZoteroBindingsSnapshot {
-        let snapshot = try zoteroBindings()
-        guard snapshot.revision == expectedRevision else {
-            throw TriptychControlError.zoteroBindingsRevisionConflict
-        }
-        var bindings = snapshot.bindings
-        change(&bindings)
-        let payload = AnalysisZoteroBindingFile(bindings: bindings)
-        let candidate = try encodedData(payload)
-        let current = try Data(
-            contentsOf: analysisZoteroBindingsURL,
-            options: [.mappedIfSafe]
-        )
-        guard DocumentFingerprint(data: current) == expectedRevision else {
-            throw TriptychControlError.zoteroBindingsRevisionConflict
-        }
-        let readback = try replaceExactFile(
-            at: analysisZoteroBindingsURL,
-            expected: current,
-            candidate: candidate,
-            conflict: TriptychControlError.zoteroBindingsRevisionConflict
-        )
-        guard readback == candidate,
-            let decoded = try? decoder().decode(AnalysisZoteroBindingFile.self, from: readback)
-        else {
-            throw TriptychControlError.invalidZoteroBindings
-        }
-        return AnalysisZoteroBindingsSnapshot(
-            bindings: decoded.bindings,
-            revision: DocumentFingerprint(data: readback)
-        )
     }
 
     private func withPortableControlLock<T>(

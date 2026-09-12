@@ -1,4 +1,5 @@
 import AppKit
+import QuickLook
 import ScholiumContracts
 import SwiftUI
 import UniformTypeIdentifiers
@@ -228,6 +229,7 @@ struct NoteContentView: View {
     let note: WindowDocumentLocation
     let state: DocumentFeatureState
     let actions: DocumentFeatureActions
+    @StateObject private var quickLook = DocumentAttachmentQuickLookSession()
     @StateObject private var documentFind = DocumentFindPresentationModel()
     @StateObject private var reviewDocumentStatistics = ReviewDocumentStatisticsModel()
     @State private var isInsertingImage = false
@@ -303,11 +305,11 @@ struct NoteContentView: View {
     }
     private var editorSession: MarkdownEditorSession { documentSession.editorSession }
 
-    private var documentAttachmentTarget: NoteDocumentAttachmentTarget? {
+    private var documentAttachmentTarget: SourceAttachmentTarget? {
         guard case .workspace(let key) = target,
             key.vaultID == note.vaultID
         else { return nil }
-        return NoteDocumentAttachmentTarget(
+        return SourceAttachmentTarget(
             noteID: key.noteID,
             vaultID: key.vaultID,
             relativePath: note.relativePath
@@ -390,7 +392,7 @@ struct NoteContentView: View {
                     useSelectionForFind: useSelectionForDocumentFind,
                     importImage: requestImageImport,
                     indexImage: requestImageIndex,
-                    canAttachDocument: documentAttachmentTarget != nil
+                    canAttachDocument: isEditing && editorSession.isLoaded && documentAttachmentTarget != nil
                         && !documentSession.isAttachingDocument,
                     attachDocumentCopy: {
                         requestDocumentAttachment(.copyIntoTriptych)
@@ -544,9 +546,8 @@ struct NoteContentView: View {
         .task(id: indexedImageAvailabilityTaskIdentity) {
             await checkIndexedImageAvailability()
         }
-        .task(id: documentAttachmentTaskIdentity) {
-            await loadDocumentAttachments()
-        }
+        .quickLookPreview(Binding(get: { quickLook.url }, set: { if $0 == nil { quickLook.dismiss() } }))
+        .onDisappear { quickLook.dismiss() }
         .task(id: previewTaskIdentity) {
             await rebuildPreviewCatalog()
         }
@@ -680,16 +681,7 @@ struct NoteContentView: View {
                     try await actions.renameNote(note, expectedTitle, requestedTitle)
                 },
                 onPasteImage: handlePastedImage,
-                onLinkActivation: { target in
-                    if let url = URL(string: target),
-                        let scheme = url.scheme?.lowercased(),
-                        ["http", "https", "mailto"].contains(scheme)
-                    {
-                        actions.openExternalURL(url)
-                    } else {
-                        actions.openInternalLink(target)
-                    }
-                },
+                onLinkActivation: openAuthoredLink,
                 onScrollFractionChange: {
                     documentSession.observeScrollFraction($0)
                     actions.rememberScrollPosition($0)
@@ -851,10 +843,8 @@ struct NoteContentView: View {
             configurationRevision: readConfigurationRevision,
             linkPreviews: documentSession.previewCatalog?.links ?? [],
             linkPreviewRevision: readLinkPreviewRevision,
-            onLinkClick: {
-                actions.openInternalLink($0)
-            },
-            onOpenExternalURL: actions.openExternalURL,
+            onLinkClick: openAuthoredLink,
+            onOpenExternalURL: { openAuthoredLink($0.absoluteString) },
             onAskAgent: actions.askAgent,
             onSelectionChange: { selection in
                 guard !isEditing else { return }
@@ -1021,29 +1011,75 @@ struct NoteContentView: View {
         "\(note.relativePath):\(noteFingerprint.sha256):\(indexedImageAvailabilityGeneration)"
     }
 
-    private var documentAttachmentTaskIdentity: String {
-        let stableID = documentAttachmentTarget?.noteID.uuidString ?? "unavailable"
-        return "\(stableID):\(note.relativePath):\(indexedImageAvailabilityGeneration):\(documentSession.documentAttachmentsGeneration)"
-    }
-
-    @MainActor
-    private func loadDocumentAttachments() async {
-        guard let expectedTarget = documentAttachmentTarget else {
-            documentSession.documentAttachments = []
+    private func openAuthoredLink(_ destination: String) {
+        if let url = URL(string: destination),
+            ["http", "https", "mailto"].contains(url.scheme?.lowercased() ?? "")
+        {
+            actions.openExternalURL(url)
             return
         }
-        try? await controller.refreshDocumentAttachments(for: expectedTarget, session: documentSession)
+        if let url = URL(string: destination), let reference = try? ZoteroReference(url: url) {
+            actions.openExternalURL(reference.url)
+            return
+        }
+        guard let file = SourceResourceReferences.file(destination: destination, noteRelativePath: note.relativePath),
+            let attachmentTarget = documentAttachmentTarget
+        else {
+            actions.openInternalLink(destination)
+            return
+        }
+        Task { @MainActor in
+            do {
+                if isEditing {
+                    await controller.persistEditingSource(session: documentSession, target: target)
+                    guard documentSession.editError == nil, documentSession.conflict == nil else { return }
+                }
+                let snapshots = try await controller.documentAttachments(for: attachmentTarget)
+                let matching: DocumentAttachmentSnapshot?
+                if let path = file.relativePath {
+                    matching = snapshots.first { $0.record.location == .vaultRelative(path) }
+                } else {
+                    // Resolve exact absolute path through the machine-local bookmark owner.
+                    matching = try await controller.sourceAttachment(for: destination, target: attachmentTarget)
+                }
+                guard let matching else { throw DocumentAttachmentError.unavailable(destination) }
+                let lease = try await controller.prepareDocumentAttachmentPreview(attachmentID: matching.record.id, for: attachmentTarget)
+                guard documentAttachmentTarget == attachmentTarget else {
+                    await controller.releaseDocumentAttachmentPreview(accessToken: lease.accessToken)
+                    return
+                }
+                quickLook.present(lease) { token in await controller.releaseDocumentAttachmentPreview(accessToken: token) }
+            } catch { actions.notify(error.localizedDescription, .error) }
+        }
     }
 
     private func requestDocumentAttachment(_ mode: DocumentAttachmentSelectionMode) {
-        guard let target = documentAttachmentTarget else { return }
+        guard let target = documentAttachmentTarget, isEditing, editorSession.isLoaded,
+            editorSession.context?.composing != true
+        else { return }
+        let expectedDocumentID = editorSession.documentID
         Task { @MainActor in
             defer { if isEditing { editorSession.focusPreferred() } }
+            var prepared: PreparedSourceAttachment?
             do {
-                try await controller.selectDocumentAttachment(
-                    mode, for: target,
-                    session: documentSession, presenter: fileSelectionPresenter)
-            } catch is CancellationError { return } catch { actions.notify(error.localizedDescription, .error) }
+                guard
+                    let preparation = try await controller.selectDocumentAttachment(
+                        mode, for: target, session: documentSession, presenter: fileSelectionPresenter)
+                else { return }
+                prepared = preparation
+                guard isEditing, editorSession.documentID == expectedDocumentID,
+                    documentAttachmentTarget == target
+                else { throw MarkdownEditorSession.SessionError.staleRequest }
+                try await editorSession.perform(.insertAttachment, argument: preparation.editorArgument)
+                prepared = nil
+                AccessibilityNotification.Announcement(String(localized: "Attachment link inserted.")).post()
+            } catch {
+                var message = error.localizedDescription
+                if let prepared {
+                    do { try await controller.rollbackSourceAttachment(prepared) } catch { message += " " + error.localizedDescription }
+                }
+                actions.notify(message, .error)
+            }
         }
     }
 
@@ -1164,7 +1200,7 @@ struct NoteContentView: View {
                 isInsertingImage = false
                 focusEditorIfPresented()
             }
-            var prepared: PreparedImageAttachment?
+            var prepared: PreparedSourceAttachment?
             do {
                 guard let fileSelectionPresenter else {
                     throw ScholiumFileSelectionError.presenterUnavailable
@@ -1222,7 +1258,7 @@ struct NoteContentView: View {
                 var message = error.localizedDescription
                 if let prepared {
                     do {
-                        try await controller.rollbackImageAttachment(prepared)
+                        try await controller.rollbackSourceAttachment(prepared)
                     } catch {
                         message +=
                             " "
@@ -1255,7 +1291,7 @@ struct NoteContentView: View {
                 isInsertingImage = false
                 focusEditorIfPresented()
             }
-            var prepared: PreparedImageAttachment?
+            var prepared: PreparedSourceAttachment?
             do {
                 guard isEditing,
                     note.relativePath == expectedPath,
@@ -1263,7 +1299,7 @@ struct NoteContentView: View {
                 else {
                     throw MarkdownEditorSession.SessionError.staleRequest
                 }
-                let preparation: PreparedImageAttachment
+                let preparation: PreparedSourceAttachment
                 switch source {
                 case .file(let url):
                     preparation = try await controller.importPastedImageAttachment(
@@ -1296,7 +1332,7 @@ struct NoteContentView: View {
                 var message = error.localizedDescription
                 if let prepared {
                     do {
-                        try await controller.rollbackImageAttachment(prepared)
+                        try await controller.rollbackSourceAttachment(prepared)
                     } catch {
                         message +=
                             " "

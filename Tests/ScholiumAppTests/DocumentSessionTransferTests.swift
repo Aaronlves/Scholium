@@ -9,10 +9,13 @@ import Testing
 struct DocumentSessionTransferTests {
     private func document(_ path: String) -> WindowSelectedDocument {
         let key = DocumentSessionKey(vaultID: UUID(), noteID: UUID())
-        return .workspace(WindowDocumentDescriptor(sessionKey: key, reference: VaultNoteReference(
-            vaultID: key.vaultID, vaultName: "Fixture", vaultRole: .topicKnowledge,
-            relativePath: path, stableNoteID: key.noteID.uuidString
-        )))
+        return .workspace(
+            WindowDocumentDescriptor(
+                sessionKey: key,
+                reference: VaultNoteReference(
+                    vaultID: key.vaultID, vaultName: "Fixture", vaultRole: .topicKnowledge,
+                    relativePath: path, stableNoteID: key.noteID.uuidString
+                )))
     }
 
     @Test("Switching retained tabs preserves dirty source, mode, and scroll without saving")

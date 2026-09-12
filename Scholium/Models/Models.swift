@@ -117,8 +117,7 @@ extension WindowDocumentLocation {
     static func syntheticPreview(
         relativePath: String,
         rawContent: String,
-        vaultRole: VaultRole = .other,
-        managedMetadata: [String: YAMLValue] = [:]
+        vaultRole: VaultRole = .other
     ) -> Self {
         let noteID = UUID()
         let document = NoteDocument(
@@ -144,13 +143,8 @@ extension WindowDocumentLocation {
                     outgoing: 0,
                     broken: 0,
                     ambiguous: 0
-                ),
-                metadata: managedMetadata.isEmpty
-                    ? nil
-                    : NoteMetadataSnapshot(
-                        record: NoteMetadataRecord(noteID: noteID, fields: managedMetadata),
-                        revision: DocumentFingerprint(content: "preview-metadata")
-                    )
+                )
+
             ))
     }
 }
@@ -183,41 +177,37 @@ extension WindowDocumentLocation {
 
     var title: String? { displayName }
     var aliases: [String] {
-        managedMetadataFields["aliases"]?.canonicalStringList ?? []
+        frontmatter["aliases"]?.canonicalStringList ?? []
     }
     var tags: [String] { frontmatter["keywords"]?.canonicalStringList ?? [] }
     var authors: [String] {
-        managedMetadataFields["authors"]
-            .flatMap { PropertyContractCatalog.creatorNames(from: $0) }?
-            .map(\.displayName) ?? []
+        let fields = SearchPropertyProjection(document: document)
+        return fields.textValues(forExactKey: "authors") + fields.textValues(forExactKey: "author")
     }
-    /// Exact lookup for the two authored YAML keys Scholium recognizes. Unknown
-    /// YAML remains Source-only even when a caller supplies its exact spelling.
+
     func authoredYAMLValue(named key: String) -> YAMLValue? {
-        guard PropertyContractCatalog.contract(for: key, profile: schemaProfile) != nil else {
-            return nil
-        }
         return frontmatter[key]
     }
 
-    var managedMetadataFields: [String: YAMLValue] {
-        workspaceSnapshot?.metadata?.record.fields ?? [:]
-    }
-
-    func managedMetadataValue(named key: String) -> YAMLValue? {
-        managedMetadataFields[key]
-    }
-
     func authoredTopLevelScalarToken(named key: String) -> String? {
-        guard PropertyContractCatalog.contract(for: key, profile: schemaProfile) != nil else {
-            return nil
-        }
         guard let frontmatter = document.rawFrontmatter else { return nil }
         return try? FrontmatterPatchPlanner.authoredScalarToken(
             frontmatter: frontmatter,
             key: key,
             newline: document.newlineStyle.sequence
         )
+    }
+
+    func semanticProperty(at key: String) -> YAMLValue? {
+        guard document.validationWarnings.isEmpty else { return nil }
+        return frontmatter[key]
+    }
+
+    func filterableProperties() -> [String: [String]] {
+        Dictionary(
+            uniqueKeysWithValues: SearchPropertyProjection(document: document).entries.map {
+                ($0.key, $0.stringMembers.map(\.value))
+            })
     }
 
     var fileModifiedAt: Date {
@@ -229,47 +219,6 @@ extension WindowDocumentLocation {
             ?? WorkflowProfileResolver.resolve(vaultRole: vaultRole)
     }
 
-    func semanticProperty(
-        at keyPath: String,
-        catalog: NoteMetadataCatalog
-    ) -> YAMLValue? {
-        let parts = keyPath.split(separator: ".", maxSplits: 1).map(String.init)
-        guard let rootKey = parts.first else { return nil }
-        let root: YAMLValue?
-        if PropertyContractCatalog.contract(for: rootKey, profile: schemaProfile) != nil {
-            root = frontmatter[rootKey]
-        } else if catalog.contract(for: rootKey, profile: schemaProfile) != nil {
-            root = managedMetadataFields[rootKey]
-        } else {
-            return nil
-        }
-        guard let root else { return nil }
-        guard parts.count == 2 else { return root }
-        guard case .object(let values) = root else { return nil }
-        return values[parts[1]]
-    }
-
-    func filterableProperties(
-        catalog: NoteMetadataCatalog
-    ) -> [String: [String]] {
-        var result: [String: [String]] = [:]
-        for contract in PropertyContractCatalog.contracts(for: schemaProfile) {
-            guard let value = frontmatter[contract.canonicalKey] else { continue }
-            result[contract.canonicalKey] = value.appFilterValues
-        }
-        for contract in catalog.contracts(for: schemaProfile) {
-            let key = contract.canonicalKey
-            guard let value = managedMetadataFields[key] else { continue }
-            if contract.valueKind == .creatorList,
-                let creators = PropertyContractCatalog.creatorNames(from: value)
-            {
-                result[key] = creators.map(\.displayName)
-            } else {
-                result[key] = value.appFilterValues
-            }
-        }
-        return result
-    }
 }
 
 extension YAMLValue {

@@ -48,11 +48,17 @@ extension MCPAppBridgeRequestRouterTests {
         let handle = try await fixture.runtime.openWorkspace(id: fixture.assignment.id)
         let snapshot = try await handle.discovery.refresh()
         let note = try #require(snapshot.vaults.flatMap(\.documents).first { $0.stableIdentity.resolvedID == fixture.topicNoteID })
-        let target = NoteDocumentAttachmentTarget(noteID: fixture.topicNoteID, vaultID: note.id.vaultID, relativePath: note.id.relativePath)
+        let target = SourceAttachmentTarget(noteID: fixture.topicNoteID, vaultID: note.id.vaultID, relativePath: note.id.relativePath)
         let source = fixture.root.appendingPathComponent("原文.txt")
         let bytes = Data("\u{feff}α研究\r\nExact ending\r\n".utf8)
         try bytes.write(to: source)
-        let attachment = try await handle.documents.attachDocument(at: source, to: target, management: .copyIntoTriptych)
+        let attachment = try await handle.documents.prepareDocumentAttachment(at: source, to: target, management: .copyIntoTriptych)
+        let attachmentBefore = try await handle.documents.load(note.id)
+        let attachmentDocument = try await handle.documents.save(
+            note.id,
+            changeSet: .source(attachmentBefore.rawContent + "\n[Material](" + attachment.markdownDestination + ")\n"),
+            expectedRevision: attachmentBefore.fingerprint
+        ).committedValue.document
         let router = MCPAppBridgeRequestRouter(runtime: fixture.runtime, flushEditors: { _ in }, openTriptychs: { [fixture.assignment] })
         func call(_ tool: ScholiumMCPToolName, _ extra: [String: MCPJSONValue] = [:]) async -> ScholiumMCPBridgeResponse {
             await router.handle(
@@ -83,10 +89,19 @@ extension MCPAppBridgeRequestRouterTests {
         let remainder = try result(await call(.readAttachment, read))
         #expect(remainder["text"]?.stringValue?.utf8.elementsEqual(bytes.dropFirst(5)) == true)
         #expect(remainder["has_more"]?.boolValue == false)
-        let external = try await handle.documents.attachDocument(at: source, to: target, management: .referenceOriginal)
+        let external = try await handle.documents.prepareDocumentAttachment(at: source, to: target, management: .referenceOriginal)
+        let externalBefore = try await handle.documents.load(note.id)
+        let externalDocument = try await handle.documents.save(
+            note.id,
+            changeSet: .source(externalBefore.rawContent + "\n[Material](" + external.markdownDestination + ")\n"),
+            expectedRevision: externalBefore.fingerprint
+        ).committedValue.document
         var externalRead = read
         externalRead["attachment_id"] = .string(external.record.id.uuidString)
         externalRead["start_utf8"] = .integer(0)
+        externalRead["expected_note_fingerprint"] = .object([
+            "sha256": .string(externalDocument.fingerprint.sha256), "byte_count": .integer(externalDocument.fingerprint.byteCount),
+        ])
         let indexed = try result(await call(.readAttachment, externalRead))
         #expect(indexed["text"]?.stringValue?.utf8.elementsEqual(bytes) == true)
         #expect(
@@ -98,7 +113,7 @@ extension MCPAppBridgeRequestRouterTests {
         ])
         #expect(await call(.readAttachment, read).error?.code == .notFound)
         read["note_id"] = nil
-        read["expected_note_fingerprint"] = listing["note_fingerprint"]
+        read["expected_note_fingerprint"] = externalRead["expected_note_fingerprint"]
         guard case .vaultRelative(let path) = attachment.record.location else {
             Issue.record("Expected copied attachment")
             return
@@ -120,7 +135,7 @@ extension MCPAppBridgeRequestRouterTests {
         let handle = try await fixture.runtime.openWorkspace(id: fixture.assignment.id)
         let snapshot = try await handle.discovery.refresh()
         let note = try #require(snapshot.vaults.flatMap(\.documents).first { $0.stableIdentity.resolvedID == fixture.topicNoteID })
-        let target = NoteDocumentAttachmentTarget(noteID: fixture.topicNoteID, vaultID: note.id.vaultID, relativePath: note.id.relativePath)
+        let target = SourceAttachmentTarget(noteID: fixture.topicNoteID, vaultID: note.id.vaultID, relativePath: note.id.relativePath)
         let source = fixture.root.appendingPathComponent("Selected.pdf")
         let data = NSMutableData()
         let consumer = try #require(CGDataConsumer(data: data))
@@ -135,12 +150,20 @@ extension MCPAppBridgeRequestRouterTests {
         }
         context.closePDF()
         try (data as Data).write(to: source)
-        let attachment = try await handle.documents.attachDocument(at: source, to: target, management: .copyIntoTriptych)
+        let attachment = try await handle.documents.prepareDocumentAttachment(at: source, to: target, management: .copyIntoTriptych)
+        let attachmentBefore = try await handle.documents.load(note.id)
+        let attachmentDocument = try await handle.documents.save(
+            note.id,
+            changeSet: .source(attachmentBefore.rawContent + "\n[Material](" + attachment.markdownDestination + ")\n"),
+            expectedRevision: attachmentBefore.fingerprint
+        ).committedValue.document
         let router = MCPAppBridgeRequestRouter(runtime: fixture.runtime, flushEditors: { _ in }, openTriptychs: { [fixture.assignment] })
         var args: [String: MCPJSONValue] = [
             "triptych_id": .string(fixture.assignment.id.uuidString), "note_id": .string(fixture.topicNoteID.uuidString),
             "attachment_id": .string(attachment.record.id.uuidString),
-            "expected_note_fingerprint": .object(["sha256": .string(note.fingerprint.sha256), "byte_count": .integer(note.fingerprint.byteCount)]),
+            "expected_note_fingerprint": .object([
+                "sha256": .string(attachmentDocument.fingerprint.sha256), "byte_count": .integer(attachmentDocument.fingerprint.byteCount),
+            ]),
             "mode": .string("text"),
         ]
         #expect(await router.handle(.init(tool: .readAttachment, arguments: args)).error?.code == .invalidRequest)

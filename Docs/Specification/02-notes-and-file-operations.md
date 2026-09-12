@@ -7,7 +7,7 @@
 Analysis, Topic, and ordinary Work Notes support Review, Edit, and Source over
 one exact Markdown buffer; autosave; create, duplicate, import, rename, move,
 Reveal in Finder, and system-Trash deletion; Search, Find/Replace, Connect,
-Metadata, Agent Changes, conflicts, and recovery.
+source properties, Agent Changes, conflicts, and recovery.
 
 ### 5.1 Document modes and YAML
 
@@ -84,20 +84,16 @@ state from that attempt. The catalog never regenerates authored links, and
 Scholium does not move or delete attachments as a side effect of Note editing
 or deletion.
 
-Document attachments are Note-level relationships, not Markdown embeds.
-**Attach a Copy…** copies one regular non-media file without replacement to
-`Attachments/<uuid>/<filename>`; **Reference Original…** leaves it in its
-Finder-owned location. Both bind the chosen file to the Note's stable identity
-in portable control state. A copied relationship stores a vault-relative path;
-an original reference stores only a neutral filename, while its selected path
-and security-scoped bookmark remain machine-local. The relationship and availability are source-neutral
-projections: listing, adding, or previewing a document cannot rewrite Markdown,
-change its fingerprint, or alter editor selection, composition, Undo, scroll,
-or focus. Images and audiovisual files remain governed by their inline
-authoring routes and are rejected here. A failed operation rolls back only the
-new copied file and control state from that attempt; Note edits, renames, and
-deletion do not implicitly move or delete a document attachment. Explicit Agent
-relationship replacement/removal follows §8.3 and preserves the files.
+Document attachments are ordinary authored Markdown links. **Attach a Copy…**
+copies one regular non-media file without replacement to
+`Attachments/<uuid>/<filename>`; **Reference Original…** retains its Finder
+location and acquires machine-local scoped access. Both insert a link at the
+current editing selection through the normal source transaction and Undo.
+Preparation alone creates no Note relationship. Failed insertion rolls back only
+new, exactly verified preparation state. Removing a link removes the derived
+relationship and never deletes the file. Images retain their inline routes.
+File links open through bounded native Quick Look; unavailable files report an
+error without substituting a different path or filename match.
 
 Review and Edit preserve exact Markdown while presenting semantic Callouts,
 lists, quotations, tables, footnotes, mathematics, code, links, occurrence-owned
@@ -122,42 +118,18 @@ Protected constructs follow these rules:
   footnotes and annotated Wikilinks. These projections create no separate Note,
   Comment, Metadata field or writable annotation authority.
 
-### 5.2 Authored YAML and Scholium Metadata
+### 5.2 Authored YAML and source properties
 
-[Appendix A](11-metadata.md#shared-authored-yaml) owns the authored
-YAML allowlist. These values remain exact source; §18.4 owns Frontmatter and
-Source editing. YAML has no Metadata form or Inspector editing route.
+[Appendix A](11-source-properties.md#shared-authored-yaml) owns source properties.
+YAML and body share one exact Markdown authority, source fingerprint, revision
+checks, Undo and recovery. There is no separate managed Metadata record or
+form. User-defined properties need no catalog registration.
 
-All other canonical structured values are **Scholium Metadata**. One portable,
-schema-checked JSON record belongs to each stable Note identity. It is separate
-from Markdown, never reconstructs source, and uses compare-and-swap writes.
-Missing means no managed values. Damaged, future, wrong-role, orphaned, or
-concurrently changed records fail closed and preserve exact bytes for bounded,
-confirmed recovery.
-
-[Appendix A](11-metadata.md#appendix-a-metadata-catalogs-and-settings)
-owns catalogs, applicability, custom fields, and About order. One role-specific
-resolved catalog serves validation, Metadata, Search, Library filters, and
-About. A definition creates no value.
-Scholium validates shape and structural safety, not bibliographic or
-philosophical truth.
-
-Every Analysis, Topic, and Work uses its filename without `.md` as its Note
-title and display identity. An Analysis's academic work title remains ordinary
-Scholium Metadata: it is visible and searchable but never replaces Note
-identity. YAML `title` and body headings likewise have no identity semantics.
-Rename never synchronizes Metadata or body headings.
-
-About is the ordinary Metadata editing surface; §§18.4–18.5 own its field
-layout and interaction. A field edit uses the loaded Metadata revision, never
-patches YAML, and retains local drafts on conflict. CLI metadata read/set/remove
-operations share the managed owner and Metadata fingerprint, never the source
-fingerprint. Appendix A owns field configuration and visibility.
-
-Metadata imposes no Markdown body schema. A standalone Markdown copy contains
-only authored source; moving the complete Triptych carries its identity-keyed
-portable Metadata. Any future flattened export is explicit and
-non-round-trippable.
+Every Analysis, Topic and Work uses its filename without `.md` as its Note
+title. YAML titles, aliases and body headings never replace this identity.
+Rename does not synchronize authored property values or headings. Duplicate
+and standalone Markdown copy carry the same authored properties in their exact
+source; no separate metadata export is required.
 
 ### 5.3 Create, duplicate, rename, and identity
 
@@ -173,17 +145,16 @@ scaffold, H1, title, required Metadata, naming sheet, or classification step.
 Import, Duplicate, Restore, and external discovery
 keep their own exact-source contracts.
 
-MCP creation accepts exact role/path, body, and optional explicitly authored
-`summary`/`keywords`. Only supplied nonempty values create frontmatter. This
-typed transport accepts no YAML fragment, creates no bibliographic Metadata,
-and grants no continuing create authority after the identity exists.
+MCP creation accepts exact role/path and complete Markdown `content`, including
+optional YAML. It preserves the supplied bytes and grants no continuing create
+authority after the reserved identity exists.
 
 A successful source-and-identity commit appears immediately in Library; derived
 indexes refresh afterward without blocking writing. Presentation failure must
 not invite duplicate creation.
 
 Paths are locations; Notes have stable app-owned identities. Duplicate creates
-a new identity and copies exact source plus current managed values, but not
+a new identity and copies exact source, but not
 Settlement. Rename and Move preserve identity and exact resolved incoming-link
 updates. Ambiguous external rename keeps source readable
 but blocks identity-dependent mutation until resolved.
@@ -216,7 +187,7 @@ ambiguity, source or manifest drift, or unsafe filesystem entry blocks the
 move.
 
 Deleting a Note does not delete independent linked Notes. Stable Note identity,
-Settlement and Zotero binding remain so Finder restoration can reconcile exact source.
+Settlement remains so Finder restoration can reconcile exact source.
 
 Before the first move Scholium installs a deletion gate and durable forward
 plan with one receipt per source item. It binds each native operation to the

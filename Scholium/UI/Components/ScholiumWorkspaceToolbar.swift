@@ -546,7 +546,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
             let target = currentSettlementTarget
             let presentation =
                 target == nil
-                ? AboutSettlementPresentation.unavailable
+                ? SettlementPresentation.unavailable
                 : currentSettlementPresentation
             let action = DocumentSettlementAction.resolve(presentation.state)
             let label = ScholiumL10n.localized(
@@ -841,11 +841,11 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
         hostingController.focusForKeyboardDismissal()
     }
 
-    private var currentSettlementPresentation: AboutSettlementPresentation {
+    private var currentSettlementPresentation: SettlementPresentation {
         let noteID = appState.currentNote?.workspaceSnapshot?.stableIdentity.resolvedID
         let requirement = appState.researchController.researchSnapshot?
             .settlementRequirements.first { $0.noteID == noteID }
-        return AboutSettlementPresentation.resolve(
+        return SettlementPresentation.resolve(
             noteID: noteID,
             currentRevision: appState.currentNote?.document.fingerprint,
             requirement: requirement,
@@ -908,7 +908,7 @@ enum DocumentSettlementAction: Hashable {
     case settleAgain
     case unavailable
 
-    static func resolve(_ state: AboutSettlementState) -> Self {
+    static func resolve(_ state: SettlementPresentationState) -> Self {
         switch state {
         case .notYetSettled:
             .settle
@@ -943,7 +943,7 @@ enum DocumentSettlementAction: Hashable {
 }
 
 enum DocumentSettlementToolbarPresentation {
-    static func symbol(for state: AboutSettlementState) -> String {
+    static func symbol(for state: SettlementPresentationState) -> String {
         switch state {
         case .settled:
             "bookmark.fill"
@@ -954,7 +954,7 @@ enum DocumentSettlementToolbarPresentation {
         }
     }
 
-    static func accessibilityLabel(for state: AboutSettlementState) -> LocalizedStringResource {
+    static func accessibilityLabel(for state: SettlementPresentationState) -> LocalizedStringResource {
         switch state {
         case .settled:
             "Settled — Settle Again"
@@ -969,7 +969,7 @@ enum DocumentSettlementToolbarPresentation {
 }
 
 private struct DocumentSettlementPopoverView: View {
-    let presentation: AboutSettlementPresentation
+    let presentation: SettlementPresentation
     let settle: (String?) async throws -> Void
     let dismiss: () -> Void
 

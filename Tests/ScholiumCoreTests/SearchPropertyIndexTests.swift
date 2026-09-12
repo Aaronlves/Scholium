@@ -6,8 +6,8 @@ import Testing
 
 @Suite("Search v10 metadata and direct-link filters")
 struct SearchPropertyIndexTests {
-    @Test("Authored YAML and managed metadata retain distinct provenance")
-    func metadataPresenceEqualityAndProvenance() async throws {
+    @Test("Property results retain exact YAML provenance")
+    func propertyPresenceEqualityAndProvenance() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let index = try fixture.index()
@@ -23,7 +23,7 @@ struct SearchPropertyIndexTests {
             fixture.item(
                 "Topic.md",
                 source,
-                metadataFields: [
+                authoredFields: [
                     "aliases": .array([.string("Practical agency")])
                 ]
             )
@@ -67,14 +67,14 @@ struct SearchPropertyIndexTests {
             Issue.record("Managed aliases did not expose structured provenance")
             return
         }
-        #expect(aliasMatch.keySourceRange == nil)
-        #expect(aliasMatch.valueSourceRanges.isEmpty)
-        #expect(alias.noteResults.first?.sourceRange == nil)
+        #expect(aliasMatch.keySourceRange != nil)
+        #expect(!aliasMatch.valueSourceRanges.isEmpty)
+        #expect(alias.noteResults.first?.sourceRange != nil)
 
         #expect(
             try await index.testSearch(
                 fixture.request("property:language")
-            ).noteResults.isEmpty)
+            ).noteResults.map(\.relativePath) == ["Topic.md"])
     }
 
     @Test("Keyword lexical hits retain their exact YAML member range")
@@ -115,36 +115,29 @@ struct SearchPropertyIndexTests {
         #expect(sourceText(source, range: range) == "\"\\u0041gency\"")
     }
 
-    @Test("Managed property-only metadata changes converge with a clean rebuild")
-    func metadataIncrementalCleanRebuildParity() async throws {
+    @Test("Authored property-only changes converge with a clean rebuild")
+    func propertyIncrementalCleanRebuildParity() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let incremental = try fixture.index()
         let source = "---\nsummary: Agency map\nkeywords: [concept]\n---\nBody"
-        let metadataCatalog = NoteMetadataCatalog(customFieldsByRole: [
-            .topicKnowledge: [
-                MetadataFieldDefinition(key: "argument_stage", valueKind: .text)
-            ]
-        ])
         _ = try await incremental.synchronize([
             fixture.item(
                 "Topic.md",
                 source,
-                metadataFields: [
+                authoredFields: [
                     "aliases": .array([.string("Practical agency")]),
                     "argument_stage": .string("Greek"),
-                ],
-                metadataCatalog: metadataCatalog
+                ]
             )
         ])
         let edited = fixture.item(
             "Topic.md",
             source,
-            metadataFields: [
+            authoredFields: [
                 "aliases": .array([.string("Practical agency")]),
                 "argument_stage": .string("Latin"),
-            ],
-            metadataCatalog: metadataCatalog
+            ]
         )
         let updated = try await incremental.synchronize([edited])
         #expect(updated.disposition == .incrementallyUpdated)
@@ -173,8 +166,8 @@ struct SearchPropertyIndexTests {
         }
     }
 
-    @Test("Malformed YAML does not hide independent managed metadata")
-    func malformedSourceDoesNotHideMetadata() async throws {
+    @Test("Malformed YAML cannot supply properties while body search remains available")
+    func malformedSourceKeepsBodySearch() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let index = try fixture.index()
@@ -182,14 +175,14 @@ struct SearchPropertyIndexTests {
             fixture.item(
                 "Malformed.md",
                 "---\nsummary: [unfinished\n---\nmalformed-body-term",
-                metadataFields: ["aliases": .array([.string("Still managed")])]
+                authoredFields: ["aliases": .array([.string("Still managed")])]
             )
         ])
 
         #expect(
             try await index.testSearch(
                 fixture.request("property:aliases=\"still managed\"")
-            ).noteResults.map(\.relativePath) == ["Malformed.md"])
+            ).noteResults.map(\.relativePath) == [])
         #expect(
             try await index.testSearch(
                 fixture.request("malformed-body-term")
@@ -205,14 +198,14 @@ struct SearchPropertyIndexTests {
             fixture.item(
                 String(format: "Background/%04d.md", number),
                 "shared-concept shared-concept",
-                metadataFields: ["aliases": .array([.string("provisional")])]
+                authoredFields: ["aliases": .array([.string("provisional")])]
             )
         }
         documents.append(
             fixture.item(
                 "zzzz-target.md",
                 "shared-concept",
-                metadataFields: ["aliases": .array([.string("settled")])]
+                authoredFields: ["aliases": .array([.string("settled")])]
             ))
         _ = try await index.synchronize(documents)
 
@@ -311,6 +304,60 @@ struct SearchPropertyIndexTests {
             ).noteResults.isEmpty)
     }
 
+    @Test("Custom YAML filters compose with lexical search and retain exact source provenance")
+    func customYAMLSearch() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let index = try fixture.index()
+        let source =
+            "---\n\"研究 问题\": 行动理由\nyear: 1962\nflag: true\nitems: [ethics, 42, false, null]\nsummary: >-\n  practical\n  agency\n---\nA unique argument"
+        _ = try await index.synchronize([fixture.item("Custom.md", source), fixture.item("Other.md", "A unique argument")])
+        for query in [
+            #"property:"研究 问题"="行动理由""#, "property:year=1962", "property:flag=true", "property:items=42", "property:items=false", "unique property:year=1962",
+            #"property:summary="practical agency""#, "summary:agency",
+        ] {
+            let result = try await index.testSearch(fixture.request(query))
+            let hit = try #require(result.noteResults.first)
+            #expect(result.noteResults.map(\.relativePath) == ["Custom.md"])
+            #expect(hit.sourceRange != nil)
+        }
+        #expect(try await index.testSearch(fixture.request("property:items=null")).noteResults.isEmpty)
+        #expect(try await index.testSearch(fixture.request("property:year=196")).noteResults.isEmpty)
+    }
+
+    @Test("Duplicate YAML keys cannot produce independent property authorities")
+    func duplicateKeysDoNotInventValues() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let index = try fixture.index()
+        _ = try await index.synchronize([fixture.item("Topic.md", "---\naliases: [First]\naliases: [Second]\n---\nBody")])
+        for query in ["property:aliases=First", "property:aliases=Second"] {
+            #expect(try await index.testSearch(fixture.request(query)).noteResults.isEmpty)
+        }
+    }
+
+    @Test("Custom YAML edits and removal converge with a clean index without touching source")
+    func customYAMLIncrementalParity() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let index = try fixture.index()
+        _ = try await index.synchronize([fixture.item("Custom.md", "---\ncustom: old\n---\nBody")])
+        for (number, source) in ["---\ncustom: new\nsummary: |\n  exact text\n---\nBody", "---\ncustom: [broken\n---\nBody", "Body"].enumerated() {
+            let item = fixture.item("Custom.md", source)
+            _ = try await index.synchronize([item])
+            let clean = try fixture.index(at: fixture.root.appendingPathComponent("clean-\(number).sqlite"))
+            _ = try await clean.synchronize([item])
+            for query in ["property:custom", "property:custom=old", "property:custom=new", "summary:exact", "Body"] {
+                let incremental = try await index.testSearch(fixture.request(query))
+                let rebuilt = try await clean.testSearch(fixture.request(query))
+                #expect(incremental.noteResults.map(\.relativePath) == rebuilt.noteResults.map(\.relativePath))
+                #expect(incremental.noteResults.map(\.primaryMatchReason) == rebuilt.noteResults.map(\.primaryMatchReason))
+                #expect(incremental.noteResults.map(\.sourceRange) == rebuilt.noteResults.map(\.sourceRange))
+                if query == "property:custom=old" { #expect(incremental.noteResults.isEmpty) }
+            }
+        }
+    }
+
     private final class Fixture: @unchecked Sendable {
         let root: URL
         let databaseURL: URL
@@ -343,29 +390,10 @@ struct SearchPropertyIndexTests {
             )
         }
 
-        func item(
-            _ path: String,
-            _ source: String,
-            metadataFields: [String: YAMLValue]? = nil,
-            metadataCatalog: NoteMetadataCatalog = .builtIn
-        ) -> SearchIndexDocument {
-            let metadata: NoteMetadataSnapshot? = metadataFields.map { fields in
-                let record = NoteMetadataRecord(noteID: UUID(), fields: fields)
-                return NoteMetadataSnapshot(
-                    record: record,
-                    revision: DocumentFingerprint(
-                        data: (try? record.encodedPortableData()) ?? Data()
-                    )
-                )
-            }
-            return SearchIndexDocument(
-                vaultID: vault.id,
-                vaultName: vault.name,
-                vaultRole: vault.role,
-                document: NoteDocument(relativePath: path, rawContent: source),
-                metadata: metadata,
-                metadataCatalog: metadataCatalog
-            )
+        func item(_ path: String, _ source: String, authoredFields: [String: YAMLValue]? = nil) -> SearchIndexDocument {
+            SearchIndexDocument(
+                vaultID: vault.id, vaultName: vault.name, vaultRole: vault.role,
+                document: NoteDocument(relativePath: path, rawContent: sourceFixture(source, fields: authoredFields)))
         }
 
         func request(_ query: String, limit: Int = 100) -> SearchRequest {

@@ -208,18 +208,15 @@ private struct WorkspaceRefreshPayload: Sendable {
     let sourceCatalogPreparation: SourceCatalogPreparation
     /// Non-nil only when every merged request is a Metadata-only mutation.
     /// Values are exact committed record deltas over the last complete map.
-    let metadataChanges: [UUID: NoteMetadataSnapshot]?
 
     init(
         publication: RefreshPublication,
         failureDisposition: DerivedRefreshFailureDisposition,
-        sourceCatalogPreparation: SourceCatalogPreparation,
-        metadataChanges: [UUID: NoteMetadataSnapshot]? = nil
+        sourceCatalogPreparation: SourceCatalogPreparation
     ) {
         self.publication = publication
         self.failureDisposition = failureDisposition
         self.sourceCatalogPreparation = sourceCatalogPreparation
-        self.metadataChanges = metadataChanges
     }
 
     static func merged(_ payloads: [Self]) throws -> Self {
@@ -236,16 +233,6 @@ private struct WorkspaceRefreshPayload: Sendable {
                 affectedVaultIDs.formUnion(affected)
             }
         }
-        let metadataChanges: [UUID: NoteMetadataSnapshot]? =
-            if payloads.allSatisfy({
-                $0.metadataChanges != nil
-            }) {
-                payloads.compactMap(\.metadataChanges).reduce(into: [:]) { result, changes in
-                    result.merge(changes) { _, latest in latest }
-                }
-            } else {
-                nil
-            }
         return Self(
             publication: mergedPublication(payloads.map(\.publication)),
             failureDisposition: includesCommittedMutation
@@ -254,7 +241,6 @@ private struct WorkspaceRefreshPayload: Sendable {
             sourceCatalogPreparation: .merged(
                 payloads.map(\.sourceCatalogPreparation)
             ),
-            metadataChanges: metadataChanges
         )
     }
 
@@ -394,7 +380,6 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     public nonisolated let documents: DocumentOperations
     public nonisolated let discovery: DiscoveryOperations
     public nonisolated let research: ResearchOperations
-    public nonisolated let zoteroBindings: ZoteroBindingOperations
     public nonisolated let agentCollaboration: AgentCollaborationOperations
 
     let services: WorkspaceServices
@@ -461,7 +446,6 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         documents: DocumentOperations,
         discovery: DiscoveryOperations,
         research: ResearchOperations,
-        zoteroBindings: ZoteroBindingOperations,
         agentCollaboration: AgentCollaborationOperations
     ) {
         id = assignment.id
@@ -478,7 +462,6 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         self.documents = documents
         self.discovery = discovery
         self.research = research
-        self.zoteroBindings = zoteroBindings
         self.agentCollaboration = agentCollaboration
         events = WorkspaceEventSource(initialSnapshot: initialSnapshot)
         refreshCoordinator = WorkspaceRefreshCoordinator(
@@ -583,22 +566,11 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                     vaultIDs: vaultIDs,
                     preferredTriptychID: assignment.id
                 )
-            } catch let error as NoteMetadataError {
-                if case .recoveryRequired(let issue) = error {
-                    throw ScholiumApplicationError.noteMetadataRecoveryRequired(
-                        controlPath: controlURL.path,
-                        issue: issue
-                    )
-                }
-                throw ScholiumApplicationError.portableControlRecoveryRequired(
-                    controlPath: controlURL.path,
-                    reason: error.localizedDescription
-                )
             } catch let error as TriptychControlError {
                 switch error {
                 case .invalidManifest, .settingsMissing, .settingsOldSchema,
                     .settingsFutureSchema, .settingsCorrupted,
-                    .invalidZoteroBindings, .invalidIdentities,
+                    .invalidIdentities,
                     .invalidAttachmentCatalog:
                     throw ScholiumApplicationError.portableControlRecoveryRequired(
                         controlPath: controlURL.path,
@@ -719,9 +691,6 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 reference: reference,
                 recoveryRecordsURL: services.transactionRecoveryStore.storageURL
             )
-            let zoteroBindingOperations = ZoteroBindingOperations(
-                reference: reference
-            )
             let agentCollaborationOperations = AgentCollaborationOperations(
                 reference: reference
             )
@@ -737,7 +706,6 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 documents: documentOperations,
                 discovery: discoveryOperations,
                 research: researchOperations,
-                zoteroBindings: zoteroBindingOperations,
                 agentCollaboration: agentCollaborationOperations
             )
             await reference.bind(handle)
@@ -824,18 +792,10 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             uniqueKeysWithValues: targetIDs.compactMap { id in
                 currentSnapshot.document(id: id).map { (id, $0.schemaProfile) }
             })
-        let targetMetadata = Dictionary(
-            uniqueKeysWithValues: targetIDs.compactMap { id in
-                currentSnapshot.document(id: id)?.metadata.map { (id, $0) }
-            })
         return DocumentPreviewCatalogBuilder.build(
-            source: source,
-            sourceFingerprint: sourceFingerprint,
-            graph: graph,
-            documents: targetDocuments,
-            profiles: targetProfiles,
-            metadata: targetMetadata
-        )
+            source: source, sourceFingerprint: sourceFingerprint,
+            graph: graph, documents: targetDocuments, profiles: targetProfiles)
+
     }
 
     public func shutdown() async {
@@ -958,7 +918,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     func importImageAttachment(
         at sourceURL: URL,
         for note: VaultQualifiedNoteID
-    ) async throws -> PreparedImageAttachment {
+    ) async throws -> PreparedSourceAttachment {
         try requireActive()
         let secured = sourceURL.startAccessingSecurityScopedResource()
         defer {
@@ -977,7 +937,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             noteRelativePath: note.relativePath,
             management: .importIntoAttachments
         )
-        return try await registerPreparedImageFile(
+        return try await registerPreparedAttachmentFile(
             preparedFile,
             attachmentID: attachmentID,
             vaultID: note.vaultID,
@@ -989,7 +949,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     func indexImageAttachment(
         at sourceURL: URL,
         for note: VaultQualifiedNoteID
-    ) async throws -> PreparedImageAttachment {
+    ) async throws -> PreparedSourceAttachment {
         try requireActive()
         let secured = sourceURL.startAccessingSecurityScopedResource()
         defer {
@@ -1008,7 +968,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             noteRelativePath: note.relativePath,
             management: .indexAbsolutePath
         )
-        return try await registerPreparedImageFile(
+        return try await registerPreparedAttachmentFile(
             preparedFile,
             attachmentID: attachmentID,
             vaultID: note.vaultID,
@@ -1020,7 +980,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     func importPastedImageAttachment(
         at sourceURL: URL,
         for note: VaultQualifiedNoteID
-    ) async throws -> PreparedImageAttachment {
+    ) async throws -> PreparedSourceAttachment {
         try requireActive()
         let secured = sourceURL.startAccessingSecurityScopedResource()
         defer {
@@ -1039,7 +999,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             noteRelativePath: note.relativePath,
             management: .importIntoAttachments
         )
-        return try await registerPreparedImageFile(
+        return try await registerPreparedAttachmentFile(
             preparedFile,
             attachmentID: attachmentID,
             vaultID: note.vaultID,
@@ -1052,7 +1012,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         data: Data,
         preferredFilename: String,
         for note: VaultQualifiedNoteID
-    ) async throws -> PreparedImageAttachment {
+    ) async throws -> PreparedSourceAttachment {
         try requireActive()
         let mutationLease = try await beginSourceMutation()
         defer { endSourceMutation(mutationLease) }
@@ -1067,7 +1027,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             attachmentID: attachmentID,
             noteRelativePath: note.relativePath
         )
-        return try await registerPreparedImageFile(
+        return try await registerPreparedAttachmentFile(
             preparedFile,
             attachmentID: attachmentID,
             vaultID: note.vaultID,
@@ -1076,13 +1036,13 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         )
     }
 
-    private func registerPreparedImageFile(
-        _ preparedFile: PreparedVaultImageFile,
+    private func registerPreparedAttachmentFile(
+        _ preparedFile: PreparedVaultAttachmentFile,
         attachmentID: UUID,
         vaultID: UUID,
         fileStore: VaultAttachmentStore,
         indexedSourceURL: URL?
-    ) async throws -> PreparedImageAttachment {
+    ) async throws -> PreparedSourceAttachment {
         let existingIndexedRecord: PortableAttachmentRecord?
         if let indexedSourceURL {
             guard case .external(let reference) = preparedFile.location else {
@@ -1182,7 +1142,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 throw error
             }
         }
-        return PreparedImageAttachment(
+        return PreparedSourceAttachment(
             record: registration.record,
             markdownDestination: preparedFile.markdownDestination,
             altText: preparedFile.altText,
@@ -1192,8 +1152,8 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         )
     }
 
-    func rollbackImageAttachment(
-        _ preparation: PreparedImageAttachment
+    func rollbackSourceAttachment(
+        _ preparation: PreparedSourceAttachment
     ) async throws {
         try requireActive()
         let mutationLease = try await beginSourceMutation()
@@ -1260,165 +1220,61 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         return unavailable.sorted()
     }
 
-    func documentAttachments(
-        for target: NoteDocumentAttachmentTarget
-    ) async throws -> [DocumentAttachmentSnapshot] {
-        try requireActive()
-        _ = try await verifiedDocumentAttachmentTarget(target)
-        let records = try await services.controlStore.documentAttachmentRecords(
-            noteID: target.noteID
-        )
-        var snapshots: [DocumentAttachmentSnapshot] = []
-        snapshots.reserveCapacity(records.count)
-        for record in records where record.vaultID == target.vaultID {
-            let available: Bool
-            switch record.location {
-            case .vaultRelative(let path):
-                let repository = try repository(vaultID: record.vaultID)
-                let store = VaultAttachmentStore(vaultURL: await repository.vaultURL)
-                available =
-                    try await store.documentURLIfAvailable(
-                        relativePath: path
-                    ) != nil
-            case .external(let reference):
-                available = try await services.indexedAttachmentAccessStore.isAvailable(
-                    attachmentID: record.id,
-                    expectedFilename: reference.filename
-                )
-            }
-            snapshots.append(
-                DocumentAttachmentSnapshot(
-                    record: record,
-                    availability: available ? .available : .unavailable
-                ))
-        }
-        return snapshots
+    func sourceAttachment(for destination: String, target: SourceAttachmentTarget) async throws -> DocumentAttachmentSnapshot? {
+        guard let reference = SourceResourceReferences.file(destination: destination, noteRelativePath: target.relativePath),
+            let path = reference.absolutePath,
+            let id = try await services.indexedAttachmentAccessStore.attachmentID(forAbsolutePath: path)
+        else { return nil }
+        return try await documentAttachments(for: target).first { $0.record.id == id }
     }
 
-    func attachDocument(
-        at sourceURL: URL,
-        to target: NoteDocumentAttachmentTarget,
+    func documentAttachments(for target: SourceAttachmentTarget) async throws -> [DocumentAttachmentSnapshot] {
+        let listing = try await agentAttachments(noteID: target.noteID)
+        _ = try await verifiedDocumentAttachmentTarget(target)
+        return listing.attachments.map {
+            DocumentAttachmentSnapshot(
+                record: PortableAttachmentRecord(id: $0.id, vaultID: target.vaultID, location: $0.location),
+                availability: $0.available ? .available : .unavailable)
+        }
+    }
+
+    func prepareDocumentAttachment(
+        at sourceURL: URL, to target: SourceAttachmentTarget,
         management: DocumentAttachmentManagement
-    ) async throws -> DocumentAttachmentSnapshot {
+    ) async throws -> PreparedSourceAttachment {
         try requireActive()
         let secured = sourceURL.startAccessingSecurityScopedResource()
-        defer {
-            if secured { sourceURL.stopAccessingSecurityScopedResource() }
-        }
+        defer { if secured { sourceURL.stopAccessingSecurityScopedResource() } }
         let mutationLease = try await beginSourceMutation()
         defer { endSourceMutation(mutationLease) }
-
         let repository = try await verifiedDocumentAttachmentTarget(target)
-        if management == .referenceOriginal {
-            let canonicalPath =
-                sourceURL
-                .resolvingSymlinksInPath()
-                .standardizedFileURL
-                .path
-            if let existingID = try await services.indexedAttachmentAccessStore
-                .attachmentID(forAbsolutePath: canonicalPath),
-                let existing = try await services.controlStore.documentAttachmentRecords(
-                    noteID: target.noteID
-                ).first(where: {
-                    $0.id == existingID && $0.vaultID == target.vaultID
-                        && $0.location.filename == URL(fileURLWithPath: canonicalPath).lastPathComponent
-                        && $0.location.isExternal
-                }),
-                try await services.indexedAttachmentAccessStore.isAvailable(
-                    attachmentID: existing.id,
-                    expectedFilename: existing.filename
-                )
-            {
-                return DocumentAttachmentSnapshot(
-                    record: existing,
-                    availability: .available
-                )
-            }
+        let store = VaultAttachmentStore(vaultURL: await repository.vaultURL)
+        let id = UUID()
+        let file = try await store.prepareDocument(at: sourceURL, attachmentID: id, management: management)
+        let destination: String
+        switch file.location {
+        case .vaultRelative(let path):
+            destination = VaultAttachmentStore.markdownDestination(from: target.relativePath, to: path)
+        case .external:
+            destination = VaultAttachmentStore.absoluteMarkdownDestination(sourceURL.resolvingSymlinksInPath().standardizedFileURL.path)
         }
-        let fileStore = VaultAttachmentStore(vaultURL: await repository.vaultURL)
-        let attachmentID = UUID()
-        let prepared = try await fileStore.prepareDocument(
-            at: sourceURL,
-            attachmentID: attachmentID,
-            management: management
-        )
-        let registration: (record: DocumentAttachmentRecord, created: Bool)
-        do {
-            registration = try await services.controlStore.registerDocumentAttachment(
-                noteID: target.noteID,
-                vaultID: target.vaultID,
-                location: prepared.location,
-                preferredID: attachmentID
-            )
-        } catch {
-            if let fingerprint = prepared.copiedFileFingerprint,
-                let relativePath = prepared.copiedRelativePath
-            {
-                if let attachmentError = error as? DocumentAttachmentError,
-                    case .catalogCommitUncertain = attachmentError
-                {
-                    throw error
-                }
-                do {
-                    try await fileStore.removeCopiedDocumentIfExact(
-                        relativePath: relativePath,
-                        expectedFingerprint: fingerprint
-                    )
-                } catch let cleanupError {
-                    throw DocumentAttachmentError.preparationCleanupFailed(
-                        operation: error.localizedDescription,
-                        cleanup: cleanupError.localizedDescription
-                    )
-                }
-            }
-            throw error
-        }
-
-        if case .external = registration.record.location {
-            do {
-                _ = try await services.indexedAttachmentAccessStore.register(
-                    attachmentID: registration.record.id,
-                    selectedURL: sourceURL,
-                    expectedAbsolutePath:
-                        sourceURL
-                        .resolvingSymlinksInPath()
-                        .standardizedFileURL
-                        .path
-                )
-            } catch {
-                if registration.created {
-                    do {
-                        try await services.controlStore.removeDocumentAttachment(
-                            registration.record
-                        )
-                    } catch let cleanupError {
-                        throw DocumentAttachmentError.preparationCleanupFailed(
-                            operation: error.localizedDescription,
-                            cleanup: cleanupError.localizedDescription
-                        )
-                    }
-                }
-                throw error
-            }
-        }
-        return DocumentAttachmentSnapshot(
-            record: registration.record,
-            availability: .available
-        )
+        return try await registerPreparedAttachmentFile(
+            PreparedVaultAttachmentFile(
+                location: file.location, markdownDestination: destination, altText: file.location.filename,
+                copiedFileFingerprint: file.copiedFileFingerprint, copiedRelativePath: file.copiedRelativePath),
+            attachmentID: id, vaultID: target.vaultID, fileStore: store,
+            indexedSourceURL: management == .referenceOriginal ? sourceURL : nil)
     }
 
     func prepareDocumentAttachmentPreview(
         attachmentID: UUID,
-        for target: NoteDocumentAttachmentTarget
+        for target: SourceAttachmentTarget
     ) async throws -> DocumentAttachmentPreviewLease {
         try requireActive()
         _ = try await verifiedDocumentAttachmentTarget(target)
         guard
-            let record = try await services.controlStore
-                .documentAttachmentRecords(noteID: target.noteID)
-                .first(where: {
-                    $0.id == attachmentID && $0.vaultID == target.vaultID
-                })
+            let record = try await documentAttachments(for: target)
+                .first(where: { $0.record.id == attachmentID })?.record
         else {
             throw DocumentAttachmentError.unavailable(attachmentID.uuidString)
         }
@@ -1458,7 +1314,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     }
 
     private func verifiedDocumentAttachmentTarget(
-        _ target: NoteDocumentAttachmentTarget
+        _ target: SourceAttachmentTarget
     ) async throws -> VaultRepository {
         let repository = try repository(vaultID: target.vaultID)
         let document = try await repository.load(relativePath: target.relativePath)
@@ -1560,12 +1416,6 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             for: request,
             vaultRole: registeredVault.role
         )
-        let metadataCatalog = try await services.controlStore.metadataCatalog()
-        let initialMetadataFields = try managedCreationMetadataFields(
-            request: request,
-            slot: slot,
-            catalog: metadataCatalog
-        )
         let repository = try repository(vaultID: request.vaultID)
 
         var ordinal = 1
@@ -1609,7 +1459,6 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 var committedDocument = document
                 var stableIdentity = WorkspaceNoteIdentityState.unresolved
                 var createdIdentityRecord: NoteIdentityRecord?
-                var metadataSnapshot: NoteMetadataSnapshot?
                 var identityRecoveryWarning: String?
                 do {
                     guard
@@ -1671,30 +1520,6 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                     }
                 }
 
-                if let initialMetadataFields {
-                    do {
-                        metadataSnapshot = try await services.controlStore.saveNoteMetadata(
-                            noteID: reservedIdentity,
-                            fields: initialMetadataFields,
-                            expectedRevision: nil
-                        )
-                    } catch {
-                        if case .researcher = request.authority {
-                            let record = try await recordManagedCreationRecovery(
-                                vaultID: request.vaultID,
-                                relativePath: relativePath,
-                                reservedIdentityID: reservedIdentity,
-                                metadataFields: initialMetadataFields,
-                                intendedRevision: document.fingerprint,
-                                repository: repository,
-                                failure: error.localizedDescription
-                            )
-                            throw TriptychTransactionError.recoveryRequired(record)
-                        }
-                        throw error
-                    }
-                }
-
                 if identityRecoveryWarning == nil {
                     do {
                         let finalDocument = try await repository.load(
@@ -1707,10 +1532,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                             )
                         guard finalDocument.fingerprint == document.fingerprint,
                             finalIdentity?.id == reservedIdentity,
-                            finalIdentity?.fingerprint == document.fingerprint,
-                            try await services.controlStore.noteMetadata(
-                                noteID: reservedIdentity
-                            )?.record.fields == initialMetadataFields
+                            finalIdentity?.fingerprint == document.fingerprint
                         else {
                             throw
                                 ManagedCreationFinalVerificationError
@@ -1728,7 +1550,6 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                                 vaultID: request.vaultID,
                                 relativePath: relativePath,
                                 reservedIdentityID: reservedIdentity,
-                                metadataFields: initialMetadataFields,
                                 intendedRevision: document.fingerprint,
                                 repository: repository,
                                 failure: verification.localizedDescription
@@ -1752,7 +1573,6 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                         vaultRole: registeredVault.role,
                         stableIdentity: stableIdentity,
                         document: committedDocument,
-                        metadata: metadataSnapshot
                     ),
                     identityRecoveryWarning: identityRecoveryWarning
                 )
@@ -1768,54 +1588,10 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         }
     }
 
-    func managedCreationMetadataFields(
-        request: ManagedNoteCreationRequest,
-        slot: WorkspaceVaultSlot,
-        catalog: NoteMetadataCatalog
-    ) throws -> [String: YAMLValue]? {
-        if let metadata = request.analysisMetadata {
-            guard slot == .paperAnalysis else {
-                throw DocumentCreationError.analysisMetadataRoleMismatch
-            }
-            var values: [String: YAMLValue] = [
-                "type": .string(metadata.sourceType.rawValue)
-            ]
-            for input in metadata.fields {
-                guard
-                    catalog.isAnalysisFieldApplicable(
-                        input.key,
-                        sourceType: metadata.sourceType
-                    )
-                else {
-                    throw DocumentCreationError.inapplicableAnalysisProperty(
-                        input.key,
-                        metadata.sourceType
-                    )
-                }
-                values[input.key] = input.value
-            }
-            let issues = catalog.validate(
-                fields: values,
-                profile: .analysis
-            )
-            guard issues.isEmpty,
-                metadata.fields.allSatisfy({
-                    Self.isNonemptyManagedValue($0.value)
-                })
-            else {
-                throw DocumentCreationError.invalidMetadata(issues)
-            }
-            return values
-        } else {
-            return nil
-        }
-    }
-
     private func recordManagedCreationRecovery(
         vaultID: UUID,
         relativePath: String,
         reservedIdentityID: UUID,
-        metadataFields: [String: YAMLValue]? = nil,
         intendedRevision: DocumentFingerprint,
         repository: VaultRepository,
         failure: String
@@ -1875,7 +1651,6 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                     relativePath: relativePath
                 ),
                 reservedIdentityID: reservedIdentityID,
-                metadataFields: metadataFields
             )
         )
         do {
@@ -2017,9 +1792,6 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             resolved: identity.id,
             relativePath: id.relativePath
         )
-        let sourceMetadata = try await services.controlStore.noteMetadata(
-            noteID: identity.id
-        )
         let document = try await repository.duplicate(
             relativePath: id.relativePath,
             to: destinationRelativePath,
@@ -2027,25 +1799,13 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         )
         var committedDocument = document
         var identityRecoveryWarning: String?
-        var portableMetadataRecoveryWarning: String?
         do {
             let duplicateIdentity = try await services.controlStore.duplicateIdentity(
                 from: identity.id,
                 to: destinationRelativePath,
                 fingerprint: document.fingerprint
             )
-            if let sourceMetadata {
-                do {
-                    _ = try await services.controlStore.saveNoteMetadata(
-                        noteID: duplicateIdentity.id,
-                        fields: sourceMetadata.record.fields,
-                        expectedRevision: nil
-                    )
-                } catch {
-                    portableMetadataRecoveryWarning =
-                        "The duplicated source and stable identity are committed, but Scholium could not prove that its portable metadata was copied. Inspect Metadata before continuing: \(error.localizedDescription)"
-                }
-            }
+
         } catch let identityError {
             guard
                 let retained = try await retainedCreatedDocumentAfterIdentityFailure(
@@ -2068,7 +1828,6 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             ),
             document: committedDocument,
             identityRecoveryWarning: identityRecoveryWarning,
-            portableMetadataRecoveryWarning: portableMetadataRecoveryWarning
         )
     }
 
@@ -2124,8 +1883,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     private func finishCreatedDocumentMutation(
         id: VaultQualifiedNoteID,
         document: NoteDocument,
-        identityRecoveryWarning: String?,
-        portableMetadataRecoveryWarning: String? = nil
+        identityRecoveryWarning: String?
     ) async -> WorkspaceMutationOutcome<NoteDocument> {
         var identityRecoveryWarning = identityRecoveryWarning
         let derivedRefreshWarning: String?
@@ -2153,7 +1911,6 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             committedValue: document,
             derivedRefreshWarning: derivedRefreshWarning,
             identityRecoveryWarning: identityRecoveryWarning,
-            portableMetadataRecoveryWarning: portableMetadataRecoveryWarning
         )
     }
 
@@ -2177,108 +1934,13 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         }
     }
 
-    func saveNoteMetadata(
-        _ id: VaultQualifiedNoteID,
-        fields: [String: YAMLValue],
-        expectedRevision: DocumentFingerprint?
-    ) async throws -> WorkspaceMutationOutcome<NoteMetadataSnapshot> {
-        try requireActive()
-        let mutationLease = try await beginSourceMutation()
-        defer { endSourceMutation(mutationLease) }
-        return try await commitNoteMetadata(id, fields: fields, expectedRevision: expectedRevision)
-    }
-
     /// Shared Metadata writer; callers hold the workspace source-mutation lease.
-    func commitNoteMetadata(
-        _ id: VaultQualifiedNoteID, fields: [String: YAMLValue],
-        expectedRevision: DocumentFingerprint?, agentTarget: (id: UUID, source: DocumentFingerprint)? = nil
-    ) async throws -> WorkspaceMutationOutcome<NoteMetadataSnapshot> {
-        let registeredVault = try vault(id: id.vaultID)
-        let document = try await repository(vaultID: id.vaultID).load(
-            relativePath: id.relativePath
-        )
-        guard
-            let identity = try await services.controlStore.identityRecord(
-                vaultID: id.vaultID,
-                relativePath: id.relativePath
-            ), identity.fingerprint == document.fingerprint
-        else {
-            throw NoteMetadataError.identityUnavailableAtPath(id.relativePath)
-        }
-        if let agentTarget {
-            guard identity.id == agentTarget.id, document.fingerprint == agentTarget.source else {
-                throw AgentCollaborationError.staleRevision(expected: agentTarget.source, current: document.fingerprint)
-            }
-        }
-        let currentMetadata = try await services.controlStore.noteMetadata(
-            noteID: identity.id
-        )
-        try await validateMetadataFields(fields, role: registeredVault.role, current: currentMetadata)
-        let snapshot = try await services.controlStore.saveNoteMetadata(
-            noteID: identity.id,
-            fields: fields,
-            expectedRevision: expectedRevision
-        )
-        scheduleCommittedMutationRefresh(
-            WorkspaceRefreshPayload(
-                publication: .explicit,
-                failureDisposition: .staleAfterCommittedMutation(
-                    affectedVaultIDs: [id.vaultID]
-                ),
-                sourceCatalogPreparation: .none,
-                metadataChanges: [identity.id: snapshot]
-            ))
-        return WorkspaceMutationOutcome(committedValue: snapshot)
-    }
-
-    func validateMetadataFields(_ fields: [String: YAMLValue], role: VaultRole, current currentMetadata: NoteMetadataSnapshot?) async throws {
-        let profile = WorkflowProfileResolver.resolve(vaultRole: role)
-        let metadataCatalog = try await services.controlStore.metadataCatalog()
-        let issues = metadataCatalog.validate(
-            fields: fields,
-            profile: profile
-        )
-        guard issues.isEmpty else {
-            throw DocumentCreationError.invalidMetadata(issues)
-        }
-        let addedKeys = Set(fields.keys).subtracting(
-            currentMetadata.map { Set($0.record.fields.keys) } ?? []
-        )
-        let activeKeys = Set(
-            metadataCatalog.activeContracts(for: profile).map(\.canonicalKey)
-        )
-        let inactiveAdditions = addedKeys.subtracting(activeKeys).sorted()
-        guard inactiveAdditions.isEmpty else {
-            throw DocumentCreationError.invalidMetadata(
-                inactiveAdditions.map { key in
-                    PropertyValidationIssue(
-                        propertyKey: key,
-                        code: .invalidValueKind,
-                        message: "\(key) is archived and cannot be added to another Note."
-                    )
-                }
-            )
-        }
-    }
 
     func noteRecordDidChange(vaultID: UUID) {
         scheduleCommittedMutationRefresh(
             WorkspaceRefreshPayload(
                 publication: .explicit,
                 failureDisposition: .staleAfterCommittedMutation(affectedVaultIDs: [vaultID]), sourceCatalogPreparation: .none))
-    }
-
-    func noteMetadata(
-        _ id: VaultQualifiedNoteID
-    ) async throws -> NoteMetadataSnapshot? {
-        try requireActive()
-        guard
-            let identity = try await services.controlStore.identityRecord(
-                vaultID: id.vaultID,
-                relativePath: id.relativePath
-            )
-        else { return nil }
-        return try await services.controlStore.noteMetadata(noteID: identity.id)
     }
 
     func commitDocument(
@@ -2770,11 +2432,6 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 // initial-open blind interval as one completion boundary.
                 try await prepareSourceCatalogs(.fullReconcile)
                 didCompleteActivationReconciliation = true
-            } else if mode == .snapshot, payload.metadataChanges != nil {
-                // This handle loaded the complete source cohort immediately
-                // before the CAS Metadata mutation. Reuse that exact cohort;
-                // a Metadata-only write does not authorize or require a new
-                // three-vault filesystem reconciliation.
             } else {
                 try await prepareSourceCatalogs(payload.sourceCatalogPreparation)
             }
@@ -2794,28 +2451,12 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             )
             let graphGeneration = nextGraphGeneration
             nextGraphGeneration += 1
-            let metadataByID: [UUID: NoteMetadataSnapshot]? = payload.metadataChanges.map {
-                changes in
-                var values: [UUID: NoteMetadataSnapshot] = Dictionary(
-                    uniqueKeysWithValues: currentSnapshot.vaults
-                        .flatMap(\.documents)
-                        .compactMap { note -> (UUID, NoteMetadataSnapshot)? in
-                            guard let noteID = note.stableIdentity.resolvedID,
-                                let metadata = note.metadata
-                            else { return nil }
-                            return (noteID, metadata)
-                        }
-                )
-                values.merge(changes) { _, latest in latest }
-                return values
-            }
             let build = try await WorkspaceSnapshotBuilder.build(
                 assignment: assignment,
                 mode: mode,
                 dependencies: services.snapshotBuilderDependencies,
                 graphGeneration: graphGeneration,
                 workspaceGeneration: workspaceGeneration,
-                noteMetadataByID: metadataByID
             )
             snapshot = build.snapshot
             measurement = build.measurement
@@ -2861,7 +2502,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         publicationDuration: Duration?
     ) {
         refreshLogger.info(
-            "generation=\(measurement.workspaceGeneration, privacy: .public) files=\(measurement.enumeratedFiles, privacy: .public) reads=\(measurement.readFiles, privacy: .public) parses=\(measurement.parsedDocuments, privacy: .public) projections=\(measurement.projectedDocuments, privacy: .public) metadataReads=\(measurement.metadataRecordsRead, privacy: .public) sourceBytes=\(measurement.snapshotSourceBytes, privacy: .public) enumerate=\(String(describing: measurement.enumerationDuration), privacy: .public) read=\(String(describing: measurement.readDuration), privacy: .public) parse=\(String(describing: measurement.parseDuration), privacy: .public) project=\(String(describing: measurement.projectionDuration), privacy: .public) identity=\(String(describing: measurement.identityProjectionDuration), privacy: .public) graph=\(String(describing: measurement.graphDuration), privacy: .public) research=\(String(describing: measurement.researchStateDuration), privacy: .public) searchProjection=\(String(describing: measurement.searchDocumentProjectionDuration), privacy: .public) search=\(String(describing: measurement.searchDuration), privacy: .public) assemble=\(String(describing: measurement.snapshotAssemblyDuration), privacy: .public) publish=\(String(describing: publicationDuration), privacy: .public) total=\(String(describing: measurement.totalDuration), privacy: .public)"
+            "generation=\(measurement.workspaceGeneration, privacy: .public) files=\(measurement.enumeratedFiles, privacy: .public) reads=\(measurement.readFiles, privacy: .public) parses=\(measurement.parsedDocuments, privacy: .public) projections=\(measurement.projectedDocuments, privacy: .public) sourceBytes=\(measurement.snapshotSourceBytes, privacy: .public) enumerate=\(String(describing: measurement.enumerationDuration), privacy: .public) read=\(String(describing: measurement.readDuration), privacy: .public) parse=\(String(describing: measurement.parseDuration), privacy: .public) project=\(String(describing: measurement.projectionDuration), privacy: .public) identity=\(String(describing: measurement.identityProjectionDuration), privacy: .public) graph=\(String(describing: measurement.graphDuration), privacy: .public) research=\(String(describing: measurement.researchStateDuration), privacy: .public) searchProjection=\(String(describing: measurement.searchDocumentProjectionDuration), privacy: .public) search=\(String(describing: measurement.searchDuration), privacy: .public) assemble=\(String(describing: measurement.snapshotAssemblyDuration), privacy: .public) publish=\(String(describing: publicationDuration), privacy: .public) total=\(String(describing: measurement.totalDuration), privacy: .public)"
         )
     }
 
@@ -4458,13 +4099,6 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         semantics: [VaultQualifiedNoteID: MarkdownSemanticDocument],
         vaultRoles: [UUID: VaultRole]
     ) async throws -> [LinkCatalogNote] {
-        let metadataCatalog = try await services.controlStore.metadataCatalog()
-        let metadataByID = Dictionary(
-            uniqueKeysWithValues:
-                try await services.controlStore.noteMetadataRecords(
-                    catalog: metadataCatalog
-                ).map { ($0.record.noteID, $0) }
-        )
         var catalog: [LinkCatalogNote] = []
         catalog.reserveCapacity(documents.count)
         for id in documents.keys.sorted() {
@@ -4479,7 +4113,6 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                     vaultID: id.vaultID,
                     document: document,
                     profile: WorkflowProfileResolver.resolve(vaultRole: role),
-                    metadata: identity.flatMap { metadataByID[$0.id] },
                     semantic: semantics[id]
                 ))
         }

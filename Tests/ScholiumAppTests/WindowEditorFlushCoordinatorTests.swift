@@ -141,38 +141,6 @@ struct WindowEditorFlushCoordinatorTests {
 
         #expect(registry.flushedTriptychIDs == [triptychID])
     }
-    @Test("Metadata is drained before navigation and failure preserves the document")
-    func metadataGuardsDeparture() async throws {
-        let registry = RecordingWorkspaceEditorFlushRegistry()
-        let coordinator = WindowEditorFlushCoordinator(windowID: UUID(), registry: registry)
-        var steps: [String] = []
-        let token = UUID()
-        coordinator.registerMetadataEditor(token: token, path: "A.md") { steps.append("metadata") }
-        try await coordinator.flushCurrentEditor(selectedDocumentPath: "A.md", capturingEditorState: false) { _ in steps.append("source") }
-        #expect(steps == ["metadata", "source"])
-        coordinator.registerMetadataEditor(token: token, path: "A.md") { throw CocoaError(.fileWriteUnknown) }
-        await #expect(throws: CocoaError.self) {
-            try await coordinator.flushCurrentEditor(selectedDocumentPath: "A.md", capturingEditorState: false) { _ in steps.append("unexpected") }
-        }
-        #expect(steps == ["metadata", "source"])
-        coordinator.unregisterMetadataEditor(token: UUID())
-        await #expect(throws: CocoaError.self) {
-            try await coordinator.flushCurrentEditor(selectedDocumentPath: "A.md", capturingEditorState: false) { _ in }
-        }
-        coordinator.unregisterMetadataEditor(token: token)
-        try await coordinator.flushCurrentEditor(selectedDocumentPath: "B.md", capturingEditorState: false) { _ in }
-    }
-
-    @Test("The aggregate window flush includes Metadata once")
-    func metadataParticipatesInAggregateFlush() async throws {
-        let registry = RecordingWorkspaceEditorFlushRegistry()
-        let coordinator = WindowEditorFlushCoordinator(windowID: UUID(), registry: registry)
-        var steps: [String] = []
-        coordinator.registerMetadataEditor(token: UUID(), path: "A.md") { steps.append("metadata") }
-        coordinator.activateTriptych(UUID()) { steps.append("source") }
-        try await registry.registrations.values.first?.flush()
-        #expect(steps == ["metadata", "source"])
-    }
 
 }
 

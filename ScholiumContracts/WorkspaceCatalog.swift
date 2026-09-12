@@ -7,7 +7,6 @@ public struct WorkspaceCatalogNote: Codable, Hashable, Identifiable, Sendable {
     public let aliases: [String]
     public let authors: [String]
     public let publicationDate: String?
-    public let zoteroBinding: AnalysisZoteroBinding?
     public let fingerprint: DocumentFingerprint
     public let validationWarnings: [String]
 
@@ -17,7 +16,6 @@ public struct WorkspaceCatalogNote: Codable, Hashable, Identifiable, Sendable {
         aliases: [String] = [],
         authors: [String] = [],
         publicationDate: String? = nil,
-        zoteroBinding: AnalysisZoteroBinding? = nil,
         fingerprint: DocumentFingerprint,
         validationWarnings: [String]
     ) {
@@ -26,13 +24,12 @@ public struct WorkspaceCatalogNote: Codable, Hashable, Identifiable, Sendable {
         self.aliases = aliases
         self.authors = authors
         self.publicationDate = publicationDate
-        self.zoteroBinding = zoteroBinding
         self.fingerprint = fingerprint
         self.validationWarnings = validationWarnings
     }
 
     private enum CodingKeys: String, CodingKey {
-        case reference, title, aliases, authors, publicationDate, zoteroBinding
+        case reference, title, aliases, authors, publicationDate
         case fingerprint, validationWarnings
     }
 
@@ -43,10 +40,6 @@ public struct WorkspaceCatalogNote: Codable, Hashable, Identifiable, Sendable {
         aliases = try container.decode([String].self, forKey: .aliases)
         authors = try container.decode([String].self, forKey: .authors)
         publicationDate = try container.decodeIfPresent(String.self, forKey: .publicationDate)
-        zoteroBinding = try container.decodeIfPresent(
-            AnalysisZoteroBinding.self,
-            forKey: .zoteroBinding
-        )
         fingerprint = try container.decode(DocumentFingerprint.self, forKey: .fingerprint)
         validationWarnings = try container.decode([String].self, forKey: .validationWarnings)
     }
@@ -206,9 +199,7 @@ public enum WorkspaceCatalogBuilder {
         additionalAttention: [AttentionQueueItem] = [],
         graph: GraphSnapshot? = nil,
         identityAmbiguitiesByVault: [UUID: [NoteIdentityAmbiguity]] = [:],
-        stableNoteIDs: [VaultQualifiedNoteID: UUID] = [:],
-        noteMetadataByID: [UUID: NoteMetadataSnapshot] = [:],
-        zoteroBindingsByNoteID: [UUID: AnalysisZoteroBinding] = [:]
+        stableNoteIDs: [VaultQualifiedNoteID: UUID] = [:]
     ) -> WorkspaceCatalogSnapshot {
         build(
             vaults: vaults,
@@ -218,8 +209,6 @@ public enum WorkspaceCatalogBuilder {
             graph: graph,
             identityAmbiguitiesByVault: identityAmbiguitiesByVault,
             stableNoteIDs: stableNoteIDs,
-            noteMetadataByID: noteMetadataByID,
-            zoteroBindingsByNoteID: zoteroBindingsByNoteID
         )
     }
 
@@ -230,9 +219,7 @@ public enum WorkspaceCatalogBuilder {
         additionalAttention: [AttentionQueueItem] = [],
         graph: GraphSnapshot? = nil,
         identityAmbiguitiesByVault: [UUID: [NoteIdentityAmbiguity]] = [:],
-        stableNoteIDs: [VaultQualifiedNoteID: UUID] = [:],
-        noteMetadataByID: [UUID: NoteMetadataSnapshot] = [:],
-        zoteroBindingsByNoteID: [UUID: AnalysisZoteroBinding] = [:]
+        stableNoteIDs: [VaultQualifiedNoteID: UUID] = [:]
     ) -> WorkspaceCatalogSnapshot {
         let vaultsByID = Dictionary(uniqueKeysWithValues: vaults.map { ($0.id, $0) })
         var resolvedSemanticDocuments = semanticDocuments
@@ -261,7 +248,7 @@ public enum WorkspaceCatalogBuilder {
                     relativePath: document.relativePath
                 )
                 let stableNoteID = stableNoteIDs[qualifiedID]
-                let metadata = stableNoteID.flatMap { noteMetadataByID[$0] }
+                let yaml = SearchPropertyProjection(document: document)
                 let reference = VaultNoteReference(
                     vaultID: vault.id,
                     vaultName: vault.name,
@@ -274,22 +261,9 @@ public enum WorkspaceCatalogBuilder {
                     WorkspaceCatalogNote(
                         reference: reference,
                         title: ResearchNoteTitleResolver.resolve(document: document),
-                        aliases: (vault.role == .topicKnowledge
-                            ? metadata?.record.fields["aliases"]?.canonicalStringList ?? []
-                            : [])
-                            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-                            .filter { !$0.isEmpty },
-                        authors: vault.role == .sourceCorpus
-                            ? metadata?.record.fields["authors"]
-                                .flatMap { PropertyContractCatalog.creatorNames(from: $0) }?
-                                .map(\.displayName) ?? []
-                            : [],
-                        publicationDate: vault.role == .sourceCorpus
-                            ? metadata?.record.fields["publication_date"]?.canonicalSearchText
-                            : nil,
-                        zoteroBinding: vault.role == .sourceCorpus
-                            ? stableNoteID.flatMap { zoteroBindingsByNoteID[$0] }
-                            : nil,
+                        aliases: yaml.textValues(forExactKey: "aliases"),
+                        authors: yaml.textValues(forExactKey: "authors") + yaml.textValues(forExactKey: "author"),
+                        publicationDate: yaml.textValues(forExactKey: "publication_date").first,
                         fingerprint: document.fingerprint,
                         validationWarnings: document.validationWarnings
                     ))
@@ -318,7 +292,6 @@ public enum WorkspaceCatalogBuilder {
                             vaultID: vault.id,
                             document: document,
                             profile: WorkflowProfileResolver.resolve(vaultRole: vault.role),
-                            metadata: stableNoteIDs[id].flatMap { noteMetadataByID[$0] },
                             semantic: resolvedSemanticDocuments[id]
                         )
                     }

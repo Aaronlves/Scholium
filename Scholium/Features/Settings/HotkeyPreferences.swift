@@ -54,8 +54,9 @@ enum ScholiumHotkeyCommand: String, CaseIterable, Codable, Identifiable, Sendabl
     var isCustomizable: Bool {
         switch self {
         case .searchResearch, .toggleLibrary, .toggleResearchInspector,
-             .toggleReviewEdit, .showSource, .showAttention,
-             .insertFootnote, .insertInlineFootnote: true
+            .toggleReviewEdit, .showSource, .showAttention,
+            .insertFootnote, .insertInlineFootnote:
+            true
         default: false
         }
     }
@@ -315,7 +316,8 @@ enum ScholiumHotkeyPreferences {
     static func isMenuShortcut(_ event: NSEvent, defaults: UserDefaults = .standard) -> Bool {
         guard event.type == .keyDown else { return false }
         let modifiers = ScholiumHotkeyModifiers.from(event.modifierFlags)
-        let key = event.characters(byApplyingModifiers: .command)?.lowercased()
+        let key =
+            event.characters(byApplyingModifiers: .command)?.lowercased()
             ?? event.charactersIgnoringModifiers?.lowercased()
         let data = defaults.data(forKey: defaultsKey) ?? defaultData
         return ScholiumHotkeyCommand.allCases.contains {
@@ -421,7 +423,7 @@ enum ScholiumHotkeyPreferences {
             binding("h", [.option, .command]),
             binding("m", [.option, .command]),
             binding("w", [.option, .command]),
-            binding("r", [.shift, .command]), // Chat selection quotation
+            binding("r", [.shift, .command]),  // Chat selection quotation
         ])
     }()
 }

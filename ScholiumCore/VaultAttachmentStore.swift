@@ -4,7 +4,18 @@ import ImageIO
 import ScholiumContracts
 import UniformTypeIdentifiers
 
-public struct PreparedVaultImageFile: Hashable, Sendable {
+public struct PreparedVaultAttachmentFile: Hashable, Sendable {
+    public init(
+        location: AttachmentLocation, markdownDestination: String, altText: String, copiedFileFingerprint: DocumentFingerprint?,
+        copiedRelativePath: AttachmentRelativePath?
+    ) {
+        self.location = location
+        self.markdownDestination = markdownDestination
+        self.altText = altText
+        self.copiedFileFingerprint = copiedFileFingerprint
+        self.copiedRelativePath = copiedRelativePath
+    }
+
     public let location: AttachmentLocation
     public let markdownDestination: String
     public let altText: String
@@ -42,7 +53,7 @@ public actor VaultAttachmentStore {
         attachmentID: UUID,
         noteRelativePath: String,
         management: VaultImageAttachmentManagement
-    ) throws -> PreparedVaultImageFile {
+    ) throws -> PreparedVaultAttachmentFile {
         let data = try readStableImage(at: sourceURL)
         let directValues = try sourceURL.resourceValues(forKeys: [.isSymbolicLinkKey])
         guard directValues.isSymbolicLink != true else {
@@ -56,7 +67,7 @@ public actor VaultAttachmentStore {
                 try ExternalAttachmentReference(
                     filename: resolvedSource.lastPathComponent
                 ))
-            return PreparedVaultImageFile(
+            return PreparedVaultAttachmentFile(
                 location: location,
                 markdownDestination: Self.absoluteMarkdownDestination(
                     resolvedSource.path
@@ -162,9 +173,6 @@ public actor VaultAttachmentStore {
     public func documentURLIfAvailable(
         relativePath: AttachmentRelativePath
     ) throws -> URL? {
-        guard Self.isOwnedAttachmentPath(relativePath) else {
-            throw DocumentAttachmentError.unavailable(relativePath.rawValue)
-        }
         let candidate = vaultURL.appendingPathComponent(
             relativePath.rawValue,
             isDirectory: false
@@ -285,7 +293,7 @@ public actor VaultAttachmentStore {
         preferredFilename: String,
         attachmentID: UUID,
         noteRelativePath: String
-    ) throws -> PreparedVaultImageFile {
+    ) throws -> PreparedVaultAttachmentFile {
         let type = try validateImageData(data, path: preferredFilename)
         var filename = URL(fileURLWithPath: preferredFilename).lastPathComponent
         if filename.isEmpty || filename == "." || filename == ".." {
@@ -313,7 +321,7 @@ public actor VaultAttachmentStore {
         altText: String,
         attachmentID: UUID,
         noteRelativePath: String
-    ) throws -> PreparedVaultImageFile {
+    ) throws -> PreparedVaultAttachmentFile {
         let relativePath = try AttachmentRelativePath(
             "Attachments/\(attachmentID.uuidString.lowercased())/\(filename)"
         )
@@ -339,7 +347,7 @@ public actor VaultAttachmentStore {
             )
             throw error
         }
-        return PreparedVaultImageFile(
+        return PreparedVaultAttachmentFile(
             location: .vaultRelative(relativePath),
             markdownDestination: Self.markdownDestination(
                 from: noteRelativePath,
@@ -653,7 +661,7 @@ public actor VaultAttachmentStore {
         POSIXErrorCode(rawValue: value) ?? .EIO
     }
 
-    private static func markdownDestination(
+    public static func markdownDestination(
         from noteRelativePath: String,
         to attachmentPath: AttachmentRelativePath
     ) -> String {
@@ -673,7 +681,7 @@ public actor VaultAttachmentStore {
         return relativeComponents.map(percentEncodedPathComponent).joined(separator: "/")
     }
 
-    private static func absoluteMarkdownDestination(_ path: String) -> String {
+    public static func absoluteMarkdownDestination(_ path: String) -> String {
         path.split(separator: "/", omittingEmptySubsequences: false)
             .map { percentEncodedPathComponent(String($0)) }
             .joined(separator: "/")

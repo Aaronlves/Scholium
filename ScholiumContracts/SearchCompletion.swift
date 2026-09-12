@@ -59,21 +59,26 @@ public extension SearchCapabilities {
         let candidates: [(replacement: String, display: String, detail: String)]
         if let colon = token.firstIndex(of: ":") {
             let rawField = String(token[..<colon]).lowercased()
-            let partialValue = String(token[token.index(after: colon)...]).lowercased()
+            let rawPartialValue = String(token[token.index(after: colon)...])
+            let partialValue = rawPartialValue.lowercased()
             guard
                 let field = fields.first(where: {
                     $0.name == rawField
                 })
             else { return [] }
             if field.valueKind == .property,
-                let separator = partialValue.firstIndex(of: "=")
+                let separator = SearchQueryParser.propertyEqualityIndex(in: rawPartialValue)
             {
-                let key = String(partialValue[..<separator])
-                let valuePrefix = String(partialValue[partialValue.index(after: separator)...])
+                let keyQuery = "property:" + String(rawPartialValue[..<separator])
+                guard let ast = SearchQueryParser.parse(keyQuery).ast,
+                    ast.clauses.count == 1, case .property(let clause) = ast.clauses[0]
+                else { return [] }
+                let key = clause.key
+                let valuePrefix = String(rawPartialValue[rawPartialValue.index(after: separator)...]).lowercased()
                 let matches = Self.uniqueSorted(context.propertyValues[key] ?? [])
                     .filter { $0.lowercased().hasPrefix(valuePrefix) }
                 return matches.prefix(limit).map { value in
-                    let replacement = "property:\(key)=\(Self.queryValue(value))"
+                    let replacement = "property:\(Self.propertyKey(key))=\(Self.queryValue(value))"
                     return SearchCompletion(
                         replacementText: prefix + replacement,
                         displayText: replacement,
@@ -90,10 +95,10 @@ public extension SearchCapabilities {
             candidates = Self.uniqueSorted(allowedValues).filter {
                 $0.lowercased().hasPrefix(partialValue)
             }.map {
-                let value = Self.queryValue($0)
+                let value = field.valueKind == .property ? Self.propertyKey($0) : Self.queryValue($0)
                 let detail =
                     switch field.valueKind {
-                    case .property: "Canonical Metadata or authored YAML key in the authorized scope"
+                    case .property: "Observed YAML key in the authorized scope"
                     case .noteIdentity: "Exact Note identity in the authorized scope"
                     case .canonical: "Canonical \(field.name) value"
                     case .lexical: "\(field.name) value"
@@ -121,7 +126,7 @@ public extension SearchCapabilities {
         switch field.valueKind {
         case .lexical: "Search a specific text field"
         case .canonical: "Use a canonical contract value"
-        case .property: "Find a top-level YAML key or exact string value"
+        case .property: "Find a top-level property or exact scalar/list-member text"
         case .noteIdentity: "Resolve one exact Note identity"
         }
     }
@@ -133,6 +138,19 @@ public extension SearchCapabilities {
             if lhs != rhs { return lhs < rhs }
             return $0 < $1
         }
+    }
+
+    private static func propertyKey(_ key: String) -> String {
+        let query = "property:" + key
+        if let ast = SearchQueryParser.parse(query).ast, ast.clauses.count == 1,
+            case .property(let clause) = ast.clauses[0], clause.key == key,
+            clause.value == nil
+        {
+            return key
+        }
+        return "\""
+            + key.replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"") + "\""
     }
 
     private static func queryValue(_ value: String) -> String {

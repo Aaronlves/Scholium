@@ -1041,7 +1041,7 @@ struct AgentChatTests {
 
     @Test(
         "Ask waits, decline and cancellation cannot write; Full Access remains Triptych scoped",
-        arguments: [ScholiumMCPToolName.updateNote, .updateMetadata, .updateAttachment])
+        arguments: [ScholiumMCPToolName.updateNote])
     func permissionAdmission(tool: ScholiumMCPToolName) async throws {
         let root = try root()
         defer { try? FileManager.default.removeItem(at: root) }

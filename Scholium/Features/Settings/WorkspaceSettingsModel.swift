@@ -5,7 +5,6 @@ import ScholiumContracts
 enum WorkspaceSettingsPane: String, CaseIterable, Identifiable, Sendable {
     case workspace
     case document
-    case metadata
     case notifications
     case interaction
     case integrations
@@ -44,7 +43,6 @@ struct WorkspaceSettingsSnapshot: Equatable, Sendable {
     var triptychSettings: TriptychSettings
     var settingsRevision: SettingsRevision?
     var portableSettingsState: WorkspacePortableSettingsState
-    var metadataUsageCounts: [WorkspaceVaultSlot: [String: Int]]
 
     init(
         registeredVaults: [RegisteredVault] = [],
@@ -52,8 +50,7 @@ struct WorkspaceSettingsSnapshot: Equatable, Sendable {
         activeTriptychID: UUID? = nil,
         triptychSettings: TriptychSettings = TriptychSettings(),
         settingsRevision: SettingsRevision? = nil,
-        portableSettingsState: WorkspacePortableSettingsState? = nil,
-        metadataUsageCounts: [WorkspaceVaultSlot: [String: Int]] = [:]
+        portableSettingsState: WorkspacePortableSettingsState? = nil
     ) {
         self.registeredVaults = registeredVaults
         self.registeredTriptychs = registeredTriptychs
@@ -64,7 +61,6 @@ struct WorkspaceSettingsSnapshot: Equatable, Sendable {
             portableSettingsState
             ?? settingsRevision.map(WorkspacePortableSettingsState.current)
             ?? .unavailable
-        self.metadataUsageCounts = metadataUsageCounts
     }
 }
 

@@ -181,14 +181,18 @@ struct SafeMarkdownRendererTests {
     func calloutTitlePrecedence() {
         for role in ["orient", "cite", "connect", "state", "illustrate", "quote", "flag"] {
             for fold in ["", "+", "-"] {
-                let titled = SafeMarkdownRenderer.render(NoteDocument(
-                    relativePath: "title.md", rawContent: "> [!\(role)]\(fold) Authored **title**\n"
-                )).htmlBody
+                let titled = SafeMarkdownRenderer.render(
+                    NoteDocument(
+                        relativePath: "title.md", rawContent: "> [!\(role)]\(fold) Authored **title**\n"
+                    )
+                ).htmlBody
                 #expect(titled.contains("Authored <strong>title</strong></span>"))
                 #expect(!titled.contains("scholium-callout-default-title"))
-                let untitled = SafeMarkdownRenderer.render(NoteDocument(
-                    relativePath: "title.md", rawContent: "> [!\(role)]\(fold)   \n> Body.\n"
-                )).htmlBody
+                let untitled = SafeMarkdownRenderer.render(
+                    NoteDocument(
+                        relativePath: "title.md", rawContent: "> [!\(role)]\(fold)   \n> Body.\n"
+                    )
+                ).htmlBody
                 #expect(untitled.contains("scholium-callout-default-title"))
             }
         }

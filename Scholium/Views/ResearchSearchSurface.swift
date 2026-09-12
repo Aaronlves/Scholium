@@ -63,33 +63,9 @@ struct ResearchSearchSurface<Library: View>: View {
     }
 
     private var searchCompletionContext: SearchCompletionContext {
-        let profiles: [SchemaProfileID]
-        switch discoveryController.search.criteria.scope {
-        case .currentVault:
-            profiles = [NoteMetadataCatalog.profile(for: shellState.selectedWorkspace)]
-        case .thisNote:
-            profiles = []
-        case .triptych:
-            profiles = [.analysis, .topicMarkdown, .draftProject]
-        }
-        let managedContracts = profiles.flatMap {
-            workspaceProjectionController.metadataCatalog.contracts(for: $0)
-        }
-        let authoredContracts = profiles.flatMap {
-            PropertyContractCatalog.contracts(for: $0)
-        }
-        let contracts = managedContracts + authoredContracts
-        let keys = Array(Set(contracts.map(\.canonicalKey))).sorted()
-        let values = Dictionary(
-            contracts.compactMap { contract in
-                contract.allowedValues.map { (contract.canonicalKey, $0) }
-            },
-            uniquingKeysWith: { lhs, rhs in Array(Set(lhs + rhs)).sorted() }
-        )
-        return SearchCompletionContext(
-            propertyKeys: keys,
-            propertyValues: values
-        )
+        let options = workspaceProjectionController.propertyCompletionOptions(scope: searchController.criteria.scope)
+        return SearchCompletionContext(propertyKeys: options.keys, propertyValues: options.valuesByKey)
+
     }
 
 }

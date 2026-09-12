@@ -117,7 +117,7 @@ private extension NoteLinkSearchResolverTests {
             let primaryDocuments = [
                 NoteDocument(
                     relativePath: anchorID.relativePath,
-                    rawContent: "# Anchor\n\n[[Target]]{{A **multiline** reason.\n\n- Evidence}}\n"
+                    rawContent: "---\naliases: [Anchor Alias]\n---\n# Anchor\n\n[[Target]]{{A **multiline** reason.\n\n- Evidence}}\n"
                 ),
                 NoteDocument(relativePath: targetID.relativePath, rawContent: "# Target\n"),
                 NoteDocument(
@@ -156,21 +156,12 @@ private extension NoteLinkSearchResolverTests {
                 resolutionScope: .workspace,
                 sourceManifestHash: graphManifest ?? manifest
             )
-            let anchorMetadata = NoteMetadataRecord(
-                noteID: anchorStableID,
-                fields: ["aliases": .array([.string("Anchor Alias")])]
-            )
             return WorkspaceCatalogBuilder.build(
                 vaults: includeDuplicateAnchor ? [primaryVault, secondaryVault] : [primaryVault],
                 documents: documentsByVault,
                 graph: graph,
                 stableNoteIDs: [anchorID: anchorStableID],
-                noteMetadataByID: [
-                    anchorStableID: NoteMetadataSnapshot(
-                        record: anchorMetadata,
-                        revision: DocumentFingerprint(content: "anchor metadata")
-                    )
-                ]
+
             )
         }
 

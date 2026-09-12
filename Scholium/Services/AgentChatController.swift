@@ -763,7 +763,8 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
 
     func deleteConversation(_ id: UUID) {
         guard isLoaded, canArchive(id), let index = conversations.firstIndex(where: { $0.id == id }),
-            conversations[index].archivedAt != nil else { return }
+            conversations[index].archivedAt != nil
+        else { return }
         executions[id]?.admissionID = nil
         conversations.remove(at: index)
         executions.removeValue(forKey: id)
@@ -2142,9 +2143,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
         if kind.isMutation, admittedPermission == .ask {
             var location = path
             var updatePreview: AgentNoteUpdatePreview?
-            if request.tool == .updateNote || request.tool == .undoChange || request.tool == .moveNote || request.tool == .updateMetadata
-                || request.tool == .updateAttachment
-            {
+            if request.tool == .updateNote || request.tool == .undoChange || request.tool == .moveNote {
                 do {
                     var arguments = request.arguments
                     arguments["triptych_id"] = .string(triptychID.uuidString.lowercased())
@@ -2897,8 +2896,6 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
     private static func operationTitle(_ request: ScholiumMCPBridgeRequest) -> String {
         switch request.tool {
         case .createNote: String(localized: "Create Note")
-        case .updateMetadata: String(localized: "Metadata")
-        case .updateAttachment: String(localized: "Attachments")
         case .updateNote:
             switch request.arguments["mode"]?.stringValue {
             case "source": String(localized: "Replace Note Source")

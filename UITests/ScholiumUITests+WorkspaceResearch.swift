@@ -670,192 +670,6 @@ extension ScholiumUITests {
     }
 
     @MainActor
-    func testManagedNewNoteKeepsFixedYAMLAfterAddingCustomMetadataField() throws {
-        let libraryFilters = app.descendants(matching: .any)[
-            "scholium.libraryFilters"
-        ]
-        XCTAssertTrue(libraryFilters.waitForExistence(timeout: 10))
-        libraryFilters.click()
-        let attentionFilter = app.menuItems["Needs Attention"].firstMatch
-        XCTAssertTrue(attentionFilter.waitForExistence(timeout: 5))
-        XCTAssertTrue(waitUntil(timeout: 5) { attentionFilter.isEnabled })
-        attentionFilter.click()
-        let filterStatus = app.descendants(matching: .any)[
-            "scholium.libraryFilterStatus"
-        ]
-        XCTAssertTrue(filterStatus.waitForExistence(timeout: 5))
-
-        let keyboardFocus = NSPredicate(format: "hasKeyboardFocus == true")
-        func createAndType(
-            path: String,
-            initialSource: String,
-            marker: String
-        ) throws {
-            let libraryCreate = app.descendants(matching: .any)[
-                "scholium.libraryCreate"
-            ]
-            XCTAssertTrue(libraryCreate.waitForExistence(timeout: 10))
-            libraryCreate.click()
-            let newNote = app.descendants(matching: .any)["scholium.newNote"]
-            XCTAssertTrue(newNote.waitForExistence(timeout: 3))
-            XCTAssertTrue(app.descendants(matching: .any)["scholium.newFolder"].exists)
-
-            newNote.click()
-            XCTAssertFalse(
-                app.buttons["Create"].firstMatch.waitForExistence(timeout: 1),
-                "Direct note creation must not present a naming or Metadata sheet."
-            )
-            let createdURL = triptychDirectory.appendingPathComponent(
-                "01-analyses/\(path)"
-            )
-            XCTAssertTrue(
-                waitUntil(timeout: 10) {
-                    (try? self.source(at: createdURL)) == initialSource
-                })
-
-            let editor = app.descendants(matching: .any)[
-                "Markdown editor, Edit mode"
-            ].firstMatch
-            XCTAssertTrue(
-                editor.waitForExistence(timeout: 20),
-                "Managed New Note must present Edit as its creation destination."
-            )
-            XCTAssertTrue(
-                waitUntil(timeout: 5) { keyboardFocus.evaluate(with: editor) },
-                "Managed New Note must focus its exact body insertion point."
-            )
-            editor.typeText(marker)
-            XCTAssertTrue(
-                waitUntil(timeout: 5) {
-                    (editor.value as? String)?.contains(marker) == true
-                },
-                "The first keystroke must be accepted by the focused editor."
-            )
-            XCTAssertTrue(
-                waitUntil(timeout: 12) {
-                    (try? self.source(at: createdURL)) == initialSource + marker
-                })
-        }
-
-        let firstMarker = "cold-no-seed-first-keystroke\n"
-        let emptySource = ""
-        try createAndType(
-            path: "Untitled.md",
-            initialSource: emptySource,
-            marker: firstMarker
-        )
-
-        XCTAssertTrue(
-            waitUntil(timeout: 10) {
-                !filterStatus.exists
-                    && (libraryFilters.value as? String) == "No filters active"
-            })
-        let createdRow = app.descendants(matching: .any)[
-            "scholium.noteRow.Untitled.md"
-        ]
-        XCTAssertTrue(createdRow.waitForExistence(timeout: 10))
-        XCTAssertTrue(waitUntil(timeout: 5) { createdRow.isSelected })
-        XCTAssertTrue(waitForDocumentTitle("Untitled", timeout: 20))
-
-        let appMenu = app.menuBars.menuBarItems["Scholium QA"]
-        XCTAssertTrue(appMenu.waitForExistence(timeout: 5))
-        appMenu.click()
-        let settings = app.menuItems["Settings…"]
-        XCTAssertTrue(settings.waitForExistence(timeout: 3))
-        settings.click()
-        let settingsWindow = app.windows.matching(
-            identifier: "com_apple_SwiftUI_Settings_window"
-        ).firstMatch
-        XCTAssertTrue(settingsWindow.waitForExistence(timeout: 8))
-        let metadataPane = settingsWindow.descendants(matching: .any)[
-            "Metadata"
-        ].firstMatch
-        XCTAssertTrue(metadataPane.waitForExistence(timeout: 8))
-        metadataPane.click()
-        let retryMetadata = settingsWindow.buttons["Retry Metadata Settings"]
-        if retryMetadata.waitForExistence(timeout: 2) {
-            retryMetadata.click()
-        }
-        let addField = settingsWindow.descendants(matching: .any)[
-            "scholium.metadataSettings.addField"
-        ].firstMatch
-        XCTAssertTrue(addField.waitForExistence(timeout: 10))
-        addField.click()
-        let fieldKey = settingsWindow.descendants(matching: .any)[
-            "scholium.metadataSettings.fieldKey"
-        ].firstMatch
-        XCTAssertTrue(fieldKey.waitForExistence(timeout: 5))
-        fieldKey.click()
-        fieldKey.typeText("argument_stage")
-        let commitField = settingsWindow.descendants(matching: .any)[
-            "scholium.metadataSettings.commitField"
-        ].firstMatch
-        XCTAssertTrue(
-            waitUntil(timeout: 5) {
-                commitField.exists && commitField.isEnabled
-            })
-        commitField.click()
-        let saveMetadata = settingsWindow.buttons["Save Metadata Settings"]
-        XCTAssertTrue(
-            waitUntil(timeout: 5) {
-                saveMetadata.exists && saveMetadata.isEnabled
-            })
-        saveMetadata.click()
-        let settingsURL =
-            triptychDirectory
-            .appendingPathComponent(".scholium", isDirectory: true)
-            .appendingPathComponent("settings.json")
-        XCTAssertTrue(
-            waitUntil(timeout: 10) {
-                (try? String(contentsOf: settingsURL, encoding: .utf8))?
-                    .contains("argument_stage") == true
-            })
-        settingsWindow.buttons[XCUIIdentifierCloseWindow].click()
-        XCTAssertTrue(waitUntil(timeout: 5) { !settingsWindow.exists })
-
-        let secondMarker = "warm-custom-field-first-keystroke\n"
-        try createAndType(
-            path: "Untitled 2.md",
-            initialSource: emptySource,
-            marker: secondMarker
-        )
-        XCTAssertTrue(waitForDocumentTitle("Untitled 2", timeout: 20))
-
-        app.menuBars.menuBarItems["Edit"].click()
-        let editMetadata = app.menuItems["Edit Metadata…"].firstMatch
-        XCTAssertTrue(editMetadata.waitForExistence(timeout: 3))
-        editMetadata.click()
-        let metadataEditor = app.descendants(matching: .any)[
-            "scholium.metadataEditor"
-        ].firstMatch
-        XCTAssertTrue(metadataEditor.waitForExistence(timeout: 5))
-        app.descendants(matching: .any)[
-            "scholium.metadataEditor.addField"
-        ].firstMatch.click()
-        let chooserSearch = app.descendants(matching: .any)[
-            "scholium.metadataChooser.search"
-        ].firstMatch
-        XCTAssertTrue(chooserSearch.waitForExistence(timeout: 5))
-        chooserSearch.typeText("argument_stage")
-        XCTAssertTrue(app.staticTexts["Argument Stage"].waitForExistence(timeout: 5))
-        let chooserCancel = app.buttons.matching(
-            NSPredicate(format: "label == %@", "Cancel")
-        ).element(boundBy: 1)
-        XCTAssertTrue(chooserCancel.waitForExistence(timeout: 5))
-        chooserCancel.click()
-        XCTAssertTrue(waitUntil(timeout: 5) { !chooserSearch.exists })
-        let closeMetadataEditor = app.buttons["Cancel"].firstMatch
-        XCTAssertTrue(closeMetadataEditor.waitForExistence(timeout: 5))
-        closeMetadataEditor.click()
-        XCTAssertTrue(waitUntil(timeout: 5) { !metadataEditor.exists })
-        let secondURL = triptychDirectory.appendingPathComponent(
-            "01-analyses/Untitled 2.md"
-        )
-        XCTAssertTrue(
-            waitUntil(timeout: 10) {
-                (try? self.source(at: secondURL)) == emptySource + secondMarker
-            })
-    }
 
     @MainActor
     func testMenuBarGroupsCommandsByTask() throws {
@@ -880,31 +694,45 @@ extension ScholiumUITests {
             }
         }
         let file = menuItems("File")
-        assertOrder(["New Note", "New Window", "New Triptych…", "Open Triptych", "Close Tab",
-                     "Import Markdown…", "Duplicate Note…", "Rename Note…", "Move Note…",
-                     "Attach a Copy…", "Reference Original…", "Reveal Current Vault in Finder", "Move to Trash…"],
-                    in: file, menu: "File")
+        assertOrder(
+            [
+                "New Note", "New Window", "New Triptych…", "Open Triptych", "Close Tab",
+                "Import Markdown…", "Duplicate Note…", "Rename Note…", "Move Note…",
+                "Attach a Copy…", "Reference Original…", "Reveal Current Vault in Finder", "Move to Trash…",
+            ],
+            in: file, menu: "File")
         XCTAssertFalse(file.contains("Move to Separate Window"))
         let format = menuItems("Format")
-        assertOrder(["Bold", "Italic", "Strikethrough", "Highlight", "Inline Code", "Heading", "Lists",
-                     "Block Quotation", "Fenced Code", "Table"], in: format, menu: "Format")
+        assertOrder(
+            [
+                "Bold", "Italic", "Strikethrough", "Highlight", "Inline Code", "Heading", "Lists",
+                "Block Quotation", "Fenced Code", "Table",
+            ], in: format, menu: "Format")
         XCTAssertFalse(format.contains("Import Image…"))
         XCTAssertFalse(format.contains("Markdown Comment"))
         let insert = menuItems("Insert")
-        assertOrder(["Link", "Wikilink", "Annotated Wikilink", "Footnote", "Inline Footnote",
-                     "Import Image…", "Index Image…", "Table", "Thematic Break", "Markdown Comment", "Callout"],
-                    in: insert, menu: "Insert")
+        assertOrder(
+            [
+                "Link", "Wikilink", "Annotated Wikilink", "Footnote", "Inline Footnote",
+                "Import Image…", "Index Image…", "Table", "Thematic Break", "Markdown Comment", "Callout",
+            ],
+            in: insert, menu: "Insert")
         let view = menuItems("View")
-        assertOrder(["Back", "Forward", "Search…", "Advanced Search…", "Go to Frontmatter",
-                     "Library", "Chat", "Document Mode", "Document Text Size", "Appearance"], in: view, menu: "View")
+        assertOrder(
+            [
+                "Back", "Forward", "Search…", "Advanced Search…", "Go to Frontmatter",
+                "Library", "Chat", "Document Mode", "Document Text Size", "Appearance",
+            ], in: view, menu: "View")
         XCTAssertFalse(view.contains("Document Tabs"))
         XCTAssertFalse(view.contains("Agent Changes…"))
         let research = menuItems("Research")
-        assertOrder(["Find Related Material", "Add Selection to Chat", "Settle", "Agent Changes…"],
-                    in: research, menu: "Research")
+        assertOrder(
+            ["Find Related Material", "Add Selection to Chat", "Settle", "Agent Changes…"],
+            in: research, menu: "Research")
         let window = menuItems("Window")
-        assertOrder(["Document Tabs", "Next Tab", "Previous Tab", "Move to Separate Window", "Notifications"],
-                    in: window, menu: "Window")
+        assertOrder(
+            ["Document Tabs", "Next Tab", "Previous Tab", "Move to Separate Window", "Notifications"],
+            in: window, menu: "Window")
         let original = try source(at: triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md"))
         app.menuBars.menuBarItems["Research"].click()
         app.menuItems["Settle"].firstMatch.click()
@@ -1302,8 +1130,8 @@ extension ScholiumUITests {
         let settingsRoot = app.descendants(matching: .any)["scholium.settings.root"]
         XCTAssertTrue(settingsRoot.waitForExistence(timeout: 10))
         let paneNames = [
-            "Triptychs", "Appearance", "Hotkeys", "Metadata", "Notifications",
-            "Agent Integration", "External Tools & Citations",
+            "Workspace", "Appearance", "Notifications",
+            "Interaction", "Integrations",
         ]
         for paneName in paneNames {
             XCTAssertTrue(
@@ -1320,18 +1148,6 @@ extension ScholiumUITests {
         XCTAssertTrue(
             app.descendants(matching: .any)[
                 "scholium.triptychName"
-            ].waitForExistence(timeout: 8))
-
-        app.toolbars.buttons["Metadata"].firstMatch.click()
-        XCTAssertTrue(
-            waitUntil(timeout: 8) {
-                !self.app.descendants(matching: .any)[
-                    "scholium.settings.triptychScope"
-                ].exists
-            })
-        XCTAssertTrue(
-            app.descendants(matching: .any)[
-                "scholium.metadataSettings.role"
             ].waitForExistence(timeout: 8))
 
         app.toolbars.buttons["Appearance"].firstMatch.click()
@@ -1391,19 +1207,22 @@ extension ScholiumUITests {
         editor.typeKey(.end, modifierFlags: [.command])
         try setPasteboardText("\nshortcut-probe")
         editor.typeKey("v", modifierFlags: [.command])
-        XCTAssertTrue(waitUntil(timeout: 5) {
-            (editor.value as? String ?? "").contains("shortcut-probe")
-        })
+        XCTAssertTrue(
+            waitUntil(timeout: 5) {
+                (editor.value as? String ?? "").contains("shortcut-probe")
+            })
         editor.typeKey(.leftArrow, modifierFlags: [.command, .shift])
         app.typeKey("i", modifierFlags: [.command])
-        XCTAssertTrue(waitUntil(timeout: 5) {
-            (editor.value as? String ?? "").contains("*shortcut-probe*")
-        }, "Command-I must apply Markdown emphasis exactly once from the focused editor.")
+        XCTAssertTrue(
+            waitUntil(timeout: 5) {
+                (editor.value as? String ?? "").contains("*shortcut-probe*")
+            }, "Command-I must apply Markdown emphasis exactly once from the focused editor.")
         app.typeKey("z", modifierFlags: [.command])
-        XCTAssertTrue(waitUntil(timeout: 5) {
-            let value = editor.value as? String ?? ""
-            return value.contains("shortcut-probe") && !value.contains("*shortcut-probe*")
-        }, "One Undo must undo exactly one shortcut transaction.")
+        XCTAssertTrue(
+            waitUntil(timeout: 5) {
+                let value = editor.value as? String ?? ""
+                return value.contains("shortcut-probe") && !value.contains("*shortcut-probe*")
+            }, "One Undo must undo exactly one shortcut transaction.")
         selectDocumentMode("Review")
         selectDocumentMode("Edit")
         selectDocumentMode("Review")

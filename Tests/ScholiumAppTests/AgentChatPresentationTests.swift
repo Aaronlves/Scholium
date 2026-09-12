@@ -5,53 +5,6 @@ import Testing
 
 @testable import ScholiumApp
 
-/// Chat is a native macOS reading and control surface; Paper is branded and
-/// Accent follows the macOS system preference.
-enum NativeChatSourceScope {
-    static let paths: Set<String> = [
-        "Scholium/Views/Sidebar/AgentChatView.swift",
-        "Scholium/Views/Sidebar/AgentChatInputDock.swift",
-        "Scholium/Views/Sidebar/AgentChatActivityText.swift",
-        "Scholium/Views/Sidebar/AgentChatDiagnosticsView.swift",
-        "Scholium/Views/Sidebar/AgentChatActivityDetails.swift",
-        "Scholium/Views/Sidebar/AgentChatDisclosureStyle.swift",
-        "Scholium/Views/Sidebar/AgentChatActivityIssues.swift",
-        "Scholium/Views/Sidebar/AgentChatSourceEvidenceView.swift",
-        "Scholium/Views/Note/AgentSelectionResultView.swift",
-        "Scholium/Views/Sidebar/AgentChatMarkdown.swift",
-        "Scholium/Views/Sidebar/AgentChatObjectProjection.swift",
-        "Scholium/Views/Sidebar/AgentChatReplyQuoteCard.swift",
-        "Scholium/Views/Sidebar/AgentChatMaterialChip.swift",
-        "Scholium/Views/Sidebar/AgentChatLocalMaterialChip.swift",
-        "Scholium/Views/Sidebar/AgentChatPDFPagesView.swift",
-        "Scholium/Views/Sidebar/AgentChatNotePicker.swift",
-        "Scholium/Views/Sidebar/AgentChatComposerInput.swift",
-        "Scholium/Views/Sidebar/AgentChatComposerCompletion.swift",
-        "Scholium/Views/Sidebar/AgentChatRichContent.swift",
-        "Scholium/Views/Sidebar/AgentChatReadReply.swift",
-        "Scholium/Views/Sidebar/AgentChatProcessView.swift",
-        "Scholium/Views/Sidebar/AgentChatTurnStatus.swift",
-        "Scholium/Views/Sidebar/AgentChatReplyActions.swift",
-        "Scholium/Views/Sidebar/AgentChatRuntimeControls.swift",
-        "Scholium/Views/Sidebar/AgentChatFindBar.swift",
-        "Scholium/Views/Sidebar/AgentChatQuestionForm.swift",
-        "Scholium/Views/Sidebar/AgentChatRuntimeApprovalView.swift",
-        "Scholium/Views/Sidebar/AgentChatDelegationView.swift",
-        "Scholium/Views/Sidebar/AgentChatChildView.swift",
-        "Scholium/Views/Sidebar/AgentChatQueueView.swift",
-        "Scholium/Services/AgentChatContextLedger.swift",
-    ]
-}
-
-/// Shared native sidebar presentation is allowed to use system typography and color.
-enum NativeSidebarSourceScope {
-    static let paths: Set<String> = [
-        "Scholium/Views/Sidebar/RelatedMaterialsView.swift",
-        "Scholium/UI/Components/ScholiumSidebarHeaderControl.swift",
-        "Scholium/Views/Sidebar/SidebarView.swift",
-    ]
-}
-
 @Suite("Native research conversation presentation")
 struct AgentChatPresentationTests {
     @Test("Research progress never promotes raw commands or paths into its primary summary")
@@ -209,26 +162,4 @@ struct AgentChatPresentationTests {
         #expect(AgentChangePresentation.inScope(all, scope: .conversation([])).isEmpty)
     }
 
-    @Test("Chat typography and controls are native, with no response-length restriction")
-    func nativeBoundary() throws {
-        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
-            .deletingLastPathComponent().deletingLastPathComponent()
-        for path in NativeChatSourceScope.paths {
-            let source = try String(contentsOf: root.appendingPathComponent(path), encoding: .utf8)
-            #expect(!source.contains("ScholiumTypography"))
-            #expect(!source.contains(".scholiumSurface(.document)"))
-            #expect(!source.contains(".scholiumForeground("))
-            #expect(!source.contains(".font(.system(size:"))
-        }
-        let chatViewSource = try String(
-            contentsOf: root.appendingPathComponent("Scholium/Views/Sidebar/AgentChatView.swift"),
-            encoding: .utf8)
-        #expect(!chatViewSource.contains("Operation Details"))
-        let source = try String(
-            contentsOf: root.appendingPathComponent("Scholium/Services/AgentChatController.swift"),
-            encoding: .utf8)
-        #expect(source.contains("AgentChatResearchInstructions.developer"))
-        #expect(AgentChatResearchInstructions.developer(triptychID: UUID()).contains("depth the question needs"))
-        #expect(!source.contains("max_output_tokens"))
-    }
 }

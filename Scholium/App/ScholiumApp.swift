@@ -671,9 +671,6 @@ struct ScholiumWindowObservedRoot: View {
                 rebuildPortableControl: {
                     try await windowWorkspaceController.rebuildUnsupportedPortableControl()
                 },
-                archiveNoteMetadataRecord: {
-                    try await windowWorkspaceController.archiveInvalidNoteMetadataRecord()
-                },
                 canRemoveRegistration:
                     windowWorkspaceController.canRemoveUnavailableTriptychRegistration,
                 removeRegistration: {
@@ -1595,8 +1592,7 @@ private struct ScholiumWindowCommandContent: View {
         Divider()
         Button(appState?.isDetachedDocumentWindow == true ? "Move to Main Window" : "Move to Separate Window") {
             guard let appState else { return }
-            if appState.isDetachedDocumentWindow { appState.requestMoveDocumentBack() }
-            else { appState.requestMoveDocumentToWindow() }
+            if appState.isDetachedDocumentWindow { appState.requestMoveDocumentBack() } else { appState.requestMoveDocumentToWindow() }
         }
         .disabled(appState?.documentTabController.selectedTabID == nil)
     }
@@ -1848,7 +1844,6 @@ final class WindowModel: ObservableObject {
     @Published var currentVaultRole: VaultRole = .other
     @Published private(set) var libraryFocusRequestGeneration: UInt64 = 0
     @Published var triptychSettings = TriptychSettings()
-    @Published private(set) var triptychPropertiesAreAuthoritative = false
     let presentationRouter = WindowPresentationRouter()
     let shellState = WindowShellState()
     lazy var discoveryController = DiscoveryController(
@@ -2005,20 +2000,6 @@ final class WindowModel: ObservableObject {
             },
             refreshTransactionRecovery: { [weak self] in
                 await self?.refreshTransactionRecoveryRecords()
-            }
-        )
-    )
-    lazy var zoteroCoordinator = WindowZoteroCoordinator(
-        bridge: workspaceStore.zoteroBridge,
-        dependencies: WindowZoteroDependencies(
-            capability: { [weak self] in
-                (
-                    self?.workspaceAssignment?.id,
-                    self?.windowWorkspaceController.activeCapabilities?.zoteroBindings
-                )
-            },
-            reportInformation: { [weak self] message in
-                self?.reportOperationIssue(message, kind: .information)
             }
         )
     )
@@ -2363,7 +2344,6 @@ final class WindowModel: ObservableObject {
             guard let self else { return }
             self.libraryMutationController.unbind()
             self.researchController.unbind()
-            self.zoteroCoordinator.cancelAll()
             self.windowWorkspaceController.cancelAll()
             self.documentTransitionCoordinator.cancelAll()
             self.libraryRevealTask?.cancel()
@@ -2845,14 +2825,6 @@ final class WindowModel: ObservableObject {
         )
     }
 
-    func registerMetadataEditorFlush(for path: String, token: UUID, flush: @escaping @MainActor () async throws -> Void) {
-        editorFlushCoordinator.registerMetadataEditor(token: token, path: path, flush: flush)
-    }
-
-    func unregisterMetadataEditorFlush(token: UUID) {
-        editorFlushCoordinator.unregisterMetadataEditor(token: token)
-    }
-
     func unregisterEditorFlush(token: UUID) {
         editorFlushCoordinator.unregisterCurrentEditor(
             token: token,
@@ -3124,7 +3096,10 @@ final class WindowModel: ObservableObject {
             return
         }
         if let reference = documentReference(for: path),
-            workspaceStore.documentLocations.revealExisting(reference, excluding: self) { return }
+            workspaceStore.documentLocations.revealExisting(reference, excluding: self)
+        {
+            return
+        }
         if disposition == .newTab {
             guard let reference = documentReference(for: path) else { return }
             requestOpenNote(reference, disposition: .newTab)
@@ -3169,8 +3144,9 @@ final class WindowModel: ObservableObject {
         if disposition == .separateWindow {
             Task { @MainActor [weak self] in
                 guard let self else { return }
-                do { _ = try await workspaceStore.documentLocations.openSeparate(reference, from: self) }
-                catch { reportOperationIssue(error.localizedDescription, kind: .error) }
+                do { _ = try await workspaceStore.documentLocations.openSeparate(reference, from: self) } catch {
+                    reportOperationIssue(error.localizedDescription, kind: .error)
+                }
             }
             return
         }
@@ -3194,7 +3170,8 @@ final class WindowModel: ObservableObject {
         mode: NotePresentationMode = .source
     ) {
         if let reference = documentReference(for: path),
-            let owner = workspaceStore.documentLocations.existingOwner(of: reference, excluding: self) {
+            let owner = workspaceStore.documentLocations.existingOwner(of: reference, excluding: self)
+        {
             owner.nativeWindowCoordinator?.makeKeyAndOrderFront()
             Task { await owner.openWorkspaceReference(reference, line: sourceLine, mode: mode) }
             return
@@ -3416,10 +3393,8 @@ final class WindowModel: ObservableObject {
         if let tag = selectedTag { result = result.filter { $0.tags.contains(tag) } }
         if let author = selectedAuthor { result = result.filter { $0.authors.contains(author) } }
         if let key = selectedPropertyKey, let value = selectedPropertyValue {
-            let catalog = workspaceProjectionController.metadataCatalog
             result = result.filter {
-                $0.semanticProperty(at: key, catalog: catalog)?
-                    .appFilterValues.contains(value) == true
+                $0.filterableProperties()[key]?.contains(value) == true
             }
         }
         return result.sorted(by: notesAreOrdered)
@@ -3548,16 +3523,16 @@ final class WindowModel: ObservableObject {
         guard let id = tabID ?? documentTabController.selectedTabID else { return }
         Task { @MainActor [weak self] in
             guard let self else { return }
-            do { try await workspaceStore.documentLocations.moveTab(id, from: self, at: point) }
-            catch { reportOperationIssue(error.localizedDescription, kind: .error) }
+            do { try await workspaceStore.documentLocations.moveTab(id, from: self, at: point) } catch {
+                reportOperationIssue(error.localizedDescription, kind: .error)
+            }
         }
     }
 
     func requestMoveDocumentBack() {
         Task { @MainActor [weak self] in
             guard let self else { return }
-            do { try await workspaceStore.documentLocations.moveBack(from: self) }
-            catch { reportOperationIssue(error.localizedDescription, kind: .error) }
+            do { try await workspaceStore.documentLocations.moveBack(from: self) } catch { reportOperationIssue(error.localizedDescription, kind: .error) }
         }
     }
 
@@ -3584,7 +3559,8 @@ final class WindowModel: ObservableObject {
     func finishIncomingTransfer(_ transfer: DocumentSessionTransfer, tab: DocumentTabItem) {
         if let descriptor = transfer.document.workspaceDescriptor,
             let vault = workspaceAssignment?.vaults.values.first(where: { $0.id == descriptor.reference.vaultID }),
-            let workspace = workspaceSlot(for: vault) {
+            let workspace = workspaceSlot(for: vault)
+        {
             documentController.selectWorkspace(workspace)
             shellState.selectDocumentWorkspace(workspace)
         }
@@ -3597,7 +3573,8 @@ final class WindowModel: ObservableObject {
     func selectAdjacentDocumentTab(offset: Int) {
         let tabs = documentTabController.tabs
         guard let index = tabs.firstIndex(where: { $0.id == documentTabController.selectedTabID }),
-            tabs.count > 1 else { return }
+            tabs.count > 1
+        else { return }
         selectDocumentTab(withID: tabs[(index + offset + tabs.count) % tabs.count].id)
     }
 
@@ -3618,7 +3595,8 @@ final class WindowModel: ObservableObject {
 
     func navigateDocumentHistory(_ direction: DocumentNavigationDirection) {
         if let target = documentNavigationHistoryController.target(for: direction),
-            workspaceStore.documentLocations.revealExisting(target, excluding: self) {
+            workspaceStore.documentLocations.revealExisting(target, excluding: self)
+        {
             documentNavigationHistoryController.commit(direction, to: target)
             return
         }
@@ -4029,7 +4007,6 @@ final class WindowModel: ObservableObject {
         capabilities: WindowWorkspaceCapabilities,
         snapshot: WorkspaceSnapshot
     ) async throws -> [String] {
-        triptychPropertiesAreAuthoritative = false
         bindApplicationCapabilities(
             to: capabilities,
             snapshot: snapshot
@@ -4052,7 +4029,6 @@ final class WindowModel: ObservableObject {
 
     private func loadTriptychSettingsProjection() async throws -> String? {
         let state = try await researchController.settingsLoadState()
-        triptychPropertiesAreAuthoritative = state.authorizesAboutProjection
         switch state {
         case .current(let snapshot):
             triptychSettings = snapshot.settings
@@ -4149,19 +4125,6 @@ final class WindowModel: ObservableObject {
     var currentWorkspaceSlot: WorkspaceVaultSlot? {
         let selected = shellState.selectedWorkspace
         return workspaceAssignment?.vault(for: selected) == nil ? nil : selected
-    }
-
-    var currentDocumentAboutConfiguration: VaultAboutConfiguration? {
-        guard let vault = currentDocumentVault,
-            let slot = WorkspaceVaultSlot.allCases.first(where: {
-                workspaceAssignment?.vault(for: $0)?.id == vault.id
-            })
-        else { return nil }
-        return WorkspaceAboutConfiguration.configuration(
-            settings: triptychSettings,
-            slot: slot,
-            isAuthoritative: triptychPropertiesAreAuthoritative
-        )
     }
 
     func presentMarkdownImportOutcome(_ outcome: WindowMarkdownImportBatchOutcome) {
@@ -5342,8 +5305,6 @@ final class WindowModel: ObservableObject {
             editorSessionID: sessionID,
             source: source,
             editorRevision: UInt64(max(0, session.editorSession.generation)),
-            metadata: note.workspaceSnapshot?.metadata,
-            metadataCatalog: workspaceProjectionController.metadataCatalog
         )
     }
 
@@ -5353,7 +5314,10 @@ final class WindowModel: ObservableObject {
     ) {
         guard !transferInProgress else { return }
         if let descriptor = selectionDescriptor(for: path),
-            workspaceStore.documentLocations.revealExisting(descriptor, excluding: self) { return }
+            workspaceStore.documentLocations.revealExisting(descriptor, excluding: self)
+        {
+            return
+        }
         guard let location = notes.first(where: { $0.relativePath == path }) else {
             reportOperationIssue(String(localized: "Note not found: \(path)", table: "Localizable", bundle: .module), kind: .warning)
             return
@@ -5444,7 +5408,8 @@ final class WindowModel: ObservableObject {
             try validateDocumentIsAvailable(document)
             if let vaultID = document.vaultID,
                 let vault = workspaceAssignment?.vaults.values.first(where: { $0.id == vaultID }),
-                let workspace = workspaceSlot(for: vault) {
+                let workspace = workspaceSlot(for: vault)
+            {
                 documentController.selectWorkspace(workspace)
                 shellState.selectDocumentWorkspace(workspace)
             }
@@ -6038,37 +6003,6 @@ final class WindowModel: ObservableObject {
     }
 
     @discardableResult
-    func saveMetadata(
-        for note: WindowDocumentLocation,
-        proposedFields: [String: YAMLValue],
-        expectedRevision: DocumentFingerprint?
-    ) async throws -> WindowDocumentLocation {
-        guard let context = activeDocumentContext(for: note.relativePath) else {
-            throw VaultRepositoryError.fileDoesNotExist(note.relativePath)
-        }
-        let original = context.note
-        guard let originalSnapshot = original.workspaceSnapshot else {
-            throw VaultRepositoryError.fileDoesNotExist(note.relativePath)
-        }
-        do {
-            let outcome = try await documentController.saveMetadata(
-                VaultQualifiedNoteID(vaultID: context.vaultID, relativePath: note.relativePath),
-                fields: proposedFields,
-                expectedRevision: expectedRevision
-            )
-            let savedSnapshot = originalSnapshot.applyingCommittedMetadata(
-                outcome.committedValue
-            )
-            replaceCachedWorkspaceNote(savedSnapshot)
-            let saved = WindowDocumentLocation.workspace(savedSnapshot)
-            reportCommittedMutationWarnings(outcome)
-            lastSaveError = nil
-            return saved
-        } catch {
-            lastSaveError = error.localizedDescription
-            throw error
-        }
-    }
 
     func diskDocument(for path: String) async throws -> NoteDocument {
         guard let context = activeDocumentContext(for: path) else {
@@ -6077,22 +6011,6 @@ final class WindowModel: ObservableObject {
         return try await documentController.load(
             VaultQualifiedNoteID(vaultID: context.vaultID, relativePath: path)
         )
-    }
-
-    func reloadMetadata(
-        for path: String
-    ) async throws -> (note: WindowDocumentLocation, revision: DocumentFingerprint?) {
-        guard
-            let current = notes.first(where: { $0.relativePath == path })
-                ?? (currentNote?.relativePath == path ? currentNote : nil),
-            let snapshot = current.workspaceSnapshot
-        else {
-            throw VaultRepositoryError.fileDoesNotExist(path)
-        }
-        let metadata = try await documentController.metadata(snapshot.id)
-        let updated = snapshot.applyingCommittedMetadata(metadata)
-        replaceCachedWorkspaceNote(updated)
-        return (.workspace(updated), metadata?.revision)
     }
 
     func openNotifiedAgentChange(_ route: AgentChangeNotificationRoute) async {
@@ -6134,7 +6052,6 @@ final class WindowModel: ObservableObject {
         reportCommittedMutationWarnings(
             derivedRefreshWarnings: outcome.derivedRefreshWarning.map { [$0] } ?? [],
             identityRecoveryWarnings: outcome.identityRecoveryWarning.map { [$0] } ?? [],
-            portableMetadataRecoveryWarnings: outcome.portableMetadataRecoveryWarning.map { [$0] } ?? [],
             presentationWarning: presentationWarning
         )
     }
@@ -6143,7 +6060,6 @@ final class WindowModel: ObservableObject {
     private func reportCommittedMutationWarnings(
         derivedRefreshWarnings: [String],
         identityRecoveryWarnings: [String],
-        portableMetadataRecoveryWarnings: [String] = [],
         presentationWarning: String? = nil
     ) -> Bool {
         var messages: [String] = []
@@ -6166,15 +6082,6 @@ final class WindowModel: ObservableObject {
                     bundle: .module
                 ))
             messages.append(identityRecoveryWarnings.joined(separator: " "))
-        }
-        if !portableMetadataRecoveryWarnings.isEmpty {
-            messages.append(
-                String(
-                    localized: "The file operation completed, but portable Note metadata recovery is incomplete. Inspect Metadata before continuing.",
-                    table: "Localizable",
-                    bundle: .module
-                ))
-            messages.append(portableMetadataRecoveryWarnings.joined(separator: " "))
         }
         if let presentationWarning {
             messages.append(
@@ -6536,7 +6443,6 @@ final class WindowModel: ObservableObject {
                 document: document,
                 fileMetadata: metadata,
                 graphCounts: graphCounts,
-                metadata: previous?.metadata,
                 headings: semantic.headings,
                 derivedProjectionState: .sourceAhead,
                 cachedSemanticDocument: semantic,

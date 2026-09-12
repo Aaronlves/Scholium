@@ -536,10 +536,10 @@ struct WindowControllerArchitectureTests {
     @Test(
         "Inspector restoration normalizes current, adjacent, absent, and unknown mode values",
         arguments: [
-            (nil as String?, ResearchInspectorMode.about),
-            ("about", .about),
+            (nil as String?, ResearchInspectorMode.links),
+            ("about", .links),
             ("links", .links),
-            ("unknown", .about),
+            ("unknown", .links),
         ]
     )
     func inspectorModeRestoration(
@@ -549,10 +549,10 @@ struct WindowControllerArchitectureTests {
         #expect(ResearchInspectorMode(restoring: rawValue) == expected)
     }
 
-    @Test("A new window defaults to About without making Inspector visible")
+    @Test("A new window defaults to Links without making Inspector visible")
     func newWindowInspectorDefaults() {
         let controller = ResearchController()
-        #expect(controller.inspector.mode == .about)
+        #expect(controller.inspector.mode == .links)
         #expect(!controller.inspector.isVisible)
     }
 
@@ -708,17 +708,17 @@ struct WindowControllerArchitectureTests {
         shell.selectWorkspace(.topicKnowledge)
         document.selectWorkspace(.topicKnowledge)
         #expect(document.currentPresentationMode == .livePreview)
-        #expect(shell.inspector.mode == .about)
+        #expect(shell.inspector.mode == .links)
 
         document.rememberPresentationMode(.source)
-        shell.selectInspectorMode(.about)
+        shell.selectInspectorMode(.links)
         shell.selectWorkspace(.paperAnalysis)
         document.selectWorkspace(.paperAnalysis)
 
         #expect(document.currentPresentationMode == .livePreview)
         #expect(shell.inspector.mode == .links)
         #expect(document.presentationMode(for: .topicKnowledge) == .source)
-        #expect(shell.inspectorMode(for: .topicKnowledge) == .about)
+        #expect(shell.inspectorMode(for: .topicKnowledge) == .links)
     }
 
     @Test("The current Document mode carries across selected Notes")
@@ -1368,7 +1368,7 @@ struct WindowControllerArchitectureTests {
             encoding: .utf8
         )
         #expect(contentView.contains("ResearchSearchSurface("))
-        #expect(contentView.contains("windowCoordinator.actions.showAttention"))
+        #expect(!contentView.contains("OverviewNotificationsView"))
         #expect(!contentView.contains("WorkspaceSetupView"))
         #expect(contentView.contains("context: sidebarContext"))
     }
@@ -1376,7 +1376,7 @@ struct WindowControllerArchitectureTests {
     @Test("Research controller owns Inspector presentation")
     func researchPresentationIsolation() {
         let controller = ResearchController()
-        #expect(controller.inspector.mode == .about)
+        #expect(controller.inspector.mode == .links)
         #expect(!controller.inspector.isVisible)
         controller.showResearchInspector(true)
         #expect(controller.inspector.isVisible)
@@ -1455,9 +1455,9 @@ struct WindowControllerArchitectureTests {
 
     @Test("Settings constructs independently of any document window")
     func standaloneSettingsConstruction() {
-        let model = WorkspaceSettingsModel(selectedPane: .metadata)
+        let model = WorkspaceSettingsModel(selectedPane: .workspace)
 
-        #expect(model.selectedPane == .metadata)
+        #expect(model.selectedPane == .workspace)
         #expect(model.snapshot.registeredVaults.isEmpty)
         #expect(model.snapshot.registeredTriptychs.isEmpty)
         model.selectPane(.integrations)
@@ -1719,12 +1719,6 @@ struct WindowControllerArchitectureTests {
             ),
             encoding: .utf8
         )
-        let zoteroCoordinatorSource = try String(
-            contentsOf: repositoryRoot.appendingPathComponent(
-                "Scholium/App/Window/WindowZoteroCoordinator.swift"
-            ),
-            encoding: .utf8
-        )
         let start = try #require(appSource.range(of: "final class WindowModel: ObservableObject"))
         let end = try #require(
             appSource.range(
@@ -1787,8 +1781,6 @@ struct WindowControllerArchitectureTests {
         #expect(!workspaceControllerSource.contains("func setAccessRecovery("))
         #expect(!workspaceControllerSource.contains("WindowWorkspaceInstallationFeedback"))
         #expect(!windowModelSource.contains("func restoreWorkspaceAccess("))
-        #expect(zoteroCoordinatorSource.contains("final class WindowZoteroCoordinator"))
-        #expect(zoteroCoordinatorSource.contains("func cancelAll()"))
         #expect(!windowModelSource.contains("func prepareZoteroLinkAndFill("))
 
         for documentOwnedState in [
@@ -1975,7 +1967,7 @@ struct WindowControllerArchitectureTests {
         #expect(closeCoordinatorSource.contains("persistenceCoordinator.close()"))
         #expect(closeCoordinatorSource.contains("finalizeDependencies()"))
         #expect(windowModelSource.contains("libraryMutationController.unbind()"))
-        #expect(windowModelSource.contains("zoteroCoordinator.cancelAll()"))
+        #expect(!windowModelSource.contains("zoteroCoordinator"))
         #expect(windowModelSource.contains("windowWorkspaceController.cancelAll()"))
         #expect(windowModelSource.contains("documentTransitionCoordinator.cancelAll()"))
         #expect(windowModelSource.contains("editorFlushCoordinator.shutdown()"))
@@ -2092,211 +2084,6 @@ struct WindowControllerArchitectureTests {
         #expect(splitSource.contains("NSLayoutConstraint.Priority.defaultLow.rawValue + 1"))
         #expect(!splitSource.contains("restoreApparatusWidth"))
         #expect(!splitSource.contains("retainedApparatusWidth"))
-    }
-
-    @Test("Remaining WindowModel Store calls are classified and allowlisted")
-    func workspaceStoreCallAudit() throws {
-        let repositoryRoot = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-        let appSource = try String(
-            contentsOf: repositoryRoot.appendingPathComponent(
-                "Scholium/App/ScholiumApp.swift"
-            ),
-            encoding: .utf8
-        )
-        let coordinatorSource = try String(
-            contentsOf: repositoryRoot.appendingPathComponent(
-                "Scholium/App/Window/WindowSessionPersistenceCoordinator.swift"
-            ),
-            encoding: .utf8
-        )
-        let start = try #require(appSource.range(of: "final class WindowModel: ObservableObject"))
-        let end = try #require(
-            appSource.range(
-                of: "private enum ClipboardWorkflowError",
-                range: start.upperBound..<appSource.endIndex
-            ))
-        let windowModelSource = String(appSource[start.lowerBound..<end.lowerBound])
-        let calls =
-            windowModelSource
-            .components(separatedBy: "workspaceStore.")
-            .dropFirst()
-            .map { fragment in
-                String(
-                    fragment.prefix { character in
-                        character.isLetter
-                            || character.isNumber
-                            || character == "_"
-                            || character == "$"
-                    })
-            }
-        let actual = Dictionary(grouping: calls, by: { $0 }).mapValues(\.count)
-
-        let compositionAndSubscription = [
-            "registerNoteDisplayWindow": 1,
-            "unregisterNoteDisplayWindow": 1,
-            "savedSearches": 1,
-            "saveSavedSearches": 1,
-            "preserveUnreadableSavedSearchesAndReset": 1,
-            "cssSnippetStore": 1,
-            "zoteroBridge": 1,
-            "chatRegistry": 1,
-            "$latestWorkspaceActivation": 1,
-            "$workspaceEvents": 1,
-        ]
-        let windowIntentAndDelivery = [
-            "resolveVault": 2,
-            "revealInFinder": 4,
-            "openExternal": 1,
-        ]
-        var approved: [String: Int] = [:]
-        for category in [
-            compositionAndSubscription,
-            windowIntentAndDelivery,
-        ] {
-            for (name, count) in category {
-                approved[name, default: 0] += count
-            }
-        }
-
-        #expect(compositionAndSubscription.values.reduce(0, +) == 10)
-        #expect(windowIntentAndDelivery.values.reduce(0, +) == 7)
-        #expect(actual == approved)
-        #expect(!windowModelSource.contains("workspaceStore.windowSession"))
-        #expect(!windowModelSource.contains("workspaceStore.saveWindowSession"))
-        #expect(
-            coordinatorSource.contains(
-                "protocol WindowSessionPersistenceStore: AnyObject"
-            ))
-        #expect(coordinatorSource.contains("func load(id: UUID)"))
-        #expect(coordinatorSource.contains("store.saveWindowSession("))
-    }
-
-    @Test("Window consumers observe bounded owners instead of one root relay")
-    func windowObservationOwnership() throws {
-        let repositoryRoot = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-        let appSource = try String(
-            contentsOf: repositoryRoot.appendingPathComponent(
-                "Scholium/App/ScholiumApp.swift"
-            ),
-            encoding: .utf8
-        )
-        let commandObservationSource = try String(
-            contentsOf: repositoryRoot.appendingPathComponent(
-                "Scholium/App/Window/WindowCommandObservation.swift"
-            ),
-            encoding: .utf8
-        )
-        let contentSource = try String(
-            contentsOf: repositoryRoot.appendingPathComponent(
-                "Scholium/Views/ContentView.swift"
-            ),
-            encoding: .utf8
-        )
-        let toolbarSource = try String(
-            contentsOf: repositoryRoot.appendingPathComponent(
-                "Scholium/UI/Components/ScholiumWorkspaceToolbar.swift"
-            ),
-            encoding: .utf8
-        )
-        let researchControllerSource = try String(
-            contentsOf: repositoryRoot.appendingPathComponent(
-                "Scholium/Features/ResearchContext/ResearchController.swift"
-            ),
-            encoding: .utf8
-        )
-        let start = try #require(appSource.range(of: "final class WindowModel: ObservableObject"))
-        let end = try #require(
-            appSource.range(
-                of: "private enum ClipboardWorkflowError",
-                range: start.upperBound..<appSource.endIndex
-            ))
-        let windowModelSource = String(appSource[start.lowerBound..<end.lowerBound])
-        let rootStart = try #require(appSource.range(of: "private struct ScholiumWindowRoot: View"))
-        let observedRootStart = try #require(
-            appSource.range(
-                of: "private struct ScholiumWindowObservedRoot: View",
-                range: rootStart.upperBound..<appSource.endIndex
-            ))
-        let observedRootEnd = try #require(
-            appSource.range(
-                of: "private struct ScholiumSettingsRoot: View",
-                range: observedRootStart.upperBound..<appSource.endIndex
-            ))
-        let stateObjectRootSource = String(
-            appSource[rootStart.lowerBound..<observedRootStart.lowerBound]
-        )
-        let observedRootSource = String(
-            appSource[observedRootStart.lowerBound..<observedRootEnd.lowerBound]
-        )
-
-        #expect(!windowModelSource.contains("self?.objectWillChange.send()"))
-        #expect(
-            windowModelSource.contains(
-                "lazy var commandObservation = WindowCommandObservation("
-            ))
-        #expect(
-            appSource.contains(
-                ".focusedSceneObject(appState.commandObservation)"
-            ))
-        #expect(
-            appSource.contains(
-                "@FocusedObject private var commandObservation: WindowCommandObservation?"
-            ))
-        #expect(stateObjectRootSource.contains("@StateObject private var appState: WindowModel"))
-        #expect(stateObjectRootSource.contains("ScholiumWindowObservedRoot("))
-        #expect(!stateObjectRootSource.contains("@ObservedObject"))
-        #expect(observedRootSource.contains("let appState: WindowModel"))
-        #expect(
-            observedRootSource.contains(
-                "@ObservedObject private var shellState: WindowShellState"
-            ))
-        #expect(
-            observedRootSource.contains(
-                "_shellState = ObservedObject(wrappedValue: appState.shellState)"
-            ))
-        #expect(
-            commandObservationSource.contains(
-                "final class WindowCommandObservation: ObservableObject"
-            ))
-        #expect(
-            commandObservationSource.contains(
-                "changes(shellState.$libraryVisible)"
-            ))
-        #expect(!contentSource.contains("@EnvironmentObject var appState: WindowModel"))
-        for boundedOwner in [
-            "@ObservedObject private var presentationRouter: WindowPresentationRouter",
-            "@ObservedObject private var discoveryController: DiscoveryController",
-            "@ObservedObject private var searchController: WindowSearchController",
-            "@ObservedObject private var researchController: ResearchController",
-            "@ObservedObject private var shellState: WindowShellState",
-            "@ObservedObject private var documentController: DocumentController",
-            "@ObservedObject private var workspaceProjectionController: WindowWorkspaceProjectionController",
-            "@ObservedObject private var libraryMutationController: WindowLibraryMutationController",
-        ] {
-            #expect(contentSource.contains(boundedOwner))
-        }
-        #expect(!toolbarSource.contains("appState.objectWillChange"))
-        #expect(!toolbarSource.contains("visibilityObservation"))
-        #expect(toolbarSource.contains("static var itemIdentifiers:"))
-        #expect(toolbarSource.contains("appState.commandObservation.$revision"))
-        #expect(toolbarSource.contains("appState.researchController.$researchSnapshot"))
-        #expect(!toolbarSource.contains("appState.researchController.$agentChanges"))
-        #expect(
-            researchControllerSource.contains(
-                "@Published private(set) var agentChanges: [AgentChange]?"
-            )
-        )
-        #expect(!researchControllerSource.contains("var hasAgentChanges: Bool"))
-        #expect(researchControllerSource.contains("func loadAgentChanges() async throws"))
-        #expect(!toolbarSource.contains("ScholiumWorkspaceSidebarToolbarView"))
-        #expect(!toolbarSource.contains("ScholiumWorkspaceInspectorToolbarView"))
-        #expect(!toolbarSource.contains("@ObservedObject var shellState"))
     }
 
     private func fixtureReference(

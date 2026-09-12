@@ -401,9 +401,10 @@ extension ScholiumUITests {
         XCTAssertTrue(accessibilityText(of: chatEmpty.staticTexts.firstMatch).contains("No Conversations"))
         app.descendants(matching: .any)["scholium.chat.archived"].firstMatch.click()
         app.menuItems["Archived Chats"].firstMatch.click()
-        XCTAssertTrue(waitUntil(timeout: 5) {
-            self.accessibilityText(of: chatEmpty.staticTexts.firstMatch).contains("No Archived Chats")
-        })
+        XCTAssertTrue(
+            waitUntil(timeout: 5) {
+                self.accessibilityText(of: chatEmpty.staticTexts.firstMatch).contains("No Archived Chats")
+            })
         app.buttons["scholium.chat.newConversation"].click()
         XCTAssertTrue(app.descendants(matching: .any)["scholium.chat.emptyConversation"].firstMatch.waitForExistence(timeout: 5))
         XCTAssertTrue(app.textViews["scholium.chat.message"].waitForExistence(timeout: 5))

@@ -72,7 +72,7 @@ already-visible Chat does not toggle the Sidebar closed.
   descendants without altering their stored files.
 - Library distinguishes a filtered empty result from a genuinely empty tree,
   retaining its existing Clear route. Organize separates link-annotation presence
-  from Integrity, combines Metadata into one group, and exposes sorting choices
+  from Integrity, groups source properties, and exposes sorting choices
   directly. Note context menus and accessibility actions share the same file
   command list, including Move Note. The native outline receives enlarged-interface
   row sizing on creation and subsequent presentation updates.
@@ -116,16 +116,13 @@ already-visible Chat does not toggle the Sidebar closed.
   internal projection classes remain protected. Invalid or stale external
   edits cannot replace the loaded appearance or be overwritten by a stale GUI
   save; document CSS and text colors remain content-layer values.
-- About and Metadata expose managed values only; authored YAML has no field
-  editor. YAML remains at the authored beginning above the title: Review shows
-  source text and Edit keeps the exact, source-located YAML directly editable
-  with quiet presentation marks. Source retains exact source. No title
-  positioning pass, disclosure control, or automatic collapse remains. Ordinary
-  New Note creates no YAML scaffold.
+- User properties remain in source-located YAML. Review/Edit project the
+  filename title, YAML and body in the shared document plane; Source keeps exact
+  text. No field editor or separate Metadata panel remains.
 - Document readiness covers live WebKit until the requested mode and its
   source-located presentation are converged; retained-editor reconstruction
   owns scroll and selection without an opening-position special case.
-- Settings now uses six native preference panes with scope expressed by named
+- Settings now uses five native preference panes with scope expressed by named
   groups and adjacent state text rather than page-wide notices, static search
   routing, and Interaction/Integrations child selectors. Selection Actions use
   a compact native table, explicit Edit… sheets, and the real selection-toolbar
@@ -172,36 +169,18 @@ already-visible Chat does not toggle the Sidebar closed.
   body and heading ink: body prose is a subtle Primary Text/Paper mix, while
   titles and headings retain Primary Text without creating another semantic
   color role.
-- Overview shows document attachments through native previews over the retained
-  document session, with consistently actionable filenames above previews, one multi-file selection
-  menu/count, bounded
-  thumbnail access, system Quick Look with its native opening actions,
-  and File-menu copy/reference. The old document
-  strip and its editor/reader protocol routes are removed.
-- Inspector simplification verification (2026-09-08): 154 owning checks passed,
-  followed by 7 toolbar checks including the two-segment control and its overflow
-  menu. Isolated QA confirmed About/Links, removal of the Outline menu and statistics
-  entry, light/dark appearance, empty/populated Links and About field Tab/Shift-Tab
-  traversal. Both panes share content spacing; ordinary controls use native colors.
-  Full assistive-technology and contrast/transparency/motion acceptance remains open.
-- Inspector presents About, Links and Related Material through a native rounded
-  icon-only toolbar group. About exposes current About, file, Settlement,
-  and applicable Zotero facts and operations. Metadata uses aligned native
-  borderless text fields, native selection controls and explicit revision-bound recovery.
-  One NSGridView aligns system-sized labels and values with an adaptive label column; creator rows retain
-  Last Name then First Name across editing, commit and cancellation. Escape
-  restores the acknowledged value without replacing the native field editor.
-  Zotero is separated by a divider; dates and Settlement appear in collapsed
-  File Information below attachments. Note notifications use the existing
-  session to summarize all categories, independently of its prior filters.
-  Fields use one stable native text control, commit on focus departure, and
-  traverse creator subfields and adjacent fields with Tab/Shift-Tab. Return
-  submits; Escape discards only changes since the last acknowledged save.
-  The inline Save/Cancel footer is removed. Inspector projection changes save
-  without discarding drafts; Note/window departure drains the active field before proceeding. Errors preserve the current Note
-  and restore its Library selection; successful retry clears that failure.
+- Inspector now contains Links and Related Material using the existing native
+  toolbar selector. Links separates Incoming, Outgoing and External; external destinations derive from source. Attachment
+  links remain in the Document and use bounded native Quick Look. The old About
+  field editor, attachment preview panel and Zotero binding controls are removed.
+  Scoped disposable-fixture QA verified the three native tabs, selected-only labels,
+  direct passage/annotation navigation in Edit and Review, YAML property search,
+  attachment Quick Look, insertion/Undo and five Settings panes. Complete adaptation
+  and release acceptance remain open.
   Outgoing and Incoming
-  group exact occurrences by peer Note, with counts and source line context.
+  group exact occurrences by peer Note. Stronger document headings contain native
+  passage cards; annotations use a divider, inset comment symbol and secondary text.
+  Source line numbers are not displayed.
   The whole Note heading toggles disclosure; its contextual action opens the
   peer. Passage targets use ordinary native buttons with hover feedback; their
   selected-occurrence state, toggles and selected accessibility traits are removed.
@@ -210,8 +189,7 @@ already-visible Chat does not toggle the Sidebar closed.
   to the existing explicit navigation. The marker expires, repeats on activation,
   and clears on replacement/teardown without source writes or history entries.
   It fades in, holds and fades out; Reduce Motion keeps it static. Outgoing destination navigation remains
-  separately available. Source-owned Markdown annotations remain visible. Incoming annotations are
-  read-only and route explicit editing to Source. Ordinary links retain the
+  separately available. Source-owned Markdown annotations remain visible. Links contains no annotation editor; clicking a passage or annotation locates its source. Ordinary links retain the
   current Document mode and locate the rendered block or editor line after
   presentation readiness. It has no Actions mode.
 - Search uses a persistent native field. Its magnifying-glass menu contains

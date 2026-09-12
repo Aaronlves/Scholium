@@ -184,28 +184,15 @@ the request identity, and only then commits Library and Shell selection.
 The current Document, tabs, and document mode remain unchanged. Rapid requests
 converge on the last requested workspace.
 
-`ResearchInspectorView` lives with the Sidebar views, separately from the
-Document leaf. It receives immutable About, Links and Related Material presentation values
-composed at the window root. It owns no workspace refresh, Agent
-conversation, mutation, or lifecycle state. Its modes share the one native
-trailing split item and one mode value per Triptych workspace; changing modes,
-notes, or tabs never reconstructs the retained Document host. About contains
-resolved About configuration, current Settlement state, and any portable Zotero
-binding for the selected Analysis. `OverviewMetadataFields` retains one AppKit
-field collection without category headings. Its NSGridView sizes the shared label
-column from localized labels and available width, and reports that width to the
-read-only file facts. Native text fields use borderless rendering, choices use NSPopUpButton and
-Booleans use NSButton checkboxes. Native controls and their field editors own
-focus, text Undo and composition; Tab never waits on SwiftUI state.
-`OverviewMetadataSession` owns only the Note-local managed drafts, serial commit
-queue, acknowledged revision and committed Metadata Undo/Redo. It delegates all
-writes to the existing portable Metadata owner. Settings owns the visible field
-configuration; About has no Add Field or per-field removal route. The window flush
-coordinator drains this one session before document departure or aggregate
-saves. About remains mounted across projections. File timestamps and
-Settlement remain quiet read-only snapshot facts.
+`ResearchInspectorView` composes Links and Related Material in one trailing
+split item. It owns no source or mutation state. Zotero occurrences are a
+read-only Markdown projection, refreshed with the selected Note fingerprint.
+File links and image embeds stay in the Document; Quick Look uses an explicit
+bounded access lease. `SettlementPresentation` supports the existing toolbar
+judgment command independently of the Inspector. There is no About field session
+or Metadata departure flush; the ordinary editor owns all source drafts.
 
-`WindowShellState` owns About/Links/Related Material selection. Its icon-only toolbar
+`WindowShellState` owns Links/Related Material selection. Its icon-only toolbar
 control uses AppKit segments; `InspectorLinkDirectionControl` uses native
 capsule segments with system-owned selection. `ResearchInspectorLayout` owns
 the common content-edge, top, section and bottom spacing for these panes.

@@ -229,43 +229,6 @@ public actor ZoteroOperations: ZoteroUseCases {
         return sortedSearchHits(hits, limit: limit)
     }
 
-    func exactItem(
-        library: ZoteroLibraryMetadata,
-        itemKey rawItemKey: String,
-        expectedServerID: String? = nil
-    ) async throws -> ZoteroExactItemRead {
-        guard let itemKey = normalizedObjectKey(rawItemKey) else {
-            throw ZoteroUseCaseError.invalidItemKey
-        }
-        let response = try await requestResponse(
-            library: library.identity,
-            path: "items/\(itemKey)",
-            query: [URLQueryItem(name: "format", value: "json")]
-        )
-        guard let serverID = response.serverID else {
-            throw ZoteroMetadataOperationError.serverIdentityUnavailable
-        }
-        if let expectedServerID, expectedServerID != serverID {
-            throw ZoteroMetadataOperationError.serverIdentityChanged
-        }
-        let items: [ZoteroItemMetadata]
-        do {
-            items = try decodedParentItems(response.data).filter {
-                normalizedItemKey($0.key) == itemKey
-            }
-        } catch {
-            throw ZoteroUseCaseError.invalidResponse
-        }
-        guard items.count == 1, let item = items.first else {
-            throw ZoteroUseCaseError.invalidResponse
-        }
-        return ZoteroExactItemRead(
-            library: library,
-            item: item,
-            serverID: serverID
-        )
-    }
-
     private func sortedSearchHits(
         _ hits: [ZoteroSearchHit],
         limit: Int

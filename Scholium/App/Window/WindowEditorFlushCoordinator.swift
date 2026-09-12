@@ -48,7 +48,6 @@ final class WindowEditorFlushCoordinator {
     private var windowID: UUID
     private var currentRegistration: CurrentRegistration?
     private var aggregateTriptychID: UUID?
-    private var metadataRegistration: (token: UUID, path: String, flush: @MainActor () async throws -> Void)?
     private var aggregateFlush: (@MainActor () async throws -> Void)?
 
     init(
@@ -57,14 +56,6 @@ final class WindowEditorFlushCoordinator {
     ) {
         self.windowID = windowID
         self.registry = registry
-    }
-
-    func registerMetadataEditor(token: UUID, path: String, flush: @escaping @MainActor () async throws -> Void) {
-        metadataRegistration = (token, path, flush)
-    }
-
-    func unregisterMetadataEditor(token: UUID) {
-        if metadataRegistration?.token == token { metadataRegistration = nil }
     }
 
     func updateWindowID(_ id: UUID) {
@@ -128,7 +119,6 @@ final class WindowEditorFlushCoordinator {
             aggregateTriptychID = triptychID
         }
         let flush: @MainActor () async throws -> Void = { [weak self] in
-            try await self?.metadataRegistration?.flush()
             try await flushOwnedSessions()
         }
         aggregateFlush = flush
@@ -152,12 +142,7 @@ final class WindowEditorFlushCoordinator {
         capturingEditorState: Bool,
         fallback: @MainActor (_ capturingEditorState: Bool) async throws -> Void
     ) async throws {
-        if let metadataRegistration {
-            if let selectedDocumentPath, selectedDocumentPath != metadataRegistration.path {
-                throw WindowEditorFlushError.staleEditorRegistration(expected: selectedDocumentPath, registered: metadataRegistration.path)
-            }
-            try await metadataRegistration.flush()
-        }
+
         if let registration = currentRegistration {
             try validate(registration, selectedDocumentPath: selectedDocumentPath)
             try await registration.flush()
@@ -174,7 +159,6 @@ final class WindowEditorFlushCoordinator {
     }
 
     func shutdown() {
-        metadataRegistration = nil
         clearCurrentEditor()
         if aggregateTriptychID != nil {
             registry.unregisterEditorFlush(token: aggregateToken)

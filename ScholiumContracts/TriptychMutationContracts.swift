@@ -71,16 +71,13 @@ public struct TriptychMutationRecoveryFile: Codable, Hashable, Sendable, Identif
 public struct ManagedCreationRecoveryReference: Codable, Hashable, Sendable {
     public let target: VaultQualifiedNoteID
     public let reservedIdentityID: UUID
-    public let metadataFields: [String: YAMLValue]?
 
     public init(
         target: VaultQualifiedNoteID,
-        reservedIdentityID: UUID,
-        metadataFields: [String: YAMLValue]? = nil
+        reservedIdentityID: UUID
     ) {
         self.target = target
         self.reservedIdentityID = reservedIdentityID
-        self.metadataFields = metadataFields
     }
 }
 

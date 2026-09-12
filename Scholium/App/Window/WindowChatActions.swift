@@ -335,7 +335,8 @@ extension WindowModel {
     }
 
     @MainActor private func openChatSource(
-        noteID: UUID, vaultID: UUID?, line: Int?, revision: String?, sourceRange: SearchSourceRange? = nil, excerpt: String? = nil, disposition: WindowOpenDisposition = .newTab
+        noteID: UUID, vaultID: UUID?, line: Int?, revision: String?, sourceRange: SearchSourceRange? = nil, excerpt: String? = nil,
+        disposition: WindowOpenDisposition = .newTab
     ) -> Bool {
         let matches =
             workspaceCatalog?.notes.filter {
@@ -353,7 +354,8 @@ extension WindowModel {
                 guard let self else { return }
                 do {
                     let destination = try await workspaceStore.documentLocations.openSeparate(reference, from: self)
-                    _ = destination.openChatSource(noteID: noteID, vaultID: vaultID, line: line,
+                    _ = destination.openChatSource(
+                        noteID: noteID, vaultID: vaultID, line: line,
                         revision: revision, sourceRange: sourceRange, excerpt: excerpt)
                 } catch { reportOperationIssue(error.localizedDescription, kind: .error) }
             }
@@ -361,7 +363,8 @@ extension WindowModel {
         }
         if let owner = workspaceStore.documentLocations.existingOwner(of: reference, excluding: self) {
             owner.nativeWindowCoordinator?.makeKeyAndOrderFront()
-            return owner.openChatSource(noteID: noteID, vaultID: vaultID, line: line,
+            return owner.openChatSource(
+                noteID: noteID, vaultID: vaultID, line: line,
                 revision: revision, sourceRange: sourceRange, excerpt: excerpt)
         }
         let target = DocumentSessionKey(vaultID: reference.vaultID, noteID: noteID)

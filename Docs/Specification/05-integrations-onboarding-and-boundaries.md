@@ -15,54 +15,22 @@ history, last successful time, and a concise local/read-only privacy statement.
 When disabled, it names the exact Zotero setting required to allow local
 applications.
 
-### 15.2 Portable Analysis binding and task context
+### 15.2 Authored Zotero links and task context
 
-A portable `AnalysisZoteroBinding` relates one stable Analysis identity to one
-exact user/group library and normalized item key. It is not YAML, Metadata,
-bibliographic evidence, or source content. Scholium never infers it from
-filenames, titles, identifiers, similarity, or custom YAML.
+Notes may contain any number of exact Zotero item/PDF/annotation links.
+The Links Inspector derives these occurrences from committed Markdown, alongside
+outgoing Note links, using the existing toolbar-selected Links surface. Each
+occurrence retains its authored label and exact library-qualified reference,
+including page and annotation when present. Repeated occurrences remain visible.
+There is no Note-to-item binding, title matching, Link-and-Fill, or whole-Note
+Refresh Metadata operation. Deleting a source link removes that relation.
 
-Only dedicated set/clear operations change the binding. Rename, Move, and
-system-Trash source deletion retain it by stable identity; Duplicate explicitly
-copies it. Markdown, Metadata, direct Undo, and save recovery do not alter it.
-
-Every current Analysis offers **Link Zotero Item…** or **Manage Zotero Link…**.
-The sheet searches accessible local libraries, preserves library-qualified
-ambiguity, and uses exact lookup for an entered item key. Fresh preview names
-the exact item, proposed applicable Metadata fills, and retained conflicts.
-**Link and Fill** or **Rebind and Fill** is the single commit action. A bound
-Analysis also offers Open, Refresh Metadata, and confirmed Clear. None changes
-Markdown, authored YAML, or Zotero.
-
-Link and Fill uses two explicit portable transactions: revision-check and write
-the binding, then add only absent applicable managed Metadata. It never
-overwrites a researcher value. If Metadata commit conflicts after the binding
-commits, retain the binding and report the partial outcome. Commit rereads the
-same server, library, item, source, binding, and Metadata revisions reviewed in
-the preview.
-
-An explicitly requested Note context (§8.3) exposes only its saved local binding
-and managed Metadata, without contacting Zotero. Scholium MCP does not fold fresh
-Zotero data into automatic Note context. A current
-task may use the separately configured Zotero MCP to read a fresh exact item or
-attachment route. That adapter grants no Scholium write, Markdown, or
-independent discovery authority, and bibliographic results are not cached as a
-cross-task research context.
-
-Bibliographic context remains distinct from paper content and philosophical
-evidence. Zotero attachments, Notes, annotations, PDFs, and full text do not
-enter automatic Scholium context. An Agent may retrieve the selected paper
-through its separately configured Zotero capability when the research task
-requires it, reporting what was and was not available.
-
-Link/Refresh may map only applicable bibliographic fields into managed Metadata:
-source type, title, creator roles, publication date, language, container,
-series, volume, issue, pages, edition, publisher/place, DOI, ISBN, ISSN, and
-URL. Abstract, tags, citation key, Collections, and modification time never
-become managed values; abstract and tags never become authored `summary` or
-`keywords`. Refresh requires a new preview, fills absences, updates only
-explicitly displayed differing mapped values, and never deletes local values
-because Zotero omitted them.
+Opening a link requests Zotero navigation; it proves neither reading nor
+philosophical support. Scholium does not fetch bibliography while projecting
+Links or reading ordinary Note context. An authorized Agent may use the
+separately configured read-only Zotero tools when its task needs source data.
+Citation generation is deferred. Before adding a future adapter, evaluate
+whether Zotero's existing capabilities already serve the Agent's need.
 
 ### 15.3 Optional external-agent Zotero MCP
 

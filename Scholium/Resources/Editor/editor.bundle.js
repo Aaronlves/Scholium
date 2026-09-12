@@ -21677,7 +21677,7 @@
   }
 
   // protocol.ts
-  var EDITOR_PROTOCOL_VERSION = 30;
+  var EDITOR_PROTOCOL_VERSION = 31;
   var MAX_INBOUND_BYTES = 25e5;
   var MAX_SOURCE_UTF8_BYTES = 8e6;
   var operationTypes = /* @__PURE__ */ new Set([
@@ -21746,6 +21746,7 @@
     "insertInlineFootnote",
     "insertTable",
     "insertImage",
+    "insertAttachment",
     "toggleTask",
     "tableInsertRowBefore",
     "tableInsertRowAfter",
@@ -21804,7 +21805,7 @@
     const annotation = dialect.linkAnnotation;
     const footnotes = dialect.footnotes;
     const mathematics = dialect.mathematics;
-    return dialect.version === 5 && Array.isArray(callouts) && callouts.length > 0 && callouts.length <= 32 && callouts.every((callout) => Boolean(callout) && typeof callout.identifier === "string" && callout.identifier.length <= 64 && Array.isArray(callout.aliases) && callout.aliases.length <= 32 && callout.aliases.every((alias) => typeof alias === "string" && alias.length <= 64) && typeof callout.label === "string" && callout.label.length <= 120 && typeof callout.meaning === "string" && callout.meaning.length <= 1e3) && Boolean(annotation) && annotation?.openingDelimiter === "{{" && annotation.closingDelimiter === "}}" && annotation.escapeCharacter === "\\" && annotation.allowsMultiline === true && annotation.allowsNesting === false && Boolean(footnotes) && footnotes?.namedReferenceOpening === "[^" && footnotes.namedReferenceClosing === "]" && footnotes.definitionSeparator === ":" && footnotes.inlineOpening === "^[" && footnotes.continuationIndentSpaces === 2 && footnotes.allowsTabContinuation === true && footnotes.caseSensitiveIdentifiers === true && footnotes.ordinalByFirstReference === true && Boolean(mathematics) && mathematics?.inlineDelimiter === "$" && mathematics.displayDelimiter === "$$" && mathematics.singleDollarInline === true;
+    return dialect.version === 5 && Array.isArray(callouts) && callouts.length > 0 && callouts.length <= 31 && callouts.every((callout) => Boolean(callout) && typeof callout.identifier === "string" && callout.identifier.length <= 64 && Array.isArray(callout.aliases) && callout.aliases.length <= 31 && callout.aliases.every((alias) => typeof alias === "string" && alias.length <= 64) && typeof callout.label === "string" && callout.label.length <= 120 && typeof callout.meaning === "string" && callout.meaning.length <= 1e3) && Boolean(annotation) && annotation?.openingDelimiter === "{{" && annotation.closingDelimiter === "}}" && annotation.escapeCharacter === "\\" && annotation.allowsMultiline === true && annotation.allowsNesting === false && Boolean(footnotes) && footnotes?.namedReferenceOpening === "[^" && footnotes.namedReferenceClosing === "]" && footnotes.definitionSeparator === ":" && footnotes.inlineOpening === "^[" && footnotes.continuationIndentSpaces === 2 && footnotes.allowsTabContinuation === true && footnotes.caseSensitiveIdentifiers === true && footnotes.ordinalByFirstReference === true && Boolean(mathematics) && mathematics?.inlineDelimiter === "$" && mathematics.displayDelimiter === "$$" && mathematics.singleDollarInline === true;
   }
   function validOperation(operation) {
     switch (operation.type) {
@@ -22191,18 +22192,18 @@ ${fence}`;
       const insert2 = "| Column 1 | Column 2 |\n|---|---|\n|  |  |";
       return { change: { ...range, insert: insert2 }, selection: { anchor: range.from + 2, head: range.from + 10 }, label: "Insert Table" };
     }
-    if (command2 === "insertImage") {
+    if (command2 === "insertImage" || command2 === "insertAttachment") {
       const image = imageArgument(argument);
       if (!image) return null;
       const selected = source.slice(range.from, range.to);
       const usableSelection = selected.length <= 1024 && !/[\u0000-\u001f\u007f]/.test(selected) ? selected : "";
       const alt = escapedImageAlt(usableSelection || image.alt);
-      const insert2 = `![${alt}](${image.destination})`;
+      const insert2 = `${command2 === "insertImage" ? "!" : ""}[${alt}](${image.destination})`;
       const position = range.from + insert2.length;
       return {
         change: { ...range, insert: insert2 },
         selection: { anchor: position, head: position },
-        label: "Insert Image"
+        label: command2 === "insertImage" ? "Insert Image" : "Insert Attachment"
       };
     }
     const bounds = lineBounds(source, range);

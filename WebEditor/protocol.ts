@@ -1,4 +1,4 @@
-export const EDITOR_PROTOCOL_VERSION = 30;
+export const EDITOR_PROTOCOL_VERSION = 31;
 export const MAX_INBOUND_BYTES = 2_500_000;
 export const MAX_SOURCE_UTF8_BYTES = 8_000_000;
 
@@ -11,7 +11,7 @@ export type MarkdownEditorCommand =
   | "numberedList" | "taskList" | "fencedCode" | "thematicBreak"
   | "calloutOrient" | "calloutCite" | "calloutConnect" | "calloutState"
   | "calloutIllustrate" | "calloutQuote" | "calloutFlag"
-  | "insertFootnote" | "insertInlineFootnote" | "insertTable" | "insertImage" | "toggleTask"
+  | "insertFootnote" | "insertInlineFootnote" | "insertTable" | "insertImage" | "insertAttachment" | "toggleTask"
   | "tableInsertRowBefore" | "tableInsertRowAfter" | "tableDeleteRow"
   | "tableInsertColumnBefore" | "tableInsertColumnAfter" | "tableDeleteColumn"
   | "tableAlignLeft" | "tableAlignCenter" | "tableAlignRight"
@@ -162,7 +162,7 @@ const commandTypes = new Set<MarkdownEditorCommand>([
   "heading2", "heading3", "heading4", "heading5", "heading6", "blockQuotation", "bulletList",
   "numberedList", "taskList", "fencedCode", "thematicBreak", "calloutOrient", "calloutCite",
   "calloutConnect", "calloutState", "calloutIllustrate", "calloutQuote", "calloutFlag",
-  "insertFootnote", "insertInlineFootnote", "insertTable", "insertImage", "toggleTask", "tableInsertRowBefore", "tableInsertRowAfter",
+  "insertFootnote", "insertInlineFootnote", "insertTable", "insertImage", "insertAttachment", "toggleTask", "tableInsertRowBefore", "tableInsertRowAfter",
   "tableDeleteRow", "tableInsertColumnBefore", "tableInsertColumnAfter", "tableDeleteColumn",
   "tableAlignLeft", "tableAlignCenter", "tableAlignRight", "pastePlain", "pasteMarkdown",
   "linkSelectedText",
@@ -254,10 +254,10 @@ function validDialect(value: unknown): value is MarkdownEditingDialect {
   const footnotes = dialect.footnotes;
   const mathematics = dialect.mathematics;
   return dialect.version === 5
-    && Array.isArray(callouts) && callouts.length > 0 && callouts.length <= 32
+    && Array.isArray(callouts) && callouts.length > 0 && callouts.length <= 31
     && callouts.every((callout) => Boolean(callout)
       && typeof callout.identifier === "string" && callout.identifier.length <= 64
-      && Array.isArray(callout.aliases) && callout.aliases.length <= 32
+      && Array.isArray(callout.aliases) && callout.aliases.length <= 31
       && callout.aliases.every((alias) => typeof alias === "string" && alias.length <= 64)
       && typeof callout.label === "string" && callout.label.length <= 120
       && typeof callout.meaning === "string" && callout.meaning.length <= 1_000)

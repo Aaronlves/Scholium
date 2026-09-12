@@ -144,6 +144,35 @@ struct SearchProtocolContractsTests {
         #expect(SearchQueryParser.parse("property:key=").diagnostics.first?.code == .missingFieldValue)
     }
 
+    @Test("Quoted property keys preserve spaces, case and equality signs")
+    func quotedPropertyKeys() throws {
+        for (query, key, value) in [
+            (#"property:"研究 问题"="行动理由""#, "研究 问题", "行动理由"),
+            (#"property:"a=b"="p=q""#, "a=b", "p=q"),
+            (#"property:"source.type"=book"#, "source.type", "book"),
+            (#"property:"Title""#, "Title", nil),
+        ] as [(String, String, String?)] {
+            let parsed = SearchQueryParser.parse(query)
+            guard case .property(let clause) = try #require(parsed.ast?.clauses.first) else {
+                Issue.record("Expected property clause")
+                return
+            }
+            #expect(clause.key == key)
+            #expect(clause.value == value)
+        }
+        #expect(!SearchQueryParser.parse(#"property:""=value"#).isValid)
+        #expect(!SearchQueryParser.parse("property:source.type=book").isValid)
+        #expect(!SearchQueryParser.parse("yaml:year=1962").isValid)
+        let completions = SearchCapabilities.current.completions(
+            for: "property:Lang=", scope: .triptych,
+            context: SearchCompletionContext(propertyValues: ["Lang": ["English"]]))
+        #expect(completions.first?.replacementText == "property:Lang=English")
+        let quoted = SearchCapabilities.current.completions(
+            for: "property:研究", scope: .triptych,
+            context: SearchCompletionContext(propertyKeys: ["研究 问题"]))
+        #expect(quoted.first?.replacementText == #"property:"研究 问题""#)
+    }
+
     @Test("Direct-link queries require exactly one direction anchor")
     func noteLinks() throws {
         let result = SearchQueryParser.parse(#"from-note:"Groundwork" duty"#)
@@ -416,6 +445,9 @@ struct SearchProtocolContractsTests {
     func semanticProjection() throws {
         let source = """
             ---
+            title: Academic Work Title
+            authors: [Author]
+            publication_date: 2026
             summary: "A concise autonomy map"
             keywords: [search]
             ---
@@ -439,22 +471,11 @@ struct SearchProtocolContractsTests {
             [^one]: Footnote *content*
             """
         let document = NoteDocument(relativePath: "Folder/Test Note.md", rawContent: source)
-        let metadata = NoteMetadataSnapshot(
-            record: NoteMetadataRecord(
-                noteID: UUID(),
-                fields: [
-                    "title": .string("Academic Work Title"),
-                    "authors": .array([.object(["family": .string("Author")])]),
-                    "publication_date": .string("2026"),
-                ]
-            ),
-            revision: DocumentFingerprint(content: "metadata")
-        )
         let projection = SearchDocumentProjection(
             document: document,
             profile: .analysis,
             hasBrokenLink: true
-        ).applyingNoteMetadata(metadata, profile: .analysis, source: source)
+        )
 
         #expect(projection.title == "Test Note")
         #expect(
@@ -538,41 +559,21 @@ struct SearchProtocolContractsTests {
         )
         #expect(indexed.stableNoteID == stableID)
         #expect(indexed.aliases.isEmpty)
-        #expect(indexed.authors.isEmpty)
-        #expect(indexed.publicationDate == nil)
+        #expect(indexed.authors == ["T. Scanlon", "Legacy Author"])
+        #expect(indexed.publicationDate == "1998")
         #expect(indexed.tags.isEmpty)
-        #expect(
-            !indexed.projection.segments.contains {
-                [.alias, .author, .publicationDate, .tag].contains($0.field)
-            })
+
     }
 
-    @Test("Managed CreatorList preserves order without claiming Markdown ranges")
-    func creatorListProjection() {
-        let source = "# Creators\n\nBody\n"
-        let metadata = NoteMetadataSnapshot(
-            record: NoteMetadataRecord(
-                noteID: UUID(),
-                fields: [
-                    "authors": .array([
-                        .object(["family": .string("Scanlon"), "given": .string("T.")]),
-                        .object(["literal": .string("World Health Organization")]),
-                    ])
-                ]
-            ),
-            revision: DocumentFingerprint(content: "creators")
-        )
-        let projection = SearchDocumentProjection(
-            document: NoteDocument(relativePath: "Creators.md", rawContent: source),
-            profile: .analysis
-        ).applyingNoteMetadata(metadata, profile: .analysis, source: source)
+    @Test("Authored author lists preserve order and point into YAML")
+    func authorListProjection() {
+        let source = "---\nauthors: [T. Scanlon, World Health Organization]\n---\nBody"
+        let projection = SearchDocumentProjection(document: NoteDocument(relativePath: "Creators.md", rawContent: source), profile: .analysis)
         #expect(projection.authors == ["T. Scanlon", "World Health Organization"])
-        let components = projection.segments.filter { $0.field == .author }
-        #expect(components.map(\.text) == ["T. Scanlon", "World Health Organization"])
-        #expect(components.allSatisfy { $0.sourceRange == nil })
+        #expect(projection.segments.filter { $0.field == .author }.allSatisfy { $0.sourceRange != nil })
     }
 
-    @Test("Summary projection fails closed when exact scalar provenance is unavailable")
+    @Test("Summary projection supports block scalars and rejects ambiguous source")
     func summaryProjectionRequiresExactScalarProvenance() {
         for (name, indicator) in [("Literal", "|"), ("Folded", ">")] {
             let block = NoteDocument(
@@ -588,10 +589,10 @@ struct SearchProtocolContractsTests {
                     == .string)
             #expect(
                 blockProperties.entry(forExactKey: "summary")?.stringMembers
-                    .isEmpty == true)
-            #expect(SearchDocumentProjection(document: block).summary == nil)
+                    .first?.value == "block discovery text\n")
+            #expect(SearchDocumentProjection(document: block).summary == "block discovery text\n")
             #expect(
-                !SearchDocumentProjection(document: block).segments.contains {
+                SearchDocumentProjection(document: block).segments.contains {
                     $0.field == .summary
                 })
         }
@@ -644,7 +645,6 @@ struct SearchProtocolContractsTests {
             vaultName: "Analyses",
             vaultRole: .sourceCorpus,
             document: document,
-            metadataCatalog: .builtIn,
             semantic: semantic,
             cachedSourceProjection: cached,
             hasBrokenLink: true

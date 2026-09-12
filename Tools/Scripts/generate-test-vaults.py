@@ -21,13 +21,13 @@ def generate(root):
         target.write_bytes(data)
         files[path] = hashlib.sha256(data).hexdigest()
 
-    def note(path, body, keywords='[测试, QA]'):
+    def note(path, body, keywords='[测试, QA]', properties=''):
         put(path, '---\nsummary: 合成的非私人界面测试数据，不是学术来源。\nkeywords: '
-            + keywords + '\n---\n\n' + body)
+            + keywords + '\n' + properties + '---\n\n' + body)
 
     for name in ('QA Autosave A', 'QA Autosave B'):
         note(f'01-analyses/{name}.md', f'# {name}\n\nSynthetic nonprivate QA fixture.\n\n编辑此段，切换笔记，再返回检查自动保存。\n')
-    note('01-analyses/示例材料.md', '# 材料正文中的一级标题\n\n文件名、正文标题和受管理的来源标题应保持独立。\n\n'
+    note('01-analyses/示例材料.md', '# 材料正文中的一级标题\n\n文件名和用户在正文或 YAML 中写的标题应保持独立。\n\n'
          '这是一段虚构测试材料，没有作者归属、真实引文或 DOI。\n\n## 摘录区域\n\n'
          '> 这段引文仅用于检查引用块的显示。\n\n## 测试范围\n\n'
          '[[QA Topic]]{{从材料返回测试问题；此注释不构成证据。}}\n')
@@ -35,7 +35,12 @@ def generate(root):
          '## Connections\n\n[[示例材料]]{{检查出链、入链以及注释定位。}}\n\n'
          '[[QA Work|打开写作样本]]\n\n[[排版样本]]\n\n[[长文与目录]]\n\n'
          '## Search\n\n中文检索标记：晨光样本。English marker: aurora-fixture.\n\n'
-         '组合检索：中文 English café naïve αβγ。\n', '[测试, 晨光样本, aurora-fixture]')
+         '组合检索：中文 English café naïve αβγ。\n\n'
+         '[本地附件](Attachments/说明.txt)\n\n'
+         '[合成 Zotero 条目](zotero://select/library/items/QAITEM01)\n\n'
+         '[合成 PDF 定位](zotero://open-pdf/groups/42/items/QAPDF001?page=2&annotation=QAANN001)\n',
+         '[测试, 晨光样本, aurora-fixture]', '研究问题: 检索与来源\nqa_stage: draft\nyear: 2026\n')
+    put('02-topics/Attachments/说明.txt', '正文链接直接关联的非私人附件。\n')
     note('02-topics/排版样本.md', '# 排版样本\n\n普通正文，**粗体**、*斜体*、`inline code` 与 [外部链接](https://example.org)。\n\n'
          '## 列表\n\n- 第一项\n- 第二项\n  - 子项\n\n1. 首项\n2. 次项\n\n'
          '- [ ] 未完成\n- [x] 已完成\n\n## 引用与脚注\n\n> 合成引文。\n>\n> 第二段。\n\n'
@@ -96,13 +101,14 @@ def generate(root):
 - 搜索：晨光样本、aurora-fixture、文件名和正文标题。
 - Connect / Attention：正常跨库链接、注释；诊断样本故意保留缺失、歧义及未闭合注释。
 - 保真：源码保真.md 带 UTF-8 BOM、CRLF、自定义 YAML、无末尾换行；操作前后可对照 fixture-manifest.json 的 SHA-256。
-- About：不显示 YAML；通过当前 Metadata 界面添加来源标题、作者、Topic aliases 或 Work type，确认它们与文件名独立。没有把 managed Metadata 塞进 YAML。
-- 附件：从 attachment-samples/说明.txt 测试 Copy / Reference 及打开；初始不存在附件关系。
+- YAML：QA Topic 带自定义字段与数字；使用 property:qa_stage=draft 或 property:year=2026 检索并定位原文。属性直接在源文本编辑。
+- 附件：QA Topic 正文链接打开本地说明；从 attachment-samples/说明.txt 测试 Copy / Reference 在编辑器插入链接，移除链接不删文件。
+- Links：External 显示两条合成 Zotero 链接，保留库、页码和注释。它们不是实际文献，测试展示时不必启动 Zotero。
 - Settle：保存 QA Work 后执行 Settle，再编辑，检查当前修订状态。
 - 冲突：只在测试副本中制造编辑器未保存修改与外部修改，检查恢复路径。
 - Agent Changes：连接当前运行应用的 MCP 后实际创建；初始操作记录为空。
 
-不预制 .scholium、稳定 ID、Metadata、Agent Change 或恢复记录；由当前应用创建。没有旧 Research Action / Handoff 状态。
+不预制 .scholium、稳定 ID、Agent Change 或恢复记录；由当前应用创建。没有旧 Research Action / Handoff 状态。
 
 生成脚本只接受不存在的目标目录，不覆盖旧测试数据。此夹具不是 UI 验收或发布测试通过证明。
 ''')

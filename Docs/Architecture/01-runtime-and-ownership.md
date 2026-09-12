@@ -212,7 +212,7 @@ closed provider capability table, provider-mismatch diagnostics,
 completion and Explain Query descriptions, discriminated results, visible
 semantic `SearchDocumentProjection`, exact source mappings, CJK query
 projection, requests, responses, availability, and generation/freshness
-identities. Structured projection joins validated Metadata with authored YAML
+identities. Structured projection reads authored YAML
 `summary` and `keywords`: YAML matches retain ranges, managed values have none,
 and unknown YAML is not queryable. Core owns the Note
 provider's disposable SQLite schema, staging/validation/recovery, read
@@ -331,7 +331,7 @@ a selected close activates an adjacent vault-qualified document before removal.
 A preparation, save, conflict, or destination-validation failure retains the
 originating source and recovery state.
 `WindowWorkspaceProjectionController` is the exact-window owner of the
-immutable research catalog, resolved Metadata catalog, per-vault snapshots, selected Library's
+immutable research catalog, per-vault snapshots, selected Library's
 Notes/tags/authors/revisions and property-filter options, graph, Note
 Search generation, derived-refresh status,
 and catalog refresh lifecycle. It accepts only the active runtime and increasing
@@ -664,9 +664,9 @@ Inspector field, Outline and Links composition is owned by
 The shell retains the workspace's Inspector mode and native visibility only;
 Document retains buffer, editing, autosave, Undo and conflict authority.
 
-Zotero bindings and the ordered binding/Metadata transaction belong to [Source Storage
-and Read Models](05-source-storage-and-read-models.md#shared-read-models-and-metadata).
-Inspector consumes that capability without another mapping or write owner.
+Source-derived Zotero references and attachments belong to [Source Storage
+and Read Models](05-source-storage-and-read-models.md#shared-read-models-and-source-properties).
+Inspector consumes the read-only link projection; ordinary source edits own changes.
 
 ### Container decision rule
 

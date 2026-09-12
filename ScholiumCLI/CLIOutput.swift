@@ -101,6 +101,7 @@ extension ScholiumCLI {
 
             The positional query uses the shared Search v\(capabilities.contractVersion)
             grammar and searches current Notes. Fields: \(noteFields)
+            \(capabilities.propertyQueryHelp)
 
             Examples:
             \(examples)

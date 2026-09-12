@@ -1355,6 +1355,7 @@ public enum MarkdownSemanticParser {
     }
 
     private static func isExternalDestination(_ raw: String) -> Bool {
+        if raw.hasPrefix("//") { return true }
         guard let schemeRange = raw.range(of: #"^[A-Za-z][A-Za-z0-9+.-]*:"#, options: .regularExpression) else {
             return false
         }

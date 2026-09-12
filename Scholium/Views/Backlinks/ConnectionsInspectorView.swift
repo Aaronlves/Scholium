@@ -58,19 +58,38 @@ struct ConnectionsInspectorContext {
     let freshness: ResearchProjectionFreshness
     let retryRefresh: () -> Void
     let openReference: (VaultNoteReference, Int?) -> Void
-    let editSource: (VaultNoteReference, Int) -> Void
+    var externalLinks: [SourceResourceReferences.ExternalLink] = []
+    var openExternalURL: (URL) -> Void = { _ in }
 }
 
 enum ConnectionDirection: String, CaseIterable, Identifiable, Sendable {
     case incoming
     case outgoing
+    case external
 
     var id: Self { self }
+
+    var tabTitle: String {
+        switch self {
+        case .incoming: "Incoming"
+        case .outgoing: "Outgoing"
+        case .external: "External"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .incoming: "arrow.down.left"
+        case .outgoing: "arrow.up.right"
+        case .external: "globe"
+        }
+    }
 
     var title: String {
         switch self {
         case .incoming: "Incoming Links"
         case .outgoing: "Outgoing Links"
+        case .external: "External Links"
         }
     }
 
@@ -78,6 +97,7 @@ enum ConnectionDirection: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .incoming: "No Incoming Links"
         case .outgoing: "No Outgoing Links"
+        case .external: "No External Links"
         }
     }
 }
@@ -104,10 +124,11 @@ struct ConnectionsProjection {
             return Self(items: [])
         }
 
-        let edges =
+        let edges: [LinkGraphEdge] =
             switch direction {
             case .incoming: graph.incoming[current] ?? []
             case .outgoing: graph.outgoing[current] ?? []
+            case .external: []
             }
         let items = edges.map { edge in
             let peerID = direction == .incoming ? edge.source : edge.destination?.note
@@ -184,6 +205,15 @@ struct ConnectionsInspectorView: View {
         return InspectorLinkGroup.make(items)
     }
 
+    private var externalLinks: [SourceResourceReferences.ExternalLink] {
+        guard direction == .external else { return [] }
+        let term = query.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        return context.externalLinks.filter {
+            term.isEmpty || $0.label.localizedStandardContains(term)
+                || $0.destination.localizedStandardContains(term)
+        }
+    }
+
     var body: some View {
         VStack(spacing: 10) {
             InspectorLinkDirectionControl(direction: $session.direction)
@@ -191,17 +221,51 @@ struct ConnectionsInspectorView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: ResearchInspectorLayout.sectionSpacing) {
-                        ResearchProjectionFreshnessView(freshness: context.freshness, retry: context.retryRefresh)
-                        if groups.isEmpty {
-                            ScholiumApparatusStateView(query.wrappedValue.isEmpty ? direction.emptyAnnouncement : "No Results", systemImage: "link")
-                                .accessibilityIdentifier("scholium.connections.empty")
+                        ResearchProjectionFreshnessView(
+                            freshness: context.freshness, retry: context.retryRefresh)
+                        if groups.isEmpty && externalLinks.isEmpty {
+                            ScholiumApparatusStateView(
+                                query.wrappedValue.isEmpty ? direction.emptyAnnouncement : "No Results",
+                                systemImage: "link"
+                            )
+                            .accessibilityIdentifier("scholium.connections.empty")
+                        }
+                        if !externalLinks.isEmpty {
+                            VStack(alignment: .leading, spacing: 12) {
+                                ForEach(externalLinks) { link in
+                                    Button {
+                                        context.openExternalURL(link.url)
+                                    } label: {
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            Text(link.label.isEmpty ? link.url.absoluteString : link.label)
+                                                .foregroundStyle(ScholiumNativeColorRole.label.color)
+                                        }.frame(maxWidth: .infinity, alignment: .leading)
+                                    }
+                                    .buttonStyle(.borderless)
+                                    .disabled(!link.canOpen)
+                                    .help(link.destination)
+                                    .contextMenu {
+                                        Button("Copy Link") {
+                                            NSPasteboard.general.clearContents()
+                                            NSPasteboard.general.setString(link.destination, forType: .string)
+                                        }
+                                    }
+                                    .accessibilityHint("Open External Link")
+                                    .accessibilityIdentifier("scholium.links.external.\(link.id)")
+                                }
+                            }
+                            .accessibilityElement(children: .contain)
                         }
                         ForEach(groups) { group in
                             let expanded = Binding(
                                 get: { !session.location(for: locationKey).collapsedGroups.contains(group.id) },
                                 set: { expanded in
                                     session.update(locationKey) {
-                                        if expanded { $0.collapsedGroups.remove(group.id) } else { $0.collapsedGroups.insert(group.id) }
+                                        if expanded {
+                                            $0.collapsedGroups.remove(group.id)
+                                        } else {
+                                            $0.collapsedGroups.insert(group.id)
+                                        }
                                     }
                                 }
                             )
@@ -212,9 +276,10 @@ struct ConnectionsInspectorView: View {
                                             item: item,
                                             activate: {
                                                 guard let source = item.source else { return }
-                                                context.openReference(source.reference, item.edge.occurrence.linkSpan.start.line)
+                                                context.openReference(
+                                                    source.reference, item.edge.occurrence.linkSpan.start.line)
                                             },
-                                            openReference: context.openReference, editSource: context.editSource
+                                            openReference: context.openReference
                                         )
                                     }
                                 }.padding(.top, 8)
@@ -223,12 +288,18 @@ struct ConnectionsInspectorView: View {
                                     expanded.wrappedValue.toggle()
                                 } label: {
                                     HStack(alignment: .firstTextBaseline) {
-                                        Text(group.title).font(ScholiumTypography.interface(.control, emphasis: .medium))
-                                            .fixedSize(horizontal: false, vertical: true)
-                                            .multilineTextAlignment(.leading)
+                                        Image(systemName: "doc.text")
+                                            .foregroundStyle(ScholiumNativeColorRole.secondaryLabel.color)
+                                            .accessibilityHidden(true)
+                                        Text(group.title).font(
+                                            ScholiumTypography.interface(.control, emphasis: .strong)
+                                        )
+                                        .fixedSize(horizontal: false, vertical: true)
+                                        .multilineTextAlignment(.leading)
                                         Spacer(minLength: 4)
-                                        Text(group.items.count.formatted()).font(ScholiumTypography.interface(.body)).foregroundStyle(
-                                            ScholiumNativeColorRole.secondaryLabel.color)
+                                        Text(group.items.count.formatted()).font(ScholiumTypography.interface(.body))
+                                            .foregroundStyle(
+                                                ScholiumNativeColorRole.secondaryLabel.color)
                                     }
                                     .contentShape(Rectangle())
                                 }
@@ -276,67 +347,55 @@ private struct LinkOccurrenceRow: View {
     let item: InspectorLinkItem
     let activate: () -> Void
     let openReference: (VaultNoteReference, Int?) -> Void
-    let editSource: (VaultNoteReference, Int) -> Void
-
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            HStack(alignment: .top, spacing: 4) {
-                Button(action: activate) {
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text(contextText).font(ScholiumTypography.interface(.control)).foregroundStyle(ScholiumNativeColorRole.label.color)
-                            .lineLimit(nil)
-                            .fixedSize(horizontal: false, vertical: true).multilineTextAlignment(.leading)
-                        Text("Line \(item.edge.occurrence.linkSpan.start.line)")
-                            .font(ScholiumTypography.interface(.compact)).foregroundStyle(ScholiumNativeColorRole.secondaryLabel.color)
+        VStack(alignment: .leading, spacing: 8) {
+            Button(action: activate) {
+                GroupBox {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text(contextText)
+                            .font(ScholiumTypography.interface(.control))
+                            .foregroundStyle(ScholiumNativeColorRole.label.color)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        if let annotation = item.edge.occurrence.annotation {
+                            Divider()
+                            HStack(alignment: .top, spacing: 8) {
+                                Image(systemName: "text.bubble")
+                                    .accessibilityHidden(true)
+                                Text(annotation.text)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                            .font(ScholiumTypography.interface(.body))
+                            .foregroundStyle(ScholiumNativeColorRole.secondaryLabel.color)
+                        }
                     }
+                    .padding(4)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .multilineTextAlignment(.leading)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .fixedSize(horizontal: false, vertical: true)
-                .buttonStyle(.accessoryBar)
-                .disabled(item.source == nil)
-                .help("Show this passage")
-                .accessibilityIdentifier("scholium.links.occurrence." + item.id)
-                if item.edge.occurrence.annotation != nil
-                    || (item.direction == .outgoing && item.edge.occurrence.fragment != nil && item.edge.destination?.span != nil)
-                {
-                    options
-                }
+                .contentShape(Rectangle())
             }
-            if let annotation = item.edge.occurrence.annotation {
-                Text(annotation.text).font(ScholiumTypography.interface(.body)).foregroundStyle(ScholiumNativeColorRole.secondaryLabel.color)
-                    .textSelection(.enabled)
-                    .accessibilityLabel(Text("Link Annotation: \(annotation.text)"))
-            }
-        }
-    }
-
-    private var options: some View {
-        Menu {
+            .buttonStyle(.borderless)
+            .disabled(item.source == nil)
+            .help("Show this passage")
+            .accessibilityLabel(Text(contextText))
+            .accessibilityValue(Text(item.edge.occurrence.annotation?.text ?? ""))
+            .accessibilityIdentifier("scholium.links.occurrence." + item.id)
             if item.direction == .outgoing, item.edge.occurrence.fragment != nil,
                 let peer = item.peer, let line = item.edge.destination?.span?.start.line
             {
                 Button("Open Linked Passage") { openReference(peer.reference, line) }
+                    .buttonStyle(.borderless)
             }
-            if let source = item.source, item.edge.occurrence.annotation != nil {
-                Button(item.direction == .incoming ? "Edit at Source" : "Edit Link Annotation") {
-                    editSource(source.reference, item.edge.occurrence.linkSpan.start.line)
-                }
-            }
-        } label: {
-            Image(systemName: "ellipsis")
         }
-        .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
-        .accessibilityLabel("Link Options")
     }
 
-    private var contextText: AttributedString {
+    private var contextText: String {
         let occurrence = item.edge.occurrence
-        var text = AttributedString(ResearchExcerptPresentation.readableText(occurrence.localContext.isEmpty ? occurrence.target : occurrence.localContext))
-        if let range = text.range(of: occurrence.alias ?? occurrence.target) {
-            text[range].font = ScholiumTypography.interface(.control, emphasis: .strong)
-        }
-        return text
+        return ResearchExcerptPresentation.readableText(
+            occurrence.localContext.isEmpty ? occurrence.target : occurrence.localContext)
     }
+
 }
 
 #Preview {
@@ -347,8 +406,7 @@ private struct LinkOccurrenceRow: View {
             current: nil,
             freshness: .unavailable("No workspace is open."),
             retryRefresh: {},
-            openReference: { _, _ in },
-            editSource: { _, _ in }
+            openReference: { _, _ in }
         ), session: LinksInspectorSession()
     )
     .frame(width: 320, height: 600)

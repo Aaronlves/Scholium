@@ -10,18 +10,22 @@ enum AgentChatListPresentation {
 
     static func preview(_ conversation: AgentChatConversation, query: String) -> String {
         if !query.isEmpty {
-            guard let passage = conversation.messages.lazy.compactMap({ AgentChatSearch.passage(in: $0, query: query) }).first
-                ?? (AgentChatSearch.matches(conversation.title, query: query) ? conversation.title : nil)
+            guard
+                let passage = conversation.messages.lazy.compactMap({ AgentChatSearch.passage(in: $0, query: query) }).first
+                    ?? (AgentChatSearch.matches(conversation.title, query: query) ? conversation.title : nil)
             else { return "" }
             let readable = plainText(passage)
             // A query for literal syntax or a hidden destination still needs its exact match.
-            return AgentChatSearch.matches(readable, query: query) ? readable
+            return AgentChatSearch.matches(readable, query: query)
+                ? readable
                 : passage.split(whereSeparator: \.isWhitespace).joined(separator: " ")
         }
         let source: String
-        if !conversation.draft.isEmpty { source = conversation.draft }
-        else if let queued = conversation.queuedMessages.first { source = queued.text }
-        else if AgentChatListFilter.hasDraft(conversation) {
+        if !conversation.draft.isEmpty {
+            source = conversation.draft
+        } else if let queued = conversation.queuedMessages.first {
+            source = queued.text
+        } else if AgentChatListFilter.hasDraft(conversation) {
             return String(localized: "Unsent materials or instructions")
         } else {
             source = conversation.messages.last(where: { $0.role != .operation && !$0.text.isEmpty })?.text ?? ""
@@ -35,7 +39,7 @@ enum AgentChatListPresentation {
         if busy { return .running }
         switch conversation.lastRunStatus {
         case .failed, .uncertain, .interrupted, .declined: return conversation.lastRunStatus
-        default: return nil // A completed prior turn is ordinary history, not a current selection or pending task.
+        default: return nil  // A completed prior turn is ordinary history, not a current selection or pending task.
         }
     }
 }
@@ -52,8 +56,11 @@ struct AgentChatConversationRow: View {
         var labels: [String] = []
         if conversation.unreadAt != nil { labels.append(String(localized: "Unread")) }
         if conversation.importantAt != nil { labels.append(String(localized: "Important")) }
-        if !query.isEmpty { labels.append(String(localized: "Search Match")) }
-        else if AgentChatListFilter.hasDraft(conversation) { labels.append(String(localized: "Draft")) }
+        if !query.isEmpty {
+            labels.append(String(localized: "Search Match"))
+        } else if AgentChatListFilter.hasDraft(conversation) {
+            labels.append(String(localized: "Draft"))
+        }
         if let status { labels.append(status.label) }
         return labels.joined(separator: " · ")
     }
@@ -92,7 +99,9 @@ struct AgentChatConversationRow: View {
         .help(title)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(Text(title))
-        .accessibilityValue(Text([context, AgentChatListPresentation.preview(conversation, query: query)]
-            .filter { !$0.isEmpty }.joined(separator: " · ")))
+        .accessibilityValue(
+            Text(
+                [context, AgentChatListPresentation.preview(conversation, query: query)]
+                    .filter { !$0.isEmpty }.joined(separator: " · ")))
     }
 }

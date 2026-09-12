@@ -8,6 +8,13 @@ function apply(source: string, command: Parameters<typeof transformMarkdown>[2],
 }
 
 describe("exact Markdown transformations", () => {
+  it("inserts a document link into the current selection with one undo transaction", () => {
+    const {result, source} = apply("Before selected after", "insertAttachment", 7, 15,
+      JSON.stringify({alt: "Paper [draft].pdf", destination: "../Attachments/id/Paper%20%5Bdraft%5D.pdf"}));
+    expect(source).toBe("Before [selected](../Attachments/id/Paper%20%5Bdraft%5D.pdf) after");
+    expect(result.undoLabel).toBe("Insert Attachment");
+  });
+
   it("inserts a validated relative Markdown image link in one transaction", () => {
     const argument = JSON.stringify({
       alt: "Figure [one]",

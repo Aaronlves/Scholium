@@ -15,9 +15,11 @@ extension ScholiumUITests {
         }
         let noteURL = triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md")
         let roles = ["orient", "cite", "connect", "state", "illustrate", "quote", "flag", "neutral"]
-        let content = "Callout presentation fixture\n\n" + roles.map {
-            "> [!\($0)] \($0) · 语义标题\n> Synthetic passage · 可编辑正文。"
-        }.joined(separator: "\n\n") + "\n\n> [!cite]\n> Untitled source.\n\n> [!flag]- Folded limitation\n> Hidden fixture body.\n"
+        let content =
+            "Callout presentation fixture\n\n"
+            + roles.map {
+                "> [!\($0)] \($0) · 语义标题\n> Synthetic passage · 可编辑正文。"
+            }.joined(separator: "\n\n") + "\n\n> [!cite]\n> Untitled source.\n\n> [!flag]- Folded limitation\n> Hidden fixture body.\n"
         try write(content, to: noteURL)
         let editor = app.descendants(matching: .any)["Markdown editor, Edit mode"].firstMatch
         XCTAssertTrue(waitUntil(timeout: 12) { (editor.value as? String)?.contains("Untitled source.") == true })

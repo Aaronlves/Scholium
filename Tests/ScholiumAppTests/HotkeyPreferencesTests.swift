@@ -126,8 +126,9 @@ struct HotkeyPreferencesTests {
     func fixedMenuBindings() {
         for command in ScholiumHotkeyCommand.allCases where !command.isCustomizable {
             guard let binding = command.defaultBinding else { continue }
-            #expect(ScholiumHotkeyPreferences.validationIssue(
-                for: binding, command: .showAttention, data: Data()) != nil)
+            #expect(
+                ScholiumHotkeyPreferences.validationIssue(
+                    for: binding, command: .showAttention, data: Data()) != nil)
             #expect(ScholiumHotkeyPreferences.data(setting: nil, for: command, in: Data()).isEmpty)
             #expect(ScholiumHotkeyPreferences.binding(for: command, data: Data()) == binding)
         }
@@ -151,15 +152,18 @@ struct HotkeyPreferencesTests {
         let defaults = try #require(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
         func event(_ key: String, _ flags: NSEvent.ModifierFlags) throws -> NSEvent {
-            try #require(NSEvent.keyEvent(with: .keyDown, location: .zero,
-                modifierFlags: flags, timestamp: 0, windowNumber: 0, context: nil,
-                characters: key, charactersIgnoringModifiers: key, isARepeat: false, keyCode: key == "j" ? 38 : 15))
+            try #require(
+                NSEvent.keyEvent(
+                    with: .keyDown, location: .zero,
+                    modifierFlags: flags, timestamp: 0, windowNumber: 0, context: nil,
+                    characters: key, charactersIgnoringModifiers: key, isARepeat: false, keyCode: key == "j" ? 38 : 15))
         }
         #expect(ScholiumHotkeyPreferences.isMenuShortcut(try event("r", .command), defaults: defaults))
         #expect(!ScholiumHotkeyPreferences.isMenuShortcut(try event("r", []), defaults: defaults))
         let custom = ScholiumHotkeyBinding(key: "j", modifiers: [.command, .option])!
-        defaults.set(ScholiumHotkeyPreferences.data(setting: custom, for: .toggleReviewEdit, in: Data()),
-                     forKey: ScholiumHotkeyPreferences.defaultsKey)
+        defaults.set(
+            ScholiumHotkeyPreferences.data(setting: custom, for: .toggleReviewEdit, in: Data()),
+            forKey: ScholiumHotkeyPreferences.defaultsKey)
         #expect(!ScholiumHotkeyPreferences.isMenuShortcut(try event("r", .command), defaults: defaults))
         #expect(ScholiumHotkeyPreferences.isMenuShortcut(try event("j", [.command, .option]), defaults: defaults))
     }
@@ -167,14 +171,17 @@ struct HotkeyPreferencesTests {
     @Test("Restoring a default never steals a reassigned shortcut")
     func restoringDefaultPreservesOtherCommand() {
         var data = ScholiumHotkeyPreferences.data(setting: nil, for: .toggleReviewEdit, in: Data())
-        data = ScholiumHotkeyPreferences.data(setting: ScholiumHotkeyCommand.toggleReviewEdit.defaultBinding,
-                                               for: .showAttention, in: data)
-        let restored = ScholiumHotkeyPreferences.data(setting: ScholiumHotkeyCommand.toggleReviewEdit.defaultBinding,
-                                                       for: .toggleReviewEdit, in: data)
+        data = ScholiumHotkeyPreferences.data(
+            setting: ScholiumHotkeyCommand.toggleReviewEdit.defaultBinding,
+            for: .showAttention, in: data)
+        let restored = ScholiumHotkeyPreferences.data(
+            setting: ScholiumHotkeyCommand.toggleReviewEdit.defaultBinding,
+            for: .toggleReviewEdit, in: data)
         #expect(restored == data)
         #expect(ScholiumHotkeyPreferences.binding(for: .toggleReviewEdit, data: restored) == nil)
-        #expect(ScholiumHotkeyPreferences.binding(for: .showAttention, data: restored)
-            == ScholiumHotkeyCommand.toggleReviewEdit.defaultBinding)
+        #expect(
+            ScholiumHotkeyPreferences.binding(for: .showAttention, data: restored)
+                == ScholiumHotkeyCommand.toggleReviewEdit.defaultBinding)
     }
 
 }

@@ -98,30 +98,20 @@ public struct SearchDocumentProjection: Codable, Hashable, Sendable {
             profile: profile
         )
         let summaryMember =
-            PropertyContractCatalog.contract(
-                for: "summary",
-                profile: profile
-            ) == nil
-            ? nil
-            : propertyProjection.entry(forExactKey: "summary")
-                .flatMap { entry in
-                    entry.valueKind == .string && entry.stringMembers.count == 1
-                        ? entry.stringMembers.first
-                        : nil
-                }
+            propertyProjection.entry(forExactKey: "summary")
+            .flatMap { entry in
+                entry.valueKind == .string && entry.stringMembers.count == 1
+                    ? entry.stringMembers.first
+                    : nil
+            }
         summary = summaryMember?.value
         authors = []
         publicationDate = nil
         let keywordMembers: [SearchPropertyProjection.StringMember] =
-            PropertyContractCatalog.contract(
-                for: "keywords",
-                profile: profile
-            ) == nil
-            ? []
-            : propertyProjection.entry(forExactKey: "keywords")
-                .flatMap { entry in
-                    entry.valueKind == .stringSequence ? entry.stringMembers : nil
-                } ?? []
+            propertyProjection.entry(forExactKey: "keywords")
+            .flatMap { entry in
+                entry.valueKind == .stringSequence ? entry.stringMembers : nil
+            } ?? []
         tags = keywordMembers.map(\.value)
         path = document.relativePath
         self.hasBrokenLink = hasBrokenLink
@@ -294,6 +284,27 @@ public struct SearchDocumentProjection: Codable, Hashable, Sendable {
                 ))
         }
 
+        let fieldKeys: [(SearchMatchedField, [String])] = [
+            (.title, ["title"]), (.alias, ["aliases"]),
+            (.author, ["authors", "author"]), (.publicationDate, ["publication_date"]),
+        ]
+        for (field, keys) in fieldKeys {
+            for key in keys {
+                for member in propertyProjection.entry(forExactKey: key)?.stringMembers ?? [] {
+                    guard let span = member.sourceRange, !member.value.isEmpty else { continue }
+                    let range = span.utf16LowerBound..<span.utf16UpperBound
+                    builtSegments.append(
+                        SearchProjectionBuilder.segment(
+                            field: field, ordinal: builtSegments.count, text: member.value,
+                            sourceRange: range, source: document.rawContent, sourceLocator: sourceLocator,
+                            explicitMap: SearchProjectionBuilder.alignedFragments(
+                                text: member.value, sourceRange: range, source: document.rawContent)))
+                }
+            }
+        }
+        aliases = propertyProjection.textValues(forExactKey: "aliases")
+        authors = propertyProjection.textValues(forExactKey: "authors") + propertyProjection.textValues(forExactKey: "author")
+        publicationDate = propertyProjection.textValues(forExactKey: "publication_date").first
         segments = builtSegments
         body = builtSegments.filter { $0.field == .body }.map(\.text).joined(separator: "\n")
         callouts = builtSegments.filter { $0.field == .callout }.map(\.text).joined(separator: "\n")
@@ -318,91 +329,6 @@ public struct SearchDocumentProjection: Codable, Hashable, Sendable {
         updated.projectionHash = Self.hash(
             segments: updated.segments,
             hasBrokenLink: hasBrokenLink
-        )
-        return updated
-    }
-
-    /// Joins portable managed fields into the disposable Search projection.
-    /// Managed values have no Markdown source range and therefore never claim
-    /// source-located navigation or become writable source reconstruction.
-    public func applyingNoteMetadata(
-        _ metadata: NoteMetadataSnapshot?,
-        profile: SchemaProfileID,
-        source: String
-    ) -> SearchDocumentProjection {
-        guard let metadata else { return self }
-        var updated = self
-        let fields = metadata.record.fields
-        let managedTitle: String? =
-            if profile == .analysis,
-                case .string(let value)? = fields["title"]
-            {
-                value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                    ? nil
-                    : value
-            } else {
-                nil
-            }
-        let aliases =
-            profile == .topicMarkdown
-            ? fields["aliases"]?.canonicalStringList ?? []
-            : []
-        let creators =
-            profile == .analysis
-            ? fields["authors"].flatMap(PropertyContractCatalog.creatorNames(from:)) ?? []
-            : []
-        let publicationDate =
-            profile == .analysis
-            ? fields["publication_date"]?.canonicalSearchText
-            : nil
-
-        updated.aliases = aliases
-        updated.authors = creators.map(\.displayName)
-        updated.publicationDate = publicationDate
-
-        let filenameTitleSegment = updated.segments.first { $0.field == .title }
-        var segments = filenameTitleSegment.map { [$0] } ?? []
-        segments.append(
-            contentsOf: updated.segments.filter { segment in
-                switch segment.field {
-                case .title: false
-                case .alias, .author, .publicationDate: false
-                default: true
-                }
-            })
-        let locator = SearchSourceLocator(source: source)
-        func append(_ values: [String], field: SearchMatchedField) {
-            for value in values where !value.isEmpty {
-                segments.append(
-                    SearchProjectionBuilder.segment(
-                        field: field,
-                        ordinal: segments.count,
-                        text: value,
-                        sourceRange: nil,
-                        source: source,
-                        sourceLocator: locator
-                    ))
-            }
-        }
-        if let managedTitle, managedTitle != updated.title {
-            append([managedTitle], field: .title)
-        }
-        append(aliases, field: .alias)
-        append(updated.authors, field: .author)
-        if let publicationDate { append([publicationDate], field: .publicationDate) }
-        updated.segments = segments.enumerated().map { ordinal, segment in
-            SearchTextSegment(
-                field: segment.field,
-                ordinal: ordinal,
-                text: segment.text,
-                normalizedText: segment.normalizedText,
-                sourceRange: segment.sourceRange,
-                offsetMap: segment.offsetMap
-            )
-        }
-        updated.projectionHash = Self.hash(
-            segments: updated.segments,
-            hasBrokenLink: updated.hasBrokenLink
         )
         return updated
     }

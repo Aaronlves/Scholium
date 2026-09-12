@@ -114,140 +114,52 @@ evidence only.
 independently of research prose. It uses strict schema decoding, coordinated
 writes, and the shared Triptych lock; unsupported directories are not imported.
 
-Settlement, stable identity records, Zotero bindings, and Agent Changes are not
+Settlement, stable identity records, and Agent Changes are not
 portable cleanup targets of source deletion. Watcher reconciliation, Finder
 actions, and sync tools cannot construct or execute the plan; they publish
 ordinary source inventory changes and stable-identity diagnostics only.
-## Shared read models and metadata
+## Shared read models and source properties
 
-`WorkspaceNoteSnapshot` is the shared immutable read model for a workspace
-note. It carries vault-qualified identity, exact `NoteDocument`,
-descriptor-observed file metadata, a fingerprint-bound title projection, and
-graph counts. The app does not maintain a second mutable `Note` or YAML value
-model; the app wrapper carries only the Application-owned workspace snapshot
-without copying its exact source.
+`WorkspaceNoteSnapshot` carries exact `NoteDocument`, stable vault-qualified
+identity, observed file facts and derived graph/search state. Filename owns
+Note title. There is no second mutable property record or catalog.
+`SearchPropertyProjection` reads arbitrary top-level YAML keys using Yams and
+proves source ranges, refusing ambiguous keys or unbounded scalar tokens.
+`SearchDocumentProjection` supplies lexical summary, keywords, authored title,
+aliases, author text and publication date. These are discovery projections,
+not bibliographic validation or writable source.
 
-Contracts split structured values by authority. `PropertyContractCatalog`
-contains only authored YAML `summary` and `keywords` for all three roles.
-`BuiltInNoteMetadataCatalog` owns the product vocabulary and complex shapes;
-portable schema-8 Settings owns stable simple definitions and lifecycle by role.
-Definition key/kind is storage identity; field and controlled-choice order are
-researcher-owned presentation. `NoteMetadataCatalog` resolves both once per
-workspace generation and is the sole catalog consumed by Core record validation,
-Application plans, Search, Library filters, Settings, About, and the Metadata
-editor. It defines
-role-valid fields, value kinds, allowed values, and CreatorList structure
-without owning researcher values.
-`AnalysisSourceTypeProfileCatalog` separately owns Analysis applicability,
-recommendation, and deterministic presentation order.
+Search contract 18 and disposable schema 14 use the existing `property:`
+grammar with quoted literal keys and normalized scalar/direct-list equality.
+All property rows come from source; no source-kind discriminator or managed
+record refresh path remains. Rebuild and incremental publication consume the
+same exact-source manifests. User YAML cannot assign stable identity or Settle.
 
-`TriptychControlStore` owns one portable metadata file per stable Note UUID at
-`.scholium/note-metadata/v1/<uuid>.json`. `NoteMetadataRecord` schema 1 stores
-only that UUID and a field mapping in canonical sorted JSON. Reads validate the
-record schema, UUID/path identity agreement, and role catalog before publishing
-any value; one invalid file fails the complete Metadata projection closed and
-preserves its exact bytes. Preflight reports that direct filename, exact
-fingerprint, optional embedded identity, and failure class. Confirmed recovery
-uses the shared exact-state preserver to archive only that unchanged regular
-file under a non-JSON sibling name; replacement or drift refuses the action,
-and valid neighbor records and the rest of `.scholium` remain untouched.
-Creates and edits use a metadata-revision
-compare-and-swap, atomic replacement, canonical readback, and an explicit
-uncertain-commit outcome. The researcher owns every field value; Scholium owns
-the schema, location, validation, and transaction. No metadata file is a
-writable projection of Markdown or YAML.
+Managed creation takes complete authored Markdown and preserves its bytes.
+GUI creation starts empty. `FrontmatterPatchPlanner` remains the existing
+bounded source-edit utility, not a property store or a catalog validator.
 
-`WorkspaceSnapshot` carries the resolved catalog next to its generation;
-`WorkspaceNoteSnapshot` carries the optional validated metadata snapshot next to exact
-source. `ResearchNoteTitleResolver` uses only the Markdown filename without its
-extension for every Note. Its fingerprint-bound cached projection therefore has no
-Metadata revision dependency. Managed Analysis `title`, YAML `title`, and body headings
-have no Note-identity semantics. The About projection and native field session are owned
-by [Source Layout and Presentation](03-source-layout-and-presentation.md#presentation);
-they consume this catalog and revision-aware Metadata capability. Authored YAML remains
-exact source and is never a managed-field alias.
+`SourceResourceReferences` walks Markdown links/images. Zotero occurrences
+retain exact library-qualified references; Links presents them on its outgoing
+page. No Zotero API call, inferred binding or bibliography write occurs during
+projection. The existing independent Zotero read tools remain unchanged.
 
-`FrontmatterPatchPlanner` remains a source-fidelity utility for bounded typed
-serialization and explicit source operations. It is not a Metadata writer.
-Managed creation leaves source YAML-free unless a typed request supplies
-nonempty authored values; it emits only those supplied keys.
-No runtime path inserts YAML merely because a managed field is added. The body has
-no Scholium schema, required section, or generated research prose.
+Attachments use one file registry at `.scholium/attachments/v2/`: attachment
+UUID, vault UUID and a contained path or neutral external filename descriptor.
+It provides file identity only. There is no Note-to-file catalog. Current
+Markdown alone supplies relationships; unregistered contained file links get
+deterministic projection IDs. Missing external access yields unavailable.
+`IndexedAttachmentAccessStore` owns exact absolute path/bookmark matching in
+machine-local Application Support; filenames never substitute for identity.
 
-Search constructs one read-only structured projection from both authorities.
-For authored `summary` and `keywords`, it proves exact top-level key and
-string/member source ranges and rejects malformed, duplicate, complex, or
-ambiguous source rather than guessing. For managed Metadata, it projects the
-validated record value and revision with no Markdown range. Unknown YAML is
-not indexed. The v12 disposable index stores nullable structured-field ranges;
-incremental publication and clean rebuild consume the same authorized Note and
-Metadata manifest.
+`VaultAttachmentStore` owns no-follow file validation, bounded reads, exclusive
+copies and exact-fingerprint rollback. `PreparedSourceAttachment` joins that
+file preparation to the existing editor insertion transaction. Failed insertion
+rolls back only newly created preparation state; uncertain commits preserve
+files. Native Quick Look holds an explicit preview-lifetime lease. Agent reads
+recheck source/listing fingerprints and containment and never acquire access
+from a caller-supplied arbitrary path. Link deletion never deletes file bytes.
 
-A Metadata-only commit carries its exact single-record delta through the
-existing refresh coordinator. The builder overlays that delta on the last
-complete Metadata map, reprojects Search/Graph/snapshot state, and records zero
-Metadata catalog reads and zero source enumerate/read/parse/project work. Any
-coalesced non-Metadata request drops the optimization and uses the ordinary
-complete authority read; there is no second refresh or index owner.
-
-`SearchDocumentProjection` additionally emits a `.summary` lexical segment
-only from the canonical top-level string and the exact scalar range already
-proved by the source projection. The segment is independently searchable and
-explainable but belongs to the same Note/index generation and cannot write the
-authored field. Quoted source ranges may include their delimiters; a block or
-otherwise unbounded scalar retains canonical field presence but is excluded from
-summary lexical projection until an exact range is provable.
-
-The lexical projection uses managed string `publication_date`; there is no
-numeric `year` field or derived year guess. The FTS schema version changes with
-that column and query grammar, so an old disposable database is rebuilt rather
-than adapted. `property:year` cannot match unknown authored YAML and does not
-restore retired field semantics, filters, ranking, or aliases.
-
-`TriptychControlStore` owns `analysis-zotero-bindings.json`, a strict portable
-envelope of one typed user/group-library + item-key relationship per stable
-Analysis Note UUID. Reads return an exact-byte revision; set and clear require
-that revision, atomically replace, and readback. `WorkspaceSnapshotBuilder`
-joins bindings only through resolved portable identities. The catalog and
-Overview never derive a binding from frontmatter or bibliographic similarity.
-
-`ZoteroMetadataPlanner` is the sole pure mapping from one exact local item
-read into catalogued Analysis Metadata. It selects the effective source-type
-profile, preserves structured creator components, filters inapplicable fields,
-and partitions absent, differing, and conflicting keys according to explicit
-Link-and-Fill or Refresh mode without adding abstract, tags, citation key,
-Collections, `summary`, or `keywords`. Its immutable plan
-binds the exact source, binding, Metadata, server, library, key, and item state;
-`ZoteroBindingOperations` revalidates those inputs and owns the ordered
-binding-then-Metadata commit. Neither the read model nor the UI reconstructs a
-writable source or a second bibliographic snapshot.
-
-`TriptychControlStore` also owns one strict JSON record per attachment under
-`.scholium/attachments/v2/`. Each record contains a stable attachment UUID,
-vault UUID, and typed location: Import uses a vault-relative path; Index uses a
-neutral external filename descriptor. The record contains neither bytes,
-absolute paths, nor access credentials. `VaultAttachmentStore` alone performs
-no-follow image validation, descriptor-relative exact Import creation, and
-fingerprint-bound rollback. `IndexedAttachmentAccessStore` retains the
-read-only security-scoped bookmark and absolute path in Triptych-keyed
-Application Support. It matches the authored Markdown path locally and reports
-unavailable rather than following a moved file or rewriting source.
-
-Note-level document attachments use a distinct portable catalog under
-`.scholium/document-attachments/v2/<attachment-uuid>.json` because their owner
-is a stable Note relationship, not an authored Markdown image occurrence.
-Each strict schema-2 record stores its attachment UUID, Note UUID, vault UUID,
-and either a vault-relative copied location or a neutral external filename;
-it stores no file bytes, absolute path, bookmark, title cache, or writable
-source projection. The machine-local access store binds an external record's
-UUID to its selected Finder path and verifies the filename before availability,
-preview, or Agent reads.
-The same `VaultAttachmentStore` validates regular no-follow document files,
-rejects inline media, performs exact copy and fingerprint-bound rollback, and
-never deletes an original reference. `IndexedAttachmentAccessStore` holds the
-machine-local bookmark and one explicit preview-lifetime access lease. Reads
-join the portable record to current availability without mutating either
-authority. Agent reads use the same catalog/bookmark owners and
-`VaultAttachmentStore.readContent`: bounded descriptor reads with file and parent
-revalidation reject symbolic links, replacement and oversized content. Read
-bytes remain transient; extraction never writes a second attachment authority.
+Retired Metadata, Zotero-binding and Note-attachment control files remain
+untouched and nonauthorizing. There are no readers, writers or migration paths
+for those preproduction records.

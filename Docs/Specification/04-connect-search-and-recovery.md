@@ -73,15 +73,23 @@ grammar supports:
 - lexical fields `title`, `alias`, `heading`, `summary`, `body`, `author`,
   `publication_date`, `keyword`, `footnote`, `link_annotation`, and `path`;
 - `callout` and `has:broken-link`;
-- canonical `property:<key>` presence or exact whole-value equality; and
+- `property:<key>` presence or exact scalar/list-member text equality; and
 - exactly one direct `from-note` or `to-note` anchor.
 
-Structured fields use canonical Metadata or authored `summary`/`keywords` only.
-Authored YAML matches retain source ranges; managed Metadata matches retain
-record revision without claiming a Markdown range. `from-note:A` returns the
-resolved destinations of occurrences authored in A; `to-note:B` returns Notes
-whose authored occurrences resolve to B. These queries preserve occurrence
-direction, remain direct, and require a current complete graph.
+Property Search reads user-authored top-level YAML fields without requiring a
+field catalog, schema profile, or reserved research meaning. It never migrates
+or edits source.
+Keys are case-sensitive after canonical Unicode normalization. Identifier keys
+may be unquoted; other nonempty single-line string keys use double quotes, for
+example `property:"研究 问题"="行动理由"`. A quoted dot is a literal key character,
+not a nested path. Values use the shared text normalization and whole-value
+matching, including direct scalar members of mixed lists. Numeric and Boolean
+scalars match their decoded text spelling, not arithmetic or inferred dates.
+Nulls and containers support presence; mappings, aliases, nested members and
+unbounded scalars do not acquire invented equality values. Repeated decoded
+YAML keys are ambiguous and excluded. Invalid YAML creates no authored-property hits.
+Authored YAML matches retain exact key/value source ranges. Query, indexing,
+completion and source navigation share that read-only projection.
 
 Unknown fields or values, malformed syntax, unsupported
 grouping/OR/regex/fuzzy/range syntax, CJK prefix use, and unsafe structured
@@ -138,9 +146,11 @@ reasons, provenance, availability, and freshness. Presentation may reword but
 never reparse, reorder, broaden, combine rankings, or change link direction.
 
 Authored YAML `summary` participates as an explainable Note field with its exact
-scalar range. A hit opens the complete current Note and is only a discovery
+scalar range, including bounded literal and folded block scalars. `keywords`
+retains its string-list lexical projection. These projections require no profile
+registration; they never rename or interpret other custom keys. A hit opens the complete current Note and is only a discovery
 lead. Missing or unbounded values receive no generated substitute. Search never
-writes or reconstructs YAML or managed Metadata.
+writes or reconstructs YAML.
 
 New providers or fields require a versioned typed clause, discriminated result
 identity, capability entry, source/freshness contract, and App/CLI/MCP parity.
@@ -158,7 +168,7 @@ semantics. Structural Attention may report:
 
 - **Possible Orphan** only when a Note has no resolved incoming or outgoing
   link occurrence;
-- Broken/Ambiguous Connections, malformed Metadata, or unresolved identity;
+- Broken/Ambiguous Connections, malformed YAML, or unresolved identity;
   and
 - source/index drift or failure that has an exact mechanical basis and safe
   repair.
@@ -187,13 +197,8 @@ and replaces canonical source only if the current revision still equals the
 recorded expectation. Changed, missing, unsafe, or unverifiable source is never
 overwritten or recreated.
 
-Invalid portable Metadata recovery archives only the confirmed unchanged
-record to a unique non-record sibling, then retries preflight. It never moves
-source, valid neighbor records, settings, identity state, or the complete
-`.scholium` directory.
-
 System-Trash receipt semantics are owned by §6 and recovery presentation by
-§18.6; neither restore-candidate handling nor Metadata recovery may reuse its
+§18.6; neither restore-candidate handling nor source recovery may reuse its
 forward plan as source-replacement authority.
 
 Watchers and sync observations are refresh evidence only. External absence or

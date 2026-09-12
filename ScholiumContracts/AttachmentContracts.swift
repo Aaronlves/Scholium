@@ -180,6 +180,8 @@ public struct PortableAttachmentRecord: Codable, Hashable, Sendable {
         self.location = location
     }
 
+    public var filename: String { location.filename }
+
     private enum CodingKeys: String, CodingKey {
         case schemaVersion
         case id
@@ -204,7 +206,7 @@ public struct PortableAttachmentRecord: Codable, Hashable, Sendable {
     }
 }
 
-public struct PreparedImageAttachment: Hashable, Sendable {
+public struct PreparedSourceAttachment: Hashable, Sendable {
     public let record: PortableAttachmentRecord
     public let markdownDestination: String
     public let altText: String
@@ -243,10 +245,8 @@ public struct PreparedImageAttachment: Hashable, Sendable {
     }
 }
 
-/// Stable attachment target for one Note. `noteID` owns the durable
-/// relationship while the vault-relative path is used only to verify that the
-/// current source still represents that identity when a file is attached.
-public struct NoteDocumentAttachmentTarget: Hashable, Sendable {
+/// Exact Note identity and location checked before preparing or opening a source attachment.
+public struct SourceAttachmentTarget: Hashable, Sendable {
     public let noteID: UUID
     public let vaultID: UUID
     public let relativePath: String
@@ -263,82 +263,18 @@ public enum DocumentAttachmentManagement: String, Codable, Hashable, Sendable {
     case referenceOriginal
 }
 
-/// One portable Note-to-document relationship. The attached document remains
-/// Finder-authoritative: this record stores stable relationship identity and
-/// either a contained vault path or a neutral external filename descriptor.
-/// It never enters or reconstructs Markdown source.
-public struct DocumentAttachmentRecord: Codable, Hashable, Identifiable, Sendable {
-    public static let currentSchemaVersion = 2
-
-    public let schemaVersion: Int
-    public let id: UUID
-    public let noteID: UUID
-    public let vaultID: UUID
-    public let location: AttachmentLocation
-
-    public init(
-        id: UUID,
-        noteID: UUID,
-        vaultID: UUID,
-        location: AttachmentLocation
-    ) {
-        schemaVersion = Self.currentSchemaVersion
-        self.id = id
-        self.noteID = noteID
-        self.vaultID = vaultID
-        self.location = location
-    }
-
-    public var filename: String {
-        location.filename
-    }
-
-    private enum CodingKeys: String, CodingKey {
-        case schemaVersion
-        case id
-        case noteID
-        case vaultID
-        case location
-    }
-
-    public init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        let schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
-        guard schemaVersion == Self.currentSchemaVersion else {
-            throw DecodingError.dataCorruptedError(
-                forKey: .schemaVersion,
-                in: container,
-                debugDescription: "Unsupported document attachment schema \(schemaVersion)."
-            )
-        }
-        self.schemaVersion = schemaVersion
-        id = try container.decode(UUID.self, forKey: .id)
-        noteID = try container.decode(UUID.self, forKey: .noteID)
-        vaultID = try container.decode(UUID.self, forKey: .vaultID)
-        location = try container.decode(AttachmentLocation.self, forKey: .location)
-        guard !filename.isEmpty, filename != ".", filename != ".." else {
-            throw DecodingError.dataCorruptedError(
-                forKey: .location,
-                in: container,
-                debugDescription: "A document attachment must name one file."
-            )
-        }
-    }
-}
-
 public enum DocumentAttachmentAvailability: String, Codable, Hashable, Sendable {
     case available
     case unavailable
 }
 
-/// Read-only UI projection for a Note attachment. Availability is observed on
-/// this machine and is never written back into the portable relationship.
+/// Read-only source-derived file projection with machine-local availability.
 public struct DocumentAttachmentSnapshot: Codable, Hashable, Sendable {
-    public let record: DocumentAttachmentRecord
+    public let record: PortableAttachmentRecord
     public let availability: DocumentAttachmentAvailability
 
     public init(
-        record: DocumentAttachmentRecord,
+        record: PortableAttachmentRecord,
         availability: DocumentAttachmentAvailability
     ) {
         self.record = record
@@ -369,9 +305,6 @@ public struct DocumentAttachmentPreviewLease: Hashable, Sendable {
 
 public enum DocumentAttachmentError: LocalizedError, Equatable, Sendable {
     case unsupportedDocument(String)
-    case invalidCatalog
-    case catalogConflict
-    case catalogCommitUncertain(String)
     case noteIdentityChanged(String)
     case unavailable(String)
     case cleanupRefused(String)
@@ -381,12 +314,6 @@ public enum DocumentAttachmentError: LocalizedError, Equatable, Sendable {
         switch self {
         case .unsupportedDocument(let path):
             "Choose a regular document file rather than image, audio, or video media: \(path)"
-        case .invalidCatalog:
-            "The portable document-attachment catalog is damaged or uses an unsupported schema. Its exact bytes were preserved."
-        case .catalogConflict:
-            "The portable document-attachment catalog changed while Scholium was updating it. Reload the workspace before trying again."
-        case .catalogCommitUncertain(let reason):
-            "Scholium could not prove the final state of the portable document-attachment catalog. The selected file was preserved for inspection: \(reason)"
         case .noteIdentityChanged(let path):
             "The Note identity at \(path) changed before the document could be attached. Reload the workspace and try again."
         case .unavailable(let filename):

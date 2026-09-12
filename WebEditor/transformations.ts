@@ -181,19 +181,19 @@ function transformOne(
     const insert = "| Column 1 | Column 2 |\n|---|---|\n|  |  |";
     return {change: {...range, insert}, selection: {anchor: range.from + 2, head: range.from + 10}, label: "Insert Table"};
   }
-  if (command === "insertImage") {
+  if (command === "insertImage" || command === "insertAttachment") {
     const image = imageArgument(argument);
     if (!image) return null;
     const selected = source.slice(range.from, range.to);
     const usableSelection = selected.length <= 1_024
       && !/[\u0000-\u001f\u007f]/.test(selected) ? selected : "";
     const alt = escapedImageAlt(usableSelection || image.alt);
-    const insert = `![${alt}](${image.destination})`;
+    const insert = `${command === "insertImage" ? "!" : ""}[${alt}](${image.destination})`;
     const position = range.from + insert.length;
     return {
       change: {...range, insert},
       selection: {anchor: position, head: position},
-      label: "Insert Image",
+      label: command === "insertImage" ? "Insert Image" : "Insert Attachment",
     };
   }
 

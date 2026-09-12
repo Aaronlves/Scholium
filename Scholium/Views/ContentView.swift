@@ -11,9 +11,14 @@ private enum DocumentTitleRenameError: LocalizedError {
         case .invalidName:
             String(localized: "That note name cannot be used.", table: "Localizable", bundle: .module)
         case .noteUnavailable:
-            String(localized: "This note is no longer available to rename.", table: "Localizable", bundle: .module)
+            String(
+                localized: "This note is no longer available to rename.", table: "Localizable",
+                bundle: .module)
         case .titleChangedElsewhere:
-            String(localized: "The note was renamed elsewhere. Review its current title before renaming again.", table: "Localizable", bundle: .module)
+            String(
+                localized:
+                    "The note was renamed elsewhere. Review its current title before renaming again.",
+                table: "Localizable", bundle: .module)
         }
     }
 }
@@ -74,9 +79,12 @@ struct ContentView: View {
                 workspaceShell
             }
         }
-        .environment(\.openChatNoteInSeparateWindow, { url in
-            _ = appState.openChatReference(url, disposition: .separateWindow)
-        })
+        .environment(
+            \.openChatNoteInSeparateWindow,
+            { url in
+                _ = appState.openChatReference(url, disposition: .separateWindow)
+            }
+        )
         .sheet(item: presentedSheet) { route in
             sheetContent(for: route)
                 .buttonStyle(.automatic)
@@ -139,9 +147,12 @@ struct ContentView: View {
                         isVisible: shellState.libraryVisible && shellState.sidebarContent == .chat,
                         addSelection: { Task { await appState.addCurrentSelectionToChat() } },
                         noteChoices: appState.workspaceCatalog?.notes ?? [],
-                        addNote: { note, conversationID in try await appState.addNoteToChat(note, conversationID: conversationID) },
+                        addNote: { note, conversationID in
+                            try await appState.addNoteToChat(note, conversationID: conversationID)
+                        },
                         openReference: { appState.openChatReference($0) },
-                        openAttachment: { attachment in Task { await appState.openChatAttachment(attachment) } },
+                        openAttachment: { attachment in Task { await appState.openChatAttachment(attachment) }
+                        },
                         showInLibrary: { url in
                             if appState.openChatReference(url) {
                                 if !shellState.libraryVisible || shellState.sidebarContent != .triptych {
@@ -263,70 +274,8 @@ struct ContentView: View {
 
     private var researchInspectorContentContext: ResearchInspectorContentContext {
         ResearchInspectorContentContext(
-            presentation: ResearchOverviewPresentation(
-                notificationScope: currentDocumentNotificationScope,
-                freshness: researchProjectionFreshness,
-                aboutConfiguration: appState.currentDocumentAboutConfiguration,
-                metadataCatalog: workspaceProjectionController.metadataCatalog,
-                settlement: currentAboutSettlementPresentation,
-                zoteroBinding: currentAnalysisZoteroBinding,
-                stableNoteID: currentAnalysisStableNoteID
-            ),
-            attentionPopoverSession: appState.attentionPopoverSession,
-            openAttention: {
-                guard let note = appState.currentNote,
-                    let vaultID = appState.currentDocumentVaultID
-                else { return }
-                windowCoordinator.actions.showAttention(
-                    .queue(
-                        anchor: .inspector,
-                        workspaceSlot: nil,
-                        noteScope: VaultQualifiedNoteID(
-                            vaultID: vaultID,
-                            relativePath: note.relativePath
-                        )
-                    )
-                )
-            },
-            retryRefresh: {
-                Task { await appState.retryDerivedRefresh() }
-            },
-            saveMetadata: { note, fields, revision in
-                let saved = try await appState.saveMetadata(for: note, proposedFields: fields, expectedRevision: revision)
-                return saved.workspaceSnapshot?.metadata?.revision
-            },
-            registerMetadataFlush: { token, flush in
-                guard let note = appState.currentNote else { return }
-                appState.registerMetadataEditorFlush(for: note.relativePath, token: token, flush: flush)
-            },
-            unregisterMetadataFlush: { appState.unregisterMetadataEditorFlush(token: $0) },
-            reloadMetadata: { note in
-                let refreshed = try await appState.reloadMetadata(for: note.relativePath)
-                return (refreshed.note.managedMetadataFields, refreshed.revision)
-            },
-            openZoteroItem: { binding in
-                await appState.zoteroCoordinator.bridge.openInZotero(binding: binding)
-            },
-            refreshZoteroMetadata: { noteID, binding in
-                appState.presentationRouter.present(
-                    .zoteroBinding(
-                        ZoteroBindingPanelRoute(
-                            noteID: noteID,
-                            currentBinding: binding,
-                            mode: .refresh
-                        )
-                    ))
-            },
-            manageZoteroBinding: { noteID, binding in
-                appState.presentationRouter.present(
-                    .zoteroBinding(
-                        ZoteroBindingPanelRoute(
-                            noteID: noteID,
-                            currentBinding: binding
-                        )
-                    ))
-            },
-            attachments: currentAttachmentContext
+            freshness: researchProjectionFreshness,
+            retryRefresh: { Task { await appState.retryDerivedRefresh() } }
         )
     }
 
@@ -341,31 +290,6 @@ struct ContentView: View {
         }
     }
 
-    private var currentAttachmentContext: ResearchAttachmentContext? {
-        guard let session = currentNoteDocumentSession,
-            let key = session.key, let note = appState.currentNote
-        else { return nil }
-        let target = NoteDocumentAttachmentTarget(noteID: key.noteID, vaultID: key.vaultID, relativePath: note.relativePath)
-        let controller = documentController
-        return ResearchAttachmentContext(
-            session: session,
-            prepare: { id in try await controller.prepareDocumentAttachmentPreview(attachmentID: id, for: target) },
-            release: { await controller.releaseDocumentAttachmentPreview(accessToken: $0) },
-            refresh: { try await controller.refreshDocumentAttachments(for: target, session: session) },
-            attach: { mode, presenter in
-                try await controller.selectDocumentAttachment(mode, for: target, session: session, presenter: presenter)
-            })
-    }
-
-    private var currentAboutSettlementPresentation: AboutSettlementPresentation {
-        AboutSettlementPresentation.resolve(
-            noteID: currentNoteStableID,
-            currentRevision: appState.currentNote?.document.fingerprint,
-            requirement: currentSettlementRequirement,
-            settlements: researchController.researchSnapshot?.settlements ?? []
-        )
-    }
-
     private var currentNoteDocumentSession: DocumentSessionModel? {
         if let descriptor = appState.currentDocumentDescriptor {
             return appState.documentController.session(for: descriptor.sessionKey)
@@ -376,22 +300,6 @@ struct ContentView: View {
         return appState.documentController.session(
             for: DocumentSessionKey(vaultID: vaultID, noteID: noteID)
         )
-    }
-
-    private var currentAnalysisZoteroBinding: AnalysisZoteroBinding? {
-        guard appState.currentDocumentVaultRole == .sourceCorpus else { return nil }
-        guard let note = appState.currentNote,
-            let vaultID = appState.currentDocumentVaultID
-        else { return nil }
-        return appState.workspaceCatalog?.notes.first {
-            $0.reference.vaultID == vaultID
-                && $0.reference.relativePath == note.relativePath
-        }?.zoteroBinding
-    }
-
-    private var currentAnalysisStableNoteID: UUID? {
-        guard appState.currentDocumentVaultRole == .sourceCorpus else { return nil }
-        return currentNoteStableID
     }
 
     private var currentDocumentNotificationScope: VaultQualifiedNoteID? {
@@ -729,34 +637,7 @@ struct ContentView: View {
             .onDisappear {
                 appState.identityResolutionError = nil
             }
-        case .zoteroBinding(let route):
-            ZoteroBindingPanelView(
-                route: route,
-                search: { query in
-                    try await appState.zoteroCoordinator.searchLibrary(query: query)
-                },
-                prepareFill: { hit in
-                    try await appState.zoteroCoordinator.prepareLinkAndFill(
-                        noteID: route.noteID,
-                        library: hit.library,
-                        itemKey: hit.item.key
-                    )
-                },
-                prepareRefresh: {
-                    try await appState.zoteroCoordinator.prepareMetadataRefresh(
-                        noteID: route.noteID
-                    )
-                },
-                commitPlan: { plan in
-                    try await appState.zoteroCoordinator.commitMetadataPlan(plan)
-                    appState.presentationRouter.dismissSheet()
-                },
-                clearBinding: {
-                    try await appState.zoteroCoordinator.clearBinding(noteID: route.noteID)
-                    appState.presentationRouter.dismissSheet()
-                },
-                dismiss: { appState.presentationRouter.dismissSheet() }
-            )
+
         case .agentChanges(let scope):
             AgentChangesView(
                 scope: scope,
@@ -856,6 +737,11 @@ struct ContentView: View {
         if let note = appState.currentNote {
             ResearchInspectorView(
                 research: researchController,
+                noteURL: appState.workspaceAssignment?.vaults.values.first(where: { $0.id == appState.currentDocumentVaultID }).map {
+                    URL(fileURLWithPath: $0.canonicalPath).appendingPathComponent(note.relativePath)
+                },
+                vaultRoots: appState.workspaceAssignment?.vaults.values.map { URL(fileURLWithPath: $0.canonicalPath) } ?? [],
+                openExternalURL: { appState.openExternalURL($0) },
                 note: note,
                 shellState: appState.shellState,
                 graph: appState.linkGraph,
@@ -868,12 +754,10 @@ struct ContentView: View {
                         sourceLine: sourceLine
                     )
                 },
-                editSource: { reference, line in
-                    appState.researchController.requestEditAtSource(reference, line: line)
-                },
                 findRelated: { appState.findRelatedMaterials() },
                 refreshRelated: { appState.refreshRelatedMaterials() },
-                openRelated: { card in Task { _ = await appState.useRelatedMaterial(card, inChat: false) } },
+                openRelated: { card in Task { _ = await appState.useRelatedMaterial(card, inChat: false) }
+                },
                 discussRelated: { card in
                     Task {
                         if await appState.useRelatedMaterial(card, inChat: true),

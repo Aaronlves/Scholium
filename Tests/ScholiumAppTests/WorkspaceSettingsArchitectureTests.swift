@@ -9,7 +9,7 @@ import Testing
 struct WorkspaceSettingsArchitectureTests {
     @Test("Settings model has no window or document session state")
     func constructionIsWindowIndependent() async {
-        let model = WorkspaceSettingsModel(selectedPane: .metadata)
+        let model = WorkspaceSettingsModel(selectedPane: .workspace)
         let storedTypeNames = Mirror(reflecting: model).children.map {
             String(reflecting: type(of: $0.value))
         }
@@ -17,8 +17,7 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(storedTypeNames.allSatisfy { !$0.contains("WindowModel") })
         #expect(storedTypeNames.allSatisfy { !$0.contains("DocumentController") })
         #expect(storedTypeNames.allSatisfy { !$0.contains("DocumentSession") })
-        #expect(model.selectedPane == .metadata)
-        #expect(model.snapshot.triptychSettings.metadataFields.values.allSatisfy { $0.isEmpty })
+        #expect(model.selectedPane == .workspace)
         #expect(!model.hasWritableTriptychSettings)
 
         model.replaceSnapshot(
@@ -36,7 +35,6 @@ struct WorkspaceSettingsArchitectureTests {
             WorkspaceSettingsPane.allCases.map(\.rawValue) == [
                 "workspace",
                 "document",
-                "metadata",
                 "notifications",
                 "interaction",
                 "integrations",
@@ -71,7 +69,6 @@ struct WorkspaceSettingsArchitectureTests {
         let orderedDestinations = [
             "case workspace",
             "case document",
-            "case metadata",
             "case notifications",
             "case interaction",
             "case integrations",
@@ -139,7 +136,6 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(workspaceSource.contains("scholium.settings.triptychScope"))
         #expect(source.contains("ScholiumL10n.Settings.workspace"))
         #expect(source.contains("ScholiumL10n.Settings.document"))
-        #expect(source.contains("ScholiumL10n.Settings.metadata"))
         #expect(source.contains("ScholiumL10n.Settings.notifications"))
         #expect(source.contains("ScholiumL10n.Settings.interaction"))
         #expect(source.contains("ScholiumL10n.Settings.integrations"))
@@ -475,106 +471,6 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(await model.refresh() == false)
         #expect(model.snapshot == snapshot)
         #expect(model.errorMessage == "fixture refresh failed")
-    }
-
-    @Test("A normalized repair candidate is dirty and directly saveable")
-    func repairableCandidateDiffersFromRawSettings() throws {
-        let raw = Data(#"{"visibleFields":[" authors ","authors"]}"#.utf8)
-        let decoded = try JSONDecoder().decode(
-            VaultAboutConfiguration.self,
-            from: raw
-        )
-        var saved = TriptychSettings()
-        saved.about[.paperAnalysis] = decoded
-        let candidate = MetadataSettingsCandidateBuilder.build(
-            from: saved,
-            metadataFields: saved.metadataFields,
-            aboutConfigurations: saved.about
-        )
-
-        #expect(candidate != saved)
-        #expect(candidate.about[.paperAnalysis]?.visibleFields == ["authors"])
-        try TriptychSettingsValidator.validate(candidate)
-    }
-
-    @Test("Archiving a custom field prunes its About selection")
-    func archivedFieldPrunesDiscoverySelections() throws {
-        var saved = TriptychSettings()
-        saved.metadataFields[.paperAnalysis] = [
-            MetadataFieldDefinition(key: "argument_stage", valueKind: .text)
-        ]
-        saved.about[.paperAnalysis]?.visibleFields.append("argument_stage")
-        var archivedFields = saved.metadataFields
-        archivedFields[.paperAnalysis]?[0].lifecycle = .archived
-
-        let candidate = MetadataSettingsCandidateBuilder.build(
-            from: saved,
-            metadataFields: archivedFields,
-            aboutConfigurations: saved.about
-        )
-
-        #expect(candidate.metadataFields[.paperAnalysis]?[0].lifecycle == .archived)
-        #expect(
-            candidate.about[.paperAnalysis]?.visibleFields.contains(
-                "argument_stage"
-            ) == false)
-        try TriptychSettingsValidator.validate(candidate)
-        try TriptychSettingsValidator.validateTransition(from: saved, to: candidate)
-    }
-
-    @Test("Metadata Settings separates definitions and About always-shown order")
-    func propertiesSettingsSurface() throws {
-        let repositoryRoot = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-        let source = try String(
-            contentsOf: repositoryRoot.appendingPathComponent(
-                "Scholium/Views/WorkspaceSettingsView.swift"
-            ),
-            encoding: .utf8
-        )
-        let start = try #require(source.range(of: "private struct MetadataSettingsView"))
-        let end = try #require(
-            source.range(
-                of: "struct WorkspaceSettingsView: View",
-                range: start.upperBound..<source.endIndex
-            ))
-        let properties = String(source[start.lowerBound..<end.lowerBound])
-
-        for section in [
-            "Managed Fields",
-            "settingsEditorSection(\"Always Shown in About\")",
-        ] {
-            #expect(properties.contains(section))
-        }
-        #expect(properties.contains("Archive Field"))
-        #expect(properties.contains("Restore Field"))
-        #expect(properties.contains("Used in "))
-        #expect(properties.contains("moveField"))
-        #expect(properties.contains("moveChoice"))
-        #expect(properties.contains("Move Up"))
-        #expect(properties.contains("Move Down"))
-        #expect(properties.contains("description: normalizedOptionalText"))
-        #expect(properties.contains("allowedValues:"))
-        #expect(!properties.contains("Agent-Created Analyses"))
-        #expect(properties.contains("Restore Always-Shown Defaults"))
-        #expect(!properties.contains("Structured Editing"))
-        #expect(!properties.contains("editableFields"))
-        #expect(!properties.contains("YAML Added to New Notes"))
-        #expect(!properties.contains("Clear New Note YAML"))
-        #expect(properties.contains("TriptychSettingsValidator.validate(candidateSettings)"))
-        #expect(properties.contains("settingsRevisionConflict"))
-        #expect(properties.contains("hasWritableTriptychSettings"))
-        #expect(properties.contains("Retry Metadata Settings"))
-        #expect(properties.contains("savedSettingsRevision"))
-        #expect(!properties.contains("currentAgentDiagnostic"))
-        #expect(properties.contains("ViewThatFits(in: .horizontal)"))
-        #expect(properties.contains(".disabled(isSaving)"))
-        #expect(properties.contains("candidateSettings != savedTriptychSettings"))
-        #expect(properties.contains("savedTriptychID"))
-        #expect(!properties.contains("TextEditor(text: selectedSeed"))
-        #expect(!properties.contains("reason: error.localizedDescription"))
     }
 
     @Test("Settings root and model cannot construct window-local owners")

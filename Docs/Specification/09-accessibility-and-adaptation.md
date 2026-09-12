@@ -87,7 +87,7 @@ Library/Search/Notifications interaction. Their accessibility obligations are:
 ### Document and input services
 
 §18.4 owns editor modes, title, Find, completion, previews, attachments and
-Metadata interaction; §18.6 owns state/action wording. Verify:
+YAML interaction; §18.6 owns state/action wording. Verify:
 
 - Managed creation announces once and places insertion at the exact body start.
   Durable-source/editor failure exposes Retry Edit and Source rather than
@@ -135,16 +135,11 @@ Metadata interaction; §18.6 owns state/action wording. Verify:
 
 §18.5 owns Inspector composition and passage navigation,
 [Settings §18.2.1](13-settings.md) owns preference-window composition and
-interaction, Appendix A owns field configuration, and §§8 and 15 own
+interaction, Appendix A owns source properties, and §§8 and 15 own
 integrations. Verify:
 
-- About/Links/Related Material is one named single-choice native group with selection,
+- Links/Related Material is one named single-choice native group with selection,
   Help and keyboard traversal. No Document remains a distinct read-only state.
-- About exposes complete labels/values, contributor identity/order and the
-  source-authority distinction. Configured empty fields remain discoverable;
-  enlarged text and narrow width preserve values. Native field traversal,
-  commit, cancellation, validation and revision-conflict repair remain associated
-  with the field. Collection actions remain visible and stay in keyboard order without reflow.
 - Related Material exposes the captured selection, exact source identity, match
   reason, Open Source and Add to Chat as named keyboard-accessible controls.
   Compact Chat materials retain named preview, removal, full excerpt and source
@@ -154,23 +149,22 @@ integrations. Verify:
 - Links direction, query and grouped occurrences are independently named.
   Group headings expose count/disclosure; passage activation is not a checked
   value or persistent selection. Source context and annotation remain available.
-  Incoming **Edit at Source** and destination navigation have distinct names.
+  Source-passage activation and destination navigation have distinct names;
+  Links does not expose annotation editing.
   Arrival does not replace text selection or rely on its highlight. Reduce Motion
   reveals the same target with a static brief marker and no animated scroll/fade.
 - Settlement exposes state and state-valid action through wording, symbol, Help,
   accessible value and its menu route. It remains a milestone, with no inferred
   task-completion state. Inspector visibility changes no research judgment.
 - Settings exposes search, selected category, scope and content in predictable
-  order. Empty search retains the query. Appearance reload and Metadata settings
-  preserve invalid/conflicting drafts and name the exact field and safe repair.
-  Definitions expose immutable key/kind, order, scope, lifecycle and use count;
-  Archive/Restore describes its effect on stored values. Frontmatter's named
-  route and direct source editing retain composition and source authority.
+  order. Empty search retains the query. Appearance reload preserves invalid or
+  conflicting drafts and names safe repair. Frontmatter's named route and direct
+  source editing retain composition and source authority.
 - Keyboard Shortcuts expose command, menu location, binding, recording state, validation,
   Save, Clear and Restore. An invalid draft never alters active commands.
-- Zotero linking/refresh names exact item/library, proposed fills/updates,
-  retained conflicts, progress, partial commit, cancellation and retry. The
-  read-only Zotero and non-YAML/Markdown boundaries are visible before commit.
+- Zotero link labels and exact references remain available at narrow widths;
+  source deletion removes the occurrence, and opening cannot imply source reading.
+
 - Agents & Chat exposes App/bridge/CLI state, distinct setup-copy actions
   and the Finder route. Commands/paths are selectable; copy success does not
   claim host configuration. MCP failures retain distinct unavailable, scope,

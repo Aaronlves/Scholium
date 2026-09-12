@@ -394,7 +394,7 @@ struct TransactionRecoveryActionPresentation: Equatable {
             buttonTitle = String(localized: "Reconcile Created Note")
             message = String(
                 localized:
-                    "Scholium will recheck the exact Markdown source and portable identity. It may add the reserved identity to the exact created source, or remove that same reserved identity when the source is absent. Any other identity at the path, any Zotero binding on an identity that would be removed, or changed or unreadable state stops for separate researcher resolution. Markdown source is never created, replaced, or removed, and no other portable identity is changed."
+                    "Scholium will recheck the exact Markdown source and portable identity. It may add the reserved identity to the exact created source, or remove that same reserved identity when the source is absent. Any other identity at the path, changed or unreadable state stops for separate researcher resolution. Markdown source is never created, replaced, or removed, and no other portable identity is changed."
             )
         case .noteSave, .noteMove, .folderMove, .systemTrashDeletion:
             self = .generic

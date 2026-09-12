@@ -11,8 +11,7 @@ struct AgentChatUpdateComparisonSheet: View {
     var body: some View {
         ExactSourceComparisonSheetLayout(
             title: .init("Review Changes", locale: locale, bundle: .module),
-            detail: preview.operation.isRecordMutation
-                ? AgentChangePresentation.operationTitle(for: preview.operation) : .init("Saved Source → Proposed Source", locale: locale, bundle: .module),
+            detail: .init("Saved Source → Proposed Source", locale: locale, bundle: .module),
             identifier: "scholium.chat.updateComparison"
         ) {
             Button {
@@ -39,8 +38,8 @@ struct AgentChatUpdateComparisonSheet: View {
                     }
                     ExactSourceComparisonView(
                         comparison: preview.comparison,
-                        startingLabel: .init(preview.operation.isRecordMutation ? "Before" : "Saved Source", locale: locale, bundle: .module),
-                        endingLabel: .init(preview.operation.isRecordMutation ? "After" : "Proposed Source", locale: locale, bundle: .module),
+                        startingLabel: .init("Saved Source", locale: locale, bundle: .module),
+                        endingLabel: .init("Proposed Source", locale: locale, bundle: .module),
                         startingOnlyLabel: .init("Removed", locale: locale, bundle: .module),
                         endingOnlyLabel: .init("Proposed insertion", locale: locale, bundle: .module),
                         identifierPrefix: "scholium.chat.updateComparison")

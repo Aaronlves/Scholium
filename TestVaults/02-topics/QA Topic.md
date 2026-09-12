@@ -1,6 +1,9 @@
 ---
 summary: 合成的非私人界面测试数据，不是学术来源。
 keywords: [测试, 晨光样本, aurora-fixture]
+研究问题: 检索与来源
+qa_stage: draft
+year: 2026
 ---
 
 # QA Topic
@@ -22,3 +25,9 @@ keywords: [测试, 晨光样本, aurora-fixture]
 中文检索标记：晨光样本。English marker: aurora-fixture.
 
 组合检索：中文 English café naïve αβγ。
+
+[本地附件](Attachments/说明.txt)
+
+[合成 Zotero 条目](zotero://select/library/items/QAITEM01)
+
+[合成 PDF 定位](zotero://open-pdf/groups/42/items/QAPDF001?page=2&annotation=QAANN001)

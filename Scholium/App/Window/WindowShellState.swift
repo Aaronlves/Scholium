@@ -90,7 +90,7 @@ final class WindowShellState: ObservableObject {
         self.userDefaults = userDefaults
         var initialInspectorModes: [WorkspaceVaultSlot: ResearchInspectorMode] = [:]
         for workspace in WorkspaceVaultSlot.allCases {
-            initialInspectorModes[workspace] = .about
+            initialInspectorModes[workspace] = .links
         }
         inspectorModesByWorkspace = initialInspectorModes
         colorScheme =
@@ -138,7 +138,7 @@ final class WindowShellState: ObservableObject {
     }
 
     func inspectorMode(for workspace: WorkspaceVaultSlot) -> ResearchInspectorMode {
-        inspectorModesByWorkspace[workspace] ?? .about
+        inspectorModesByWorkspace[workspace] ?? .links
     }
 
     func selectWorkspace(_ workspace: WorkspaceVaultSlot) {
@@ -160,10 +160,10 @@ final class WindowShellState: ObservableObject {
         inspectorWorkspace = .paperAnalysis
         var resetInspectorModes: [WorkspaceVaultSlot: ResearchInspectorMode] = [:]
         for workspace in WorkspaceVaultSlot.allCases {
-            resetInspectorModes[workspace] = .about
+            resetInspectorModes[workspace] = .links
         }
         inspectorModesByWorkspace = resetInspectorModes
-        inspector.mode = .about
+        inspector.mode = .links
         operationIssues.removeAll()
     }
 

@@ -224,6 +224,9 @@ struct PerformanceRegressionMicrobenchmarkTests {
     ) -> SearchIndexDocument {
         let content = """
             ---
+            title: Philosophical Note \(number)
+            authors: [Researcher \(number % 17)]
+            publication_date: \(1950 + number % 77)
             summary: Synthetic fixture note \(number)
             keywords: [normativity, cluster-\(number % 9)]
             ---
@@ -232,31 +235,12 @@ struct PerformanceRegressionMicrobenchmarkTests {
             Revision \(revision).
             """
         let noteID = fixtureNoteID(number)
-        let metadata: NoteMetadataSnapshot? =
-            vault.role == .sourceCorpus
-            ? NoteMetadataSnapshot(
-                record: NoteMetadataRecord(
-                    noteID: noteID,
-                    fields: [
-                        "title": .string("Philosophical Note \(number)"),
-                        "authors": .array([
-                            .object([
-                                "family": .string("Researcher \(number % 17)")
-                            ])
-                        ]),
-                        "publication_date": .string("\(1950 + number % 77)"),
-                    ]
-                ),
-                revision: DocumentFingerprint(content: "fixture-metadata-\(number)")
-            )
-            : nil
         return SearchIndexDocument(
             vaultID: vault.id,
             vaultName: vault.name,
             vaultRole: vault.role,
             document: NoteDocument(relativePath: "Papers/Note-\(number).md", rawContent: content),
             stableNoteID: noteID.uuidString.lowercased(),
-            metadata: metadata
         )
     }
 

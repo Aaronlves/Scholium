@@ -91,7 +91,6 @@ struct ContractBoundaryTests {
             committedValue: revision,
             derivedRefreshWarning: "index unavailable",
             identityRecoveryWarning: "identity unavailable",
-            portableMetadataRecoveryWarning: "metadata unavailable"
         )
         let researchError = ScholiumApplicationError.operationCommittedButRefreshFailed(
             operation: "research completion",
@@ -105,7 +104,6 @@ struct ContractBoundaryTests {
         #expect(outcome.committedValue == revision)
         #expect(outcome.derivedRefreshWarning == "index unavailable")
         #expect(outcome.identityRecoveryWarning == "identity unavailable")
-        #expect(outcome.portableMetadataRecoveryWarning == "metadata unavailable")
         #expect(researchError.durableMutationWasCommitted)
         #expect(researchError.mustNotRetryMutation)
         #expect(researchError.mutationRequiresReconciliation)
@@ -122,11 +120,11 @@ struct ContractBoundaryTests {
         let request = try ManagedNoteCreationRequest(
             vaultID: vaultID,
             destination: .exact(relativePath: "New.md"),
-            body: "# New\n"
+            source: "# New\n"
         )
 
         #expect(request.vaultID == vaultID)
-        #expect(request.body == "# New\n")
+        #expect(request.source == "# New\n")
         #expect(WorkspaceRegistryError.incompleteWorkspace.localizedDescription.contains("incomplete"))
     }
 

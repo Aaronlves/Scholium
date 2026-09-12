@@ -12,13 +12,13 @@ Zotero/provider acceptance remain open.
 
 ## Current verification snapshot
 
-**2026-09-10 — Note context and record writes:** 18 MCP tools expose separated
-context, guarded Metadata/attachment edits, comparison and Undo. Integration:
-1,426 tests, one editor highlight-expiry failure; unchanged isolated recheck passes.
-Final owning, symbols, Release/CLI and authority checks pass. QA verifies
-writes, About refresh, source preservation and Undo. Evidence:
-`.build/agent-record-acceptance.md`. Real-provider and full accessibility/adaptation
-acceptance remain open.
+**2026-09-13 — source-authority cutover:** Core, Contracts and Application
+checks pass. App coverage ran; obsolete implementation snapshots were removed
+and affected behavior checks pass. Symbols, Release/CLI, resources,
+formatting, documentation and localization pass. Native QA covers Links navigation,
+YAML Search and source-linked attachments. `.build/source-cutover/verification.md`
+records counts and staged continuation; no final one-shot rerun. Provider and full
+accessibility/adaptation acceptance remain open.
 
 **2026-09-10 — Chat foundation:** 29 checks; Release/CLI pass.
 XCUITest verifies scrolling, extent and thumb dragging; QA verifies quotes,

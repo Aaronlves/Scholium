@@ -59,45 +59,45 @@ public extension LibraryMutationUseCases {
 public protocol DocumentUseCases: LibraryMutationUseCases {
     func snapshot() async throws -> [WorkspaceVaultSnapshot]
     func load(_ id: VaultQualifiedNoteID) async throws -> NoteDocument
-    func metadata(_ id: VaultQualifiedNoteID) async throws -> NoteMetadataSnapshot?
     func importImageAttachment(
         at sourceURL: URL,
         for note: VaultQualifiedNoteID
-    ) async throws -> PreparedImageAttachment
+    ) async throws -> PreparedSourceAttachment
     func indexImageAttachment(
         at sourceURL: URL,
         for note: VaultQualifiedNoteID
-    ) async throws -> PreparedImageAttachment
+    ) async throws -> PreparedSourceAttachment
     func importPastedImageAttachment(
         at sourceURL: URL,
         for note: VaultQualifiedNoteID
-    ) async throws -> PreparedImageAttachment
+    ) async throws -> PreparedSourceAttachment
     func importPastedImageAttachment(
         data: Data,
         preferredFilename: String,
         for note: VaultQualifiedNoteID
-    ) async throws -> PreparedImageAttachment
+    ) async throws -> PreparedSourceAttachment
     func unavailableIndexedImagePaths(in markdownSource: String) async throws -> [String]
+    func sourceAttachment(for destination: String, target: SourceAttachmentTarget) async throws -> DocumentAttachmentSnapshot?
     func documentAttachments(
-        for target: NoteDocumentAttachmentTarget
+        for target: SourceAttachmentTarget
     ) async throws -> [DocumentAttachmentSnapshot]
-    func attachDocument(
+    func prepareDocumentAttachment(
         at sourceURL: URL,
-        to target: NoteDocumentAttachmentTarget,
+        to target: SourceAttachmentTarget,
         management: DocumentAttachmentManagement
-    ) async throws -> DocumentAttachmentSnapshot
+    ) async throws -> PreparedSourceAttachment
     func prepareDocumentAttachmentPreview(
         attachmentID: UUID,
-        for target: NoteDocumentAttachmentTarget
+        for target: SourceAttachmentTarget
     ) async throws -> DocumentAttachmentPreviewLease
     func releaseDocumentAttachmentPreview(
         accessToken: UUID
     ) async
-    func rollbackImageAttachment(
-        _ preparation: PreparedImageAttachment
+    func rollbackSourceAttachment(
+        _ preparation: PreparedSourceAttachment
     ) async throws
     /// Imports complete authored Markdown at one exact Note path without
-    /// applying managed New Note YAML.
+    /// generating or rewriting YAML.
     func importMarkdownSource(
         _ source: String,
         at id: VaultQualifiedNoteID
@@ -118,13 +118,6 @@ public protocol DocumentUseCases: LibraryMutationUseCases {
         changeSet: NoteChangeSet,
         expectedRevision: DocumentFingerprint
     ) async throws -> WorkspaceMutationOutcome<SaveResult>
-    /// Compare-and-swap saves researcher-owned portable Note metadata without
-    /// changing Markdown or YAML source bytes.
-    func saveMetadata(
-        _ id: VaultQualifiedNoteID,
-        fields: [String: YAMLValue],
-        expectedRevision: DocumentFingerprint?
-    ) async throws -> WorkspaceMutationOutcome<NoteMetadataSnapshot>
     func move(
         _ id: VaultQualifiedNoteID,
         to destinationRelativePath: String,
@@ -259,29 +252,6 @@ public protocol ZoteroUseCases: Sendable {
     func refreshLibraryInfo() async throws -> ZoteroLibraryInfo
     func clearConnectionHistory() async throws
     func searchLibrary(query: String, limit: Int) async throws -> [ZoteroSearchHit]
-}
-
-/// Researcher-facing Analysis-to-Zotero binding, guarded empty-field fill, and
-/// clear operations. Application owns the combined transaction; Agent binding
-/// writes use their separately authorized Research path. Neither can write
-/// Markdown or Zotero.
-public protocol ZoteroBindingUseCases: Sendable {
-    func zoteroBindings() async throws -> AnalysisZoteroBindingsSnapshot
-    func prepareZoteroLinkAndFill(
-        noteID: UUID,
-        library: ZoteroLibraryMetadata,
-        itemKey: String
-    ) async throws -> ZoteroMetadataPlan
-    func prepareZoteroMetadataRefresh(
-        noteID: UUID
-    ) async throws -> ZoteroMetadataPlan
-    func commitZoteroMetadataPlan(
-        _ plan: ZoteroMetadataPlan
-    ) async throws -> ZoteroMetadataCommitResult
-    func clearZoteroBinding(
-        noteID: UUID,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> AnalysisZoteroBindingMutationResult
 }
 
 public struct StyleSnapshot: Codable, Hashable, Sendable {

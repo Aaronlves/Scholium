@@ -25,16 +25,12 @@ public struct LinkCatalogNote: Codable, Hashable, Sendable {
         vaultID: UUID,
         document: NoteDocument,
         profile: SchemaProfileID = .genericMarkdown,
-        metadata: NoteMetadataSnapshot? = nil,
         semantic: MarkdownSemanticDocument? = nil
     ) {
         let semantic = semantic ?? MarkdownSemanticDocument(parsing: document)
         id = VaultQualifiedNoteID(vaultID: vaultID, relativePath: document.relativePath)
         title = ResearchNoteTitleResolver.resolve(document: document)
-        aliases =
-            profile == .topicMarkdown
-            ? metadata?.record.fields["aliases"]?.canonicalStringList ?? []
-            : []
+        aliases = SearchPropertyProjection(document: document).textValues(forExactKey: "aliases")
         headings = semantic.headings
         blockAnchors = Self.blockAnchors(in: document, blocks: semantic.blocks)
     }
@@ -126,7 +122,7 @@ public struct LinkGraphDiagnostic: Codable, Hashable, Sendable {
 }
 
 public struct GraphSnapshot: Codable, Sendable {
-    public static let currentContractVersion = 6
+    public static let currentContractVersion = 7
     public let contractVersion: Int
     public let generation: Int
     /// Hash of the complete source manifest from which this graph was built.
@@ -284,6 +280,11 @@ public enum LinkGraphBuilder {
             guard let semantic = documents[source] else { continue }
             var edges: [LinkGraphEdge] = []
             for original in semantic.links where !original.isExternal {
+                if original.syntax != .wikilink,
+                    SourceResourceReferences.file(destination: original.target, noteRelativePath: source.relativePath) != nil
+                {
+                    continue
+                }
                 if processedLinkCount.isMultiple(of: 256) {
                     try cancellationCheck()
                 }

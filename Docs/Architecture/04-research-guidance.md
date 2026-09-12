@@ -28,12 +28,12 @@ registration, parser, store, editor, or recovery state.
 
 Zotero remains an optional integration with one Application-owned capability.
 Its settings, exact library/item identity, attachment containment, and
-revision-checked Metadata plans remain separate from MCP Agent collaboration.
+source-derived reference navigation remain separate from MCP Agent collaboration.
 The optional first-party Zotero MCP transport has its own operator guide and
 does not expand Scholium's knowledge-base MCP surface. `ZoteroMCPAccess` binds
 one CLI session to read-only or guarded-import delivery. Core uses one predicate
 for discovery and dispatch, so hidden import tools cannot execute in read-only
-mode. Application metadata and MCP share Core's bounded URLSession client and
+mode. Application reads and MCP share Core's bounded URLSession client and
 redirect policy. Foundation request injection stays inside Application composition;
 delivery and boundary tests never construct Core services. The client cancels oversized or
 cancelled responses. `ZoteroMCPAnnotations` uses that server's request factory
@@ -51,11 +51,10 @@ external navigation use it; a locator does not create source-read evidence.
 
 ## Settings authority
 
-Workspace, Document, Metadata and Notifications settings retain their existing
+Workspace, Document and Notifications settings retain their existing
 owners; the Integrations and Interaction panes only compose those owners.
 `WorkspaceSettingsModel` presents immutable snapshots and delegates writes to
-Application capabilities. Portable Triptych settings contain Metadata
-definitions, About order, Attention timing, and other declared portable state.
+Application capabilities. Portable Triptych settings contain Attention timing; source properties need no settings catalog.
 Unsupported pre-production state remains subject to the specification's
 non-migration and byte-preservation boundaries; architecture adds no compatibility
 policy.
@@ -89,9 +88,7 @@ Agents & Chat and Zotero in the same way; it does not copy either feature's
 state. Their scope notice is explanatory only and does not grant a broader
 write authority.
 
-The Metadata pane edits field definitions and About visibility/order as separate
-parts of one revision-checked settings draft. It neither writes Note Metadata
-nor source. The selected Triptych's Chat controller supplies connection settings
+The selected Triptych's Chat controller supplies connection settings
 through the [Agent client](02-agent-collaboration.md#native-chat-client), not a
 second runtime owned by the preferences window.
 

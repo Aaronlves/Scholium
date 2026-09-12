@@ -11,6 +11,11 @@ enum ResearchInspectorLayout {
 struct ResearchInspectorView: View {
     @ObservedObject private var shellState: WindowShellState
 
+    @State private var externalProjectionKey: String?
+    @State private var externalLinks: [SourceResourceReferences.ExternalLink] = []
+    let noteURL: URL?
+    let vaultRoots: [URL]
+    let openExternalURL: (URL) -> Void
     @ObservedObject var research: ResearchController
     let note: WindowDocumentLocation
     let graph: GraphSnapshot?
@@ -18,7 +23,6 @@ struct ResearchInspectorView: View {
     let currentVaultID: UUID?
     let researchInspectorContentContext: ResearchInspectorContentContext
     let openReference: (VaultNoteReference, Int?) -> Void
-    let editSource: (VaultNoteReference, Int) -> Void
     let findRelated: () -> Void
     let refreshRelated: () -> Void
     let openRelated: (RelatedMaterialCard) -> Void
@@ -26,6 +30,9 @@ struct ResearchInspectorView: View {
 
     init(
         research: ResearchController,
+        noteURL: URL?,
+        vaultRoots: [URL],
+        openExternalURL: @escaping (URL) -> Void,
         note: WindowDocumentLocation,
         shellState: WindowShellState,
         graph: GraphSnapshot?,
@@ -33,12 +40,14 @@ struct ResearchInspectorView: View {
         currentVaultID: UUID?,
         researchInspectorContentContext: ResearchInspectorContentContext,
         openReference: @escaping (VaultNoteReference, Int?) -> Void,
-        editSource: @escaping (VaultNoteReference, Int) -> Void,
         findRelated: @escaping () -> Void,
         refreshRelated: @escaping () -> Void,
         openRelated: @escaping (RelatedMaterialCard) -> Void,
         discussRelated: @escaping (RelatedMaterialCard) -> Void
     ) {
+        self.noteURL = noteURL
+        self.vaultRoots = vaultRoots
+        self.openExternalURL = openExternalURL
         self.research = research
         self.note = note
         _shellState = ObservedObject(wrappedValue: shellState)
@@ -47,7 +56,6 @@ struct ResearchInspectorView: View {
         self.currentVaultID = currentVaultID
         self.researchInspectorContentContext = researchInspectorContentContext
         self.openReference = openReference
-        self.editSource = editSource
         self.findRelated = findRelated
         self.refreshRelated = refreshRelated
         self.openRelated = openRelated
@@ -56,17 +64,10 @@ struct ResearchInspectorView: View {
 
     var body: some View {
         ZStack(alignment: .topLeading) {
-            // Retain the one field draft across Inspector projections. A
-            // document departure drains it through the window flush owner.
-            ResearchOverviewView(note: note, context: researchInspectorContentContext)
-                .id(note.workspaceSnapshot?.stableIdentity.resolvedID)
-                .opacity(shellState.inspector.mode == .about ? 1 : 0)
-                .allowsHitTesting(shellState.inspector.mode == .about)
-                .disabled(shellState.inspector.mode != .about)
-                .accessibilityHidden(shellState.inspector.mode != .about)
             if shellState.inspector.mode == .related {
                 RelatedMaterialsView(
-                    session: research.relatedMaterials, find: findRelated, refresh: refreshRelated, open: openRelated, addToChat: discussRelated)
+                    session: research.relatedMaterials, find: findRelated, refresh: refreshRelated,
+                    open: openRelated, addToChat: discussRelated)
             }
             if shellState.inspector.mode == .links {
                 ConnectionsInspectorView(
@@ -75,11 +76,20 @@ struct ResearchInspectorView: View {
                 )
             }
         }
+        .task(id: resourceProjectionKey) {
+            let source = note.document
+            externalLinks = SourceResourceReferences.externalLinks(in: source.body, noteURL: noteURL, vaultRoots: vaultRoots)
+            externalProjectionKey = resourceProjectionKey
+        }
         .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .scholiumSurface(.apparatus)
         .tint(nil as Color?)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("scholium.researchInspector")
+    }
+
+    private var resourceProjectionKey: String {
+        note.document.fingerprint.sha256 + ":" + (noteURL?.absoluteString ?? "") + ":" + vaultRoots.map(\.path).sorted().joined(separator: "|")
     }
 
     private var connectionsContext: ConnectionsInspectorContext {
@@ -94,7 +104,8 @@ struct ResearchInspectorView: View {
             openReference: { reference, line in
                 openReference(reference, line)
             },
-            editSource: editSource
+            externalLinks: externalProjectionKey == resourceProjectionKey ? externalLinks : [],
+            openExternalURL: openExternalURL
         )
     }
 }

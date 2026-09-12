@@ -243,8 +243,6 @@ public struct SearchIndexDocument: Sendable {
         vaultRole: VaultRole,
         document: NoteDocument,
         stableNoteID: String? = nil,
-        metadata: NoteMetadataSnapshot? = nil,
-        metadataCatalog: NoteMetadataCatalog = .builtIn,
         semantic: MarkdownSemanticDocument? = nil,
         hasBrokenLink: Bool = false
     ) {
@@ -254,8 +252,6 @@ public struct SearchIndexDocument: Sendable {
             vaultRole: vaultRole,
             document: document,
             stableNoteID: stableNoteID,
-            metadata: metadata,
-            metadataCatalog: metadataCatalog,
             resolvedSemantic: semantic
                 ?? MarkdownSemanticDocument(
                     parsing: document
@@ -271,8 +267,6 @@ public struct SearchIndexDocument: Sendable {
         vaultRole: VaultRole,
         document: NoteDocument,
         stableNoteID: String? = nil,
-        metadata: NoteMetadataSnapshot? = nil,
-        metadataCatalog: NoteMetadataCatalog,
         semantic: MarkdownSemanticDocument,
         cachedSourceProjection: SearchDocumentProjection,
         hasBrokenLink: Bool = false
@@ -283,8 +277,6 @@ public struct SearchIndexDocument: Sendable {
             vaultRole: vaultRole,
             document: document,
             stableNoteID: stableNoteID,
-            metadata: metadata,
-            metadataCatalog: metadataCatalog,
             resolvedSemantic: semantic,
             sourceProjection: cachedSourceProjection,
             hasBrokenLink: hasBrokenLink
@@ -297,8 +289,6 @@ public struct SearchIndexDocument: Sendable {
         vaultRole: VaultRole,
         document: NoteDocument,
         stableNoteID: String?,
-        metadata: NoteMetadataSnapshot?,
-        metadataCatalog: NoteMetadataCatalog,
         resolvedSemantic: MarkdownSemanticDocument,
         sourceProjection cachedSourceProjection: SearchDocumentProjection?,
         hasBrokenLink: Bool
@@ -312,44 +302,25 @@ public struct SearchIndexDocument: Sendable {
         self.stableNoteID = stableNoteID
         let profile = WorkflowProfileResolver.resolve(vaultRole: vaultRole)
         title = ResearchNoteTitleResolver.resolve(document: document)
-        aliases =
-            profile == .topicMarkdown
-            ? metadata?.record.fields["aliases"]?.canonicalStringList ?? []
-            : []
-        authors =
-            profile == .analysis
-            ? metadata?.record.fields["authors"]
-                .flatMap(PropertyContractCatalog.creatorNames(from:))?
-                .map(\.displayName) ?? []
-            : []
-        publicationDate =
-            profile == .analysis
-            ? metadata?.record.fields["publication_date"]?.canonicalSearchText
-            : nil
-        tags =
-            PropertyContractCatalog.contract(for: "keywords", profile: profile) == nil
-            ? []
-            : document.parsedFrontmatter["keywords"]?.canonicalStringList ?? []
+        let yaml = SearchPropertyProjection(document: document)
+        aliases = yaml.textValues(forExactKey: "aliases")
+        authors = yaml.textValues(forExactKey: "authors") + yaml.textValues(forExactKey: "author")
+        publicationDate = yaml.textValues(forExactKey: "publication_date").first
+        tags = yaml.textValues(forExactKey: "keywords")
         self.hasBrokenLink = hasBrokenLink
         let sourceProjection =
             (cachedSourceProjection
-            ?? SearchDocumentProjection(
-                document: document,
-                profile: profile,
-                semantic: self.semantic
-            )).applyingNoteMetadata(
-                metadata,
-                profile: profile,
-                source: document.rawContent
-            )
+                ?? SearchDocumentProjection(
+                    document: document,
+                    profile: profile,
+                    semantic: self.semantic
+                ))
         projection = sourceProjection.applyingDynamicState(
             hasBrokenLink: hasBrokenLink
         )
         propertyProjection = SearchPropertyProjection(
             document: document,
-            profile: profile,
-            metadata: metadata,
-            metadataCatalog: metadataCatalog
+            profile: profile
         )
         evidentialLayer =
             switch vaultRole {

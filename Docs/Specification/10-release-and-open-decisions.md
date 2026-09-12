@@ -27,7 +27,7 @@ state the accepted profile; an unaccepted optional profile is labelled
 
 - Bootstrap, registration/restoration, independent windows, and storage failure;
 - create/open/read/edit/autosave, Review/Edit/Source, Find/Replace, Search,
-  Metadata/About, Settle, Library, tabs, and cross-vault navigation;
+  YAML, Links, inline attachments, Settle, Library, tabs, and cross-vault navigation;
 - formatting, Callouts, Wikilinks, multiline link annotations, Analysis references, image
   Import/Index, statistics, spelling, and exact YAML/source fidelity;
 - native split behavior, focus, keyboard, light/dark, enlarged text, minimum
@@ -44,7 +44,7 @@ incoming/outgoing authored link occurrences and annotations, Attention, Zotero r
 App/CLI/MCP parity. Exact initial frames and coordinates remain implementation
 defaults rather than release thresholds.
 
-Search acceptance covers scope authorization, Note ranking and freshness, Metadata and direct-link provenance,
+Search acceptance covers scope authorization, Note ranking and freshness, source-property and direct-link provenance,
 `link_annotation` matches, Explain/completion, Saved Search
 re-evaluation, App/CLI/MCP parity, stale refusal, index rebuild, and incremental/clean equivalence. Retrieval success never
 establishes philosophical relevance, evidential support, or researcher

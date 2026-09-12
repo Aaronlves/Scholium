@@ -41,16 +41,7 @@ struct DocumentPreviewCatalogTests {
             sourceFingerprint: source.fingerprint,
             graph: graph,
             documents: [sourceID: source, targetID: target],
-            profiles: [targetID: .analysis],
-            metadata: [
-                targetID: NoteMetadataSnapshot(
-                    record: NoteMetadataRecord(
-                        noteID: UUID(),
-                        fields: ["title": .string("Target B")]
-                    ),
-                    revision: DocumentFingerprint(content: "target-metadata")
-                )
-            ]
+            profiles: [targetID: .analysis]
         )
 
         #expect(preview.contractVersion == 3)

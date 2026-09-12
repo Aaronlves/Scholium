@@ -671,10 +671,6 @@ public actor TriptychSearchIndex {
             let projection = SearchDocumentProjection(
                 document: document,
                 profile: profile
-            ).applyingNoteMetadata(
-                request.seed.metadata,
-                profile: profile,
-                source: document.rawContent
             )
             let material = RelatedContentSeedMaterial(
                 projection: projection,
@@ -1037,10 +1033,6 @@ public actor TriptychSearchIndex {
             document: note,
             profile: profile,
             hasBrokenLink: exactIndexedRevision ? (indexed?.hasBrokenLink ?? false) : false
-        ).applyingNoteMetadata(
-            source.metadata,
-            profile: profile,
-            source: note.rawContent
         )
         let document = StoredSearchDocument(
             rowID: indexed?.rowID ?? -1,
@@ -1067,9 +1059,7 @@ public actor TriptychSearchIndex {
             segments: projection.segments,
             properties: SearchPropertyProjection(
                 document: note,
-                profile: profile,
-                metadata: source.metadata,
-                metadataCatalog: source.metadataCatalog
+                profile: profile
             ).entries
         )
         guard
@@ -1516,8 +1506,9 @@ public actor TriptychSearchIndex {
                     endLine: row.int(at: 10),
                     endColumn: row.int(at: 11)
                 )
+            let storageKey = key
             var accumulator =
-                values[key]
+                values[storageKey]
                 ?? Accumulator(
                     key: key,
                     keyRange: keyRange,
@@ -1544,7 +1535,7 @@ public actor TriptychSearchIndex {
                             )
                     ))
             }
-            values[key] = accumulator
+            values[storageKey] = accumulator
         }
         return values.values.map {
             SearchPropertyProjection.Entry(
@@ -1554,7 +1545,10 @@ public actor TriptychSearchIndex {
                 isEmpty: $0.isEmpty,
                 stringMembers: $0.members
             )
-        }.sorted { $0.key < $1.key }
+        }.sorted {
+            if $0.key != $1.key { return $0.key < $1.key }
+            return $0.keySourceRange != nil && $1.keySourceRange == nil
+        }
     }
 
     private struct IndexedMetadata {
@@ -2646,6 +2640,10 @@ private enum SearchMatcher {
         guard
             let entry = document.properties.first(where: {
                 $0.key == clause.key
+                    && (clause.value == nil
+                        || $0.stringMembers.contains {
+                            $0.normalizedValue == clause.value
+                        })
             })
         else { return nil }
         guard let value = clause.value else {
@@ -2864,7 +2862,9 @@ private enum NoteSearchResultBuilder {
                 positiveClauses: ast.positiveLexicalClauses
             )
         } else if let property,
-            let entry = document.properties.first(where: { $0.key == property.key })
+            let entry = document.properties.first(where: {
+                $0.key == property.key && $0.keySourceRange == property.keySourceRange
+            })
         {
             let value = entry.stringMembers.first(where: {
                 $0.normalizedValue == property.normalizedValue

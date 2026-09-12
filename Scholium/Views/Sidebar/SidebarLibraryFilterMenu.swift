@@ -59,7 +59,7 @@ struct SidebarLibraryFilterMenu: View {
                 )
                 .disabled(!options.graphIsAvailable)
             }
-            Section("Metadata") {
+            Section("Properties") {
                 Menu("Keyword") {
                     filterChoice(String(localized: "All Keywords"), selected: filters.tag == nil) { updateFilters { $0.tag = nil } }
                     Divider()
@@ -82,7 +82,7 @@ struct SidebarLibraryFilterMenu: View {
                     }
                 }
                 if !options.propertyKeys.isEmpty || filters.propertyKey != nil {
-                    Menu("Metadata Field") {
+                    Menu("Property Field") {
                         filterChoice(String(localized: "Any Metadata Field"), selected: filters.propertyKey == nil) {
                             updateFilters {
                                 $0.propertyKey = nil

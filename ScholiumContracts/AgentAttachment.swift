@@ -15,13 +15,21 @@ public struct AgentAttachment: Codable, Hashable, Sendable {
     }
 }
 
-public struct AgentAttachmentListing: Sendable {
+public struct AgentAttachmentListing: Codable, Sendable {
     public let noteFingerprint: DocumentFingerprint
     public let attachments: [AgentAttachment]
     public init(noteFingerprint: DocumentFingerprint, attachments: [AgentAttachment]) {
         self.noteFingerprint = noteFingerprint
         self.attachments = attachments
     }
+    public func fingerprint(triptychID: UUID, noteID: UUID) throws -> DocumentFingerprint {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        var data = Data((triptychID.uuidString.lowercased() + ":" + noteID.uuidString.lowercased()).utf8)
+        data.append(try encoder.encode(self))
+        return DocumentFingerprint(data: data)
+    }
+
 }
 
 public struct AgentAttachmentRead: Sendable {

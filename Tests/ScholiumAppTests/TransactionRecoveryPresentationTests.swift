@@ -15,7 +15,8 @@ struct TransactionRecoveryPresentationTests {
                 state: .intendedBytesRemain
             ))
         #expect(present.buttonTitle == "Reconcile Created Note")
-        #expect(present.message.contains("Zotero binding"))
+        #expect(present.message.contains("portable identity"))
+        #expect(!present.message.contains("Zotero binding"))
         #expect(present.message.contains("Markdown source is never created, replaced, or removed"))
 
         let absent = TransactionRecoveryActionPresentation(

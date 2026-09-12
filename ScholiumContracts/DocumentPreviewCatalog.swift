@@ -63,8 +63,7 @@ public enum DocumentPreviewCatalogBuilder {
         sourceFingerprint: DocumentFingerprint,
         graph: GraphSnapshot,
         documents: [VaultQualifiedNoteID: NoteDocument],
-        profiles: [VaultQualifiedNoteID: SchemaProfileID] = [:],
-        metadata: [VaultQualifiedNoteID: NoteMetadataSnapshot] = [:]
+        profiles: [VaultQualifiedNoteID: SchemaProfileID] = [:]
     ) -> DocumentPreviewCatalog {
         guard graph.contractVersion == GraphSnapshot.currentContractVersion else {
             return DocumentPreviewCatalog(

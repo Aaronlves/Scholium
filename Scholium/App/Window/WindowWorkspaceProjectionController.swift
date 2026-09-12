@@ -7,14 +7,16 @@ struct WindowPropertyFilterOptions: Equatable {
     let valuesByKey: [String: [String]]
 
     init(
-        notes: [WindowDocumentLocation],
-        catalog: NoteMetadataCatalog
+        notes: [WindowDocumentLocation]
     ) {
+        self.init(properties: notes.map { $0.filterableProperties() })
+    }
+
+    init(properties: [[String: [String]]]) {
         var accumulated: [String: Set<String>] = [:]
-        for note in notes {
-            for (key, values) in note.filterableProperties(catalog: catalog) {
+        for property in properties {
+            for (key, values) in property {
                 let usableValues = values.filter { !$0.isEmpty && $0.count <= 80 }
-                guard !usableValues.isEmpty else { continue }
                 accumulated[key, default: []].formUnion(usableValues)
             }
         }
@@ -64,7 +66,6 @@ final class WindowWorkspaceProjectionController: ObservableObject {
 
     struct State {
         var catalog: WorkspaceCatalogSnapshot?
-        var metadataCatalog: NoteMetadataCatalog = .builtIn
         var vaultSnapshotsByID: [UUID: WorkspaceVaultSnapshot] = [:]
         var notes: [WindowDocumentLocation] = []
         var tags: [String] = []
@@ -75,8 +76,7 @@ final class WindowWorkspaceProjectionController: ObservableObject {
         var snapshotPhase: WorkspaceSnapshotPhase?
         var derivedRefreshStatus: WorkspaceDerivedRefreshStatus?
         var propertyFilterOptions = WindowPropertyFilterOptions(
-            notes: [],
-            catalog: .builtIn
+            notes: []
         )
         var isRefreshingCatalog = false
         var catalogError: String?
@@ -111,7 +111,6 @@ final class WindowWorkspaceProjectionController: ObservableObject {
     }
 
     var catalog: WorkspaceCatalogSnapshot? { state.catalog }
-    var metadataCatalog: NoteMetadataCatalog { state.metadataCatalog }
     var vaultSnapshotsByID: [UUID: WorkspaceVaultSnapshot] { state.vaultSnapshotsByID }
     var notes: [WindowDocumentLocation] { state.notes }
     var tags: [String] { state.tags }
@@ -124,6 +123,24 @@ final class WindowWorkspaceProjectionController: ObservableObject {
         state.derivedRefreshStatus
     }
     var propertyFilterOptions: WindowPropertyFilterOptions { state.propertyFilterOptions }
+    private var propertyCompletionCache: [VaultQualifiedNoteID: (DocumentFingerprint, [String: [String]])] = [:]
+
+    func propertyCompletionOptions(scope: SearchPresentationScope) -> WindowPropertyFilterOptions {
+        guard scope == .triptych else {
+            return scope == .currentVault ? state.propertyFilterOptions : WindowPropertyFilterOptions(properties: [])
+        }
+        let notes = state.vaultSnapshotsByID.values.flatMap(\.documents)
+        let ids = Set(notes.map(\.id))
+        propertyCompletionCache = propertyCompletionCache.filter { ids.contains($0.key) }
+        let properties = notes.map { note -> [String: [String]] in
+            if let cached = propertyCompletionCache[note.id], cached.0 == note.fingerprint { return cached.1 }
+            let values = WindowDocumentLocation.workspace(note).filterableProperties()
+            propertyCompletionCache[note.id] = (note.fingerprint, values)
+            return values
+        }
+        return WindowPropertyFilterOptions(properties: properties)
+    }
+
     var isRefreshingCatalog: Bool { state.isRefreshingCatalog }
     var catalogError: String? { state.catalogError }
 
@@ -401,7 +418,6 @@ final class WindowWorkspaceProjectionController: ObservableObject {
                     modificationDate: source.fileMetadata.modificationDate
                 ),
                 graphCounts: source.graphCounts,
-                metadata: source.metadata,
                 headings: source.headings,
                 derivedProjectionState: .sourceAhead,
                 cachedSemanticDocument: source.cachedSemanticDocument,
@@ -502,7 +518,6 @@ final class WindowWorkspaceProjectionController: ObservableObject {
             document: relocatedDocument,
             fileMetadata: source.fileMetadata,
             graphCounts: source.graphCounts,
-            metadata: source.metadata,
             headings: source.headings,
             derivedProjectionState: .sourceAhead,
             cachedSemanticDocument: source.cachedSemanticDocument,
@@ -617,7 +632,6 @@ final class WindowWorkspaceProjectionController: ObservableObject {
         invalidateCatalogLoad()
         let previousSearchGeneration = state.searchGeneration
         var next = state
-        next.metadataCatalog = snapshot.metadataCatalog
         next.catalog = snapshot.discovery.catalog
         next.vaultSnapshotsByID = Dictionary(
             uniqueKeysWithValues: snapshot.vaults.map { ($0.vault.id, $0) }
@@ -677,8 +691,7 @@ final class WindowWorkspaceProjectionController: ObservableObject {
                 ($0.relativePath, $0.document.fingerprint)
             })
         state.propertyFilterOptions = WindowPropertyFilterOptions(
-            notes: notes,
-            catalog: state.metadataCatalog
+            notes: notes
         )
     }
 

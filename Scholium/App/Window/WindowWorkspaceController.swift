@@ -412,49 +412,6 @@ final class WindowWorkspaceController: ObservableObject {
     }
 
     @discardableResult
-    func archiveInvalidNoteMetadataRecord() async throws -> URL {
-        try await performRecovery { [self] in
-            guard let recovery = state.accessRecovery,
-                recovery.kind == .invalidNoteMetadataRecord,
-                let issue = recovery.noteMetadataIssue,
-                state.activeServicesID == nil,
-                let assignment = state.assignment,
-                let analyses = assignment.vault(for: .paperAnalysis),
-                let topics = assignment.vault(for: .topicKnowledge),
-                let works = assignment.vault(for: .output),
-                let dependencies
-            else {
-                throw WorkspaceRegistryError.incompleteWorkspace
-            }
-            let analysesURL = URL(fileURLWithPath: analyses.canonicalPath, isDirectory: true)
-            let topicsURL = URL(fileURLWithPath: topics.canonicalPath, isDirectory: true)
-            let worksURL = URL(fileURLWithPath: works.canonicalPath, isDirectory: true)
-            guard let portableURL = await portableContainerURL(for: worksURL) else {
-                throw WorkspaceRegistryError.portableControlAccessUnavailable(
-                    worksURL.deletingLastPathComponent().path
-                )
-            }
-            let preserved = try await workspaceStore.archiveInvalidNoteMetadataRecord(
-                portableContainerURL: portableURL,
-                worksURL: worksURL,
-                issue: issue,
-                triptychID: assignment.id
-            )
-            try await configureTriptych(
-                paperAnalysisURL: analysesURL,
-                topicKnowledgeURL: topicsURL,
-                outputURL: worksURL,
-                portableContainerURL: portableURL,
-                triptychID: assignment.id,
-                triptychName: assignment.triptych.name,
-                openingVault: preferredOpeningVault
-            )
-            dependencies.reportInformation(
-                "Invalid Metadata record preserved at \(preserved.path)."
-            )
-            return preserved
-        }
-    }
 
     func removeUnavailableTriptychRegistration() async throws {
         try await performRecovery { [self] in
@@ -538,16 +495,7 @@ final class WindowWorkspaceController: ObservableObject {
                 reason: reason
             )
         }
-        if let applicationError = error as? ScholiumApplicationError,
-            case .noteMetadataRecoveryRequired(let controlPath, let issue) = applicationError
-        {
-            return WorkspaceAccessRecovery(
-                kind: .invalidNoteMetadataRecord,
-                expectedPath: controlPath,
-                reason: issue.explanation,
-                noteMetadataIssue: issue
-            )
-        }
+
         return nil
     }
 
@@ -559,8 +507,6 @@ final class WindowWorkspaceController: ObservableObject {
             "Scholium needs renewed access to '\(recovery.expectedPath)' so it can use the portable .scholium folder beside Works."
         case .unsupportedPortableControl:
             "Scholium must archive the unsupported portable control folder at '\(recovery.expectedPath)' before rebuilding current control state."
-        case .invalidNoteMetadataRecord:
-            "Scholium must archive the exact invalid Metadata record before reloading this Triptych."
         }
     }
 

@@ -204,7 +204,7 @@ compositing artifacts; inspect the actual native window before judging them.
   IME exact-source journey, and one visual-adaptation set at supported window
   sizes.
 - Include Agents & Chat command copying, Agent Changes comparison/Undo,
-  Library navigation, Inspector About/Links/Related Material navigation and
+  Library navigation, Inspector Links/Related Material navigation and
   Document mode transitions,
   system Trash, conflict, and recovery where they exercise distinct human
   failure modes.

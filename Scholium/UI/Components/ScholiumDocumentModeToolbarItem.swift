@@ -13,9 +13,10 @@ final class ScholiumDocumentModeToolbarItem: NSToolbarItem {
         isBordered = true
         style = .plain
         visibilityPriority = .high
-        possibleLabels = Set(NotePresentationMode.allCases.map {
-            ScholiumDocumentModeToolbarButtonPresentation(mode: $0).accessibilityLabel
-        })
+        possibleLabels = Set(
+            NotePresentationMode.allCases.map {
+                ScholiumDocumentModeToolbarButtonPresentation(mode: $0).accessibilityLabel
+            })
         let overflow = NSMenuItem(title: "", action: #selector(toggleMode), keyEquivalent: "")
         overflow.target = self
         menuFormRepresentation = overflow
@@ -32,7 +33,10 @@ final class ScholiumDocumentModeToolbarItem: NSToolbarItem {
     override func validate() { refreshPresentation() }
 
     func refreshPresentation() {
-        guard let model else { isEnabled = false; return }
+        guard let model else {
+            isEnabled = false
+            return
+        }
         let presentation = ScholiumDocumentModeToolbarButtonPresentation(mode: model.documentController.chromeProjection.mode)
         label = presentation.accessibilityLabel
         paletteLabel = label

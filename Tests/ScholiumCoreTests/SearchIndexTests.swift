@@ -35,12 +35,7 @@ struct SearchIndexTests {
                 metadataFields: [
                     "type": .string("journal_article"),
                     "title": .string("Normative Reasons"),
-                    "authors": .array([
-                        .object([
-                            "family": .string("Scanlon"),
-                            "given": .string("T."),
-                        ])
-                    ]),
+                    "authors": .array([.string("T. Scanlon")]),
                     "publication_date": .string("1998"),
                 ]),
             fixture.item(fixture.analyses, "Papers/Other.md", "---\ntitle: Other Work\n---\nA reason appears without deliberative control."),
@@ -147,25 +142,15 @@ struct SearchIndexTests {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let index = try fixture.index()
-        let source = "A naïve argument."
-        _ = try await index.synchronize([
-            fixture.item(
-                fixture.analyses,
-                "Papers/Café.md",
-                source,
-                metadataFields: [
-                    "type": .string("journal_article"),
-                    "title": .string("Café Ethics"),
-                ]
-            )
-        ])
+        let source = "---\ntitle: Café Ethics\ntype: journal_article\n---\nA naïve argument."
+        _ = try await index.synchronize([fixture.item(fixture.analyses, "Papers/Café.md", source)])
 
         let foldedTitle = try #require(
             await index.testSearch(fixture.request("\"cafe ethics\"")).noteResults.first
         )
         #expect(foldedTitle.rankReason == .lexicalRelevance)
         #expect(foldedTitle.matchedField == .title)
-        #expect(foldedTitle.sourceRange == nil)
+        #expect(foldedTitle.sourceRange != nil)
 
         let exactTitle = try #require(
             await index.testSearch(fixture.request("\"Café Ethics\"")).noteResults.first
@@ -248,12 +233,7 @@ struct SearchIndexTests {
                 metadataFields: [
                     "type": .string("journal_article"),
                     "title": .string("Normative Reasons"),
-                    "authors": .array([
-                        .object([
-                            "family": .string("Scanlon"),
-                            "given": .string("T."),
-                        ])
-                    ]),
+                    "authors": .array([.string("T. Scanlon")]),
                 ]),
             fixture.item(
                 fixture.analyses,
@@ -699,14 +679,8 @@ struct SearchIndexTests {
                 vaultID: vault.id,
                 vaultName: vault.name,
                 vaultRole: vault.role,
-                document: document,
+                document: NoteDocument(relativePath: document.relativePath, rawContent: sourceFixture(document.rawContent, fields: metadataFields)),
                 stableNoteID: noteID.uuidString.lowercased(),
-                metadata: metadataFields.map {
-                    NoteMetadataSnapshot(
-                        record: NoteMetadataRecord(noteID: noteID, fields: $0),
-                        revision: DocumentFingerprint(content: String(describing: $0))
-                    )
-                },
                 hasBrokenLink: hasBrokenLink
             )
         }

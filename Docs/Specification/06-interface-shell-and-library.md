@@ -23,7 +23,7 @@ Each configured window contains one native split view:
    Library contains Search and Analyses–Topics–Works navigation. Chat belongs
    to the Triptych and retains its conversation while the Document changes.
 2. **Document**: the selected Note or the restrained no-document state.
-3. **Apparatus**: the trailing Research Inspector's About and Links pages.
+3. **Apparatus**: the Inspector's Links and Related Material pages.
 
 Native split behavior governs resizing and collapse. Scholium requests the
 initial Inspector reveal but never continuously reasserts divider positions.
@@ -32,7 +32,7 @@ protect content through window zoom and resize. Only the selected Sidebar page
 participates in pointer, tooltip, keyboard and accessibility interaction; retained
 pages cannot intercept another page. A popover remains an auxiliary surface.
 
-New windows show Library, hide Inspector, and begin in Analyses/About. The toolbar's
+New windows show Library, hide Inspector, and begin in Analyses/Links. The toolbar's
 leading native icon selector, labelled Library / Chat in Help and accessibility, shows
 the chosen sidebar presentation. Choosing the other item switches content at the same
 width; choosing the visible item again collapses the sidebar, leaving neither item
@@ -526,7 +526,7 @@ content or move focus.
 Library provides:
 
 - one native Organize menu for global Folder expansion/collapse, content and
-  Integrity filters, Metadata, and a Sort By submenu;
+  Integrity filters, source properties, and a Sort By submenu;
 - one Add menu for immediate New Note and New Folder;
 - a single scrollable hierarchy of real folders and Notes, including root Notes
   and empty folders; and

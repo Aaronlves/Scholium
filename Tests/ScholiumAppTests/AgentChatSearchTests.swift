@@ -53,8 +53,11 @@ struct AgentChatSearchTests {
         conversation.queuedMessages = [.init(role: .user, text: "Queued question")]
         #expect(AgentChatListFilter.hasDraft(conversation))
         conversation.queuedMessages = []
-        conversation.attachments = [.init(noteID: UUID(), vaultID: UUID(), relativePath: "Note.md",
-                                         text: "Material", fingerprint: .init(content: "Material"))]
+        conversation.attachments = [
+            .init(
+                noteID: UUID(), vaultID: UUID(), relativePath: "Note.md",
+                text: "Material", fingerprint: .init(content: "Material"))
+        ]
         #expect(AgentChatListFilter.hasDraft(conversation))
         conversation.attachments = []
         conversation.childDrafts = ["child": "Unsent adjustment"]

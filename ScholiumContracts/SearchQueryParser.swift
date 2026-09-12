@@ -745,6 +745,27 @@ public enum SearchQueryParser {
             ))
     }
 
+    static func propertyEqualityIndex(in rawValue: String) -> String.Index? {
+        var quoted = false
+        var escaped = false
+        return rawValue.indices.first { index in
+            let character = rawValue[index]
+            if escaped {
+                escaped = false
+                return false
+            }
+            if character == "\\", quoted {
+                escaped = true
+                return false
+            }
+            if character == "\"" {
+                quoted.toggle()
+                return false
+            }
+            return character == "=" && !quoted
+        }
+    }
+
     private static func propertyClause(
         rawValue: String,
         excluded: Bool,
@@ -754,21 +775,29 @@ public enum SearchQueryParser {
             return .failure(
                 diagnostic(
                     .unsupportedSyntax,
-                    "Structured Metadata clauses cannot be excluded.",
+                    "Structured Property clauses cannot be excluded.",
                     token
                 ))
         }
-        let equality = rawValue.firstIndex(of: "=")
+        let equality = propertyEqualityIndex(in: rawValue)
         let rawKey = equality.map { String(rawValue[..<$0]) } ?? rawValue
-        guard isUnambiguousPropertyKey(rawKey) else {
+        let decodedKey: DecodedValue
+        switch decodeValue(rawKey, token: token) {
+        case .success(let value): decodedKey = value
+        case .failure(let error): return .failure(error)
+        }
+        guard !decodedKey.text.isEmpty, !decodedKey.hadTrailingAsterisk,
+            !decodedKey.text.contains(where: { $0.isNewline }),
+            decodedKey.quoted || isUnambiguousPropertyKey(decodedKey.text)
+        else {
             return .failure(
                 diagnostic(
                     .unsupportedSyntax,
-                    "Metadata keys use an unquoted identifier containing letters, numbers, _ or -.",
+                    "Property keys use an identifier or a double-quoted top-level key.",
                     token
                 ))
         }
-        let key = rawKey.precomposedStringWithCanonicalMapping
+        let key = decodedKey.text.precomposedStringWithCanonicalMapping
         guard let equality else {
             return .success(
                 SearchPropertyClause(
@@ -783,7 +812,7 @@ public enum SearchQueryParser {
             return .failure(
                 diagnostic(
                     .missingFieldValue,
-                    "Metadata equality requires a string value.",
+                    "Property equality requires a scalar text value.",
                     token
                 ))
         }
@@ -796,13 +825,13 @@ public enum SearchQueryParser {
             return .failure(
                 diagnostic(
                     .unsupportedSyntax,
-                    "Metadata equality is exact and does not support prefixes.",
+                    "Property equality is exact and does not support prefixes.",
                     token
                 ))
         }
         let normalized = SearchTextNormalization.normalize(decoded.text)
         guard !normalized.isEmpty else {
-            return .failure(diagnostic(.emptyClause, "A Metadata value cannot be empty.", token))
+            return .failure(diagnostic(.emptyClause, "A Property value cannot be empty.", token))
         }
         return .success(
             SearchPropertyClause(

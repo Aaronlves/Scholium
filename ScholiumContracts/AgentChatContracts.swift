@@ -291,7 +291,7 @@ extension AgentChatActivity.Kind {
         case .readAttachment: .readAttachment
         case .browse, .search, .listLinks, .listAttachments, .workspaceStatus, .listChanges, .readChange: .search
         case .createNote: .create
-        case .updateNote, .updateMetadata, .updateAttachment, .undoChange: .update
+        case .updateNote, .undoChange: .update
         case .trashNote: .trash
         case .capabilities, .configureSkill, .configureTool, .configureChat: .tool
         }

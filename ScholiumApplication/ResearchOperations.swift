@@ -122,34 +122,6 @@ extension WorkspaceHandle {
             throw TriptychTransactionError.recoveryRequired(record)
         }
 
-        var createdMetadata: NoteMetadataSnapshot?
-        if let fields = reference.metadataFields, source != nil {
-            do {
-                if let current = try await services.controlStore.noteMetadata(
-                    noteID: reference.reservedIdentityID
-                ) {
-                    guard current.record.fields == fields else {
-                        throw NoteMetadataError.revisionConflict(
-                            reference.reservedIdentityID
-                        )
-                    }
-                } else {
-                    createdMetadata = try await services.controlStore.saveNoteMetadata(
-                        noteID: reference.reservedIdentityID,
-                        fields: fields,
-                        expectedRevision: nil
-                    )
-                }
-            } catch {
-                try? await services.controlStore.rollbackManagedCreationIdentity(
-                    identityReconciliation,
-                    vaultID: reference.target.vaultID,
-                    relativePath: reference.target.relativePath
-                )
-                throw TriptychTransactionError.recoveryRequired(record)
-            }
-        }
-
         let finalSource: NoteDocument?
         do {
             finalSource = try await repository.load(
@@ -174,18 +146,12 @@ extension WorkspaceHandle {
             throw TriptychTransactionError.recoveryRequired(record)
         }
         if let finalSource {
-            let finalMetadata = try? await services.controlStore.noteMetadata(
-                noteID: reference.reservedIdentityID
-            )
             guard finalSource.fingerprint == intendedRevision,
                 finalPathIdentity?.id == reference.reservedIdentityID,
                 finalPathIdentity?.fingerprint == intendedRevision,
-                finalReservedIdentity == finalPathIdentity,
-                finalMetadata?.record.fields == reference.metadataFields
+                finalReservedIdentity == finalPathIdentity
             else {
-                if let createdMetadata {
-                    try? await services.controlStore.removeNoteMetadata(createdMetadata)
-                }
+
                 try? await services.controlStore.rollbackManagedCreationIdentity(
                     identityReconciliation,
                     vaultID: reference.target.vaultID,
@@ -202,24 +168,7 @@ extension WorkspaceHandle {
                 )
                 throw TriptychTransactionError.recoveryRequired(record)
             }
-            let currentMetadata: NoteMetadataSnapshot?
-            do {
-                currentMetadata = try await services.controlStore.noteMetadata(
-                    noteID: reference.reservedIdentityID
-                )
-            } catch {
-                throw TriptychTransactionError.recoveryRequired(record)
-            }
-            if let currentMetadata {
-                guard currentMetadata.record.fields == reference.metadataFields else {
-                    throw TriptychTransactionError.recoveryRequired(record)
-                }
-                do {
-                    try await services.controlStore.removeNoteMetadata(currentMetadata)
-                } catch {
-                    throw TriptychTransactionError.recoveryRequired(record)
-                }
-            }
+
         }
         try await services.transactionRecoveryStore.resolve(record)
     }

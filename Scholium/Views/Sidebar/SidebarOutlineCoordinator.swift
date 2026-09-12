@@ -346,7 +346,8 @@ extension SidebarOutlineSourceList {
 
         private func handleSourceListFocus(in outlineView: NSOutlineView) {
             guard !outlineView.isHiddenOrHasHiddenAncestor,
-                configuration.focusRequestGeneration != lastFocusRequestGeneration else {
+                configuration.focusRequestGeneration != lastFocusRequestGeneration
+            else {
                 return
             }
             lastFocusRequestGeneration = configuration.focusRequestGeneration

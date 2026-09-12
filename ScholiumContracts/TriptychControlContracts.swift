@@ -27,190 +27,28 @@ public struct TriptychManifest: Codable, Hashable, Sendable {
     }
 }
 
-public struct VaultAboutConfiguration: Codable, Hashable, Sendable {
-    /// Optional Scholium-managed fields always shown by About, in display
-    /// order. Other stored managed values remain visible automatically.
-    /// Authored `summary` and `keywords` have a fixed presentation contract
-    /// and are deliberately not configurable here.
-    public var visibleFields: [String] {
-        didSet { visibleFields = Self.unique(visibleFields) }
-    }
-
-    public init(visibleFields: [String] = []) {
-        self.visibleFields = Self.unique(visibleFields)
-    }
-
-    private enum CodingKeys: String, CodingKey {
-        case visibleFields
-    }
-
-    /// Decoding deliberately retains current-schema bytes semantically as
-    /// authored. The shared settings validator, rather than synthesized
-    /// Codable or property observers, decides whether they need review.
-    public init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        visibleFields = try container.decode([String].self, forKey: .visibleFields)
-    }
-
-    public func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(visibleFields, forKey: .visibleFields)
-    }
-
-    /// Adds or removes an always-shown field without losing the explicit order
-    /// of the remaining core fields.
-    public mutating func setVisible(_ isVisible: Bool, field: String) {
-        guard let field = Self.normalized(field) else { return }
-        if isVisible {
-            if !visibleFields.contains(field) { visibleFields.append(field) }
-        } else {
-            visibleFields.removeAll { $0 == field }
-        }
-    }
-
-    /// Moves one always-shown field to a bounded destination while preserving
-    /// all other relative ordering.
-    public mutating func moveVisibleField(_ field: String, to destinationIndex: Int) {
-        guard let sourceIndex = visibleFields.firstIndex(of: field) else { return }
-        let value = visibleFields.remove(at: sourceIndex)
-        let boundedIndex = min(max(0, destinationIndex), visibleFields.count)
-        visibleFields.insert(value, at: boundedIndex)
-    }
-
-    private static func unique(_ fields: [String]) -> [String] {
-        var seen: Set<String> = []
-        return fields.compactMap { field in
-            guard let normalized = normalized(field),
-                seen.insert(normalized).inserted
-            else { return nil }
-            return normalized
-        }
-    }
-
-    private static func normalized(_ field: String) -> String? {
-        let normalized = field.trimmingCharacters(in: .whitespacesAndNewlines)
-        return normalized.isEmpty ? nil : normalized
-    }
-
-}
-
 public struct TriptychSettings: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 8
-
+    public static let currentSchemaVersion = 9
     public let schemaVersion: Int
-    /// Stable global managed-field definitions, independently scoped to
-    /// Analysis, Topic, and Work. Adding or archiving a definition changes no
-    /// Note value.
-    public var metadataFields: [WorkspaceVaultSlot: [MetadataFieldDefinition]] {
-        didSet { metadataFields = Self.completeMetadataFields(metadataFields) }
-    }
-    public var about: [WorkspaceVaultSlot: VaultAboutConfiguration] {
-        didSet { about = Self.completeAbout(about) }
-    }
     public var attentionDismissalDays: Int
 
-    public init(
-        metadataFields: [WorkspaceVaultSlot: [MetadataFieldDefinition]] = Self.defaultMetadataFields,
-        about: [WorkspaceVaultSlot: VaultAboutConfiguration] = Self.defaultAbout,
-        attentionDismissalDays: Int = 7
-    ) {
+    public init(attentionDismissalDays: Int = 7) {
         schemaVersion = Self.currentSchemaVersion
-        self.metadataFields = Self.completeMetadataFields(metadataFields)
-        self.about = Self.completeAbout(about)
         self.attentionDismissalDays = max(1, attentionDismissalDays)
     }
 
-    private enum CodingKeys: String, CodingKey {
-        case schemaVersion
-        case metadataFields
-        case about
-        case attentionDismissalDays
-    }
+    private enum CodingKeys: String, CodingKey { case schemaVersion, attentionDismissalDays }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        let schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
+        schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
         guard schemaVersion == Self.currentSchemaVersion else {
             throw DecodingError.dataCorruptedError(
-                forKey: .schemaVersion,
-                in: container,
-                debugDescription: "Unsupported Triptych settings schema \(schemaVersion)."
-            )
+                forKey: .schemaVersion, in: container,
+                debugDescription: "Unsupported Triptych settings schema.")
         }
-        let metadataFields = try container.decode(
-            [WorkspaceVaultSlot: [MetadataFieldDefinition]].self,
-            forKey: .metadataFields
-        )
-        let about = try container.decode(
-            [WorkspaceVaultSlot: VaultAboutConfiguration].self,
-            forKey: .about
-        )
-        guard Set(metadataFields.keys) == Set(WorkspaceVaultSlot.allCases),
-            Set(about.keys) == Set(WorkspaceVaultSlot.allCases)
-        else {
-            throw DecodingError.dataCorruptedError(
-                forKey: .metadataFields,
-                in: container,
-                debugDescription: "Metadata settings must contain exactly all Triptych roles."
-            )
-        }
-        self.schemaVersion = schemaVersion
-        self.metadataFields = metadataFields
-        self.about = about
-        attentionDismissalDays = try container.decode(
-            Int.self,
-            forKey: .attentionDismissalDays
-        )
+        attentionDismissalDays = try container.decode(Int.self, forKey: .attentionDismissalDays)
     }
-
-    public func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(schemaVersion, forKey: .schemaVersion)
-        try container.encode(metadataFields, forKey: .metadataFields)
-        try container.encode(about, forKey: .about)
-        try container.encode(attentionDismissalDays, forKey: .attentionDismissalDays)
-    }
-
-    public static let defaultMetadataFields: [WorkspaceVaultSlot: [MetadataFieldDefinition]] = [
-        .paperAnalysis: [],
-        .topicKnowledge: [],
-        .output: [],
-    ]
-
-    public static let defaultAbout: [WorkspaceVaultSlot: VaultAboutConfiguration] = [
-        .paperAnalysis: VaultAboutConfiguration(
-            visibleFields: [
-                "type", "authors", "publication_date",
-            ]
-        ),
-        .topicKnowledge: VaultAboutConfiguration(
-            visibleFields: ["aliases"]
-        ),
-        .output: VaultAboutConfiguration(
-            visibleFields: ["work_type", "coauthors"]
-        ),
-    ]
-
-    private static func completeMetadataFields(
-        _ fields: [WorkspaceVaultSlot: [MetadataFieldDefinition]]
-    ) -> [WorkspaceVaultSlot: [MetadataFieldDefinition]] {
-        var result = defaultMetadataFields
-        for (slot, definitions) in fields {
-            result[slot] = definitions
-        }
-        return result
-    }
-
-    private static func completeAbout(
-        _ about: [WorkspaceVaultSlot: VaultAboutConfiguration]
-    ) -> [WorkspaceVaultSlot: VaultAboutConfiguration] {
-        var result = defaultAbout
-        for (slot, configuration) in about {
-            result[slot] = configuration
-        }
-        return result
-    }
-
 }
 
 public struct NoteIdentityRecord: Codable, Hashable, Identifiable, Sendable {
@@ -332,9 +170,7 @@ public enum TriptychControlError: LocalizedError, Sendable {
     case settingsNeedsReview(String)
     case settingsRevisionConflict
     case controlFileCommitUncertain(String)
-    case invalidZoteroBindings
     case invalidAttachmentCatalog
-    case zoteroBindingsRevisionConflict
     case invalidIdentities
     case identitiesRevisionConflict
     case invalidIdentityCandidate(UUID)
@@ -355,17 +191,13 @@ public enum TriptychControlError: LocalizedError, Sendable {
         case .settingsCorrupted:
             return "The current-schema portable Triptych settings are damaged. Their exact bytes were preserved for recovery."
         case .settingsNeedsReview(let reason):
-            return "The current-schema portable Triptych settings need review before managed creation can continue: \(reason)"
+            return "The current-schema portable Triptych settings need review before settings can be saved: \(reason)"
         case .settingsRevisionConflict:
             return "The Triptych settings changed after they were loaded. Reload the saved settings before trying again."
         case .controlFileCommitUncertain(let reason):
             return "Scholium could not prove the final state of a portable control-file replacement. Reread the authoritative file before retrying: \(reason)"
-        case .invalidZoteroBindings:
-            return "The portable Zotero bindings are missing, damaged, or use an unsupported schema."
         case .invalidAttachmentCatalog:
             return "The portable attachment catalog is missing, damaged, or uses an unsupported schema. Its exact bytes were preserved for recovery."
-        case .zoteroBindingsRevisionConflict:
-            return "The Zotero bindings changed after they were loaded. Reload them before trying again."
         case .invalidIdentities:
             return "The portable Note identities are missing or damaged. Their exact bytes were preserved for recovery."
         case .identitiesRevisionConflict:

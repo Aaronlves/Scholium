@@ -104,13 +104,8 @@ struct DocumentOperationsTests {
             "---\naliases: [YAML Alias]\n---\n# Alias Target\n",
             at: topicID
         ).committedValue
-        _ = try await handle.documents.saveMetadata(
-            topicID,
-            fields: ["aliases": .array([.string("Managed Alias")])],
-            expectedRevision: nil
-        ).committedValue
         _ = try await handle.documents.importMarkdownSource(
-            "# Reference\n\n[[Managed Alias]] [[YAML Alias]]\n",
+            "# Reference\n\n[[Missing Alias]] [[YAML Alias]]\n",
             at: referenceID
         ).committedValue
         _ = try await handle.refresh()
@@ -124,7 +119,7 @@ struct DocumentOperationsTests {
 
         #expect(commit.rewrites.count == 1)
         #expect(reference.rawContent.contains("[[Moved Alias Target]]"))
-        #expect(reference.rawContent.contains("[[YAML Alias]]"))
+        #expect(reference.rawContent.contains("[[Missing Alias]]"))
         await runtime.shutdown()
     }
 
@@ -209,7 +204,7 @@ struct DocumentOperationsTests {
             try await handle.snapshot().document(id: fixture.targetID)
         )
         let stableID = try #require(projection.stableIdentity.resolvedID)
-        let target = NoteDocumentAttachmentTarget(
+        let target = SourceAttachmentTarget(
             noteID: stableID,
             vaultID: fixture.targetID.vaultID,
             relativePath: fixture.targetID.relativePath
@@ -220,7 +215,7 @@ struct DocumentOperationsTests {
         let attachmentBytes = Data("document attachment bytes".utf8)
         try attachmentBytes.write(to: sourceURL, options: .atomic)
 
-        let attached = try await handle.documents.attachDocument(
+        let attached = try await handle.documents.prepareDocumentAttachment(
             at: sourceURL,
             to: target,
             management: .copyIntoTriptych
@@ -230,8 +225,6 @@ struct DocumentOperationsTests {
             await runtime.shutdown()
             return
         }
-        #expect(attached.record.noteID == stableID)
-        #expect(attached.availability == .available)
         #expect(
             try Data(
                 contentsOf: fixture.analysesURL.appendingPathComponent(
@@ -242,6 +235,9 @@ struct DocumentOperationsTests {
         #expect(afterAttach.rawContent == original.rawContent)
         #expect(afterAttach.fingerprint == original.fingerprint)
 
+        #expect(try await handle.documents.documentAttachments(for: target).isEmpty)
+        let linkedSource = original.rawContent + "\n[Material](" + attached.markdownDestination + ")\n"
+        let linked = try await handle.documents.save(fixture.targetID, changeSet: .source(linkedSource), expectedRevision: original.fingerprint).committedValue
         let lease = try await handle.documents.prepareDocumentAttachmentPreview(
             attachmentID: attached.record.id,
             for: target
@@ -251,13 +247,13 @@ struct DocumentOperationsTests {
             accessToken: lease.accessToken
         )
 
-        let movedPath = "Moved/Attachment Target.md"
+        let movedPath = "Attachment Target.md"
         _ = try await handle.documents.move(
             fixture.targetID,
             to: movedPath,
-            expectedRevision: original.fingerprint
+            expectedRevision: linked.document.fingerprint
         ).committedValue
-        let movedTarget = NoteDocumentAttachmentTarget(
+        let movedTarget = SourceAttachmentTarget(
             noteID: stableID,
             vaultID: fixture.targetID.vaultID,
             relativePath: movedPath
@@ -269,199 +265,6 @@ struct DocumentOperationsTests {
         await #expect(throws: (any Error).self) {
             _ = try await handle.documents.documentAttachments(for: target)
         }
-        await runtime.shutdown()
-    }
-
-    @Test("Metadata save is revision-checked and leaves exact Markdown and YAML bytes unchanged")
-    func metadataSaveDoesNotRewriteSource() async throws {
-        let fixture = try await LifecycleFixture.make()
-        defer { fixture.remove() }
-        let runtime = fixture.runtime()
-        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let id = VaultQualifiedNoteID(
-            vaultID: fixture.targetID.vaultID,
-            relativePath: "Managed Metadata.md"
-        )
-        let exactSource =
-            "\u{FEFF}---\r\ntitle: Retired YAML title\r\nsummary: Exact source summary\r\nkeywords: [one, two]\r\ncustom: 'keep'\r\n---\r\n# Authored heading\r\n"
-        let imported = try await handle.documents.importMarkdownSource(exactSource, at: id)
-            .committedValue
-        let stableID = try #require(
-            try await handle.snapshot().document(id: id)?.stableIdentity.resolvedID
-        )
-
-        let first = try await handle.documents.saveMetadata(
-            id,
-            fields: [
-                "type": .string("journal_article"),
-                "title": .string("Managed title"),
-            ],
-            expectedRevision: nil
-        ).committedValue
-        #expect(try await handle.documents.load(id).rawContent == exactSource)
-        #expect(first.record.fields["title"] == .string("Managed title"))
-
-        await #expect(throws: NoteMetadataError.self) {
-            _ = try await handle.documents.saveMetadata(
-                id,
-                fields: ["type": .string("book")],
-                expectedRevision: nil
-            )
-        }
-        let second = try await handle.documents.saveMetadata(
-            id,
-            fields: [
-                "type": .string("journal_article"),
-                "title": .string("Revised managed title"),
-            ],
-            expectedRevision: first.revision
-        ).committedValue
-        #expect(second.revision != first.revision)
-        #expect(try await handle.documents.load(id).rawContent == exactSource)
-        _ = try await handle.awaitCommittedSourceProjection(
-            id: id,
-            stableIdentity: stableID,
-            fingerprint: imported.fingerprint
-        )
-        let metadataRefresh = await handle.latestRefreshMeasurement
-        #expect(metadataRefresh.enumeratedFiles == 0)
-        #expect(metadataRefresh.readFiles == 0)
-        #expect(metadataRefresh.parsedDocuments == 0)
-        #expect(metadataRefresh.projectedDocuments == 0)
-        #expect(metadataRefresh.metadataRecordsRead == 0)
-
-        let refreshed = try await handle.refresh()
-        let projected = try #require(refreshed.document(id: id))
-        #expect(projected.metadata == second)
-        #expect(
-            ResearchNoteTitleResolver.resolve(document: projected.document)
-                == "Managed Metadata")
-        await runtime.shutdown()
-    }
-
-    @Test("Duplicate preserves exact source while copying portable metadata to a new identity")
-    func duplicateCopiesPortableMetadata() async throws {
-        let fixture = try await LifecycleFixture.make()
-        defer { fixture.remove() }
-        let runtime = fixture.runtime()
-        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let sourceID = VaultQualifiedNoteID(
-            vaultID: fixture.targetID.vaultID,
-            relativePath: "Metadata Original.md"
-        )
-        let exactSource = "---\nsummary: Authored summary\nkeywords: [copy]\nlegacy: keep\n---\n# Exact body\n"
-        let source = try await handle.documents.importMarkdownSource(
-            exactSource,
-            at: sourceID
-        ).committedValue
-        let metadata = try await handle.documents.saveMetadata(
-            sourceID,
-            fields: [
-                "type": .string("book"),
-                "title": .string("Managed title"),
-            ],
-            expectedRevision: nil
-        ).committedValue
-
-        let destinationPath = "Metadata Copy.md"
-        let duplicateOutcome = try await handle.documents.duplicate(
-            sourceID,
-            to: destinationPath,
-            expectedRevision: source.fingerprint
-        )
-        #expect(duplicateOutcome.portableMetadataRecoveryWarning == nil)
-        #expect(duplicateOutcome.committedValue.rawContent == exactSource)
-
-        let refreshed = try await handle.refresh()
-        let sourceProjection = try #require(refreshed.document(id: sourceID))
-        let duplicateID = VaultQualifiedNoteID(
-            vaultID: sourceID.vaultID,
-            relativePath: destinationPath
-        )
-        let duplicateProjection = try #require(refreshed.document(id: duplicateID))
-        #expect(
-            duplicateProjection.stableIdentity.resolvedID
-                != sourceProjection.stableIdentity.resolvedID)
-        #expect(duplicateProjection.metadata?.record.fields == metadata.record.fields)
-        #expect(
-            duplicateProjection.metadata?.record.noteID
-                == duplicateProjection.stableIdentity.resolvedID)
-        await runtime.shutdown()
-    }
-
-    @Test("Typed creation validates Core contracts and preserves canonical source bytes")
-    func typedCreationUsesCorePropertyContract() async throws {
-        let fixture = try await LifecycleFixture.make()
-        defer { fixture.remove() }
-        let runtime = fixture.runtime()
-        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let analysesID = VaultQualifiedNoteID(
-            vaultID: fixture.targetID.vaultID,
-            relativePath: "New/Analysis.md"
-        )
-
-        let optionalID = VaultQualifiedNoteID(
-            vaultID: fixture.targetID.vaultID,
-            relativePath: "New/Optional.md"
-        )
-        let optional = try await handle.documents.createManagedNote(
-            try ManagedNoteCreationRequest(
-                vaultID: optionalID.vaultID,
-                destination: .exact(relativePath: optionalID.relativePath),
-                body: "# Optional\n"
-            )
-        ).committedValue.document
-        #expect(
-            optional.rawContent
-                == "# Optional\n")
-        #expect(!optional.rawContent.contains("research_unit"))
-        _ = try await handle.refresh()
-
-        let settlement = try await handle.research.settle(
-            optionalID,
-            expectedRevision: optional.fingerprint,
-            rationale: "Settlement is bound only to the current revision."
-        )
-        #expect(settlement.fingerprint == optional.fingerprint)
-
-        let declared = try await handle.documents.save(
-            optionalID,
-            changeSet: .exactContent(
-                """
-                    ---
-                    research_unit:
-                      completion: "6/11"
-                      limitations:
-                        - "Only one translation was consulted."
-                    ---
-                    # Optional
-
-                """),
-            expectedRevision: optional.fingerprint
-        ).committedValue
-        #expect(declared.document.fingerprint != settlement.fingerprint)
-
-        let created = try await handle.documents.createManagedNote(
-            try ManagedNoteCreationRequest(
-                vaultID: analysesID.vaultID,
-                destination: .exact(relativePath: analysesID.relativePath),
-                body: "# Analysis\n"
-            )
-        ).committedValue.document
-        #expect(
-            created.rawContent
-                == "# Analysis\n")
-
-        let worksID = try #require(fixture.assignment.vault(for: .output)?.id)
-        let untitledWork = try await handle.documents.createManagedNote(
-            try ManagedNoteCreationRequest(
-                vaultID: worksID,
-                destination: .exact(relativePath: "Untitled.md")
-            )
-        ).committedValue.document
-        #expect(
-            untitledWork.rawContent
-                == "")
         await runtime.shutdown()
     }
 
@@ -532,17 +335,6 @@ struct DocumentOperationsTests {
                 fingerprint: oldRevision
             )
         )
-        let bindings = try await handle.services.controlStore.zoteroBindings()
-        let oldBinding = try AnalysisZoteroBinding(
-            noteID: oldIdentity.id,
-            library: .group(42),
-            itemKey: "ABCD1234"
-        )
-        _ = try await handle.services.controlStore.setZoteroBinding(
-            oldBinding,
-            expectedRevision: bindings.revision
-        )
-
         let created = try await handle.documents.createUntitledNote(
             inVault: vaultID,
             folderRelativePath: "Sources"
@@ -571,9 +363,6 @@ struct DocumentOperationsTests {
                 vaultID: vaultID,
                 relativePath: occupiedPath
             ) == oldIdentity)
-        #expect(
-            try await handle.services.controlStore.zoteroBindings()
-                .binding(for: oldIdentity.id) == oldBinding)
         await runtime.shutdown()
     }
 
@@ -605,101 +394,6 @@ struct DocumentOperationsTests {
                 ) == Data(expectedSource.utf8)
             )
         }
-        await runtime.shutdown()
-    }
-
-    @Test("Typed creation accepts authored YAML and keeps every managed field optional")
-    func typedManagedCreationUsesOneCreator() async throws {
-        let fixture = try await LifecycleFixture.make()
-        defer { fixture.remove() }
-        let runtime = fixture.runtime()
-        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let analyses = try #require(fixture.assignment.vault(for: .paperAnalysis))
-
-        let title = try CanonicalPropertyInput(
-            key: "title",
-            value: .string("Reasons and Persons")
-        )
-        let authors = try CanonicalPropertyInput(
-            key: "authors",
-            value: .array([
-                .object([
-                    "family": .string("Scanlon"),
-                    "given": .string("T. M."),
-                ])
-            ])
-        )
-        let metadata = try AnalysisCreationMetadata(
-            sourceType: .journalArticle,
-            fields: [
-                authors,
-                title,
-            ]
-        )
-        let reservedIdentity = UUID()
-        let created = try await handle.documents.createManagedNote(
-            try ManagedNoteCreationRequest(
-                vaultID: analyses.id,
-                destination: .exact(relativePath: "MCP/Created.md"),
-                body: "# Working body\n",
-                authoredYAML: try AuthoredNoteYAML(
-                    summary: "A focused analysis",
-                    keywords: ["reasons", "persons"]
-                ),
-                analysisMetadata: metadata,
-                authority: .mcp(reservedIdentity: reservedIdentity)
-            )
-        ).committedValue
-
-        #expect(created.stableIdentity.resolvedID == reservedIdentity)
-        #expect(
-            created.document.parsedFrontmatter["summary"]
-                == .string("A focused analysis"))
-        #expect(
-            created.document.parsedFrontmatter["keywords"]
-                == .array([.string("reasons"), .string("persons")]))
-        #expect(created.document.parsedFrontmatter["type"] == nil)
-        #expect(created.document.parsedFrontmatter["title"] == nil)
-        #expect(created.document.parsedFrontmatter["authors"] == nil)
-        #expect(created.metadata?.record.fields["type"] == .string("journal_article"))
-        #expect(created.metadata?.record.fields["title"] == .string("Reasons and Persons"))
-        #expect(created.metadata?.record.fields["authors"] == authors.value)
-        #expect(created.document.body == "# Working body\n")
-        let optional = try await handle.documents.createManagedNote(
-            try ManagedNoteCreationRequest(
-                vaultID: analyses.id,
-                destination: .exact(relativePath: "MCP/Optional.md"),
-                analysisMetadata: try AnalysisCreationMetadata(
-                    sourceType: .journalArticle
-                ),
-                authority: .mcp(reservedIdentity: UUID())
-            )
-        ).committedValue
-        #expect(
-            optional.document.rawContent
-                == "")
-        #expect(
-            optional.metadata?.record.fields == [
-                "type": .string("journal_article")
-            ])
-
-        // Researcher and MCP creation share the same optional managed shape.
-        let researcher = try await handle.documents.createManagedNote(
-            try ManagedNoteCreationRequest(
-                vaultID: analyses.id,
-                destination: .exact(relativePath: "Researcher/Created.md"),
-                analysisMetadata: try AnalysisCreationMetadata(
-                    sourceType: .journalArticle,
-                    fields: [title]
-                )
-            )
-        ).committedValue
-        #expect(researcher.document.parsedFrontmatter["title"] == nil)
-        #expect(
-            researcher.metadata?.record.fields["title"]
-                == .string("Reasons and Persons"))
-        #expect(researcher.metadata?.record.fields["authors"] == nil)
-
         await runtime.shutdown()
     }
 
@@ -843,39 +537,6 @@ struct DocumentOperationsTests {
         await runtime.shutdown()
     }
 
-    @Test("Managed body text cannot introduce a top-level YAML envelope")
-    func managedBodyCannotCarryFrontmatter() throws {
-        let vaultID = UUID()
-        for body in [
-            "---\nsecret: value\n---\n# Body\n",
-            "---\nsecret: value\n",
-        ] {
-            #expect(throws: DocumentCreationError.invalidBody) {
-                _ = try ManagedNoteCreationRequest(
-                    vaultID: vaultID,
-                    destination: .exact(relativePath: "Created.md"),
-                    body: body
-                )
-            }
-            #expect(throws: DocumentCreationError.invalidBody) {
-                _ = try ManagedNoteCreationRequest(
-                    vaultID: vaultID,
-                    destination: .exact(relativePath: "Analysis.md"),
-                    body: body,
-                    analysisMetadata: try AnalysisCreationMetadata(
-                        sourceType: .journalArticle
-                    )
-                )
-            }
-        }
-        #expect(
-            try ManagedNoteCreationRequest(
-                vaultID: vaultID,
-                destination: .exact(relativePath: "Safe.md"),
-                body: "# Body\n\n---\nNested thematic break.\n"
-            ).body.hasPrefix("# Body"))
-    }
-
     @Test("Optional Settings changes cannot invalidate MCP creation")
     func managedCreationSurvivesChangedSettingsBeforeClaim() async throws {
         let fixture = try await LifecycleFixture.make()
@@ -888,7 +549,7 @@ struct DocumentOperationsTests {
         let request = try ManagedNoteCreationRequest(
             vaultID: topic.id,
             destination: .exact(relativePath: "Stale Settings.md"),
-            body: "# Must not commit\n",
+            source: "# Must not commit\n",
             authority: .mcp(reservedIdentity: reservedID)
         )
         let gate = ManagedCreationTestGate()
@@ -901,7 +562,7 @@ struct DocumentOperationsTests {
         #expect(await gate.waitUntilArrived())
 
         var changed = saved.settings
-        changed.about[.topicKnowledge]?.visibleFields = []
+        changed.attentionDismissalDays = 9
         _ = try await handle.research.saveSettings(
             changed,
             expectedRevision: saved.revision
@@ -936,7 +597,7 @@ struct DocumentOperationsTests {
                 ManagedNoteCreationRequest(
                     vaultID: topic.id,
                     destination: .exact(relativePath: path),
-                    body: "# Intended\n"
+                    source: "# Intended\n"
                 )
             )
         }
@@ -1005,7 +666,7 @@ struct DocumentOperationsTests {
                     ManagedNoteCreationRequest(
                         vaultID: topic.id,
                         destination: .exact(relativePath: item.path),
-                        body: "# Intended\n"
+                        source: "# Intended\n"
                     )
                 )
             }
@@ -1074,79 +735,6 @@ struct DocumentOperationsTests {
                 )?.id == foreignIdentities[item.path]?.id)
         }
         await reopenedRuntime.shutdown()
-    }
-
-    @Test("Managed creation recovery cannot remove a Zotero-bound reserved identity")
-    func researcherCreationRecoveryPreservesBinding() async throws {
-        let fixture = try await LifecycleFixture.make()
-        defer { fixture.remove() }
-        let runtime = fixture.runtime()
-        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let topic = try #require(fixture.assignment.vault(for: .topicKnowledge))
-        let path = "Bound Final Recovery.md"
-        let gate = ManagedCreationTestGate()
-        await handle.setManagedCreationPostSourceBarrierForTesting {
-            await gate.wait()
-        }
-        let creation = Task {
-            try await handle.documents.createManagedNote(
-                ManagedNoteCreationRequest(
-                    vaultID: topic.id,
-                    destination: .exact(relativePath: path),
-                    body: "# Intended\n"
-                )
-            )
-        }
-        #expect(await gate.waitUntilArrived())
-        let repositories = await handle.services.repositories
-        let repository = try #require(repositories[topic.id])
-        let current = try await repository.load(relativePath: path)
-        try await repository.removeCreatedFileForRollback(
-            relativePath: path,
-            createdRevision: current.fingerprint
-        )
-        await gate.release()
-        let recovery: TriptychMutationRecoveryRecord
-        do {
-            _ = try await creation.value
-            Issue.record("Expected final managed-creation recovery.")
-            await runtime.shutdown()
-            return
-        } catch let error as TriptychTransactionError {
-            guard case .recoveryRequired(let record) = error else {
-                Issue.record("Unexpected managed-creation error: \(error)")
-                await runtime.shutdown()
-                return
-            }
-            recovery = record
-        }
-        await handle.setManagedCreationPostSourceBarrierForTesting(nil)
-        let reservedID = try #require(
-            recovery.managedCreation?.reservedIdentityID
-        )
-        let binding = try AnalysisZoteroBinding(
-            noteID: reservedID,
-            library: .group(42),
-            itemKey: "ABCD"
-        )
-        _ = try await handle.services.controlStore.setZoteroBinding(
-            binding,
-            expectedRevision: try await handle.services.controlStore
-                .zoteroBindings().revision
-        )
-
-        await #expect(throws: (any Error).self) {
-            try await handle.research.resolveRecoveryRecord(recovery.id)
-        }
-        #expect(try await handle.research.recoveryRecords().map(\.id) == [recovery.id])
-        #expect(
-            try await handle.services.controlStore.identityRecord(
-                id: reservedID
-            ) != nil)
-        #expect(
-            try await handle.services.controlStore.zoteroBindings()
-                .binding(for: reservedID) == binding)
-        await runtime.shutdown()
     }
 
     @Test("A source-ahead Note follows two immediate Folder classifications")

@@ -11,31 +11,29 @@
 - Repository reads and mutations enforce vault containment, regular-file
   identity, expected fingerprints, coordinated replacement, canonical readback,
   native system Trash, and recoverable uncertainty.
-- Managed Note creation uses the common source scaffold and stable-identity
-  transaction for App, researcher CLI, and MCP callers. Metadata settings,
-  About editing, Settlement, Zotero bindings, transaction recovery,
-  and source conflict handling remain reachable through their existing owners.
-- Search contract 16 searches Notes through one source-authoritative path.
-  Note title identity uses its filename; Analysis academic title Metadata and
-  body headings remain independently searchable. Question-centered Works Notes
-  use ordinary editing, Search, links and file operations.
+- Note creation accepts exact complete Markdown; GUI New Note starts empty.
+  Source, stable identity, Settlement and recovery retain their existing owners.
+- Search contract 18/schema 14 indexes user-authored YAML through `property:`
+  without a managed catalog. Quoted keys, scalar/direct-list values and block
+  summaries retain source locations. Filename owns Note display identity.
+- The source-authority cutover removes managed Metadata and Zotero Note binding
+  APIs. Integration checks completed through the full run and targeted rechecks;
+  the Verification chapter records the remaining native acceptance boundary.
 - Review, Edit and Source retain one document session and exact-source authority.
   [Reachable Interface](02-interface.md) owns title, syntax, geometry and input
   presentation evidence; these are not separate product capabilities.
-- Notes can bind regular document files independently of Markdown: copy stores
-  exact bytes under `Attachments`, reference retains the Finder-owned file, and
-  both persist a stable-Note relationship in portable control state with only
-  machine-local access credentials. Quick Look resolves current availability;
-  media files remain on the inline image/audio path. Attachment projection does
-  not change source, editor generation, selection, Undo, or scroll.
+- File-menu copy/reference prepares files and inserts ordinary Markdown links.
+  Relationships are derived from source, including manually authored contained
+  file links. Quick Look and Agent reads retain exact containment/bookmark checks;
+  removing a link never deletes the file.
 
 ## External Agent collaboration
 
-- `scholium mcp serve` exposes eighteen MCP tools:
+- `scholium mcp serve` exposes sixteen MCP tools:
   `scholium_workspace_status`, `scholium_browse`, `scholium_search`, `scholium_read_note`,
   `scholium_list_links`, `scholium_show_note`, `scholium_list_attachments`, `scholium_read_attachment`, `scholium_create_note`, `scholium_update_note`,
   `scholium_preview_move`, `scholium_move_note`, `scholium_list_changes`, `scholium_read_change`, `scholium_undo_change`,
-  `scholium_update_metadata`, `scholium_update_attachment`, and `scholium_trash_note`.
+  and `scholium_trash_note`.
 - The stdio server connects only to a running Scholium App for the current
   user. It does not launch the App, construct a headless workspace runtime, or
   read and write Triptych files itself.
@@ -46,14 +44,9 @@
 - Browse lists role roots or immediate directory/Note children, including empty
   directories, with bounded pagination and listing-revision checks. It reuses the
   current Library inventory and visibility rule; stable identities survive rename.
-- Agent Metadata patches and document-attachment add/replace/remove use current
-  Note/record versions, scoped Ask previews, Agent Changes and guarded Undo.
-  Attachment sources are existing registered documents; files survive unlink/Undo.
-- Note reads can explicitly include local managed Metadata and its revision,
-  the exact saved Analysis Zotero binding and a first attachment-list page.
-  This reuses current record owners and does not retrieve Zotero or file contents.
-- Attachment listing proves current document relationships or registered authored
-  images. Reads preserve file fingerprints, UTF-8 slice offsets and explicit PDF
+- Note reads optionally include a source-derived attachment page. Properties
+  remain in exact source; no saved bibliography or Zotero binding is joined.
+- Attachment listing proves current authored file links and images. Reads preserve file fingerprints, UTF-8 slice offsets and explicit PDF
   page coverage. Existing bookmark/containment owners govern originals and copies;
   PNG derivatives remain bounded, and empty extraction never implies a blank page.
   Chat distinguishes these observations from Note reading and mutation evidence.
@@ -80,7 +73,7 @@
 - Move impact can be previewed through MCP: paged path/link effects and blockers
   carry exact identities and revisions. Chat identifies this as a preview of the
   current Note, with no write or Agent Change. Execution requires that exact
-  plan, preserves stable identity/Metadata, and records every linked-source rewrite
+  plan, preserves stable identity/source, and records every linked-source rewrite
   in one bounded Agent Change. Controlled inverse restores exact original bytes
   only if all identities/revisions and restored link resolution remain safe;
   partial failures retain existing per-file Recovery evidence.

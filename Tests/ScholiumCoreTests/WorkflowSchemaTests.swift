@@ -26,24 +26,6 @@ struct WorkflowSchemaTests {
             ) == .genericMarkdown)
     }
 
-    @Test("Default optional machine fields exclude authored YAML and machine state")
-    func defaultPropertyVocabulary() throws {
-        let analyses = try #require(TriptychSettings.defaultAbout[.paperAnalysis])
-        let topics = try #require(TriptychSettings.defaultAbout[.topicKnowledge])
-        let works = try #require(TriptychSettings.defaultAbout[.output])
-
-        for configuration in [analyses, topics, works] {
-            #expect(!configuration.visibleFields.contains("summary"))
-            #expect(!configuration.visibleFields.contains("keywords"))
-            #expect(!configuration.visibleFields.contains("last_modified_by"))
-            #expect(!configuration.visibleFields.contains("last_modified_at"))
-        }
-        #expect(!analyses.visibleFields.contains("relevance"))
-        #expect(!analyses.visibleFields.contains("debate_importance"))
-        #expect(!analyses.visibleFields.contains("debate_importance_scope"))
-        #expect(!works.visibleFields.contains("deadline"))
-    }
-
     @Test("CLI role aliases do not become persisted registry spellings")
     func roleAliases() throws {
         #expect(VaultRole(commandLineValue: "sources") == .sourceCorpus)

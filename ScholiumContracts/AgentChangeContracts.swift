@@ -5,10 +5,7 @@ public enum AgentChangeOperation: String, Codable, Hashable, Sendable {
     case update
     case trash
     case move
-    case metadata
-    case attachment
 
-    public var isRecordMutation: Bool { self == .metadata || self == .attachment }
 }
 
 public enum AgentChangeRecoveryState: String, Codable, Hashable, Sendable {
@@ -75,7 +72,7 @@ public struct AgentChange: Codable, Hashable, Identifiable, Sendable {
     }
 
     public var isDirectUndoEligible: Bool {
-        (operation == .update || operation == .move || operation.isRecordMutation) && state == .confirmed
+        (operation == .update || operation == .move) && state == .confirmed
             && beforeFingerprint != nil && afterFingerprint != nil
     }
 }
@@ -118,7 +115,7 @@ public struct AgentChangeEvidence: Sendable {
     }
 
     public func exactUpdateComparison() throws -> ExactSourceComparison {
-        guard change.operation == .update || change.operation == .move || change.operation.isRecordMutation,
+        guard change.operation == .update || change.operation == .move,
             let beforeData,
             let afterData,
             let beforeFingerprint = change.beforeFingerprint,
@@ -270,10 +267,6 @@ public struct AgentNoteTrashResult: Sendable {
 public protocol AgentCollaborationUseCases: Sendable {
     func currentNoteSource(noteID: UUID) async throws -> AgentNoteSource
     func currentNoteContext(noteID: UUID, expectedFingerprint: DocumentFingerprint) async throws -> AgentNoteContext
-    func previewMetadata(noteID: UUID, expectedSource: DocumentFingerprint, update: AgentMetadataUpdate) async throws -> AgentNoteUpdatePreview
-    func updateMetadata(noteID: UUID, expectedSource: DocumentFingerprint, update: AgentMetadataUpdate) async throws -> AgentNoteUpdateResult
-    func previewAttachment(noteID: UUID, expectedSource: DocumentFingerprint, update: AgentAttachmentUpdate) async throws -> AgentNoteUpdatePreview
-    func updateAttachment(noteID: UUID, expectedSource: DocumentFingerprint, update: AgentAttachmentUpdate) async throws -> AgentNoteUpdateResult
     func createNote(_ request: ManagedNoteCreationRequest) async throws
         -> AgentNoteCreationResult
     func updateNote(
