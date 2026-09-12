@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import Foundation
 import ScholiumContracts
 import SwiftUI
@@ -127,6 +128,12 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             case .bridgeRejected(let message): message
             }
         }
+    }
+
+    let selectionChanges = PassthroughSubject<Bool, Never>()
+    var hasNonemptySelection: Bool {
+        lastKnownSelectionSnapshot?.ranges.contains { $0.anchor != $0.head } == true
+            && preferredDocumentFocusTarget != .title
     }
 
     @Published private(set) var presentation = MarkdownEditorPresentationState()
@@ -433,6 +440,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         focusTarget: WindowDocumentFocusTarget? = nil,
         context semanticContext: MarkdownEditorContext?
     ) {
+        let previousSelection = lastKnownSelectionSnapshot?.ranges
         let wasComposing = context?.composing == true
         guard documentVersion == generation,
             markdownEditorSelectionRangesAreValid(
@@ -466,6 +474,9 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         }
         if wasComposing, context?.composing == false {
             reconvergePendingPresentationState()
+        }
+        if previousSelection != selections || wasComposing != isComposing {
+            selectionChanges.send(hasNonemptySelection)
         }
         flushPendingSourceRange()
     }

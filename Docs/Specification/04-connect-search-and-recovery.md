@@ -119,7 +119,9 @@ manifest before direct-link candidates are executable.
 Its paragraph stage reads fingerprint-matched candidate Notes and ranks authored
 paragraphs through the same normalization, seed terms and lexical matcher. An
 explicit focus must match the paragraph itself. Paragraphs retain exact source
-ranges and bytes plus a separate readable-text projection. Bounded per-Note and
+ranges and bytes plus a separate readable-text projection. Search also supplies a
+bounded excerpt around a focused match and checked UTF-16 highlight ranges within
+that excerpt; these never substitute for exact source locators. Bounded per-Note and
 overall results preserve useful diversity without collapsing distinct passages.
 Repeated visible paragraphs in one Note appear once. A multi-term focus requires
 more than one matching term, avoiding incidental single-word filler. This creates

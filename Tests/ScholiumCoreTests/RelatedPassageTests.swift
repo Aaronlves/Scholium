@@ -51,4 +51,24 @@ struct RelatedPassageTests {
             focuses: [.init(kind: .selectedPassage, text: "freedom")])
         #expect(try TriptychSearchIndex.relatedPassages(.init(seed: seed), sources: [.init(candidate: candidate, document: doc)]).isEmpty)
     }
+    @Test("Excerpts locate late matches and preserve Unicode display ranges")
+    func excerptRanges() throws {
+        let text =
+            String(repeating: "Unrelated opening material. ", count: 40)
+            + "👩🏽‍🔬 Cafe\u{301} 自由 autonomy " + String(repeating: "trailing words ", count: 40)
+        let preview = TriptychSearchIndex.relatedExcerpt(
+            text,
+            matches: [
+                .init(seedKind: .selectedPassage, terms: ["cafe", "自由", "autonomy"])
+            ])
+        #expect(preview.text.hasPrefix("…") && preview.text.hasSuffix("…"))
+        #expect(preview.text.count <= 242)
+        #expect(preview.text.contains("Cafe\u{301} 自由 autonomy"))
+        let highlights = try preview.ranges.map { offsets in
+            let range = try #require(Range(NSRange(location: offsets.lowerBound, length: offsets.count), in: preview.text))
+            return SearchTextNormalization.lexicalNormalize(String(preview.text[range]))
+        }
+        #expect(Set(highlights) == ["cafe", "自由", "autonomy"])
+    }
+
 }

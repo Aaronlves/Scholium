@@ -5,7 +5,7 @@ extension WindowModel {
     @MainActor private var relatedMaterialChat: (any AgentChatContextReceiving)? { chatController }
 
     @MainActor
-    func findRelatedMaterials() {
+    func findRelatedMaterials(automatic: Bool = false) {
         let materials = researchController.relatedMaterials
         guard let capabilities = windowWorkspaceController.activeCapabilities,
             let descriptor = currentDocumentDescriptor, let note = currentNote,
@@ -15,6 +15,7 @@ extension WindowModel {
             return
         }
         let editor = documentController.session(for: descriptor).editorSession
+        guard !automatic || (editor.hasNonemptySelection && !editor.isComposing && presentedDocumentMode != .read) else { return }
         materials.find(
             capture: { [weak self] in
                 let selection: MarkdownSourceSelectionSnapshot
@@ -38,7 +39,7 @@ extension WindowModel {
             },
             retrieve: { [discovery = capabilities.discovery] request in
                 try await discovery.relatedContent(request)
-            }, references: workspaceCatalog?.notes.map(\.reference) ?? [])
+            }, references: workspaceCatalog?.notes.map(\.reference) ?? [], automatic: automatic)
     }
 
     @MainActor

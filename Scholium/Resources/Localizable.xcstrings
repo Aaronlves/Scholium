@@ -1,6 +1,70 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Settlement recorded; status refresh failed.": {
+  "localizations": {
+    "en": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "Settlement recorded; status refresh failed."
+      }
+    },
+    "zh-Hans": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "暂定已记录，但状态刷新失败。"
+      }
+    }
+  }
+},
+    "Current revision settled": {
+  "localizations": {
+    "en": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "Current revision settled"
+      }
+    },
+    "zh-Hans": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "当前版本已暂定"
+      }
+    }
+  }
+},
+  "Select text in Edit or Source. Related material appears here automatically.": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Select text in Edit or Source. Related material appears here automatically."
+        }
+      },
+      "zh-Hans": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "在编辑或源文本模式中选择文字，相关材料会自动显示在这里。"
+        }
+      }
+    }
+  },
+  "Based on Selected Text": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Based on Selected Text"
+        }
+      },
+      "zh-Hans": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "基于所选文本"
+        }
+      }
+    }
+  },
     "Delete Conversation?" : {
       "localizations" : {
         "en" : {

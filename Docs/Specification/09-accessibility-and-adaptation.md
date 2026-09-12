@@ -141,7 +141,7 @@ integrations. Verify:
 - Links/Related Material is one named single-choice native group with selection,
   Help and keyboard traversal. No Document remains a distinct read-only state.
 - Related Material exposes the captured selection, exact source identity, match
-  reason, Open Source and Add to Chat as named keyboard-accessible controls.
+  context, source-opening result and Add to Chat as named keyboard-accessible controls.
   Compact Chat materials retain named preview, removal, full excerpt and source
   actions without requiring hover; horizontal overflow remains keyboard reachable.
   Loading, cancellation, empty and unavailable states remain readable; retrieval
@@ -155,7 +155,10 @@ integrations. Verify:
   reveals the same target with a static brief marker and no animated scroll/fade.
 - Settlement exposes state and state-valid action through wording, symbol, Help,
   accessible value and its menu route. It remains a milestone, with no inferred
-  task-completion state. Inspector visibility changes no research judgment.
+  task-completion state. Explicit success is announced once and remains visible
+  briefly in the existing confirmation popover; Reduce Motion retains its static
+  symbol and text. Haptics are supplementary and use system preferences.
+  Inspector visibility changes no research judgment.
 - Settings exposes search, selected category, scope and content in predictable
   order. Empty search retains the query. Appearance reload preserves invalid or
   conflicting drafts and names safe repair. Frontmatter's named route and direct

@@ -204,11 +204,14 @@ graph or source owner. Native buttons and fields keep system presentation on the
 Paper content background; feature code paints no competing control theme.
 
 `RelatedMaterialsSession`, retained by ResearchController, owns one disposable
-selection, request generation, loading/error state and paragraph cards per window.
+selection, debounced selection scheduling, request generation, loading/error state
+and paragraph results per window. The visible pane subscribes to the retained
+editor's non-published selection events and cancels work when hidden.
 `WindowRelatedMaterialsActions` captures the retained editor selection and calls
 `DiscoveryOperations.relatedContent` through the active workspace. WorkspaceHandle
 uses the Note index to narrow the corpus, reads fingerprint-matched exact Notes,
-and delegates paragraph ranking to Core Search over the shared semantic parser.
+and delegates paragraph ranking and bounded match-centered excerpts with checked
+readable-text highlight ranges to Core Search over the shared semantic parser.
 Each result carries exact Markdown, its source range and a separate readable-text
 projection. `ResearchExcerptPresentation` is shared with Links and Chat excerpts;
 it hides syntax without changing authoritative source. The session preserves

@@ -43,13 +43,14 @@ struct RelatedMaterialsTests {
             candidate: candidate,
             range: .init(
                 utf16LowerBound: 12, utf16UpperBound: 18,
-                line: 3, column: 1, endLine: 3, endColumn: 7), source: "**自由**", displayText: "自由",
+                line: 3, column: 1, endLine: 3, endColumn: 7), source: "**自由**", displayText: "自由", excerpt: "自由", excerptMatches: [0..<2],
             matches: [.init(seedKind: .selectedPassage, terms: ["自由"])])
         let second = RelatedContentPassage(
             candidate: candidate,
             range: .init(
                 utf16LowerBound: 20, utf16UpperBound: 26,
-                line: 5, column: 1, endLine: 5, endColumn: 7), source: "另一段自由。", displayText: "另一段自由。", matches: first.matches)
+                line: 5, column: 1, endLine: 5, endColumn: 7), source: "另一段自由。", displayText: "另一段自由。", excerpt: "另一段自由。", excerptMatches: [3..<5],
+            matches: first.matches)
         let response = RelatedContentResponse(
             requestID: seed.request.id, seedFingerprint: seed.request.seed.fingerprint,
             freshnessToken: .init("fixture"), availability: .unavailable, state: .current, identityCandidates: [],
@@ -70,8 +71,8 @@ struct RelatedMaterialsTests {
         #expect(model.cards.first?.attachment?.text == "**自由**")
     }
 
-    @Test("A reset invalidates an uncooperative late response and leaves no cross-workspace material")
-    func cancelledPublication() async {
+    @Test("Reset or selection departure invalidates an uncooperative late response", arguments: [false, true])
+    func cancelledPublication(reset: Bool) async {
         let model = RelatedMaterialsSession()
         let seed = seed()
         var release: CheckedContinuation<Void, Never>?
@@ -88,7 +89,7 @@ struct RelatedMaterialsTests {
                 return seed
             }, retrieve: { _ in response }, references: [])
         await latch.value
-        model.reset()
+        if reset { model.reset() } else { model.stopSelectionSearch() }
         release?.resume()
         await operation.value
         #expect(model.seed == nil && model.cards.isEmpty && !model.isLoading && !model.didSearch)
@@ -126,4 +127,44 @@ struct RelatedMaterialsTests {
         await model.find(capture: { throw RelatedMaterialsError.selectionRequired }, retrieve: { _ in response }, references: []).value
         #expect(model.issue != nil && !model.isLoading)
     }
+    @Test("Automatic empty selection preserves context without a selection error")
+    func automaticEmptySelection() async {
+        let model = RelatedMaterialsSession()
+        let seed = seed()
+        let response = response(seed.request)
+        await model.find(capture: { seed }, retrieve: { _ in response }, references: [], automatic: true).value
+        await model.find(
+            capture: { throw RelatedMaterialsError.selectionRequired },
+            retrieve: { _ in response }, references: [], automatic: true
+        ).value
+        #expect(model.seed?.request.id == seed.request.id)
+        #expect(model.issue == nil && !model.isLoading && model.didSearch)
+    }
+
+    @Test("Closing the pane cancels a pending automatic selection request")
+    func closingCancelsScheduledSearch() async {
+        let model = RelatedMaterialsSession()
+        var ran = false
+        model.scheduleSelectionSearch(immediate: true) { ran = true }
+        model.stopSelectionSearch()
+        for _ in 0..<10 { await Task.yield() }
+        #expect(!ran && !model.isLoading)
+    }
+
+    @Test("Unchanged automatic context reuses results instead of rerunning retrieval")
+    func unchangedContext() async {
+        let model = RelatedMaterialsSession()
+        let seed = seed()
+        let response = response(seed.request)
+        await model.find(capture: { seed }, retrieve: { _ in response }, references: [], automatic: true).value
+        await model.find(
+            capture: { seed },
+            retrieve: { _ in
+                Issue.record("Unchanged selection unexpectedly repeated retrieval")
+                return response
+            }, references: [], automatic: true
+        ).value
+        #expect(model.didSearch && !model.isLoading && model.issue == nil)
+    }
+
 }

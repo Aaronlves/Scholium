@@ -39,8 +39,8 @@ enum RelatedMaterialsError: LocalizedError, Equatable {
     }
 }
 
-/// Window-local, disposable discovery state. A selection is frozen until the
-/// next explicit request; neither caret motion nor opening a source reruns it.
+/// Window-local discovery. Visible selection events are debounced; opening a
+/// result keeps the captured context until another nonempty selection arrives.
 @MainActor final class RelatedMaterialsSession: ObservableObject {
     @Published private(set) var seed: RelatedMaterialsSeed?
     @Published private(set) var cards: [RelatedMaterialCard] = []
@@ -49,6 +49,7 @@ enum RelatedMaterialsError: LocalizedError, Equatable {
     @Published private(set) var issue: String?
     @Published private(set) var omittedCount = 0
     @Published private(set) var needsRefresh = false
+    private var scheduledSearch: Task<Void, Never>?
     private var generation = UUID()
     private var task: Task<Void, Never>?
 
@@ -69,21 +70,44 @@ enum RelatedMaterialsError: LocalizedError, Equatable {
         needsRefresh = false
     }
 
-    func cancel() {
-        if isLoading { issue = String(localized: "Search cancelled. You can find material again when ready.", bundle: .module) }
+    func scheduleSelectionSearch(immediate: Bool = false, find: @escaping @MainActor () -> Void) {
+        stopSelectionSearch()
+        scheduledSearch = Task { [weak self] in
+            if !immediate {
+                do { try await Task.sleep(for: .milliseconds(250)) } catch { return }
+            }
+            guard self != nil, !Task.isCancelled else { return }
+            find()
+        }
+    }
+
+    func stopSelectionSearch() {
+        scheduledSearch?.cancel()
+        scheduledSearch = nil
         generation = UUID()
         task?.cancel()
         task = nil
         isLoading = false
     }
 
+    func cancel() {
+        if isLoading {
+            issue = String(localized: "Search cancelled. You can find material again when ready.", bundle: .module)
+            needsRefresh = seed != nil
+        }
+        stopSelectionSearch()
+    }
+
     @discardableResult
     func find(
         capture: @escaping @MainActor () async throws -> RelatedMaterialsSeed,
         retrieve: @escaping @Sendable (RelatedContentRequest) async throws -> RelatedContentResponse,
-        references: [VaultNoteReference]
+        references: [VaultNoteReference],
+        automatic: Bool = false
     ) -> Task<Void, Never> {
-        cancel()
+        let canReuseResults = didSearch && issue == nil && !needsRefresh && omittedCount == 0
+        generation = UUID()
+        task?.cancel()
         let ticket = generation
         isLoading = true
         issue = nil
@@ -94,6 +118,10 @@ enum RelatedMaterialsError: LocalizedError, Equatable {
                 let seed = try await capture()
                 try Task.checkCancellation()
                 guard ticket == generation else { return }
+                if automatic, self.seed?.request.seed == seed.request.seed, canReuseResults {
+                    isLoading = false
+                    return
+                }
                 self.seed = seed
                 cards = []
                 didSearch = false
@@ -134,7 +162,11 @@ enum RelatedMaterialsError: LocalizedError, Equatable {
             } catch {
                 guard ticket == generation else { return }
                 isLoading = false
-                if !(error is CancellationError) { report(error) }
+                if !(error is CancellationError),
+                    !(automatic && (error as? RelatedMaterialsError) == .selectionRequired)
+                {
+                    report(error)
+                }
             }
         }
         task = operation

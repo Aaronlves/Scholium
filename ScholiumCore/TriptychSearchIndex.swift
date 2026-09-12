@@ -3529,12 +3529,13 @@ extension TriptychSearchIndex {
                 let focusedMatches = Set(matches.filter { $0.seedKind != .sourceNote }.flatMap(\.terms)).count
                 guard !focused || focusedMatches >= requiredFocusMatches else { continue }
                 let span = block.span
+                let preview = Self.relatedExcerpt(visible, matches: matches)
                 let passage = RelatedContentPassage(
                     candidate: source.candidate,
                     range: .init(
                         utf16LowerBound: span.utf16LowerBound, utf16UpperBound: span.utf16UpperBound,
                         line: span.start.line, column: span.start.utf16Column, endLine: span.end.line, endColumn: span.end.utf16Column),
-                    source: exact, displayText: visible, matches: matches)
+                    source: exact, displayText: visible, excerpt: preview.text, excerptMatches: preview.ranges, matches: matches)
                 let counts = RelatedContentSeedKind.rankingOrder.map { kind in
                     matches.first { $0.seedKind == kind }?.terms.count ?? 0
                 }
@@ -3559,5 +3560,33 @@ extension TriptychSearchIndex {
             if result.count == RelatedContentContract.maximumPassages { break }
         }
         return result
+    }
+}
+
+extension TriptychSearchIndex {
+    /// Search owns both the bounded readable excerpt and its verified highlight ranges.
+    /// Cropping is on Character boundaries; exact paragraph source is kept separately.
+    nonisolated static func relatedExcerpt(
+        _ text: String, matches: [RelatedContentSeedTermMatch]
+    ) -> (text: String, ranges: [Range<Int>]) {
+        let focused = matches.filter { $0.seedKind != .sourceNote }
+        let terms = (focused.isEmpty ? matches : focused).flatMap(\.terms)
+        let normalized = SearchTextNormalization.lexicalNormalize(text)
+        let occurrences = terms.flatMap { SearchMatcher.occurrences(of: .term($0), in: normalized) }
+            .sorted { $0.lowerBound < $1.lowerBound }
+        guard let first = occurrences.first,
+            let original = SearchTextNormalization.originalUTF16RangeForLexicalNormalization(in: text, requestedRange: first),
+            let anchor = Range(NSRange(location: original.lowerBound, length: original.count), in: text)
+        else { return (String(text.prefix(240)) + (text.count > 240 ? "…" : ""), []) }
+        let start = text.index(anchor.lowerBound, offsetBy: -40, limitedBy: text.startIndex) ?? text.startIndex
+        let end = text.index(start, offsetBy: 240, limitedBy: text.endIndex) ?? text.endIndex
+        let prefix = start > text.startIndex ? "…" : ""
+        let excerpt = prefix + text[start..<end] + (end < text.endIndex ? "…" : "")
+        let normalizedExcerpt = SearchTextNormalization.lexicalNormalize(excerpt)
+        let ranges = terms.flatMap { SearchMatcher.occurrences(of: .term($0), in: normalizedExcerpt) }
+            .prefix(64).compactMap {
+                SearchTextNormalization.originalUTF16RangeForLexicalNormalization(in: excerpt, requestedRange: $0)
+            }
+        return (excerpt, Array(Set(ranges)).sorted { $0.lowerBound < $1.lowerBound })
     }
 }

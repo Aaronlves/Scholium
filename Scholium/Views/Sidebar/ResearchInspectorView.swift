@@ -13,6 +13,7 @@ struct ResearchInspectorView: View {
 
     @State private var externalProjectionKey: String?
     @State private var externalLinks: [SourceResourceReferences.ExternalLink] = []
+    let editor: MarkdownEditorSession?
     let noteURL: URL?
     let vaultRoots: [URL]
     let openExternalURL: (URL) -> Void
@@ -23,13 +24,14 @@ struct ResearchInspectorView: View {
     let currentVaultID: UUID?
     let researchInspectorContentContext: ResearchInspectorContentContext
     let openReference: (VaultNoteReference, Int?) -> Void
-    let findRelated: () -> Void
+    let findRelated: @MainActor () -> Void
     let refreshRelated: () -> Void
     let openRelated: (RelatedMaterialCard) -> Void
     let discussRelated: (RelatedMaterialCard) -> Void
 
     init(
         research: ResearchController,
+        editor: MarkdownEditorSession?,
         noteURL: URL?,
         vaultRoots: [URL],
         openExternalURL: @escaping (URL) -> Void,
@@ -40,11 +42,12 @@ struct ResearchInspectorView: View {
         currentVaultID: UUID?,
         researchInspectorContentContext: ResearchInspectorContentContext,
         openReference: @escaping (VaultNoteReference, Int?) -> Void,
-        findRelated: @escaping () -> Void,
+        findRelated: @escaping @MainActor () -> Void,
         refreshRelated: @escaping () -> Void,
         openRelated: @escaping (RelatedMaterialCard) -> Void,
         discussRelated: @escaping (RelatedMaterialCard) -> Void
     ) {
+        self.editor = editor
         self.noteURL = noteURL
         self.vaultRoots = vaultRoots
         self.openExternalURL = openExternalURL
@@ -66,7 +69,7 @@ struct ResearchInspectorView: View {
         ZStack(alignment: .topLeading) {
             if shellState.inspector.mode == .related {
                 RelatedMaterialsView(
-                    session: research.relatedMaterials, find: findRelated, refresh: refreshRelated,
+                    session: research.relatedMaterials, isVisible: shellState.inspector.isVisible, editor: editor, find: findRelated, refresh: refreshRelated,
                     open: openRelated, addToChat: discussRelated)
             }
             if shellState.inspector.mode == .links {

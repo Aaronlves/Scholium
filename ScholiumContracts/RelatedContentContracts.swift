@@ -4,7 +4,7 @@ import Foundation
 /// generation. It does not change visible Search grammar, scopes, or Saved
 /// Search semantics.
 public enum RelatedContentContract {
-    public static let currentVersion = 5
+    public static let currentVersion = 6
     public static let rankingPolicyVersion = 4
     public static let maximumCandidates = 27
     public static let maximumDirectConnectionCandidates = 4
@@ -206,18 +206,23 @@ public struct RelatedContentPassage: Codable, Hashable, Sendable, Identifiable {
     public let range: SearchSourceRange
     public let source: String
     public let displayText: String
+    public let excerpt: String
+    /// UTF-16 ranges within the readable excerpt, never authoritative source offsets.
+    public let excerptMatches: [Range<Int>]
     public let matches: [RelatedContentSeedTermMatch]
     public var id: String {
         "\(candidate.note.vaultID):\(candidate.note.relativePath):\(candidate.fingerprint.sha256):\(range.utf16LowerBound)"
     }
     public init(
         candidate: RelatedContentCandidate, range: SearchSourceRange, source: String,
-        displayText: String, matches: [RelatedContentSeedTermMatch]
+        displayText: String, excerpt: String, excerptMatches: [Range<Int>], matches: [RelatedContentSeedTermMatch]
     ) {
         self.candidate = candidate
         self.range = range
         self.source = source
         self.displayText = displayText
+        self.excerpt = excerpt
+        self.excerptMatches = excerptMatches
         self.matches = matches
     }
 }

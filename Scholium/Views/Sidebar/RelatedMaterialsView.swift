@@ -1,9 +1,12 @@
+import Combine
 import ScholiumContracts
 import SwiftUI
 
 struct RelatedMaterialsView: View {
     @ObservedObject var session: RelatedMaterialsSession
-    let find: () -> Void
+    let isVisible: Bool
+    let editor: MarkdownEditorSession?
+    let find: @MainActor () -> Void
     let refresh: () -> Void
     let open: (RelatedMaterialCard) -> Void
     let addToChat: (RelatedMaterialCard) -> Void
@@ -12,40 +15,43 @@ struct RelatedMaterialsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: ResearchInspectorLayout.sectionSpacing) {
-                HStack {
-                    Button("Find from Selection", action: find)
-                        .disabled(session.isLoading)
-                        .accessibilityIdentifier("scholium.related.find")
-                    Spacer(minLength: 0)
-                    if session.isLoading {
-                        ProgressView().controlSize(.small).accessibilityLabel("Finding related material")
-                        Button("Cancel") { session.cancel() }
-                    }
-                }
                 if let seed = session.seed {
-                    DisclosureGroup(isExpanded: $showsSelection) {
-                        Text(ResearchExcerptPresentation.readableText(seed.attachment.text)).textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                    Button {
+                        showsSelection.toggle()
                     } label: {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("Selected Passage").font(.subheadline)
-                            Text(seed.attachment.relativePath).font(.caption).foregroundStyle(.secondary)
+                            Text("Based on Selected Text").font(.caption).foregroundStyle(.secondary)
+                            Text(ResearchExcerptPresentation.readableText(seed.attachment.text))
+                                .lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
                         }
                     }
+                    .buttonStyle(.plain)
                     .accessibilityIdentifier("scholium.related.selection")
+                    .popover(isPresented: $showsSelection) {
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: 12) {
+                                Text(URL(fileURLWithPath: seed.attachment.relativePath).deletingPathExtension().lastPathComponent)
+                                    .font(.headline).help(seed.attachment.relativePath)
+                                Text(ResearchExcerptPresentation.readableText(seed.attachment.text))
+                                    .textSelection(.enabled)
+                            }.padding()
+                        }.frame(idealWidth: 360, maxHeight: 360)
+                    }
+                }
+                if session.isLoading {
+                    HStack {
+                        ProgressView().controlSize(.small)
+                        Text("Finding related material").font(.caption).foregroundStyle(.secondary)
+                        Spacer(minLength: 0)
+                        Button("Cancel") { session.cancel() }
+                    }
                 }
                 if let issue = session.issue {
                     Text(issue).foregroundStyle(.secondary).textSelection(.enabled)
                         .accessibilityIdentifier("scholium.related.issue")
                 }
-                if !session.isLoading, session.cards.isEmpty, session.issue == nil, session.omittedCount == 0 {
-                    Text(
-                        session.didSearch
-                            ? String(localized: "No related material found in Analyses or Topics. Try another passage.", bundle: .module)
-                            : String(localized: "Select a passage in Edit or Source to find related material.", bundle: .module)
-                    )
-                    .foregroundStyle(.secondary)
-                    .accessibilityIdentifier("scholium.related.empty")
+                if session.issue != nil, session.seed == nil {
+                    Button("Retry", action: find).disabled(session.isLoading)
                 }
                 if session.needsRefresh || session.omittedCount > 0 {
                     Button("Refresh Results", action: refresh).disabled(session.isLoading)
@@ -54,27 +60,45 @@ struct RelatedMaterialsView: View {
                     Text("Some sources changed or could not be opened. Find again to refresh the results.")
                         .font(.callout).foregroundStyle(.secondary)
                 }
+                if !session.isLoading, session.cards.isEmpty, session.issue == nil, session.omittedCount == 0 {
+                    Text(
+                        session.didSearch
+                            ? String(localized: "No related material found in Analyses or Topics. Try another passage.", bundle: .module)
+                            : String(localized: "Select text in Edit or Source. Related material appears here automatically.", bundle: .module)
+                    )
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("scholium.related.empty")
+                }
                 ForEach(session.cards) { card in
-                    GroupBox {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text(card.passage.displayText).font(.body).lineLimit(10).textSelection(.enabled)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(card.candidate.title).font(.subheadline)
-                                Text(
-                                    card.reference.vaultRole == .sourceCorpus
-                                        ? String(localized: "Analysis", bundle: .module) : String(localized: "Topic", bundle: .module)
-                                )
-                                .font(.caption).foregroundStyle(.secondary)
-                                Text(reason(card.passage.matches)).font(.caption).foregroundStyle(.secondary)
-                            }
-                            ViewThatFits(in: .horizontal) {
-                                HStack { actions(card) }
-                                VStack(alignment: .leading) { actions(card) }
-                            }
+                    VStack(alignment: .leading, spacing: 8) {
+                        Button {
+                            open(card)
+                        } label: {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text(card.candidate.title).font(.headline)
+                                Text(highlightedExcerpt(card.passage)).font(.body).lineLimit(5)
+                                    .multilineTextAlignment(.leading)
+                            }.frame(maxWidth: .infinity, alignment: .leading)
+                                .contentShape(Rectangle())
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(4)
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(Text("Open source: \(card.candidate.title)"))
+                        .accessibilityHint(Text(card.passage.excerpt))
+                        HStack {
+                            Text(
+                                card.reference.vaultRole == .sourceCorpus
+                                    ? String(localized: "Analysis", bundle: .module)
+                                    : String(localized: "Topic", bundle: .module)
+                            )
+                            .font(.caption).foregroundStyle(.secondary)
+                            Spacer(minLength: 0)
+                            Button("Add to Chat") { addToChat(card) }
+                                .buttonStyle(.borderless)
+                                .disabled(card.attachment == nil)
+                                .help("Add the selected writing passage and this source to the current conversation.")
+                                .accessibilityLabel(Text("Add to Chat: \(card.candidate.title)"))
+                        }
+                        Divider()
                     }
                     .accessibilityElement(children: .contain)
                     .accessibilityIdentifier("scholium.related.card.\(card.id)")
@@ -89,22 +113,29 @@ struct RelatedMaterialsView: View {
             .padding(.bottom, ResearchInspectorLayout.bottomInset)
         }
         .accessibilityIdentifier("scholium.related")
-    }
-
-    @ViewBuilder private func actions(_ card: RelatedMaterialCard) -> some View {
-        Button("Open Source") { open(card) }
-            .accessibilityLabel(Text("Open source: \(card.candidate.title)"))
-        Button("Add to Chat") { addToChat(card) }
-            .disabled(card.attachment == nil)
-            .help("Add the selected writing passage and this source to the current conversation.")
-            .accessibilityLabel(Text("Add to Chat: \(card.candidate.title)"))
-    }
-
-    private func reason(_ matches: [RelatedContentSeedTermMatch]) -> String {
-        switch matches.first?.seedKind {
-        case .selectedPassage: String(localized: "Wording overlaps with the selected passage.", bundle: .module)
-        case .researchRequest: String(localized: "Wording overlaps with your request.", bundle: .module)
-        case .sourceNote, nil: String(localized: "Wording overlaps with the note's content.", bundle: .module)
+        .onAppear { if isVisible { session.scheduleSelectionSearch(immediate: true, find: find) } }
+        .onChange(of: isVisible) { _, visible in
+            if visible { session.scheduleSelectionSearch(immediate: true, find: find) } else { session.stopSelectionSearch() }
         }
+        .onReceive(editor?.selectionChanges.eraseToAnyPublisher() ?? Empty<Bool, Never>().eraseToAnyPublisher()) { hasSelection in
+            guard isVisible else { return }
+            if !hasSelection || editor?.isComposing == true {
+                session.stopSelectionSearch()
+            } else {
+                session.scheduleSelectionSearch(find: find)
+            }
+        }
+        .onDisappear { session.stopSelectionSearch() }
+    }
+
+    private func highlightedExcerpt(_ passage: RelatedContentPassage) -> AttributedString {
+        var result = AttributedString(passage.excerpt)
+        for offsets in passage.excerptMatches {
+            guard let range = Range(NSRange(location: offsets.lowerBound, length: offsets.count), in: passage.excerpt),
+                let attributedRange = Range(range, in: result)
+            else { continue }
+            result[attributedRange].font = .body.bold()
+        }
+        return result
     }
 }

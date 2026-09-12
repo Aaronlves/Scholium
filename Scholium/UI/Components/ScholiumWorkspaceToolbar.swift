@@ -235,7 +235,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
             let item = actionItem(
                 identifier: itemIdentifier,
                 label: ScholiumL10n.string("Settle"),
-                systemImage: "bookmark",
+                systemImage: "checkmark.circle",
                 action: #selector(toggleSettlement(_:))
             )
             item.possibleLabels = [
@@ -810,15 +810,22 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
         let rootView = DocumentSettlementPopoverView(
             presentation: presentation,
             settle: { [weak self] rationale in
-                guard let self else { return }
+                guard let self else { return (false, nil) }
                 _ = try await self.appState.researchController.settle(
                     target.note,
                     expectedRevision: target.fingerprint,
                     rationale: rationale
                 )
+                // The commit is authoritative even if its derived refresh fails.
+                var refreshError: String?
+                do {
+                    try await self.appState.researchController.refreshResearchProjection()
+                } catch {
+                    refreshError = error.localizedDescription
+                }
                 self.refreshPresentation()
-                try await self.appState.researchController.refreshResearchProjection()
-                self.refreshPresentation()
+                return (!self.isInvalidated && self.currentSettlementTarget == target
+                    && self.presentedSettlementTarget == target && self.settlementPopover.isShown, refreshError)
             },
             dismiss: { [weak self] in
                 self?.settlementPopover.performClose(nil)
@@ -946,11 +953,11 @@ enum DocumentSettlementToolbarPresentation {
     static func symbol(for state: SettlementPresentationState) -> String {
         switch state {
         case .settled:
-            "bookmark.fill"
+            "checkmark.circle.fill"
         case .notYetSettled, .unavailable:
-            "bookmark"
+            "checkmark.circle"
         case .changedSinceSettlement:
-            "bookmark.circle"
+            "checkmark.arrow.trianglehead.clockwise"
         }
     }
 
@@ -970,57 +977,111 @@ enum DocumentSettlementToolbarPresentation {
 
 private struct DocumentSettlementPopoverView: View {
     let presentation: SettlementPresentation
-    let settle: (String?) async throws -> Void
+    let settle: (String?) async throws -> (canPresent: Bool, refreshError: String?)
     let dismiss: () -> Void
 
     @State private var rationale = ""
     @State private var errorMessage: String?
     @State private var isSettling = false
+    @State private var completed = false
+    @State private var isVisible = false
+    @State private var successAnimation = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(
             alignment: .leading,
             spacing: ScholiumMetrics.Apparatus.sectionContentSpacing
         ) {
-            Text(actionTitle)
-                .font(ScholiumTypography.interface(.sectionTitle))
-            Text("Record this saved revision as sufficiently stable for current research.")
-                .font(ScholiumTypography.interface(.body))
-                .scholiumForeground(.secondaryText)
-                .fixedSize(horizontal: false, vertical: true)
-            TextField("Optional rationale", text: $rationale, axis: .vertical)
-                .lineLimit(2...4)
-            if let errorMessage {
-                Text(errorMessage)
-                    .font(ScholiumTypography.interface(.small))
-                    .scholiumForeground(.attention)
-            }
-            HStack {
-                Button("Cancel") {
-                    dismiss()
-                }
-                Spacer()
-                Button(actionTitle) {
-                    isSettling = true
-                    errorMessage = nil
-                    Task {
-                        do {
-                            try await settle(rationale.nilIfBlank)
-                            isSettling = false
-                            dismiss()
-                        } catch {
-                            errorMessage = error.localizedDescription
-                            isSettling = false
+            if completed {
+                VStack(spacing: ScholiumGrid.Spacing.sectionSeparation) {
+                    Group {
+                        if reduceMotion {
+                            Image(systemName: "checkmark.circle.fill")
+                        } else {
+                            Image(systemName: "checkmark.circle.fill")
+                                .symbolEffect(.bounce, options: .nonRepeating, value: successAnimation)
                         }
                     }
+                    .font(.largeTitle)
+                    .accessibilityHidden(true)
+                    Text("Current revision settled")
+                        .font(ScholiumTypography.interface(.sectionTitle))
+                    if let errorMessage {
+                        Text("Settlement recorded; status refresh failed.")
+                        Text(errorMessage)
+                            .font(ScholiumTypography.interface(.small))
+                        Button("Done", action: dismiss)
+                    }
                 }
-                .buttonStyle(.bordered)
-                .disabled(isSettling)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, ScholiumGrid.Spacing.sectionSeparation)
+                .accessibilityIdentifier("scholium.settlement.success")
+            } else {
+                Text(actionTitle)
+                    .font(ScholiumTypography.interface(.sectionTitle))
+                Text("Record this saved revision as sufficiently stable for current research.")
+                    .font(ScholiumTypography.interface(.body))
+                    .scholiumForeground(.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+                TextField("Optional rationale", text: $rationale, axis: .vertical)
+                    .lineLimit(2...4)
+                if let errorMessage {
+                    Text(errorMessage)
+                        .font(ScholiumTypography.interface(.small))
+                        .scholiumForeground(.attention)
+                }
+                HStack {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                    Spacer()
+                    Button(actionTitle) {
+                        isSettling = true
+                        errorMessage = nil
+                        Task {
+                            do {
+                                let outcome = try await settle(rationale.nilIfBlank)
+                                isSettling = false
+                                guard outcome.canPresent, isVisible else { return }
+                                errorMessage = outcome.refreshError
+                                completed = true
+                            } catch {
+                                errorMessage = error.localizedDescription
+                                isSettling = false
+                            }
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(isSettling)
+                }
             }
         }
         .padding(ScholiumGrid.Spacing.sectionSeparation)
         .frame(width: 300)
         .buttonStyle(.automatic)
+        .onAppear { isVisible = true }
+        .onDisappear { isVisible = false }
+        .task(id: completed) {
+            guard completed else { return }
+            if !reduceMotion { successAnimation += 1 }
+            NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
+            if let window = NSApp.keyWindow {
+                NSAccessibility.post(
+                    element: window,
+                    notification: .announcementRequested,
+                    userInfo: [
+                        .announcement: ScholiumL10n.string("Current revision settled"),
+                        .priority: NSAccessibilityPriorityLevel.medium.rawValue,
+                    ])
+            }
+            guard errorMessage == nil else { return }
+            do {
+                try await Task.sleep(for: .seconds(1.8))
+                guard isVisible else { return }
+                dismiss()
+            } catch { /* Dismissal cancels only the presentation timer. */ }
+        }
     }
 
     private var actionTitle: LocalizedStringResource {

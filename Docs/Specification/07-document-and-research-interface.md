@@ -342,13 +342,22 @@ Pane content never repeats that selector. Each
 workspace retains its selection across Note and tab changes. Hiding Inspector
 moves no content elsewhere. Without a Document it presents No Document Selected.
 
-Related Material starts from an explicit selection in Edit or Source, including
-unsaved writing. Find from Selection and its Research-menu route capture one fixed
-passage; moving the caret or opening a source does not replace it. A new request
-replaces that context; cancellation and Triptych departure prevent late publication.
-The pane uses §13's local paragraph retrieval over Analyses and Topics. Each quiet
-card leads with a readable paragraph, followed by its Note identity, role and actual
-wording-match reason. A Note may contribute several distinct paragraphs; metadata,
+Related Material searches automatically from a nonempty selection in Edit or Source,
+including unsaved writing. Opening the pane captures the existing selection; while
+visible, selection changes trigger a short debounced search. Composition suspends
+retrieval. Closing the pane cancels pending work, and newer selections invalidate
+older responses. The Research-menu command retains an explicit keyboard route.
+Moving focus into the pane or opening a result does not replace the captured context;
+only another nonempty selection does. The compact context shows one truncated line
+and offers the full captured passage in a bounded read-only popover.
+The pane uses §13's local paragraph retrieval over Analyses and Topics. Results lead
+with the Note title, then a bounded excerpt around a verified wording match, then
+quiet role information and Add to Chat. Title and excerpt open the checked source
+paragraph. Matching text has non-color emphasis using Search-owned readable-text
+ranges. Ellipses identify omitted text; there is no generated summary, standing
+keyword list, full-paragraph expansion, or repeated Open Source button.
+Retry or Refresh appears only for cancellation, failure or unavailable sources.
+A Note may contribute several distinct paragraphs; metadata,
 a title or another paragraph matching cannot substitute for a matching paragraph.
 Raw Markdown, full paths and internal offsets are not standing card content.
 Matches are discovery leads, never support, objection, or correctness verdicts.
@@ -416,13 +425,21 @@ Document owns one **Settlement** command with a default native toolbar item and
 complete Research-menu route. It is presented as a research milestone, not task
 completion. Unsettled, Settled, and Changed Since Settle have distinct wording,
 symbol shape, Help, and state-bearing accessibility value. Toolbar rendering
-uses native state feedback without a feature-owned tint or animation;
-Changed Since Settle does not imply failure.
+uses `checkmark.circle`, `checkmark.circle.fill`, and
+`checkmark.arrow.trianglehead.clockwise` respectively, with native color and control
+feedback. Changed Since Settle is static and does not imply failure or processing.
 
 Activating Settle or Settle Again opens one compact popover with optional
 rationale rather than changing the judgment directly. Successful exact-revision
-Settlement updates the control and Inspector facts without a parallel overlay,
-Agent launcher or Skill button. Agent setup and conversation behavior
+Settlement updates the control and Inspector facts. The existing confirmation
+popover briefly shows a filled checkmark with one native Bounce, a short
+“Current revision settled” confirmation, and one system haptic before closing.
+This feedback follows only a confirmed, explicitly requested commit, including
+Settle Again; navigation, refresh, failure, and a departed document never replay it.
+Reduce Motion uses the static confirmation. Dismissal remains immediate, restores
+focus, and cancels pending presentation. A derived refresh failure never presents
+the committed Settlement as a failed mutation. No parallel overlay, Agent launcher
+or Skill button is added. Agent setup and conversation behavior
 belong to §§8.2 and 8.7.
 
 External-host MCP retrieval creates no persistent activity UI. Confirmed
