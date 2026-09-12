@@ -169,7 +169,7 @@ validation and View menus derive availability from the same current window state
 spacers express logical grouping; the system owns glass shapes, proximity effects, and
 transitions. This native state contract applies to every toolbar component, including
 history, document mode, Settlement, and Inspector modes. A disabled action cannot
-execute through another toolbar or overflow route. Document-specific popovers close when
+execute through another route. Document-specific popovers close when
 their document or required source revision changes; detaching a window ends its toolbar
 interactions and prevents stale state from updating it. Back/Forward begin the Document
 toolbar region, after the sidebar tracking boundary and before its secondary-text document
@@ -185,9 +185,9 @@ The native toolbar remains a bounded, stable set for frequent or high-value
 commands: the native **Library / Chat** sidebar selector, Triptych Notifications, Back/Forward,
 current-Document identity and mode,
 Settlement, confirmed Agent Changes when present, Inspector
-projection, and Inspector visibility. Every command also exists in its owning
-menu, and native overflow preserves access at narrow widths. The current scope
-does not require toolbar customization.
+projection, and Inspector visibility. Commands retain their menus. One catalog
+defines menu shortcuts and conflicts. Window-scoped menus govern execution,
+including embedded editors. Native overflow preserves access. Toolbar customization is not required.
 
 Search is directly editable at the top of the Sidebar. Triptych Notifications
 has one stable toolbar bell, available with either sidebar presentation or with

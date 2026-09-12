@@ -37816,38 +37816,6 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         post({ type: "requestSave" });
         return true;
       }
-    },
-    {
-      key: "Mod-f",
-      preventDefault: true,
-      run: () => {
-        post({ type: "requestDocumentFind", action: "present" });
-        return true;
-      }
-    },
-    {
-      key: "Mod-g",
-      preventDefault: true,
-      run: () => {
-        post({ type: "requestDocumentFind", action: "next" });
-        return true;
-      }
-    },
-    {
-      key: "Shift-Mod-g",
-      preventDefault: true,
-      run: () => {
-        post({ type: "requestDocumentFind", action: "previous" });
-        return true;
-      }
-    },
-    {
-      key: "Mod-e",
-      preventDefault: true,
-      run: () => {
-        post({ type: "requestDocumentFind", action: "useSelection" });
-        return true;
-      }
     }
   ]);
   function markdownCommandTransformation(state, command2, argument) {
@@ -37869,38 +37837,6 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     }
     return transformed;
   }
-  function applyMarkdownCommand(view, command2, argument) {
-    if (view.composing) return false;
-    const transformed = markdownCommandTransformation(view.state, command2, argument);
-    if (!transformed) return false;
-    view.dispatch({
-      changes: transformed.changes,
-      selection: EditorSelection.create(
-        transformed.selections.map((range) => EditorSelection.range(range.anchor, range.head))
-      ),
-      annotations: Transaction.userEvent.of(`input.scholium.${command2}`)
-    });
-    lastUndoLabel = transformed.undoLabel;
-    lastRedoLabel = transformed.undoLabel;
-    return true;
-  }
-  var editorMarkdownCommandKeymap = keymap.of([
-    {
-      key: "Mod-b",
-      preventDefault: true,
-      run: (view) => applyMarkdownCommand(view, "bold")
-    },
-    {
-      key: "Mod-i",
-      preventDefault: true,
-      run: (view) => applyMarkdownCommand(view, "emphasis")
-    },
-    {
-      key: "Mod-k",
-      preventDefault: true,
-      run: (view) => applyMarkdownCommand(view, "standardLink")
-    }
-  ]);
   var protectedInteractionNodes = /* @__PURE__ */ new Set([
     "Frontmatter",
     "FencedCode",
@@ -38157,7 +38093,6 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     // Share Markdown's high precedence while preceding its generic list
     // continuation. Scholium must compose the Callout quote and nested list
     // prefixes before the base Markdown command can consume Return.
-    Prec.high(editorMarkdownCommandKeymap),
     Prec.high(structuralInteractionKeymap),
     Prec.high(lineBoundaryKeymap),
     scholiumNoteLanguage,

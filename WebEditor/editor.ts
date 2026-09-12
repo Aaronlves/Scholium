@@ -1632,44 +1632,13 @@ const saveKeymap = keymap.of([
       return true;
     },
   },
-  {
-    key: "Mod-f",
-    preventDefault: true,
-    run: () => {
-      post({type: "requestDocumentFind", action: "present"});
-      return true;
-    },
-  },
-  {
-    key: "Mod-g",
-    preventDefault: true,
-    run: () => {
-      post({type: "requestDocumentFind", action: "next"});
-      return true;
-    },
-  },
-  {
-    key: "Shift-Mod-g",
-    preventDefault: true,
-    run: () => {
-      post({type: "requestDocumentFind", action: "previous"});
-      return true;
-    },
-  },
-  {
-    key: "Mod-e",
-    preventDefault: true,
-    run: () => {
-      post({type: "requestDocumentFind", action: "useSelection"});
-      return true;
-    },
-  },
+
 ]);
 
 // Markdown commands are editor-local source transactions, not browser rich-text
-// actions. The native Format/Insert menus and this CodeMirror keymap are two
-// transports into this one transformation owner. Keeping the transformation
-// and dispatch policy here makes keyboard and menu invocation agree on exact
+// actions. Native menus own their shortcuts and dispatch into this one
+// transformation owner. Keeping transformation and dispatch policy here makes
+// keyboard and menu invocation agree on exact
 // source, selection, protection, size limits, and CodeMirror undo history.
 function markdownCommandTransformation(
   state: EditorState,
@@ -1694,45 +1663,6 @@ function markdownCommandTransformation(
   }
   return transformed;
 }
-
-function applyMarkdownCommand(
-  view: EditorView,
-  command: MarkdownEditorCommand,
-  argument?: string,
-) {
-  if (view.composing) return false;
-  const transformed = markdownCommandTransformation(view.state, command, argument);
-  if (!transformed) return false;
-  view.dispatch({
-    changes: transformed.changes,
-    selection: EditorSelection.create(
-      transformed.selections.map((range) =>
-        EditorSelection.range(range.anchor, range.head)),
-    ),
-    annotations: Transaction.userEvent.of(`input.scholium.${command}`),
-  });
-  lastUndoLabel = transformed.undoLabel;
-  lastRedoLabel = transformed.undoLabel;
-  return true;
-}
-
-const editorMarkdownCommandKeymap = keymap.of([
-  {
-    key: "Mod-b",
-    preventDefault: true,
-    run: (view) => applyMarkdownCommand(view, "bold"),
-  },
-  {
-    key: "Mod-i",
-    preventDefault: true,
-    run: (view) => applyMarkdownCommand(view, "emphasis"),
-  },
-  {
-    key: "Mod-k",
-    preventDefault: true,
-    run: (view) => applyMarkdownCommand(view, "standardLink"),
-  },
-]);
 
 // Structural Markdown commands must yield to literal technical regions. The
 // language tree is already the editor's source-navigation authority, so this
@@ -2038,7 +1968,6 @@ const editorExtensions = [
   // Share Markdown's high precedence while preceding its generic list
   // continuation. Scholium must compose the Callout quote and nested list
   // prefixes before the base Markdown command can consume Return.
-  Prec.high(editorMarkdownCommandKeymap),
   Prec.high(structuralInteractionKeymap),
   Prec.high(lineBoundaryKeymap),
   scholiumNoteLanguage,

@@ -16,9 +16,9 @@ enum ScholiumHotkeyCategory: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
-// This registry contains only Scholium-owned app commands. Standard macOS
-// editing and fixed Markdown-editor bindings stay at their native/editor
-// owners and are intentionally not user-remappable here.
+// One registry owns every Scholium menu shortcut. Standard macOS editing
+// remains system-owned; fixed commands participate in conflict validation
+// without becoming user-remappable.
 enum ScholiumHotkeyCommand: String, CaseIterable, Codable, Identifiable, Sendable {
     case searchResearch
     case toggleLibrary
@@ -29,20 +29,70 @@ enum ScholiumHotkeyCommand: String, CaseIterable, Codable, Identifiable, Sendabl
     case insertFootnote
     case insertInlineFootnote
 
+    case newWindow
+    case closeTab
+    case newNote
+    case moveToTrash
+    case pasteMarkdown
+    case find
+    case findNext
+    case findPrevious
+    case useSelectionForFind
+    case bold
+    case italic
+    case insertLink
+    case nextTab
+    case previousTab
+    case goToFrontmatter
+    case addSelectionToChat
+    case increaseTextSize
+    case decreaseTextSize
+    case actualTextSize
+
+    static var customizableCommands: [Self] { allCases.filter(\.isCustomizable) }
+
+    var isCustomizable: Bool {
+        switch self {
+        case .searchResearch, .toggleLibrary, .toggleResearchInspector,
+             .toggleReviewEdit, .showSource, .showAttention,
+             .insertFootnote, .insertInlineFootnote: true
+        default: false
+        }
+    }
+
     var id: String { rawValue }
 
     var category: ScholiumHotkeyCategory {
         switch self {
         case .searchResearch, .toggleLibrary, .toggleResearchInspector,
-            .showAttention:
+            .showAttention, .newWindow, .newNote, .closeTab, .nextTab, .previousTab:
             .workspace
-        case .toggleReviewEdit, .showSource, .insertFootnote, .insertInlineFootnote:
+        default:
             .document
         }
     }
 
     var title: LocalizedStringResource {
         switch self {
+        case .newWindow: "New Window"
+        case .closeTab: "Close Tab"
+        case .newNote: "New Note"
+        case .moveToTrash: "Move to Trash…"
+        case .pasteMarkdown: "Paste as Markdown"
+        case .find: "Find…"
+        case .findNext: "Find Next"
+        case .findPrevious: "Find Previous"
+        case .useSelectionForFind: "Use Selection for Find"
+        case .bold: "Bold"
+        case .italic: "Italic"
+        case .insertLink: "Link"
+        case .nextTab: "Next Tab"
+        case .previousTab: "Previous Tab"
+        case .goToFrontmatter: "Go to Frontmatter"
+        case .addSelectionToChat: "Add Selection to Chat"
+        case .increaseTextSize: "Increase Text Size"
+        case .decreaseTextSize: "Decrease Text Size"
+        case .actualTextSize: "Actual Size (100%)"
         case .searchResearch: "Search Research"
         case .toggleLibrary: "Show or Hide Library"
         case .toggleResearchInspector: "Show or Hide Research Inspector"
@@ -56,6 +106,25 @@ enum ScholiumHotkeyCommand: String, CaseIterable, Codable, Identifiable, Sendabl
 
     var menuPath: LocalizedStringResource {
         switch self {
+        case .newWindow: "File → New Window"
+        case .closeTab: "File → Close Tab"
+        case .newNote: "File → New Note"
+        case .moveToTrash: "File → Move to Trash…"
+        case .pasteMarkdown: "Edit → Paste as Markdown"
+        case .find: "Edit → Find → Find…"
+        case .findNext: "Edit → Find → Find Next"
+        case .findPrevious: "Edit → Find → Find Previous"
+        case .useSelectionForFind: "Edit → Find → Use Selection for Find"
+        case .bold: "Format → Bold"
+        case .italic: "Format → Italic"
+        case .insertLink: "Insert → Link"
+        case .nextTab: "View → Next Tab"
+        case .previousTab: "View → Previous Tab"
+        case .goToFrontmatter: "View → Go to Frontmatter"
+        case .addSelectionToChat: "View → Add Selection to Chat"
+        case .increaseTextSize: "View → Document Text Size → Increase Text Size"
+        case .decreaseTextSize: "View → Document Text Size → Decrease Text Size"
+        case .actualTextSize: "View → Document Text Size → Actual Size (100%)"
         case .searchResearch: "View → Search"
         case .toggleLibrary: "View → Sidebar"
         case .toggleResearchInspector: "View → Research Inspector"
@@ -69,6 +138,44 @@ enum ScholiumHotkeyCommand: String, CaseIterable, Codable, Identifiable, Sendabl
 
     var defaultBinding: ScholiumHotkeyBinding? {
         switch self {
+        case .newWindow:
+            ScholiumHotkeyBinding(key: "n", modifiers: [.command])
+        case .closeTab:
+            ScholiumHotkeyBinding(key: "w", modifiers: [.shift, .command])
+        case .newNote:
+            ScholiumHotkeyBinding(key: "n", modifiers: [.shift, .command])
+        case .moveToTrash:
+            ScholiumHotkeyBinding(key: "\u{7f}", modifiers: [.command])
+        case .pasteMarkdown:
+            ScholiumHotkeyBinding(key: "v", modifiers: [.shift, .command])
+        case .find:
+            ScholiumHotkeyBinding(key: "f", modifiers: [.command])
+        case .findNext:
+            ScholiumHotkeyBinding(key: "g", modifiers: [.command])
+        case .findPrevious:
+            ScholiumHotkeyBinding(key: "g", modifiers: [.shift, .command])
+        case .useSelectionForFind:
+            ScholiumHotkeyBinding(key: "e", modifiers: [.command])
+        case .bold:
+            ScholiumHotkeyBinding(key: "b", modifiers: [.command])
+        case .italic:
+            ScholiumHotkeyBinding(key: "i", modifiers: [.command])
+        case .insertLink:
+            ScholiumHotkeyBinding(key: "k", modifiers: [.command])
+        case .nextTab:
+            ScholiumHotkeyBinding(key: "\t", modifiers: [.control])
+        case .previousTab:
+            ScholiumHotkeyBinding(key: "\t", modifiers: [.control, .shift])
+        case .goToFrontmatter:
+            ScholiumHotkeyBinding(key: "f", modifiers: [.option, .shift, .command])
+        case .addSelectionToChat:
+            ScholiumHotkeyBinding(key: "l", modifiers: [.shift, .command])
+        case .increaseTextSize:
+            ScholiumHotkeyBinding(key: "=", modifiers: [.command])
+        case .decreaseTextSize:
+            ScholiumHotkeyBinding(key: "-", modifiers: [.command])
+        case .actualTextSize:
+            ScholiumHotkeyBinding(key: "0", modifiers: [.command])
         case .searchResearch:
             ScholiumHotkeyBinding(key: "f", modifiers: [.shift, .command])
         case .toggleLibrary:
@@ -132,7 +239,7 @@ struct ScholiumHotkeyBinding: Codable, Hashable, Sendable {
         let normalized = key.lowercased()
         guard normalized.count == 1,
             let character = normalized.first,
-            Self.allowedCharacters.contains(character)
+            Self.allowedCharacters.contains(character) || character == "\t" || character == "\u{7f}"
         else { return nil }
         self.key = normalized
         self.modifiers = modifiers
@@ -150,6 +257,7 @@ struct ScholiumHotkeyBinding: Codable, Hashable, Sendable {
         key.count == 1
             && key.first.map(Self.allowedCharacters.contains) == true
             && modifiers.contains(.command)
+            && modifiers.subtracting([.control, .option, .shift, .command]).isEmpty
     }
 
     private static let allowedCharacters = Set(
@@ -190,9 +298,30 @@ enum ScholiumHotkeyPreferences {
         for command: ScholiumHotkeyCommand,
         data: Data
     ) -> ScholiumHotkeyBinding? {
+        guard command.isCustomizable else { return command.defaultBinding }
         let payload = decode(data)
         if payload.disabled.contains(command.rawValue) { return nil }
-        return payload.overrides[command.rawValue] ?? command.defaultBinding
+        guard let override = payload.overrides[command.rawValue] else { return command.defaultBinding }
+        guard !systemReservedBindings.contains(override),
+            !ScholiumHotkeyCommand.customizableCommands.contains(where: { peer in
+                peer != command && !payload.disabled.contains(peer.rawValue)
+                    && (payload.overrides[peer.rawValue] ?? peer.defaultBinding) == override
+            })
+        else { return nil }
+        return override
+    }
+
+    @MainActor
+    static func isMenuShortcut(_ event: NSEvent, defaults: UserDefaults = .standard) -> Bool {
+        guard event.type == .keyDown else { return false }
+        let modifiers = ScholiumHotkeyModifiers.from(event.modifierFlags)
+        let key = event.characters(byApplyingModifiers: .command)?.lowercased()
+            ?? event.charactersIgnoringModifiers?.lowercased()
+        let data = defaults.data(forKey: defaultsKey) ?? defaultData
+        return ScholiumHotkeyCommand.allCases.contains {
+            guard let binding = binding(for: $0, data: data) else { return false }
+            return binding.key == key && binding.modifiers == modifiers
+        }
     }
 
     static func data(
@@ -200,6 +329,10 @@ enum ScholiumHotkeyPreferences {
         for command: ScholiumHotkeyCommand,
         in data: Data
     ) -> Data {
+        guard command.isCustomizable else { return data }
+        if let binding, validationIssue(for: binding, command: command, data: data) != nil {
+            return data
+        }
         var payload = decode(data)
         payload.overrides.removeValue(forKey: command.rawValue)
         payload.disabled.remove(command.rawValue)
@@ -230,9 +363,12 @@ enum ScholiumHotkeyPreferences {
         data: Data
     ) -> ScholiumHotkeyValidationIssue? {
         guard binding.modifiers.contains(.command) else { return .commandRequired }
+        guard binding.isStructurallyValid else { return .systemReserved }
         if systemReservedBindings.contains(binding) { return .systemReserved }
-        if let conflict = ScholiumHotkeyCommand.allCases.first(where: {
-            $0 != command && self.binding(for: $0, data: data) == binding
+        let payload = decode(data)
+        if let conflict = ScholiumHotkeyCommand.customizableCommands.first(where: {
+            $0 != command && !payload.disabled.contains($0.rawValue)
+                && (payload.overrides[$0.rawValue] ?? $0.defaultBinding) == binding
         }) {
             return .conflict(conflict)
         }
@@ -247,7 +383,7 @@ enum ScholiumHotkeyPreferences {
         else { return Payload() }
 
         let validOverrides = payload.overrides.filter { rawCommand, binding in
-            ScholiumHotkeyCommand(rawValue: rawCommand) != nil
+            ScholiumHotkeyCommand(rawValue: rawCommand)?.isCustomizable == true
                 && binding.isStructurallyValid
         }
         let validDisabled = payload.disabled.filter {
@@ -265,8 +401,8 @@ enum ScholiumHotkeyPreferences {
         return (try? encoder.encode(payload)) ?? Data()
     }
 
-    // Includes the fixed Cmd-B/I/K Markdown editor commands as well as the
-    // standard macOS bindings, so custom app commands cannot compete with them.
+    // Fixed application commands are derived from the same menu registry.
+    // Only system-owned and field-local bindings are enumerated separately.
     private static let systemReservedBindings: Set<ScholiumHotkeyBinding> = {
         func binding(
             _ key: String,
@@ -274,30 +410,38 @@ enum ScholiumHotkeyPreferences {
         ) -> ScholiumHotkeyBinding {
             ScholiumHotkeyBinding(key: key, modifiers: modifiers)!
         }
-        return [
+        return Set(ScholiumHotkeyCommand.allCases.filter { !$0.isCustomizable }.compactMap(\.defaultBinding)).union([
             binding(","), binding("q"), binding("h"), binding("m"),
-            binding("w"), binding("n"), binding("o"), binding("p"),
+            binding("w"), binding("o"), binding("p"),
             binding("s"), binding("a"), binding("x"), binding("c"),
-            binding("v"), binding("z"), binding("f"), binding("g"),
-            binding("b"), binding("i"), binding("u"), binding("t"),
-            binding("k"),
+            binding("v"), binding("z"), binding("u"), binding("t"),
             binding("z", [.shift, .command]),
-            binding("g", [.shift, .command]),
-            binding("n", [.shift, .command]),
             binding("s", [.shift, .command]),
-            binding("w", [.shift, .command]),
             binding("f", [.control, .command]),
-        ]
+            binding("h", [.option, .command]),
+            binding("m", [.option, .command]),
+            binding("w", [.option, .command]),
+            binding("r", [.shift, .command]), // Chat selection quotation
+        ])
     }()
 }
 
 extension View {
-    @ViewBuilder
-    func scholiumKeyboardShortcut(_ binding: ScholiumHotkeyBinding?) -> some View {
-        if let binding {
-            keyboardShortcut(binding.keyEquivalent, modifiers: binding.modifiers.eventModifiers)
+    func scholiumKeyboardShortcut(_ command: ScholiumHotkeyCommand) -> some View {
+        modifier(ScholiumMenuShortcutModifier(command: command))
+    }
+}
+
+private struct ScholiumMenuShortcutModifier: ViewModifier {
+    let command: ScholiumHotkeyCommand
+    @AppStorage(ScholiumHotkeyPreferences.defaultsKey)
+    private var data = ScholiumHotkeyPreferences.defaultData
+
+    func body(content: Content) -> some View {
+        if let binding = ScholiumHotkeyPreferences.binding(for: command, data: data) {
+            content.keyboardShortcut(binding.keyEquivalent, modifiers: binding.modifiers.eventModifiers)
         } else {
-            self
+            content
         }
     }
 }

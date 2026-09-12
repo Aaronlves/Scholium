@@ -69,8 +69,17 @@ frame adjustment from the current top-left corner, constrained to the visible
 screen and immediate under Reduce Motion. SwiftUI retains destination and
 child-category state; feature owners retain configuration persistence. Native
 search filters static page/control metadata and restores the browsing context.
-Keyboard shortcut recording delegates to
-`ScholiumHotkeyPreferences`, shared with command construction.
+`ScholiumHotkeyCommand` owns fixed and customizable menu bindings.
+`ScholiumHotkeyPreferences` validates recording, writes and persisted overrides
+against that catalog and native reservations. `ScholiumMenuShortcutModifier`
+projects current preferences into menus; only customizable commands appear in
+Settings. Fixed bindings have no second conflict-list definition.
+`DocumentWebViewContainer` gives the focused document's registered shortcuts
+to the native menu before WebKit, excluding hidden documents, other windows
+and composition; disabled commands cannot fall through. Formatting and Find
+use the existing editor bridge, while CodeMirror owns local text/navigation,
+history and Save. Menu content receives the window command revision explicitly,
+so nested views refresh their availability with the current window state.
 
 `SettingsInteractionView` composes Keyboard Shortcuts and Selection Actions
 with a native segmented child selector. `SettingsIntegrationsView` composes

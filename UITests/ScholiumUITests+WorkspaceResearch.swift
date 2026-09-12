@@ -1338,6 +1338,24 @@ extension ScholiumUITests {
         XCTAssertTrue(app.menuItems["Source"].exists)
         app.typeKey(.escape, modifierFlags: [])
 
+        let editor = enterLivePreview()
+        editor.typeKey(.end, modifierFlags: [.command])
+        try setPasteboardText("\nshortcut-probe")
+        editor.typeKey("v", modifierFlags: [.command])
+        XCTAssertTrue(waitUntil(timeout: 5) {
+            (editor.value as? String ?? "").contains("shortcut-probe")
+        })
+        editor.typeKey(.leftArrow, modifierFlags: [.command, .shift])
+        app.typeKey("i", modifierFlags: [.command])
+        XCTAssertTrue(waitUntil(timeout: 5) {
+            (editor.value as? String ?? "").contains("*shortcut-probe*")
+        }, "Command-I must apply Markdown emphasis exactly once from the focused editor.")
+        app.typeKey("z", modifierFlags: [.command])
+        XCTAssertTrue(waitUntil(timeout: 5) {
+            let value = editor.value as? String ?? ""
+            return value.contains("shortcut-probe") && !value.contains("*shortcut-probe*")
+        }, "One Undo must undo exactly one shortcut transaction.")
+        selectDocumentMode("Review")
         selectDocumentMode("Edit")
         selectDocumentMode("Review")
 
@@ -1345,6 +1363,10 @@ extension ScholiumUITests {
         XCTAssertTrue(inspector.exists)
 
         app.typeKey("f", modifierFlags: [.command, .shift])
+        // Search first focuses its field; results expand only after input.
+        // Paste without clicking to prove the shortcut actually moved focus.
+        try setPasteboardText("shortcut-probe")
+        app.typeKey("v", modifierFlags: [.command])
         let search = app.descendants(matching: .any)["scholium.searchWorkspace"]
         XCTAssertTrue(search.waitForExistence(timeout: 5))
     }

@@ -99,7 +99,7 @@ struct HotkeySettingsView: View {
     }
 
     private var hasCustomizations: Bool {
-        ScholiumHotkeyCommand.allCases.contains {
+        ScholiumHotkeyCommand.customizableCommands.contains {
             ScholiumHotkeyPreferences.isCustomized($0, data: preferencesData)
         }
     }
@@ -111,7 +111,7 @@ struct HotkeySettingsView: View {
     private func visibleCommands(
         in category: ScholiumHotkeyCategory
     ) -> [ScholiumHotkeyCommand] {
-        ScholiumHotkeyCommand.allCases.filter {
+        ScholiumHotkeyCommand.customizableCommands.filter {
             $0.category == category && matchesSearch($0)
         }
     }
@@ -163,7 +163,11 @@ struct HotkeySettingsView: View {
             !ScholiumHotkeyPreferences.isCustomized(
                 command,
                 data: preferencesData
-            ))
+            ) || command.defaultBinding.map {
+                ScholiumHotkeyPreferences.validationIssue(
+                    for: $0, command: command, data: preferencesData
+                ) != nil
+            } == true)
     }
 
     private func binding(
@@ -355,7 +359,8 @@ private struct HotkeyRecorderControl: NSViewRepresentable {
                 clear?()
                 return
             }
-            guard let characters = event.charactersIgnoringModifiers,
+            guard let characters = event.characters(byApplyingModifiers: .command)
+                    ?? event.charactersIgnoringModifiers,
                 let character = characters.first,
                 let binding = ScholiumHotkeyBinding(
                     key: String(character),

@@ -231,7 +231,7 @@ struct FrontendArchitectureTests {
             driver.contains(
                 "application.typeKey(\"f\", modifierFlags: [.command, .shift])"
             ))
-        #expect(app.contains(".scholiumKeyboardShortcut(shortcut(for: .searchResearch))"))
+        #expect(app.contains(".scholiumKeyboardShortcut(.searchResearch)"))
         #expect(hotkeys.contains("ScholiumHotkeyBinding(key: \"f\", modifiers: [.shift, .command])"))
     }
 
@@ -1404,11 +1404,11 @@ struct FrontendArchitectureTests {
         #expect(documentModeMenu.contains("Button(\"Source\")"))
         #expect(
             !documentModeMenu.contains(
-                ".scholiumKeyboardShortcut(shortcut(for: .toggleReviewEdit))"
+                ".scholiumKeyboardShortcut(.toggleReviewEdit)"
             ))
         #expect(
             appSource.components(
-                separatedBy: ".scholiumKeyboardShortcut(shortcut(for: .toggleReviewEdit))"
+                separatedBy: ".scholiumKeyboardShortcut(.toggleReviewEdit)"
             ).count - 1 == 1
         )
 
@@ -1448,9 +1448,13 @@ struct FrontendArchitectureTests {
         #expect(appSource.contains("CommandGroup(replacing: .textFormatting)"))
         #expect(!appSource.contains("CommandGroup(after: .textFormatting)"))
         #expect(appSource.contains("Button(\"Italic\") { editorActions?.perform(.emphasis) }"))
-        #expect(appSource.contains(".keyboardShortcut(\"i\", modifiers: [.command])"))
-        #expect(editorSource.contains("key: \"Mod-i\""))
-        #expect(editorSource.contains("applyMarkdownCommand(view, \"emphasis\")"))
+        #expect(appSource.contains(".scholiumKeyboardShortcut(.italic)"))
+        for key in ["Mod-b", "Mod-i", "Mod-k", "Mod-f", "Mod-g", "Shift-Mod-g", "Mod-e"] {
+            #expect(!editorSource.contains("key: \"" + key + "\""))
+        }
+        // Only the explicitly gated Debug fault command is local to the menu.
+        #expect(appSource.components(separatedBy: ".keyboardShortcut(").count - 1 == 1)
+
         #expect(editorSource.contains("markdownCommandTransformation(editor.state, operation.command, argument)"))
     }
 
@@ -2177,7 +2181,7 @@ struct FrontendArchitectureTests {
         #expect(!confirmation.contains("unaffectedParticipants"))
         #expect(sidebar.contains("requestSystemTrash"))
         #expect(sidebar.contains("requestFolderSystemTrash"))
-        #expect(app.contains(".keyboardShortcut(.delete, modifiers: [.command])"))
+        #expect(app.contains(".scholiumKeyboardShortcut(.moveToTrash)"))
     }
 
     @Test("Notifications search lives in the transient Workspace popover without custom close chrome")
@@ -3640,14 +3644,7 @@ struct FrontendArchitectureTests {
         #expect(structuralKeymap.contains("indentList(view.state.doc"))
         #expect(!structuralKeymap.contains("doc.toString()"))
 
-        let formattingKeymap = try section(
-            from: "const editorMarkdownCommandKeymap = keymap.of",
-            to: "const structuralInteractionKeymap = keymap.of"
-        )
-        #expect(formattingKeymap.contains("key: \"Mod-b\""))
-        #expect(formattingKeymap.contains("key: \"Mod-i\""))
-        #expect(formattingKeymap.contains("key: \"Mod-k\""))
-        #expect(formattingKeymap.contains("applyMarkdownCommand"))
+        #expect(!editorSource.contains("const editorMarkdownCommandKeymap"))
 
         let sessionSource = try String(
             contentsOf: repository.appendingPathComponent(

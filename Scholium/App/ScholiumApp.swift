@@ -1010,6 +1010,7 @@ extension FocusedValues {
 }
 
 private struct ScholiumNewWindowCommandContent: View {
+    let commandRevision: UInt64
     let storageReady: Bool
     @Environment(\.openWindow) private var openWindow
     @FocusedObject private var appState: WindowModel?
@@ -1022,12 +1023,13 @@ private struct ScholiumNewWindowCommandContent: View {
             )
         }
         .scholiumActivationPointer()
-        .keyboardShortcut("n", modifiers: [.command])
+        .scholiumKeyboardShortcut(.newWindow)
         .disabled(!storageReady)
     }
 }
 
 private struct ScholiumAfterNewItemCommandContent: View {
+    let commandRevision: UInt64
     let storageReady: Bool
     @Environment(\.openWindow) private var openWindow
     @FocusedObject private var appState: WindowModel?
@@ -1048,7 +1050,7 @@ private struct ScholiumAfterNewItemCommandContent: View {
             guard let id = appState?.documentTabController.selectedTabID else { return }
             appState?.closeDocumentTab(withID: id)
         }
-        .keyboardShortcut("w", modifiers: [.command, .shift])
+        .scholiumKeyboardShortcut(.closeTab)
         .disabled(appState?.documentTabController.selectedTabID == nil)
         Divider()
         Button("New Triptych…") {
@@ -1077,7 +1079,7 @@ private struct ScholiumAfterNewItemCommandContent: View {
             appState?.libraryMutationController.requestUntitledNoteCreation(in: nil)
         }
         .scholiumActivationPointer()
-        .keyboardShortcut("n", modifiers: [.command, .shift])
+        .scholiumKeyboardShortcut(.newNote)
         .disabled(
             appState?.workspaceAssignment == nil
                 || appState?.noteSourceScope != .library
@@ -1116,7 +1118,7 @@ private struct ScholiumAfterNewItemCommandContent: View {
             appState?.requestCurrentNoteSystemTrash()
         }
         .scholiumActivationPointer()
-        .keyboardShortcut(.delete, modifiers: [.command])
+        .scholiumKeyboardShortcut(.moveToTrash)
         .disabled(
             appState?.currentDocumentCapabilities.allows(.moveToSystemTrash)
                 != true
@@ -1153,6 +1155,7 @@ private struct ScholiumAfterNewItemCommandContent: View {
 }
 
 private struct ScholiumPasteboardCommandContent: View {
+    let commandRevision: UInt64
     @FocusedObject private var appState: WindowModel?
     @FocusedValue(\.scholiumEditorActions) private var editorActions
 
@@ -1162,13 +1165,13 @@ private struct ScholiumPasteboardCommandContent: View {
             editorActions?.performWithArgument(.pasteMarkdown, payload)
         }
         .scholiumActivationPointer()
-        .keyboardShortcut("v", modifiers: [.command, .shift])
+        .scholiumKeyboardShortcut(.pasteMarkdown)
         .disabled(editorActions?.isAvailable(.pasteMarkdown) != true)
         Divider()
         Menu("Find") {
             Button("Find…") { editorActions?.presentFind() }
                 .scholiumActivationPointer()
-                .keyboardShortcut("f", modifiers: [.command])
+                .scholiumKeyboardShortcut(.find)
                 .disabled(editorActions == nil)
             Button("Find and Replace…") { editorActions?.presentReplace() }
                 .scholiumActivationPointer()
@@ -1176,15 +1179,15 @@ private struct ScholiumPasteboardCommandContent: View {
             Divider()
             Button("Find Next") { editorActions?.findNext() }
                 .scholiumActivationPointer()
-                .keyboardShortcut("g", modifiers: [.command])
+                .scholiumKeyboardShortcut(.findNext)
                 .disabled(editorActions == nil)
             Button("Find Previous") { editorActions?.findPrevious() }
                 .scholiumActivationPointer()
-                .keyboardShortcut("g", modifiers: [.command, .shift])
+                .scholiumKeyboardShortcut(.findPrevious)
                 .disabled(editorActions == nil)
             Button("Use Selection for Find") { editorActions?.useSelectionForFind() }
                 .scholiumActivationPointer()
-                .keyboardShortcut("e", modifiers: [.command])
+                .scholiumKeyboardShortcut(.useSelectionForFind)
                 .disabled(editorActions == nil)
         }
         .scholiumActivationPointer()
@@ -1208,17 +1211,18 @@ private struct ScholiumPasteboardCommandContent: View {
 }
 
 private struct ScholiumTextFormattingCommandContent: View {
+    let commandRevision: UInt64
     @FocusedValue(\.scholiumEditorActions) private var editorActions
 
     var body: some View {
         Divider()
         Button("Bold") { editorActions?.perform(.bold) }
             .scholiumActivationPointer()
-            .keyboardShortcut("b", modifiers: [.command])
+            .scholiumKeyboardShortcut(.bold)
             .disabled(editorActions?.isAvailable(.bold) != true)
         Button("Italic") { editorActions?.perform(.emphasis) }
             .scholiumActivationPointer()
-            .keyboardShortcut("i", modifiers: [.command])
+            .scholiumKeyboardShortcut(.italic)
             .disabled(editorActions?.isAvailable(.emphasis) != true)
         Button("Strikethrough") { editorActions?.perform(.strikethrough) }
             .scholiumActivationPointer()
@@ -1320,8 +1324,7 @@ private struct ScholiumTextFormattingCommandContent: View {
 }
 
 private struct ScholiumInsertCommandContent: View {
-    @AppStorage(ScholiumHotkeyPreferences.defaultsKey)
-    private var hotkeyPreferencesData = ScholiumHotkeyPreferences.defaultData
+    let commandRevision: UInt64
     @FocusedValue(\.scholiumEditorActions) private var editorActions
 
     var body: some View {
@@ -1334,7 +1337,7 @@ private struct ScholiumInsertCommandContent: View {
         Divider()
         Button("Link") { editorActions?.perform(.standardLink) }
             .scholiumActivationPointer()
-            .keyboardShortcut("k", modifiers: [.command])
+            .scholiumKeyboardShortcut(.insertLink)
             .disabled(editorActions?.isAvailable(.standardLink) != true)
         Button("Wikilink") { editorActions?.perform(.wikilink) }
             .scholiumActivationPointer()
@@ -1345,11 +1348,11 @@ private struct ScholiumInsertCommandContent: View {
         Divider()
         Button("Footnote") { editorActions?.perform(.insertFootnote) }
             .scholiumActivationPointer()
-            .scholiumKeyboardShortcut(shortcut(for: .insertFootnote))
+            .scholiumKeyboardShortcut(.insertFootnote)
             .disabled(editorActions?.isAvailable(.insertFootnote) != true)
         Button("Inline Footnote") { editorActions?.perform(.insertInlineFootnote) }
             .scholiumActivationPointer()
-            .scholiumKeyboardShortcut(shortcut(for: .insertInlineFootnote))
+            .scholiumKeyboardShortcut(.insertInlineFootnote)
             .disabled(editorActions?.isAvailable(.insertInlineFootnote) != true)
         Button("Table") { editorActions?.perform(.insertTable) }
             .scholiumActivationPointer()
@@ -1382,18 +1385,10 @@ private struct ScholiumInsertCommandContent: View {
         }
         .scholiumActivationPointer()
     }
-
-    private func shortcut(for command: ScholiumHotkeyCommand) -> ScholiumHotkeyBinding? {
-        ScholiumHotkeyPreferences.binding(
-            for: command,
-            data: hotkeyPreferencesData
-        )
-    }
 }
 
 private struct ScholiumSidebarCommandContent: View {
-    @AppStorage(ScholiumHotkeyPreferences.defaultsKey)
-    private var hotkeyPreferencesData = ScholiumHotkeyPreferences.defaultData
+    let commandRevision: UInt64
     @FocusedObject private var appState: WindowModel?
     @FocusedValue(\.scholiumSearchActions) private var searchActions
     @FocusedValue(\.scholiumWorkspaceWindowActions) private var workspaceWindowActions
@@ -1407,10 +1402,10 @@ private struct ScholiumSidebarCommandContent: View {
         }
         .disabled(appState?.documentTabController.tabs.isEmpty != false)
         Button("Next Tab") { appState?.selectAdjacentDocumentTab(offset: 1) }
-            .keyboardShortcut(.tab, modifiers: [.control])
+            .scholiumKeyboardShortcut(.nextTab)
             .disabled((appState?.documentTabController.tabs.count ?? 0) < 2)
         Button("Previous Tab") { appState?.selectAdjacentDocumentTab(offset: -1) }
-            .keyboardShortcut(.tab, modifiers: [.control, .shift])
+            .scholiumKeyboardShortcut(.previousTab)
             .disabled((appState?.documentTabController.tabs.count ?? 0) < 2)
         Divider()
         Button("Back") {
@@ -1433,21 +1428,21 @@ private struct ScholiumSidebarCommandContent: View {
             workspaceWindowActions?.setLibraryVisible(!appState.sidebarVisible)
         }
         .scholiumActivationPointer()
-        .scholiumKeyboardShortcut(shortcut(for: .toggleLibrary))
+        .scholiumKeyboardShortcut(.toggleLibrary)
         .disabled(workspaceWindowActions == nil)
         Divider()
         Button("Search…") {
             searchActions?.begin(.general)
         }
         .scholiumActivationPointer()
-        .scholiumKeyboardShortcut(shortcut(for: .searchResearch))
+        .scholiumKeyboardShortcut(.searchResearch)
         .disabled(searchActions == nil)
         Button("Advanced Search…") { searchActions?.advanced() }
             .disabled(searchActions == nil)
         Button("Go to Frontmatter") {
             editorActions?.goToFrontmatter()
         }
-        .keyboardShortcut("f", modifiers: [.command, .option, .shift])
+        .scholiumKeyboardShortcut(.goToFrontmatter)
         .disabled(editorActions?.canEditFrontmatter != true || editorActions?.isComposing == true)
         Button("Agent Changes…") {
             appState?.presentationRouter.present(.agentChanges(scope: .current))
@@ -1474,7 +1469,7 @@ private struct ScholiumSidebarCommandContent: View {
                 }
             }
         }
-        .keyboardShortcut("l", modifiers: [.command, .shift])
+        .scholiumKeyboardShortcut(.addSelectionToChat)
         .disabled(appState?.currentNote == nil)
         Button(
             ScholiumL10n.dynamicString(
@@ -1489,7 +1484,7 @@ private struct ScholiumSidebarCommandContent: View {
             )
         }
         .scholiumActivationPointer()
-        .scholiumKeyboardShortcut(shortcut(for: .toggleResearchInspector))
+        .scholiumKeyboardShortcut(.toggleResearchInspector)
         .disabled(workspaceWindowActions == nil || appState?.canToggleResearchInspector != true)
         Button(
             ScholiumL10n.dynamicString(
@@ -1500,7 +1495,7 @@ private struct ScholiumSidebarCommandContent: View {
             appState?.requestDocumentMode(destination)
         }
         .scholiumActivationPointer()
-        .scholiumKeyboardShortcut(shortcut(for: .toggleReviewEdit))
+        .scholiumKeyboardShortcut(.toggleReviewEdit)
         .disabled(reviewEditDestination == nil || editorActions?.isComposing == true)
         Menu("Document Mode") {
             Button("Review") { appState?.requestDocumentMode(.read) }
@@ -1511,7 +1506,7 @@ private struct ScholiumSidebarCommandContent: View {
             if appState?.isDetachedDocumentWindow != true {
                 Button("Source") { appState?.requestDocumentMode(.source) }
                     .scholiumActivationPointer()
-                    .scholiumKeyboardShortcut(shortcut(for: .showSource))
+                    .scholiumKeyboardShortcut(.showSource)
                     .disabled(appState?.canEditCurrentNote != true)
             }
         }
@@ -1523,7 +1518,7 @@ private struct ScholiumSidebarCommandContent: View {
                 appState?.adjustDocumentTextScale(by: ScholiumMetrics.Document.textScaleStep)
             }
             .scholiumActivationPointer()
-            .keyboardShortcut("=", modifiers: [.command])
+            .scholiumKeyboardShortcut(.increaseTextSize)
             .disabled(
                 appState?.currentNote == nil
                     || appState?.documentTextScale == ScholiumMetrics.Document.maximumTextScale
@@ -1532,14 +1527,14 @@ private struct ScholiumSidebarCommandContent: View {
                 appState?.adjustDocumentTextScale(by: -ScholiumMetrics.Document.textScaleStep)
             }
             .scholiumActivationPointer()
-            .keyboardShortcut("-", modifiers: [.command])
+            .scholiumKeyboardShortcut(.decreaseTextSize)
             .disabled(
                 appState?.currentNote == nil
                     || appState?.documentTextScale == ScholiumMetrics.Document.minimumTextScale
             )
             Button("Actual Size (100%)") { appState?.resetDocumentTextScale() }
                 .scholiumActivationPointer()
-                .keyboardShortcut("0", modifiers: [.command])
+                .scholiumKeyboardShortcut(.actualTextSize)
                 .disabled(
                     appState?.currentNote == nil
                         || appState?.documentTextScale == ScholiumMetrics.Document.defaultTextScale
@@ -1570,13 +1565,6 @@ private struct ScholiumSidebarCommandContent: View {
         .scholiumActivationPointer()
     }
 
-    private func shortcut(for command: ScholiumHotkeyCommand) -> ScholiumHotkeyBinding? {
-        ScholiumHotkeyPreferences.binding(
-            for: command,
-            data: hotkeyPreferencesData
-        )
-    }
-
     private var reviewEditDestination: NotePresentationMode? {
         guard let appState, appState.currentNote != nil else { return nil }
         switch appState.presentedDocumentMode {
@@ -1589,8 +1577,7 @@ private struct ScholiumSidebarCommandContent: View {
 }
 
 private struct ScholiumAttentionCommandContent: View {
-    @AppStorage(ScholiumHotkeyPreferences.defaultsKey)
-    private var hotkeyPreferencesData = ScholiumHotkeyPreferences.defaultData
+    let commandRevision: UInt64
     @FocusedValue(\.scholiumWorkspaceWindowActions) private var workspaceWindowActions
 
     var body: some View {
@@ -1598,15 +1585,8 @@ private struct ScholiumAttentionCommandContent: View {
             workspaceWindowActions?.showPreferredAttention()
         }
         .scholiumActivationPointer()
-        .scholiumKeyboardShortcut(shortcut(for: .showAttention))
+        .scholiumKeyboardShortcut(.showAttention)
         .disabled(workspaceWindowActions?.canShowAttention() != true)
-    }
-
-    private func shortcut(for command: ScholiumHotkeyCommand) -> ScholiumHotkeyBinding? {
-        ScholiumHotkeyPreferences.binding(
-            for: command,
-            data: hotkeyPreferencesData
-        )
     }
 }
 
@@ -1668,19 +1648,21 @@ private struct ScholiumCommands: Commands {
     @FocusedObject private var commandObservation: WindowCommandObservation?
 
     var body: some Commands {
-        let _ = commandObservation?.revision
+        let commandRevision = commandObservation?.revision ?? 0
         let storageReady = applicationBootstrapStatus?.isReady == true
         let newWindowCommand = ScholiumNewWindowCommandContent(
+            commandRevision: commandRevision,
             storageReady: storageReady
         )
         let afterNewItemCommand = ScholiumAfterNewItemCommandContent(
+            commandRevision: commandRevision,
             storageReady: storageReady
         )
-        let pasteboardCommand = ScholiumPasteboardCommandContent()
-        let textFormattingCommand = ScholiumTextFormattingCommandContent()
-        let insertCommand = ScholiumInsertCommandContent()
-        let sidebarCommand = ScholiumSidebarCommandContent()
-        let attentionCommand = ScholiumAttentionCommandContent()
+        let pasteboardCommand = ScholiumPasteboardCommandContent(commandRevision: commandRevision)
+        let textFormattingCommand = ScholiumTextFormattingCommandContent(commandRevision: commandRevision)
+        let insertCommand = ScholiumInsertCommandContent(commandRevision: commandRevision)
+        let sidebarCommand = ScholiumSidebarCommandContent(commandRevision: commandRevision)
+        let attentionCommand = ScholiumAttentionCommandContent(commandRevision: commandRevision)
         #if DEBUG
             let qaCommand = ScholiumQACommandContent()
         #endif

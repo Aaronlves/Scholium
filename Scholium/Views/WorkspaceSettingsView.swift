@@ -68,7 +68,7 @@ private enum ScholiumSettingsDestination: String, CaseIterable, Identifiable, Eq
                 "Interaction", "Keyboard Shortcuts", "Selection Actions", "Chat", "queue", "steer", "return", "聊天", "回车", "排队", "shortcuts", "commands",
                 "prompt", "instruction", "选段操作",
             ]
-                + ScholiumHotkeyCommand.allCases.flatMap {
+                + ScholiumHotkeyCommand.customizableCommands.flatMap {
                     [String(localized: $0.title), String(localized: $0.menuPath)]
                 }
         case .integrations:
