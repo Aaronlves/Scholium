@@ -188,9 +188,9 @@ compositing artifacts; inspect the actual native window before judging them.
   emphasis correction are implemented. Human acceptance remains open; the
   2026-09-05 evidence is recorded in the verification chapter.
 - Exercise the original intermittent Sidebar symptom under physical mixed
-  pointer/keyboard use and window reactivation. Native row emphasis now rejects
-  pointer-mode writeback and no longer resynchronizes during drawing; unit and
-  focused XCUITest coverage do not establish every timing-sensitive sequence.
+  pointer/keyboard use and window reactivation. Library now leaves emphasis to
+  AppKit and projects native cell background into hosted text; physical swipe
+  feedback and timing-sensitive focus sequences retain human acceptance.
 - Re-run the affected Agent Changes exact-comparison/Undo UI journey after its
   isolated-launch failures are resolved. On 2026-09-04 two focused attempts
   failed before Settlement because the registered QA launch did not expose the

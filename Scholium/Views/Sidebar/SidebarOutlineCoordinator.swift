@@ -4,7 +4,7 @@ import SwiftUI
 
 extension SidebarOutlineSourceList {
     @MainActor
-    final class Coordinator: NSObject, NSOutlineViewDataSource, NSOutlineViewDelegate {
+    final class Coordinator: NSObject, NSOutlineViewDataSource, NSOutlineViewDelegate, NSTableViewDelegate {
         static let columnIdentifier = NSUserInterfaceItemIdentifier(
             "ScholiumSidebarOutlineColumn"
         )
@@ -40,11 +40,6 @@ extension SidebarOutlineSourceList {
         func attach(outlineView: NSOutlineView, scrollView: NSScrollView) {
             self.outlineView = outlineView
             self.scrollView = scrollView
-            (outlineView as? SidebarOutlineView)?.selectionPresentationDidChange = {
-                [weak self, weak outlineView] in
-                guard let self, let outlineView else { return }
-                self.refreshAvailableRows(in: outlineView)
-            }
             (outlineView as? SidebarOutlineView)?.chatAccessibilityAction = { [weak self, weak outlineView] in
                 guard let self, let outlineView, self.outlineView === outlineView, outlineView.selectedRow >= 0,
                     let item = outlineView.item(atRow: outlineView.selectedRow) as? SidebarOutlineItem,
@@ -68,7 +63,6 @@ extension SidebarOutlineSourceList {
 
         func detach(from scrollView: NSScrollView) {
             (scrollView as? SidebarOutlineScrollView)?.rootMenuProvider = nil
-            (outlineView as? SidebarOutlineView)?.selectionPresentationDidChange = nil
             (outlineView as? SidebarOutlineView)?.chatAccessibilityAction = nil
             self.outlineView = nil
             self.scrollView = nil
@@ -276,10 +270,7 @@ extension SidebarOutlineSourceList {
                 context: configuration.context,
                 presentation: SidebarSourceListRowPresentation(
                     effectiveRowSizeStyle: outlineView.effectiveRowSizeStyle
-                ),
-                usesEmphasizedSelectionForeground: (outlineView as? SidebarOutlineView)?
-                    .usesEmphasizedSelectionForeground == true
-                    && outlineView.selectedRow == outlineView.row(forItem: item)
+                )
             )
         }
 
@@ -596,6 +587,41 @@ extension SidebarOutlineSourceList {
             true
         }
 
+        // NSOutlineView uses the inherited NSTableView row-action delegate API.
+        func tableView(
+            _ tableView: NSTableView,
+            rowActionsForRow row: Int,
+            edge: NSTableView.RowActionEdge
+        ) -> [NSTableViewRowAction] {
+            guard edge == .trailing,
+                let outlineView = tableView as? NSOutlineView,
+                self.outlineView === outlineView,
+                configuration.context.canMutateLibrary,
+                let item = outlineView.item(atRow: row) as? SidebarOutlineItem,
+                let note = item.node.note,
+                let target = NoteMutationTarget(note)
+            else { return [] }
+
+            let itemID = item.id
+            let action = NSTableViewRowAction(
+                style: .destructive,
+                title: ScholiumL10n.string("Move to Trash…", locale: configuration.locale)
+            ) { [weak self, weak outlineView] _, _ in
+                guard let self, let outlineView,
+                    self.outlineView === outlineView,
+                    !outlineView.isHiddenOrHasHiddenAncestor,
+                    self.configuration.context.canMutateLibrary,
+                    let currentNote = self.itemsByID[itemID]?.node.note,
+                    NoteMutationTarget(currentNote) == target
+                else { return }
+                // Capture identity, not a row index that sorting/filtering can reuse.
+                outlineView.rowActionsVisible = false
+                self.configuration.context.requestNoteTrash(target)
+            }
+            action.image = NSImage(systemSymbolName: "trash", accessibilityDescription: action.title)
+            return [action]
+        }
+
         func outlineView(_ outlineView: NSOutlineView, shouldSelectItem item: Any) -> Bool {
             item is SidebarOutlineItem
         }
@@ -642,7 +668,6 @@ extension SidebarOutlineSourceList {
                     owner: self
                 ) as? SidebarOutlineRowView ?? SidebarOutlineRowView()
             row.identifier = Self.rowIdentifier
-            (outlineView as? SidebarOutlineView)?.configureSelectionPresentation(for: row)
             row.configure(
                 item: item,
                 isExpanded: outlineView.isItemExpanded(item),

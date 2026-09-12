@@ -1984,11 +1984,11 @@ struct FrontendArchitectureTests {
         #expect(outlineSource.contains("let outlineView = SidebarOutlineView()"))
         #expect(outlineSource.contains("outlineView.style = .sourceList"))
         #expect(!outlineSource.contains("selectionHighlightStyle = .none"))
-        #expect(outlineRowsSource.contains("SidebarSourceListSelectionPresentation"))
-        #expect(outlineRowsSource.contains("focusRingType = .none"))
+        #expect(!outlineRowsSource.contains("SidebarSourceListSelectionPresentation"))
+        #expect(!outlineRowsSource.contains("focusRingType = .none"))
         #expect(!workspaceNavigatorSource.contains("focusRingType = .none"))
         #expect(outlineRowsSource.contains("override func mouseDown(with event: NSEvent)"))
-        #expect(outlineRowsSource.contains("override func keyDown(with event: NSEvent)"))
+        #expect(!outlineRowsSource.contains("override func keyDown(with event: NSEvent)"))
         #expect(outlineCoordinatorSource.contains("shouldShowOutlineCellForItem"))
         #expect(
             outlineSource.contains(

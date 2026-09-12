@@ -58,6 +58,11 @@ already-visible Chat does not toggle the Sidebar closed.
   segments. Complete localized labels adapt to role symbols at narrow widths;
   selection and disabled-workspace semantics remain native. The file tree keeps
   source-list selection, keyboard focus, disclosure, and normal native row size.
+  AppKit owns row emphasis without a pointer/keyboard override; hosted text follows
+  the native cell background. Note-only trailing row actions reuse guarded Trash
+  preparation. Exploratory QA observed accent selection and gray selection after
+  entering the editor; physical swipe feedback and confirmation/cancellation remain
+  unverified after the Computer Use connection failed. No test suite was run.
   Organize and Add remain separate native menus. File-tree rows use the Finder-style native grid: AppKit owns
   the Folder disclosure gutter and its state, monochrome Folder and Note symbols
   share the item-type column, and their titles share the following text column.

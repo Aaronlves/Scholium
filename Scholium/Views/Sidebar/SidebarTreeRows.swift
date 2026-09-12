@@ -105,6 +105,16 @@ struct SidebarTreeContext {
     let revealNote: (String) -> Void
     let requestSystemTrash: (NoteMutationTarget) async throws -> Void
     let showError: (String) -> Void
+
+    @MainActor
+    func requestNoteTrash(_ target: NoteMutationTarget) {
+        guard canMutateLibrary else { return }
+        Task {
+            do { try await requestSystemTrash(target) } catch {
+                showError("Could not prepare Move to Trash. \(error.localizedDescription)")
+            }
+        }
+    }
 }
 
 struct SidebarTreeNodeRow: View {
@@ -112,7 +122,7 @@ struct SidebarTreeNodeRow: View {
     @Binding var expandedFolders: Set<String>
     let context: SidebarTreeContext
     let presentation: SidebarSourceListRowPresentation
-    let usesEmphasizedSelectionForeground: Bool
+    var usesEmphasizedSelectionForeground = false
 
     private var isExpanded: Bool { expandedFolders.contains(node.id) }
 
@@ -261,7 +271,8 @@ struct SidebarTreeNodeRow: View {
         .disabled(
             command == .addToChat
                 ? !context.canAddNoteToChat(note)
-                : command.requiresMutationTarget && NoteMutationTarget(note) == nil
+                : (command.requiresMutationTarget && NoteMutationTarget(note) == nil)
+                    || (command == .moveToSystemTrash && !context.canMutateLibrary)
         )
     }
 
@@ -296,13 +307,7 @@ struct SidebarTreeNodeRow: View {
                 )
                 return
             }
-            Task {
-                do { try await context.requestSystemTrash(target) } catch {
-                    context.showError(
-                        "Could not prepare Move to Trash. \(error.localizedDescription)"
-                    )
-                }
-            }
+            context.requestNoteTrash(target)
         case .copyRelativePath:
             context.copyRelativePath(note.relativePath)
         case .revealInFinder:

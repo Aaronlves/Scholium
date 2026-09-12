@@ -567,10 +567,10 @@ controls and rows retain their macOS cursor behavior; link cursors are reserved
 to document links and genuinely link-equivalent targets where native controls
 do not already own cursor behavior.
 
-New Note/Folder, Rename, Move, Copy Relative Path, Reveal, Expand/Collapse, and
-system-Trash actions are available through menu and named accessibility routes;
-secondary click and drag are redundant. Note drag payloads contain identity and
-revision, Folder payloads contain vault and path, never source text. Invalid,
+Menus and accessibility actions provide creation, Rename, Move, Copy Relative
+Path, Reveal, disclosure, and Trash. Notes offer native left-swipe Move to Trash
+with confirmation; right swipe has no action. AppKit owns feedback. Drag carries Note identity/revision or Folder vault/path,
+never source text. Invalid,
 cross-vault, stale, self/descendant, protected, or ambiguous drops fail without
 source change.
 
