@@ -316,7 +316,9 @@ struct WorkspaceToolbarTests {
             activateSidebar: { _ in },
             showAttention: { _ in },
             showPreferredAttention: {},
-            canShowAttention: { false }
+            canShowAttention: { false },
+            settlementMenuTitle: { nil },
+            showSettlement: {}
         )
     }
 

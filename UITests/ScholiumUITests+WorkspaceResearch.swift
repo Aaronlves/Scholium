@@ -858,11 +858,60 @@ extension ScholiumUITests {
     }
 
     @MainActor
-    func testRetiredNavigationMenuIsAbsent() {
+    func testMenuBarGroupsCommandsByTask() throws {
         XCTAssertFalse(app.menuBars.menuBarItems["Navigate"].exists)
-        XCTAssertTrue(app.menuItems["Back"].exists)
-        XCTAssertTrue(app.menuItems["Forward"].exists)
-        XCTAssertFalse(app.menuItems["Recent Notes"].exists)
+        func menuItems(_ menu: String) -> [String] {
+            let item = app.menuBars.menuBarItems[menu]
+            XCTAssertTrue(item.exists, "Missing menu: \(menu)")
+            item.click()
+            let labels = item.descendants(matching: .menuItem).allElementsBoundByIndex.map(\.title)
+            app.typeKey(.escape, modifierFlags: [])
+            return labels
+        }
+        func assertOrder(_ expected: [String], in items: [String], menu: String) {
+            var previous = -1
+            for title in expected {
+                guard let index = items.firstIndex(of: title) else {
+                    XCTFail("Missing \(menu) → \(title); actual: \(items)")
+                    return
+                }
+                XCTAssertGreaterThan(index, previous, "Incorrect \(menu) order: \(items)")
+                previous = index
+            }
+        }
+        let file = menuItems("File")
+        assertOrder(["New Note", "New Window", "New Triptych…", "Open Triptych", "Close Tab",
+                     "Import Markdown…", "Duplicate Note…", "Rename Note…", "Move Note…",
+                     "Attach a Copy…", "Reference Original…", "Reveal Current Vault in Finder", "Move to Trash…"],
+                    in: file, menu: "File")
+        XCTAssertFalse(file.contains("Move to Separate Window"))
+        let format = menuItems("Format")
+        assertOrder(["Bold", "Italic", "Strikethrough", "Highlight", "Inline Code", "Heading", "Lists",
+                     "Block Quotation", "Fenced Code", "Table"], in: format, menu: "Format")
+        XCTAssertFalse(format.contains("Import Image…"))
+        XCTAssertFalse(format.contains("Markdown Comment"))
+        let insert = menuItems("Insert")
+        assertOrder(["Link", "Wikilink", "Annotated Wikilink", "Footnote", "Inline Footnote",
+                     "Import Image…", "Index Image…", "Table", "Thematic Break", "Markdown Comment", "Callout"],
+                    in: insert, menu: "Insert")
+        let view = menuItems("View")
+        assertOrder(["Back", "Forward", "Search…", "Advanced Search…", "Go to Frontmatter",
+                     "Library", "Chat", "Document Mode", "Document Text Size", "Appearance"], in: view, menu: "View")
+        XCTAssertFalse(view.contains("Document Tabs"))
+        XCTAssertFalse(view.contains("Agent Changes…"))
+        let research = menuItems("Research")
+        assertOrder(["Find Related Material", "Add Selection to Chat", "Settle", "Agent Changes…"],
+                    in: research, menu: "Research")
+        let window = menuItems("Window")
+        assertOrder(["Document Tabs", "Next Tab", "Previous Tab", "Move to Separate Window", "Notifications"],
+                    in: window, menu: "Window")
+        let original = try source(at: triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md"))
+        app.menuBars.menuBarItems["Research"].click()
+        app.menuItems["Settle"].firstMatch.click()
+        XCTAssertTrue(app.popovers.firstMatch.waitForExistence(timeout: 5))
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(waitUntil(timeout: 5) { !self.app.popovers.firstMatch.exists })
+        XCTAssertEqual(try source(at: triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md")), original)
     }
 
     @MainActor

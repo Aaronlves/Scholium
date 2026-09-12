@@ -34,7 +34,7 @@ surface retains its selection anchor and never adds document padding. A result
 opens in a bounded native popover under §8.7, without dimming content.
 Selection changes, scrolling, Escape, composition, mode changes and document
 departure dismiss the surface. Settings supplies the ordered custom operations
-and visible validation. Ask Agent, its View-menu action and shortcut retain the
+and visible validation. Ask Agent, its Research-menu action and shortcut retain the
 draft-only handoff to Chat under §8.7. A source range that cannot be verified
 remains unavailable.
 
@@ -378,7 +378,7 @@ workspace retains its selection across Note and tab changes. Hiding Inspector
 moves no content elsewhere. Without a Document it presents No Document Selected.
 
 Related Material starts from an explicit selection in Edit or Source, including
-unsaved writing. Find from Selection and its View-menu route capture one fixed
+unsaved writing. Find from Selection and its Research-menu route capture one fixed
 passage; moving the caret or opening a source does not replace it. A new request
 replaces that context; cancellation and Triptych departure prevent late publication.
 The pane uses §13's local paragraph retrieval over Analyses and Topics. Each quiet

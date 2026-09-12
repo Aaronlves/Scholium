@@ -231,16 +231,16 @@ disambiguation is unnecessary. The no-document state contains only a decorative
 document symbol, **No Document Selected**, and **Select a note in the Library
 to read or edit.** as one read-only accessibility group.
 
-Menus follow task ownership:
+Menu group order:
 
-- **File**: Triptych/window, New Note, Import, Duplicate, Rename, Move, Reveal,
-  and system-Trash actions.
-- **Edit**: editing, Find, and formatting.
-- **View**: Back/Forward, Library, Chat, Sidebar visibility, Search,
-  Advanced Search, Document mode/text size, and Inspector.
-- **Research**: Settle, and Agent Changes.
-- **Window**: standard windows plus Notifications.
-- **App**: Settings opens the single native preferences window under §18.2.1.
+- **File**: create/open; close; import; duplicate/rename/move; attachments; reveal; Trash.
+- **Edit**: native editing; Markdown paste; Find.
+- **Format**: styles; headings/lists; quotations/code; tables.
+- **Insert**: links; footnotes; images; tables/breaks; comments/Callouts.
+- **View**: history/search; panes; Document mode; text size/appearance.
+- **Research**: related material; selection to Chat; Settle; Agent Changes.
+- **Window**: native windows; tabs/transfer; Notifications.
+- **App**: native commands and Settings (§18.2.1).
 
 #### Chat capability presentation
 

@@ -1009,13 +1009,24 @@ extension FocusedValues {
     }
 }
 
-private struct ScholiumNewWindowCommandContent: View {
+private struct ScholiumFileCreationCommandContent: View {
     let commandRevision: UInt64
     let storageReady: Bool
     @Environment(\.openWindow) private var openWindow
     @FocusedObject private var appState: WindowModel?
 
     var body: some View {
+        Button("New Note") {
+            appState?.libraryMutationController.requestUntitledNoteCreation(in: nil)
+        }
+        .scholiumActivationPointer()
+        .scholiumKeyboardShortcut(.newNote)
+        .disabled(
+            appState?.workspaceAssignment == nil
+                || appState?.noteSourceScope != .library
+                || appState?.isDetachedDocumentWindow == true
+                || appState?.libraryMutationController.isCreatingNote == true
+        )
         Button("New Window") {
             openWindow(
                 id: "scholium-main",
@@ -1025,33 +1036,6 @@ private struct ScholiumNewWindowCommandContent: View {
         .scholiumActivationPointer()
         .scholiumKeyboardShortcut(.newWindow)
         .disabled(!storageReady)
-    }
-}
-
-private struct ScholiumAfterNewItemCommandContent: View {
-    let commandRevision: UInt64
-    let storageReady: Bool
-    @Environment(\.openWindow) private var openWindow
-    @FocusedObject private var appState: WindowModel?
-    @FocusedValue(\.scholiumEditorActions) private var editorActions
-
-    var body: some View {
-        Button(appState?.isDetachedDocumentWindow == true ? "Move to Main Window" : "Move to Separate Window") {
-            guard let appState else { return }
-            if appState.isDetachedDocumentWindow { appState.requestMoveDocumentBack() }
-            else { appState.requestMoveDocumentToWindow() }
-        }
-        .disabled(appState?.documentTabController.selectedTabID == nil)
-        Button("Close Tab") {
-            if appState?.isDetachedDocumentWindow == true {
-                appState?.nativeWindowCoordinator?.requestNativeClose()
-                return
-            }
-            guard let id = appState?.documentTabController.selectedTabID else { return }
-            appState?.closeDocumentTab(withID: id)
-        }
-        .scholiumKeyboardShortcut(.closeTab)
-        .disabled(appState?.documentTabController.selectedTabID == nil)
         Divider()
         Button("New Triptych…") {
             openWindow(
@@ -1074,18 +1058,48 @@ private struct ScholiumAfterNewItemCommandContent: View {
         }
         .scholiumActivationPointer()
         .disabled(appState?.registeredTriptychs.isEmpty != false)
-        Divider()
-        Button("New Note") {
-            appState?.libraryMutationController.requestUntitledNoteCreation(in: nil)
+    }
+
+    private func triptychCommandLabel(_ assignment: TriptychAssignment) -> String {
+        let registered = appState?.registeredTriptychs ?? []
+        let duplicates = registered.filter {
+            $0.triptych.name.caseInsensitiveCompare(assignment.triptych.name) == .orderedSame
         }
-        .scholiumActivationPointer()
-        .scholiumKeyboardShortcut(.newNote)
-        .disabled(
-            appState?.workspaceAssignment == nil
-                || appState?.noteSourceScope != .library
-                || appState?.isDetachedDocumentWindow == true
-                || appState?.libraryMutationController.isCreatingNote == true
-        )
+        guard duplicates.count > 1,
+            let works = assignment.vault(for: .output)
+        else {
+            return assignment.triptych.name
+        }
+        let parent = URL(fileURLWithPath: works.canonicalPath, isDirectory: true)
+            .deletingLastPathComponent().lastPathComponent
+        return "\(assignment.triptych.name) — \(parent)"
+    }
+}
+
+private struct ScholiumCloseTabCommandContent: View {
+    let commandRevision: UInt64
+    @FocusedObject private var appState: WindowModel?
+
+    var body: some View {
+        Button("Close Tab") {
+            if appState?.isDetachedDocumentWindow == true {
+                appState?.nativeWindowCoordinator?.requestNativeClose()
+                return
+            }
+            guard let id = appState?.documentTabController.selectedTabID else { return }
+            appState?.closeDocumentTab(withID: id)
+        }
+        .scholiumKeyboardShortcut(.closeTab)
+        .disabled(appState?.documentTabController.selectedTabID == nil)
+    }
+}
+
+private struct ScholiumFileDocumentCommandContent: View {
+    let commandRevision: UInt64
+    @FocusedObject private var appState: WindowModel?
+    @FocusedValue(\.scholiumEditorActions) private var editorActions
+
+    var body: some View {
         Button("Import Markdown…") { appState?.showMarkdownImporter = true }
             .scholiumActivationPointer()
             .disabled(appState?.workspaceAssignment == nil || appState?.isDetachedDocumentWindow == true)
@@ -1114,15 +1128,6 @@ private struct ScholiumAfterNewItemCommandContent: View {
         }
         .scholiumActivationPointer()
         .disabled(appState?.currentDocumentCapabilities.allows(.move) != true)
-        Button("Move to Trash…") {
-            appState?.requestCurrentNoteSystemTrash()
-        }
-        .scholiumActivationPointer()
-        .scholiumKeyboardShortcut(.moveToTrash)
-        .disabled(
-            appState?.currentDocumentCapabilities.allows(.moveToSystemTrash)
-                != true
-        )
         Divider()
         Button("Attach a Copy…") { editorActions?.attachDocumentCopy() }
             .scholiumActivationPointer()
@@ -1136,21 +1141,16 @@ private struct ScholiumAfterNewItemCommandContent: View {
         Button("Reveal Current Vault in Finder") { appState?.revealVaultInFinder() }
             .scholiumActivationPointer()
             .disabled(appState?.vaultConfig == nil)
-    }
-
-    private func triptychCommandLabel(_ assignment: TriptychAssignment) -> String {
-        let registered = appState?.registeredTriptychs ?? []
-        let duplicates = registered.filter {
-            $0.triptych.name.caseInsensitiveCompare(assignment.triptych.name) == .orderedSame
+        Divider()
+        Button("Move to Trash…") {
+            appState?.requestCurrentNoteSystemTrash()
         }
-        guard duplicates.count > 1,
-            let works = assignment.vault(for: .output)
-        else {
-            return assignment.triptych.name
-        }
-        let parent = URL(fileURLWithPath: works.canonicalPath, isDirectory: true)
-            .deletingLastPathComponent().lastPathComponent
-        return "\(assignment.triptych.name) — \(parent)"
+        .scholiumActivationPointer()
+        .scholiumKeyboardShortcut(.moveToTrash)
+        .disabled(
+            appState?.currentDocumentCapabilities.allows(.moveToSystemTrash)
+                != true
+        )
     }
 }
 
@@ -1215,7 +1215,6 @@ private struct ScholiumTextFormattingCommandContent: View {
     @FocusedValue(\.scholiumEditorActions) private var editorActions
 
     var body: some View {
-        Divider()
         Button("Bold") { editorActions?.perform(.bold) }
             .scholiumActivationPointer()
             .scholiumKeyboardShortcut(.bold)
@@ -1233,12 +1232,6 @@ private struct ScholiumTextFormattingCommandContent: View {
         Button("Inline Code") { editorActions?.perform(.inlineCode) }
             .scholiumActivationPointer()
             .disabled(editorActions?.isAvailable(.inlineCode) != true)
-        Button("Import Image…") { editorActions?.importImage() }
-            .scholiumActivationPointer()
-            .disabled(editorActions?.isAvailable(.insertImage) != true)
-        Button("Index Image…") { editorActions?.indexImage() }
-            .scholiumActivationPointer()
-            .disabled(editorActions?.isAvailable(.insertImage) != true)
         Divider()
         Menu("Heading") {
             Button("Paragraph") { editorActions?.perform(.paragraph) }
@@ -1268,6 +1261,13 @@ private struct ScholiumTextFormattingCommandContent: View {
                 .disabled(editorActions?.isAvailable(.toggleTask) != true)
         }
         .scholiumActivationPointer()
+        Button("Block Quotation") { editorActions?.perform(.blockQuotation) }
+            .scholiumActivationPointer()
+            .disabled(editorActions?.isAvailable(.blockQuotation) != true)
+        Button("Fenced Code") { editorActions?.perform(.fencedCode) }
+            .scholiumActivationPointer()
+            .disabled(editorActions?.isAvailable(.fencedCode) != true)
+        Divider()
         Menu("Table") {
             Button("Insert Row Before") { editorActions?.perform(.tableInsertRowBefore) }
                 .scholiumActivationPointer()
@@ -1300,15 +1300,6 @@ private struct ScholiumTextFormattingCommandContent: View {
                 .disabled(editorActions?.isAvailable(.tableAlignRight) != true)
         }
         .scholiumActivationPointer()
-        Button("Block Quotation") { editorActions?.perform(.blockQuotation) }
-            .scholiumActivationPointer()
-            .disabled(editorActions?.isAvailable(.blockQuotation) != true)
-        Button("Fenced Code") { editorActions?.perform(.fencedCode) }
-            .scholiumActivationPointer()
-            .disabled(editorActions?.isAvailable(.fencedCode) != true)
-        Button("Markdown Comment") { editorActions?.perform(.markdownComment) }
-            .scholiumActivationPointer()
-            .disabled(editorActions?.isAvailable(.markdownComment) != true)
     }
 
     private func headingCommand(_ level: Int) -> MarkdownEditorCommand {
@@ -1328,13 +1319,6 @@ private struct ScholiumInsertCommandContent: View {
     @FocusedValue(\.scholiumEditorActions) private var editorActions
 
     var body: some View {
-        Button("Import Image…") { editorActions?.importImage() }
-            .scholiumActivationPointer()
-            .disabled(editorActions?.isAvailable(.insertImage) != true)
-        Button("Index Image…") { editorActions?.indexImage() }
-            .scholiumActivationPointer()
-            .disabled(editorActions?.isAvailable(.insertImage) != true)
-        Divider()
         Button("Link") { editorActions?.perform(.standardLink) }
             .scholiumActivationPointer()
             .scholiumKeyboardShortcut(.insertLink)
@@ -1354,12 +1338,24 @@ private struct ScholiumInsertCommandContent: View {
             .scholiumActivationPointer()
             .scholiumKeyboardShortcut(.insertInlineFootnote)
             .disabled(editorActions?.isAvailable(.insertInlineFootnote) != true)
+        Divider()
+        Button("Import Image…") { editorActions?.importImage() }
+            .scholiumActivationPointer()
+            .disabled(editorActions?.isAvailable(.insertImage) != true)
+        Button("Index Image…") { editorActions?.indexImage() }
+            .scholiumActivationPointer()
+            .disabled(editorActions?.isAvailable(.insertImage) != true)
+        Divider()
         Button("Table") { editorActions?.perform(.insertTable) }
             .scholiumActivationPointer()
             .disabled(editorActions?.isAvailable(.insertTable) != true)
         Button("Thematic Break") { editorActions?.perform(.thematicBreak) }
             .scholiumActivationPointer()
             .disabled(editorActions?.isAvailable(.thematicBreak) != true)
+        Divider()
+        Button("Markdown Comment") { editorActions?.perform(.markdownComment) }
+            .scholiumActivationPointer()
+            .disabled(editorActions?.isAvailable(.markdownComment) != true)
         Menu("Callout") {
             Button("Orientation") { editorActions?.perform(.calloutOrient) }
                 .scholiumActivationPointer()
@@ -1387,7 +1383,7 @@ private struct ScholiumInsertCommandContent: View {
     }
 }
 
-private struct ScholiumSidebarCommandContent: View {
+private struct ScholiumViewCommandContent: View {
     let commandRevision: UInt64
     @FocusedObject private var appState: WindowModel?
     @FocusedValue(\.scholiumSearchActions) private var searchActions
@@ -1395,19 +1391,6 @@ private struct ScholiumSidebarCommandContent: View {
     @FocusedValue(\.scholiumEditorActions) private var editorActions
 
     var body: some View {
-        Menu("Document Tabs") {
-            ForEach(appState?.documentTabController.tabs ?? []) { tab in
-                Button(tab.title) { appState?.selectDocumentTab(withID: tab.id) }
-            }
-        }
-        .disabled(appState?.documentTabController.tabs.isEmpty != false)
-        Button("Next Tab") { appState?.selectAdjacentDocumentTab(offset: 1) }
-            .scholiumKeyboardShortcut(.nextTab)
-            .disabled((appState?.documentTabController.tabs.count ?? 0) < 2)
-        Button("Previous Tab") { appState?.selectAdjacentDocumentTab(offset: -1) }
-            .scholiumKeyboardShortcut(.previousTab)
-            .disabled((appState?.documentTabController.tabs.count ?? 0) < 2)
-        Divider()
         Button("Back") {
             appState?.navigateDocumentHistory(.back)
         }
@@ -1418,18 +1401,6 @@ private struct ScholiumSidebarCommandContent: View {
         }
         .scholiumActivationPointer()
         .disabled(appState?.documentNavigationHistoryController.canGoForward != true)
-        Divider()
-        Button(
-            ScholiumL10n.dynamicString(
-                appState?.sidebarVisible == true ? "Hide Sidebar" : "Show Sidebar"
-            )
-        ) {
-            guard let appState else { return }
-            workspaceWindowActions?.setLibraryVisible(!appState.sidebarVisible)
-        }
-        .scholiumActivationPointer()
-        .scholiumKeyboardShortcut(.toggleLibrary)
-        .disabled(workspaceWindowActions == nil)
         Divider()
         Button("Search…") {
             searchActions?.begin(.general)
@@ -1444,33 +1415,24 @@ private struct ScholiumSidebarCommandContent: View {
         }
         .scholiumKeyboardShortcut(.goToFrontmatter)
         .disabled(editorActions?.canEditFrontmatter != true || editorActions?.isComposing == true)
-        Button("Agent Changes…") {
-            appState?.presentationRouter.present(.agentChanges(scope: .current))
+        Divider()
+        Button(
+            ScholiumL10n.dynamicString(
+                appState?.sidebarVisible == true ? "Hide Sidebar" : "Show Sidebar"
+            )
+        ) {
+            guard let appState else { return }
+            workspaceWindowActions?.setLibraryVisible(!appState.sidebarVisible)
         }
-        .disabled(appState?.windowWorkspaceController.activeCapabilities == nil)
+        .scholiumActivationPointer()
+        .scholiumKeyboardShortcut(.toggleLibrary)
+        .disabled(workspaceWindowActions == nil)
         Button("Library") {
             workspaceWindowActions?.activateSidebar(.triptych)
         }
         .disabled(workspaceWindowActions == nil)
         Button("Chat") { workspaceWindowActions?.activateSidebar(.chat) }
             .disabled(appState?.workspaceAssignment == nil)
-        Button("Find Related Material") {
-            appState?.researchController.selectInspectorMode(.related)
-            workspaceWindowActions?.setResearchInspectorVisible(true)
-            appState?.findRelatedMaterials()
-        }
-        .disabled(appState?.currentNote == nil)
-        Button("Add Selection to Chat") {
-            Task {
-                if await appState?.addCurrentSelectionToChat() == true,
-                    appState?.shellState.sidebarContent != .chat || appState?.shellState.libraryVisible != true
-                {
-                    workspaceWindowActions?.activateSidebar(.chat)
-                }
-            }
-        }
-        .scholiumKeyboardShortcut(.addSelectionToChat)
-        .disabled(appState?.currentNote == nil)
         Button(
             ScholiumL10n.dynamicString(
                 appState?.researchInspectorVisible == true
@@ -1486,6 +1448,7 @@ private struct ScholiumSidebarCommandContent: View {
         .scholiumActivationPointer()
         .scholiumKeyboardShortcut(.toggleResearchInspector)
         .disabled(workspaceWindowActions == nil || appState?.canToggleResearchInspector != true)
+        Divider()
         Button(
             ScholiumL10n.dynamicString(
                 appState?.presentedDocumentMode == .read ? "Edit" : "Review"
@@ -1576,6 +1539,69 @@ private struct ScholiumSidebarCommandContent: View {
     }
 }
 
+private struct ScholiumResearchCommandContent: View {
+    let commandRevision: UInt64
+    @FocusedObject private var appState: WindowModel?
+    @FocusedValue(\.scholiumWorkspaceWindowActions) private var workspaceWindowActions
+
+    var body: some View {
+        Button("Find Related Material") {
+            appState?.researchController.selectInspectorMode(.related)
+            workspaceWindowActions?.setResearchInspectorVisible(true)
+            appState?.findRelatedMaterials()
+        }
+        .disabled(appState?.currentNote == nil)
+        Button("Add Selection to Chat") {
+            Task {
+                if await appState?.addCurrentSelectionToChat() == true,
+                    appState?.shellState.sidebarContent != .chat || appState?.shellState.libraryVisible != true
+                {
+                    workspaceWindowActions?.activateSidebar(.chat)
+                }
+            }
+        }
+        .scholiumKeyboardShortcut(.addSelectionToChat)
+        .disabled(appState?.currentNote == nil)
+        Divider()
+        Button(workspaceWindowActions?.settlementMenuTitle() ?? ScholiumL10n.string("Settle")) {
+            workspaceWindowActions?.showSettlement()
+        }
+        .disabled(workspaceWindowActions?.settlementMenuTitle() == nil)
+        Divider()
+        Button("Agent Changes…") {
+            appState?.presentationRouter.present(.agentChanges(scope: .current))
+        }
+        .disabled(appState?.windowWorkspaceController.activeCapabilities == nil)
+    }
+}
+
+private struct ScholiumWindowCommandContent: View {
+    let commandRevision: UInt64
+    @FocusedObject private var appState: WindowModel?
+
+    var body: some View {
+        Menu("Document Tabs") {
+            ForEach(appState?.documentTabController.tabs ?? []) { tab in
+                Button(tab.title) { appState?.selectDocumentTab(withID: tab.id) }
+            }
+        }
+        .disabled(appState?.documentTabController.tabs.isEmpty != false)
+        Button("Next Tab") { appState?.selectAdjacentDocumentTab(offset: 1) }
+            .scholiumKeyboardShortcut(.nextTab)
+            .disabled((appState?.documentTabController.tabs.count ?? 0) < 2)
+        Button("Previous Tab") { appState?.selectAdjacentDocumentTab(offset: -1) }
+            .scholiumKeyboardShortcut(.previousTab)
+            .disabled((appState?.documentTabController.tabs.count ?? 0) < 2)
+        Divider()
+        Button(appState?.isDetachedDocumentWindow == true ? "Move to Main Window" : "Move to Separate Window") {
+            guard let appState else { return }
+            if appState.isDetachedDocumentWindow { appState.requestMoveDocumentBack() }
+            else { appState.requestMoveDocumentToWindow() }
+        }
+        .disabled(appState?.documentTabController.selectedTabID == nil)
+    }
+}
+
 private struct ScholiumAttentionCommandContent: View {
     let commandRevision: UInt64
     @FocusedValue(\.scholiumWorkspaceWindowActions) private var workspaceWindowActions
@@ -1650,27 +1676,27 @@ private struct ScholiumCommands: Commands {
     var body: some Commands {
         let commandRevision = commandObservation?.revision ?? 0
         let storageReady = applicationBootstrapStatus?.isReady == true
-        let newWindowCommand = ScholiumNewWindowCommandContent(
+        let fileCreationCommand = ScholiumFileCreationCommandContent(
             commandRevision: commandRevision,
             storageReady: storageReady
         )
-        let afterNewItemCommand = ScholiumAfterNewItemCommandContent(
-            commandRevision: commandRevision,
-            storageReady: storageReady
-        )
+        let fileDocumentCommand = ScholiumFileDocumentCommandContent(commandRevision: commandRevision)
         let pasteboardCommand = ScholiumPasteboardCommandContent(commandRevision: commandRevision)
         let textFormattingCommand = ScholiumTextFormattingCommandContent(commandRevision: commandRevision)
         let insertCommand = ScholiumInsertCommandContent(commandRevision: commandRevision)
-        let sidebarCommand = ScholiumSidebarCommandContent(commandRevision: commandRevision)
+        let viewCommand = ScholiumViewCommandContent(commandRevision: commandRevision)
         let attentionCommand = ScholiumAttentionCommandContent(commandRevision: commandRevision)
         #if DEBUG
             let qaCommand = ScholiumQACommandContent()
         #endif
         CommandGroup(replacing: .newItem) {
-            newWindowCommand
+            fileCreationCommand
         }
         CommandGroup(after: .newItem) {
-            afterNewItemCommand
+            ScholiumCloseTabCommandContent(commandRevision: commandRevision)
+        }
+        CommandGroup(after: .saveItem) {
+            fileDocumentCommand
         }
         CommandGroup(after: .pasteboard) {
             pasteboardCommand
@@ -1685,9 +1711,14 @@ private struct ScholiumCommands: Commands {
             insertCommand
         }
         CommandGroup(replacing: .sidebar) {
-            sidebarCommand
+            viewCommand
+        }
+        CommandMenu("Research") {
+            ScholiumResearchCommandContent(commandRevision: commandRevision)
         }
         CommandGroup(after: .windowArrangement) {
+            ScholiumWindowCommandContent(commandRevision: commandRevision)
+            Divider()
             attentionCommand
         }
         #if DEBUG

@@ -782,6 +782,16 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
         window.makeFirstResponder(responder)
     }
 
+    var settlementMenuTitle: String? {
+        guard isCommandEnabled(Item.settlement) else { return nil }
+        return ScholiumL10n.localized(DocumentSettlementAction.resolve(currentSettlementPresentation.state).title)
+    }
+
+    func showSettlement() {
+        guard isCommandEnabled(Item.settlement), !settlementPopover.isShown else { return }
+        presentSettlement()
+    }
+
     @objc private func toggleSettlement(_ sender: Any?) {
         guard isCommandEnabled(Item.settlement) else { return }
         if settlementPopover.isShown {

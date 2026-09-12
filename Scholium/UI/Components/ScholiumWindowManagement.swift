@@ -385,6 +385,8 @@ struct WorkspaceWindowActions {
     let showAttention: @MainActor (AttentionPresentationRequest) -> Void
     let showPreferredAttention: @MainActor () -> Void
     let canShowAttention: @MainActor () -> Bool
+    let settlementMenuTitle: @MainActor () -> String?
+    let showSettlement: @MainActor () -> Void
 }
 
 /// The AppKit window is the appearance ancestor for native titlebar and
@@ -497,6 +499,12 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
             },
             canShowAttention: { [weak self] in
                 self?.preferredAttentionRoute() != nil
+            },
+            settlementMenuTitle: { [weak self] in
+                self?.toolbarController?.settlementMenuTitle
+            },
+            showSettlement: { [weak self] in
+                self?.toolbarController?.showSettlement()
             }
         )
     }

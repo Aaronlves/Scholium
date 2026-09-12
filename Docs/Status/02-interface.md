@@ -3,7 +3,7 @@
 [IMPLEMENTATION_STATUS.md](../IMPLEMENTATION_STATUS.md) · Current user-facing reachability.
 
 Selection Actions now use the existing native floating surface in Review, Edit
-and Source. Ask Agent and the View-menu shortcut stage a checked passage in the
+and Source. Ask Agent and the Research-menu shortcut stage a checked passage in the
 existing Chat composer, preserve its draft, and never send automatically.
 Review currently maps source-identical blocks; formatted/synthesized blocks
 require Edit or Source. Material source opening verifies the excerpt and revision,

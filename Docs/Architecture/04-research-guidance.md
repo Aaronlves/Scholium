@@ -78,8 +78,10 @@ Settings. Fixed bindings have no second conflict-list definition.
 to the native menu before WebKit, excluding hidden documents, other windows
 and composition; disabled commands cannot fall through. Formatting and Find
 use the existing editor bridge, while CodeMirror owns local text/navigation,
-history and Save. Menu content receives the window command revision explicitly,
-so nested views refresh their availability with the current window state.
+history and Save. Task-owned menu content receives the window command revision explicitly.
+File, Edit, Format, Insert, View, Research and Window retain separate command
+views. Research's Settlement route reuses the window toolbar's exact-target
+availability and popover; it adds no mutation owner.
 
 `SettingsInteractionView` composes Keyboard Shortcuts and Selection Actions
 with a native segmented child selector. `SettingsIntegrationsView` composes

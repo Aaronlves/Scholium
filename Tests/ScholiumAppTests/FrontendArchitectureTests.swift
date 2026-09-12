@@ -3341,7 +3341,7 @@ struct FrontendArchitectureTests {
             encoding: .utf8
         )
         let viewCommandsStart = try #require(
-            app.range(of: "private struct ScholiumSidebarCommandContent")
+            app.range(of: "private struct ScholiumViewCommandContent")
         )
         let viewCommandsEnd = try #require(
             app.range(
