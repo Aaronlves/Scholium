@@ -34,7 +34,7 @@ struct RelatedMaterialsTests {
             identityCandidates: candidates, lexicalCandidates: candidates, identityHasMore: false, lexicalHasMore: false)
     }
 
-    @Test("Paragraphs from the same Note stay separate and handoff preserves exact source ranges")
+    @Test("A Note group retains both ranked paragraphs and exact source ranges")
     func selectionAndParagraphs() async {
         let model = RelatedMaterialsSession()
         let seed = seed()
@@ -64,11 +64,23 @@ struct RelatedMaterialsTests {
             }, references: [reference()]
         ).value
         #expect(model.cards.count == 2)
+        #expect(model.noteGroups.count == 1)
+        #expect(model.noteGroups.first?.passages.count == 2)
         #expect(model.cards.map(\.id) == [first.id, second.id])
         #expect(model.seed?.attachment.text == seed.attachment.text)
         #expect(model.didSearch && !model.isLoading)
         #expect(model.cards.first?.attachment?.sourceRange == first.range)
         #expect(model.cards.first?.attachment?.text == "**自由**")
+        #expect(model.cards.first?.linkTarget == nil)  // Reading does not require an insertable link.
+        model.invalidateWritingContext()
+        #expect(model.insertionPoint == nil && model.contextChanged)
+        #expect(model.cards.first?.id == first.id)
+        let nextSeed = self.seed("different context")
+        await model.find(capture: { nextSeed }, retrieve: { _ in throw RelatedMaterialsError.unavailable }, references: []).value
+        #expect(model.cards.first?.id == first.id)
+        #expect(model.seed?.request.id == seed.request.id)
+        #expect(model.issue != nil && !model.isLoading)
+
     }
 
     @Test("Reset or selection departure invalidates an uncooperative late response", arguments: [false, true])
@@ -89,7 +101,7 @@ struct RelatedMaterialsTests {
                 return seed
             }, retrieve: { _ in response }, references: [])
         await latch.value
-        if reset { model.reset() } else { model.stopSelectionSearch() }
+        if reset { model.reset() } else { model.stopAutomaticSearch() }
         release?.resume()
         await operation.value
         #expect(model.seed == nil && model.cards.isEmpty && !model.isLoading && !model.didSearch)
@@ -145,8 +157,8 @@ struct RelatedMaterialsTests {
     func closingCancelsScheduledSearch() async {
         let model = RelatedMaterialsSession()
         var ran = false
-        model.scheduleSelectionSearch(immediate: true) { ran = true }
-        model.stopSelectionSearch()
+        model.scheduleAutomaticSearch(selection: true, immediate: true) { ran = true }
+        model.stopAutomaticSearch()
         for _ in 0..<10 { await Task.yield() }
         #expect(!ran && !model.isLoading)
     }
@@ -157,14 +169,52 @@ struct RelatedMaterialsTests {
         let seed = seed()
         let response = response(seed.request)
         await model.find(capture: { seed }, retrieve: { _ in response }, references: [], automatic: true).value
+        model.invalidateWritingContext()
+        var moved = seed
+        moved.insertionPoint = .init(sessionID: UUID(), documentID: "draft", generation: 1, selection: .init(anchor: 3, head: 3))
         await model.find(
-            capture: { seed },
+            capture: { moved },
             retrieve: { _ in
                 Issue.record("Unchanged selection unexpectedly repeated retrieval")
                 return response
             }, references: [], automatic: true
         ).value
         #expect(model.didSearch && !model.isLoading && model.issue == nil)
+        #expect(model.insertionPoint == moved.insertionPoint && !model.contextChanged)
+    }
+
+    @Test("Automatic reading pause does not publish or retrieve replacement results")
+    func readingPause() async {
+        let model = RelatedMaterialsSession()
+        let original = seed()
+        let response = response(original.request)
+        await model.find(capture: { original }, retrieve: { _ in response }, references: []).value
+        await model.find(
+            capture: { self.seed("new paragraph") },
+            retrieve: { _ in
+                Issue.record("Paused automatic search should not retrieve")
+                return response
+            }, references: [], automatic: true, canPublish: { false }
+        ).value
+        #expect(model.seed?.request.id == original.request.id)
+        #expect(!model.isLoading && model.issue == nil)
+    }
+
+    @Test("Sidebar presentation distinguishes waiting, empty, failure and reset")
+    func presentationLifecycle() async {
+        let model = RelatedMaterialsSession()
+        #expect(model.presentation == .waiting)
+        let seed = seed()
+        let response = response(seed.request)
+        await model.find(capture: { seed }, retrieve: { _ in response }, references: []).value
+        #expect(model.presentation == .empty)
+        model.report(RelatedMaterialsError.unavailable)
+        guard case .problem = model.presentation else {
+            Issue.record("Failure must replace empty guidance")
+            return
+        }
+        model.reset()
+        #expect(model.presentation == .waiting)
     }
 
 }

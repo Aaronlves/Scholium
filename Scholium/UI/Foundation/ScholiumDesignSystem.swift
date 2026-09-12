@@ -685,7 +685,19 @@ enum ScholiumWebDesignTokens {
             let value = colorResolver.calloutTitleColor(role, isDark: isDark, increasedContrast: increasedContrast)
             return "--scholium-callout-\(role)-title: \(String(format: "#%06x", value));"
         }.joined(separator: "\n")
-        return colors + "\n" + callouts
+        // Transport the same native secondary label used by the sidebar into WebKit.
+        var secondaryLabel = ""
+        let appearance = NSAppearance(
+            named: increasedContrast
+                ? (isDark ? .accessibilityHighContrastDarkAqua : .accessibilityHighContrastAqua)
+                : (isDark ? .darkAqua : .aqua))!
+        appearance.performAsCurrentDrawingAppearance {
+            if let rgb = ScholiumNativeColorRole.secondaryLabel.nsColor.usingColorSpace(.sRGB) {
+                secondaryLabel =
+                    "--scholium-native-secondary-label: rgba(\(rgb.redComponent * 255), \(rgb.greenComponent * 255), \(rgb.blueComponent * 255), \(rgb.alphaComponent));"
+            }
+        }
+        return colors + "\n" + callouts + "\n" + secondaryLabel
     }
 
     private static func elevationDeclarations(

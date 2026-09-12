@@ -737,7 +737,7 @@ struct ContentView: View {
         if let note = appState.currentNote {
             ResearchInspectorView(
                 research: researchController,
-                editor: currentNoteDocumentSession?.editorSession,
+                editor: appState.presentedDocumentMode == .read ? nil : currentNoteDocumentSession?.editorSession,
                 noteURL: appState.workspaceAssignment?.vaults.values.first(where: { $0.id == appState.currentDocumentVaultID }).map {
                     URL(fileURLWithPath: $0.canonicalPath).appendingPathComponent(note.relativePath)
                 },
@@ -755,10 +755,11 @@ struct ContentView: View {
                         sourceLine: sourceLine
                     )
                 },
-                findRelated: { appState.findRelatedMaterials(automatic: true) },
-                refreshRelated: { appState.refreshRelatedMaterials() },
+                findRelated: { appState.findRelatedMaterials(automatic: true, paragraph: true) },
+                retryRelated: { appState.retryRelatedMaterials() },
                 openRelated: { card in Task { _ = await appState.useRelatedMaterial(card, inChat: false) }
                 },
+                insertRelated: { card in Task { await appState.insertRelatedMaterialLink(card) } },
                 discussRelated: { card in
                     Task {
                         if await appState.useRelatedMaterial(card, inChat: true),

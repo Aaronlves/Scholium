@@ -1,4 +1,7 @@
 export const webInterfaceLocalizationKeys = [
+  "Tab",
+  "Accept suggestion: {text} (Tab)",
+
   "Copy",
   "Expand",
   "YAML frontmatter",

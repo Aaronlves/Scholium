@@ -215,12 +215,14 @@ struct ConnectionsInspectorView: View {
     }
 
     var body: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: ScholiumSidebarLayout.itemSpacing) {
             InspectorLinkDirectionControl(direction: $session.direction)
+                .padding(.horizontal, ResearchInspectorLayout.contentInset)
             ContextSearchField(text: query, prompt: "Find in Links", identifier: "scholium.links.search")
+                .padding(.horizontal, ResearchInspectorLayout.contentInset)
             ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: ResearchInspectorLayout.sectionSpacing) {
+                List {
+                    Group {
                         ResearchProjectionFreshnessView(
                             freshness: context.freshness, retry: context.retryRefresh)
                         if groups.isEmpty && externalLinks.isEmpty {
@@ -231,7 +233,7 @@ struct ConnectionsInspectorView: View {
                             .accessibilityIdentifier("scholium.connections.empty")
                         }
                         if !externalLinks.isEmpty {
-                            VStack(alignment: .leading, spacing: 12) {
+                            VStack(alignment: .leading, spacing: ScholiumGrid.Apparatus.contentRowGap) {
                                 ForEach(externalLinks) { link in
                                     Button {
                                         context.openExternalURL(link.url)
@@ -269,59 +271,37 @@ struct ConnectionsInspectorView: View {
                                     }
                                 }
                             )
-                            DisclosureGroup(isExpanded: expanded) {
-                                VStack(alignment: .leading, spacing: 12) {
-                                    ForEach(group.items) { item in
-                                        LinkOccurrenceRow(
-                                            item: item,
-                                            activate: {
-                                                guard let source = item.source else { return }
-                                                context.openReference(
-                                                    source.reference, item.edge.occurrence.linkSpan.start.line)
-                                            },
-                                            openReference: context.openReference
-                                        )
-                                    }
-                                }.padding(.top, 8)
-                            } label: {
-                                Button {
-                                    expanded.wrappedValue.toggle()
-                                } label: {
-                                    HStack(alignment: .firstTextBaseline) {
-                                        Image(systemName: "doc.text")
-                                            .foregroundStyle(ScholiumNativeColorRole.secondaryLabel.color)
-                                            .accessibilityHidden(true)
-                                        Text(group.title).font(
-                                            ScholiumTypography.interface(.control, emphasis: .strong)
-                                        )
-                                        .fixedSize(horizontal: false, vertical: true)
-                                        .multilineTextAlignment(.leading)
-                                        Spacer(minLength: 4)
-                                        Text(group.items.count.formatted()).font(ScholiumTypography.interface(.body))
-                                            .foregroundStyle(
-                                                ScholiumNativeColorRole.secondaryLabel.color)
-                                    }
-                                    .contentShape(Rectangle())
+                            ResearchNoteGroupHeader(
+                                title: group.title, role: group.items.first?.peer?.reference.vaultRole,
+                                expanded: expanded
+                            ) {
+                                if let peer = group.items.first?.peer {
+                                    Button("Open Linked Note") { context.openReference(peer.reference, nil) }
                                 }
-                                .buttonStyle(.borderless)
-                                .foregroundStyle(ScholiumNativeColorRole.label.color)
-                                .accessibilityValue(expanded.wrappedValue ? Text("Expanded") : Text("Collapsed"))
                             }
                             .contextMenu {
                                 if let peer = group.items.first?.peer {
                                     Button("Open Linked Note") { context.openReference(peer.reference, nil) }
                                 }
                             }
-                            .accessibilityElement(children: .contain)
-                            .accessibilityLabel(Text("Passages in \(group.title)"))
                             .accessibilityIdentifier("scholium.links.group." + group.id)
                             .id(group.id)
+                            if expanded.wrappedValue {
+                                ForEach(group.items) { item in
+                                    LinkOccurrenceRow(
+                                        item: item,
+                                        activate: {
+                                            guard let source = item.source else { return }
+                                            context.openReference(
+                                                source.reference, item.edge.occurrence.linkSpan.start.line)
+                                        }, openReference: context.openReference)
+                                }
+                            }
                         }
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.bottom, ResearchInspectorLayout.bottomInset)
-                    .scrollTargetLayout()
+                    .researchListRow()
                 }
+                .researchListStyle()
                 .scrollPosition(
                     id: Binding(
                         get: { session.location(for: locationKey).scrollID },
@@ -338,7 +318,6 @@ struct ConnectionsInspectorView: View {
                 .accessibilityLabel(Text(verbatim: ScholiumL10n.dynamicString(direction.title)))
             }
         }
-        .padding(.horizontal, ResearchInspectorLayout.contentInset)
         .padding(.top, ResearchInspectorLayout.topInset)
     }
 }
@@ -350,12 +329,15 @@ private struct LinkOccurrenceRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Button(action: activate) {
-                GroupBox {
+                ResearchPassageCard {
                     VStack(alignment: .leading, spacing: 10) {
-                        Text(contextText)
-                            .font(ScholiumTypography.interface(.control))
-                            .foregroundStyle(ScholiumNativeColorRole.label.color)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                        ResearchPassageHighlight.link(
+                            in: contextText, label: item.edge.occurrence.alias ?? item.edge.occurrence.target
+                        )
+                        .textRenderer(ResearchHighlightRenderer())
+                        .font(ScholiumTypography.interface(.control))
+                        .foregroundStyle(ScholiumNativeColorRole.label.color)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                         if let annotation = item.edge.occurrence.annotation {
                             Divider()
                             HStack(alignment: .top, spacing: 8) {
@@ -368,7 +350,6 @@ private struct LinkOccurrenceRow: View {
                             .foregroundStyle(ScholiumNativeColorRole.secondaryLabel.color)
                         }
                     }
-                    .padding(4)
                     .fixedSize(horizontal: false, vertical: true)
                     .multilineTextAlignment(.leading)
                     .frame(maxWidth: .infinity, alignment: .leading)

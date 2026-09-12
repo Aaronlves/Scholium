@@ -1312,6 +1312,8 @@ private struct ScholiumTextFormattingCommandContent: View {
 }
 
 private struct ScholiumInsertCommandContent: View {
+    @FocusedObject private var appState: WindowModel?
+    @FocusedValue(\.scholiumWorkspaceWindowActions) private var workspaceWindowActions
     let commandRevision: UInt64
     @FocusedValue(\.scholiumEditorActions) private var editorActions
 
@@ -1326,6 +1328,15 @@ private struct ScholiumInsertCommandContent: View {
         Button("Annotated Wikilink") { editorActions?.perform(.annotatedWikilink) }
             .scholiumActivationPointer()
             .disabled(editorActions?.isAvailable(.annotatedWikilink) != true)
+        Divider()
+        Button("Find Writing References…") {
+            guard let appState else { return }
+            appState.researchController.selectInspectorMode(.related)
+            workspaceWindowActions?.setResearchInspectorVisible(true)
+            appState.findRelatedMaterials(paragraph: true)
+        }
+        .scholiumKeyboardShortcut(.findWritingReferences)
+        .disabled(appState?.canFindWritingReferences != true)
         Divider()
         Button("Footnote") { editorActions?.perform(.insertFootnote) }
             .scholiumActivationPointer()

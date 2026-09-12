@@ -4,8 +4,8 @@ import Foundation
 /// generation. It does not change visible Search grammar, scopes, or Saved
 /// Search semantics.
 public enum RelatedContentContract {
-    public static let currentVersion = 6
-    public static let rankingPolicyVersion = 4
+    public static let currentVersion = 9
+    public static let rankingPolicyVersion = 7
     public static let maximumCandidates = 27
     public static let maximumDirectConnectionCandidates = 4
     public static let maximumIdentityCandidates = 3
@@ -18,7 +18,6 @@ public enum RelatedContentContract {
     public static let maximumSourceSeedTerms = 64
     public static let maximumFocusSeedTerms = 32
     public static let maximumCombinedSeedTerms = 96
-    public static let maximumLexicalCandidatePool = 256
 }
 
 /// Names the exact part of the frozen task that supplied a retrieval term or
@@ -199,8 +198,7 @@ public struct RelatedContentCandidate: Codable, Hashable, Sendable {
     }
 }
 
-/// One exact, revision-bound research paragraph. Visible text is a read-only
-/// projection; quotation and handoff always use `source` and its original range.
+/// An exact revision-bound paragraph. Handoff uses original source bytes.
 public struct RelatedContentPassage: Codable, Hashable, Sendable, Identifiable {
     public let candidate: RelatedContentCandidate
     public let range: SearchSourceRange

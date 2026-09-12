@@ -28,6 +28,7 @@ enum ScholiumHotkeyCommand: String, CaseIterable, Codable, Identifiable, Sendabl
     case showAttention
     case insertFootnote
     case insertInlineFootnote
+    case findWritingReferences
 
     case newWindow
     case closeTab
@@ -55,7 +56,7 @@ enum ScholiumHotkeyCommand: String, CaseIterable, Codable, Identifiable, Sendabl
         switch self {
         case .searchResearch, .toggleLibrary, .toggleResearchInspector,
             .toggleReviewEdit, .showSource, .showAttention,
-            .insertFootnote, .insertInlineFootnote:
+            .insertFootnote, .insertInlineFootnote, .findWritingReferences:
             true
         default: false
         }
@@ -101,6 +102,7 @@ enum ScholiumHotkeyCommand: String, CaseIterable, Codable, Identifiable, Sendabl
         case .showSource: "Show Source"
         case .showAttention: "Show Attention"
         case .insertFootnote: "Insert Footnote"
+        case .findWritingReferences: "Find Writing References"
         case .insertInlineFootnote: "Insert Inline Footnote"
         }
     }
@@ -133,6 +135,7 @@ enum ScholiumHotkeyCommand: String, CaseIterable, Codable, Identifiable, Sendabl
         case .showSource: "View → Document Mode → Source"
         case .showAttention: "Window → Notifications"
         case .insertFootnote: "Insert → Footnote"
+        case .findWritingReferences: "Insert → Find Writing References…"
         case .insertInlineFootnote: "Insert → Inline Footnote"
         }
     }
@@ -189,6 +192,8 @@ enum ScholiumHotkeyCommand: String, CaseIterable, Codable, Identifiable, Sendabl
             ScholiumHotkeyBinding(key: "n", modifiers: [.option, .command])
         case .insertInlineFootnote:
             ScholiumHotkeyBinding(key: "n", modifiers: [.option, .shift, .command])
+        case .findWritingReferences:
+            ScholiumHotkeyBinding(key: "j", modifiers: [.shift, .command])
         case .showSource, .showAttention:
             nil
         }

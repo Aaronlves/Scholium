@@ -5,6 +5,7 @@ import WebKit
 enum EditorLinkCompletionKind: String, Codable, Hashable, Sendable {
     case wikilink
     case analysisReference
+    case term
 }
 
 struct EditorLinkCompletion: Codable, Hashable, Sendable {
@@ -14,6 +15,8 @@ struct EditorLinkCompletion: Codable, Hashable, Sendable {
     let path: String
     let displayText: String?
     let isAmbiguous: Bool
+    var writingAction: String? = nil
+    var replacementUTF16Count: Int? = nil
 }
 
 struct EditorBridgeChange: Codable, Equatable, Sendable {

@@ -204,14 +204,28 @@ graph or source owner. Native buttons and fields keep system presentation on the
 Paper content background; feature code paints no competing control theme.
 
 `RelatedMaterialsSession`, retained by ResearchController, owns one disposable
-selection, debounced selection scheduling, request generation, loading/error state
-and paragraph results per window. The visible pane subscribes to the retained
-editor's non-published selection events and cancels work when hidden.
-`WindowRelatedMaterialsActions` captures the retained editor selection and calls
+selection or paragraph context, debounced selection/idle-paragraph scheduling, request generation,
+loading/error state, ranked passages grouped by Note and a revocable insertion receipt per window. Both Inspector panes share ResearchListStyle for native List and row geometry.
+The Related pane uses native List rows and trailing swipe actions with full-swipe
+execution disabled; SwiftUI owns their transient reveal lifecycle. The visible pane subscribes to the retained
+editor's context events, revokes insertion on change and cancels work when hidden.
+Readable cards retain their original context until a replacement query succeeds.
+Automatic publication checks editor focus; pointer interaction cancels pending
+updates; editor activity resumes following even with a stationary pointer. A stale
+response triggers one index refresh and retry. Equal cards are retained and unchanged seeds refresh only the caret receipt.
+`WindowRelatedMaterialsActions` captures the retained editor context and calls
 `DiscoveryOperations.relatedContent` through the active workspace. WorkspaceHandle
-uses the Note index to narrow the corpus, reads fingerprint-matched exact Notes,
-and delegates paragraph ranking and bounded match-centered excerpts with checked
+uses `relatedMaterialSourceCandidates` to enumerate every eligible lexical source,
+reads fingerprint-matched exact Notes without a Note-result cutoff, and delegates
+Note ordering, paragraph selection and bounded match-centered excerpts with checked
 readable-text highlight ranges to Core Search over the shared semantic parser.
+`RelatedContentBM25F` owns the common field weights, per-field length normalization
+and saturating term scoring for both stages. `SearchTextSegment` persists the
+semantic projection's mutually attributed ranking text with the disposable index;
+ordinary Search clauses and exact offset maps remain unchanged. Each comparison
+set owns its statistics. Full-Note metadata affects Note ordering; local paragraph
+scores select excerpts within each eligible Note. One passage per Note is emitted
+before additional passages. YAML never becomes a material result.
 Each result carries exact Markdown, its source range and a separate readable-text
 projection. `ResearchExcerptPresentation` is shared with Links and Chat excerpts;
 it hides syntax without changing authoritative source. The session preserves

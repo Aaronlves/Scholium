@@ -31,7 +31,7 @@ const dialect = {
 
 describe("editor protocol", () => {
   it("uses the coalesced interaction bridge protocol", () => {
-    expect(EDITOR_PROTOCOL_VERSION).toBe(31);
+    expect(EDITOR_PROTOCOL_VERSION).toBe(33);
   });
   it("accepts a complete versioned request", () => expect(isEditorRequest(request)).toBe(true));
   it("rejects retired title positioning while retaining blur", () => {
@@ -234,3 +234,15 @@ describe("editor protocol", () => {
    expect(isEditorRequest({...request, operation: {...operation, fromUTF16: -1}})).toBe(false);
    expect(generationCanExecuteEditorRequest("replacePassage", 3, 4)).toBe(false);
  });
+
+
+describe("guarded reference insertion", () => {
+  it("requires a bounded literal target, collapsed selection and receipt generation", () => {
+    const operation = {type: "insertReference", target: "Concept", generation: 4, selection: {anchor: 5, head: 5}};
+    expect(isEditorRequest({...request, operation})).toBe(true);
+    for (const patch of [{generation: -1}, {generation: 1.2}, {target: "bad]]text"}, {target: ""}, {selection: {anchor: 5, head: 6}}]) {
+      expect(isEditorRequest({...request, operation: {...operation, ...patch}})).toBe(false);
+    }
+    expect(generationCanExecuteEditorRequest("insertReference", 3, 4)).toBe(false);
+  });
+});

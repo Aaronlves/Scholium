@@ -1,6 +1,10 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Tab": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Tab"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "Tab"}}}},
+    "Accept suggestion: {text} (Tab)" : {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Accept suggestion: {text} (Tab)"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "接受建议：{text}（Tab）"}}}},
+
+
     "Copy" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Copy"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"复制"}}}},
     "Expand" : {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Expand"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"放大"}}}},
 

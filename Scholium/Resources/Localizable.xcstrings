@@ -1,6 +1,300 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "References unavailable": {
+  "localizations": {
+    "en": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "References unavailable"
+      }
+    },
+    "zh-Hans": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "暂时无法查找参考"
+      }
+    }
+  }
+},
+    "No related material": {
+  "localizations": {
+    "en": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "No related material"
+      }
+    },
+    "zh-Hans": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "暂无相关材料"
+      }
+    }
+  }
+},
+    "Pause writing or select a passage.": {
+  "localizations": {
+    "en": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "Pause writing or select a passage."
+      }
+    },
+    "zh-Hans": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "停笔片刻，或选择一段文字。"
+      }
+    }
+  }
+},
+    "Based on Current Paragraph": {
+  "localizations": {
+    "en": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "Based on Current Paragraph"
+      }
+    },
+    "zh-Hans": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "基于当前段落"
+      }
+    }
+  }
+},
+    "Writing context changed. References remain available.": {
+  "localizations": {
+    "en": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "Writing context changed. References remain available."
+      }
+    },
+    "zh-Hans": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "写作上下文已变化，仍可阅读这些参考。"
+      }
+    }
+  }
+},
+    "Use Current Cursor": {
+  "localizations": {
+    "en": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "Use Current Cursor"
+      }
+    },
+    "zh-Hans": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "使用当前光标位置"
+      }
+    }
+  }
+},
+    "Confirm the current cursor before inserting a link.": {
+  "localizations": {
+    "en": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "Confirm the current cursor before inserting a link."
+      }
+    },
+    "zh-Hans": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "插入双链前，请先确认当前光标位置。"
+      }
+    }
+  }
+},
+    "Writing References": {
+  "localizations": {
+    "en": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "Writing References"
+      }
+    },
+    "zh-Hans": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "写作参考"
+      }
+    }
+  }
+},
+    "Find references for the paragraph at your cursor.": {
+  "localizations": {
+    "en": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "Find references for the paragraph at your cursor."
+      }
+    },
+    "zh-Hans": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "为光标所在段落查找参考笔记。"
+      }
+    }
+  }
+},
+    "Insert → Find Writing References…": {
+  "localizations": {
+    "en": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "Insert → Find Writing References…"
+      }
+    },
+    "zh-Hans": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "插入 → 查找写作参考…"
+      }
+    }
+  }
+},
+    "Pause writing to see related material here, or select a passage.": {
+  "localizations": {
+    "en": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "Pause writing to see related material here, or select a passage."
+      }
+    },
+    "zh-Hans": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "停笔片刻，相关材料会自动出现在这里；也可以选择一段文字。"
+      }
+    }
+  }
+},
+    "Complete Term": {
+  "localizations": {
+    "en": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "Complete Term"
+      }
+    },
+    "zh-Hans": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "补全术语"
+      }
+    }
+  }
+},
+    "Find Writing References": {
+  "localizations": {
+    "en": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "Find Writing References"
+      }
+    },
+    "zh-Hans": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "查找写作参考"
+      }
+    }
+  }
+},
+    "Find Writing References…": {
+  "localizations": {
+    "en": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "Find Writing References…"
+      }
+    },
+    "zh-Hans": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "查找写作参考…"
+      }
+    }
+  }
+},
+    "Insert Wikilink": {
+  "localizations": {
+    "en": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "Insert Wikilink"
+      }
+    },
+    "zh-Hans": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "插入双链"
+      }
+    }
+  }
+},
+    "View Source": {
+  "localizations": {
+    "en": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "View Source"
+      }
+    },
+    "zh-Hans": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "查看来源"
+      }
+    }
+  }
+},
+    "Link to This Note": {
+  "localizations": {
+    "en": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "Link to This Note"
+      }
+    },
+    "zh-Hans": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "链接到此笔记"
+      }
+    }
+  }
+},
+    "%@%@": {
+  "comment": "Adjacent attributed text runs in a source excerpt; preserve order without separators.",
+  "localizations": {
+    "zh-Hans": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "%@%@"
+      }
+    }
+  }
+},
+    "%@%@%@": {
+  "comment": "Adjacent attributed text runs in a source excerpt; preserve order without separators.",
+  "localizations": {
+    "zh-Hans": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "%@%@%@"
+      }
+    }
+  }
+},
     "Settlement recorded; status refresh failed.": {
   "localizations": {
     "en": {
@@ -33,23 +327,7 @@
     }
   }
 },
-  "Select text in Edit or Source. Related material appears here automatically.": {
-    "localizations": {
-      "en": {
-        "stringUnit": {
-          "state": "translated",
-          "value": "Select text in Edit or Source. Related material appears here automatically."
-        }
-      },
-      "zh-Hans": {
-        "stringUnit": {
-          "state": "translated",
-          "value": "在编辑或源文本模式中选择文字，相关材料会自动显示在这里。"
-        }
-      }
-    }
-  },
-  "Based on Selected Text": {
+    "Based on Selected Text": {
     "localizations": {
       "en": {
         "stringUnit": {
@@ -593,7 +871,7 @@
           }
         }
       },
-      "Close Tab": {
+    "Close Tab": {
         "localizations": {
           "en": {
             "stringUnit": {
@@ -609,7 +887,7 @@
           }
         }
       },
-      "Next Tab": {
+    "Next Tab": {
         "localizations": {
           "en": {
             "stringUnit": {
@@ -625,7 +903,7 @@
           }
         }
       },
-      "Previous Tab": {
+    "Previous Tab": {
         "localizations": {
           "en": {
             "stringUnit": {

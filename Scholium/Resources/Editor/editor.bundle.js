@@ -21677,7 +21677,7 @@
   }
 
   // protocol.ts
-  var EDITOR_PROTOCOL_VERSION = 31;
+  var EDITOR_PROTOCOL_VERSION = 33;
   var MAX_INBOUND_BYTES = 25e5;
   var MAX_SOURCE_UTF8_BYTES = 8e6;
   var operationTypes = /* @__PURE__ */ new Set([
@@ -21704,6 +21704,7 @@
     "restoreRecovery",
     "acknowledgeCommittedSnapshot",
     "replacePassage",
+    "insertReference",
     "command",
     "documentFind",
     "clearDocumentFind",
@@ -21841,6 +21842,10 @@
         return validRecoverySnapshot(operation.snapshot);
       case "acknowledgeCommittedSnapshot":
         return typeof operation.expectedText === "string" && typeof operation.committedText === "string" && typeof operation.committedFingerprint === "string";
+      case "insertReference": {
+        const selection = operation.selection;
+        return Number.isSafeInteger(operation.generation) && Number(operation.generation) >= 0 && typeof operation.target === "string" && operation.target.length > 0 && operation.target.length <= 1024 && !/[\r\n\[\]]/u.test(operation.target) && Number.isSafeInteger(selection?.anchor) && Number(selection?.anchor) >= 0 && selection?.anchor === selection?.head;
+      }
       case "replacePassage":
         return typeof operation.expectedText === "string" && typeof operation.replacement === "string" && operation.replacement.length > 0 && operation.replacement.length <= 5e5 && Number.isSafeInteger(operation.fromUTF16) && Number.isSafeInteger(operation.toUTF16) && Number(operation.fromUTF16) >= 0 && Number(operation.toUTF16) > Number(operation.fromUTF16);
       case "command":
@@ -30912,6 +30917,8 @@ ${fence}
 
   // localization.ts
   var webInterfaceLocalizationKeys = [
+    "Tab",
+    "Accept suggestion: {text} (Tab)",
     "Copy",
     "Expand",
     "YAML frontmatter",
@@ -32806,6 +32813,14 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       (range) => position >= range.from && position < range.to
     );
   }
+  function termSuffix(state, position, candidate) {
+    const count2 = candidate.replacementUTF16Count ?? 0;
+    if (!count2 || count2 > position || candidate.writingAction !== "term") return null;
+    const typed = state.sliceDoc(position - count2, position);
+    if (candidate.label.slice(0, count2).toLocaleLowerCase() !== typed.toLocaleLowerCase()) return null;
+    const suffix = candidate.label.slice(count2);
+    return suffix && !/[\\`*_{}[\]<>!|#+.]/u.test(suffix) ? suffix : null;
+  }
   function boundedUUID() {
     if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
     const bytes = crypto.getRandomValues(new Uint8Array(16));
@@ -33012,7 +33027,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
   function validLinkCandidate(value) {
     if (!value || typeof value !== "object") return false;
     const candidate = value;
-    return typeof candidate.label === "string" && typeof candidate.insertion === "string" && typeof candidate.detail === "string" && typeof candidate.path === "string" && (candidate.displayText === void 0 || typeof candidate.displayText === "string") && typeof candidate.isAmbiguous === "boolean";
+    return typeof candidate.label === "string" && typeof candidate.insertion === "string" && typeof candidate.detail === "string" && typeof candidate.path === "string" && (candidate.displayText === void 0 || typeof candidate.displayText === "string") && typeof candidate.isAmbiguous === "boolean" && (candidate.writingAction === void 0 || candidate.writingAction === "term") && (candidate.replacementUTF16Count === void 0 || Number.isSafeInteger(candidate.replacementUTF16Count) && candidate.replacementUTF16Count > 0 && candidate.replacementUTF16Count <= 128);
   }
   function suggestionSymbol(completion) {
     const key = suggestionSymbolByType[completion.type];
@@ -33020,6 +33035,151 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
   }
   function createEditorInputSuggestions(options) {
     const pendingLinkQueries = /* @__PURE__ */ new Map();
+    class Ghost extends WidgetType {
+      constructor(text, accept) {
+        super();
+        this.text = text;
+        this.accept = accept;
+      }
+      text;
+      accept;
+      toDOM() {
+        const node = document.createElement("span");
+        node.className = "scholium-writing-ghost";
+        const suffix = document.createElement("span");
+        suffix.className = "scholium-writing-ghost-text";
+        suffix.textContent = this.text;
+        const hint = document.createElement("span");
+        hint.className = "scholium-writing-ghost-key";
+        hint.textContent = "\u21E5";
+        hint.setAttribute("aria-hidden", "true");
+        node.append(suffix, hint);
+        node.setAttribute("role", "button");
+        node.setAttribute("aria-label", localizedTemplate("Accept suggestion: {text} (Tab)", { text: this.text }));
+        node.addEventListener("mousedown", (event) => {
+          event.preventDefault();
+        });
+        node.addEventListener("click", () => this.accept());
+        return node;
+      }
+      ignoreEvent() {
+        return true;
+      }
+    }
+    function requestTerms(query, context) {
+      const requestID = boundedUUID();
+      return new Promise((resolve) => {
+        const cancel = () => {
+          const pending = pendingLinkQueries.get(requestID);
+          if (!pending) return;
+          pendingLinkQueries.delete(requestID);
+          globalThis.clearTimeout(pending.timeout);
+          resolve([]);
+        };
+        context.addEventListener("abort", cancel, { onDocChange: true });
+        const timeout = globalThis.setTimeout(cancel, 5e3);
+        pendingLinkQueries.set(requestID, { resolve, timeout });
+        options.requestLinkCompletions(requestID, "term", query);
+      });
+    }
+    const writingCompletionSource = (context) => {
+      if (options.isComposing() || context.state.selection.ranges.length !== 1 || !context.state.selection.main.empty || positionIsProtected(options, context.state, context.pos) || positionIsProtected(options, context.state, Math.max(0, context.pos - 1))) return null;
+      const before = context.state.sliceDoc(Math.max(0, context.pos - 512), context.pos);
+      const prefix = /[\p{L}\p{N}\p{M} -]{2,48}$/u.exec(before)?.[0];
+      if (/[\p{L}\p{N}\p{M}]/u.test(context.state.sliceDoc(context.pos, context.pos + 1)) || !prefix || !/[\p{L}\p{N}\p{M}]$/u.test(prefix) || /\[\[|@|\//u.test(before)) return null;
+      return requestTerms(prefix, context).then((candidates) => {
+        if (context.aborted) return null;
+        return {
+          from: context.pos,
+          filter: false,
+          options: candidates.filter((c) => !c.isAmbiguous && termSuffix(context.state, context.pos, c) !== null).map((candidate) => ({
+            label: candidate.label,
+            ghostText: termSuffix(context.state, context.pos, candidate),
+            apply: (view) => {
+              if (view.composing || options.isComposing() || view.state.doc !== context.state.doc || !view.state.selection.eq(context.state.selection)) return;
+              const text = termSuffix(context.state, context.pos, candidate);
+              if (new TextEncoder().encode(view.state.doc.toString() + text).length > MAX_SOURCE_UTF8_BYTES) return;
+              view.dispatch({
+                changes: { from: context.pos, insert: text },
+                selection: { anchor: context.pos + text.length },
+                annotations: [Transaction.userEvent.of("input.complete.scholium.writing"), isolateHistory.of("full")]
+              });
+              options.didApply("Complete Term");
+            }
+          }))
+        };
+      });
+    };
+    const inlineWriting = ViewPlugin.fromClass(class {
+      constructor(view) {
+        this.view = view;
+      }
+      view;
+      decorations = Decoration.none;
+      generation = 0;
+      timer;
+      acceptChoice = null;
+      clear() {
+        this.generation++;
+        clearTimeout(this.timer);
+        this.acceptChoice = null;
+        this.decorations = Decoration.none;
+      }
+      accept() {
+        if (!this.acceptChoice || this.view.composing || options.isComposing()) return false;
+        this.acceptChoice();
+        return true;
+      }
+      update(update) {
+        if (!update.docChanged && !update.selectionSet && !update.focusChanged) return;
+        this.clear();
+        if (!update.docChanged || !this.view.hasFocus || !update.transactions.some((t2) => t2.isUserEvent("input.type"))) return;
+        this.schedule();
+      }
+      schedule() {
+        this.clear();
+        const generation = this.generation;
+        const state = this.view.state;
+        this.timer = setTimeout(() => {
+          if (this.view.composing || options.isComposing() || !this.view.hasFocus) return;
+          const context = new CompletionContext(state, state.selection.main.head, false, this.view);
+          void Promise.resolve(writingCompletionSource(context)).then((result) => {
+            if (this.generation !== generation || this.view.state.doc !== state.doc || !this.view.state.selection.eq(state.selection) || !this.view.hasFocus || this.view.composing || options.isComposing() || !result) return;
+            const choice = result.options[0];
+            if (!choice?.ghostText || typeof choice.apply !== "function") return;
+            const apply = choice.apply;
+            this.acceptChoice = () => {
+              if (this.view.state.doc !== state.doc || !this.view.state.selection.eq(state.selection)) return;
+              this.clear();
+              apply(this.view, choice, result.from, state.selection.main.head);
+            };
+            this.decorations = Decoration.set([Decoration.widget({
+              widget: new Ghost(choice.ghostText, () => this.accept()),
+              side: 1
+            }).range(state.selection.main.head)]);
+            this.view.dispatch({});
+          });
+        }, 300);
+      }
+      destroy() {
+        this.clear();
+      }
+    }, {
+      decorations: (value) => value.decorations,
+      eventHandlers: {
+        compositionstart() {
+          this.clear();
+          this.view.dispatch({});
+        },
+        compositionend() {
+          this.schedule();
+        },
+        blur() {
+          this.clear();
+          this.view.dispatch({});
+        }
+      }
+    });
     const wikilinkCompletionSource = (context) => {
       if (!isLiveSuggestionContext(options, context.state)) return null;
       const line = context.state.doc.lineAt(context.pos);
@@ -33222,6 +33382,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       }
     });
     return {
+      writingCompletionSource,
       extension: [autocompletion({
         override: [
           calloutCompletionSource,
@@ -33234,7 +33395,20 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         icons: false,
         tooltipClass: () => "scholium-editor-suggestions",
         addToOptions: [{ render: suggestionSymbol, position: 20 }]
-      }), nativePresentation, EditorView.baseTheme({
+      }), inlineWriting, Prec.highest(keymap.of([
+        { key: "Tab", run: (view) => view.plugin(inlineWriting)?.accept() ?? false },
+        { key: "Escape", run: (view) => {
+          const plugin = view.plugin(inlineWriting);
+          if (!plugin) return false;
+          const visible = plugin.decorations.size > 0;
+          plugin.clear();
+          view.dispatch({});
+          return visible;
+        } }
+      ])), nativePresentation, EditorView.baseTheme({
+        ".scholium-writing-ghost": { color: "var(--scholium-native-secondary-label)", cursor: "pointer", userSelect: "none" },
+        ".scholium-writing-ghost-text": { textDecorationLine: "underline", textDecorationStyle: "dotted", textUnderlineOffset: "0.2em" },
+        ".scholium-writing-ghost-key": { fontFamily: "system-ui", fontSize: "0.65em", marginInlineStart: "0.4em", whiteSpace: "nowrap" },
         // Keep CodeMirror's single accessible list and aria-activedescendant relation.
         // Native rows are a pointer/visual projection and do not duplicate that AX tree.
         ".cm-tooltip-autocomplete.scholium-editor-suggestions": {
@@ -38102,6 +38276,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     EditorView.lineWrapping
   ];
   var sourceMode = [
+    inputSuggestions.extension,
     editorModeFacet.of("source"),
     EditorView.editorAttributes.of({ class: "scholium-source-mode" }),
     EditorView.contentAttributes.of(editorAccessibilityAttributes("source")),
@@ -38568,6 +38743,24 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
           text: exactEditorSource(),
           commitSuperseded: superseded
         };
+      }
+      case "insertReference": {
+        const selection = editor.state.selection.main;
+        if (documentVersion !== operation.generation || editor.composing || editor.state.selection.ranges.length !== 1 || !selection.empty || selection.anchor !== operation.selection.anchor || selection.head !== operation.selection.head || protectedCommandRanges(editor.state).some((range) => selection.head >= range.from && Math.max(0, selection.head - 1) < range.to)) {
+          return rejected(request.requestID, documentVersion, "The insertion position changed. Confirm the cursor again.");
+        }
+        const text = `[[${operation.target}]]`;
+        if (new TextEncoder().encode(editor.state.doc.toString() + text).length > MAX_SOURCE_UTF8_BYTES) {
+          return rejected(request.requestID, documentVersion, "The reference is too large.");
+        }
+        editor.dispatch({
+          changes: { from: selection.head, insert: text },
+          selection: { anchor: selection.head + text.length },
+          annotations: [Transaction.userEvent.of("input.scholium.reference"), isolateHistory.of("full")]
+        });
+        editor.focus();
+        lastUndoLabel = lastRedoLabel = "Insert Wikilink";
+        return successfulResult(request.requestID, true, "Insert Wikilink");
       }
       case "replacePassage": {
         if (editor.composing || compositionGate.active) return rejected(request.requestID, documentVersion, "Finish composition before adopting a suggestion.");

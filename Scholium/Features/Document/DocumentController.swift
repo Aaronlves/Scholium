@@ -181,6 +181,7 @@ final class DocumentController: ObservableObject {
     private let sessions = DocumentSessionStore()
     private let readProjectionCache = DocumentReadProjectionCache()
     private let linkCompletionIndex = EditorLinkCompletionIndex()
+    private let writingSuggestions = EditorWritingSuggestions()
     private var retainedReferences: [DocumentSessionKey: VaultNoteReference] = [:]
     /// Workspace publications are invalidations, not a second source owner.
     /// While one session is saving, retain only its latest complete snapshot
@@ -243,6 +244,7 @@ final class DocumentController: ObservableObject {
 
     func unbind() {
         operations = nil
+        writingSuggestions.clear()
         documentDidCommit = { _ in }
     }
 
@@ -311,6 +313,7 @@ final class DocumentController: ObservableObject {
             notes: catalogNotes,
             generation: graphGeneration
         )
+        if kind == .term { return writingSuggestions.terms(query, notes: catalogNotes) }
         return
             (try? await linkCompletionIndex.query(
                 kind: kind,
@@ -1772,6 +1775,7 @@ final class DocumentController: ObservableObject {
         _ workspace: WorkspaceSnapshot,
         openDocuments: [WindowSelectedDocument] = []
     ) -> DocumentWorkspaceReconciliation {
+        writingSuggestions.replace(workspace.vaults.flatMap(\.documents))
         var documents = Set(openDocuments)
         if let selectedDocument { documents.insert(selectedDocument) }
         guard !documents.isEmpty else { return .unchanged }

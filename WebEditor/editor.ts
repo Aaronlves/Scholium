@@ -1932,6 +1932,7 @@ const livePreviewMode = [
   EditorView.lineWrapping,
 ];
 const sourceMode = [
+  inputSuggestions.extension,
   editorModeFacet.of("source"),
   EditorView.editorAttributes.of({class: "scholium-source-mode"}),
   EditorView.contentAttributes.of(editorAccessibilityAttributes("source")),
@@ -2356,6 +2357,23 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
       text: exactEditorSource(),
       commitSuperseded: superseded,
     };
+  }
+  case "insertReference": {
+    const selection = editor.state.selection.main;
+    if (documentVersion !== operation.generation || editor.composing || editor.state.selection.ranges.length !== 1 || !selection.empty
+      || selection.anchor !== operation.selection.anchor || selection.head !== operation.selection.head
+      || protectedCommandRanges(editor.state).some(range => selection.head >= range.from && Math.max(0, selection.head - 1) < range.to)) {
+      return rejected(request.requestID, documentVersion, "The insertion position changed. Confirm the cursor again.");
+    }
+    const text = `[[${operation.target}]]`;
+    if (new TextEncoder().encode(editor.state.doc.toString() + text).length > MAX_SOURCE_UTF8_BYTES) {
+      return rejected(request.requestID, documentVersion, "The reference is too large.");
+    }
+    editor.dispatch({changes: {from: selection.head, insert: text}, selection: {anchor: selection.head + text.length},
+      annotations: [Transaction.userEvent.of("input.scholium.reference"), isolateHistory.of("full")]});
+    editor.focus();
+    lastUndoLabel = lastRedoLabel = "Insert Wikilink";
+    return successfulResult(request.requestID, true, "Insert Wikilink");
   }
   case "replacePassage": {
     if (editor.composing || compositionGate.active) return rejected(request.requestID, documentVersion, "Finish composition before adopting a suggestion.");

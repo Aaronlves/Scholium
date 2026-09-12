@@ -3,6 +3,14 @@ import Testing
 
 @Suite("Readable link contexts")
 struct ResearchExcerptPresentationTests {
+    @Test("Related excerpts retain annotation wording without exposing syntax or destinations")
+    func relatedAnnotations() {
+        #expect(
+            ResearchExcerptPresentation.readableText(
+                "😀 [[Hidden|依据]]{{See [[Other|材料]] and *reason*.}}。", includingAnnotations: true)
+                == "😀 依据 (See 材料 and reason.)。")
+    }
+
     @Test("Reading uses labels without changing literal code or authored label punctuation")
     func readableSnippets() {
         #expect(ResearchExcerptPresentation.readableText("Read [[Target|Visible label]] and [ordinary](other.md).") == "Read Visible label and ordinary.")

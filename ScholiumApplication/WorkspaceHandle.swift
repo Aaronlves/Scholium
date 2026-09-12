@@ -3215,7 +3215,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 $0.reference.vaultID == request.seed.noteID.vaultID && $0.reference.relativePath == request.seed.noteID.relativePath
             })
         else { throw CocoaError(.fileReadNoSuchFile) }
-        let response = try await services.searchIndex.relatedContent(request)
+        let response = try await services.searchIndex.relatedMaterialSourceCandidates(request)
         try requireActive()
         try Task.checkCancellation()
         guard response.state == .current || response.state == .empty else { return response }
@@ -3242,7 +3242,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             requestID: response.requestID, seedFingerprint: response.seedFingerprint,
             freshnessToken: response.freshnessToken, availability: response.availability,
             state: omitted > 0 ? .partial : (passages.isEmpty ? .empty : .current),
-            identityCandidates: response.identityCandidates, lexicalCandidates: response.lexicalCandidates,
+            identityCandidates: response.identityCandidates, lexicalCandidates: Array(response.lexicalCandidates.prefix(request.lexicalLimit)),
             identityHasMore: response.identityHasMore, lexicalHasMore: response.lexicalHasMore,
             passages: passages, omittedSourceCount: omitted)
     }

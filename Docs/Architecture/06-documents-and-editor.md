@@ -417,13 +417,13 @@ and context exit dismiss through the originating controller. Completion geometry
 uses one keyed CodeMirror measure with an idle fallback when WebKit throttles
 animation frames. Review activity deactivation clears transient selection paint.
 
-`input-suggestions` owns the Edit-only CodeMirror Wikilink, slash, and chained
-Callout-role completion. Slash filtering is local. Bounded Wikilink queries use
-the typed bridge and generation-owned `EditorLinkCompletionIndex`; CodeMirror
-owns the sole AX listbox, transactions, caret, and Undo; native rows forward bounded activation. Superseding query, document,
-mode, WebKit termination, or teardown cancels native work; identity gates reject
-stale replies, and Source removes the extension. No catalog, registry, DOM menu
-state, or writable source is duplicated.
+`input-suggestions` owns inline writing decorations and structural/link completion.
+`EditorWritingSuggestions` projects vocabulary; `EditorLinkCompletionIndex` resolves
+links. Native `queryText` captures exact writing context. `RelatedMaterialsSession`
+owns reference discovery and cards independently of floating surfaces. An insertion
+receipt binds session, generation and caret; `insertReference` checks the generation,
+selection and protected context again in CodeMirror before one Undo transaction.
+No buffer is duplicated.
 
 The native `DocumentFindPanel` owns Command-F, query/options, replacement disclosure,
 and focus intent. `DocumentFindSearchField` supplies AppKit input/menu behavior;

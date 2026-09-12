@@ -42,6 +42,7 @@ const dialect: MarkdownEditingDialect = {
 function controller(
   mode: EditorMode = "livePreview",
   protectedRanges: readonly {from: number; to: number}[] = [],
+  composing = false,
 ) {
   let request: {id: string; kind: string; query: string} | null = null;
   const undoLabels: string[] = [];
@@ -49,7 +50,7 @@ function controller(
     nativeFloating: {show: () => 0, hide: () => {}, event: () => true},
     mode: () => mode,
     dialect: () => dialect,
-    isComposing: () => false,
+    isComposing: () => composing,
     protectedRanges: () => protectedRanges,
     requestLinkCompletions: (id, kind, query) => { request = {id, kind, query}; },
     didApply: (label) => { undoLabels.push(label); },
@@ -271,5 +272,44 @@ describe("Edit input suggestions", () => {
   it("formats the inserted date as a local ISO calendar date", () => {
     expect(inputSuggestionTesting.localISODate(new Date(2026, 7, 3, 12, 30)))
       .toBe("2026-08-03");
+  });
+});
+
+describe("Indexed writing suggestions", () => {
+  it("inserts a term as ordinary text and rejects acceptance after an edit", async () => {
+    const {suggestions, request} = controller();
+    const state = EditorState.create({doc: "res", selection: {anchor: 3}});
+    const pending = suggestions.writingCompletionSource(new CompletionContext(state, 3, false));
+    expect(request()?.kind).toBe("term");
+    suggestions.resolveLinkCompletionQuery(request()!.id, [{label: "responsibility", insertion: "responsibility", detail: "Origin", path: "Origin.md", isAmbiguous: false, writingAction: "term", replacementUTF16Count: 3}]);
+    const result = (await pending)!;
+    const mutable = mutableView(state);
+    const choice = result.options[0];
+    if (typeof choice.apply === "function") choice.apply(mutable.view, choice, result.from, 3);
+    expect(mutable.state().doc.toString()).toBe("responsibility");
+    const changed = mutableView(state);
+    changed.view.dispatch({changes: {from: 3, insert: "x"}});
+    if (typeof choice.apply === "function") choice.apply(changed.view, choice, result.from, 3);
+    expect(changed.state().doc.toString()).toBe("resx");
+  });
+  it("preserves capitalization and source bytes before the ghost suffix", async () => {
+    const {suggestions, request} = controller();
+    const state = EditorState.create({doc: "Res", selection: {anchor: 3}});
+    const pending = suggestions.writingCompletionSource(new CompletionContext(state, 3, false));
+    suggestions.resolveLinkCompletionQuery(request()!.id, [{label: "responsibility", insertion: "responsibility", detail: "Origin", path: "Origin.md", isAmbiguous: false, writingAction: "term", replacementUTF16Count: 3}]);
+    const result = (await pending)!;
+    const mutable = mutableView(state);
+    const choice = result.options[0];
+    if (typeof choice.apply === "function") choice.apply(mutable.view, choice, result.from, 3);
+    expect(mutable.state().doc.toString()).toBe("Responsibility");
+  });
+  it("leaves IME composition and existing word tails untouched", () => {
+    expect(synchronousResult(controller("livePreview", [], true).suggestions.writingCompletionSource, "res")).toBeNull();
+    const state = EditorState.create({doc: "result", selection: {anchor: 3}});
+    expect(controller().suggestions.writingCompletionSource(new CompletionContext(state, 3, false))).toBeNull();
+  });
+  it("does not suggest after spaces or at the end of a protected region", () => {
+    expect(synchronousResult(controller().suggestions.writingCompletionSource, "   ")).toBeNull();
+    expect(synchronousResult(controller("source", [{from: 0, to: 3}]).suggestions.writingCompletionSource, "res")).toBeNull();
   });
 });

@@ -529,6 +529,8 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                                 "path": candidate.path,
                                 "isAmbiguous": candidate.isAmbiguous,
                             ] as [String: Any]
+                        if let action = candidate.writingAction { value["writingAction"] = action }
+                        if let count = candidate.replacementUTF16Count { value["replacementUTF16Count"] = count }
                         if let displayText = candidate.displayText {
                             value["displayText"] = displayText
                         }

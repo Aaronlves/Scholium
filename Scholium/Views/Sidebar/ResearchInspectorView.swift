@@ -2,10 +2,13 @@ import ScholiumContracts
 import SwiftUI
 
 enum ResearchInspectorLayout {
-    static let contentInset: CGFloat = 16
-    static let topInset: CGFloat = 16
-    static let sectionSpacing: CGFloat = 16
-    static let bottomInset: CGFloat = 20
+    static let contentInset = ScholiumSidebarLayout.textInset
+    // macOS plain List adds an 8pt native cell gutter outside listRowInsets.
+    // Count that gutter once so rows align with the non-list controls.
+    static let listRowInset = contentInset - ScholiumGrid.Spacing.inlineControlGap
+    static let topInset = ScholiumSidebarLayout.edgeInset
+    static let sectionSpacing = ScholiumSidebarLayout.sectionSpacing
+    static let bottomInset = ScholiumSidebarLayout.textInset
 }
 
 struct ResearchInspectorView: View {
@@ -25,8 +28,9 @@ struct ResearchInspectorView: View {
     let researchInspectorContentContext: ResearchInspectorContentContext
     let openReference: (VaultNoteReference, Int?) -> Void
     let findRelated: @MainActor () -> Void
-    let refreshRelated: () -> Void
+    let retryRelated: () -> Void
     let openRelated: (RelatedMaterialCard) -> Void
+    let insertRelated: (RelatedMaterialCard) -> Void
     let discussRelated: (RelatedMaterialCard) -> Void
 
     init(
@@ -43,8 +47,9 @@ struct ResearchInspectorView: View {
         researchInspectorContentContext: ResearchInspectorContentContext,
         openReference: @escaping (VaultNoteReference, Int?) -> Void,
         findRelated: @escaping @MainActor () -> Void,
-        refreshRelated: @escaping () -> Void,
+        retryRelated: @escaping () -> Void,
         openRelated: @escaping (RelatedMaterialCard) -> Void,
+        insertRelated: @escaping (RelatedMaterialCard) -> Void,
         discussRelated: @escaping (RelatedMaterialCard) -> Void
     ) {
         self.editor = editor
@@ -60,8 +65,9 @@ struct ResearchInspectorView: View {
         self.researchInspectorContentContext = researchInspectorContentContext
         self.openReference = openReference
         self.findRelated = findRelated
-        self.refreshRelated = refreshRelated
+        self.retryRelated = retryRelated
         self.openRelated = openRelated
+        self.insertRelated = insertRelated
         self.discussRelated = discussRelated
     }
 
@@ -69,8 +75,10 @@ struct ResearchInspectorView: View {
         ZStack(alignment: .topLeading) {
             if shellState.inspector.mode == .related {
                 RelatedMaterialsView(
-                    session: research.relatedMaterials, isVisible: shellState.inspector.isVisible, editor: editor, find: findRelated, refresh: refreshRelated,
-                    open: openRelated, addToChat: discussRelated)
+                    session: research.relatedMaterials, isVisible: shellState.inspector.isVisible,
+                    editor: editor, find: findRelated,
+                    retry: retryRelated,
+                    open: openRelated, addToChat: discussRelated, insert: insertRelated)
             }
             if shellState.inspector.mode == .links {
                 ConnectionsInspectorView(
@@ -81,7 +89,8 @@ struct ResearchInspectorView: View {
         }
         .task(id: resourceProjectionKey) {
             let source = note.document
-            externalLinks = SourceResourceReferences.externalLinks(in: source.body, noteURL: noteURL, vaultRoots: vaultRoots)
+            externalLinks = SourceResourceReferences.externalLinks(
+                in: source.body, noteURL: noteURL, vaultRoots: vaultRoots)
             externalProjectionKey = resourceProjectionKey
         }
         .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -92,7 +101,8 @@ struct ResearchInspectorView: View {
     }
 
     private var resourceProjectionKey: String {
-        note.document.fingerprint.sha256 + ":" + (noteURL?.absoluteString ?? "") + ":" + vaultRoots.map(\.path).sorted().joined(separator: "|")
+        note.document.fingerprint.sha256 + ":" + (noteURL?.absoluteString ?? "") + ":"
+            + vaultRoots.map(\.path).sorted().joined(separator: "|")
     }
 
     private var connectionsContext: ConnectionsInspectorContext {

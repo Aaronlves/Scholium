@@ -116,16 +116,31 @@ direct-link, exact-identity, and lexical channels, preserving typed
 reasons and source fingerprints. It never synthesizes a relation, score,
 summary, or evidence claim. Search and Graph must share one complete source
 manifest before direct-link candidates are executable.
-Its paragraph stage reads fingerprint-matched candidate Notes and ranks authored
-paragraphs through the same normalization, seed terms and lexical matcher. An
-explicit focus must match the paragraph itself. Paragraphs retain exact source
-ranges and bytes plus a separate readable-text projection. Search also supplies a
-bounded excerpt around a focused match and checked UTF-16 highlight ranges within
-that excerpt; these never substitute for exact source locators. Bounded per-Note and
-overall results preserve useful diversity without collapsing distinct passages.
-Repeated visible paragraphs in one Note appear once. A multi-term focus requires
-more than one matching term, avoiding incidental single-word filler. This creates
-no persistent paragraph IDs, embeddings or inferred relations.
+Related-Content ranks Notes by authored context and selects paragraphs within
+those Notes. Field-normalized BM25F prefers annotation text over Wikilink display
+text, content YAML, headings and ordinary prose under comparable matches.
+`summary`, `keywords`, `title` and `aliases` inform Note ranking; YAML values
+are never standalone recommended material. Author, date, path and unknown
+properties do not contribute to default topic ranking. Explicit Search fields
+retain their existing semantics. Incoming annotation text is never transferred
+to its target, and each authored occurrence contributes once.
+An explicit focus supplies scoring terms rather than unrelated source-Note terms.
+Every eligible lexical source is checked before paragraphs are selected; bounded
+Note channels never truncate this source set. A Note is eligible for display
+only when it contains an actual locally matching paragraph, including authored
+link-annotation wording. Metadata-only matches do not manufacture a paragraph.
+Within each eligible Note, paragraph-local BM25F chooses the excerpt. Note and
+paragraph scores use distinct statistics and are never numerically added.
+Results first show one paragraph per Note in Note-rank order, then additional
+paragraphs within the per-Note and overall bounds. Repeated visible paragraphs
+in one Note appear once. A multi-term focus requires more than one matching term.
+Paragraphs retain exact source ranges and bytes, separate readable text, bounded
+match-centered excerpts and checked UTF-16 highlight ranges. These projections
+never substitute for source locators. No persistent paragraph IDs, embeddings,
+argumentative predicates or inferred evidence are created.
+Research usefulness is evaluated by whether results help the researcher clarify
+concepts, examine arguments, compare alternatives or investigate objections.
+Lexical ranking does not certify any of those roles or the correctness of a Note.
 
 Ordinary Search returns bounded slices, filtered totals and continuations.
 

@@ -1,3 +1,4 @@
+import {isolateHistory} from "@codemirror/commands";
 import {
   CompletionContext,
   acceptCompletion,
@@ -13,6 +14,7 @@ import {
 } from "@codemirror/autocomplete";
 import {
   EditorSelection,
+  Prec,
   Transaction,
   type EditorState,
   type Extension,
@@ -24,9 +26,9 @@ import {
 } from "./protocol";
 import {applySourceChanges, transformMarkdown} from "./transformations";
 import {systemSymbolElement, type WebSystemSymbolKey} from "./system-symbols";
-import {EditorView, ViewPlugin, type ViewUpdate} from "@codemirror/view";
+import {Decoration, WidgetType, keymap, EditorView, ViewPlugin, type DecorationSet, type ViewUpdate} from "@codemirror/view";
 import type {NativeFloatingBridge} from "./native-floating";
-import {localized, localizedCallout} from "./localization";
+import {localized, localizedTemplate, localizedCallout} from "./localization";
 
 export interface EditorLinkCompletionCandidate {
   label: string;
@@ -35,9 +37,11 @@ export interface EditorLinkCompletionCandidate {
   path: string;
   displayText?: string;
   isAmbiguous: boolean;
+  writingAction?: "term";
+  replacementUTF16Count?: number;
 }
 
-export type EditorLinkCompletionKind = "wikilink" | "analysisReference";
+export type EditorLinkCompletionKind = "wikilink" | "analysisReference" | "term";
 
 interface SourceRange {
   readonly from: number;
@@ -60,6 +64,7 @@ interface InputSuggestionOptions {
 
 export interface EditorInputSuggestionsController {
   readonly extension: Extension;
+  readonly writingCompletionSource: CompletionSource;
   readonly wikilinkCompletionSource: CompletionSource;
   readonly analysisReferenceCompletionSource: CompletionSource;
   readonly slashCompletionSource: CompletionSource;
@@ -109,6 +114,16 @@ function positionIsProtected(
   return options.protectedRanges(state).some((range) =>
     position >= range.from && position < range.to,
   );
+}
+
+function termSuffix(state: EditorState, position: number, candidate: EditorLinkCompletionCandidate): string | null {
+  const count = candidate.replacementUTF16Count ?? 0;
+  if (!count || count > position || candidate.writingAction !== "term") return null;
+  const typed = state.sliceDoc(position - count, position);
+  if (candidate.label.slice(0, count).toLocaleLowerCase() !== typed.toLocaleLowerCase()) return null;
+  const suffix = candidate.label.slice(count);
+  // A ghost must show exactly the bytes acceptance appends, without hidden Markdown escapes.
+  return suffix && !/[\\`*_{}[\]<>!|#+.]/u.test(suffix) ? suffix : null;
 }
 
 export function boundedUUID() {
@@ -353,7 +368,9 @@ function validLinkCandidate(value: unknown): value is EditorLinkCompletionCandid
     && typeof candidate.detail === "string"
     && typeof candidate.path === "string"
     && (candidate.displayText === undefined || typeof candidate.displayText === "string")
-    && typeof candidate.isAmbiguous === "boolean";
+    && typeof candidate.isAmbiguous === "boolean"
+    && (candidate.writingAction === undefined || candidate.writingAction === "term")
+    && (candidate.replacementUTF16Count === undefined || (Number.isSafeInteger(candidate.replacementUTF16Count) && candidate.replacementUTF16Count > 0 && candidate.replacementUTF16Count <= 128));
 }
 
 function suggestionSymbol(completion: Completion) {
@@ -368,6 +385,131 @@ export function createEditorInputSuggestions(
     resolve(candidates: EditorLinkCompletionCandidate[]): void;
     timeout: ReturnType<typeof setTimeout>;
   }>();
+
+  class Ghost extends WidgetType {
+    constructor(readonly text: string, readonly accept: () => void) { super(); }
+    toDOM() {
+      const node = document.createElement("span");
+      node.className = "scholium-writing-ghost";
+      const suffix = document.createElement("span");
+      suffix.className = "scholium-writing-ghost-text";
+      suffix.textContent = this.text;
+      const hint = document.createElement("span");
+      hint.className = "scholium-writing-ghost-key";
+      hint.textContent = "⇥";
+      hint.setAttribute("aria-hidden", "true");
+      node.append(suffix, hint);
+      node.setAttribute("role", "button");
+      node.setAttribute("aria-label", localizedTemplate("Accept suggestion: {text} (Tab)", {text: this.text}));
+      node.addEventListener("mousedown", event => { event.preventDefault(); });
+      node.addEventListener("click", () => this.accept());
+      return node;
+    }
+    ignoreEvent() { return true; }
+  }
+  function requestTerms(query: string, context: CompletionContext) {
+    const requestID = boundedUUID();
+    return new Promise<EditorLinkCompletionCandidate[]>((resolve) => {
+      const cancel = () => {
+        const pending = pendingLinkQueries.get(requestID);
+        if (!pending) return;
+        pendingLinkQueries.delete(requestID);
+        globalThis.clearTimeout(pending.timeout);
+        resolve([]);
+      };
+      context.addEventListener("abort", cancel, {onDocChange: true});
+      const timeout = globalThis.setTimeout(cancel, 5_000);
+      pendingLinkQueries.set(requestID, {resolve, timeout});
+      options.requestLinkCompletions(requestID, "term", query);
+    });
+  }
+  const writingCompletionSource: CompletionSource = (context) => {
+    if (options.isComposing() || context.state.selection.ranges.length !== 1 || !context.state.selection.main.empty
+      || positionIsProtected(options, context.state, context.pos)
+      || positionIsProtected(options, context.state, Math.max(0, context.pos - 1))) return null;
+    const before = context.state.sliceDoc(Math.max(0, context.pos - 512), context.pos);
+    const prefix = /[\p{L}\p{N}\p{M} -]{2,48}$/u.exec(before)?.[0];
+    if (/[\p{L}\p{N}\p{M}]/u.test(context.state.sliceDoc(context.pos, context.pos + 1))
+      || !prefix || !/[\p{L}\p{N}\p{M}]$/u.test(prefix) || /\[\[|@|\//u.test(before)) return null;
+    return requestTerms(prefix, context).then(candidates => {
+      if (context.aborted) return null;
+      return {
+        from: context.pos, filter: false,
+        options: candidates.filter(c => !c.isAmbiguous && termSuffix(context.state, context.pos, c) !== null).map(candidate => ({
+          label: candidate.label, ghostText: termSuffix(context.state, context.pos, candidate),
+          apply: (view: EditorView) => {
+            if (view.composing || options.isComposing() || view.state.doc !== context.state.doc
+              || !view.state.selection.eq(context.state.selection)) return;
+            const text = termSuffix(context.state, context.pos, candidate)!;
+            if (new TextEncoder().encode(view.state.doc.toString() + text).length > MAX_SOURCE_UTF8_BYTES) return;
+            view.dispatch({changes: {from: context.pos, insert: text}, selection: {anchor: context.pos + text.length},
+              annotations: [Transaction.userEvent.of("input.complete.scholium.writing"), isolateHistory.of("full")]});
+            options.didApply("Complete Term");
+          },
+        })),
+      };
+    });
+  };
+
+  const inlineWriting = ViewPlugin.fromClass(class {
+    decorations: DecorationSet = Decoration.none;
+    private generation = 0;
+    private timer: ReturnType<typeof setTimeout> | undefined;
+    private acceptChoice: (() => void) | null = null;
+    constructor(readonly view: EditorView) {}
+    clear() {
+      this.generation++;
+      clearTimeout(this.timer);
+      this.acceptChoice = null;
+      this.decorations = Decoration.none;
+    }
+    accept() {
+      if (!this.acceptChoice || this.view.composing || options.isComposing()) return false;
+      this.acceptChoice();
+      return true;
+    }
+    update(update: ViewUpdate) {
+      if (!update.docChanged && !update.selectionSet && !update.focusChanged) return;
+      this.clear();
+      if (!update.docChanged || !this.view.hasFocus
+        || !update.transactions.some(t => t.isUserEvent("input.type"))) return;
+      this.schedule();
+    }
+    schedule() {
+      this.clear();
+      const generation = this.generation;
+      const state = this.view.state;
+      this.timer = setTimeout(() => {
+        if (this.view.composing || options.isComposing() || !this.view.hasFocus) return;
+        const context = new CompletionContext(state, state.selection.main.head, false, this.view);
+        void Promise.resolve(writingCompletionSource(context)).then(result => {
+          if (this.generation !== generation || this.view.state.doc !== state.doc
+            || !this.view.state.selection.eq(state.selection) || !this.view.hasFocus
+            || this.view.composing || options.isComposing() || !result) return;
+          const choice = result.options[0] as (Completion & {ghostText?: string}) | undefined;
+          if (!choice?.ghostText || typeof choice.apply !== "function") return;
+          const apply = choice.apply;
+          this.acceptChoice = () => {
+            if (this.view.state.doc !== state.doc || !this.view.state.selection.eq(state.selection)) return;
+            this.clear();
+            apply(this.view, choice, result.from, state.selection.main.head);
+          };
+          this.decorations = Decoration.set([Decoration.widget({
+            widget: new Ghost(choice.ghostText, () => this.accept()), side: 1,
+          }).range(state.selection.main.head)]);
+          this.view.dispatch({});
+        });
+      }, 300);
+    }
+    destroy() { this.clear(); }
+  }, {
+    decorations: value => value.decorations,
+    eventHandlers: {
+      compositionstart() { this.clear(); this.view.dispatch({}); },
+      compositionend() { this.schedule(); },
+      blur() { this.clear(); this.view.dispatch({}); },
+    },
+  });
 
   const wikilinkCompletionSource: CompletionSource = (context: CompletionContext) => {
     if (!isLiveSuggestionContext(options, context.state)) return null;
@@ -576,6 +718,7 @@ export function createEditorInputSuggestions(
   });
 
   return {
+    writingCompletionSource,
     extension: [autocompletion({
       override: [
         calloutCompletionSource,
@@ -588,7 +731,18 @@ export function createEditorInputSuggestions(
       icons: false,
       tooltipClass: () => "scholium-editor-suggestions",
       addToOptions: [{render: suggestionSymbol, position: 20}],
-    }), nativePresentation, EditorView.baseTheme({
+    }), inlineWriting, Prec.highest(keymap.of([
+      {key: "Tab", run: view => view.plugin(inlineWriting)?.accept() ?? false},
+      {key: "Escape", run: view => {
+        const plugin = view.plugin(inlineWriting);
+        if (!plugin) return false;
+        const visible = plugin.decorations.size > 0;
+        plugin.clear(); view.dispatch({}); return visible;
+      }},
+    ])), nativePresentation, EditorView.baseTheme({
+      ".scholium-writing-ghost": {color: "var(--scholium-native-secondary-label)", cursor: "pointer", userSelect: "none"},
+      ".scholium-writing-ghost-text": {textDecorationLine: "underline", textDecorationStyle: "dotted", textUnderlineOffset: "0.2em"},
+      ".scholium-writing-ghost-key": {fontFamily: "system-ui", fontSize: "0.65em", marginInlineStart: "0.4em", whiteSpace: "nowrap"},
       // Keep CodeMirror's single accessible list and aria-activedescendant relation.
       // Native rows are a pointer/visual projection and do not duplicate that AX tree.
       ".cm-tooltip-autocomplete.scholium-editor-suggestions": {

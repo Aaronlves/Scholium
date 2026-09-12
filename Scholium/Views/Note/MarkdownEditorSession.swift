@@ -130,6 +130,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         }
     }
 
+    let writingContextChanges = PassthroughSubject<Void, Never>()
     let selectionChanges = PassthroughSubject<Bool, Never>()
     var hasNonemptySelection: Bool {
         lastKnownSelectionSnapshot?.ranges.contains { $0.anchor != $0.head } == true
@@ -160,7 +161,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     // survive that rotation for reconstruction to admit its selection/history.
     let bridgeDocumentID = UUID().uuidString
     private(set) var startingFingerprint = ""
-    private(set) var generation = 0
+    private(set) var generation = 0 { didSet { if generation != oldValue { writingContextChanges.send() } } }
 
     let floatingSurfaces = DocumentFloatingSurfaceController()
     var webView: WKWebView?
@@ -476,6 +477,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             reconvergePendingPresentationState()
         }
         if previousSelection != selections || wasComposing != isComposing {
+            writingContextChanges.send()
             selectionChanges.send(hasNonemptySelection)
         }
         flushPendingSourceRange()
@@ -917,29 +919,51 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     }
 
     func selectedSourceSnapshot() async throws -> MarkdownSourceSelectionSnapshot {
+        try await writingContextSnapshot(paragraph: false).snapshot
+    }
+
+    func writingContextSnapshot(paragraph: Bool) async throws -> (snapshot: MarkdownSourceSelectionSnapshot, point: MarkdownEditorInsertionPoint?) {
         guard !isComposing, isReady, isLoaded, let webView else { throw SessionError.unavailable }
         let epoch = requestEpoch
         let identity = documentID
         let result = try await send(.queryText, in: webView)
         guard epoch == requestEpoch, identity == documentID, self.webView === webView,
-            let source = result.text, let selection = result.selections.first
+            result.resultingGeneration == generation, !isComposing, let source = result.text
         else { throw SessionError.invalidResult }
-        let map = EditorSourceOffsetMap(source: source)
-        guard let lower = map.sourceUTF16Offset(forEditorUTF16Offset: min(selection.anchor, selection.head)),
-            let upper = map.sourceUTF16Offset(forEditorUTF16Offset: max(selection.anchor, selection.head)),
-            upper > lower, upper - lower <= 32_000,
-            let range = Range(NSRange(location: lower, length: upper - lower), in: source)
-        else {
-            throw SessionError.invalidResult
+        let snapshot = try MarkdownWritingContextProjection.capture(source: source, selections: result.selections, paragraph: paragraph)
+        let point = result.selections.first.flatMap { selection -> MarkdownEditorInsertionPoint? in
+            guard !selection.isNonempty else { return nil }
+            return .init(sessionID: sessionID, documentID: identity, generation: generation, selection: selection)
         }
-        let native = source as NSString
-        let sourceRange = SearchSourceRange(
-            utf16LowerBound: lower, utf16UpperBound: upper,
-            line: 1 + source[..<range.lowerBound].utf8.filter { $0 == 10 }.count,
-            column: lower - native.lineRange(for: NSRange(location: lower, length: 0)).location + 1,
-            endLine: 1 + source[..<range.upperBound].utf8.filter { $0 == 10 }.count,
-            endColumn: upper - native.lineRange(for: NSRange(location: upper, length: 0)).location + 1)
-        return MarkdownSourceSelectionSnapshot(source: source, excerpt: String(source[range]), sourceRange: sourceRange)
+        return (snapshot, point)
+    }
+
+    var hasWritingFocus: Bool {
+        guard let webView, webView.window?.isKeyWindow == true,
+            let responder = webView.window?.firstResponder as? NSView
+        else { return false }
+        return responder === webView || responder.isDescendant(of: webView)
+    }
+
+    func currentInsertionPoint() async throws -> MarkdownEditorInsertionPoint {
+        guard !isComposing, isReady, isLoaded, let webView else { throw SessionError.unavailable }
+        let epoch = requestEpoch
+        let result = try await send(.querySelection, in: webView)
+        guard epoch == requestEpoch, self.webView === webView, !isComposing,
+            result.resultingGeneration == generation, result.selections.count == 1,
+            let selection = result.selections.first, !selection.isNonempty
+        else { throw RelatedMaterialsError.selectionRequired }
+        return .init(sessionID: sessionID, documentID: documentID, generation: generation, selection: selection)
+    }
+
+    func acceptsInsertionPoint(_ point: MarkdownEditorInsertionPoint) -> Bool {
+        !isComposing && isReady && isLoaded && point.sessionID == sessionID && point.documentID == documentID
+            && point.generation == generation && lastKnownSelectionSnapshot?.ranges == [point.selection]
+    }
+
+    func insertReference(_ target: String, at point: MarkdownEditorInsertionPoint) async throws {
+        guard acceptsInsertionPoint(point), let webView else { throw SessionError.invalidResult }
+        _ = try await send(.insertReference(selection: point.selection, generation: point.generation, target: target), in: webView)
     }
 
     func currentTextSnapshot(

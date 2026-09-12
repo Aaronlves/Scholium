@@ -7,6 +7,64 @@ import Testing
 
 @Suite("Triptych Search index")
 struct TriptychSearchIndexTests {
+    @Test("Material retrieval reaches a paragraph beyond the bounded Note results")
+    func directMaterialCandidates() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let index = try TriptychSearchIndex(
+            databaseURL: fixture.databaseURL,
+            triptychID: fixture.triptychID, vaults: [fixture.analyses, fixture.topics, fixture.works])
+        var documents = (0..<40).map { n in
+            fixture.item(vault: fixture.analyses, path: "A \(n).md", source: "# needle freedom\n\nUnrelated prose.")
+        }
+        documents.append(fixture.item(vault: fixture.analyses, path: "Z Actual.md", source: "needle freedom together."))
+        _ = try await index.synchronize(documents)
+        let request = RelatedContentRequest(
+            seed: .init(
+                noteID: .init(vaultID: fixture.works.id, relativePath: "Draft.md"),
+                source: "needle freedom", focuses: [.init(kind: .selectedPassage, text: "needle freedom")]))
+        let candidates = try await index.relatedMaterialSourceCandidates(request)
+        #expect(candidates.lexicalCandidates.count == 41)
+        let sources = candidates.lexicalCandidates.compactMap { candidate -> RelatedContentSource? in
+            guard let document = documents.first(where: { $0.relativePath == candidate.note.relativePath }) else { return nil }
+            return .init(candidate: candidate, document: document.document)
+        }
+        let passages = try TriptychSearchIndex.relatedPassages(request, sources: sources)
+        #expect(passages.count == 1)
+        #expect(passages.first?.candidate.note.relativePath == "Z Actual.md")
+        #expect(try TriptychSearchIndex.relatedPassages(request, sources: sources.reversed()) == passages)
+    }
+
+    @Test("Source weighting survives a large candidate pool and index reopen")
+    func relatedFieldRankingAcrossCandidatePool() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let vaults = [fixture.analyses, fixture.topics, fixture.works]
+        let index = try TriptychSearchIndex(
+            databaseURL: fixture.databaseURL,
+            triptychID: fixture.triptychID, vaults: vaults)
+        var documents = (0..<270).map { number in
+            fixture.item(vault: fixture.analyses, path: "Body \(number).md", source: "needle ordinary")
+        }
+        documents.append(
+            fixture.item(
+                vault: fixture.analyses, path: "Annotated.md",
+                source: "[[Target]]{{needle}}\n\n" + String(repeating: "unrelated material ", count: 300)))
+        _ = try await index.synchronize(documents)
+        let request = RelatedContentRequest(
+            seed: .init(
+                noteID: .init(vaultID: fixture.works.id, relativePath: "Draft.md"), source: "needle",
+                focuses: [.init(kind: .selectedPassage, text: "needle")]))
+        let result = try await index.relatedMaterialSourceCandidates(request)
+        #expect(result.lexicalCandidates.first?.note.relativePath == "Annotated.md")
+        #expect(result.lexicalHasMore)
+        let reopened = try TriptychSearchIndex(
+            databaseURL: fixture.databaseURL,
+            triptychID: fixture.triptychID, vaults: vaults)
+        let reread = try await reopened.relatedMaterialSourceCandidates(request)
+        #expect(reread.lexicalCandidates == result.lexicalCandidates)
+    }
+
     @Test("Related content separates role-bounded identity and weighted lexical channels over an ephemeral source Note")
     func relatedContentRestrictsCorpusAndTracksSeedSource() async throws {
         let fixture = try Fixture()
@@ -59,7 +117,7 @@ struct TriptychSearchIndexTests {
             vaultID: fixture.works.id,
             relativePath: "Live Draft.md"
         )
-        let first = try await index.relatedContent(
+        let first = try await index.relatedMaterialSourceCandidates(
             RelatedContentRequest(
                 seed: RelatedContentSeedSnapshot(
                     noteID: workID,
@@ -122,7 +180,7 @@ struct TriptychSearchIndexTests {
         }
         #expect(selectedReason.seedMatches.first?.seedKind == .selectedPassage)
 
-        let analysisOnly = try await index.relatedContent(
+        let analysisOnly = try await index.relatedMaterialSourceCandidates(
             RelatedContentRequest(
                 seed: RelatedContentSeedSnapshot(
                     noteID: VaultQualifiedNoteID(
@@ -141,7 +199,7 @@ struct TriptychSearchIndexTests {
                     $0.vaultRole == .sourceCorpus
                 })
 
-        let revised = try await index.relatedContent(
+        let revised = try await index.relatedMaterialSourceCandidates(
             RelatedContentRequest(
                 seed: RelatedContentSeedSnapshot(
                     noteID: workID,
@@ -162,7 +220,7 @@ struct TriptychSearchIndexTests {
             source: "# Revised Analysis\n\nA different subject."
         )
         _ = try await index.synchronize(updatedDocuments)
-        let incremental = try await index.relatedContent(
+        let incremental = try await index.relatedMaterialSourceCandidates(
             RelatedContentRequest(
                 seed: RelatedContentSeedSnapshot(
                     noteID: workID,
@@ -175,7 +233,7 @@ struct TriptychSearchIndexTests {
             vaults: [fixture.analyses, fixture.topics, fixture.works, other]
         )
         _ = try await cleanIndex.synchronize(updatedDocuments)
-        let clean = try await cleanIndex.relatedContent(
+        let clean = try await cleanIndex.relatedMaterialSourceCandidates(
             RelatedContentRequest(
                 seed: RelatedContentSeedSnapshot(
                     noteID: workID,
@@ -185,7 +243,7 @@ struct TriptychSearchIndexTests {
         #expect(incremental.identityCandidates == clean.identityCandidates)
         #expect(incremental.lexicalCandidates == clean.lexicalCandidates)
 
-        let invalid = try await index.relatedContent(
+        let invalid = try await index.relatedMaterialSourceCandidates(
             RelatedContentRequest(
                 seed: RelatedContentSeedSnapshot(noteID: workID, source: " \n")
             ))

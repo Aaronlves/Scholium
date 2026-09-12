@@ -30,6 +30,7 @@ public struct SearchTextSegment: Codable, Hashable, Sendable {
     public let normalizedText: String
     public let sourceRange: SearchSourceRange?
     public let offsetMap: [SearchSegmentOffset]
+    public let relatedRankingText: [String: String]
 
     public init(
         field: SearchMatchedField,
@@ -37,7 +38,8 @@ public struct SearchTextSegment: Codable, Hashable, Sendable {
         text: String,
         normalizedText: String,
         sourceRange: SearchSourceRange?,
-        offsetMap: [SearchSegmentOffset]
+        offsetMap: [SearchSegmentOffset],
+        relatedRankingText: [String: String] = [:]
     ) {
         self.field = field
         self.ordinal = ordinal
@@ -45,6 +47,7 @@ public struct SearchTextSegment: Codable, Hashable, Sendable {
         self.normalizedText = normalizedText
         self.sourceRange = sourceRange
         self.offsetMap = offsetMap
+        self.relatedRankingText = relatedRankingText
     }
 
     public func sourceUTF16Range(
@@ -200,7 +203,7 @@ public struct SearchDocumentProjection: Codable, Hashable, Sendable {
                 ))
         }
         for callout in semantic.callouts {
-            let visible = [callout.title, MarkdownVisibleText.render(callout.bodySource)]
+            let visible = [callout.title, ResearchExcerptPresentation.readableText(callout.bodySource)]
                 .compactMap { $0 }
                 .filter { !$0.isEmpty }
                 .joined(separator: " ")
@@ -222,7 +225,7 @@ public struct SearchDocumentProjection: Codable, Hashable, Sendable {
                 ))
         }
         for footnote in semantic.footnoteDefinitions where !footnote.content.isEmpty {
-            let visible = MarkdownVisibleText.render(footnote.content)
+            let visible = ResearchExcerptPresentation.readableText(footnote.content)
             guard !visible.isEmpty else { continue }
             let range = footnote.span.utf16Range
             builtSegments.append(
@@ -305,6 +308,7 @@ public struct SearchDocumentProjection: Codable, Hashable, Sendable {
         aliases = propertyProjection.textValues(forExactKey: "aliases")
         authors = propertyProjection.textValues(forExactKey: "authors") + propertyProjection.textValues(forExactKey: "author")
         publicationDate = propertyProjection.textValues(forExactKey: "publication_date").first
+        builtSegments = builtSegments.map { $0.attributingRelatedContent(in: semantic) }
         segments = builtSegments
         body = builtSegments.filter { $0.field == .body }.map(\.text).joined(separator: "\n")
         callouts = builtSegments.filter { $0.field == .callout }.map(\.text).joined(separator: "\n")
@@ -338,8 +342,11 @@ public struct SearchDocumentProjection: Codable, Hashable, Sendable {
         hasBrokenLink: Bool
     ) -> String {
         let stableMaterial =
-            segments.map {
-                "\($0.field.rawValue)\u{1F}\($0.ordinal)\u{1F}\($0.normalizedText)"
+            segments.map { segment in
+                "\(segment.field.rawValue)\u{1F}\(segment.ordinal)\u{1F}\(segment.normalizedText)"
+                    + segment.relatedRankingText.keys.sorted().map { key in
+                        "\u{1F}\(key)\u{1F}\(segment.relatedRankingText[key] ?? "")"
+                    }.joined()
             }.joined(separator: "\u{1E}")
             + "\u{1D}\(hasBrokenLink)"
         return SHA256.hash(data: Data(stableMaterial.utf8))

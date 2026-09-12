@@ -61,7 +61,7 @@ retains the native fields and never changes source. Query and replacement use na
 field editors. Marked text remains local until committed; incoming results cannot
 overwrite composition or consume its Return/Escape commands.
 
-Caret suggestions use one bounded panel attached to the editor caret. Autosave
+Structural and link suggestions use one bounded panel attached to the editor caret. Autosave
 does not dismiss it; acceptance, explicit dismissal, loss of the editing context,
 or completion-state invalidation does. Selection changes update the retained
 list without reconstructing its container. Pointer movement and keyboard
@@ -73,6 +73,41 @@ input-method candidate-window pattern: native system text, colors, controls, sel
 and elevation above the document; they do not inherit the main Document palette. During composition, application suggestions
 and previews yield to the input method immediately; candidate navigation and
 acceptance resume only outside composition. §19 governs the material boundary.
+
+Writing suggestions in Edit and Source appear as quiet inline secondary text
+following the caret, with a fine dotted underline and small ⇥ key hint; they never
+appear in a candidate panel. A committed word prefix can
+complete an explicitly authored alias or YAML keyword as ordinary text. Note
+titles are reserved for retrieval unless also declared as vocabulary.
+Only the missing suffix is offered; acceptance never rewrites existing text.
+Tab or explicit activation accepts; Escape dismisses; Return retains newline
+behavior. The preview is not source, copied text or an Undo entry. Typing, moving
+the caret, losing focus and composition clear it. Literal/code/frontmatter
+contexts, multiple selections and complete terms suppress suggestions.
+**Find Writing References…** in Insert (default Shift-Command-J, configurable)
+uses the same Related pane and result session as selection recommendations. It
+captures the selected passage, or the current paragraph when the caret is empty.
+The visible pane performs this same query automatically on opening, after a short
+selection debounce, or after about 1.2 seconds without typing at an empty caret.
+Resuming editing restores following even if the pointer was left in the pane.
+A stale index is refreshed once before showing a recoverable retrieval error.
+Composition, focus outside the editor and pointer interaction in the pane suspend
+automatic replacement. A retry action appears only for a failed or incomplete retrieval. The pane
+never opens itself. Unchanged results retain their card identities and ordering;
+a fresh, valid caret receipt restores insertion without another confirmation.
+Each Note has one collapsible group with up to two distinct ranked passages,
+source navigation and explicit Wikilink insertion where a safe target is available. Inability to
+insert a link never hides an otherwise readable Note. No excerpts are copied and
+no prose is generated. The waiting state shows the command's actual
+shortcut, or its menu path if unbound. Typing never opens the pane.
+Results and their captured context remain readable while the researcher writes
+or a replacement query fails. Text or selection changes invalidate the insertion
+position; a successful automatic query supplies a fresh caret receipt without
+a separate confirmation or standing refresh indication.
+Insertion checks session identity, document generation, caret and composition
+again in the editor and forms one Undo transaction. New results replace the old
+cards and context together. Loading, empty, cancelled, failed and stale outcomes
+remain distinct. No query history is stored.
 
 Insert presents Footnote and Inline Footnote as neighboring commands. Their
 default shortcuts are Option-Command-N and Option-Shift-Command-N respectively;
@@ -342,26 +377,80 @@ Pane content never repeats that selector. Each
 workspace retains its selection across Note and tab changes. Hiding Inspector
 moves no content elsewhere. Without a Document it presents No Document Selected.
 
-Related Material searches automatically from a nonempty selection in Edit or Source,
+Related Material follows the selection or paused paragraph in Edit or Source,
 including unsaved writing. Opening the pane captures the existing selection; while
 visible, selection changes trigger a short debounced search. Composition suspends
 retrieval. Closing the pane cancels pending work, and newer selections invalidate
 older responses. The Research-menu command retains an explicit keyboard route.
 Moving focus into the pane or opening a result does not replace the captured context;
-only another nonempty selection does. The compact context shows one truncated line
-and offers the full captured passage in a bounded read-only popover.
-The pane uses §13's local paragraph retrieval over Analyses and Topics. Results lead
+another successful selection or paragraph query replaces it. The pane begins with
+results, without a standing context summary, refresh command or caret-confirmation
+step. Opening the pane, switching editors, changing selection and pausing in a
+paragraph schedule automatic retrieval; closing cancels it.
+The pane uses §13's local material retrieval over Analyses and Topics. Results lead
 with the Note title, then a bounded excerpt around a verified wording match, then
-quiet role information and Add to Chat. Title and excerpt open the checked source
-paragraph. Matching text has non-color emphasis using Search-owned readable-text
-ranges. Ellipses identify omitted text; there is no generated summary, standing
+quiet role information and two named icon actions: Link to This Note and Add to Chat.
+Each Note uses the same disclosure-group pattern as Links, with one vault-role symbol and
+a title in its header; role identity remains in Help and accessibility. The role
+symbol precedes the title; the disclosure chevron sits immediately after the
+title with the grid label-accessory gap, separate from the trailing action menu.
+It appears on hover or focus, retaining its space to avoid title reflow. The header toggles expansion without navigating;
+its link action inserts the Note link. Groups start expanded with the distinct
+passages already returned by retrieval (currently at most two per Note). A shared
+native passage-card container owns the insets, type alignment and grouping in both
+panes. Each excerpt opens its checked paragraph; its chat action stages that
+paragraph and the captured writing context without sending. No action generates
+philosophical prose. Note order follows retrieval's Note ranking and passages
+retain their within-Note ranking. Trailing native row swipe actions reveal Link to This Note on the group header
+and Add to Chat on a paragraph. Full-swipe execution is disabled: reveal alone
+never inserts, attaches or sends. Native List owns gesture direction arbitration,
+closing, scrolling and action feedback. Only one reveal remains open; reverse
+swipe, outside interaction or Escape closes it. A group action menu revealed by pointer hover, keyboard focus or accessibility focus
+provides named keyboard and pointer alternatives, including selection of a
+paragraph for Chat. Paragraph choices use an ordinal plus at most eight source
+characters and an ellipsis; the attached source remains complete. Context menus and accessibility actions remain additional
+routes. Actions take no width from the resting excerpt. Both Inspector panes
+share the identity header, passage container and secondary heading color. Their
+outer copy rail and top/section spacing reuse the Library Sidebar layout roles;
+Both Links and Related Material use native List with the same shared container
+and row configuration; Links controls use the same horizontal rail. No second
+outer horizontal padding is applied to the Links list.
+The action menu uses the same image-only label and native control treatment as
+the Library Sidebar, with a reserved target to prevent reflow. Analysis, Topic and Work use the existing three workspace role symbols. There is no refresh header; shortcut guidance appears only before the first usable query. Empty results show
+one concise empty state without repeating writing instructions. Waiting, empty
+and failed retrieval use the shared Sidebar state presentation. Loading alone
+shows the skeleton; replacing existing results keeps them readable. New Note groups enter
+as one visual unit: the identity header and every excerpt share a single upward
+translation and opacity sample. Groups start in reading order with overlapping,
+brief ease-out entrances; no blur, scaling, bounce, clipping reveal or separate
+highlight animation is added. Existing Notes keep their position and do not
+replay when excerpts change, scrolling resumes or a group is reopened. Native
+rows retain their independent actions and final grid. Reduce Motion presents the
+completed state immediately, including when enabled during playback. Links uses
+the same static header and highlight treatment without the search entrance. Failed or
+incomplete retrieval retains existing cards and exposes one recovery state.
+Retrieval-lead guidance belongs in Help rather than a standing footer. Authored link annotations remain readable
+in the excerpt when they supply the match; they retain their containing Note as
+source. Excerpts open the checked source paragraph. Excerpts use a shared restrained highlight with Links: a faint system-accent
+background and medium word weight. Related Material highlights at most three
+distinct complete words covered by Search-owned readable-text matches, excluding
+common words; it never highlights YAML-only matches or displays keyword capsules.
+Links highlights the authored link alias or target when it has one unambiguous
+occurrence in the readable context. Ambiguous labels remain unhighlighted.
+Initial loading uses pulsing skeleton cards matching the title, role, excerpt and
+action-area geometry of real results; Reduce Motion keeps them static. Subsequent
+retrieval keeps existing cards without skeletons, loading rows or layout animation.
+Brief opacity transitions accompany action disclosure only. Ellipses identify omitted text; there is no generated summary, standing
 keyword list, full-paragraph expansion, or repeated Open Source button.
-Retry or Refresh appears only for cancellation, failure or unavailable sources.
-A Note may contribute several distinct paragraphs; metadata,
-a title or another paragraph matching cannot substitute for a matching paragraph.
+A contextual Retry action recovers from failure or unavailable sources. Normal automatic replacement does not add a stack of disabled actions.
+Content YAML contributes to Note ordering but is not displayed as a separate
+result. Each recommended Note presents an actual matching paragraph; metadata,
+a title or another paragraph matching cannot substitute for that paragraph.
+Opening preserves the Document mode and captured recommendation context.
 Raw Markdown, full paths and internal offsets are not standing card content.
 Matches are discovery leads, never support, objection, or correctness verdicts.
-Open Source locates the checked paragraph revision. Add to Chat stages the captured
+Open Source locates the checked paragraph revision; when the Note has changed,
+it opens the current Note without claiming the old paragraph location. Add to Chat stages the captured
 writing passage and that paragraph, retaining each identity, revision and locator,
 without sending or replacing the draft. Chat owns provider selection and transport;
 this handoff has no provider-specific configuration. Context attachments appear as

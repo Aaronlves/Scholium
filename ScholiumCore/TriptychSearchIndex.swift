@@ -593,11 +593,9 @@ public actor TriptychSearchIndex {
         }
     }
 
-    /// Retrieves explanatory Analysis/Topic related Notes from one ephemeral
-    /// source Note snapshot. This is not query parsing: it reuses the current
-    /// Note FTS generation and its BM25 field weights without creating a Saved
-    /// Search, second index, or durable seed.
-    public func relatedContent(
+    /// Enumerates every eligible lexical source from one complete generation.
+    /// Workspace verifies current bytes before material scoring and limiting.
+    public func relatedMaterialSourceCandidates(
         _ request: RelatedContentRequest
     ) throws -> RelatedContentResponse {
         try database.readTransaction {
@@ -696,22 +694,26 @@ public actor TriptychSearchIndex {
                 candidateRoles: request.candidateRoles,
                 limit: request.identityLimit
             )
+            let focusedTerms = material.termGroups.filter { $0.kind != .sourceNote }.flatMap(\.terms)
+            let scoringTerms = focusedTerms.isEmpty ? material.combinedTerms : focusedTerms
             let lexicalPool = try relatedContentCandidates(
-                terms: material.combinedTerms,
+                terms: scoringTerms,
                 excluding: request.seed.noteID,
-                candidateRoles: request.candidateRoles,
-                limit: RelatedContentContract.maximumLexicalCandidatePool
+                candidateRoles: request.candidateRoles
             )
-            let lexical = lexicalPool.compactMap { candidate -> RelatedLexicalCandidate? in
+            let scores = try RelatedContentBM25F.scores(
+                documents: lexicalPool.map { .init(segments: $0.document.segments) }, terms: scoringTerms)
+            let lexical = zip(lexicalPool, scores).compactMap { candidate, score -> RelatedLexicalCandidate? in
                 let reason = material.lexicalReason(for: candidate)
-                guard !reason.seedMatches.isEmpty else { return nil }
+                guard score > 0, !reason.seedMatches.isEmpty else { return nil }
                 return RelatedLexicalCandidate(
                     candidate: candidate,
-                    reason: reason
+                    reason: reason,
+                    score: score
                 )
             }.sorted(by: RelatedLexicalCandidate.precedes)
             let lexicalHasMore = lexical.count > request.lexicalLimit
-            let lexicalResults = lexical.prefix(request.lexicalLimit).map { item in
+            let lexicalResults = lexical.map { item in
                 RelatedContentCandidate(
                     note: item.candidate.document.noteID,
                     vaultRole: item.candidate.document.vaultRole,
@@ -964,8 +966,7 @@ public actor TriptychSearchIndex {
     private func relatedContentCandidates(
         terms: [String],
         excluding seed: VaultQualifiedNoteID,
-        candidateRoles: [RelatedContentCandidateRole],
-        limit: Int
+        candidateRoles: [RelatedContentCandidateRole]
     ) throws -> [SearchCandidate] {
         let expression = terms.map { term in
             let escaped = term.replacingOccurrences(of: "\"", with: "\"\"")
@@ -976,16 +977,13 @@ public actor TriptychSearchIndex {
         var result: [SearchCandidate] = []
         try database.query(
             """
-            SELECT d.id,
-                   bm25(search_fts, 0.0, 3.0, 8.0, 7.0, 6.0, 5.0, 6.0, 4.0, 5.0, 2.0, 2.0, 3.0, 1.0) AS lexical_rank
+            SELECT d.id
             FROM search_fts
             JOIN search_documents d ON d.id = search_fts.document_id
             WHERE search_fts MATCH ?
               AND d.role IN (\(rolePlaceholders))
               AND NOT (d.vault_id = ? AND d.relative_path = ?)
-            ORDER BY lexical_rank, d.normalized_title, d.role_order,
-                     d.path_key, d.relative_path
-            LIMIT ?;
+            ORDER BY d.normalized_title, d.role_order, d.path_key, d.relative_path;
             """,
             bindings: [
                 .text(expression)
@@ -995,7 +993,6 @@ public actor TriptychSearchIndex {
                 } + [
                     .text(seed.vaultID.uuidString.lowercased()),
                     .text(seed.relativePath),
-                    .int(limit),
                 ]
         ) { row in
             try Task.checkCancellation()
@@ -1005,7 +1002,7 @@ public actor TriptychSearchIndex {
                 SearchCandidate(
                     document: document,
                     identityPriority: 10,
-                    lexicalRank: row.double(at: 1)
+                    lexicalRank: 0
                 ))
         }
         return result
@@ -1420,7 +1417,7 @@ public actor TriptychSearchIndex {
         try database.query(
             """
             SELECT field, ordinal, text, normalized_text, source_lower, source_upper,
-                   source_line, source_column, source_end_line, source_end_column, offset_map
+                   source_line, source_column, source_end_line, source_end_column, offset_map, related_ranking_text
             FROM search_segments WHERE document_id = ? ORDER BY ordinal;
             """,
             bindings: [.int(documentID)]
@@ -1462,7 +1459,8 @@ public actor TriptychSearchIndex {
                     text: text,
                     normalizedText: normalized,
                     sourceRange: sourceRange,
-                    offsetMap: offsets
+                    offsetMap: offsets,
+                    relatedRankingText: try Self.decodeGeneratedJSON([String: String].self, from: row.text(at: 11))
                 ))
         }
         return result
@@ -1751,8 +1749,8 @@ public actor TriptychSearchIndex {
                 INSERT INTO search_segments(
                     document_id, field, ordinal, text, normalized_text,
                     source_lower, source_upper, source_line, source_column,
-                    source_end_line, source_end_column, offset_map
-                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                    source_end_line, source_end_column, offset_map, related_ranking_text
+                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
                 """,
                 bindings: [
                     .int(documentID), .text(segment.field.rawValue), .int(segment.ordinal),
@@ -1764,6 +1762,7 @@ public actor TriptychSearchIndex {
                     .optionalInt(segment.sourceRange?.endLine),
                     .optionalInt(segment.sourceRange?.endColumn),
                     .blob(offsets),
+                    .text(String(decoding: try JSONEncoder().encode(segment.relatedRankingText), as: UTF8.self)),
                 ]
             )
         }
@@ -1953,6 +1952,7 @@ public actor TriptychSearchIndex {
                 source_end_line INTEGER,
                 source_end_column INTEGER,
                 offset_map BLOB NOT NULL,
+                related_ranking_text TEXT NOT NULL,
                 PRIMARY KEY(document_id, ordinal),
                 FOREIGN KEY(document_id) REFERENCES search_documents(id) ON DELETE CASCADE
             );
@@ -2325,18 +2325,11 @@ private struct RelatedIdentityCandidate {
 private struct RelatedLexicalCandidate {
     let candidate: SearchCandidate
     let reason: RelatedContentLexicalReason
+    let score: Double
 
     static func precedes(_ lhs: Self, _ rhs: Self) -> Bool {
-        for kind in RelatedContentSeedKind.rankingOrder {
-            let left = lhs.matchCount(kind)
-            let right = rhs.matchCount(kind)
-            if left != right { return left > right }
-        }
+        if lhs.score != rhs.score { return lhs.score > rhs.score }
         return SearchCandidate.precedes(lhs.candidate, rhs.candidate)
-    }
-
-    private func matchCount(_ kind: RelatedContentSeedKind) -> Int {
-        reason.seedMatches.first { $0.seedKind == kind }?.terms.count ?? 0
     }
 }
 
@@ -3494,70 +3487,123 @@ private struct SearchSQLiteStatement {
 private let searchSQLiteTransient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
 extension TriptychSearchIndex {
-    /// The Note index narrows the corpus; this second, Search-owned stage ranks
-    /// actual paragraphs. Neither presentation nor an Agent invents this ranking.
+    /// Rank Notes using their authored context, then choose locally matching
+    /// paragraphs within each Note. Metadata is neither an excerpt nor prose.
     public nonisolated static func relatedPassages(
         _ request: RelatedContentRequest, sources: [RelatedContentSource]
     ) throws -> [RelatedContentPassage] {
         let seedDocument = NoteDocument(relativePath: request.seed.noteID.relativePath, rawContent: request.seed.source)
         let material = RelatedContentSeedMaterial(projection: SearchDocumentProjection(document: seedDocument), focuses: request.seed.focuses)
-        let focusTermCount = Set(material.termGroups.filter { $0.kind != .sourceNote }.flatMap(\.terms)).count
-        let requiredFocusMatches = min(2, focusTermCount)
-        var ranked: [(passage: RelatedContentPassage, counts: [Int], noteRank: Int)] = []
-        for (noteRank, source) in sources.enumerated() {
+        let focusedTerms = material.termGroups.filter { $0.kind != .sourceNote }.flatMap(\.terms)
+        let requiredFocusMatches = min(2, Set(focusedTerms).count)
+        var ranked: [(passage: RelatedContentPassage, score: Double, documentIndex: Int)] = []
+        var scoringDocuments: [RelatedContentBM25F.Document] = []
+        var noteDocuments: [RelatedContentBM25F.Document] = []
+        var noteIndices: [VaultQualifiedNoteID: Int] = [:]
+        var seenSources = Set<VaultQualifiedNoteID>()
+        for source in sources {
             try Task.checkCancellation()
             guard source.document.fingerprint == source.candidate.fingerprint,
-                source.candidate.note != request.seed.noteID
+                source.candidate.note != request.seed.noteID,
+                request.candidateRoles.contains(where: { $0.vaultRole == source.candidate.vaultRole }),
+                seenSources.insert(source.candidate.note).inserted
             else { continue }
             let semantic = MarkdownSemanticDocument(parsing: source.document)
+            let noteProjection = SearchDocumentProjection(document: source.document, semantic: semantic)
+            noteIndices[source.candidate.note] = noteDocuments.count
+            noteDocuments.append(.init(segments: noteProjection.segments))
+            var units: [(range: SearchSourceRange, visible: String, segments: [SearchTextSegment])] = []
             for block in semantic.blocks where block.kind == .paragraph {
                 try Task.checkCancellation()
-                guard block.span.utf16UpperBound - block.span.utf16LowerBound <= RelatedContentContract.maximumPassageUTF16Count,
+                guard block.span.utf16Range.count <= RelatedContentContract.maximumPassageUTF16Count,
                     let range = Range(block.span.nsRange, in: source.document.rawContent)
                 else { continue }
                 let exact = String(source.document.rawContent[range])
-                let visible = ResearchExcerptPresentation.readableText(exact)
-                let normalized = SearchTextNormalization.lexicalNormalize(visible)
+                let paragraph = NoteDocument(relativePath: source.document.relativePath, rawContent: exact)
+                units.append(
+                    (
+                        .init(
+                            utf16LowerBound: block.span.utf16LowerBound, utf16UpperBound: block.span.utf16UpperBound,
+                            line: block.span.start.line, column: block.span.start.utf16Column,
+                            endLine: block.span.end.line, endColumn: block.span.end.utf16Column),
+                        ResearchExcerptPresentation.readableText(exact, includingAnnotations: true),
+                        SearchDocumentProjection(document: paragraph).segments.filter {
+                            $0.sourceRange != nil && $0.field != .title && $0.field != .alias
+                        }
+                    ))
+            }
+            for unit in units {
+                try Task.checkCancellation()
+                guard
+                    let sourceRange = Range(
+                        NSRange(
+                            location: unit.range.utf16LowerBound,
+                            length: unit.range.utf16UpperBound - unit.range.utf16LowerBound), in: source.document.rawContent)
+                else { continue }
+                let documentIndex = scoringDocuments.count
+                scoringDocuments.append(.init(segments: unit.segments))
+                let normalized = SearchTextNormalization.lexicalNormalize(unit.visible)
                 let matches = material.termGroups.compactMap { group -> RelatedContentSeedTermMatch? in
                     let terms = group.terms.filter { !SearchMatcher.occurrences(of: .term($0), in: normalized).isEmpty }
                     return terms.isEmpty ? nil : .init(seedKind: group.kind, terms: terms)
                 }
-                // An explicit focus must match this paragraph itself. Unrelated
-                // paragraphs cannot enter merely because their Note matched.
                 let focused = !request.seed.focuses.isEmpty
-                guard matches.contains(where: { !focused || $0.seedKind != .sourceNote }) else { continue }
-                let focusedMatches = Set(matches.filter { $0.seedKind != .sourceNote }.flatMap(\.terms)).count
-                guard !focused || focusedMatches >= requiredFocusMatches else { continue }
-                let span = block.span
-                let preview = Self.relatedExcerpt(visible, matches: matches)
+                guard matches.contains(where: { !focused || $0.seedKind != .sourceNote }),
+                    !focused || Set(matches.filter { $0.seedKind != .sourceNote }.flatMap(\.terms)).count >= requiredFocusMatches
+                else { continue }
+                let preview = Self.relatedExcerpt(unit.visible, matches: matches)
                 let passage = RelatedContentPassage(
-                    candidate: source.candidate,
-                    range: .init(
-                        utf16LowerBound: span.utf16LowerBound, utf16UpperBound: span.utf16UpperBound,
-                        line: span.start.line, column: span.start.utf16Column, endLine: span.end.line, endColumn: span.end.utf16Column),
-                    source: exact, displayText: visible, excerpt: preview.text, excerptMatches: preview.ranges, matches: matches)
-                let counts = RelatedContentSeedKind.rankingOrder.map { kind in
-                    matches.first { $0.seedKind == kind }?.terms.count ?? 0
-                }
-                ranked.append((passage, counts, noteRank))
+                    candidate: source.candidate, range: unit.range,
+                    source: String(source.document.rawContent[sourceRange]), displayText: unit.visible,
+                    excerpt: preview.text, excerptMatches: preview.ranges, matches: matches)
+                ranked.append((passage, 0, documentIndex))
             }
         }
+        let scores = try RelatedContentBM25F.scores(
+            documents: scoringDocuments,
+            terms: focusedTerms.isEmpty ? material.combinedTerms : focusedTerms)
+        for index in ranked.indices { ranked[index].score = scores[ranked[index].documentIndex] }
         ranked.sort { lhs, rhs in
-            for (left, right) in zip(lhs.counts, rhs.counts) where left != right { return left > right }
-            if lhs.noteRank != rhs.noteRank { return lhs.noteRank < rhs.noteRank }
+            if lhs.score != rhs.score { return lhs.score > rhs.score }
+            let l = lhs.passage.candidate
+            let r = rhs.passage.candidate
+            if l.title != r.title { return l.title < r.title }
+            if l.note.vaultID != r.note.vaultID { return l.note.vaultID.uuidString < r.note.vaultID.uuidString }
+            if l.note.relativePath != r.note.relativePath { return l.note.relativePath < r.note.relativePath }
             return lhs.passage.range.utf16LowerBound < rhs.passage.range.utf16LowerBound
         }
-        var perNote: [VaultQualifiedNoteID: Int] = [:]
-        var result: [RelatedContentPassage] = []
-        var seenParagraphs: [VaultQualifiedNoteID: Set<String>] = [:]
-        for item in ranked {
+        // Note and paragraph statistics have different units. Keep their
+        // rankings separate instead of adding incomparable numeric scores.
+        let noteScores = try RelatedContentBM25F.scores(
+            documents: noteDocuments,
+            terms: focusedTerms.isEmpty ? material.combinedTerms : focusedTerms)
+        var grouped: [VaultQualifiedNoteID: [RelatedContentPassage]] = [:]
+        var seen: [VaultQualifiedNoteID: Set<String>] = [:]
+        for item in ranked where item.score > 0 {
             let note = item.passage.candidate.note
-            guard perNote[note, default: 0] < RelatedContentContract.maximumPassagesPerNote,
-                seenParagraphs[note, default: []].insert(SearchTextNormalization.lexicalNormalize(item.passage.displayText)).inserted
-            else { continue }
-            perNote[note, default: 0] += 1
-            result.append(item.passage)
-            if result.count == RelatedContentContract.maximumPassages { break }
+            let key = SearchTextNormalization.lexicalNormalize(item.passage.displayText)
+            guard seen[note, default: []].insert(key).inserted else { continue }
+            grouped[note, default: []].append(item.passage)
+        }
+        let noteOrder = grouped.keys.sorted { lhs, rhs in
+            let left = noteScores[noteIndices[lhs]!]
+            let right = noteScores[noteIndices[rhs]!]
+            if left != right { return left > right }
+            let l = grouped[lhs]![0].candidate
+            let r = grouped[rhs]![0].candidate
+            if l.title != r.title { return l.title < r.title }
+            if lhs.vaultID != rhs.vaultID { return lhs.vaultID.uuidString < rhs.vaultID.uuidString }
+            return lhs.relativePath < rhs.relativePath
+        }
+        var result: [RelatedContentPassage] = []
+        // Show one useful passage from each Note before a second passage from
+        // any Note, so one long source cannot crowd out alternative readings.
+        for position in 0..<RelatedContentContract.maximumPassagesPerNote {
+            for note in noteOrder {
+                guard let passages = grouped[note], position < passages.count else { continue }
+                result.append(passages[position])
+                if result.count == RelatedContentContract.maximumPassages { return result }
+            }
         }
         return result
     }
@@ -3589,4 +3635,8 @@ extension TriptychSearchIndex {
             }
         return (excerpt, Array(Set(ranges)).sorted { $0.lowerBound < $1.lowerBound })
     }
+}
+
+func relatedContentOccurrenceCount(term: String, text: String) -> Int {
+    SearchMatcher.occurrences(of: .term(term), in: text).count
 }

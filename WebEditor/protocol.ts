@@ -1,4 +1,4 @@
-export const EDITOR_PROTOCOL_VERSION = 31;
+export const EDITOR_PROTOCOL_VERSION = 33;
 export const MAX_INBOUND_BYTES = 2_500_000;
 export const MAX_SOURCE_UTF8_BYTES = 8_000_000;
 
@@ -121,6 +121,7 @@ export type EditorOperation =
   | {type: "captureRecovery"}
   | {type: "restoreRecovery"; snapshot: RecoverySnapshot}
   | {type: "acknowledgeCommittedSnapshot"; expectedText: string; committedText: string; committedFingerprint: string}
+  | {type: "insertReference"; selection: SelectionRange; generation: number; target: string}
   | {type: "replacePassage"; expectedText: string; fromUTF16: number; toUTF16: number; replacement: string}
   | {type: "command"; command: MarkdownEditorCommand; argument?: string}
   | {type: "markClean"} | {type: "focus"} | {type: "focusTitle"} | {type: "blur"};
@@ -154,7 +155,7 @@ export interface EditorCommandResult {
 const operationTypes = new Set([
   "initialize", "setMode", "setDocumentTitle", "setPresentationCSS", "setUserCSS", "setLinkPreviews", "showPreview", "measureVisibleProjection", "showPreviewAt", "announceStatus",
   "goToLine", "revealSourceRange", "setScrollFraction", "setScrollAnchor", "queryText", "querySelection", "queryContext", "queryScrollAnchor", "queryPerformance",
-  "captureRecovery", "restoreRecovery", "acknowledgeCommittedSnapshot", "replacePassage", "command", "documentFind", "clearDocumentFind", "markClean", "focus", "focusTitle", "blur",
+  "captureRecovery", "restoreRecovery", "acknowledgeCommittedSnapshot", "replacePassage", "insertReference", "command", "documentFind", "clearDocumentFind", "markClean", "focus", "focusTitle", "blur",
 ]);
 const commandTypes = new Set<MarkdownEditorCommand>([
   "bold", "emphasis", "strikethrough", "highlight", "inlineCode", "markdownComment", "standardLink", "wikilink",
@@ -324,6 +325,14 @@ function validOperation(operation: Record<string, unknown>) {
   case "acknowledgeCommittedSnapshot":
     return typeof operation.expectedText === "string" && typeof operation.committedText === "string"
       && typeof operation.committedFingerprint === "string";
+  case "insertReference": {
+    const selection = operation.selection as Partial<SelectionRange> | undefined;
+    return Number.isSafeInteger(operation.generation) && Number(operation.generation) >= 0
+      && typeof operation.target === "string" && operation.target.length > 0 && operation.target.length <= 1024
+      && !/[\r\n\[\]]/u.test(operation.target)
+      && Number.isSafeInteger(selection?.anchor) && Number(selection?.anchor) >= 0
+      && selection?.anchor === selection?.head;
+  }
   case "replacePassage":
     return typeof operation.expectedText === "string" && typeof operation.replacement === "string"
       && operation.replacement.length > 0 && operation.replacement.length <= 500_000
