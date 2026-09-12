@@ -30,7 +30,7 @@ struct AgentChatInputDock<Request: View, Composer: View>: View {
     private var expanded: Bool { requestID != nil && presentation.isExpanded }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: ScholiumSidebarLayout.itemSpacing) {
             if requestID != nil && !expanded {
                 HStack {
                     Button(requestTitle) {
@@ -62,7 +62,7 @@ struct AgentChatInputDock<Request: View, Composer: View>: View {
                 .focused($requestHasFocus)
         }
         .buttonStyle(.borderless)
-        .padding(12)
+        .padding(ScholiumSidebarLayout.rowInset)
         .scholiumFloatingSurface(in: RoundedRectangle(cornerRadius: 24))
         .padding(ScholiumSidebarLayout.edgeInset)
         .tint(nil as Color?)
@@ -91,7 +91,7 @@ struct AgentChatContentScroll<Content: View>: View {
     var body: some View {
         ScrollView {
             content()
-                .padding(4)
+                .padding(ScholiumSidebarLayout.textSpacing)
                 .onGeometryChange(for: CGFloat.self) {
                     ceil($0.size.height)
                 } action: {
@@ -110,7 +110,7 @@ struct AgentChatSubmissionStatus: View {
         if let failure {
             Text(failure).font(.caption).foregroundStyle(.secondary)
         } else {
-            HStack(spacing: 8) {
+            HStack(spacing: ScholiumSidebarLayout.itemSpacing) {
                 if reduceMotion {
                     Image(systemName: "ellipsis").accessibilityHidden(true)
                 } else {

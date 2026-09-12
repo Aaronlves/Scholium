@@ -349,7 +349,7 @@ struct ResearchSearchView<Library: View>: View {
     }
 
     private var searchBar: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: isAdvanced ? 6 : ScholiumSidebarLayout.itemSpacing) {
             ResearchSearchField(
                 text: query,
                 placeholder: "\(ScholiumL10n.string("Search")) · \(localizedScopeTitle(controller.search.criteria.scope))",
@@ -373,8 +373,8 @@ struct ResearchSearchView<Library: View>: View {
             }
         }
         .padding(.horizontal, isAdvanced ? 24 : ScholiumSidebarLayout.edgeInset)
-        .padding(.top, isAdvanced ? 20 : 10)
-        .padding(.bottom, isAdvanced ? 4 : 8)
+        .padding(.top, isAdvanced ? 20 : ScholiumSidebarLayout.edgeInset)
+        .padding(.bottom, isAdvanced ? 4 : ScholiumSidebarLayout.itemSpacing)
     }
 
     private func handleSearchCommand(_ command: ResearchSearchField.Command) -> Bool {
@@ -441,9 +441,9 @@ struct ResearchSearchView<Library: View>: View {
         .scholiumForeground(.secondaryText)
         .controlSize(.small)
         .tint(ScholiumColorRole.primaryText.color)
-        .padding(.horizontal, isAdvanced ? 24 : ScholiumSidebarLayout.edgeInset)
+        .padding(.horizontal, isAdvanced ? 24 : ScholiumSidebarLayout.textInset)
         .padding(.top, isAdvanced ? 8 : 0)
-        .padding(.bottom, 12)
+        .padding(.bottom, ScholiumSidebarLayout.rowInset)
     }
 
     private var visibleCompletions: [SearchCompletion] {
@@ -527,15 +527,20 @@ struct ResearchSearchView<Library: View>: View {
         searchFocused = true
     }
 
+    @ViewBuilder
     private func searchDiagnostic(_ diagnostic: SearchQueryDiagnostic) -> some View {
         let message = localizedDiagnostic(diagnostic)
-        return Label(message, systemImage: "exclamationmark.circle")
-            .font(ScholiumTypography.interface(.small))
-            .scholiumForeground(.destructive)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, ScholiumMetrics.Search.responsiveMargin)
-            .padding(.bottom, ScholiumMetrics.Search.diagnosticBottomInset)
-            .accessibilityLabel(String(localized: "Invalid search query: \(message)"))
+        if !isAdvanced {
+            ScholiumSidebarState(Text("Invalid Search Query"), detail: Text(message), indicator: .symbol("exclamationmark.triangle", role: .attention))
+        } else {
+            Label(message, systemImage: "exclamationmark.circle")
+                .font(ScholiumTypography.interface(.small))
+                .scholiumForeground(.destructive)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, ScholiumMetrics.Search.responsiveMargin)
+                .padding(.bottom, ScholiumMetrics.Search.diagnosticBottomInset)
+                .accessibilityLabel(String(localized: "Invalid search query: \(message)"))
+        }
     }
 
     @ViewBuilder
@@ -547,30 +552,40 @@ struct ResearchSearchView<Library: View>: View {
         }
     }
 
+    @ViewBuilder
     private func operationalBanner(
         _ presentation: SearchStateBannerPresentation
     ) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: ScholiumGrid.Spacing.inlineControlGap) {
-            VStack(alignment: .leading, spacing: ScholiumMetrics.Search.availabilityDetailSpacing) {
-                Label(presentation.title, systemImage: presentation.systemImage)
-                    .font(ScholiumTypography.interface(.small, emphasis: .strong))
-                    .scholiumForeground(presentation.meaning.colorRole)
-                Text(presentation.message)
-                    .font(ScholiumTypography.interface(.small))
-                    .scholiumForeground(.secondaryText)
-                    .textSelection(.enabled)
+        if !isAdvanced {
+            ScholiumSidebarState(Text(presentation.title), detail: Text(presentation.message), indicator: .symbol(presentation.systemImage, role: presentation.meaning.colorRole)) {
+                if let action = presentation.action {
+                    Button(action.title) { Task { await context.refresh() } }
+                }
             }
-            .accessibilityElement(children: .combine)
-            Spacer()
-            if let action = presentation.action {
-                Button(action.title) { Task { await context.refresh() } }
-                    .scholiumActivationPointer()
-                    .controlSize(.small)
+            .textSelection(.enabled)
+        } else {
+            HStack(alignment: .firstTextBaseline, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                VStack(alignment: .leading, spacing: ScholiumMetrics.Search.availabilityDetailSpacing) {
+                    Label(presentation.title, systemImage: presentation.systemImage)
+                        .font(ScholiumTypography.interface(.small, emphasis: .strong))
+                        .scholiumForeground(presentation.meaning.colorRole)
+                    Text(presentation.message)
+                        .font(ScholiumTypography.interface(.small))
+                        .scholiumForeground(.secondaryText)
+                        .textSelection(.enabled)
+                }
+                .accessibilityElement(children: .combine)
+                Spacer()
+                if let action = presentation.action {
+                    Button(action.title) { Task { await context.refresh() } }
+                        .scholiumActivationPointer()
+                        .controlSize(.small)
+                }
             }
+            .padding(.horizontal, ScholiumGrid.Spacing.nestedContentInset)
+            .padding(.vertical, ScholiumMetrics.Search.availabilityVerticalInset)
+            .padding(.horizontal, ScholiumMetrics.Search.responsiveMargin)
         }
-        .padding(.horizontal, ScholiumGrid.Spacing.nestedContentInset)
-        .padding(.vertical, ScholiumMetrics.Search.availabilityVerticalInset)
-        .padding(.horizontal, ScholiumMetrics.Search.responsiveMargin)
     }
 
     @ViewBuilder
@@ -584,7 +599,10 @@ struct ResearchSearchView<Library: View>: View {
 
     @ViewBuilder
     private var searchContent: some View {
-        if !isExpanded {
+        if !isAdvanced && (!isExpanded || controller.search.isRunning || blocksResults || controller.search.results.isEmpty) {
+            ScrollView { sidebarSearchState }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        } else if !isExpanded {
             ContentUnavailableView(
                 "Search Notes", systemImage: "magnifyingglass",
                 description: Text("Enter a search term to begin.")
@@ -619,6 +637,29 @@ struct ResearchSearchView<Library: View>: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             results
+        }
+    }
+
+    @ViewBuilder
+    private var sidebarSearchState: some View {
+        if !isExpanded {
+            ScholiumSidebarState(Text("Search Notes"), detail: Text("Enter a search term to begin."), indicator: .symbol("magnifyingglass"))
+                .accessibilityIdentifier("scholium.searchReady")
+        } else if controller.search.isRunning {
+            ScholiumSidebarState(Text("Searching…"), indicator: .progress)
+                .accessibilityIdentifier("scholium.searchLoading")
+        } else if !controller.search.diagnostics.isEmpty {
+            EmptyView()
+        } else if blocksResults, let status = SearchStatePresentation.status(for: controller.search) {
+            ScholiumSidebarState(Text(status.title), detail: Text(status.message), indicator: .symbol(status.systemImage, role: status.meaning.colorRole)) {
+                if let action = status.action {
+                    Button(action.title) { Task { await context.refresh() } }
+                }
+            }
+            .accessibilityIdentifier("scholium.searchUnavailable")
+        } else if controller.search.results.isEmpty {
+            ScholiumSidebarState(Text("No Search Results"), detail: Text("No results match the current query and scope."), indicator: .symbol("magnifyingglass"))
+                .accessibilityIdentifier("scholium.searchEmpty")
         }
     }
 
@@ -990,7 +1031,7 @@ private struct NoteSearchResultRow: View {
     let compact: Bool
 
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
+        HStack(alignment: .top, spacing: compact ? ScholiumSidebarLayout.itemSpacing : 10) {
             Image(systemName: "doc.text")
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
@@ -1013,7 +1054,7 @@ private struct NoteSearchResultRow: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(.vertical, 6)
+        .padding(.vertical, compact ? ScholiumSidebarLayout.itemSpacing : 6)
         .contentShape(Rectangle())
         .help("\(note.vaultName)/\(note.relativePath)")
     }

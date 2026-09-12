@@ -479,19 +479,6 @@ struct ScholiumQuietRowButtonStyle: ButtonStyle {
     }
 }
 
-/// Page-level Library state aligns with sidebar content text. Native outline
-/// rows retain their own disclosure and item-type hierarchy.
-struct ScholiumLibrarySourceState<Content: View>: View {
-    @ViewBuilder let content: () -> Content
-
-    var body: some View {
-        content()
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, ScholiumSidebarLayout.textInset)
-            .padding(.vertical, ScholiumSidebarLayout.sectionSpacing)
-    }
-}
-
 enum ScholiumContentStatePlacement: Equatable {
     case centered
     case leading
@@ -527,7 +514,18 @@ struct ScholiumContentStateView<Actions: View>: View {
         density: ScholiumContentStateDensity = .page,
         @ViewBuilder actions: @escaping () -> Actions
     ) {
-        self.title = Text(title)
+        self.init(title: Text(title), detail: detail, indicator: indicator, placement: placement, density: density, actions: actions)
+    }
+
+    init(
+        title: Text,
+        detail: Text? = nil,
+        indicator: ScholiumContentStateIndicator,
+        placement: ScholiumContentStatePlacement = .centered,
+        density: ScholiumContentStateDensity = .page,
+        @ViewBuilder actions: @escaping () -> Actions
+    ) {
+        self.title = title
         self.detail = detail
         self.indicator = indicator
         self.placement = placement

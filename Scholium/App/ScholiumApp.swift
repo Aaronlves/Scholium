@@ -2119,7 +2119,9 @@ final class WindowModel: ObservableObject {
     ) -> LibraryTreeProjectionVersion {
         libraryTreeProjectionCache.projection(
             preorderedNotes: preorderedNotes,
-            folderRelativePaths: folderRelativePaths
+            // With Note filters active, only matching Notes supply ancestors.
+            // Keep the real empty-folder inventory for the unfiltered Library.
+            folderRelativePaths: discoveryController.library.filters == DiscoveryFilterState() ? folderRelativePaths : []
         )
     }
 

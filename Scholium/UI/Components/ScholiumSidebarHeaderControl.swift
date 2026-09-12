@@ -1,15 +1,19 @@
 import SwiftUI
 
-/// Local native-sidebar layout defaults, independent of the editorial geometry used by document-related panes.
+/// Sidebar spacing derives from the shared grid, independently of Inspector
+/// geometry. Containers use the outer rail; row copy uses one additional inset.
+/// Native control sizing, outline indentation and text baselines remain native.
 enum ScholiumSidebarLayout {
-    static let edgeInset: CGFloat = 12
-    static let rowInset: CGFloat = 12
+    static let edgeInset = ScholiumGrid.Spacing.nestedContentInset
+    static let rowInset = ScholiumGrid.Spacing.nestedContentInset
     static var textInset: CGFloat { edgeInset + rowInset }
-    static let controlWidth: CGFloat = 36
-    static let controlHeight: CGFloat = 32
-    static let controlGap: CGFloat = 4
-    static let sectionSpacing: CGFloat = 16
-    static let headerHeight: CGFloat = 40
+    static let itemSpacing = ScholiumGrid.Spacing.inlineControlGap
+    static let textSpacing = ScholiumGrid.Spacing.labelAccessoryGap
+    static let controlWidth = ScholiumGrid.foundationUnit * 9
+    static let controlHeight = ScholiumGrid.foundationUnit * 8
+    static let controlGap = ScholiumGrid.Spacing.labelAccessoryGap
+    static let sectionSpacing = ScholiumGrid.Spacing.sectionSeparation
+    static let headerHeight = ScholiumGrid.foundationUnit * 10
 }
 
 /// Title rows and their trailing actions share the same container edge.
@@ -17,7 +21,7 @@ struct ScholiumSidebarHeader<Content: View>: View {
     @ViewBuilder var content: Content
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: ScholiumSidebarLayout.itemSpacing) {
             content
         }
         .frame(maxWidth: .infinity, minHeight: ScholiumSidebarLayout.headerHeight)

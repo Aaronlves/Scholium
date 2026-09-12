@@ -1821,7 +1821,8 @@ struct FrontendArchitectureTests {
         #expect(headerControlSource.contains(".foregroundStyle(ScholiumNativeColorRole.secondaryLabel.color)"))
         #expect(headerControlSource.contains(".buttonStyle(.plain)"))
         #expect(!headerControlSource.contains(".scholiumContentControlPointerFeedback("))
-        #expect(!headerControlSource.contains("ScholiumGrid."))
+        #expect(!headerControlSource.contains("ScholiumGrid.Apparatus"))
+        #expect(!headerControlSource.contains("ScholiumGrid.Document"))
         #expect(!headerControlSource.contains("ScholiumTypography."))
         #expect(!headerControlSource.contains("ScholiumColorRole."))
         #expect(ScholiumSidebarLayout.textInset == ScholiumSidebarLayout.edgeInset + ScholiumSidebarLayout.rowInset)
@@ -2117,11 +2118,13 @@ struct FrontendArchitectureTests {
         #expect(!outlineRowsSource.contains("ScholiumContentInteractionSurface"))
         #expect(!sidebarSource.contains("Hide Sidebar"))
 
-        for section in ["Folders", "Integrity", "Content", "Metadata", "Order", "Actions"] {
+        for section in ["Folders", "Integrity", "Content", "Metadata"] {
             #expect(filterMenuSource.contains("Section(\"\(section)\")"))
         }
         #expect(filterMenuSource.components(separatedBy: "Section(\"Metadata\")").count == 2)
-        #expect(!filterMenuSource.contains("Menu(\"Sort\")"))
+        #expect(filterMenuSource.contains("Menu(\"Sort By\")"))
+        #expect(filterMenuSource.contains("Menu(\"Metadata Field\")"))
+        #expect(filterMenuSource.contains("Button(\"Clear All Filters\""))
         let integrityStart = try #require(filterMenuSource.range(of: "Section(\"Integrity\")"))
         let contentStart = try #require(filterMenuSource.range(of: "Section(\"Content\")"))
         #expect(!filterMenuSource[integrityStart.lowerBound..<contentStart.lowerBound].contains("Link Annotations"))

@@ -39,6 +39,33 @@ struct AgentChatSearchTests {
         #expect(conversation == before)
     }
 
+    @Test("List filters use observed activity and retain material-only and queued drafts")
+    func listFilters() {
+        var conversation = AgentChatConversation(triptychID: UUID())
+        conversation.lastRunStatus = .running
+        #expect(!AgentChatListFilter.hasDraft(conversation))
+        #expect(AgentChatListFilter.all.includes(conversation, needsInput: false, inProgress: false))
+        // Persisted prior status alone must not imply a current execution.
+        #expect(!AgentChatListFilter.inProgress.includes(conversation, needsInput: false, inProgress: false))
+        #expect(AgentChatListFilter.inProgress.includes(conversation, needsInput: false, inProgress: true))
+        #expect(AgentChatListFilter.needsInput.includes(conversation, needsInput: true, inProgress: false))
+        #expect(!AgentChatListFilter.needsInput.includes(conversation, needsInput: false, inProgress: true))
+        conversation.queuedMessages = [.init(role: .user, text: "Queued question")]
+        #expect(AgentChatListFilter.hasDraft(conversation))
+        conversation.queuedMessages = []
+        conversation.attachments = [.init(noteID: UUID(), vaultID: UUID(), relativePath: "Note.md",
+                                         text: "Material", fingerprint: .init(content: "Material"))]
+        #expect(AgentChatListFilter.hasDraft(conversation))
+        conversation.attachments = []
+        conversation.childDrafts = ["child": "Unsent adjustment"]
+        #expect(AgentChatListFilter.hasDraft(conversation))
+        conversation.childDrafts = [:]
+        conversation.draft = "Unsent question"
+        let before = conversation
+        #expect(AgentChatListFilter.drafts.includes(conversation, needsInput: false, inProgress: false))
+        #expect(conversation == before)
+    }
+
     @Test("A passage retains the actual match and Unicode boundaries away from the start")
     func snippets() {
         let text = String(repeating: "😀文", count: 80) + "\nNeedle e\u{301}\n" + String(repeating: "后", count: 90)

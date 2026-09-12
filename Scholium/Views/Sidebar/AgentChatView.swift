@@ -43,6 +43,7 @@ struct AgentChatView: View {
     @State private var inspectedAgent: AgentChatChildController?
     @State private var materialTask: Task<Void, Never>?
     @State private var conversationQuery = ""
+    @State private var conversationFilter = AgentChatListFilter.all
     @State private var showsFind = false
     @State private var find = AgentChatFindState()
     @State private var findFocusRequest: UUID?
@@ -65,9 +66,24 @@ struct AgentChatView: View {
             if showsConversationList {
                 ContextSearchField(
                     text: $conversationQuery, prompt: "Search Conversations",
-                    identifier: "scholium.chat.search"
+                    identifier: "scholium.chat.search",
+                    options: AgentChatListFilter.allCases.map { filter in
+                        .init(title: filter.title, selected: conversationFilter == filter) { conversationFilter = filter }
+                    }
                 )
-                .padding(.horizontal, ScholiumSidebarLayout.textInset).padding(.bottom, 8)
+                .padding(.horizontal, ScholiumSidebarLayout.edgeInset)
+                .padding(.bottom, ScholiumSidebarLayout.itemSpacing)
+                if conversationFilter != .all {
+                    HStack {
+                        Text(ScholiumL10n.dynamicString(conversationFilter.title)).foregroundStyle(.secondary)
+                        Spacer(minLength: 4)
+                        Button("Clear") { conversationFilter = .all }
+                    }
+                    .font(.caption)
+                    .padding(.horizontal, ScholiumSidebarLayout.textInset)
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("scholium.chat.filterStatus")
+                }
                 conversationList
                 if isSelectingChats { selectionActions }
             } else {
@@ -108,7 +124,11 @@ struct AgentChatView: View {
             return true
         }
         .onChange(of: showsConversationList) { _, _ in endChatSelection() }
-        .onChange(of: showsArchived) { _, _ in endChatSelection() }
+        .onChange(of: showsArchived) { _, _ in
+            endChatSelection()
+            conversationFilter = .all
+        }
+        .onChange(of: conversationFilter) { _, _ in endChatSelection() }
         .onChange(of: conversationQuery) { _, _ in endChatSelection() }
         .onChange(of: controller.selectedID) { _, _ in
             completion.dismiss()
@@ -124,7 +144,7 @@ struct AgentChatView: View {
             renameID = nil
             showsRename = false
         }
-        .onChange(of: controller.conversations.map(\.id)) { _, ids in
+        .onChange(of: visibleConversations.map(\.id)) { _, ids in
             selectedChatIDs.formIntersection(ids)
         }
         .onChange(of: controller.contextPresentationID, initial: true) { _, request in
@@ -265,7 +285,8 @@ struct AgentChatView: View {
 
     private var archiveMenu: some View {
         Menu {
-            Button("Archived Chats") { showsArchived = true }
+            Button(showsArchived ? "Conversations" : "Archived Chats") { showsArchived.toggle() }
+            Divider()
             Button(
                 showsArchived
                     ? String(localized: "Select Chats to Restore")
@@ -279,7 +300,7 @@ struct AgentChatView: View {
             ScholiumSidebarHeaderIcon(systemImage: "archivebox")
         }
         .scholiumSidebarHeaderControl()
-        .help("Archived Chats").accessibilityLabel("Archived Chats")
+        .help("Organize Chats").accessibilityLabel("Organize Chats")
         .accessibilityIdentifier("scholium.chat.archived")
     }
 
@@ -287,47 +308,47 @@ struct AgentChatView: View {
     private var connectionStatus: some View {
         if controller.isRenewingSettings {
             if let error = controller.settingsRenewalError {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Settings Could Not Be Applied").font(.caption)
-                    HStack(spacing: 10) {
-                        Button("Diagnostics…") {
-                            diagnosticMessageID = nil
-                            diagnosticError = error
-                            showsDiagnostics = true
-                        }
-                        Button("Retry") { controller.renewSettingsWhenIdle() }
+                ScholiumSidebarState(Text("Settings Could Not Be Applied"), indicator: .symbol("exclamationmark.triangle", role: .attention)) {
+                    Button("Retry") { controller.renewSettingsWhenIdle() }
+                    Button("Diagnostics…") {
+                        diagnosticMessageID = nil
+                        diagnosticError = error
+                        showsDiagnostics = true
                     }
-                }.padding(8)
+                }
             } else {
-                ProgressView("Applying Settings…").controlSize(.small).padding(8)
+                ScholiumSidebarState(Text("Applying Settings…"), indicator: .progress)
             }
-        } else if controller.connectionState == .disconnected {
-            Button("Connect Codex") { controller.connectConfigured() }
-                .disabled(!controller.isLoaded).padding(8)
-        } else if controller.connectionState == .connecting {
-            ProgressView("Connecting…").controlSize(.small).padding(8)
-        } else if controller.account == nil {
-            Button("Sign in with ChatGPT") { controller.login() }.disabled(controller.isBusy).padding(8)
+        } else if controller.isLoaded {
+            if controller.connectionState == .disconnected {
+                ScholiumSidebarState(Text("Not Connected"), indicator: .symbol("network")) {
+                    Button("Connect Codex") { controller.connectConfigured() }
+                }
+            } else if controller.connectionState == .connecting {
+                ScholiumSidebarState(Text("Connecting…"), indicator: .progress)
+            } else if controller.account == nil {
+                ScholiumSidebarState(Text("Sign-In Required"), indicator: .symbol("person.crop.circle")) {
+                    Button("Sign in with ChatGPT") { controller.login() }.disabled(controller.isBusy)
+                }
+            }
         }
         if controller.historyUnavailable {
-            VStack(alignment: .leading, spacing: 6) {
-                Text("This conversation is saved here, but unavailable in the connected runtime.")
-                    .font(.caption).foregroundStyle(.secondary)
-                HStack {
-                    Button("Retry") { controller.retryHistory() }.disabled(controller.isBusy)
-                    Button("New Conversation") { controller.newConversation() }
-                }.font(.caption)
-            }.padding(.horizontal, ScholiumSidebarLayout.textInset)
+            ScholiumSidebarState(
+                Text("Conversation Unavailable"),
+                detail: Text("This conversation is saved here, but unavailable in the connected runtime."),
+                indicator: .symbol("exclamationmark.triangle", role: .attention)
+            ) {
+                Button("Retry") { controller.retryHistory() }.disabled(controller.isBusy)
+                Button("New Conversation") { controller.newConversation() }
+            }
         }
         if let error = controller.error {
-            VStack(alignment: .leading, spacing: 6) {
-                Label("Conversation Needs Attention", systemImage: "exclamationmark.triangle").font(.caption)
+            ScholiumSidebarState(Text("Conversation Needs Attention"), indicator: .symbol("exclamationmark.triangle", role: .attention)) {
                 Button("Diagnostics…") {
                     diagnosticMessageID = nil
                     diagnosticError = error
                     showsDiagnostics = true
                 }
-                .font(.caption)
                 if controller.state == .disconnected {
                     Button("Agent Settings…") {
                         UserDefaults.standard.set("integrations", forKey: "scholium.settings.selectedPane")
@@ -336,15 +357,20 @@ struct AgentChatView: View {
                         openSettings()
                     }
                 }
-            }.padding(.horizontal, 14)
+            }
         }
     }
 
     private var visibleConversations: [AgentChatConversation] {
         controller.conversations.filter { ($0.archivedAt != nil) == showsArchived }
             .filter {
-                !$0.messages.isEmpty || !$0.draft.isEmpty || !$0.attachments.isEmpty || !$0.localMaterials.isEmpty || $0.draftReplyQuotes?.isEmpty == false
-                    || $0.selectedMethods?.isEmpty == false || $0.archivedAt != nil
+                !$0.messages.isEmpty || AgentChatListFilter.hasDraft($0) || $0.archivedAt != nil
+            }
+            .filter {
+                conversationFilter.includes(
+                    $0,
+                    needsInput: controller.questionCount(in: $0.id) > 0 || controller.approvalCount(in: $0.id) > 0,
+                    inProgress: [.working, .compacting, .branching, .stopping].contains(controller.state(for: $0.id)))
             }
             .filter { AgentChatSearch.contains($0, query: AgentChatSearch.query(conversationQuery)) }
             .sorted { $0.updatedAt > $1.updatedAt }
@@ -356,108 +382,138 @@ struct AgentChatView: View {
             Calendar.current.startOfDay(for: $0.updatedAt)
         }
         return ScrollView {
-            LazyVStack(alignment: .leading, spacing: ScholiumSidebarLayout.sectionSpacing) {
-                ForEach(groups.keys.sorted(by: >), id: \.self) { day in
-                    VStack(alignment: .leading, spacing: 8) {
-                        Group {
-                            if Calendar.current.isDateInToday(day) {
-                                Text("Today")
-                            } else if Calendar.current.isDateInYesterday(day) {
-                                Text("Yesterday")
-                            } else {
-                                Text(day, style: .date)
+            VStack(spacing: 0) {
+                if !controller.isLoaded && controller.error == nil {
+                    ScholiumSidebarState(Text("Loading Conversations…"), indicator: .progress)
+                        .accessibilityIdentifier("scholium.chat.loading")
+                } else if conversations.isEmpty && controller.isLoaded {
+                    conversationEmptyState
+                }
+                LazyVStack(alignment: .leading, spacing: ScholiumSidebarLayout.sectionSpacing) {
+                    ForEach(groups.keys.sorted(by: >), id: \.self) { day in
+                        VStack(alignment: .leading, spacing: ScholiumSidebarLayout.itemSpacing) {
+                            Group {
+                                if Calendar.current.isDateInToday(day) {
+                                    Text("Today")
+                                } else if Calendar.current.isDateInYesterday(day) {
+                                    Text("Yesterday")
+                                } else {
+                                    Text(day, style: .date)
+                                }
                             }
-                        }
-                        .font(.caption).foregroundStyle(.secondary)
-                        .padding(.horizontal, ScholiumSidebarLayout.rowInset)
-                        .accessibilityAddTraits(.isHeader)
-                        VStack(spacing: 0) {
-                            ForEach(groups[day] ?? []) { conversation in
-                                Button {
-                                    if isSelectingChats {
-                                        if !selectedChatIDs.insert(conversation.id).inserted {
-                                            selectedChatIDs.remove(conversation.id)
-                                        }
-                                    } else {
-                                        if controller.selectedID != conversation.id {
-                                            controller.select(conversation.id)
-                                        }
-                                        showsConversationList = false
-                                    }
-                                } label: {
-                                    HStack(spacing: 10) {
+                            .font(.caption).foregroundStyle(.secondary)
+                            .padding(.horizontal, ScholiumSidebarLayout.rowInset)
+                            .accessibilityAddTraits(.isHeader)
+                            VStack(spacing: 0) {
+                                ForEach(groups[day] ?? []) { conversation in
+                                    Button {
                                         if isSelectingChats {
-                                            Image(
-                                                systemName: selectedChatIDs.contains(conversation.id)
-                                                    ? "checkmark.circle.fill" : "circle"
-                                            )
-                                            .foregroundStyle(.secondary)
-                                            .accessibilityHidden(true)
-                                        }
-                                        VStack(alignment: .leading, spacing: 4) {
-                                            HStack {
-                                                Text(
-                                                    conversation.title.isEmpty
-                                                        ? String(localized: "New Conversation") : conversation.title
-                                                )
-                                                .font(.body).lineLimit(1)
-                                                Spacer(minLength: 4)
-                                                if controller.questionCount(in: conversation.id) > 0 {
-                                                    Image(systemName: "questionmark.bubble").accessibilityLabel("Input Requested")
-                                                } else if controller.approvalCount(in: conversation.id) > 0 {
-                                                    Image(systemName: "hand.raised").accessibilityLabel("Waiting for Approval")
-                                                } else if controller.isBusy(in: conversation.id) {
-                                                    Image(systemName: "ellipsis").accessibilityLabel("In Progress")
-                                                } else if let status = conversation.lastRunStatus {
-                                                    Image(systemName: status.symbol).foregroundStyle(.secondary)
-                                                        .help(status.label).accessibilityLabel(status.label)
-                                                } else if !isSelectingChats {
-                                                    Image(systemName: "chevron.right").foregroundStyle(.tertiary)
-                                                        .accessibilityHidden(true)
-                                                }
+                                            if !selectedChatIDs.insert(conversation.id).inserted {
+                                                selectedChatIDs.remove(conversation.id)
                                             }
-                                            Text(
-                                                conversationPreview(conversation)
-                                            )
-                                            .font(.callout).foregroundStyle(.secondary).lineLimit(1)
+                                        } else {
+                                            if controller.selectedID != conversation.id {
+                                                controller.select(conversation.id)
+                                            }
+                                            showsConversationList = false
                                         }
+                                    } label: {
+                                        HStack(spacing: ScholiumSidebarLayout.itemSpacing) {
+                                            if isSelectingChats {
+                                                Image(
+                                                    systemName: selectedChatIDs.contains(conversation.id)
+                                                        ? "checkmark.circle.fill" : "circle"
+                                                )
+                                                .foregroundStyle(.secondary)
+                                                .accessibilityHidden(true)
+                                            }
+                                            VStack(alignment: .leading, spacing: ScholiumSidebarLayout.textSpacing) {
+                                                HStack {
+                                                    Text(
+                                                        conversation.title.isEmpty
+                                                            ? String(localized: "New Conversation") : conversation.title
+                                                    )
+                                                    .font(.body).lineLimit(1)
+                                                    Spacer(minLength: 4)
+                                                    if controller.questionCount(in: conversation.id) > 0 {
+                                                        Image(systemName: "questionmark.bubble").accessibilityLabel("Input Requested")
+                                                    } else if controller.approvalCount(in: conversation.id) > 0 {
+                                                        Image(systemName: "hand.raised").accessibilityLabel("Waiting for Approval")
+                                                    } else if controller.isBusy(in: conversation.id) {
+                                                        Image(systemName: "ellipsis").accessibilityLabel("In Progress")
+                                                    } else if let status = conversation.lastRunStatus {
+                                                        Image(systemName: status.symbol).foregroundStyle(.secondary)
+                                                            .help(status.label).accessibilityLabel(status.label)
+                                                    } else if !isSelectingChats {
+                                                        Image(systemName: "chevron.right").foregroundStyle(.tertiary)
+                                                            .accessibilityHidden(true)
+                                                    }
+                                                }
+                                                Text(
+                                                    conversationPreview(conversation)
+                                                )
+                                                .font(.callout).foregroundStyle(.secondary).lineLimit(1)
+                                            }
+                                        }
+                                        .padding(.horizontal, ScholiumSidebarLayout.rowInset).padding(.vertical, ScholiumSidebarLayout.rowInset)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .contentShape(Rectangle())
                                     }
-                                    .padding(.horizontal, ScholiumSidebarLayout.rowInset).padding(.vertical, 14)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .contentShape(Rectangle())
-                                }
-                                .buttonStyle(.plain)
-                                .disabled(isSelectingChats && !controller.canArchive(conversation.id))
-                                .accessibilityAddTraits(
-                                    selectedChatIDs.contains(conversation.id) ? .isSelected : []
-                                )
-                                .accessibilityIdentifier("scholium.chat.conversation.\(conversation.id)")
-                                if conversation.id != groups[day]?.last?.id {
-                                    Divider().padding(.horizontal, ScholiumSidebarLayout.rowInset)
+                                    .buttonStyle(.plain)
+                                    .disabled(isSelectingChats && !controller.canArchive(conversation.id))
+                                    .accessibilityAddTraits(
+                                        selectedChatIDs.contains(conversation.id) ? .isSelected : []
+                                    )
+                                    .accessibilityIdentifier("scholium.chat.conversation.\(conversation.id)")
+                                    .contextMenu { if !isSelectingChats { conversationActions(conversation) } }
+                                    .accessibilityActions { if !isSelectingChats { conversationActions(conversation) } }
+                                    if conversation.id != groups[day]?.last?.id {
+                                        Divider().padding(.horizontal, ScholiumSidebarLayout.rowInset)
+                                    }
                                 }
                             }
+                            .background(.background.secondary, in: RoundedRectangle(cornerRadius: 12))
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
                         }
-                        .background(.background.secondary, in: RoundedRectangle(cornerRadius: 12))
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
                     }
-                }
-                if conversations.isEmpty && controller.isLoaded {
-                    Text(
-                        !AgentChatSearch.query(conversationQuery).isEmpty
-                            ? String(localized: "No Matching Conversations")
-                            : showsArchived
-                                ? String(localized: "No Archived Chats")
-                                : String(localized: "Start a conversation about your research.")
-                    )
-                    .font(.callout).foregroundStyle(.secondary).padding(.vertical, 8)
-                }
-
-            }.padding(ScholiumSidebarLayout.edgeInset)
-        }
-        .overlay {
-            if !controller.isLoaded && controller.error == nil { ProgressView("Loading Conversations…") }
+                }.padding(ScholiumSidebarLayout.edgeInset)
+            }
         }
         .accessibilityIdentifier("scholium.chat.conversations")
+    }
+
+    private var conversationEmptyState: some View {
+        let isFiltered = conversationFilter != .all || !AgentChatSearch.query(conversationQuery).isEmpty
+        return ScholiumSidebarState(
+            isFiltered ? Text("No Matching Conversations") : showsArchived ? Text("No Archived Chats") : Text("No Conversations"),
+            detail: isFiltered ? Text("Try another search or clear the conversation filter.")
+                : showsArchived ? Text("Archived conversations appear here.") : Text("Start a conversation about your research."),
+            indicator: .symbol(isFiltered ? "magnifyingglass" : showsArchived ? "archivebox" : "bubble.left.and.bubble.right")
+        )
+        .accessibilityIdentifier("scholium.chat.empty")
+    }
+
+    @ViewBuilder
+    private func conversationActions(_ conversation: AgentChatConversation) -> some View {
+        Button("Open Conversation") {
+            if controller.selectedID != conversation.id { controller.select(conversation.id) }
+            showsConversationList = false
+        }
+        Button("Rename Conversation…") {
+            renameTitle = conversation.title
+            renameID = conversation.id
+            showsRename = true
+        }
+        Divider()
+        Button("Conversation Changes") {
+            showConversationChanges(conversation.messages.compactMap(\.changeID))
+        }
+        Divider()
+        Button(conversation.archivedAt == nil ? "Archive Chat" : "Restore Chat") {
+            guard controller.canArchive(conversation.id) else { return }
+            controller.setArchived(conversation.id, archived: conversation.archivedAt == nil)
+        }
+        .disabled(!controller.canArchive(conversation.id))
     }
 
     private var selectionActions: some View {
@@ -481,7 +537,7 @@ struct AgentChatView: View {
             .disabled(selectedChatIDs.isEmpty || !selectedChatIDs.allSatisfy(controller.canArchive))
             .accessibilityIdentifier("scholium.chat.applySelection")
         }
-        .padding(12)
+        .padding(ScholiumSidebarLayout.edgeInset)
     }
 
     private func endChatSelection() {
@@ -545,8 +601,13 @@ struct AgentChatView: View {
                     // LazyVStack's changing estimates as long replies enter the viewport.
                     VStack(alignment: .leading, spacing: ScholiumChatAppearance.messageSpacing) {
                         if controller.selected?.messages.isEmpty != false {
-                            Text("Discuss your research here. Add a passage or name a note to begin.")
-                                .foregroundStyle(.secondary).padding(.vertical, 12)
+                            ScholiumContentStateView(
+                                title: Text("New Conversation"),
+                                detail: Text("Discuss your research here. Add a passage or name a note to begin."),
+                                indicator: .symbol("bubble.left.and.bubble.right"),
+                                placement: .leading, density: .compact
+                            )
+                            .accessibilityIdentifier("scholium.chat.emptyConversation")
                         }
                         ForEach(AgentChatTimelineItem.group(timelineMessages)) { item in
                             VStack(alignment: .leading, spacing: 6) {
@@ -620,8 +681,8 @@ struct AgentChatView: View {
                     }
                 }
                 .safeAreaInset(edge: .bottom, spacing: 0) {
-                    VStack(spacing: 6) {
-                        HStack(spacing: 8) {
+                    VStack(spacing: ScholiumSidebarLayout.itemSpacing) {
+                        HStack(spacing: ScholiumSidebarLayout.itemSpacing) {
                             filesButton
                             if isAwayFromLatest {
                                 Button {

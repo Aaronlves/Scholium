@@ -297,12 +297,15 @@ extension ScholiumUITests {
         let organize = app.descendants(matching: .any)["scholium.libraryFilters"].firstMatch
         XCTAssertTrue(organize.waitForExistence(timeout: 5))
         organize.click()
-        XCTAssertTrue(app.menuItems["Title, A to Z"].firstMatch.waitForExistence(timeout: 5))
-        XCTAssertFalse(app.menuItems["Sort"].firstMatch.exists)
+        XCTAssertTrue(app.menuItems["Sort By"].firstMatch.waitForExistence(timeout: 5))
         let annotations = app.menuItems["Link Annotations"].firstMatch
         XCTAssertTrue(annotations.waitForExistence(timeout: 5))
         XCTAssertTrue(waitUntil(timeout: 10) { annotations.isEnabled })
         annotations.click()
+        // The standard Triptych intentionally contains annotated links. Combine
+        // with malformed managed Metadata, absent from this freshly built fixture.
+        organize.click()
+        app.menuItems["Malformed Metadata"].firstMatch.click()
 
         let emptyState = app.descendants(matching: .any)["scholium.libraryEmpty"].firstMatch
         XCTAssertTrue(emptyState.waitForExistence(timeout: 5))
@@ -317,11 +320,11 @@ extension ScholiumUITests {
         let status = app.descendants(matching: .any)["scholium.libraryFilterStatus"].firstMatch
         let clear = status.buttons["Clear"].firstMatch
         XCTAssertTrue(clear.waitForExistence(timeout: 5))
-        clear.click()
+        clear.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
         let row = app.descendants(matching: .any)["scholium.noteRow.QA Autosave A.md"].firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 5))
         XCTAssertFalse(status.exists)
-        row.rightClick()
+        row.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).rightClick()
         let contextMenu = app.menus["scholium.noteRow.QA Autosave A.md"].firstMatch
         XCTAssertTrue(contextMenu.waitForExistence(timeout: 5))
         let move = contextMenu.menuItems["Move Note…"].firstMatch
@@ -340,6 +343,125 @@ extension ScholiumUITests {
         XCTAssertTrue(waitForDocumentTitle("QA Autosave A"))
         XCTAssertTrue(row.exists)
         XCTAssertEqual(try Data(contentsOf: noteURL), originalBytes)
+    }
+
+    @MainActor
+    func testSidebarGridKeepsSearchCardsAndComposerAligned() throws {
+        waitForCurrentDocumentSurface()
+        let librarySearch = app.searchFields["scholium.searchField"].firstMatch
+        XCTAssertTrue(librarySearch.waitForExistence(timeout: 5))
+        let searchFrame = librarySearch.frame
+        let outline = app.descendants(matching: .any)["scholium.noteList"].firstMatch
+        let outerInset = searchFrame.minX - outline.frame.minX
+        XCTAssertGreaterThan(outerInset, 0)
+        let navigator = app.descendants(matching: .any)["scholium.workspaceNavigator"].firstMatch
+        XCTAssertEqual(navigator.frame.minX, searchFrame.minX, accuracy: 1)
+        XCTAssertEqual(navigator.frame.maxX, searchFrame.maxX, accuracy: 1)
+
+        sidebarModeControl("Chat").click()
+        let chatSearch = app.searchFields["scholium.chat.search"].firstMatch
+        XCTAssertTrue(chatSearch.waitForExistence(timeout: 5))
+        XCTAssertEqual(chatSearch.frame.minX, searchFrame.minX, accuracy: 1)
+        XCTAssertEqual(chatSearch.frame.maxX, searchFrame.maxX, accuracy: 1)
+        app.buttons["scholium.chat.newConversation"].click()
+        let input = app.textViews["scholium.chat.message"]
+        XCTAssertTrue(input.waitForExistence(timeout: 5))
+        XCTAssertEqual(input.frame.minX, searchFrame.minX + outerInset, accuracy: 1)
+        XCTAssertEqual(input.frame.maxX, searchFrame.maxX - outerInset, accuracy: 1)
+        app.typeText("271828")
+        app.buttons["scholium.chat.back"].click()
+        let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "scholium.chat.conversation.")).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        XCTAssertEqual(row.frame.minX, searchFrame.minX, accuracy: 1)
+        XCTAssertEqual(row.frame.maxX, searchFrame.maxX, accuracy: 1)
+        XCTAssertTrue(waitForDocumentTitle("QA Autosave A"))
+    }
+
+    @MainActor
+    func testSidebarStateTransitionsKeepDocumentAndRecoveryVisible() throws {
+        waitForCurrentDocumentSurface()
+        let source = triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md")
+        let before = try Data(contentsOf: source)
+        let organize = app.descendants(matching: .any)["scholium.libraryFilters"].firstMatch
+        organize.click()
+        app.menuItems["Malformed Metadata"].firstMatch.click()
+        let libraryEmpty = app.descendants(matching: .any)["scholium.libraryEmpty"].firstMatch
+        XCTAssertTrue(libraryEmpty.waitForExistence(timeout: 5))
+        XCTAssertTrue(accessibilityText(of: libraryEmpty.staticTexts.firstMatch).contains("No Matching Notes"))
+        let clear = app.descendants(matching: .any)["scholium.libraryFilterStatus"].firstMatch.buttons["Clear"]
+        clear.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
+        let search = app.searchFields["scholium.searchField"].firstMatch
+        typeCommittedText("qa-state-no-match-817263", into: search, in: app)
+        XCTAssertTrue(app.descendants(matching: .any)["scholium.searchEmpty"].firstMatch.waitForExistence(timeout: 10))
+        search.click()
+        search.typeKey("a", modifierFlags: [.command])
+        search.typeKey(.delete, modifierFlags: [])
+        XCTAssertTrue(waitUntil(timeout: 5) { search.value as? String == "" })
+        sidebarModeControl("Chat").click()
+        let chatEmpty = app.descendants(matching: .any)["scholium.chat.empty"].firstMatch
+        XCTAssertTrue(chatEmpty.waitForExistence(timeout: 5))
+        XCTAssertTrue(accessibilityText(of: chatEmpty.staticTexts.firstMatch).contains("No Conversations"))
+        app.descendants(matching: .any)["scholium.chat.archived"].firstMatch.click()
+        app.menuItems["Archived Chats"].firstMatch.click()
+        XCTAssertTrue(waitUntil(timeout: 5) {
+            self.accessibilityText(of: chatEmpty.staticTexts.firstMatch).contains("No Archived Chats")
+        })
+        app.buttons["scholium.chat.newConversation"].click()
+        XCTAssertTrue(app.descendants(matching: .any)["scholium.chat.emptyConversation"].firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.textViews["scholium.chat.message"].waitForExistence(timeout: 5))
+        XCTAssertTrue(waitForDocumentTitle("QA Autosave A"))
+        XCTAssertEqual(try Data(contentsOf: source), before)
+    }
+
+    @MainActor
+    func testChatListMenusFilterRenameArchiveAndRestoreDraft() throws {
+        waitForCurrentDocumentSurface()
+        sidebarModeControl("Chat").click()
+        let create = app.buttons["scholium.chat.newConversation"]
+        XCTAssertTrue(create.waitForExistence(timeout: 5))
+        create.click()
+        let input = app.textViews["scholium.chat.message"]
+        XCTAssertTrue(input.waitForExistence(timeout: 5))
+        // New Conversation focuses the native editor. Keyboard input avoids
+        // XCTest trying to scroll an already-visible floating composer to a hit point.
+        app.typeText("314159265")
+        XCTAssertEqual(input.value as? String, "314159265")
+        app.buttons["scholium.chat.back"].click()
+        let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "scholium.chat.conversation.")).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        let search = app.searchFields["scholium.chat.search"]
+        search.buttons.firstMatch.click()
+        app.menuItems["Needs Input"].firstMatch.click()
+        let chatEmpty = app.descendants(matching: .any)["scholium.chat.empty"].firstMatch
+        XCTAssertTrue(chatEmpty.waitForExistence(timeout: 5))
+        XCTAssertTrue(accessibilityText(of: chatEmpty.staticTexts.firstMatch).contains("No Matching Conversations"))
+        let status = app.descendants(matching: .any)["scholium.chat.filterStatus"].firstMatch
+        status.buttons["Clear"].click()
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        search.buttons.firstMatch.click()
+        app.menuItems["Has Draft"].firstMatch.click()
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        row.rightClick()
+        app.menuItems["Rename Conversation…"].firstMatch.click()
+        let renameField = app.textFields.firstMatch
+        XCTAssertTrue(renameField.waitForExistence(timeout: 5))
+        typeCommittedText("Sidebar QA conversation", into: renameField, in: app)
+        app.typeKey(.return, modifierFlags: [])
+        XCTAssertTrue(waitUntil(timeout: 5) { row.label.contains("Sidebar QA conversation") })
+        row.rightClick()
+        app.menuItems["Archive Chat"].firstMatch.click()
+        XCTAssertTrue(waitUntil(timeout: 5) { !row.exists })
+        app.descendants(matching: .any)["scholium.chat.archived"].firstMatch.click()
+        app.menuItems["Archived Chats"].firstMatch.click()
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        row.rightClick()
+        app.menuItems["Restore Chat"].firstMatch.click()
+        app.buttons["scholium.chat.back"].click()
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        row.click()
+        XCTAssertTrue(input.waitForExistence(timeout: 5))
+        XCTAssertEqual(input.value as? String, "314159265")
+        XCTAssertTrue(waitForDocumentTitle("QA Autosave A"))
     }
 
     @MainActor

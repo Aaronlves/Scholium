@@ -43,15 +43,6 @@ struct SidebarLibraryFilterMenu: View {
 
     var body: some View {
         Menu {
-            Section("Folders") {
-                Button(
-                    shouldCollapseFolders
-                        ? "Collapse All Folders"
-                        : "Expand All Folders",
-                    action: toggleAllFolders
-                )
-                .disabled(!canChangeFolderDisclosure)
-            }
             Section("Integrity") {
                 Toggle("Needs Attention", isOn: filterBinding(\.needsAttention))
                     .disabled(!options.catalogIsAvailable)
@@ -70,7 +61,7 @@ struct SidebarLibraryFilterMenu: View {
             }
             Section("Metadata") {
                 Menu("Keyword") {
-                    Button("All Keywords") { updateFilters { $0.tag = nil } }
+                    filterChoice(String(localized: "All Keywords"), selected: filters.tag == nil) { updateFilters { $0.tag = nil } }
                     Divider()
                     ForEach(options.tags, id: \.self) { tag in
                         filterChoice(tag, selected: filters.tag == tag) {
@@ -78,10 +69,10 @@ struct SidebarLibraryFilterMenu: View {
                         }
                     }
                 }
-                .disabled(options.tags.isEmpty)
-                if !options.authors.isEmpty {
+                .disabled(options.tags.isEmpty && filters.tag == nil)
+                if !options.authors.isEmpty || filters.author != nil {
                     Menu("Author") {
-                        Button("Any Author") { updateFilters { $0.author = nil } }
+                        filterChoice(String(localized: "Any Author"), selected: filters.author == nil) { updateFilters { $0.author = nil } }
                         Divider()
                         ForEach(options.authors, id: \.self) { author in
                             filterChoice(author, selected: filters.author == author) {
@@ -90,24 +81,23 @@ struct SidebarLibraryFilterMenu: View {
                         }
                     }
                 }
-                if !options.propertyKeys.isEmpty {
-                    Button("Any Metadata Field") {
-                        updateFilters {
-                            $0.propertyKey = nil
-                            $0.propertyValue = nil
+                if !options.propertyKeys.isEmpty || filters.propertyKey != nil {
+                    Menu("Metadata Field") {
+                        filterChoice(String(localized: "Any Metadata Field"), selected: filters.propertyKey == nil) {
+                            updateFilters {
+                                $0.propertyKey = nil
+                                $0.propertyValue = nil
+                            }
                         }
-                    }
-                    ForEach(options.propertyKeys, id: \.self) { key in
-                        Menu(propertyLabel(key)) {
-                            ForEach(options.propertyValues[key] ?? [], id: \.self) { value in
-                                filterChoice(
-                                    value,
-                                    selected: filters.propertyKey == key
-                                        && filters.propertyValue == value
-                                ) {
-                                    updateFilters {
-                                        $0.propertyKey = key
-                                        $0.propertyValue = value
+                        Divider()
+                        ForEach(options.propertyKeys, id: \.self) { key in
+                            Menu(propertyLabel(key)) {
+                                ForEach(options.propertyValues[key] ?? [], id: \.self) { value in
+                                    filterChoice(value, selected: filters.propertyKey == key && filters.propertyValue == value) {
+                                        updateFilters {
+                                            $0.propertyKey = key
+                                            $0.propertyValue = value
+                                        }
                                     }
                                 }
                             }
@@ -115,17 +105,25 @@ struct SidebarLibraryFilterMenu: View {
                     }
                 }
             }
-            Section("Order") {
+            if activeFilterCount > 0 {
+                Button("Clear All Filters", action: clearFilters)
+            }
+            Divider()
+            Menu("Sort By") {
                 ForEach(NoteSortOrder.allCases) { order in
                     filterChoice(order.title, selected: sortOrder == order) {
                         selectSortOrder(order)
                     }
                 }
             }
-            if activeFilterCount > 0 {
-                Section("Actions") {
-                    Button("Clear All Filters", action: clearFilters)
-                }
+            Section("Folders") {
+                Button(
+                    shouldCollapseFolders
+                        ? "Collapse All Folders"
+                        : "Expand All Folders",
+                    action: toggleAllFolders
+                )
+                .disabled(!canChangeFolderDisclosure)
             }
         } label: {
             ScholiumSidebarHeaderIcon(
@@ -154,9 +152,7 @@ struct SidebarLibraryFilterMenu: View {
         selected: Bool,
         action: @escaping () -> Void
     ) -> some View {
-        Button(action: action) {
-            if selected { Label(title, systemImage: "checkmark") } else { Text(title) }
-        }
+        Toggle(title, isOn: Binding(get: { selected }, set: { _ in action() }))
     }
 
     private func filterBinding<Value>(

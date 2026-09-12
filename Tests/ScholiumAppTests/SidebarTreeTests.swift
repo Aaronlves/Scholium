@@ -136,12 +136,12 @@ struct SidebarTreeTests {
                 .openInNewTab,
                 .openInSeparateWindow,
                 .addToChat,
-                .duplicate,
                 .rename,
+                .duplicate,
                 .move,
-                .moveToSystemTrash,
-                .copyRelativePath,
                 .revealInFinder,
+                .copyRelativePath,
+                .moveToSystemTrash,
             ])
 
     }

@@ -80,33 +80,12 @@ struct SidebarNoteCommandGroup: Hashable, Identifiable {
 }
 
 func sidebarNoteCommandGroups() -> [SidebarNoteCommandGroup] {
-    var groups = [
-        SidebarNoteCommandGroup(
-            kind: .opening,
-            commands: [.openInNewTab, .openInSeparateWindow, .addToChat]
-        )
+    let groups = [
+        SidebarNoteCommandGroup(kind: .opening, commands: [.openInNewTab, .openInSeparateWindow, .addToChat]),
+        SidebarNoteCommandGroup(kind: .editing, commands: [.rename, .duplicate, .move]),
+        SidebarNoteCommandGroup(kind: .location, commands: [.revealInFinder, .copyRelativePath]),
+        SidebarNoteCommandGroup(kind: .fileActions, commands: [.moveToSystemTrash]),
     ]
-
-    var editing: [SidebarNoteCommand] = []
-    editing.append(.duplicate)
-    editing.append(.rename)
-    editing.append(.move)
-    groups.append(
-        SidebarNoteCommandGroup(
-            kind: .editing,
-            commands: editing
-        ))
-    groups.append(
-        SidebarNoteCommandGroup(
-            kind: .fileActions,
-            commands: [.moveToSystemTrash]
-        ))
-
-    groups.append(
-        SidebarNoteCommandGroup(
-            kind: .location,
-            commands: [.copyRelativePath, .revealInFinder]
-        ))
     return groups
 }
 
@@ -198,6 +177,7 @@ struct SidebarTreeNodeRow: View {
             if canMutateFolder(path) {
                 Button("New Note") { context.createUntitledNote(path) }
                 Button("New Folder") { context.createUntitledFolder(path) }
+                Divider()
                 if let target = folderTarget(path) {
                     Button("Rename Folder…") { context.requestFolderFileOperation(.rename(target)) }
                     Button("Move Folder…") { context.requestFolderFileOperation(.move(target)) }
@@ -207,8 +187,8 @@ struct SidebarTreeNodeRow: View {
                 Button(subtreeIsExpanded ? "Collapse All" : "Expand All", action: toggleEntireSubtree)
             }
             Divider()
-            Button("Copy Relative Path") { context.copyRelativePath(path) }
             Button("Reveal in Finder") { context.revealNote(path) }
+            Button("Copy Relative Path") { context.copyRelativePath(path) }
             if canMutateFolder(path) {
                 Divider()
                 Button("Move Folder and Notes to Trash…", role: .destructive) {
@@ -234,8 +214,8 @@ struct SidebarTreeNodeRow: View {
                     }
                 }
             }
-            Button("Copy Relative Path") { context.copyRelativePath(path) }
             Button("Reveal in Finder") { context.revealNote(path) }
+            Button("Copy Relative Path") { context.copyRelativePath(path) }
         }
         if !node.children.isEmpty {
             Button(subtreeIsExpanded ? "Collapse All" : "Expand All", action: toggleEntireSubtree)

@@ -45,17 +45,18 @@ even without a Note. Chat inherits the Sidebar background with list-to-detail
 navigation. Conversation rows share cards with native secondary backgrounds by calendar
 day, with internal separators and Today/Yesterday/date headings instead of repeated
 dates. Empty unused sessions are omitted. Each conversation's entire row, including
-padding, opens its detail. The archive menu appears only at the list's top right: it
-opens Archived Chats or enters selection mode. Only in this mode, rows show leading
-selection circles; clicking a row toggles selection instead of navigating. A temporary
-bottom action bar offers Cancel and archive/restore with the selected count. Empty
-selection or execution in a selected conversation disables the batch action; canceling changes no
-conversations. Detail options open only this conversation's Agent Changes. Library and
+padding, opens its detail. Organize Chats switches current/archived lists or starts batch selection.
+Contextual and accessibility actions target that row: Open, Rename, Changes,
+Archive/Restore. Search-menu filters select All, Needs Input, In Progress or
+Has Draft, with visible Clear and no-match feedback; selection remains unchanged.
+Selection mode replaces navigation with selection circles and a bottom Cancel
+and counted Archive/Restore action. Empty selection or running targets disables
+archiving; Cancel changes nothing. Detail Changes stays conversation-scoped. Library and
 Chat share a native panel-header action group with consistent symbol sizing,
 neutral ink and complete button hit areas. Native controls own interaction feedback.
-Sidebar container edges align across Search, the workspace navigator, conversation
-cards and the composer; headings, dates and row text use one content inset.
-Inspector/editorial geometry does not determine these sidebar relationships. The bottom
+One Sidebar spacing grid aligns Search, navigation, conversation cards and the
+composer; headings, dates and row text share a content inset. Native controls
+retain intrinsic metrics; Inspector geometry remains separate. The bottom
 composer and compact conversation-files entry float above the transcript using
 native Liquid Glass. Transcript content scrolls beneath these controls, with no
 extra opaque backing, gradient mask or simulated blur. A measured bottom inset
@@ -527,7 +528,7 @@ content or move focus.
 Library provides:
 
 - one native Organize menu for global Folder expansion/collapse, content and
-  Integrity filters, Metadata, and Order;
+  Integrity filters, Metadata, and a Sort By submenu;
 - one Add menu for immediate New Note and New Folder;
 - a single scrollable hierarchy of real folders and Notes, including root Notes
   and empty folders; and

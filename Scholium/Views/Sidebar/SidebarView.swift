@@ -283,48 +283,24 @@ struct SidebarView: View {
     @ViewBuilder
     private var sourceStateContent: some View {
         if controller.library.sourceIsLoading {
-            ScholiumLibrarySourceState {
-                ScholiumContentStateView(
-                    title: Text("Loading Library…"),
-                    indicator: .progress,
-                    placement: .leading,
-                    density: .compact
-                )
-            }
-            .accessibilityIdentifier("scholium.libraryLoading")
+            ScholiumSidebarState(Text("Loading Library…"), indicator: .progress)
+                .accessibilityIdentifier("scholium.libraryLoading")
         } else if let error = controller.library.sourceError {
-            ScholiumLibrarySourceState {
-                ScholiumContentStateView(
-                    "Could Not Open Library",
-                    detail: Text(error),
-                    indicator: .symbol("exclamationmark.triangle", role: .attention),
-                    placement: .leading,
-                    density: .compact
-                ) {
-                    Button("Retry") {
-                        context.selectTriptychWorkspace(
-                            controller.library.workspaceSlot
-                        )
-                    }
-                }
+            ScholiumSidebarState(
+                Text("Could Not Open Library"), detail: Text(error),
+                indicator: .symbol("exclamationmark.triangle", role: .attention)
+            ) {
+                Button("Retry") { context.selectTriptychWorkspace(controller.library.workspaceSlot) }
             }
             .accessibilityIdentifier("scholium.libraryError")
         } else if folderTree.isEmpty {
-            ScholiumLibrarySourceState {
-                ScholiumContentStateView(
-                    title: activeLibraryMenuFilterCount > 0
-                        ? Text("No Matching Notes") : Text("No Notes"),
-                    detail: activeLibraryMenuFilterCount > 0
-                        ? Text("No notes match the current filters.")
-                        : Text("Create a Note to begin."),
-                    indicator: .symbol("doc.text"),
-                    placement: .leading,
-                    density: .compact
-                )
-            }
+            ScholiumSidebarState(
+                activeLibraryMenuFilterCount > 0 ? Text("No Matching Notes") : Text("No Notes"),
+                detail: activeLibraryMenuFilterCount > 0
+                    ? Text("No notes match the current filters.") : Text("Create a Note to begin."),
+                indicator: .symbol(activeLibraryMenuFilterCount > 0 ? "magnifyingglass" : "doc.text")
+            )
             .accessibilityIdentifier("scholium.libraryEmpty")
-        } else {
-            EmptyView()
         }
     }
 
