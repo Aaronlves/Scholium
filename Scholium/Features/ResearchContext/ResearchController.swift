@@ -69,13 +69,21 @@ final class ResearchController: ObservableObject {
     private var capabilities: ResearchControllerCapabilities?
     private var agentChangesRefreshTask: Task<Void, Never>?
     private var agentChangesRefreshGeneration: UInt64 = 0
+    private var documentSelectionObservation: AnyCancellable?
 
     init(
         shellState: WindowShellState = WindowShellState(),
+        selectedDocuments: AnyPublisher<WindowSelectedDocument?, Never> = Empty().eraseToAnyPublisher(),
         intentHandler: @escaping IntentHandler = { _ in }
     ) {
         self.shellState = shellState
         self.intentHandler = intentHandler
+        // Consume the incoming selection synchronously: @Published delivers it
+        // before DocumentController stores it, so never reread that property here.
+        documentSelectionObservation = selectedDocuments
+            .map { $0?.editingTarget }
+            .removeDuplicates()
+            .sink { [weak self] _ in self?.relatedMaterials.reset() }
     }
 
     var inspector: ResearchInspectorState {

@@ -100,8 +100,8 @@ source navigation and explicit Wikilink insertion where a safe target is availab
 insert a link never hides an otherwise readable Note. No excerpts are copied and
 no prose is generated. The waiting state shows the command's actual
 shortcut, or its menu path if unbound. Typing never opens the pane.
-Results and their captured context remain readable while the researcher writes
-or a replacement query fails. Text or selection changes invalidate the insertion
+Within one Note, results and context survive writing or failed replacement;
+§18.5 owns loading and departure. Text or selection changes invalidate the insertion
 position; a successful automatic query supplies a fresh caret receipt without
 a separate confirmation or standing refresh indication.
 Insertion checks session identity, document generation, caret and composition
@@ -410,8 +410,10 @@ including unsaved writing. Opening the pane captures the existing selection; whi
 visible, selection changes trigger a short debounced search. Composition suspends
 retrieval. Closing the pane cancels pending work, and newer selections invalidate
 older responses. The Research-menu command retains an explicit keyboard route.
-Moving focus into the pane or opening a result does not replace the captured context;
-another successful selection or paragraph query replaces it. The pane begins with
+Pane focus preserves context until a successful query. Switching or closing a Note,
+including opening a recommendation, synchronously clears results, context and insertion
+position and cancels retrieval. Departed requests cannot publish, even after returning.
+The pane begins with
 results, without a standing context summary, refresh command or caret-confirmation
 step. Opening the pane, switching editors, changing selection and pausing in a
 paragraph schedule automatic retrieval; closing cancels it.
@@ -447,7 +449,8 @@ The action menu uses the same image-only label and native control treatment as
 the Library Sidebar, with a reserved target to prevent reflow. Analysis, Topic and Work use the existing three workspace role symbols. There is no refresh header; shortcut guidance appears only before the first usable query. Empty results show
 one concise empty state without repeating writing instructions. Waiting, empty
 and failed retrieval use the shared Sidebar state presentation. Loading alone
-shows the skeleton; replacing existing results keeps them readable. New Note groups enter
+shows pulsing skeletons, including replacement searches. Existing rows retain their
+geometry and reading position while masked as inactive placeholders. New Note groups enter
 as one visual unit: the identity header and every excerpt share a single upward
 translation and opacity sample. Groups start in reading order with overlapping,
 brief ease-out entrances; no blur, scaling, bounce, clipping reveal or separate
@@ -467,14 +470,16 @@ Links highlights the authored link alias or target when it has one unambiguous
 occurrence in the readable context. Ambiguous labels remain unhighlighted.
 Initial loading uses pulsing skeleton cards matching the title, role, excerpt and
 action-area geometry of real results; Reduce Motion keeps them static. Subsequent
-retrieval keeps existing cards without skeletons, loading rows or layout animation.
+retrieval masks retained cards with the same pulse, without adding loading rows or layout animation.
+Loading exposes one accessible search status and no actionable placeholder results.
+Completion, cancellation or failure restores retained same-Note cards.
 Brief opacity transitions accompany action disclosure only. Ellipses identify omitted text; there is no generated summary, standing
 keyword list, full-paragraph expansion, or repeated Open Source button.
 A contextual Retry action recovers from failure or unavailable sources. Normal automatic replacement does not add a stack of disabled actions.
 Content YAML contributes to Note ordering but is not displayed as a separate
 result. Each recommended Note presents an actual matching paragraph; metadata,
 a title or another paragraph matching cannot substitute for that paragraph.
-Opening preserves the Document mode and captured recommendation context.
+Opening preserves the Document mode and follows the destination Note's recommendation lifecycle.
 Raw Markdown, full paths and internal offsets are not standing card content.
 Matches are discovery leads, never support, objection, or correctness verdicts.
 Open Source locates the checked paragraph revision; when the Note has changed,

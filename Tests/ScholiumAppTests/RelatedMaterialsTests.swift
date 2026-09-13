@@ -34,6 +34,100 @@ struct RelatedMaterialsTests {
             identityCandidates: candidates, lexicalCandidates: candidates, identityHasMore: false, lexicalHasMore: false)
     }
 
+    private func populatedResponse(_ seed: RelatedMaterialsSeed) -> RelatedContentResponse {
+        let candidate = candidate("自由")
+        let passage = RelatedContentPassage(
+            candidate: candidate,
+            range: .init(utf16LowerBound: 0, utf16UpperBound: 2, line: 1, column: 1, endLine: 1, endColumn: 3),
+            source: "自由", displayText: "自由", excerpt: "自由", excerptMatches: [0..<2],
+            matches: [.init(seedKind: .selectedPassage, terms: ["自由"])])
+        return .init(
+            requestID: seed.request.id, seedFingerprint: seed.request.seed.fingerprint,
+            freshnessToken: .init("fixture"), availability: .unavailable, state: .current,
+            identityCandidates: [], lexicalCandidates: [candidate], identityHasMore: false,
+            lexicalHasMore: false, passages: [passage])
+    }
+
+    private func descriptor(_ path: String) -> WindowDocumentDescriptor {
+        .init(
+            sessionKey: .init(vaultID: vault, noteID: UUID()),
+            reference: .init(vaultID: vault, vaultName: "Topics", vaultRole: .topicKnowledge, relativePath: path))
+    }
+
+    @Test("Document selection clears recommendations synchronously, including while hidden", arguments: [false, true])
+    func documentDeparture(closing: Bool) async {
+        let documents = DocumentController()
+        let research = ResearchController(selectedDocuments: documents.$selectedDocument.eraseToAnyPublisher())
+        let otherWindow = RelatedMaterialsSession()
+        let first = descriptor("Draft.md")
+        documents.installOpenedDocument(first)
+        var seed = seed()
+        seed.insertionPoint = .init(sessionID: UUID(), documentID: "draft", generation: 1, selection: .init(anchor: 3, head: 3))
+        let captured = seed
+        let response = populatedResponse(seed)
+        let model = research.relatedMaterials
+        for session in [model, otherWindow] {
+            await session.find(capture: { captured }, retrieve: { _ in response }, references: [reference()]).value
+        }
+        #expect(!model.cards.isEmpty && model.insertionPoint != nil)
+        #expect(documents.selectRetainedDocument(.workspace(first)))
+        #expect(!model.cards.isEmpty && model.insertionPoint != nil)
+        model.report(RelatedMaterialsError.staleIndex)
+        #expect(model.issue != nil && model.needsRefresh)
+        model.scheduleAutomaticSearch(selection: true, immediate: true) {
+            Issue.record("A departed Note's scheduled search must not execute")
+        }
+        if closing {
+            documents.clearSelectionAfterClosingLastTab()
+        } else {
+            documents.installOpenedDocument(descriptor("Second.md"))
+        }
+        // No await or view callback between navigation and these expectations.
+        #expect(model.cards.isEmpty && model.seed == nil && model.insertionPoint == nil)
+        #expect(model.issue == nil && !model.needsRefresh && !model.contextChanged)
+        #expect(!model.isLoading && !model.didSearch && model.omittedCount == 0)
+        #expect(model.presentation == .waiting)
+        #expect(!research.inspector.isVisible)
+        #expect(!otherWindow.cards.isEmpty)
+        #expect(documents.selectRetainedDocument(.workspace(first)))
+        #expect(model.cards.isEmpty && model.seed == nil)
+        await Task.yield()
+    }
+
+    @Test("A late passage response cannot overwrite a new search after navigation", arguments: [false, true])
+    func lateResponseAfterDocumentDeparture(returnToFirst: Bool) async {
+        let documents = DocumentController()
+        let research = ResearchController(selectedDocuments: documents.$selectedDocument.eraseToAnyPublisher())
+        let first = descriptor("Draft.md")
+        documents.installOpenedDocument(first)
+        let model = research.relatedMaterials
+        let original = seed()
+        let response = populatedResponse(original)
+        let ready = AsyncStream<Void>.makeStream()
+        var release: CheckedContinuation<Void, Never>?
+        let oldOperation = model.find(
+            capture: { original }, retrieve: { _ in response }, references: [reference()],
+            linkTarget: { _ in
+                await withCheckedContinuation { continuation in
+                    release = continuation
+                    ready.continuation.yield(())
+                    ready.continuation.finish()
+                }
+                return "[[Source]]"
+            })
+        for await _ in ready.stream {}
+        documents.installOpenedDocument(descriptor("Second.md"))
+        if returnToFirst { #expect(documents.selectRetainedDocument(.workspace(first))) }
+        let current = seed("current context")
+        let currentResponse = self.response(current.request)
+        await model.find(capture: { current }, retrieve: { _ in currentResponse }, references: []).value
+        release?.resume()
+        await oldOperation.value
+        #expect(model.seed?.request.id == current.request.id)
+        #expect(model.cards.isEmpty && model.presentation == .empty && !model.isLoading)
+        #expect(model.issue == nil)
+    }
+
     @Test("A Note group retains both ranked paragraphs and exact source ranges")
     func selectionAndParagraphs() async {
         let model = RelatedMaterialsSession()
@@ -76,7 +170,22 @@ struct RelatedMaterialsTests {
         #expect(model.insertionPoint == nil && model.contextChanged)
         #expect(model.cards.first?.id == first.id)
         let nextSeed = self.seed("different context")
-        await model.find(capture: { nextSeed }, retrieve: { _ in throw RelatedMaterialsError.unavailable }, references: []).value
+        let ready = AsyncStream<Void>.makeStream()
+        var release: CheckedContinuation<Void, Never>?
+        let replacement = model.find(
+            capture: {
+                await withCheckedContinuation { continuation in
+                    release = continuation
+                    ready.continuation.yield(())
+                    ready.continuation.finish()
+                }
+                return nextSeed
+            }, retrieve: { _ in throw RelatedMaterialsError.unavailable }, references: [])
+        for await _ in ready.stream {}
+        #expect(model.presentation == .loading)
+        #expect(model.cards.first?.id == first.id && model.insertionPoint == nil)
+        release?.resume()
+        await replacement.value
         #expect(model.cards.first?.id == first.id)
         #expect(model.seed?.request.id == seed.request.id)
         #expect(model.issue != nil && !model.isLoading)

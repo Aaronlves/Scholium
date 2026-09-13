@@ -210,8 +210,13 @@ loading/error state, ranked passages grouped by Note and a revocable insertion r
 The Related pane uses native List rows and trailing swipe actions with full-swipe
 execution disabled; SwiftUI owns their transient reveal lifecycle. The visible pane subscribes to the retained
 editor's context events, revokes insertion on change and cancels work when hidden.
-Readable cards retain their original context until a replacement query succeeds.
-Automatic publication checks editor focus; pointer interaction cancels pending
+Readable cards retain their original context within the same Note until a replacement query succeeds.
+During retrieval, ResearchSkeletonPulse animates initial skeletons or redacted retained
+rows; those rows expose no actions until retrieval ends. Reduce Motion stops the pulse.
+ResearchController synchronously observes DocumentController's incoming editing target;
+a changed or absent target resets the complete recommendation session, even while hidden.
+Publication checks the selected document and workspace runtime; automatic publication
+also checks editor focus and mode. Pointer interaction cancels pending
 updates; editor activity resumes following even with a stationary pointer. A stale
 response triggers one index refresh and retry. Equal cards are retained and unchanged seeds refresh only the caret receipt.
 `WindowRelatedMaterialsActions` captures the retained editor context and calls

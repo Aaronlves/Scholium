@@ -42,9 +42,9 @@ struct RelatedMaterialsView: View {
                         }
                         .accessibilityIdentifier("scholium.related.issue")
                     case .loading:
-                        ForEach(0..<3) { _ in RelatedMaterialSkeleton() }
-                            .accessibilityElement(children: .ignore)
-                            .accessibilityLabel(Text("Finding related material"))
+                        if session.cards.isEmpty {
+                            ForEach(0..<3) { _ in RelatedMaterialSkeleton() }
+                        }
                     case .results:
                         EmptyView()
                     }
@@ -52,8 +52,15 @@ struct RelatedMaterialsView: View {
                         RelatedMaterialNoteGroupView(
                             group: group,
                             canInsert: editor != nil && session.insertionPoint != nil && !session.isLoading,
+                            isLoading: session.isLoading,
                             entranceProgress: reduceMotion ? 1 : entrance.progress(for: group.id, at: timeline.date),
-                            open: open, insert: insert, addToChat: addToChat)
+                            open: { if !session.isLoading { open($0) } },
+                            insert: { if !session.isLoading { insert($0) } },
+                            addToChat: { if !session.isLoading { addToChat($0) } })
+                            .redacted(reason: session.isLoading ? .placeholder : [])
+                            .modifier(ResearchSkeletonPulse(isActive: session.isLoading))
+                            .disabled(session.isLoading)
+                            .allowsHitTesting(!session.isLoading)
                     }
 
                 }
@@ -62,6 +69,7 @@ struct RelatedMaterialsView: View {
             .researchListStyle()
         }
         .accessibilityIdentifier("scholium.related")
+        .accessibilityValue(session.isLoading ? Text("Finding related material") : Text(""))
         .help("These passages are retrieval leads, not assessments of support or disagreement.")
         .onAppear {
             if !session.isLoading { scheduleFollowing(immediate: true) }
@@ -88,6 +96,7 @@ struct RelatedMaterialsView: View {
             }
         }
         .onChange(of: editor.map(ObjectIdentifier.init)) { _, _ in
+            pointerInReferences = false
             scheduleFollowing(immediate: true)
         }
         .onHover { inside in

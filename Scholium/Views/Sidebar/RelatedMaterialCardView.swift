@@ -4,6 +4,7 @@ import SwiftUI
 struct RelatedMaterialNoteGroupView: View {
     let group: RelatedMaterialsSession.NoteGroup
     let canInsert: Bool
+    let isLoading: Bool
     let entranceProgress: CGFloat
     let open: (RelatedMaterialCard) -> Void
     let insert: (RelatedMaterialCard) -> Void
@@ -33,19 +34,24 @@ struct RelatedMaterialNoteGroupView: View {
                 }
             }
             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                Button {
-                    insert(first)
-                } label: {
-                    Label("Link to This Note", systemImage: "link")
+                if !isLoading {
+                    Button {
+                        insert(first)
+                    } label: {
+                        Label("Link to This Note", systemImage: "link")
+                    }
+                    .disabled(!canInsert || first.linkTarget == nil)
                 }
-                .disabled(!canInsert || first.linkTarget == nil)
             }
+            .accessibilityHidden(isLoading)
             if expanded {
                 ForEach(group.passages) { card in
                     RelatedMaterialPassageView(
                         card: card,
+                        isLoading: isLoading,
                         entranceProgress: entranceProgress,
                         open: { open(card) }, addToChat: { addToChat(card) })
+                        .accessibilityHidden(isLoading)
                 }
             }
         }
@@ -54,6 +60,7 @@ struct RelatedMaterialNoteGroupView: View {
 
 private struct RelatedMaterialPassageView: View {
     let card: RelatedMaterialCard
+    let isLoading: Bool
     let entranceProgress: CGFloat
     let open: () -> Void
     let addToChat: () -> Void
@@ -85,24 +92,28 @@ private struct RelatedMaterialPassageView: View {
         .accessibilityLabel(Text(card.passage.excerpt))
         .help("Show this passage")
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-            Button(action: addToChat) { Label("Add to Chat", systemImage: "plus.bubble") }
-                .disabled(card.attachment == nil)
+            if !isLoading {
+                Button(action: addToChat) { Label("Add to Chat", systemImage: "plus.bubble") }
+                    .disabled(card.attachment == nil)
+            }
         }
         .contextMenu {
-            Button("Add to Chat", action: addToChat).disabled(card.attachment == nil)
-            Button("Open Linked Note", action: open)
+            if !isLoading {
+                Button("Add to Chat", action: addToChat).disabled(card.attachment == nil)
+                Button("Open Linked Note", action: open)
+            }
         }
-        .accessibilityAction(named: Text("Add to Chat")) {
-            if card.attachment != nil { addToChat() }
+        .accessibilityActions {
+            if !isLoading && card.attachment != nil {
+                Button("Add to Chat", action: addToChat)
+            }
         }
         .accessibilityIdentifier("scholium.related.card.\(card.id)")
     }
 }
 
-/// First-load preview of the same information regions used by a result card.
+/// Initial-search preview of the same information regions used by a result card.
 struct RelatedMaterialSkeleton: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
     var body: some View {
         Group {
             HStack(spacing: ScholiumGrid.Apparatus.iconToTextGap) {
@@ -123,11 +134,7 @@ struct RelatedMaterialSkeleton: View {
             }
         }
         .foregroundStyle(.quaternary)
-        .phaseAnimator(reduceMotion ? [false] : [false, true]) { content, phase in
-            content.opacity(phase ? 0.45 : 0.9)
-        } animation: { _ in
-            .easeInOut(duration: 1.1)
-        }
+        .modifier(ResearchSkeletonPulse(isActive: true))
         .accessibilityHidden(true)
     }
 }

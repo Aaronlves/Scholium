@@ -53,7 +53,13 @@ extension WindowModel {
                 try Task.checkCancellation()
                 return try await discovery.relatedContent(request)
             }, references: workspaceCatalog?.notes.map(\.reference) ?? [], automatic: automatic,
-            canPublish: { !automatic || (editor.hasWritingFocus && !editor.isComposing) },
+            canPublish: { [weak self] in
+                guard let self,
+                    self.currentDocumentDescriptor?.sessionKey == descriptor.sessionKey,
+                    self.windowWorkspaceController.activeCapabilities?.runtimeIdentity == capabilities.runtimeIdentity
+                else { return false }
+                return !automatic || (editor.hasWritingFocus && !editor.isComposing && self.presentedDocumentMode != .read)
+            },
             linkTarget: { [weak self] reference in
                 guard let self else { return nil }
                 return await self.relatedLinkTarget(reference, from: descriptor)
@@ -94,6 +100,7 @@ extension WindowModel {
             else { throw RelatedMaterialsError.insertionChanged }
             try await editor.insertReference(target, at: point)
         } catch {
+            guard materials.seed?.request.id == seed.request.id else { return }
             materials.invalidateWritingContext()
             materials.report(RelatedMaterialsError.insertionChanged)
         }
@@ -154,6 +161,7 @@ extension WindowModel {
             }
             return true
         } catch {
+            guard materials.seed?.request.id == seed.request.id else { return false }
             materials.report(error)
             return false
         }

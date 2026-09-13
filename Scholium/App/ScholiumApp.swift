@@ -2016,7 +2016,8 @@ final class WindowModel: ObservableObject {
     let documentTabController = DocumentTabController()
     let documentNavigationHistoryController = DocumentNavigationHistoryController()
     lazy var researchController = ResearchController(
-        shellState: shellState
+        shellState: shellState,
+        selectedDocuments: documentController.$selectedDocument.eraseToAnyPublisher()
     ) { [weak self] intent in
         self?.handleWindowIntent(intent)
     }

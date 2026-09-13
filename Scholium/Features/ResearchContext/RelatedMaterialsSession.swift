@@ -43,8 +43,8 @@ enum RelatedMaterialsError: LocalizedError, Equatable {
     }
 }
 
-/// Window-local discovery. Visible selection events are debounced; opening a
-/// result keeps the captured context until another nonempty selection arrives.
+/// Window-local discovery for the active Note. Writing retains readable results
+/// until replacement succeeds; document departure resets the complete session.
 @MainActor final class RelatedMaterialsSession: ObservableObject {
     @Published private(set) var seed: RelatedMaterialsSeed?
     @Published private(set) var cards: [RelatedMaterialCard] = []
@@ -78,9 +78,9 @@ enum RelatedMaterialsError: LocalizedError, Equatable {
         case problem(String)
     }
 
-    /// One derived presentation state; cards stay readable during replacement and failure.
+    /// Loading is explicit even when retaining cards for replacement or failure recovery.
     var presentation: Presentation {
-        if isLoading { return cards.isEmpty ? .loading : .results }
+        if isLoading { return .loading }
         if let issue { return .problem(issue) }
         if omittedCount > 0 {
             return .problem(String(localized: "Some sources changed or could not be opened. Find again to refresh the results.", bundle: .module))
