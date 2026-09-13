@@ -7,6 +7,111 @@ import WebKit
 
 @Suite("Chat message style", .serialized)
 struct AgentChatMessageStyleTests {
+    @Test("Streaming retains the page, selected Unicode passage and rich object identity")
+    @MainActor
+    func streamingSelectionSurvives() async throws {
+        var interactions = 0
+        func content(_ source: String) -> some View {
+            AgentChatMarkdown(text: source)
+                .environment(\.chatReadingInteraction, { interactions += 1 })
+        }
+        let original = "保留 😀 e\u{301} same same。\n\n```text\nretained code\n```\n\n继续回答"
+        let host = NSHostingView(rootView: content("Starting"))
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 300, height: 650), styleMask: [.titled],
+            backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = host
+        defer {
+            window.contentView = nil
+            window.close()
+        }
+        func reader(_ view: NSView) -> WKWebView? {
+            if let web = view as? WKWebView { return web }
+            return view.subviews.lazy.compactMap { reader($0) }.first
+        }
+        func waitFor(_ text: String) async throws -> WKWebView {
+            let deadline = ContinuousClock.now.advanced(by: .seconds(10))
+            while ContinuousClock.now < deadline {
+                window.layoutIfNeeded()
+                host.layoutSubtreeIfNeeded()
+                if let web = reader(host),
+                    let found = try? await web.callAsyncJavaScript(
+                        "await window.scholiumReadReady; return !!window.scholiumUpdateReply && document.getElementById('scholium-document').textContent.includes(text)",
+                        arguments: ["text": text], in: nil,
+                        contentWorld: SafeMarkdownReadWebView.bridgeContentWorld) as? Bool,
+                    found
+                {
+                    return web
+                }
+                try await Task.sleep(for: .milliseconds(20))
+            }
+            throw CocoaError(.coderReadCorrupt)
+        }
+        let startupDeadline = ContinuousClock.now.advanced(by: .seconds(5))
+        while reader(host) == nil {
+            try #require(ContinuousClock.now < startupDeadline)
+            window.layoutIfNeeded()
+            host.layoutSubtreeIfNeeded()
+            try await Task.sleep(for: .milliseconds(1))
+        }
+        // Deliver the first source changes as soon as the WKWebView exists,
+        // before waiting for its initial navigation/runtime handshake.
+        host.rootView = content("Intermediate")
+        await Task.yield()
+        host.rootView = content(original)
+        let web = try await waitFor("继续回答")
+        _ = try await web.callAsyncJavaScript(
+            """
+            window.retainedPage = document;
+            window.retainedParagraph = document.querySelector('#scholium-document p');
+            window.retainedCode = document.querySelector('.scholium-reply-object');
+            const node = window.retainedParagraph.firstChild;
+            window.getSelection().setBaseAndExtent(node, node.length, node, 3);
+            window.retainedSelection = window.getSelection().toString();
+            """, arguments: [:], in: nil, contentWorld: SafeMarkdownReadWebView.bridgeContentWorld)
+        let updated =
+            original + "，新增文字。\n\n| A | B |\n|---|---|\n| 中文 | test |\n\n$e^{i\\pi}+1=0$\n\n结束"
+        host.rootView = content(updated)
+        let current = try await waitFor("结束")
+        #expect(current === web)
+        let preserved =
+            try await web.callAsyncJavaScript(
+                """
+                await window.scholiumMermaidReady;
+                return document === window.retainedPage
+                  && document.querySelector('#scholium-document p') === window.retainedParagraph
+                  && document.querySelector('.scholium-reply-object') === window.retainedCode
+                  && window.getSelection().toString() === window.retainedSelection
+                  && document.querySelectorAll('.scholium-reply-controls').length === 2
+                  && !!document.querySelector('.scholium-math-rendered');
+                """, arguments: [:], in: nil, contentWorld: SafeMarkdownReadWebView.bridgeContentWorld)
+            as? Bool
+        #expect(preserved == true)
+        _ = try await web.callAsyncJavaScript(
+            "const node = document.querySelector('#scholium-document p:last-child').firstChild; window.getSelection().setBaseAndExtent(node, 2, node, 0);",
+            arguments: [:], in: nil, contentWorld: SafeMarkdownReadWebView.bridgeContentWorld)
+        for suffix in [" **追加", " **追加**，完成"] {
+            host.rootView = content(updated + suffix)
+            _ = try await waitFor(suffix.contains("完成") ? "完成" : "追加")
+            let selection =
+                try await web.callAsyncJavaScript(
+                    "return window.getSelection().toString()", arguments: [:], in: nil,
+                    contentWorld: SafeMarkdownReadWebView.bridgeContentWorld) as? String
+            #expect(selection == "结束")
+        }
+        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while interactions == 0 && ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(interactions > 0)
+        let rejected =
+            try await web.callAsyncJavaScript(
+                "return await window.scholiumUpdateReply({version:7, documentID:'chat-reply', loadGeneration:0, previousFingerprint:'stale', fingerprint:'bad', html:'<p>wrong</p>', presentationCSS:'', userCSS:''}) === false",
+                arguments: [:], in: nil, contentWorld: SafeMarkdownReadWebView.bridgeContentWorld) as? Bool
+        #expect(rejected == true)
+    }
+
     private struct FollowingActivity: NSViewRepresentable {
         func makeNSView(context: Context) -> NSTextField { NSTextField(labelWithString: "Used tool 2") }
         func updateNSView(_ view: NSTextField, context: Context) {}
@@ -18,7 +123,7 @@ struct AgentChatMessageStyleTests {
         func content(_ source: String, scheme: ColorScheme = .light) -> some View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
-                    AgentChatMarkdown(text: source, animatesStreaming: true)
+                    AgentChatMarkdown(text: source)
                         .modifier(AgentChatMessageArrival(enabled: true))
                         .onPreferenceChange(AgentChatReplyReadyPreference.self) { contentReady = $0 }
                     FollowingActivity().frame(height: 20)
@@ -89,7 +194,9 @@ struct AgentChatMessageStyleTests {
                 #expect(readers(host).count == 1)
                 let reader = try #require(retainedReader)
                 let activity = try #require(activities(host).first)
-                #expect(!reader.convert(reader.bounds, to: host).intersects(activity.convert(activity.bounds, to: host)))
+                #expect(
+                    !reader.convert(reader.bounds, to: host).intersects(
+                        activity.convert(activity.bounds, to: host)))
                 if let style = actual["code"] as? [String], !style.isEmpty {
                     if let codeStyle { #expect(style == codeStyle) }
                     codeStyle = style
@@ -107,13 +214,16 @@ struct AgentChatMessageStyleTests {
                     try #require(bitmap.representation(using: .png, properties: [:]))
                         .write(
                             to: output.appendingPathComponent(
-                                "reply-\(scheme == .light ? "light" : "dark")-\(Int(width))-\(source.contains("示例") ? "table" : "prose").png"))
+                                "reply-\(scheme == .light ? "light" : "dark")-\(Int(width))-\(source.contains("示例") ? "table" : "prose").png"
+                            ))
                 }
             }
         }
     }
 
-    @Test("User paragraphs fit their rendered text and reflow; both speakers keep the same compact Markdown rhythm")
+    @Test(
+        "User paragraphs fit their rendered text and reflow; both speakers keep the same compact Markdown rhythm"
+    )
     @MainActor
     func speakerTypography() async throws {
         func content(_ source: String, user: Bool) -> some View {
@@ -143,10 +253,12 @@ struct AgentChatMessageStyleTests {
         for (source, user, width, contrast) in [
             ("好的。", true, 300.0, ColorSchemeContrast.standard),
             (long, true, 240.0, .standard), (long, true, 480.0, .increased),
-            (rich, false, 300.0, .standard), (rich, false, 420.0, .increased), (rich, true, 300.0, .increased),
+            (rich, false, 300.0, .standard), (rich, false, 420.0, .increased),
+            (rich, true, 300.0, .increased),
         ] {
             host.rootView = content(source, user: user)
-            window.appearance = NSAppearance(named: contrast == .increased ? .accessibilityHighContrastAqua : .aqua)
+            window.appearance = NSAppearance(
+                named: contrast == .increased ? .accessibilityHighContrastAqua : .aqua)
             window.setContentSize(NSSize(width: width, height: 700))
             let deadline = ContinuousClock.now.advanced(by: .seconds(10))
             var result: [String: Any]?
@@ -172,14 +284,17 @@ struct AgentChatMessageStyleTests {
                         })()
                         """) as? [String: Any], let height = value["height"] as? Double,
                     abs(reader.frame.height - height) <= 1,
-                    (value["text"] as? String)?.contains(source == "好的。" ? "好的。" : source == long ? "原始含义" : "阅读方向") == true,
+                    (value["text"] as? String)?.contains(
+                        source == "好的。" ? "好的。" : source == long ? "原始含义" : "阅读方向") == true,
                     source != "好的。" || reader.frame.width < 60,
                     source != long || width != 480 || (height < narrowHeight && reader.frame.width > 300)
                 {
                     result = value
                     if source == "好的。" { #expect(reader.frame.width > 20 && reader.frame.width < 60) }
                     if source == long && width == 240 { narrowHeight = height }
-                    if source == long && width == 480 { #expect(height < narrowHeight && reader.frame.width > 300) }
+                    if source == long && width == 480 {
+                        #expect(height < narrowHeight && reader.frame.width > 300)
+                    }
                     break
                 }
                 try await Task.sleep(for: .milliseconds(20))

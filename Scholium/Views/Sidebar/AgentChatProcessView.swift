@@ -14,11 +14,11 @@ struct AgentChatProcessView<Row: View>: View {
     @ViewBuilder let row: (AgentChatMessage) -> Row
     @State private var isExpanded = false
     @State private var userExpansion: Bool?
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var needsAttention: Bool {
         messages.contains {
-            $0.activity?.status == .uncertain || $0.activity?.status == .interrupted || $0.activity?.status == .waitingForApproval
+            $0.activity?.status == .uncertain || $0.activity?.status == .interrupted
+                || $0.activity?.status == .waitingForApproval
                 || $0.activity?.status == .waitingForInput
                 || $0.activity?.status == .failed
         }
@@ -31,9 +31,7 @@ struct AgentChatProcessView<Row: View>: View {
                 set: { expanded in
                     inspect()
                     userExpansion = expanded
-                    withAnimation(ScholiumMotion.disclosure(reduceMotion: reduceMotion || !animates)) {
-                        isExpanded = expanded
-                    }
+                    isExpanded = expanded
                 })
         ) {
             VStack(alignment: .leading, spacing: 12) {
@@ -49,7 +47,7 @@ struct AgentChatProcessView<Row: View>: View {
                 AgentChatActivityIssues(messages: messages)
             }
         }
-        .disclosureGroupStyle(AgentChatDisclosureStyle())
+        .disclosureGroupStyle(AgentChatDisclosureStyle(animates: animates))
         .onChange(of: isActive, initial: true) { _, active in
             if needsAttention || forceExpanded {
                 isExpanded = true

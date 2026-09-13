@@ -3,7 +3,7 @@ export function installChatReply(
   root: HTMLElement,
   post: (type: string, value: Record<string, unknown>) => void,
   localized: (key: string) => string,
-): () => void {
+) {
   const quote = () => {
     const selection = window.getSelection();
     if (!selection?.rangeCount || selection.isCollapsed
@@ -29,42 +29,55 @@ export function installChatReply(
     event.stopPropagation();
     post('replyNoteContext', {url, left: event.clientX, top: event.clientY});
   };
+  const interact = () => post('replyInteraction', {});
+  const selected = () => {
+    const selection = window.getSelection();
+    if (selection && !selection.isCollapsed && root.contains(selection.anchorNode)) interact();
+  };
+  root.addEventListener('pointerdown', interact);
+  root.addEventListener('keydown', interact);
+  root.ownerDocument.addEventListener('selectionchange', selected);
   root.addEventListener('contextmenu', noteContextMenu);
   root.addEventListener('keydown', keydown);
   root.tabIndex = 0;
-  root.querySelectorAll<HTMLElement>('table, pre, .scholium-mermaid').forEach((element) => {
-    if (element.closest('.scholium-mermaid') !== element && element.closest('.scholium-mermaid')) return;
-    if (element.parentElement?.closest('pre, table, .scholium-mermaid')) return;
-    element.dataset.replyObject = 'true';
-  });
-  root.querySelectorAll<HTMLElement>('[data-reply-object]').forEach((element, index) => {
-    const wrapper = document.createElement('div'); wrapper.className = 'scholium-reply-object';
-    const controls = document.createElement('div'); controls.className = 'scholium-reply-controls';
-    controls.style.userSelect = 'none';
-    for (const [label, symbol, action] of [['Copy', 'doc-on-doc', 'copy'], ['Expand', 'arrow-up-left-and-arrow-down-right', 'open']]) {
-      const button = document.createElement('button');
-      button.type = 'button';
-      const icon = document.createElement('span'); icon.setAttribute('aria-hidden', 'true');
-      icon.style.setProperty('--reply-symbol', `var(--scholium-system-symbol-${symbol})`); button.append(icon);
-      button.title = localized(label); button.setAttribute('aria-label', localized(label));
-      button.addEventListener('click', () => {
-        const svg = element.querySelector('.scholium-mermaid-output')?.shadowRoot?.querySelector('svg');
-        const box = svg?.viewBox.baseVal;
-        const anchor = button.getBoundingClientRect();
-        post('replyObject', {index, action, left: anchor.left, top: anchor.top, width: box?.width || element.scrollWidth,
-          height: box?.height || element.getBoundingClientRect().height});
-      }); controls.append(button);
-    }
-    // The renderer already supplies one table viewport; do not nest another
-    // horizontal scroll owner inside it (or put the controls inside that viewport).
-    const tableScroller = element.parentElement?.classList.contains('scholium-table-scroll') ? element.parentElement : null;
-    if (tableScroller) {
-      tableScroller.before(wrapper); wrapper.append(controls, tableScroller);
-    } else {
-      const scroller = document.createElement('div'); scroller.className = 'scholium-reply-object-scroll';
-      element.before(wrapper); wrapper.append(controls, scroller); scroller.append(element);
-    }
-  });
+  const decorateObjects = () => {
+    root.querySelectorAll<HTMLElement>('table, pre, .scholium-mermaid').forEach((element) => {
+      if (element.closest('.scholium-mermaid') !== element && element.closest('.scholium-mermaid')) return;
+      if (element.parentElement?.closest('pre, table, .scholium-mermaid')) return;
+      element.dataset.replyObject = 'true';
+    });
+    root.querySelectorAll<HTMLElement>('[data-reply-object]').forEach((element) => {
+      if (element.closest('.scholium-reply-object')) return;
+      const wrapper = document.createElement('div'); wrapper.className = 'scholium-reply-object';
+      const controls = document.createElement('div'); controls.className = 'scholium-reply-controls';
+      controls.style.userSelect = 'none';
+      for (const [label, symbol, action] of [['Copy', 'doc-on-doc', 'copy'], ['Expand', 'arrow-up-left-and-arrow-down-right', 'open']]) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        const icon = document.createElement('span'); icon.setAttribute('aria-hidden', 'true');
+        icon.style.setProperty('--reply-symbol', `var(--scholium-system-symbol-${symbol})`); button.append(icon);
+        button.title = localized(label); button.setAttribute('aria-label', localized(label));
+        button.addEventListener('click', () => {
+          const svg = element.querySelector('.scholium-mermaid-output')?.shadowRoot?.querySelector('svg');
+          const box = svg?.viewBox.baseVal;
+          const anchor = button.getBoundingClientRect();
+          const index = [...root.querySelectorAll('[data-reply-object]')].indexOf(element);
+          post('replyObject', {index, action, left: anchor.left, top: anchor.top, width: box?.width || element.scrollWidth,
+            height: box?.height || element.getBoundingClientRect().height});
+        }); controls.append(button);
+      }
+      // The renderer already supplies one table viewport; do not nest another
+      // horizontal scroll owner inside it (or put the controls inside that viewport).
+      const tableScroller = element.parentElement?.classList.contains('scholium-table-scroll') ? element.parentElement : null;
+      if (tableScroller) {
+        tableScroller.before(wrapper); wrapper.append(controls, tableScroller);
+      } else {
+        const scroller = document.createElement('div'); scroller.className = 'scholium-reply-object-scroll';
+        element.before(wrapper); wrapper.append(controls, scroller); scroller.append(element);
+      }
+    });
+  };
+  decorateObjects();
   const reportSize = () => {
     // Measure a single paragraph with the same browser fonts and inline markup
     // that are painted. Restore layout before reporting its wrapped height;
@@ -85,5 +98,11 @@ export function installChatReply(
   };
   const observer = new ResizeObserver(reportSize); observer.observe(root); reportSize();
   (window as Window & {scholiumQuoteReplySelection?: () => void}).scholiumQuoteReplySelection = quote;
-  return () => { observer.disconnect(); root.removeEventListener('keydown', keydown); root.removeEventListener('contextmenu', noteContextMenu); };
+  const dispose = () => {
+    observer.disconnect();
+    root.removeEventListener('keydown', keydown); root.removeEventListener('contextmenu', noteContextMenu);
+    root.removeEventListener('pointerdown', interact); root.removeEventListener('keydown', interact);
+    root.ownerDocument.removeEventListener('selectionchange', selected);
+  };
+  return Object.assign(dispose, {refresh: () => { decorateObjects(); reportSize(); }});
 }

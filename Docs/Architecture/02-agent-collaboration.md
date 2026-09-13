@@ -244,7 +244,13 @@ and exact retained message, leaving the unsent draft untouched.
 `AgentChatReadReply` owns every user, commentary and answer body through the same
 safe reader, including plain prose. DOM selection crosses prose, tables and code;
 reader height events reserve each message’s wrapped space in the transcript. Native
-attributed text remains limited to expanded object previews. `AgentChatReplyQuotation`
+attributed text remains limited to expanded object previews. Chat reader updates are
+serialized and bound to the page generation and starting fingerprint; they reconcile
+sanitized blocks in the existing page rather than navigating on each text delta.
+Unchanged decorated blocks retain identity. Reader interaction suspends native follow;
+the transcript owns explicit return to latest. List order is a view-local snapshot
+while browsing, separate from live conversation timestamps. There is no second
+text-reveal timeline: the renderer presents the received source directly. `AgentChatReplyQuotation`
 validates bounded reader excerpts against the current reply identity and exact source. Whole-reply Copy retains original Markdown. The controller
 stages compact `AgentChatReplyQuote` values in the existing conversation draft,
 then retains them on the sent message. They are Agent prose, not Note snapshots;
@@ -302,8 +308,8 @@ A dispatch group tracks the listener, peers and admitted operations; a one-shot 
 reports drain completion or its deadline without waiting indefinitely for a source
 transaction that must finish despite cancellation. Peer workers close their own sockets.
 
-`AgentChatMarkdown` routes rich replies to `AgentChatReadReply` and plain text to
-the native text view. The safe reader owns rendering and continuous selection;
+`AgentChatMarkdown` routes all message bodies to `AgentChatReadReply`.
+The safe reader owns rendering and continuous selection;
 the Chat list owns vertical scrolling. `AgentChatScrollBoundary` routes transcript
 gestures before dispatch and retains one native recipient through momentum;
 it owns neither offsets nor layout. Obscured native scroller hits return to AppKit

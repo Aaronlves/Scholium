@@ -2,12 +2,16 @@ import SwiftUI
 
 /// Native disclosure semantics with a trailing, progressively revealed accessory.
 struct AgentChatDisclosureStyle: DisclosureGroupStyle {
+    var animates = true
+
     func makeBody(configuration: Configuration) -> some View {
-        Content(configuration: configuration)
+        Content(configuration: configuration, animates: animates)
     }
 
     private struct Content: View {
         let configuration: DisclosureGroupStyleConfiguration
+        let animates: Bool
+        @Environment(\.controlActiveState) private var windowState
         @State private var isHovered = false
         @FocusState private var isFocused: Bool
         @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -15,13 +19,21 @@ struct AgentChatDisclosureStyle: DisclosureGroupStyle {
         var body: some View {
             VStack(alignment: .leading, spacing: 6) {
                 Button {
-                    configuration.isExpanded.toggle()
+                    withAnimation(
+                        ScholiumMotion.disclosure(
+                            reduceMotion: reduceMotion || !animates || windowState == .inactive)
+                    ) {
+                        configuration.isExpanded.toggle()
+                    }
                 } label: {
                     HStack(spacing: 6) {
                         configuration.label
                         Image(systemName: "chevron.right")
                             .chatAccessory()
-                            .animation(ScholiumMotion.disclosure(reduceMotion: reduceMotion)) { image in
+                            .animation(
+                                ScholiumMotion.disclosure(
+                                    reduceMotion: reduceMotion || !animates || windowState == .inactive)
+                            ) { image in
                                 image.rotationEffect(.degrees(configuration.isExpanded ? 90 : 0))
                             }
                             .opacity(isHovered || isFocused ? 1 : 0)
@@ -46,7 +58,8 @@ struct AgentChatDisclosureStyle: DisclosureGroupStyle {
                 )
                 .scholiumActivationPointer()
                 .focused($isFocused)
-                .accessibilityValue(configuration.isExpanded ? String(localized: "Expanded") : String(localized: "Collapsed"))
+                .accessibilityValue(
+                    configuration.isExpanded ? String(localized: "Expanded") : String(localized: "Collapsed"))
                 if configuration.isExpanded { configuration.content }
             }
             .scholiumHoverState { isHovered = $0 }

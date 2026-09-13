@@ -89,15 +89,13 @@ struct AgentChatMarkdownBlock: Identifiable {
 struct AgentChatMarkdown: View {
     let text: String
     var expandsToFillWidth = true
-    var animatesStreaming = false
-    var revealsInitialText = false
     var quoteSelection: ((AgentChatReplySelection) -> Void)? = nil
     @Environment(\.openURL) private var openURL
 
     var body: some View {
         AgentChatReadReply(
             source: text, quote: quoteSelection, openLink: { openURL($0) },
-            fitsContent: !expandsToFillWidth, animatesStreaming: animatesStreaming, revealsInitialText: revealsInitialText
+            fitsContent: !expandsToFillWidth
         )
         .font(ScholiumChatAppearance.messageFont)
         .foregroundStyle(ScholiumChatAppearance.messageForeground)
@@ -129,7 +127,9 @@ struct AgentChatTimelineItem: Identifiable {
     static func group(_ messages: [AgentChatMessage]) -> [Self] {
         var items: [Self] = []
         for message in messages {
-            if Self.isProcess(message), items.last?.isProcess == true, items.last?.messages.last?.turnID == message.turnID {
+            if Self.isProcess(message), items.last?.isProcess == true,
+                items.last?.messages.last?.turnID == message.turnID
+            {
                 let previous = items.removeLast()
                 items.append(.init(messages: previous.messages + [message]))
             } else {
@@ -138,5 +138,16 @@ struct AgentChatTimelineItem: Identifiable {
             }
         }
         return items
+    }
+}
+
+private struct ChatReadingInteractionKey: EnvironmentKey {
+    static let defaultValue: @MainActor () -> Void = {}
+}
+
+extension EnvironmentValues {
+    var chatReadingInteraction: @MainActor () -> Void {
+        get { self[ChatReadingInteractionKey.self] }
+        set { self[ChatReadingInteractionKey.self] = newValue }
     }
 }

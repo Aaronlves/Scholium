@@ -26,6 +26,8 @@ struct AgentChatView: View {
     @State private var queueEditTarget: AgentChatQueueEditTarget?
     @State private var showsArchived = false
     @State private var deletionTarget: UUID?
+    @State private var readingIsPaused = false
+    @State private var conversationOrder = AgentChatListOrder()
     @State private var isAwayFromLatest = false
     @State private var transcriptIsScrolling = false
     @State private var transcriptIsAnimatingScroll = false
@@ -153,6 +155,7 @@ struct AgentChatView: View {
             diagnosticError = nil
             expandedActivityIDs = []
             isAwayFromLatest = false
+            readingIsPaused = false
             transcriptIsScrolling = false
             transcriptIsAnimatingScroll = false
             arrivalBaseline = nil
@@ -388,7 +391,7 @@ struct AgentChatView: View {
     private var conversationList: some View {
         let conversations = visibleConversations
         return List {
-            ForEach(conversations) { conversation in
+            ForEach(conversationOrder.arrange(conversations)) { conversation in
                 conversationRow(conversation)
                     .listRowSeparator(.visible, edges: .bottom)
             }
@@ -396,6 +399,9 @@ struct AgentChatView: View {
         .listStyle(.sidebar)
         .scrollContentBackground(.hidden)
         .accessibilityIdentifier("scholium.chat.conversations")
+        .onAppear { conversationOrder.reset(visibleConversations.map(\.id)) }
+        .onChange(of: visibleConversations.map(\.id)) { _, ids in conversationOrder.reconcile(ids) }
+        .onChange(of: showsArchived) { _, _ in conversationOrder.reset(visibleConversations.map(\.id)) }
         .overlay(alignment: .top) {
             if !controller.isLoaded && controller.error == nil {
                 ScholiumSidebarState(Text("Loading Conversations…"), indicator: .progress)
@@ -600,6 +606,7 @@ struct AgentChatView: View {
                         return .discarded
                     }
                 )
+                .environment(\.chatReadingInteraction, { readingIsPaused = true })
                 .simultaneousGesture(TapGesture().onEnded { completion.dismiss() })
                 .scrollEdgeEffectHidden(true, for: .bottom)
                 .onScrollPhaseChange { _, phase in
@@ -625,7 +632,8 @@ struct AgentChatView: View {
                         && previous.bottomDistance != current.bottomDistance
                     if transcriptIsScrolling || viewportMoved {
                         isAwayFromLatest = current.bottomDistance > 80
-                    } else if !isAwayFromLatest && (previous.height != current.height || previous.bottomInset != current.bottomInset) {
+                        if transcriptIsScrolling && current.bottomDistance <= 1 { readingIsPaused = false }
+                    } else if !isAwayFromLatest && !readingIsPaused && (previous.height != current.height || previous.bottomInset != current.bottomInset) {
                         proxy.scrollTo("latest", anchor: .bottom)
                     }
                 }
@@ -633,9 +641,10 @@ struct AgentChatView: View {
                     VStack(spacing: ScholiumSidebarLayout.itemSpacing) {
                         HStack(spacing: ScholiumSidebarLayout.itemSpacing) {
                             filesButton
-                            if isAwayFromLatest {
+                            if isAwayFromLatest || readingIsPaused {
                                 Button {
                                     isAwayFromLatest = false
+                                    readingIsPaused = false
                                     withAnimation(ScholiumMotion.chatReturnToLatest(reduceMotion: reduceMotion)) {
                                         proxy.scrollTo("latest", anchor: .bottom)
                                     }
@@ -690,7 +699,7 @@ struct AgentChatView: View {
                 isActive: controller.isBusy && controller.currentTurnID != nil && item.messages.first?.turnID == controller.currentTurnID,
                 forceExpanded: showsFind && item.messages.contains { $0.id == find.selectedID },
                 status: item.carriesTurnStatus(in: timelineMessages) ? turnPresentation(item.messages.first?.turnID) : nil,
-                preservesReading: isAwayFromLatest || transcriptIsScrolling,
+                preservesReading: isAwayFromLatest || readingIsPaused || transcriptIsScrolling,
                 hasInspectedActivity: item.messages.contains { expandedActivityIDs.contains($0.id) },
                 animates: isVisible && controller.approvals.isEmpty,
                 inspect: { isAwayFromLatest = true }
@@ -701,7 +710,7 @@ struct AgentChatView: View {
                     AgentChatPlanView(plan: plan)
                 } else {
                     AgentChatMarkdown(
-                        text: message.text, animatesStreaming: shouldAnimateStreaming(message), revealsInitialText: shouldAnimateArrival(message)
+                        text: message.text
                     ).foregroundStyle(.secondary)
                 }
             }
@@ -732,8 +741,6 @@ struct AgentChatView: View {
                 } else if !message.text.isEmpty {
                     AgentChatMarkdown(
                         text: message.text, expandsToFillWidth: message.role != .user,
-                        animatesStreaming: shouldAnimateStreaming(message),
-                        revealsInitialText: shouldAnimateArrival(message),
                         quoteSelection: canQuote(message) ? { selection in quote(message, selection: selection, in: conversationID) } : nil)
                 }
                 if message.role == .assistant, message.asyncQuestion == nil, message.phase != .commentary, !message.text.isEmpty,
@@ -765,7 +772,7 @@ struct AgentChatView: View {
         }
         .modifier(
             AgentChatMessageArrival(
-                enabled: shouldAnimateArrival(message) && !shouldAnimateStreaming(message),
+                enabled: shouldAnimateArrival(message),
                 waitsForContent: message.asyncQuestion == nil && !message.text.isEmpty)
         )
         .accessibilityElement(children: .contain)
@@ -804,13 +811,7 @@ struct AgentChatView: View {
     }
 
     private var allowsReplyMotion: Bool {
-        isVisible && !showsConversationList && !isAwayFromLatest && !transcriptIsScrolling && !controller.isRefreshingHistory
-    }
-
-    private func shouldAnimateStreaming(_ message: AgentChatMessage) -> Bool {
-        message.role == .assistant && message.asyncQuestion == nil && allowsReplyMotion
-            && controller.isBusy && controller.currentTurnID != nil && message.turnID == controller.currentTurnID
-            && controller.approvals.isEmpty && turnPresentation(message.turnID).isWorking
+        isVisible && !showsConversationList && !isAwayFromLatest && !readingIsPaused && !transcriptIsScrolling && !controller.isRefreshingHistory
     }
 
     @ViewBuilder private func quoteCards(_ quotes: [AgentChatReplyQuote], editable: Bool) -> some View {
@@ -1254,7 +1255,7 @@ struct AgentChatView: View {
             AgentChatInputDock(
                 requestID: pending.map { "approval:\($0.id)" } ?? asyncMessage.map { "question:\($0.id)" }, requestTitle: title,
                 requestCount: controller.approvals.count + (asyncMessage == nil ? 0 : 1), isActive: isVisible && !showsConversationList,
-                isReadingHistory: isAwayFromLatest || transcriptIsScrolling,
+                isReadingHistory: isAwayFromLatest || readingIsPaused || transcriptIsScrolling,
                 isEditingDraft: messageIsFocused
                     && (controller.selected?.draft.isEmpty == false
                         || (NSApp.keyWindow?.firstResponder as? NSTextView)?.hasMarkedText() == true),

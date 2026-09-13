@@ -35,3 +35,25 @@ enum AgentChatListFilter: String, CaseIterable {
         }
     }
 }
+
+/// Keep existing click and keyboard targets stationary during one list visit.
+struct AgentChatListOrder {
+    private(set) var ids: [UUID] = []
+
+    mutating func reset(_ newestFirst: [UUID]) { ids = newestFirst }
+
+    mutating func reconcile(_ newestFirst: [UUID]) {
+        let existing = Set(ids)
+        let visible = Set(newestFirst)
+        ids = newestFirst.filter { !existing.contains($0) } + ids.filter { visible.contains($0) }
+    }
+
+    func arrange(_ conversations: [AgentChatConversation]) -> [AgentChatConversation] {
+        let ranks = Dictionary(uniqueKeysWithValues: ids.enumerated().map { ($1, $0) })
+        return conversations.sorted {
+            let left = ranks[$0.id] ?? -1
+            let right = ranks[$1.id] ?? -1
+            return left == right ? $0.updatedAt > $1.updatedAt : left < right
+        }
+    }
+}

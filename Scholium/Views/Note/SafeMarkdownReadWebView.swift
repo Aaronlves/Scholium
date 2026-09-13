@@ -40,7 +40,6 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
     var onRenderingReady: (() -> Void)? = nil
     var onReplyEvent: ((ReadReplyEvent) -> Void)? = nil
     var replyQuoteRequest: UUID? = nil
-    var replyRevealPreviousHTML: String? = nil
     var onRenderedDiagramSize: ((CGSize) -> Void)? = nil
     var findRequest: DocumentFindPresentationRequest? = nil
     var onFindResult: ((UInt64, Result<DocumentFindResult, any Error>) -> Void)? = nil
@@ -85,7 +84,6 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             coordinator.testingScrollRestoreDelayMilliseconds = testingScrollRestoreDelayMilliseconds
         #endif
         coordinator.onReplyEvent = onReplyEvent
-        coordinator.replyRevealPreviousHTML = replyRevealPreviousHTML
         coordinator.onRenderedDiagramSize = onRenderedDiagramSize
         coordinator.onAskAgent = onAskAgent
         coordinator.onSourceRangeUnavailable = onSourceRangeUnavailable
@@ -140,10 +138,10 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         let webView = container.webView
         #if DEBUG
             context.coordinator.testingForcesFinalizationFailure = testingForcesFinalizationFailure
-            context.coordinator.testingScrollRestoreDelayMilliseconds = testingScrollRestoreDelayMilliseconds
+            context.coordinator.testingScrollRestoreDelayMilliseconds =
+                testingScrollRestoreDelayMilliseconds
         #endif
         context.coordinator.onReplyEvent = onReplyEvent
-        context.coordinator.updateReplyReveal(replyRevealPreviousHTML, in: webView)
         context.coordinator.quoteReply(ifRequested: replyQuoteRequest, in: webView)
         context.coordinator.onRenderedDiagramSize = onRenderedDiagramSize
         context.coordinator.onAskAgent = onAskAgent
@@ -222,18 +220,11 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         private var onRenderingFailure: ((String) -> Void)?
         private var onRenderingLoading: (() -> Void)?
         var onReplyEvent: ((ReadReplyEvent) -> Void)?
-        var replyRevealPreviousHTML: String?
+        private var replyNavigationReady = false
+        private var pendingReplyUpdate: (() -> Void)?
+        private var replyPageFingerprint: String?
+        private var replyUpdateTask: Task<Void, Never>?
 
-        func updateReplyReveal(_ previousHTML: String?, in webView: WKWebView) {
-            let wasEnabled = replyRevealPreviousHTML != nil
-            replyRevealPreviousHTML = previousHTML
-            guard wasEnabled, previousHTML == nil else { return }
-            webView.callAsyncJavaScript(
-                "if (window.scholiumReplyReveal?.loadGeneration === generation) window.scholiumReplyReveal.finish()",
-                arguments: ["generation": loadGeneration], in: nil,
-                in: SafeMarkdownReadWebView.bridgeContentWorld,
-                completionHandler: nil)
-        }
         private var consumedReplyQuote: UUID?
         var onRenderedDiagramSize: ((CGSize) -> Void)?
         private var onRenderingReady: (() -> Void)?
@@ -337,7 +328,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             webView: WKWebView
         ) {
             let documentChanged = self.documentID != documentID || self.fingerprint != fingerprint
-            if documentChanged {
+            if documentChanged && !(self.documentID == documentID && onReplyEvent != nil) {
                 loadedSignature = nil
                 finalizedSignature = nil
                 appliedLinkPreviewRevision = ""
@@ -410,6 +401,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             desiredLinkPreviews = linkPreviews
             desiredLinkPreviewRevision = previewRevision
             guard loadedSignature != signature else {
+                pendingReplyUpdate = nil
                 reannounceFinalizedRenderingIfNeeded(
                     signature: signature,
                     in: webView
@@ -417,6 +409,23 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 applyLinkPreviewsIfNeeded(in: webView)
                 applySelectionCommandsIfNeeded(in: webView)
                 applyFindRequestIfNeeded(in: webView)
+                return
+            }
+            if onReplyEvent != nil, hasLoadedPage, replyPageFingerprint != nil {
+                if replyNavigationReady {
+                    updateReply(
+                        body, source: source, signature: signature, presentationCSS: presentationCSS,
+                        userCSS: userCSS, in: webView)
+                } else {
+                    // Coalesce source received before the initial navigation finishes.
+                    // There is no isolated-world update API on the initial blank page.
+                    pendingReplyUpdate = { [weak self, weak webView] in
+                        guard let self, let webView else { return }
+                        self.updateReply(
+                            body, source: source, signature: signature, presentationCSS: presentationCSS,
+                            userCSS: userCSS, in: webView)
+                    }
+                }
                 return
             }
             selectionSource = source
@@ -429,6 +438,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 reason: hasLoadedPage ? .webViewRebuild : .documentLoad
             )
             hasLoadedPage = true
+            replyPageFingerprint = onReplyEvent != nil ? fingerprint : nil
             loadGeneration &+= 1
             let expectedLoadGeneration = loadGeneration
             activeLoadSignature = signature
@@ -451,7 +461,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 presentationCSS: presentationCSS,
                 userCSS: userCSS,
                 linkPreviews: linkPreviews,
-                includesMathRuntime: includesMathRuntime,
+                includesMathRuntime: includesMathRuntime || onReplyEvent != nil,
                 loadGeneration: loadGeneration,
                 localization: interfaceLocalization,
                 in: webView
@@ -462,7 +472,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 frontmatterHasAuthoredBodyBlankLine: sourceDocument.body.first == "\n"
                     || sourceDocument.body.first == "\r",
                 documentTitle: documentTitle,
-                includesMathRuntime: includesMathRuntime,
+                includesMathRuntime: includesMathRuntime || onReplyEvent != nil,
                 localization: interfaceLocalization
             )
             let expectedSignature = signature
@@ -502,6 +512,59 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                     self.loadGeneration == expectedLoadGeneration
                 else { return }
                 self.activeNavigation = navigation
+            }
+        }
+
+        /// Serial, revision-bound projection updates keep the page and its selection alive.
+        private func updateReply(
+            _ body: String, source: String, signature: String, presentationCSS: String, userCSS: String,
+            in webView: WKWebView
+        ) {
+            loadedSignature = signature
+            let generation = loadGeneration
+            let document = documentID
+            let revision = fingerprint
+            let previous = replyUpdateTask
+            replyUpdateTask = Task { @MainActor [weak self, weak webView] in
+                await previous?.value
+                guard let self, let webView, !Task.isCancelled,
+                    self.activeWebView === webView, self.loadGeneration == generation,
+                    self.loadedSignature == signature, let previousRevision = self.replyPageFingerprint
+                else { return }
+                defer { if self.loadedSignature == signature { self.replyUpdateTask = nil } }
+                do {
+                    guard body.utf8.count <= 16_777_216 else { throw CocoaError(.coderReadCorrupt) }
+                    let updated = try await webView.callAsyncJavaScript(
+                        """
+                        if (window.scholiumReadReady) await window.scholiumReadReady;
+                        return await window.scholiumUpdateReply?.(update) === true;
+                        """,
+                        arguments: [
+                            "update": [
+                                "version": 7, "documentID": document, "loadGeneration": generation,
+                                "previousFingerprint": previousRevision, "fingerprint": revision,
+                                "html": body, "presentationCSS": presentationCSS, "userCSS": userCSS,
+                            ]
+                        ], in: nil, contentWorld: SafeMarkdownReadWebView.bridgeContentWorld)
+                    guard self.activeWebView === webView, self.loadGeneration == generation else { return }
+                    guard updated as? Bool == true else { throw CocoaError(.coderReadCorrupt) }
+                    // A newer desired projection may already be queued; its starting
+                    // revision is the page we just acknowledged, not that desired value.
+                    self.replyPageFingerprint = revision
+                    guard self.loadedSignature == signature else { return }
+                    self.selectionSource = source
+                    self.sourceUTF16Length = source.utf16.count
+                    self.pageIsReady = true
+                    self.finalizedSignature = signature
+                    self.renderingReadinessIsAcknowledged = true
+                    webView.setAccessibilityIdentifier("scholium.renderedDocument.\(document)")
+                    self.onRenderingReady?()
+                } catch {
+                    guard self.activeWebView === webView, self.loadGeneration == generation,
+                        self.loadedSignature == signature
+                    else { return }
+                    self.onRenderingFailure?(error.localizedDescription)
+                }
             }
         }
 
@@ -546,7 +609,6 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                         loadGeneration: loadGeneration,
                         selectionEnabled: onSelectionChange != nil,
                         chatReply: onReplyEvent != nil,
-                        chatReplyPreviousHTML: replyRevealPreviousHTML,
                         linkPreviews: linkPreviews,
                         presentationCSS: presentationCSS,
                         userCSS: userCSS,
@@ -621,16 +683,21 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         ) {
             guard message.name == Self.messageHandlerName,
                 let payload = message.body as? [String: Any],
-                payload["version"] as? Int == 6,
+                payload["version"] as? Int == 7,
                 payload["documentID"] as? String == documentID,
-                payload["fingerprint"] as? String == fingerprint,
                 (payload["loadGeneration"] as? NSNumber)?.uint64Value == loadGeneration,
-                let type = payload["type"] as? String
+                let type = payload["type"] as? String,
+                payload["fingerprint"] as? String == fingerprint
+                    || (type == "replyInteraction" && onReplyEvent != nil)
             else { return }
 
             switch type {
+            case "replyInteraction":
+                onReplyEvent?(.interaction)
             case "replyLayout":
-                if let height = payload["height"] as? Double, height.isFinite, height > 0, height < 1_000_000 {
+                if let height = payload["height"] as? Double, height.isFinite, height > 0,
+                    height < 1_000_000
+                {
                     let width = payload["intrinsicWidth"] as? Double
                     guard
                         payload["intrinsicWidth"] is NSNull
@@ -654,7 +721,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 if let index = payload["index"] as? Int, index >= 0, index < 10_000,
                     let action = payload["action"] as? String, ["copy", "open"].contains(action),
                     let width = payload["width"] as? Double, let height = payload["height"] as? Double,
-                    width.isFinite, height.isFinite, width > 0, height > 0, width < 1_000_000, height < 1_000_000,
+                    width.isFinite, height.isFinite, width > 0, height > 0, width < 1_000_000,
+                    height < 1_000_000,
                     let left = payload["left"] as? Double, let top = payload["top"] as? Double,
                     left.isFinite, top.isFinite, let view = message.webView
                 {
@@ -669,8 +737,11 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                     surface.kind != .selection || onAskAgent != nil
                 else { return }
                 let expectedGeneration = loadGeneration
-                floatingSurfaces.present(surface, in: webView, inquire: onAskAgent) { [weak self, weak webView] id, action, index in
-                    guard let self, let webView, self.loadGeneration == expectedGeneration else { return false }
+                floatingSurfaces.present(surface, in: webView, inquire: onAskAgent) {
+                    [weak self, weak webView] id, action, index in
+                    guard let self, let webView, self.loadGeneration == expectedGeneration else {
+                        return false
+                    }
                     let accepted = try? await webView.callAsyncJavaScript(
                         "return window.scholiumNativeFloatingEvent?.(id, action, index)",
                         arguments: ["id": id, "action": action, "index": index],
@@ -730,7 +801,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             {
                 exact = MarkdownReviewSourceSelection.exactReviewRange(
                     blockLower: lower, blockUpper: upper,
-                    blockText: text, selectionLower: start, selectionUpper: end, excerpt: selected, source: selectionSource)
+                    blockText: text, selectionLower: start, selectionUpper: end, excerpt: selected,
+                    source: selectionSource)
             }
             return MarkdownReviewSelection(
                 startLine: max(1, payload["startLine"] as? Int ?? 1),
@@ -747,6 +819,12 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             _ webView: WKWebView,
             didFinish navigation: WKNavigation!
         ) {
+            if onReplyEvent != nil, activeNavigation === navigation {
+                replyNavigationReady = true
+                let pending = pendingReplyUpdate
+                pendingReplyUpdate = nil
+                pending?()
+            }
             guard let activeNavigation,
                 activeNavigation === navigation,
                 let expectedSignature = activeLoadSignature,
@@ -845,11 +923,6 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                         "scholium.renderedDocument.\(expectedDocumentID)"
                     )
                     await self.reportDiagramSize(in: webView, signature: expectedSignature)
-                    if self.onReplyEvent != nil && self.replyRevealPreviousHTML == nil {
-                        _ = try await webView.callAsyncJavaScript(
-                            "window.scholiumReplyReveal?.finish()", arguments: [:], in: nil,
-                            contentWorld: SafeMarkdownReadWebView.bridgeContentWorld)
-                    }
                     guard
                         self.isCurrentLoad(
                             navigation: navigation, generation: expectedLoadGeneration,
@@ -1068,7 +1141,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             let hasPendingRequest = scrollRestoration.hasPendingRequest(
                 fingerprint: fingerprint
             )
-            let hasPendingLocation = sourceLocationRequest.map { $0.id != lastReachedSourceLocationID } == true
+            let hasPendingLocation =
+                sourceLocationRequest.map { $0.id != lastReachedSourceLocationID } == true
             guard hasPendingRequest || hasPendingLocation else { return }
 
             let generation = loadGeneration
@@ -1154,6 +1228,10 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         }
 
         func cancelPendingPageWork(keepingLoadIdentity: Bool = false) {
+            replyUpdateTask?.cancel()
+            replyUpdateTask = nil
+            pendingReplyUpdate = nil
+            replyNavigationReady = false
             floatingSurfaces.dismiss()
             loadFinalizationTask?.cancel()
             loadFinalizationTask = nil
@@ -1235,7 +1313,9 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             signature: String,
             in webView: WKWebView
         ) async {
-            guard let request = sourceLocationRequest, request.id != lastReachedSourceLocationID else { return }
+            guard let request = sourceLocationRequest, request.id != lastReachedSourceLocationID else {
+                return
+            }
             guard isCurrentLoad(generation: generation, signature: signature, in: webView) else { return }
             if let expected = request.sourceFingerprint, expected != fingerprint {
                 lastReachedSourceLocationID = request.id
@@ -1243,7 +1323,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 return
             }
             if request.requiresExactSelection, let range = request.range {
-                await selectSourceRange(range, requestID: request.id, generation: generation, signature: signature, in: webView)
+                await selectSourceRange(
+                    range, requestID: request.id, generation: generation, signature: signature, in: webView)
                 return
             }
             guard let line = request.line,
@@ -1310,7 +1391,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 let blockText = block["blockText"] as? String,
                 MarkdownReviewSourceSelection.exactReviewRange(
                     blockLower: blockLower, blockUpper: blockUpper,
-                    blockText: blockText, selectionLower: lower - blockLower, selectionUpper: upper - blockLower,
+                    blockText: blockText, selectionLower: lower - blockLower,
+                    selectionUpper: upper - blockLower,
                     excerpt: String(selectionSource[selected]), source: selectionSource) == lower..<upper
             {
                 let result = try? await webView.callAsyncJavaScript(
@@ -1451,7 +1533,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             if lines.last == "" { lines.removeLast() }
             let renderedLines = lines.map(frontmatterLineMarkup).joined()
             let label = escapedHTMLText(localization.string("YAML frontmatter"))
-            let delimiter = "<div class=\"scholium-frontmatter-line scholium-frontmatter-delimiter-line\" aria-hidden=\"true\">---</div>"
+            let delimiter =
+                "<div class=\"scholium-frontmatter-line scholium-frontmatter-delimiter-line\" aria-hidden=\"true\">---</div>"
             let wrapperClass =
                 hasAuthoredBodyBlankLine
                 ? "scholium-frontmatter-source scholium-frontmatter-followed-by-blank-line"
@@ -1473,11 +1556,13 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 let valueStart = line.index(after: colon)
                 let value = String(line[valueStart...])
                 let valueClass = frontmatterValueClass(value)
-                content = "<span class=\"cm-live-yaml-key\">\(escapedHTMLText(key))</span>:<span class=\"\(valueClass)\">\(escapedHTMLText(value))</span>"
+                content =
+                    "<span class=\"cm-live-yaml-key\">\(escapedHTMLText(key))</span>:<span class=\"\(valueClass)\">\(escapedHTMLText(value))</span>"
             } else {
                 content = "<span class=\"\(frontmatterValueClass(line))\">\(escapedHTMLText(line))</span>"
             }
-            return "<div class=\"scholium-frontmatter-line\" data-scholium-yaml-rendered=\"true\" dir=\"auto\">\(content)</div>"
+            return
+                "<div class=\"scholium-frontmatter-line\" data-scholium-yaml-rendered=\"true\" dir=\"auto\">\(content)</div>"
         }
 
         private static func frontmatterValueClass(_ value: String) -> String {
@@ -1526,7 +1611,6 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             let loadGeneration: UInt64
             let selectionEnabled: Bool
             let chatReply: Bool
-            let chatReplyPreviousHTML: String?
             let testingEnabled: Bool
             let presentationCSS: String
             let userCSS: String
@@ -1544,7 +1628,6 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             loadGeneration: UInt64,
             selectionEnabled: Bool,
             chatReply: Bool = false,
-            chatReplyPreviousHTML: String? = nil,
             linkPreviews: [DocumentLinkPreview],
             presentationCSS: String,
             userCSS: String,
@@ -1570,13 +1653,12 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 )
             }
             let configuration = ReadBridgeConfiguration(
-                version: 6,
+                version: 7,
                 documentID: documentID,
                 fingerprint: fingerprint,
                 loadGeneration: loadGeneration,
                 selectionEnabled: selectionEnabled,
                 chatReply: chatReply,
-                chatReplyPreviousHTML: chatReplyPreviousHTML,
                 testingEnabled: testingEnabled,
                 presentationCSS: presentationCSS,
                 userCSS: userCSS,
@@ -1644,6 +1726,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
 }
 
 enum ReadReplyEvent {
+    case interaction
     case layout(height: CGFloat, intrinsicWidth: CGFloat?)
     case quote(String)
     case noteContext(URL, point: NSPoint, view: NSView)

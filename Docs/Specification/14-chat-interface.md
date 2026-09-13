@@ -18,6 +18,8 @@ strip Markdown while retaining search matches. Draft, Unread, Important
 and current activity have text equivalents; completed turns carry no checkmark.
 One click opens; native button focus and keyboard activation remain available. Organize switches
 current and archived lists, without batch mode.
+While the list is open, existing rows retain their order as live previews update.
+Re-entering the list refreshes recency order; newly visible conversations remain discoverable.
 Left swipe reveals Archive for current conversations, Delete and Restore for
 archives. Right swipe toggles read and
 important markers. Read/Important/Archive use system blue/orange/purple; Delete uses its destructive
@@ -33,6 +35,8 @@ lets the latest message and every action scroll fully clear of the controls;
 growing drafts and material changes update that inset without moving a researcher
 reading earlier messages. New replies follow the bottom only while already there;
 otherwise a compact latest-reply action preserves the reading position.
+Selecting or operating reply content also pauses automatic follow until the
+researcher returns to the latest reply. Streaming preserves the active passage selection.
 A disconnected-state Connect Codex action starts initial setup or retries a real
 unresolved failure; restored connections require no repeated setup. Sign-in appears
 only when needed. Connection editing belongs in
@@ -386,13 +390,13 @@ Motion follows native controls and containers under §19. Card disclosure and ta
 selection use system transitions; request-to-confirmation feedback changes in
 place with a persistent label and restrained native symbol replacement. Reduce
 Motion supplies the same state immediately. No full-form transition replaces an
-active answer field, restarts its identity, or delays a decision. Streaming displays
-arriving text with a brief, bounded progressive reveal of newly received prose.
-The complete received text remains authoritative; presentation neither throttles
-the runtime nor invents pending work. Existing text does not replay. Code, tables
-and mathematics remain complete. Completion, Stop, selection, copying, history
-reading, inactive presentation and Reduce Motion reveal all received text
-immediately. Newly sent messages and arriving replies may
+active answer field, restarts its identity, or delays a decision. Streaming directly
+renders received content in the retained reading surface. It has no separate
+visible-character counter, concealed text ranges or synthetic typing delay.
+The received text remains authoritative; later chunks complete its Markdown
+projection without replaying existing text. Completion, Stop, selection, copying,
+history reading and accessibility adaptation never leave received text hidden.
+Newly sent messages and arriving replies may
 fade in once, locally, without moving the transcript. Opening retained history,
 reading earlier messages and Reduce Motion show content immediately. Explicit
 process disclosure uses a short native transition; automatic completion collapse

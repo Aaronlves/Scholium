@@ -9,14 +9,10 @@ struct AgentChatReadReply: View {
     let quote: ((AgentChatReplySelection) -> Void)?
     let openLink: (URL) -> Void
     var fitsContent = false
-    var animatesStreaming = false
-    var revealsInitialText = false
+    @Environment(\.chatReadingInteraction) private var readingInteraction
     @Environment(\.openChatNoteInSeparateWindow) private var openSeparate
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.colorSchemeContrast) private var contrast
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.controlActiveState) private var windowState
-    @State private var previousHTML: String?
     @State private var projection: Projection?
     @State private var ready = false
     @State private var height: CGFloat = 120
@@ -53,8 +49,7 @@ struct AgentChatReadReply: View {
                     selectionSurfaceIsActive: false, renderingReadinessIsAcknowledged: ready,
                     onRenderingFailure: { failure = $0 }, onRenderingLoading: { ready = false },
                     onRenderingReady: { ready = true }, onReplyEvent: { receive($0, expectedSource: projection.document.rawContent) },
-                    replyQuoteRequest: quoteRequest,
-                    replyRevealPreviousHTML: revealPreviousHTML
+                    replyQuoteRequest: quoteRequest
                 )
                 .frame(maxWidth: fitsContent ? intrinsicWidth ?? .infinity : .infinity)
                 .frame(height: height)
@@ -72,22 +67,14 @@ struct AgentChatReadReply: View {
         .task(id: source) {
             preview.close()
             failure = nil
-            ready = false
-            previousHTML = projection?.html ?? (revealsInitialText ? "" : nil)
             projection = Projection(source)
         }
-    }
-
-    private var revealPreviousHTML: String? {
-        guard animatesStreaming, !reduceMotion, contrast != .increased, windowState != .inactive,
-            let previousHTML, previousHTML.utf8.count <= 262_144
-        else { return nil }
-        return previousHTML
     }
 
     private func receive(_ event: ReadReplyEvent, expectedSource: String) {
         guard expectedSource == source else { return }
         switch event {
+        case .interaction: readingInteraction()
         case .layout(let value, let width):
             height = value
             intrinsicWidth = width
@@ -124,7 +111,6 @@ struct AgentChatReadReply: View {
             + ScholiumChatAppearance.messageBodyCSS
             + ScholiumChatAppearance.inlineCodeCSS(dark: colorScheme == .dark, increasedContrast: contrast == .increased) + """
                 html, body { overflow: hidden; }
-                ::highlight(scholium-reply-pending) { color: transparent; text-decoration-color: transparent; }
                 .scholium-document a { color: var(--scholium-document-accent); text-decoration-color: currentColor; }
                 .scholium-document a:hover {
                     color: var(--scholium-color-accent);

@@ -7,38 +7,30 @@ import WebKit
 @testable import ScholiumApp
 
 extension MarkdownEditorWebViewIntegrationTests {
-    @Test("A reply configured for progressive reveal retains complete text, layout and native selection")
-    func chatReplyProgressiveReveal() async throws {
+    @Test("Received reply text is immediately readable and selectable")
+    func chatReplyImmediateContent() async throws {
         let source = "Existing " + String(repeating: "中文 👩‍💻 e\u{301} reply. ", count: 20)
         let document = NoteDocument(relativePath: "Reply.md", rawContent: source)
         let harness = ReadHarness(
             source: source, htmlBody: SafeMarkdownRenderer.render(document).htmlBody,
             fingerprint: document.fingerprint.sha256, initialAnchor: nil, initialScrollFraction: 0,
-            laysOutForNativePreview: true, chatReply: true, replyRevealPreviousHTML: "<p>Existing </p>")
+            laysOutForNativePreview: true, chatReply: true)
         defer { harness.close() }
         try await harness.waitUntilReady()
         let snapshot = try #require(
             try await harness.callBridgeJavaScript(
                 """
                 const root = document.getElementById('scholium-document');
-                const pending = CSS.highlights.get('scholium-reply-pending');
-                const range = pending ? [...pending][0] : null;
-                const before = {text: root.textContent.trim(), installed: !!window.scholiumReplyReveal,
-                    start: range?.startOffset, height: root.getBoundingClientRect().height};
+                const before = {text: root.textContent.trim(), height: root.getBoundingClientRect().height};
                 const selection = window.getSelection();
                 const all = document.createRange(); all.selectNodeContents(root);
                 selection.removeAllRanges(); selection.addRange(all);
                 document.dispatchEvent(new Event('selectionchange'));
-                return {...before, cleared: !CSS.highlights.has('scholium-reply-pending'),
+                return {...before,
                     selected: selection.toString().trim(), finalHeight: root.getBoundingClientRect().height};
                 """) as? [String: Any])
         #expect(snapshot["text"] as? String == source.trimmingCharacters(in: .whitespacesAndNewlines))
         #expect(snapshot["selected"] as? String == snapshot["text"] as? String)
-        #expect(snapshot["installed"] as? Bool == true)
-        // Native readiness can arrive after the bounded animation has finished.
-        // Frame-by-frame progression is checked with a controlled clock in WebEditor.
-        if let start = snapshot["start"] as? Int { #expect(start >= "Existing ".utf16.count) }
-        #expect(snapshot["cleared"] as? Bool == true)
         #expect(snapshot["height"] as? Double == snapshot["finalHeight"] as? Double)
     }
 
@@ -2079,8 +2071,7 @@ extension MarkdownEditorWebViewIntegrationTests {
             testingForcesFinalizationFailure: Bool = false,
             testingScrollRestoreDelayMilliseconds: Int = 0,
             laysOutForNativePreview: Bool = false,
-            chatReply: Bool = false,
-            replyRevealPreviousHTML: String? = nil
+            chatReply: Bool = false
         ) {
             _ = NSApplication.shared
             self.source = source
@@ -2112,7 +2103,6 @@ extension MarkdownEditorWebViewIntegrationTests {
                 documentTitle: documentTitle,
                 userCSS: userCSS,
                 sourceBox: sourceBox,
-                replyRevealPreviousHTML: replyRevealPreviousHTML,
                 laysOutForNativePreview: laysOutForNativePreview
             )
             let controller = NSHostingController(rootView: root)
@@ -2952,7 +2942,6 @@ extension MarkdownEditorWebViewIntegrationTests {
         let documentTitle: String
         let userCSS: String
         @ObservedObject var sourceBox: SourceBox
-        let replyRevealPreviousHTML: String?
         let laysOutForNativePreview: Bool
 
         var body: some View {
@@ -2976,7 +2965,6 @@ extension MarkdownEditorWebViewIntegrationTests {
                 onRenderingLoading: { sourceBox.isReady = false },
                 onRenderingReady: { sourceBox.isReady = true },
                 onReplyEvent: sourceBox.chatReplyEnabled ? { sourceBox.replyEvents.append($0) } : nil,
-                replyRevealPreviousHTML: replyRevealPreviousHTML,
                 onRenderedDiagramSize: { sourceBox.diagramSize = $0 },
                 observedScrollPosition: sourceBox.observedScrollPosition,
                 scrollRestoreRequest: sourceBox.restoration.map { restoration in

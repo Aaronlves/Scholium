@@ -2,7 +2,7 @@ import {describe, expect, it} from "vitest";
 import {validatedReaderConfiguration} from "../reader-configuration";
 
 const currentConfiguration = {
-  version: 6,
+  version: 7,
   documentID: "work-001",
   fingerprint: "a".repeat(64),
   loadGeneration: 3,
@@ -21,9 +21,6 @@ describe("reader configuration", () => {
 
   it("rejects unknown versions and unbounded identities", () => {
     expect(validatedReaderConfiguration({...currentConfiguration, version: 5})).toBeNull();
-    expect(validatedReaderConfiguration({...currentConfiguration, chatReplyPreviousHTML: '<p>old</p>'})).toBeNull();
-    expect(validatedReaderConfiguration({...currentConfiguration, chatReply: true, chatReplyPreviousHTML: 'x'.repeat(262_145)})).toBeNull();
-    expect(validatedReaderConfiguration({...currentConfiguration, chatReply: true, chatReplyPreviousHTML: '<p>old</p>'})).not.toBeNull();
     expect(validatedReaderConfiguration({...currentConfiguration, version: 2})).toBeNull();
     expect(validatedReaderConfiguration({
       ...currentConfiguration,

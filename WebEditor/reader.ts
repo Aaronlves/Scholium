@@ -1,5 +1,5 @@
+import {createReplyProjection} from './chat-reply-projection';
 import {installChatReply} from "./chat-reply";
-import {installReplyReveal} from "./chat-reply-reveal";
 import {createSelectionActions} from "./selection-actions";
 import {createReaderArrival} from "./arrival-highlight";
 import {createNativeFloatingBridge, previewSurface} from "./native-floating";
@@ -36,7 +36,7 @@ interface ReaderScrollEntry {
 }
 
 type ReaderWindow = Window & {
-  scholiumReplyReveal?: ReturnType<typeof installReplyReveal> & {loadGeneration: number};
+  scholiumUpdateReply?: (value: unknown) => Promise<boolean>;
   webkit?: {messageHandlers?: {scholiumRead?: ReaderMessageHandler}};
   scholiumReadReady?: Promise<void>;
   scholiumReadNavigation?: ReturnType<typeof createReaderArrival>;
@@ -67,15 +67,17 @@ async function initializeReader(value: unknown): Promise<void> {
   const config = validatedReaderConfiguration(value);
   if (!config) throw new Error("Invalid reader configuration.");
   const {
-    version, documentID, fingerprint, loadGeneration,
+    version, documentID, loadGeneration,
     selectionEnabled, presentationCSS, userCSS, localization, linkPreviews,
     testingEnabled,
   } = config;
+  let fingerprint = config.fingerprint;
   const presentationStyle = requiredElement<HTMLStyleElement>('scholium-presentation-css');
   const userStyle = requiredElement<HTMLStyleElement>('scholium-user-css');
   presentationStyle.textContent = presentationCSS;
   userStyle.textContent = userCSS;
   const documentRoot = requiredElement('scholium-document');
+  const replyProjection = config.chatReply ? createReplyProjection(documentRoot) : null;
   readerWindow.scholiumReadNavigation?.destroy();
   readerWindow.scholiumReadNavigation = createReaderArrival(documentRoot);
   window.addEventListener('pagehide', () => readerWindow.scholiumReadNavigation?.destroy(), {once: true});
@@ -161,7 +163,7 @@ async function initializeReader(value: unknown): Promise<void> {
   function renderMathNodes() {
     const runtime = readerWindow.scholiumMath;
     if (!runtime || runtime.version !== 1) return;
-    document.querySelectorAll<HTMLElement>('.scholium-math[data-math-source][data-math-kind]').forEach(element => {
+    document.querySelectorAll<HTMLElement>('.scholium-math[data-math-source][data-math-kind]:not(.scholium-math-rendered):not(.scholium-math-error)').forEach(element => {
       try {
         const encodedSource = element.dataset.mathSource;
         const kind = element.dataset.mathKind;
@@ -322,9 +324,31 @@ async function initializeReader(value: unknown): Promise<void> {
   await readerWindow.scholiumMermaidReady;
   if (config.chatReply === true) {
     const disposeReply = installChatReply(documentRoot, post, localized);
-    const reveal = installReplyReveal(documentRoot, config.chatReplyPreviousHTML);
-    readerWindow.scholiumReplyReveal = {...reveal, loadGeneration};
-    window.addEventListener('pagehide', reveal.destroy, {once: true});
+    replyProjection!.commit();
+    readerWindow.scholiumUpdateReply = async value => {
+      if (!value || typeof value !== 'object') return false;
+      const update = value as Record<string, unknown>;
+      if (update.version !== version || update.documentID !== documentID || update.loadGeneration !== loadGeneration
+          || update.previousFingerprint !== fingerprint || typeof update.fingerprint !== 'string'
+          || !update.fingerprint || update.fingerprint.length > 256
+          || typeof update.html !== 'string' || update.html.length > 16_777_216
+          || typeof update.presentationCSS !== 'string' || typeof update.userCSS !== 'string') return false;
+      const restoreSelection = replyProjection!.apply(update.html);
+      fingerprint = update.fingerprint;
+      presentationStyle.textContent = update.presentationCSS;
+      userStyle.textContent = update.userCSS;
+      renderMathNodes();
+      readerWindow.scholiumMermaidReady = renderMermaidNodes();
+      await readerWindow.scholiumMermaidReady;
+      documentRoot.querySelectorAll<HTMLElement>('h1, h2, h3, h4, h5, h6').forEach(heading => {
+        heading.setAttribute('role', 'heading');
+        heading.setAttribute('aria-level', String(bodyHeadingAccessibilityLevel(Number(heading.tagName.slice(1)))));
+      });
+      disposeReply.refresh();
+      replyProjection!.commit();
+      restoreSelection();
+      return true;
+    };
     window.addEventListener('pagehide', disposeReply, {once: true});
   }
   for (const mediaQuery of [

@@ -1,5 +1,90 @@
 "use strict";
 (() => {
+  // chat-reply-projection.ts
+  function createReplyProjection(root) {
+    let sourceNodes = [...root.childNodes].map((node) => node.cloneNode(true));
+    let renderedNodes = [...root.childNodes];
+    const commit = () => {
+      renderedNodes = [...root.childNodes];
+    };
+    function patch(current, previous, next) {
+      if (previous.isEqualNode(next)) return current;
+      if (current.nodeType === 3 && next.nodeType === 3) {
+        const text = current;
+        const value = next.textContent || "";
+        let prefix = 0;
+        while (prefix < text.length && prefix < value.length && text.data[prefix] === value[prefix]) prefix++;
+        text.replaceData(prefix, text.length - prefix, value.slice(prefix));
+        return current;
+      }
+      if (current.nodeType === 1 && next.nodeType === 1 && current.isEqualNode(previous) && current.tagName === next.tagName) {
+        const element = current;
+        for (const attribute of [...element.attributes]) element.removeAttribute(attribute.name);
+        for (const attribute of [...next.attributes]) element.setAttribute(attribute.name, attribute.value);
+        const oldChildren = [...previous.childNodes];
+        const children = [...current.childNodes];
+        [...next.childNodes].forEach((child, index) => {
+          const updated = children[index] ? patch(children[index], oldChildren[index], child) : child.cloneNode(true);
+          if (!children[index]) current.appendChild(updated);
+          else if (updated !== children[index]) current.replaceChild(updated, children[index]);
+        });
+        children.slice(next.childNodes.length).forEach((child) => child.parentNode?.removeChild(child));
+        return current;
+      }
+      return next.cloneNode(true);
+    }
+    function apply(html) {
+      const selection = root.ownerDocument.defaultView?.getSelection();
+      const range = selection?.rangeCount && !selection.isCollapsed ? selection.getRangeAt(0) : null;
+      const selected = range && root.contains(range.commonAncestorContainer) ? range.toString() : "";
+      let offset = 0;
+      let backward = false;
+      if (selected && range && selection) {
+        const before = range.cloneRange();
+        before.selectNodeContents(root);
+        before.setEnd(range.startContainer, range.startOffset);
+        offset = before.toString().length;
+        backward = selection.anchorNode === range.endContainer && selection.anchorOffset === range.endOffset;
+      }
+      const template = root.ownerDocument.createElement("template");
+      template.innerHTML = html;
+      const nextNodes = [...template.content.childNodes];
+      nextNodes.forEach((next, index) => {
+        const current = renderedNodes[index];
+        const updated = current ? patch(current, sourceNodes[index], next) : next.cloneNode(true);
+        if (!current) root.appendChild(updated);
+        else if (updated !== current) root.replaceChild(updated, current);
+      });
+      renderedNodes.slice(nextNodes.length).forEach((node) => node.parentNode?.removeChild(node));
+      sourceNodes = nextNodes.map((node) => node.cloneNode(true));
+      commit();
+      return () => {
+        if (!selected || !selection || selection.toString() === selected) return;
+        const text = root.textContent || "";
+        if (text.slice(offset, offset + selected.length) !== selected) {
+          const candidate = text.indexOf(selected);
+          if (candidate < 0 || text.indexOf(selected, candidate + 1) >= 0) return;
+          offset = candidate;
+        }
+        const walker = root.ownerDocument.createTreeWalker(root, 4);
+        let position = 0;
+        let start;
+        let end;
+        while (walker.nextNode()) {
+          const node = walker.currentNode;
+          if (!start && position + node.length >= offset) start = [node, offset - position];
+          if (position + node.length >= offset + selected.length) {
+            end = [node, offset + selected.length - position];
+            break;
+          }
+          position += node.length;
+        }
+        if (start && end) selection.setBaseAndExtent(...backward ? end : start, ...backward ? start : end);
+      };
+    }
+    return { apply, commit };
+  }
+
   // chat-reply.ts
   function installChatReply(root, post, localized) {
     const quote = () => {
@@ -28,56 +113,69 @@
       event.stopPropagation();
       post("replyNoteContext", { url, left: event.clientX, top: event.clientY });
     };
+    const interact = () => post("replyInteraction", {});
+    const selected = () => {
+      const selection = window.getSelection();
+      if (selection && !selection.isCollapsed && root.contains(selection.anchorNode)) interact();
+    };
+    root.addEventListener("pointerdown", interact);
+    root.addEventListener("keydown", interact);
+    root.ownerDocument.addEventListener("selectionchange", selected);
     root.addEventListener("contextmenu", noteContextMenu);
     root.addEventListener("keydown", keydown);
     root.tabIndex = 0;
-    root.querySelectorAll("table, pre, .scholium-mermaid").forEach((element) => {
-      if (element.closest(".scholium-mermaid") !== element && element.closest(".scholium-mermaid")) return;
-      if (element.parentElement?.closest("pre, table, .scholium-mermaid")) return;
-      element.dataset.replyObject = "true";
-    });
-    root.querySelectorAll("[data-reply-object]").forEach((element, index) => {
-      const wrapper = document.createElement("div");
-      wrapper.className = "scholium-reply-object";
-      const controls = document.createElement("div");
-      controls.className = "scholium-reply-controls";
-      controls.style.userSelect = "none";
-      for (const [label, symbol, action] of [["Copy", "doc-on-doc", "copy"], ["Expand", "arrow-up-left-and-arrow-down-right", "open"]]) {
-        const button = document.createElement("button");
-        button.type = "button";
-        const icon = document.createElement("span");
-        icon.setAttribute("aria-hidden", "true");
-        icon.style.setProperty("--reply-symbol", `var(--scholium-system-symbol-${symbol})`);
-        button.append(icon);
-        button.title = localized(label);
-        button.setAttribute("aria-label", localized(label));
-        button.addEventListener("click", () => {
-          const svg = element.querySelector(".scholium-mermaid-output")?.shadowRoot?.querySelector("svg");
-          const box = svg?.viewBox.baseVal;
-          const anchor = button.getBoundingClientRect();
-          post("replyObject", {
-            index,
-            action,
-            left: anchor.left,
-            top: anchor.top,
-            width: box?.width || element.scrollWidth,
-            height: box?.height || element.getBoundingClientRect().height
+    const decorateObjects = () => {
+      root.querySelectorAll("table, pre, .scholium-mermaid").forEach((element) => {
+        if (element.closest(".scholium-mermaid") !== element && element.closest(".scholium-mermaid")) return;
+        if (element.parentElement?.closest("pre, table, .scholium-mermaid")) return;
+        element.dataset.replyObject = "true";
+      });
+      root.querySelectorAll("[data-reply-object]").forEach((element) => {
+        if (element.closest(".scholium-reply-object")) return;
+        const wrapper = document.createElement("div");
+        wrapper.className = "scholium-reply-object";
+        const controls = document.createElement("div");
+        controls.className = "scholium-reply-controls";
+        controls.style.userSelect = "none";
+        for (const [label, symbol, action] of [["Copy", "doc-on-doc", "copy"], ["Expand", "arrow-up-left-and-arrow-down-right", "open"]]) {
+          const button = document.createElement("button");
+          button.type = "button";
+          const icon = document.createElement("span");
+          icon.setAttribute("aria-hidden", "true");
+          icon.style.setProperty("--reply-symbol", `var(--scholium-system-symbol-${symbol})`);
+          button.append(icon);
+          button.title = localized(label);
+          button.setAttribute("aria-label", localized(label));
+          button.addEventListener("click", () => {
+            const svg = element.querySelector(".scholium-mermaid-output")?.shadowRoot?.querySelector("svg");
+            const box = svg?.viewBox.baseVal;
+            const anchor = button.getBoundingClientRect();
+            const index = [...root.querySelectorAll("[data-reply-object]")].indexOf(element);
+            post("replyObject", {
+              index,
+              action,
+              left: anchor.left,
+              top: anchor.top,
+              width: box?.width || element.scrollWidth,
+              height: box?.height || element.getBoundingClientRect().height
+            });
           });
-        });
-        controls.append(button);
-      }
-      const tableScroller = element.parentElement?.classList.contains("scholium-table-scroll") ? element.parentElement : null;
-      if (tableScroller) {
-        tableScroller.before(wrapper);
-        wrapper.append(controls, tableScroller);
-      } else {
-        const scroller = document.createElement("div");
-        scroller.className = "scholium-reply-object-scroll";
-        element.before(wrapper);
-        wrapper.append(controls, scroller);
-        scroller.append(element);
-      }
-    });
+          controls.append(button);
+        }
+        const tableScroller = element.parentElement?.classList.contains("scholium-table-scroll") ? element.parentElement : null;
+        if (tableScroller) {
+          tableScroller.before(wrapper);
+          wrapper.append(controls, tableScroller);
+        } else {
+          const scroller = document.createElement("div");
+          scroller.className = "scholium-reply-object-scroll";
+          element.before(wrapper);
+          wrapper.append(controls, scroller);
+          scroller.append(element);
+        }
+      });
+    };
+    decorateObjects();
     const reportSize = () => {
       let intrinsicWidth = null;
       const paragraph = root.firstElementChild;
@@ -96,114 +194,18 @@
     observer.observe(root);
     reportSize();
     window.scholiumQuoteReplySelection = quote;
-    return () => {
+    const dispose = () => {
       observer.disconnect();
       root.removeEventListener("keydown", keydown);
       root.removeEventListener("contextmenu", noteContextMenu);
-    };
-  }
-
-  // chat-reply-reveal.ts
-  var replyRevealDuration = 280;
-  var replyRevealHighlight = "scholium-reply-pending";
-  var excluded = "pre, table, button, script, style, .scholium-mermaid, .scholium-math, .katex, .scholium-reply-controls";
-  function replyTextNodes(root) {
-    const nodes = [];
-    const visit = (node) => {
-      if (node.nodeType === 3) {
-        if (node.textContent?.trim() && !node.parentElement?.closest(excluded)) nodes.push(node);
-        return;
-      }
-      for (const child of node.childNodes) visit(child);
-    };
-    visit(root);
-    return nodes;
-  }
-  function replyRevealBoundaries(previous, current) {
-    if (!current.startsWith(previous) || current.length <= previous.length || current.length > 65536) return [];
-    const segments = new Intl.Segmenter(void 0, { granularity: "grapheme" });
-    const ends = [...segments.segment(current)].map((part) => part.index + part.segment.length);
-    if (previous.length && !ends.includes(previous.length)) return [];
-    return ends.filter((end) => end > previous.length);
-  }
-  function installReplyReveal(root, previousHTML) {
-    const owner = root.ownerDocument.defaultView;
-    let frame = 0;
-    let finished = false;
-    const motion = owner.matchMedia("(prefers-reduced-motion: reduce)");
-    const contrast = owner.matchMedia("(prefers-contrast: more)");
-    const finish = () => {
-      finished = true;
-      owner.cancelAnimationFrame(frame);
-      owner.CSS?.highlights?.delete(replyRevealHighlight);
-    };
-    const adapted = () => {
-      if (motion.matches || contrast.matches) finish();
-    };
-    const selected = () => {
-      const selection = owner.getSelection();
-      if (selection && !selection.isCollapsed) finish();
-    };
-    const hidden = () => {
-      if (root.ownerDocument.hidden) finish();
-    };
-    const destroy = () => {
-      finish();
-      motion.removeEventListener("change", adapted);
-      contrast.removeEventListener("change", adapted);
-      root.removeEventListener("pointerdown", finish);
-      root.removeEventListener("keydown", finish);
-      root.removeEventListener("copy", finish);
+      root.removeEventListener("pointerdown", interact);
+      root.removeEventListener("keydown", interact);
       root.ownerDocument.removeEventListener("selectionchange", selected);
-      root.ownerDocument.removeEventListener("visibilitychange", hidden);
-      owner.removeEventListener("blur", finish);
     };
-    if (previousHTML === void 0 || motion.matches || contrast.matches || root.ownerDocument.hidden || !owner.CSS?.highlights || !owner.Highlight) return { finish, destroy };
-    const template = root.ownerDocument.createElement("template");
-    template.innerHTML = previousHTML;
-    const previous = replyTextNodes(template.content).map((node) => node.data).join("");
-    const nodes = replyTextNodes(root);
-    const current = nodes.map((node) => node.data).join("");
-    const boundaries = replyRevealBoundaries(previous, current);
-    if (!boundaries.length) return { finish, destroy };
-    const paint = (visible) => {
-      const ranges = [];
-      let offset = 0;
-      for (const node of nodes) {
-        const end = offset + node.length;
-        if (end > visible) {
-          const range = root.ownerDocument.createRange();
-          range.setStart(node, Math.max(0, visible - offset));
-          range.setEnd(node, node.length);
-          ranges.push(range);
-        }
-        offset = end;
-      }
-      owner.CSS.highlights.set(replyRevealHighlight, new owner.Highlight(...ranges));
-    };
-    paint(previous.length);
-    const started = owner.performance.now();
-    const duration = Math.min(replyRevealDuration, Math.max(60, boundaries.length * 16));
-    const tick = (now) => {
-      if (finished) return;
-      const count = Math.floor(boundaries.length * Math.min(1, (now - started) / duration));
-      if (count >= boundaries.length) {
-        finish();
-        return;
-      }
-      paint(count ? boundaries[count - 1] : previous.length);
-      frame = owner.requestAnimationFrame(tick);
-    };
-    frame = owner.requestAnimationFrame(tick);
-    motion.addEventListener("change", adapted);
-    contrast.addEventListener("change", adapted);
-    root.addEventListener("pointerdown", finish);
-    root.addEventListener("keydown", finish);
-    root.addEventListener("copy", finish);
-    root.ownerDocument.addEventListener("selectionchange", selected);
-    root.ownerDocument.addEventListener("visibilitychange", hidden);
-    owner.addEventListener("blur", finish);
-    return { finish, destroy };
+    return Object.assign(dispose, { refresh: () => {
+      decorateObjects();
+      reportSize();
+    } });
   }
 
   // selection-actions.ts
@@ -743,7 +745,7 @@
   function validatedReaderConfiguration(value) {
     if (!value || typeof value !== "object") return null;
     const config = value;
-    if (config.version !== 6 || typeof config.documentID !== "string" || !config.documentID || config.documentID.length > 4096 || typeof config.fingerprint !== "string" || !config.fingerprint || config.fingerprint.length > 256 || !Number.isSafeInteger(config.loadGeneration) || Number(config.loadGeneration) < 0 || typeof config.selectionEnabled !== "boolean" || config.chatReply !== void 0 && typeof config.chatReply !== "boolean" || config.chatReplyPreviousHTML !== void 0 && (config.chatReply !== true || typeof config.chatReplyPreviousHTML !== "string" || config.chatReplyPreviousHTML.length > 262144) || typeof config.testingEnabled !== "boolean" || typeof config.presentationCSS !== "string" || typeof config.userCSS !== "string" || !config.localization || typeof config.localization !== "object" || !config.localization.strings || typeof config.localization.strings !== "object" || !Array.isArray(config.linkPreviews) || config.linkPreviews.length > 128) return null;
+    if (config.version !== 7 || typeof config.documentID !== "string" || !config.documentID || config.documentID.length > 4096 || typeof config.fingerprint !== "string" || !config.fingerprint || config.fingerprint.length > 256 || !Number.isSafeInteger(config.loadGeneration) || Number(config.loadGeneration) < 0 || typeof config.selectionEnabled !== "boolean" || config.chatReply !== void 0 && typeof config.chatReply !== "boolean" || typeof config.testingEnabled !== "boolean" || typeof config.presentationCSS !== "string" || typeof config.userCSS !== "string" || !config.localization || typeof config.localization !== "object" || !config.localization.strings || typeof config.localization.strings !== "object" || !Array.isArray(config.linkPreviews) || config.linkPreviews.length > 128) return null;
     return config;
   }
 
@@ -765,7 +767,6 @@
     const {
       version,
       documentID,
-      fingerprint,
       loadGeneration,
       selectionEnabled,
       presentationCSS,
@@ -774,11 +775,13 @@
       linkPreviews,
       testingEnabled
     } = config;
+    let fingerprint = config.fingerprint;
     const presentationStyle = requiredElement("scholium-presentation-css");
     const userStyle = requiredElement("scholium-user-css");
     presentationStyle.textContent = presentationCSS;
     userStyle.textContent = userCSS;
     const documentRoot = requiredElement("scholium-document");
+    const replyProjection = config.chatReply ? createReplyProjection(documentRoot) : null;
     readerWindow.scholiumReadNavigation?.destroy();
     readerWindow.scholiumReadNavigation = createReaderArrival(documentRoot);
     window.addEventListener("pagehide", () => readerWindow.scholiumReadNavigation?.destroy(), { once: true });
@@ -860,7 +863,7 @@
     function renderMathNodes() {
       const runtime = readerWindow.scholiumMath;
       if (!runtime || runtime.version !== 1) return;
-      document.querySelectorAll(".scholium-math[data-math-source][data-math-kind]").forEach((element) => {
+      document.querySelectorAll(".scholium-math[data-math-source][data-math-kind]:not(.scholium-math-rendered):not(.scholium-math-error)").forEach((element) => {
         try {
           const encodedSource = element.dataset.mathSource;
           const kind = element.dataset.mathKind;
@@ -1012,9 +1015,27 @@
     await readerWindow.scholiumMermaidReady;
     if (config.chatReply === true) {
       const disposeReply = installChatReply(documentRoot, post, localized);
-      const reveal = installReplyReveal(documentRoot, config.chatReplyPreviousHTML);
-      readerWindow.scholiumReplyReveal = { ...reveal, loadGeneration };
-      window.addEventListener("pagehide", reveal.destroy, { once: true });
+      replyProjection.commit();
+      readerWindow.scholiumUpdateReply = async (value2) => {
+        if (!value2 || typeof value2 !== "object") return false;
+        const update = value2;
+        if (update.version !== version || update.documentID !== documentID || update.loadGeneration !== loadGeneration || update.previousFingerprint !== fingerprint || typeof update.fingerprint !== "string" || !update.fingerprint || update.fingerprint.length > 256 || typeof update.html !== "string" || update.html.length > 16777216 || typeof update.presentationCSS !== "string" || typeof update.userCSS !== "string") return false;
+        const restoreSelection = replyProjection.apply(update.html);
+        fingerprint = update.fingerprint;
+        presentationStyle.textContent = update.presentationCSS;
+        userStyle.textContent = update.userCSS;
+        renderMathNodes();
+        readerWindow.scholiumMermaidReady = renderMermaidNodes();
+        await readerWindow.scholiumMermaidReady;
+        documentRoot.querySelectorAll("h1, h2, h3, h4, h5, h6").forEach((heading) => {
+          heading.setAttribute("role", "heading");
+          heading.setAttribute("aria-level", String(bodyHeadingAccessibilityLevel(Number(heading.tagName.slice(1)))));
+        });
+        disposeReply.refresh();
+        replyProjection.commit();
+        restoreSelection();
+        return true;
+      };
       window.addEventListener("pagehide", disposeReply, { once: true });
     }
     for (const mediaQuery of [
