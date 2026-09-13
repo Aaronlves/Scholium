@@ -46,37 +46,6 @@ struct WorkspaceToolbarTests {
         )
     }
 
-    @Test("Document Information ignores stale document teardown")
-    func documentInformationProjectionIsDocumentScoped() {
-        let projection = DocumentInformationProjection()
-        let first = DocumentInformationDocumentID(
-            vaultID: UUID(),
-            relativePath: "First.md"
-        )
-        let second = DocumentInformationDocumentID(
-            vaultID: UUID(),
-            relativePath: "Second.md"
-        )
-        let statistics = DocumentStatistics(
-            words: 12,
-            charactersWithSpaces: 41,
-            charactersWithoutSpaces: 34,
-            hanCharacters: 3,
-            scope: .selection
-        )
-
-        projection.activate(second)
-        projection.publish(statistics, for: second)
-        projection.publish(.emptyBody, for: first)
-        projection.clear(ifCurrent: first)
-        #expect(projection.statistics(for: second) == statistics)
-        #expect(projection.statistics(for: first) == .emptyBody)
-
-        projection.clear(ifCurrent: second)
-        #expect(projection.documentID == nil)
-        #expect(projection.statistics == .emptyBody)
-    }
-
     @Test("A visible Inspector without a Document has an explicit content state")
     func inspectorHasNoDocumentState() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
@@ -127,13 +96,13 @@ struct WorkspaceToolbarTests {
         let toolbar = try #require(window.toolbar)
         #expect(toolbar.itemIdentifiers == ScholiumWorkspaceToolbarController.itemIdentifiers)
 
-        let documentInformation = try #require(
+        let documentTitle = try #require(
             item(
                 ScholiumWorkspaceToolbarController.Item.documentTitle,
                 in: toolbar
             ))
-        #expect(documentInformation.visibilityPriority == .high)
-        let title = try #require(documentInformation.view as? NSTextField)
+        #expect(documentTitle.visibilityPriority == .high)
+        let title = try #require(documentTitle.view as? NSTextField)
         #expect(title.stringValue == "Scholium")
         #expect(title.textColor?.usingColorSpace(.deviceRGB) == NSColor.secondaryLabelColor.usingColorSpace(.deviceRGB))
         #expect(window.titleVisibility == .hidden)

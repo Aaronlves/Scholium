@@ -370,8 +370,8 @@ Tools/Scripts/             Build, verification, QA, performance, and release too
 
 ### In-app Codex Chat (development integration)
 
-The left sidebar switches between Library and Chat; Outline now belongs to the
-right document Inspector. Chat uses native macOS text and controls; replies may
+The left sidebar switches between Library and Chat; the right document Inspector
+switches between Links and Related Material. Chat uses native macOS text and controls; replies may
 be full research discussions, while operation activity remains expandable.
 In Chat, choose a compatible official Codex executable
 and this checkout's built `scholium` CLI. Connect and sign in through Codex.

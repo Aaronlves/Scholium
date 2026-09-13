@@ -519,49 +519,6 @@ struct MarkdownEditorWebViewIntegrationTests {
         }
     }
 
-    @Test("Outline follows unsaved headings and navigates without taking sidebar focus")
-    func outlineNavigationPreservesFocusAndSource() async throws {
-        let source = "# First\n\nParagraph.\n\n## Second\n\nMore.\n"
-        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
-        defer { harness.close() }
-        try await harness.waitUntilReady()
-        try await harness.waitUntilFocused()
-        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
-        while harness.session.outlineHeadings.count != 2 && ContinuousClock.now < deadline {
-            try await Task.sleep(for: .milliseconds(20))
-        }
-        #expect(harness.session.outlineHeadings.map(\.text) == ["First", "Second"])
-        let owner = try #require(harness.session.webView)
-        let sidebar = NSTextField(string: "")
-        owner.superview?.addSubview(sidebar)
-        owner.window?.makeFirstResponder(sidebar)
-        let responder = owner.window?.firstResponder
-        harness.session.goToLine(5, focusesEditor: false)
-        let navigationDeadline = ContinuousClock.now.advanced(by: .seconds(3))
-        while harness.session.currentHeadingLine != 5 && ContinuousClock.now < navigationDeadline {
-            try await Task.sleep(for: .milliseconds(20))
-        }
-        #expect(harness.session.currentHeadingLine == 5)
-        #expect(owner.window?.firstResponder === responder)
-        #expect(try await harness.session.currentText(for: harness.documentID) == source)
-        harness.session.goToLine(5)
-        let focusDeadline = ContinuousClock.now.advanced(by: .seconds(3))
-        while owner.window?.firstResponder === responder && ContinuousClock.now < focusDeadline {
-            try await Task.sleep(for: .milliseconds(20))
-        }
-        #expect(owner.window?.firstResponder !== responder)
-        sidebar.removeFromSuperview()
-        try await harness.session.focusAndWait()
-        _ = try await harness.callPageJavaScript("document.execCommand('insertText', false, 'New ');")
-        let editDeadline = ContinuousClock.now.advanced(by: .seconds(3))
-        while harness.session.outlineHeadings.count == 2 && ContinuousClock.now < editDeadline {
-            try await Task.sleep(for: .milliseconds(20))
-        }
-        // Inserting before ## turns that line into prose, before any save.
-        #expect(harness.session.outlineHeadings.map(\.text) == ["First"])
-        await harness.closeAndDrain()
-    }
-
     @Test("Native completion displays the current CodeMirror list")
     func nativeCompletionProjection() async throws {
         let harness = EditorHarness(source: "\n", laysOutForPointerTesting: true)

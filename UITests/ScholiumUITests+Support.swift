@@ -415,9 +415,8 @@ extension ScholiumUITests {
 
         let modeLabel: String
         switch mode {
-        case "overview": modeLabel = "Overview"
-        case "outgoing": modeLabel = "Outgoing Links"
-        case "incoming": modeLabel = "Incoming Links"
+        case "links": modeLabel = "Links"
+        case "related": modeLabel = "Related Material"
         default:
             XCTFail("Unknown Inspector mode: \(mode)")
             return inspector
@@ -426,24 +425,49 @@ extension ScholiumUITests {
         XCTAssertTrue(modeButton.waitForExistence(timeout: 5))
         modeButton.click()
 
-        if mode == "overview" {
-            XCTAssertTrue(
-                app.descendants(matching: .any)["scholium.connections.empty"]
-                    .waitForExistence(timeout: 8)
-            )
-        } else {
-            let modeGroup = app.descendants(matching: .any)[
-                "scholium.inspectorMode"
-            ].firstMatch
-            XCTAssertTrue(
-                waitUntil(timeout: 8) {
-                    modeGroup.value as? String == modeLabel
-                })
-        }
+        let modeGroup = app.descendants(matching: .any)[
+            "scholium.inspectorMode"
+        ].firstMatch
+        XCTAssertTrue(
+            waitUntil(timeout: 8) {
+                modeGroup.value as? String == modeLabel
+            })
         let scrollableInspector = app.scrollViews[
             "scholium.researchInspector"
         ].firstMatch
         return scrollableInspector.exists ? scrollableInspector : inspector
+    }
+
+    @MainActor
+    @discardableResult
+    func selectResearchInspectorDirection(_ direction: String) -> XCUIElement {
+        _ = selectResearchInspectorMode("links")
+
+        let segmentIndex: Int
+        switch direction {
+        case "incoming": segmentIndex = 0
+        case "outgoing": segmentIndex = 1
+        case "external": segmentIndex = 2
+        default:
+            XCTFail("Unknown Inspector link direction: \(direction)")
+            return app.descendants(matching: .any)["scholium.researchInspector"].firstMatch
+        }
+
+        let directionControl = app.descendants(matching: .any)[
+            "scholium.links.direction"
+        ].firstMatch
+        XCTAssertTrue(directionControl.waitForExistence(timeout: 5))
+        directionControl.coordinate(
+            withNormalizedOffset: CGVector(
+                dx: (CGFloat(segmentIndex) + 0.5) / 3,
+                dy: 0.5
+            )
+        ).click()
+
+        let scrollableInspector = app.scrollViews[
+            "scholium.researchInspector"
+        ].firstMatch
+        return scrollableInspector.exists ? scrollableInspector : directionControl
     }
 
     @MainActor
@@ -966,7 +990,7 @@ extension ScholiumUITests {
                 to: topics.appendingPathComponent("Agent Review.md")
             )
         }
-        if name.contains("testInspectorToolbarSelectsFlatLinkProjections") {
+        if name.contains("testInspectorLinksSelectIncomingAndOutgoingDirections") {
             let analysisURL = analyses.appendingPathComponent("QA Autosave A.md")
             let topicURL = topics.appendingPathComponent("QA Topic.md")
             try write(

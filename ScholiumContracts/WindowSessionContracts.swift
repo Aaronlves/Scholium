@@ -53,7 +53,7 @@ public struct WindowWorkspaceSessionSnapshot: Codable, Hashable, Sendable {
         workspace: WorkspaceVaultSlot,
         vaultID: UUID? = nil,
         documentPresentations: [String: WindowDocumentPresentationSnapshot] = [:],
-        inspectorMode: String = "overview",
+        inspectorMode: String = "links",
         documentMode: String = "read"
     ) {
         self.workspace = workspace

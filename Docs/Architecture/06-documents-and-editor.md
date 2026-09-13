@@ -397,8 +397,8 @@ Source exposes exact text. `ScholiumSystemSymbol` is the icon catalog, and
 `ScholiumWebSymbolAssets` injects its data-URI masks into WebKit surfaces.
 
 Transient surfaces do no whole-Note work. Selection observation reports bounded
-information for document statistics and navigation; it creates no persisted
-research object. `DocumentWebViewContainer` owns viewport geometry and exposes
+information for navigation and writing context; it creates no persisted research
+object. `DocumentWebViewContainer` owns viewport geometry and exposes
 WebKit and native floating siblings in one accessibility tree.
 `DocumentFloatingSurfaceController` owns Liquid Glass preview, suggestion and selection-action
 containers. `SelectionActionBar` uses native controls and a menu, without another composer. The selection bridge revalidates identity before Chat admission;

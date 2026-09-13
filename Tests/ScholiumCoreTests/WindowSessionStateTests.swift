@@ -49,14 +49,14 @@ struct WindowSessionStateTests {
                             focusTarget: .editor
                         )
                     ],
-                    inspectorMode: "outgoing",
+                    inspectorMode: "links",
                     documentMode: "source"
                 ),
                 WindowWorkspaceSessionSnapshot(
                     workspace: .topicKnowledge,
                     vaultID: topicsVaultID,
 
-                    inspectorMode: "actions",
+                    inspectorMode: "related",
                     documentMode: "livePreview"
                 ),
             ],

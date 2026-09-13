@@ -537,8 +537,8 @@ struct WindowControllerArchitectureTests {
         "Inspector restoration normalizes current, adjacent, absent, and unknown mode values",
         arguments: [
             (nil as String?, ResearchInspectorMode.links),
-            ("about", .links),
             ("links", .links),
+            ("related", .related),
             ("unknown", .links),
         ]
     )

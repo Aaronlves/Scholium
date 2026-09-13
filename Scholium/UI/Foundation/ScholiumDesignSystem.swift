@@ -1382,30 +1382,17 @@ enum ScholiumGrid {
         static let trailingScrollViewportFraction: CGFloat = 0.45
     }
 
-    /// The two scholarly peripheral planes share one calm page edge. Their
-    /// internal row, hierarchy, and section rhythms remain independently owned.
-    enum Peripheral {
-        static let contentInset = foundationUnit * 7
-    }
-
     /// Inspector-owned layout variables. Section hierarchy, content groups,
     /// link occurrences, and Action rows each have a distinct cadence.
     enum Apparatus {
-        static let contentInset = Peripheral.contentInset
-        static let firstSectionGap = foundationUnit * 4
-        static let sectionGap = foundationUnit * 4
         static let headingToContentGap = foundationUnit * 2.5
         static let contentRowGap = foundationUnit * 2
         static let contentLineSpacing = foundationUnit
         static let iconColumnWidth = foundationUnit * 4
         static let iconToTextGap = foundationUnit * 2
         static let connectionOccurrenceVerticalInset = foundationUnit
-        static let connectionOccurrenceMinimumHeight = Dimension.preferredCustomTarget
-        static let actionRowVerticalInset = foundationUnit * 2
-        static let actionRowMinimumHeight = foundationUnit * 11
         static let actionCopyGap = foundationUnit
         static let longTextLabelGap = foundationUnit
-        static let bottomInset = contentInset
     }
 
     enum SegmentedControl {
@@ -1533,15 +1520,6 @@ enum ScholiumMetrics {
 
     }
 
-    enum Properties {
-        static let headerDetailSpacing = ScholiumGrid.foundationUnit * 0.75
-        static let semanticGroupSeparation = ScholiumGrid.foundationUnit * 6
-        static let fieldBlockSeparation = ScholiumGrid.Spacing.sectionSeparation
-        static let fieldSpacing = ScholiumGrid.foundationUnit * 1.5
-        static let tagContentSpacing = ScholiumGrid.foundationUnit * 0.75
-        static let tagVerticalInset = ScholiumGrid.foundationUnit * 0.75
-    }
-
     enum Settings {
         static let sectionSpacing = ScholiumGrid.foundationUnit * 3.5
         static let columnSpacing = ScholiumGrid.foundationUnit * 6
@@ -1639,29 +1617,16 @@ enum ScholiumMetrics {
         /// One initial suggestion, mirroring the system inspector's ideal-width
         /// semantics. AppKit continues to own subsequent resizing.
         static let firstRevealWidth: CGFloat = 320
-        /// All three Inspector modes share one outer content edge. Individual
-        /// sections must not invent their own horizontal padding.
-        static let contentInset = ScholiumGrid.Apparatus.contentInset
-        static let firstSectionSpacing = ScholiumGrid.Apparatus.firstSectionGap
-        static let sectionSpacing = ScholiumGrid.Apparatus.sectionGap
         /// Internal section rhythm is deliberately separate from the spacing
         /// between complete sections.
         static let sectionContentSpacing = ScholiumGrid.Apparatus.headingToContentGap
-        static let rowSpacing = ScholiumGrid.Apparatus.contentRowGap
         static let bodyLineSpacing = ScholiumGrid.Apparatus.contentLineSpacing
-        static let actionRowVerticalInset = ScholiumGrid.Apparatus.actionRowVerticalInset
-        static let actionRowMinimumHeight = ScholiumGrid.Apparatus.actionRowMinimumHeight
         static let actionCopySpacing = ScholiumGrid.Apparatus.actionCopyGap
         static let longTextLabelSpacing = ScholiumGrid.Apparatus.longTextLabelGap
         /// A fixed symbol track keeps every row's text on the same scan line,
         /// regardless of the optical width of its SF Symbol.
         static let iconColumnWidth = ScholiumGrid.Apparatus.iconColumnWidth
         static let iconToTextSpacing = ScholiumGrid.Apparatus.iconToTextGap
-        static let connectionOccurrenceVerticalInset =
-            ScholiumGrid.Apparatus.connectionOccurrenceVerticalInset
-        static let connectionOccurrenceMinimumHeight =
-            ScholiumGrid.Apparatus.connectionOccurrenceMinimumHeight
-        static let bottomInset = ScholiumGrid.Apparatus.bottomInset
     }
 
     enum ContentState {

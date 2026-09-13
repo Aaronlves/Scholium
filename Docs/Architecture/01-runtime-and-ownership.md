@@ -595,7 +595,7 @@ mode and native split visibility, including the all-off collapsed state.
 `WorkspaceWindowCoordinator` installs toolbar state after split attachment.
 The toolbar controller derives command availability once for presentation,
 native toolbar validation, overflow menus, and action dispatch. Window-model
-predicates also serve the View menu's Outline and Inspector commands. Published
+predicates also serve the View menu's Library, Chat and Inspector commands. Published
 state is consumed on the main queue after mutation. Invalidation cancels all
 subscriptions, detaches targets and menus, and releases transient hosts; an
 invalidated controller cannot reinstall. Settlement presentation is bound to the
@@ -605,11 +605,8 @@ Back/Forward sit after the Sidebar boundary, followed by a native label renderin
 system secondary document identity. The duplicate system title is visually hidden;
 SwiftUI still owns the window's title/subtitle metadata. `ContentView` retains
 both sidebar presentations and switches their visibility and accessibility.
-The Inspector Outline uses source-derived headings in a native `NSOutlineView`, with a
-fixed native statistics menu beneath it. Its keyboard navigation uses the
-versioned editor jump command's explicit focus flag; no heading visit enters
-document history. Inspector retains its native projection and visibility controls.
-Pane content contains no duplicate visibility control. No
+The Inspector retains its native Links and Related Material projections and
+visibility controls. Pane content contains no duplicate visibility control. No
 split-content titlebar host remains: under full-size content that host rendered
 beneath the toolbar's pointer hit-testing layer even when accessibility could
 still discover it. Stable native toolbar controls satisfy §18.2 without adding
@@ -659,7 +656,7 @@ observe shell visibility without reasserting split state or storing width.
 
 ### Inspector ownership
 
-Inspector field, Outline and Links composition is owned by
+Inspector Links and Related Material composition is owned by
 [Source Layout and Presentation](03-source-layout-and-presentation.md#presentation).
 The shell retains the workspace's Inspector mode and native visibility only;
 Document retains buffer, editing, autosave, Undo and conflict authority.

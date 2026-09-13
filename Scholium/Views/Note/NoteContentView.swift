@@ -140,18 +140,15 @@ struct DocumentFeatureActions {
 
 struct DocumentFeatureView: View {
     @ObservedObject private var controller: DocumentController
-    let documentInformation: DocumentInformationProjection
     let state: DocumentFeatureState
     let actions: DocumentFeatureActions
 
     init(
         controller: DocumentController,
-        documentInformation: DocumentInformationProjection,
         state: DocumentFeatureState,
         actions: DocumentFeatureActions
     ) {
         self.controller = controller
-        self.documentInformation = documentInformation
         self.state = state
         self.actions = actions
     }
@@ -173,7 +170,6 @@ struct DocumentFeatureView: View {
             if let key = selectedWorkspaceKey ?? projectedWorkspaceKey {
                 NoteContentView(
                     controller: controller,
-                    documentInformation: documentInformation,
                     target: .workspace(key),
                     note: note,
                     documentSession: controller.session(for: key),
@@ -185,7 +181,6 @@ struct DocumentFeatureView: View {
                 DocumentSessionFallback(
                     note: note,
                     controller: controller,
-                    documentInformation: documentInformation,
                     target: .unavailable(
                         vaultID: note.vaultID,
                         relativePath: note.relativePath
@@ -202,7 +197,6 @@ struct DocumentFeatureView: View {
 private struct DocumentSessionFallback: View {
     let note: WindowDocumentLocation
     let controller: DocumentController
-    let documentInformation: DocumentInformationProjection
     let target: DocumentEditingTarget
     let state: DocumentFeatureState
     let actions: DocumentFeatureActions
@@ -210,7 +204,6 @@ private struct DocumentSessionFallback: View {
     var body: some View {
         NoteContentView(
             controller: controller,
-            documentInformation: documentInformation,
             target: target,
             note: note,
             documentSession: controller.session(for: target),
@@ -224,21 +217,18 @@ struct NoteContentView: View {
     @Environment(\.scholiumFileSelectionPresenter) private var fileSelectionPresenter
     @ObservedObject private var controller: DocumentController
     @ObservedObject private var documentSession: DocumentSessionModel
-    let documentInformation: DocumentInformationProjection
     let target: DocumentEditingTarget
     let note: WindowDocumentLocation
     let state: DocumentFeatureState
     let actions: DocumentFeatureActions
     @StateObject private var quickLook = DocumentAttachmentQuickLookSession()
     @StateObject private var documentFind = DocumentFindPresentationModel()
-    @StateObject private var reviewDocumentStatistics = ReviewDocumentStatisticsModel()
     @State private var isInsertingImage = false
     @State private var announcedUnavailableIndexedImages: Set<String> = []
     @State private var indexedImageAvailabilityGeneration = 0
 
     init(
         controller: DocumentController,
-        documentInformation: DocumentInformationProjection,
         target: DocumentEditingTarget,
         note: WindowDocumentLocation,
         documentSession: DocumentSessionModel,
@@ -246,7 +236,6 @@ struct NoteContentView: View {
         actions: DocumentFeatureActions
     ) {
         self.controller = controller
-        self.documentInformation = documentInformation
         _documentSession = ObservedObject(wrappedValue: documentSession)
         self.target = target
         self.note = note
@@ -440,22 +429,6 @@ struct NoteContentView: View {
             controller.observe(documentSession)
             applyPreparedPresentationModeIfAvailable()
             consumePendingPresentationRequest()
-            updateReviewDocumentStatistics(selection: nil)
-            documentInformation.activate(documentInformationDocumentID)
-            publishDocumentInformation()
-        }
-        .onChange(of: currentDocumentStatistics) { _, _ in publishDocumentInformation() }
-        .onChange(of: isEditing) { _, _ in publishDocumentInformation() }
-        .onChange(of: note.rawContent) { _, _ in publishDocumentInformation() }
-        .onChange(of: editorSession.outlineHeadings) { _, _ in publishDocumentInformation() }
-        .onChange(of: editorSession.currentHeadingLine) { _, _ in publishDocumentInformation() }
-        .onChange(of: documentInformationDocumentID) { previous, _ in
-            documentInformation.clear(ifCurrent: previous)
-            documentInformation.activate(documentInformationDocumentID)
-            publishDocumentInformation()
-        }
-        .onDisappear {
-            documentInformation.clear(ifCurrent: documentInformationDocumentID)
         }
         .onChange(of: editingIsAvailable) { _, available in
             // Window restoration publishes the selected note before stable
@@ -467,7 +440,6 @@ struct NoteContentView: View {
         }
         .onChange(of: isEditing) { _, _ in
             documentSession.readSelection = nil
-            updateReviewDocumentStatistics(selection: nil)
             documentFind.refresh()
             focusEditorIfPresented()
             if !isEditing,
@@ -507,7 +479,6 @@ struct NoteContentView: View {
             documentSession.prepareReadProjection(
                 for: noteFingerprint.sha256
             )
-            updateReviewDocumentStatistics(selection: nil)
             let source = note.rawContent
             let relativePath = note.relativePath
             let fingerprint = noteFingerprint
@@ -849,7 +820,6 @@ struct NoteContentView: View {
             onSelectionChange: { selection in
                 guard !isEditing else { return }
                 documentSession.readSelection = selection
-                updateReviewDocumentStatistics(selection: selection)
             },
             selectionSurfaceIsActive: !isEditing,
             renderingReadinessIsAcknowledged:
@@ -894,7 +864,6 @@ struct NoteContentView: View {
             onScrollAnchorChange: {
                 guard !isEditing else { return }
                 documentSession.observeScrollAnchor($0)
-                publishDocumentInformation()
             },
             sourceLocationRequest: isEditing ? nil : currentSourceLocationRequest,
             onSourceRangeUnavailable: { id in
@@ -992,19 +961,6 @@ struct NoteContentView: View {
 
     private var editorIsComposing: Bool {
         isEditing && editorSession.context?.composing == true
-    }
-
-    private var currentDocumentStatistics: DocumentStatistics {
-        isEditing
-            ? editorSession.documentStatistics
-            : reviewDocumentStatistics.value
-    }
-
-    private var documentInformationDocumentID: DocumentInformationDocumentID {
-        DocumentInformationDocumentID(
-            vaultID: note.vaultID,
-            relativePath: note.relativePath
-        )
     }
 
     private var indexedImageAvailabilityTaskIdentity: String {
@@ -1117,32 +1073,6 @@ struct NoteContentView: View {
         } catch {
             // Catalog and local-access health are reported by their owning
             // workflows. A reminder check never blocks or mutates the Note.
-        }
-    }
-
-    private func updateReviewDocumentStatistics(
-        selection: MarkdownReviewSelection?
-    ) {
-        reviewDocumentStatistics.update(
-            markdownSource: note.rawContent,
-            revision: noteFingerprint.sha256,
-            selection: selection
-        )
-    }
-
-    private func publishDocumentInformation() {
-        documentInformation.publish(currentDocumentStatistics, for: documentInformationDocumentID)
-        if isEditing {
-            documentInformation.publishOutline(
-                editorSession.outlineHeadings,
-                currentLine: editorSession.currentHeadingLine, for: documentInformationDocumentID)
-        } else {
-            let headings = note.workspaceSnapshot?.headings ?? []
-            let offset = documentSession.observedScrollPosition.anchor?.sourceUTF16Offset ?? 0
-            documentInformation.publishOutline(
-                headings,
-                currentLine: headings.last { $0.span.utf16LowerBound <= offset }?.span.start.line,
-                for: documentInformationDocumentID)
         }
     }
 
@@ -1731,7 +1661,6 @@ private struct ConflictComparisonSheet: View {
     )
     NoteContentView(
         controller: controller,
-        documentInformation: DocumentInformationProjection(),
         target: .unavailable(
             vaultID: note.vaultID,
             relativePath: note.relativePath

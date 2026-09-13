@@ -1,63 +1,6 @@
 import SwiftUI
 
-private struct ScholiumApparatusHeadingModifier: ViewModifier {
-    func body(content: Content) -> some View {
-        content
-            .font(ScholiumTypography.interface(.small, emphasis: .strong))
-            .tracking(0.7)
-            .scholiumForeground(.secondaryText)
-    }
-}
-
-extension View {
-    /// The single visual token for every Inspector and provenance section heading.
-    func scholiumApparatusHeadingStyle() -> some View {
-        modifier(ScholiumApparatusHeadingModifier())
-    }
-}
-
-/// One Inspector section with a shared heading, internal rhythm, optional
-/// trailing action, and no implicit boundary. It owns presentation only;
-/// feature state and actions remain with the feature that supplies its content.
-struct ScholiumApparatusSection<Content: View, Trailing: View>: View {
-    let title: LocalizedStringResource
-    @ViewBuilder let content: () -> Content
-    @ViewBuilder let trailing: () -> Trailing
-
-    init(
-        _ title: LocalizedStringResource,
-        @ViewBuilder content: @escaping () -> Content,
-        @ViewBuilder trailing: @escaping () -> Trailing
-    ) {
-        self.title = title
-        self.content = content
-        self.trailing = trailing
-    }
-
-    var body: some View {
-        VStack(
-            alignment: .leading,
-            spacing: 0
-        ) {
-            HStack(spacing: ScholiumMetrics.Apparatus.iconToTextSpacing) {
-                Text(title)
-                    .scholiumApparatusHeadingStyle()
-                Spacer(minLength: ScholiumMetrics.Apparatus.iconToTextSpacing)
-                trailing()
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.bottom, ScholiumMetrics.Apparatus.sectionContentSpacing)
-
-            content()
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .lineSpacing(ScholiumMetrics.Apparatus.bodyLineSpacing)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-}
-
-/// Inspector labels share one compact axis with their value or native editor.
-/// At narrow widths, the complete field stacks.
+/// Fact values use semantic typography according to their display role.
 enum ScholiumApparatusFactValueStyle: Hashable {
     case researchContent
     case exactContent
@@ -86,9 +29,8 @@ struct ScholiumApparatusFact: Identifiable, Hashable {
     }
 }
 
-/// Short source facts use the same leading reading edge as editable About
-/// fields. A stacked label-and-value rhythm remains legible at every supported
-/// Inspector width and avoids turning scholarly metadata into a cramped table.
+/// Short operation facts use one readable label-and-value rhythm at every
+/// supported comparison width.
 struct ScholiumApparatusFactList: View {
     let facts: [ScholiumApparatusFact]
 
@@ -97,7 +39,7 @@ struct ScholiumApparatusFactList: View {
             if !visibleFacts.isEmpty {
                 VStack(
                     alignment: .leading,
-                    spacing: ScholiumMetrics.Properties.fieldBlockSeparation
+                    spacing: ScholiumGrid.Spacing.sectionSeparation
                 ) {
                     ForEach(visibleFacts) { fact in
                         VStack(
@@ -160,112 +102,14 @@ struct ScholiumApparatusFactList: View {
     }
 }
 
-/// A native full-row disclosure heading shared by Inspector and sheet
-/// progressive disclosure. The heading, indicator, trailing value, and empty
-/// row space form one Button while the disclosed content remains outside the
-/// control for ordinary reading and interaction.
-struct ScholiumDisclosureHeaderButton<Label: View, Trailing: View>: View {
-    @Environment(\.scholiumReduceMotion) private var reduceMotion
-
-    let isExpanded: Bool
-    let accessibilityLabel: Text
-    let accessibilityIdentifier: String
-    let minimumHeight: CGFloat
-    let action: () -> Void
-    @ViewBuilder let label: () -> Label
-    @ViewBuilder let trailing: () -> Trailing
-
-    init(
-        isExpanded: Bool,
-        accessibilityLabel: Text,
-        accessibilityIdentifier: String,
-        minimumHeight: CGFloat = ScholiumMetrics.Accessibility.preferredCustomTarget,
-        action: @escaping () -> Void,
-        @ViewBuilder label: @escaping () -> Label,
-        @ViewBuilder trailing: @escaping () -> Trailing
-    ) {
-        self.isExpanded = isExpanded
-        self.accessibilityLabel = accessibilityLabel
-        self.accessibilityIdentifier = accessibilityIdentifier
-        self.minimumHeight = minimumHeight
-        self.action = action
-        self.label = label
-        self.trailing = trailing
-    }
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: ScholiumMetrics.Apparatus.iconToTextSpacing) {
-                Image(systemName: "chevron.right")
-                    .font(ScholiumTypography.interface(.small, emphasis: .strong))
-                    .scholiumForeground(.secondaryText)
-                    .rotationEffect(.degrees(isExpanded ? 90 : 0))
-                    .animation(
-                        ScholiumMotion.disclosure(reduceMotion: reduceMotion),
-                        value: isExpanded
-                    )
-                    .accessibilityHidden(true)
-                label()
-                Spacer(minLength: ScholiumMetrics.Apparatus.iconToTextSpacing)
-                trailing()
-            }
-        }
-        .scholiumActivationPointer()
-        .buttonStyle(
-            ScholiumQuietRowButtonStyle(
-                minimumHeight: minimumHeight,
-                verticalInset: 0
-            )
-        )
-        .padding(.horizontal, -ScholiumGrid.Spacing.inlineControlGap)
-        .accessibilityLabel(accessibilityLabel)
-        .accessibilityValue(isExpanded ? Text("Expanded") : Text("Collapsed"))
-        .accessibilityIdentifier(accessibilityIdentifier)
-    }
-}
-
-extension ScholiumDisclosureHeaderButton where Trailing == EmptyView {
-    init(
-        isExpanded: Bool,
-        accessibilityLabel: Text,
-        accessibilityIdentifier: String,
-        minimumHeight: CGFloat = ScholiumMetrics.Accessibility.preferredCustomTarget,
-        action: @escaping () -> Void,
-        @ViewBuilder label: @escaping () -> Label
-    ) {
-        self.init(
-            isExpanded: isExpanded,
-            accessibilityLabel: accessibilityLabel,
-            accessibilityIdentifier: accessibilityIdentifier,
-            minimumHeight: minimumHeight,
-            action: action,
-            label: label,
-            trailing: { EmptyView() }
-        )
-    }
-}
-
-extension ScholiumApparatusSection where Trailing == EmptyView {
-    init(
-        _ title: LocalizedStringResource,
-        @ViewBuilder content: @escaping () -> Content
-    ) {
-        self.init(
-            title,
-            content: content,
-            trailing: { EmptyView() }
-        )
-    }
-}
-
 enum ScholiumApparatusStateDensity: Equatable {
     case line
     case block
 }
 
-/// Compact state feedback shared by Overview, Connect, and Actions. Ordinary
-/// status stays on one visual line when possible; diagnostic and recovery copy
-/// remains fully readable and never receives an artificial line limit.
+/// Compact state feedback shared by the Inspector panes. Ordinary status stays
+/// on one visual line when possible; diagnostic and recovery copy remains fully
+/// readable and never receives an artificial line limit.
 struct ScholiumApparatusStateView<Actions: View>: View {
     let title: LocalizedStringResource
     let detail: String?

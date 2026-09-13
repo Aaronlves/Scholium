@@ -403,42 +403,4 @@ extension ScholiumUITests {
         XCTAssertTrue(renderedDocument.exists)
     }
 
-    @MainActor
-    func testOverviewRoutesZoteroOnlyFromCurrentAnalysis() throws {
-        _ = selectResearchInspectorMode("overview")
-        let openInZotero = app.descendants(matching: .any)[
-            "scholium.researchOverview.openInZotero"
-        ]
-        XCTAssertTrue(openInZotero.waitForExistence(timeout: 5))
-        XCTAssertFalse(app.staticTexts["QAITEM01"].exists)
-        XCTAssertFalse(app.buttons["Open PDF in Preview"].exists)
-        XCTAssertFalse(app.buttons["Open Attachment"].exists)
-
-        selectVault(
-            "Topics",
-            waitingFor: "scholium.noteRow.QA Topic.md"
-        )
-        let topicRow = app.descendants(matching: .any)["scholium.noteRow.QA Topic.md"]
-        topicRow.click()
-        XCTAssertTrue(waitUntil(timeout: 8) { !openInZotero.exists })
-
-        selectVault(
-            "Works",
-            waitingFor: "scholium.noteRow.QA Work.md"
-        )
-        let workRow = app.descendants(matching: .any)["scholium.noteRow.QA Work.md"]
-        workRow.click()
-        XCTAssertTrue(waitUntil(timeout: 8) { !openInZotero.exists })
-
-        selectVault(
-            "Analyses",
-            waitingFor: "scholium.noteRow.QA Autosave A.md"
-        )
-        let analysisRow = app.descendants(matching: .any)[
-            "scholium.noteRow.QA Autosave A.md"
-        ]
-        analysisRow.click()
-        XCTAssertTrue(openInZotero.waitForExistence(timeout: 8))
-    }
-
 }

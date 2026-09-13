@@ -90,7 +90,7 @@ struct ScholiumLocalizationTests {
     @Test("Inspector localizes projections, attention, and occurrence semantics")
     func inspectorInterfaceCopy() {
         let expectations: [(String.LocalizationValue, String)] = [
-            ("Overview", "概览"),
+            ("Related Material", "相关材料"),
             ("Outgoing Links", "本笔记指向的链接"),
             ("Incoming Links", "指向本笔记的链接"),
             ("NEEDS ATTENTION", "需要注意"),

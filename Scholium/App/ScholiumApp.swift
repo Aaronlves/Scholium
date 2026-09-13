@@ -1931,7 +1931,6 @@ final class WindowModel: ObservableObject {
     lazy var documentController = DocumentController { [weak self] intent in
         self?.handleWindowIntent(intent)
     }
-    let documentInformation = DocumentInformationProjection()
     lazy var libraryMutationController = WindowLibraryMutationController(
         dependencies: WindowLibraryMutationDependencies(
             context: { [weak self] in
@@ -3796,7 +3795,7 @@ final class WindowModel: ObservableObject {
                     (
                         workspace,
                         restoredPresentation.workspaceSession(for: workspace)?
-                            .inspectorMode ?? "about"
+                            .inspectorMode ?? "links"
                     )
                 }
         )

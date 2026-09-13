@@ -7,8 +7,6 @@ enum ResearchInspectorLayout {
     // Count that gutter once so rows align with the non-list controls.
     static let listRowInset = contentInset - ScholiumGrid.Spacing.inlineControlGap
     static let topInset = ScholiumSidebarLayout.edgeInset
-    static let sectionSpacing = ScholiumSidebarLayout.sectionSpacing
-    static let bottomInset = ScholiumSidebarLayout.textInset
 }
 
 struct ResearchInspectorView: View {

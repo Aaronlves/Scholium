@@ -808,12 +808,6 @@ struct FrontendArchitectureTests {
             ),
             encoding: .utf8
         )
-        let apparatusComponentsSource = try String(
-            contentsOf: repositoryRoot.appendingPathComponent(
-                "Scholium/UI/Components/ScholiumApparatusComponents.swift"
-            ),
-            encoding: .utf8
-        )
         let splitSource = try String(
             contentsOf: repositoryRoot.appendingPathComponent(
                 "Scholium/UI/Components/ScholiumWorkspaceSplitView.swift"
@@ -1008,7 +1002,6 @@ struct FrontendArchitectureTests {
         #expect(toolbarSource.contains("control.segmentStyle = .rounded"))
         #expect(!noteSource.contains("ScholiumInspectorModeIndex("))
         #expect(!noteSource.contains("Picker(\"Research Inspector\""))
-        #expect(!apparatusComponentsSource.contains("struct ScholiumInspectorModeIndex"))
         #expect(toolbarSource.contains("NSSegmentedControl("))
         #expect(toolbarSource.contains("Item.inspectorModes"))
         #expect(!appSource.contains("removeAutomaticSidebarToolbarItem"))
@@ -1091,7 +1084,7 @@ struct FrontendArchitectureTests {
         let sidebarIndex = try #require(identifiers.firstIndex(of: Item.sidebar))
         let backIndex = try #require(identifiers.firstIndex(of: Item.back))
         let forwardIndex = try #require(identifiers.firstIndex(of: Item.forward))
-        let documentInformationIndex = try #require(
+        let documentTitleIndex = try #require(
             identifiers.firstIndex(of: Item.documentTitle)
         )
         let modeIndex = try #require(identifiers.firstIndex(of: Item.documentMode))
@@ -1111,8 +1104,8 @@ struct FrontendArchitectureTests {
         #expect(sidebarIndex < backIndex)
         #expect(backIndex < forwardIndex)
         #expect(libraryDividerIndex < backIndex)
-        #expect(forwardIndex < documentInformationIndex)
-        #expect(documentInformationIndex < documentFlexibleSpaceIndex)
+        #expect(forwardIndex < documentTitleIndex)
+        #expect(documentTitleIndex < documentFlexibleSpaceIndex)
         #expect(documentFlexibleSpaceIndex < settlementIndex)
         #expect(settlementIndex < documentControlSpaceIndex)
         #expect(documentControlSpaceIndex < modeIndex)
@@ -2100,8 +2093,6 @@ struct FrontendArchitectureTests {
         #expect(!toolbar.contains("ScholiumWorkspaceDocumentCommandsToolbarView"))
         #expect(!noteSource.contains("\"scholium.documentMore\""))
 
-        #expect(ScholiumMetrics.Apparatus.contentInset == ScholiumGrid.Apparatus.contentInset)
-        #expect(ScholiumMetrics.Apparatus.sectionSpacing == ScholiumGrid.Apparatus.sectionGap)
         #expect(
             ScholiumMetrics.Apparatus.sectionContentSpacing
                 == ScholiumGrid.Apparatus.headingToContentGap
@@ -2870,12 +2861,10 @@ struct FrontendArchitectureTests {
         #expect(ScholiumGrid.Spacing.regionContentInset == 20)
         #expect(ScholiumGrid.Spacing.documentShellInsetCSSPixels == 32)
         #expect(ScholiumGrid.Spacing.sourceShellInsetCSSPixels == 40)
-        #expect(ScholiumGrid.Peripheral.contentInset == 28)
         #expect(ScholiumGrid.Dimension.compactHierarchyRowHeight == 24)
         #expect(ScholiumGrid.Dimension.regionHeaderHeight == 48)
         #expect(ScholiumGrid.Document.narrowWidthThresholdRootEms == 44)
 
-        #expect(ScholiumMetrics.Apparatus.contentInset == ScholiumGrid.Peripheral.contentInset)
         #expect(ScholiumMetrics.Search.responsiveMargin == ScholiumGrid.Spacing.regionContentInset)
 
         let repository = URL(fileURLWithPath: #filePath)
@@ -2900,8 +2889,8 @@ struct FrontendArchitectureTests {
         #expect(tabs.contains(".noTabsNoBorder"))
     }
 
-    @Test("Library, Chat and the right Outline have matching View-menu routes")
-    func outlineHasViewMenuRoute() throws {
+    @Test("Library, Chat and Inspector have matching View-menu routes")
+    func inspectorHasViewMenuRoute() throws {
         let repository = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -3372,12 +3361,7 @@ struct FrontendArchitectureTests {
             ),
             encoding: .utf8
         )
-        // Document information remains a source-neutral derived projection.
-        let outlineSource = try String(
-            contentsOf: repository.appendingPathComponent(
-                "Scholium/Views/Sidebar/DocumentInformationProjection.swift"), encoding: .utf8)
         #expect(!toolbarSource.contains("workspaceSnapshot?.headings"))
-        #expect(!outlineSource.contains("MarkdownSemanticDocument("))
         #expect(!toolbarSource.contains("MarkdownSemanticDocument("))
     }
 

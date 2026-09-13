@@ -2160,38 +2160,6 @@
         }
       }
     },
-    "About" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "About"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "关于"
-          }
-        }
-      }
-    },
-    "About Fields" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "About Fields"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "文档资料字段"
-          }
-        }
-      }
-    },
     "Accept" : {
       "localizations" : {
         "en" : {
@@ -4701,22 +4669,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正文字号"
-          }
-        }
-      }
-    },
-    "Body statistics" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Body statistics"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正文统计"
           }
         }
       }
@@ -9505,22 +9457,6 @@
         }
       }
     },
-    "Document Information" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Document Information"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "文档信息"
-          }
-        }
-      }
-    },
     "Document Mode" : {
       "localizations" : {
         "en" : {
@@ -9549,38 +9485,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "文档模式，%@"
-          }
-        }
-      }
-    },
-    "Document Statistic" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Document Statistic"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "文档统计指标"
-          }
-        }
-      }
-    },
-    "Document Statistics" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Document Statistics"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "文档统计"
           }
         }
       }
@@ -18411,22 +18315,6 @@
         }
       }
     },
-    "Overview" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Overview"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "概览"
-          }
-        }
-      }
-    },
     "PDF is locked" : {
       "localizations" : {
         "zh-Hans" : {
@@ -24039,22 +23927,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "无法读取选段操作。可恢复默认设置。"
-          }
-        }
-      }
-    },
-    "Selection statistics" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Selection statistics"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "所选文本统计"
           }
         }
       }

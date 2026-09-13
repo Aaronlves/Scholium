@@ -406,7 +406,7 @@ private struct RuntimeMembershipFixture: Sendable {
                             scrollFraction: 0.25
                         )
                     ],
-                    inspectorMode: "outgoing"
+                    inspectorMode: "links"
                 )
             ],
             inspectorVisible: true,

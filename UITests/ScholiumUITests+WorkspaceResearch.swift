@@ -305,8 +305,8 @@ extension ScholiumUITests {
     }
 
     @MainActor
-    func testInspectorToolbarSelectsFlatLinkProjections() {
-        _ = selectResearchInspectorMode("outgoing")
+    func testInspectorLinksSelectIncomingAndOutgoingDirections() {
+        _ = selectResearchInspectorDirection("outgoing")
         let outgoing = app.buttons.matching(
             NSPredicate(format: "label BEGINSWITH 'Outgoing link to QA Topic.'")
         ).firstMatch
@@ -318,7 +318,7 @@ extension ScholiumUITests {
             XCTAssertFalse(app.staticTexts[retiredHeading].exists)
         }
 
-        _ = selectResearchInspectorMode("incoming")
+        _ = selectResearchInspectorDirection("incoming")
         let incoming = app.buttons.matching(
             NSPredicate(format: "label BEGINSWITH 'Incoming link from QA Topic.'")
         ).firstMatch

@@ -195,7 +195,8 @@ or Metadata departure flush; the ordinary editor owns all source drafts.
 `WindowShellState` owns Links/Related Material selection. Its icon-only toolbar
 control uses AppKit segments; `InspectorLinkDirectionControl` uses native
 capsule segments with system-owned selection. `ResearchInspectorLayout` owns
-the common content-edge, top, section and bottom spacing for these panes.
+the common content edge and top spacing for these panes; `ResearchListStyle`
+owns the native list-row insets.
 `LinksInspectorSession`, retained by the window's ResearchController, owns the
 link direction and per-Note/direction query, collapsed Note groups and scroll
 position. `ConnectionsInspectorView` filters an immutable occurrence projection;
