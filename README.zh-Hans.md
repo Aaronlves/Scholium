@@ -48,7 +48,7 @@ Scholium 的人工核心不依赖 Obsidian、Zotero 或 Agent。它不是项目�
 1. [Scholium 规格](Docs/SCHOLIUM_SPEC.md)是唯一目标权威清单；由它声明的章节分别
    负责产品行为、界面设计、辅助功能、发布要求和现行决策。
 2. [实现架构](Docs/IMPLEMENTATION_ARCHITECTURE.md)将任务路由到负责模块、运行时、
-   状态与编辑器边界的章节。
+   状态、编辑器与呈现边界的章节。
 3. [实现状态](Docs/IMPLEMENTATION_STATUS.md)将任务路由到当前可达能力与界面、
    开放工作、注明日期的验证证据和尚未完成的验收。
 4. 本 README、实际构建、测试和脚本提供设置方法与当前实现证据。
@@ -84,12 +84,13 @@ workspace，或直接读取脉络文件。首版只提供 workspace status、Not
 
 每个已确认 MCP 变更只生成一条本机 Agent Change 准确修订证据。Agent Changes 支持
 比较与满足条件的更新直接 Undo；它们不是聊天、权限、审查、接受、Settlement 或
-研究讨论。开发中的应用内 Chat 按规范提供明确的选区传递；它不是外部 host 之间的
+研究讨论。应用内 Chat 按规范提供明确的选区传递；它不是外部 host 之间的
 会话交接服务。
 
 发行版只捆绑精简的 Scholium Core Protocol Skill。研究者自己的 method Skills 位于
-外部 Agent host；Scholium 不注册、检查或执行它们。这些路径只证明工程可达性，不
-证明人类验收或普遍的哲学充分性。
+外部 Agent host 或每个脉络的 Chat workspace，并通过 Agent runtime 运行；Scholium
+不注册、检查或执行它们。这些路径只证明工程可达性，不证明人类验收或普遍的哲学
+充分性。
 
 准确证据以及尚未完成的人类、辅助功能、性能、打包和发布工作，请参阅
 [实现状态](Docs/IMPLEMENTATION_STATUS.md)。
@@ -283,9 +284,9 @@ Docs/SCHOLIUM_SPEC.md      目标权威清单与阅读路由
 Docs/Specification/       规范性产品、界面、辅助功能与发布章节
 Docs/IMPLEMENTATION_ARCHITECTURE.md
                            从属架构清单与阅读路由
-Docs/Architecture/        模块、运行时、状态、编辑器与交付章节
+Docs/Architecture/        模块、运行时、状态、编辑器、呈现与边界章节
 Docs/IMPLEMENTATION_STATUS.md
                            当前证据清单与阅读路由
-Docs/Status/              能力、界面、开放工作与注明日期的证据
+Docs/Status/              能力、界面、开放工作与当前证据
 Tools/Scripts/             构建、验证、QA、性能与发布工具
 ```

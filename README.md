@@ -66,7 +66,8 @@ Use the smallest authority set that answers the question:
    manifest. Its declared chapters own product behavior, interface design,
    accessibility, release requirements, and active decisions.
 2. [Implementation Architecture](Docs/IMPLEMENTATION_ARCHITECTURE.md) routes to
-   the chapters that own modules, runtimes, state, and editor boundaries.
+   the chapters that own modules, runtimes, state, editor, and presentation
+   boundaries.
 3. [Implementation Status](Docs/IMPLEMENTATION_STATUS.md) routes to current
    reachable capabilities and interface, open work, dated verification, and
    acceptance boundaries.
@@ -330,10 +331,10 @@ Docs/SCHOLIUM_SPEC.md      Canonical target-authority manifest and reading route
 Docs/Specification/       Normative product, interface, accessibility, and release chapters
 Docs/IMPLEMENTATION_ARCHITECTURE.md
                            Subordinate architecture manifest and reading routes
-Docs/Architecture/        Module, runtime, state, editor, and delivery chapters
+Docs/Architecture/        Module, runtime, state, editor, presentation, and boundary chapters
 Docs/IMPLEMENTATION_STATUS.md
                            Current-evidence manifest and reading routes
-Docs/Status/              Capabilities, interface, open work, and dated proof
+Docs/Status/              Capabilities, interface, open work, and current proof
 Tools/Scripts/             Build, verification, QA, performance, and release tools
 ```
 
