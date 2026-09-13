@@ -424,6 +424,31 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
     }
 
+    @Test("Installed body and heading families apply in the live editor without changing source")
+    func installedBodyAndHeadingFontsReachLiveEditor() async throws {
+        let source = "# Heading 标题\n\nBody 正文.\n"
+        var profile = DocumentAppearanceProfile(name: "Installed fonts")
+        profile.settings.body.fontFamily = .init(rawValue: "Helvetica Neue")
+        profile.settings.headings.fontFamily = .init(rawValue: "Songti SC")
+        let harness = EditorHarness(
+            source: source,
+            initialPresentationCSS: DocumentAppearanceStyles.css(for: profile),
+            laysOutForPointerTesting: true
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        let families = try #require(try await harness.callPageJavaScript(
+            """
+            return [getComputedStyle(document.querySelector('.cm-content')).fontFamily,
+                    getComputedStyle(document.querySelector('.cm-live-heading')).fontFamily];
+            """
+        ) as? [String])
+        #expect(families.count == 2)
+        #expect(families[0].hasPrefix("Helvetica Neue,"))
+        #expect(families[1].hasPrefix("Songti SC,"))
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+    }
+
     @Test("Semantic typefaces keep CJK overrides separate for body and headings")
     func semanticTypefacesRemainRoleAndScriptScoped() async throws {
         let source = "正文 *中文 English* and **加粗 text**.\n\n# 标题 中文 English\n"

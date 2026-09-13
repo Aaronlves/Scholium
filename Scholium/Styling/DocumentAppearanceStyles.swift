@@ -400,6 +400,7 @@ enum DocumentAppearanceStyles {
         case .georgia: "Georgia, \"Times New Roman\", \(defaultCJKBodyCSSFamily)"
         case .times: "\"Times New Roman\", Times, \(defaultCJKBodyCSSFamily)"
         case .systemSerif: "ui-serif, \"New York\", Georgia, \(defaultCJKBodyCSSFamily)"
+        default: "\(quotedCSSString(family.rawValue)), \(defaultCJKBodyCSSFamily)"
         }
     }
 
@@ -409,6 +410,7 @@ enum DocumentAppearanceStyles {
         case .alegreya: cssFontFamily(DocumentAppearanceFontFamily.alegreya)
         case .systemSerif: cssFontFamily(DocumentAppearanceFontFamily.systemSerif)
         case .systemSans: "ui-sans-serif, system-ui, -apple-system, \"PingFang SC\", sans-serif"
+        default: "\(quotedCSSString(family.rawValue)), \(defaultCJKBodyCSSFamily)"
         }
     }
 

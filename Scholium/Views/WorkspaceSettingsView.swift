@@ -1026,13 +1026,26 @@ private struct AppearanceReadingEditor: View {
         $0.localizedStandardCompare($1) == .orderedAscending
     }
 
+    private var installedBodyFontFamilies: [String] {
+        let selected = profile.settings.body.fontFamily
+        let retained = DocumentAppearanceFontFamily.presets.contains(selected) ? [] : [selected.rawValue]
+        return Array(Set(sourceFontFamilies + retained)).sorted {
+            $0.localizedStandardCompare($1) == .orderedAscending
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             settingsEditorSection("Body Font") {
                 HStack(spacing: 8) {
                     Picker("Body Font", selection: $profile.settings.body.fontFamily) {
-                        ForEach(DocumentAppearanceFontFamily.allCases, id: \.self) { Text($0.label).tag($0) }
+                        ForEach(DocumentAppearanceFontFamily.presets, id: \.self) { Text($0.label).tag($0) }
+                        Divider()
+                        ForEach(installedBodyFontFamilies, id: \.self) { family in
+                            Text(verbatim: family).tag(DocumentAppearanceFontFamily(rawValue: family))
+                        }
                     }.labelsHidden().frame(width: 210, alignment: .leading)
+                        .accessibilityIdentifier("scholium.appearance.bodyFont")
                     AppearanceNumberControl(value: $profile.settings.body.fontSizePoints, range: 9...24, step: 0.5, title: "Body font size")
                     Text("pt")
                 }
@@ -1402,14 +1415,27 @@ private struct AppearanceHeadingTypographyMatrix: View {
         }
     }
 
+    private var installedHeadingFontFamilies: [String] {
+        let selected = headings.fontFamily
+        let retained = DocumentHeadingFontFamily.presets.contains(selected) ? [] : [selected.rawValue]
+        return Array(Set(NSFontManager.shared.availableFontFamilies + retained)).sorted {
+            $0.localizedStandardCompare($1) == .orderedAscending
+        }
+    }
+
     private func fontPicker(width: CGFloat = 150) -> some View {
         Picker("Heading Font", selection: $headings.fontFamily) {
-            ForEach(DocumentHeadingFontFamily.allCases, id: \.self) {
+            ForEach(DocumentHeadingFontFamily.presets, id: \.self) {
                 Text($0.label).tag($0)
+            }
+            Divider()
+            ForEach(installedHeadingFontFamilies, id: \.self) { family in
+                Text(verbatim: family).tag(DocumentHeadingFontFamily(rawValue: family))
             }
         }
         .labelsHidden()
         .frame(width: width, alignment: .leading)
+        .accessibilityIdentifier("scholium.appearance.headingFont")
     }
 
     private func stylePicker(width: CGFloat = 150) -> some View {
@@ -2077,6 +2103,7 @@ private extension DocumentAppearanceFontFamily {
         case .georgia: "Georgia"
         case .times: "Times New Roman"
         case .systemSerif: "System Serif"
+        default: rawValue
         }
     }
 }
@@ -2088,6 +2115,7 @@ private extension DocumentHeadingFontFamily {
         case .alegreya: "Alegreya"
         case .systemSerif: "System Serif"
         case .systemSans: "System Sans"
+        default: LocalizedStringResource(stringLiteral: rawValue)
         }
     }
 }

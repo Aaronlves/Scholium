@@ -150,18 +150,17 @@ mathematics, and inert raw HTML are isolated technical regions. Complete RTL
 chrome/input behavior remains deferred under §17, but all Scholium-owned layout
 uses logical start/end edges.
 
-Document Appearance is machine-local. It manages named configurations for line
-width, Body, headings, semantic Callouts, and Exact-source face and size while
-preserving protected structure and accessibility. Body and heading roles each
-have independent optional Bold and Italic font choices. The Settings surface
-uses only these general role labels; it does not ask the researcher to manage
-language-specific variants. By default, Latin glyphs use the selected role's
-native weight/style variants, the built-in mixed-script body face is FangSong,
-and the built-in italic face is KaiTi. An explicit researcher choice remains
-authoritative until it is changed or reset. The researcher may choose any
-installed Exact-source font; Scholium does not audit the choice. The shipped
-default is monospaced. Changing presentation never changes source bytes or
-logical lines. Native app chrome is not themeable. Advanced CSS is additive and
+Document Appearance is machine-local, with named configurations for line width,
+Body, headings, semantic Callouts and Exact-source face and size. Body and
+headings have independent optional Bold and Italic choices, labelled by role
+without language-specific controls. Defaults use the selected Latin face's
+native variants, FangSong for mixed-script body text and KaiTi for italics.
+Researchers may choose any installed font family for Body, headings and
+Exact-source. Unavailable families remain selected and saved while rendering
+uses fallbacks. Explicit choices remain authoritative until changed or reset;
+Scholium does not audit them. Exact-source defaults to a monospaced font.
+Presentation preserves protected structure, accessibility, source bytes and
+logical lines. Native app chrome is not themeable; Advanced CSS is additive and
 optional.
 
 Appearance exposes one settings pane for body font/size, line width/spacing,

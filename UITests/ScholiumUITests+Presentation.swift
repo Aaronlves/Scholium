@@ -744,6 +744,51 @@ extension ScholiumUITests {
     }
 
     @MainActor
+    func testAppearanceInstalledBodyAndHeadingFontsPersist() throws {
+        let appMenu = app.menuBars.menuBarItems["Scholium QA"]
+        XCTAssertTrue(appMenu.waitForExistence(timeout: 5))
+        appMenu.click()
+        app.menuItems["Settings…"].click()
+        let appearance = app.toolbars.buttons["Appearance"].firstMatch
+        XCTAssertTrue(appearance.waitForExistence(timeout: 8))
+        appearance.click()
+        let form = app.scrollViews["scholium.appearance.form"].firstMatch
+        XCTAssertTrue(form.waitForExistence(timeout: 8))
+
+        for (identifier, family) in [
+            ("scholium.appearance.bodyFont", "Helvetica Neue"),
+            ("scholium.appearance.headingFont", "Songti SC"),
+        ] {
+            let picker = app.popUpButtons[identifier].firstMatch
+            XCTAssertTrue(picker.waitForExistence(timeout: 5))
+            scrollUntilHittable(picker, in: form)
+            picker.click()
+            let item = app.menuItems[family].firstMatch
+            XCTAssertTrue(item.waitForExistence(timeout: 5))
+            item.click()
+            XCTAssertEqual(picker.value as? String, family)
+        }
+        let save = app.buttons["Save Appearance"]
+        XCTAssertTrue(save.isHittable)
+        XCTAssertTrue(save.isEnabled)
+        save.click()
+        XCTAssertTrue(waitUntil(timeout: 8) { !save.isEnabled })
+
+        let url = homeDirectory.appendingPathComponent("ApplicationSupport/Workspace/Styles/appearances.json")
+        let file = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+        let profiles = try XCTUnwrap(file["profiles"] as? [[String: Any]])
+        let selected = try XCTUnwrap(file["selectedProfileID"] as? String)
+        let profile = try XCTUnwrap(profiles.first { $0["id"] as? String == selected })
+        let configuration = try XCTUnwrap(profile["settings"] as? [String: Any])
+        XCTAssertEqual((configuration["body"] as? [String: Any])?["fontFamily"] as? String, "Helvetica Neue")
+        XCTAssertEqual((configuration["headings"] as? [String: Any])?["fontFamily"] as? String, "Songti SC")
+        let screenshot = XCTAttachment(screenshot: settingsWindow().screenshot())
+        screenshot.name = "Appearance — installed body and heading fonts"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+    }
+
+    @MainActor
     func testAppearanceLineWidthVisualMatrixAndKeyboardControl() throws {
         func prepareVisualFixture(width: Int) {
             let mode = documentModeControl()

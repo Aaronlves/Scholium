@@ -83,6 +83,8 @@ struct StyleOperationsTests {
         var edited = original
         edited.settings.lineWidthCharacterUnits = 84
         edited.settings.body.fontSizePoints = 14.5
+        edited.settings.body.fontFamily = .init(rawValue: "Helvetica Neue")
+        edited.settings.headings.fontFamily = .init(rawValue: "Songti SC")
         edited.settings.body.cjkStrongFontFamily = "Noto Sans CJK SC"
         edited.settings.body.cjkEmphasisFontFamily = "Kaiti SC"
         edited.settings.source = .init(fontFamily: "Helvetica Neue", fontSizePoints: 16)
@@ -111,6 +113,8 @@ struct StyleOperationsTests {
         #expect(persisted.selectedAppearanceProfileID == copyID)
         #expect(persistedCopy.settings.lineWidthCharacterUnits == 84)
         #expect(persistedCopy.settings.body.fontSizePoints == 14.5)
+        #expect(persistedCopy.settings.body.fontFamily.rawValue == "Helvetica Neue")
+        #expect(persistedCopy.settings.headings.fontFamily.rawValue == "Songti SC")
         #expect(persistedCopy.settings.body.cjkStrongFontFamily == "Noto Sans CJK SC")
         #expect(persistedCopy.settings.body.cjkEmphasisFontFamily == "Kaiti SC")
         #expect(persistedCopy.settings.source.fontFamily == "Helvetica Neue")

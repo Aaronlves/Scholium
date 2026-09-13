@@ -79,12 +79,6 @@ DEVELOPER_DIR="${XCODE}" swift build \
   --only-use-versions-from-resolved-file \
   --product ScholiumApp
 DEVELOPER_DIR="${XCODE}" swift build \
-  --package-path "${ROOT}" \
-  --scratch-path "${DERIVED}" \
-  --configuration debug \
-  --only-use-versions-from-resolved-file \
-  --product scholium
-DEVELOPER_DIR="${XCODE}" swift build \
   --package-path "${ROOT}" --scratch-path "${DERIVED}" --configuration debug \
   --only-use-versions-from-resolved-file --product ScholiumAgentHelper
 mkdir -p "${APP}/Contents/MacOS" "${APP}/Contents/Resources" "${APP}/Contents/Helpers"

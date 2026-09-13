@@ -1,19 +1,37 @@
 import Foundation
 
-public enum DocumentAppearanceFontFamily: String, Codable, CaseIterable, Sendable {
-    case alegreya
-    case iowan
-    case palatino
-    case georgia
-    case times
-    case systemSerif
+/// A built-in font stack or an exact installed font family name.
+public struct DocumentAppearanceFontFamily: RawRepresentable, Codable, Hashable, Sendable {
+    public let rawValue: String
+
+    public init(rawValue: String) {
+        self.rawValue = rawValue
+    }
+
+    public static let alegreya = Self(rawValue: "alegreya")
+    public static let iowan = Self(rawValue: "iowan")
+    public static let palatino = Self(rawValue: "palatino")
+    public static let georgia = Self(rawValue: "georgia")
+    public static let times = Self(rawValue: "times")
+    public static let systemSerif = Self(rawValue: "systemSerif")
+
+    public static let presets: [Self] = [.alegreya, .iowan, .palatino, .georgia, .times, .systemSerif]
 }
 
-public enum DocumentHeadingFontFamily: String, Codable, CaseIterable, Sendable {
-    case body
-    case alegreya
-    case systemSerif
-    case systemSans
+/// A built-in font stack or an exact installed font family name.
+public struct DocumentHeadingFontFamily: RawRepresentable, Codable, Hashable, Sendable {
+    public let rawValue: String
+
+    public init(rawValue: String) {
+        self.rawValue = rawValue
+    }
+
+    public static let body = Self(rawValue: "body")
+    public static let alegreya = Self(rawValue: "alegreya")
+    public static let systemSerif = Self(rawValue: "systemSerif")
+    public static let systemSans = Self(rawValue: "systemSans")
+
+    public static let presets: [Self] = [.body, .alegreya, .systemSerif, .systemSans]
 }
 
 public enum DocumentHeadingStyle: String, Codable, CaseIterable, Sendable {

@@ -33,7 +33,7 @@ with another complete configuration of the same format.
 | Field | Meaning / 含义 | Supported values |
 | --- | --- | --- |
 | `lineWidthCharacterUnits` | Reading measure / 行宽 | 48–96; relative character-width units, not a count of Chinese characters |
-| `body.fontFamily` | Body font / 正文字体 | `alegreya`, `iowan`, `palatino`, `georgia`, `times`, `systemSerif` |
+| `body.fontFamily` | Body font / 正文字体 | `alegreya`, `iowan`, `palatino`, `georgia`, `times`, `systemSerif`, or an installed font family name / 或已安装字体家族名 |
 | `body.cjkStrongFontFamily` | Chinese strong face / 中文加粗字体 | omitted or `null` follows body font; `""` restores body font; otherwise an installed family name |
 | `body.cjkEmphasisFontFamily` | Chinese emphasis face / 中文强调字体 | omitted or `null` uses Kaiti SC; `""` follows the body font's native italic; otherwise an installed family name |
 | `body.fontSizePoints` | Body size / 正文字号 | 9–24 pt |
@@ -57,7 +57,7 @@ ligatures.
 
 ## Headings
 
-- `fontFamily`: `body`, `alegreya`, `systemSerif`, `systemSans`.
+- `fontFamily`: `body`, `alegreya`, `systemSerif`, `systemSans`, or an installed font family name / 或已安装字体家族名.
 - `cjkStrongFontFamily`: omitted or `null` follows the heading font; `""` also follows it; otherwise an installed family name is used only for Chinese glyphs in strong text.
 - `cjkEmphasisFontFamily`: omitted or `null` uses Kaiti SC for Chinese emphasis; `""` follows the heading font's native italic; otherwise an installed family name is used only for Chinese glyphs in emphasis and italic headings.
 - `style`: `upright`, `italic`, `smallCaps`.
