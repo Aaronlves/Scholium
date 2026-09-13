@@ -373,6 +373,13 @@ struct ContentView: View {
             beginSearch: { appState.searchController.begin($0) },
             clearRequestedPresentationMode: { appState.requestPresentationMode = nil },
             consumeSourceLocation: { appState.documentController.consumeSourceLocation($0) },
+            navigateToSourceLine: { line, sourceFingerprint in
+                guard appState.currentDocumentDescriptor?.sessionKey == documentKey else { return }
+                appState.documentController.requestSourceLocation(
+                    line: line,
+                    sourceFingerprint: sourceFingerprint
+                )
+            },
             rememberScrollPosition: {
                 guard let path = documentPath else { return }
                 appState.rememberScrollPosition($0, for: path)

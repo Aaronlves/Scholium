@@ -71,7 +71,7 @@ The circular Send button uses native control styling; availability, keyboard sen
 native state feedback remain authoritative. The whole message input rectangle, including
 whitespace, is editable; text clicks position the native caret. Return sends when
 available; Shift-Return or Option-Return inserts a newline. Marked-text Return belongs
-to the input method. Unavailable sending preserves the draft and selection, with a
+to the input method. Native placeholder visibility includes composition and never overlaps marked text. Unavailable sending preserves the draft and selection, with a
 visible connection explanation when disconnected. Native selection and Undo remain
 within the current conversation. Back returns to conversations while work
 continues. User messages align trailing in content-sized shared-Accent bubbles with
@@ -373,26 +373,26 @@ its scope and query; in-conversation Find provides match navigation and Close.
 Both preserve drafts and running work. A branch names its origin and does not
 look like an edit to historical messages.
 
-The bottom input surface changes in place between composing, answering and
-authorizing. One active request occupies the same container as the draft; no
-second actionable request card appears in the transcript. The native draft
-remains retained with its selection, Undo and materials while hidden and inert.
-Answering or confirmed authorization restores composing. Incoming requests do
-not interrupt active typing, marked-text composition or reading older messages;
-a persistent named entry lets the researcher open them. Open question and approval
-cards provide no return-to-composer action or Escape shortcut. Completing or
-declining the request restores composing without discarding the retained draft.
-Required requests remain reachable until resolved. Submission and uncertainty
-retain the request's identity and recovery state; only runtime acknowledgement
-removes a pending decision. Multiple requests show a count, and switching
-conversations never transfers answers or permissions. Composing and requests share
-one native Liquid Glass shell, fitted to their content with bounded scrolling.
-Request content uses typography and spacing rather than nested surface cards;
-one bottom action row groups the previous-question and skip icons
-with native borderless styling. Sending retains the composer's native circular
-button. No action occupies an otherwise empty header row. Scrollable request
-content reserves space for native text-field focus rings. The lower composing row contains
-Chat Actions and only the currently necessary Send/Stop controls.
+Composing, questions and approvals share one fitted native Liquid Glass shell
+with bounded scrolling.
+One request replaces the draft without a duplicate transcript card.
+The hidden, inert native editor retains selection, Undo and materials.
+Incoming requests never interrupt typing, composition or history reading;
+a persistent named entry opens them. Open requests have no return-to-composer
+or Escape action. Completion or decline restores the retained draft. Requests
+remain reachable until resolved; submission and uncertainty retain identity
+and recovery, and only runtime acknowledgement removes a pending decision.
+Multiple requests show a count. Conversation changes transfer no answers or grants.
+Native resize and crossfade present composing/request changes;
+Reduce Motion is immediate. Motion never replaces the editor, delays input,
+or leaves outgoing controls actionable.
+Request typography and spacing replace nested cards. One bottom row groups
+borderless previous-question and skip icons; delivery stays circular. No empty
+header action row is added. Scrolling leaves native field focus rings clear.
+Composing shows Chat Actions and one circular primary action: during work,
+Stop when delivery is unavailable, otherwise Send Now or Queue for Next Turn.
+Compaction shows Stop; interruption shows disabled Stopping. Chat Actions retains
+Stop with Command-Period. Command-Return means delivery only. Symbols retain position and accessible names.
 
 Research questions appear one at a time with a position indicator and Previous
 Question action when a request contains several. Clicking an offered answer advances
@@ -432,7 +432,7 @@ scope shows its unavailability without offering an unchecked grant. Waiting for
 confirmation replaces decision controls and preserves the inspected request.
 
 The latest actual activity is shown in the Agent process group in the transcript; Stop
-remains immediately available at the composer. Plans and each tool call retain native
+remains available through the composer's primary action or Chat Actions menu. Plans and each tool call retain native
 disclosure for detail; live queries, sources, exact targets and outcomes remain inspectable. Cards distinguish source material, questions, approval and
 operation evidence without enclosing every prose paragraph. Source links and
 material previews retain provenance under §8.7. Technical payloads remain behind

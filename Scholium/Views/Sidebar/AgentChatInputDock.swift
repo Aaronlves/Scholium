@@ -15,6 +15,7 @@ struct AgentChatInputDockState {
 }
 
 struct AgentChatInputDock<Request: View, Composer: View>: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let requestID: String?
     let requestTitle: String
     let requestCount: Int
@@ -60,6 +61,7 @@ struct AgentChatInputDock<Request: View, Composer: View>: View {
             composer()
                 .frame(height: expanded ? 0 : nil)
                 .opacity(expanded ? 0 : 1)
+                .clipped()
                 .disabled(expanded)
                 .allowsHitTesting(!expanded)
                 .accessibilityHidden(expanded)
@@ -78,6 +80,7 @@ struct AgentChatInputDock<Request: View, Composer: View>: View {
         .buttonStyle(.borderless)
         .padding(ScholiumSidebarLayout.rowInset)
         .scholiumFloatingSurface(in: RoundedRectangle(cornerRadius: 24))
+        .animation(ScholiumMotion.disclosure(reduceMotion: reduceMotion), value: expanded)
         .padding(ScholiumSidebarLayout.edgeInset)
         .tint(nil as Color?)
         .onChange(of: requestID, initial: true) { _, id in

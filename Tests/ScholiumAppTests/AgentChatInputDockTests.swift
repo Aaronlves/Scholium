@@ -52,7 +52,14 @@ struct AgentChatInputDockTests {
                     isActive: true, isReadingHistory: false, isEditingDraft: false,
                     composerIsFocused: Binding(get: { focused }, set: { focused = $0 })
                 ) {
-                    if requestID != nil {
+                    if requestID == "approval" {
+                        AgentChatRuntimeApprovalView(
+                            request: .init(
+                                kind: .network, command: nil, cwd: nil, environmentID: nil, reason: nil,
+                                networkHost: "example.org", networkProtocol: "https", permissions: nil,
+                                files: [], grantRoot: nil, grants: [.once], rejection: .decline),
+                            decision: nil, failure: nil, stop: {}, respond: { _ in })
+                    } else if requestID != nil {
                         AgentChatQuestionForm(
                             questions: questions, answers: Binding(get: { answers }, set: { answers = $0 }),
                             isSubmitting: false, failure: nil, stop: {}, reply: {}, skip: {})
@@ -65,7 +72,9 @@ struct AgentChatInputDockTests {
                     HStack {
                         Image(systemName: "plus")
                         Spacer()
-                        Button("Send") { sent += 1 }
+                        AgentChatComposerActionButton(
+                            state: .ready, canSend: true, queuesInput: false,
+                            submit: { sent += 1 }, stop: {})
                     }
                 }
             }.frame(width: 340, height: 600)
@@ -94,8 +103,8 @@ struct AgentChatInputDockTests {
         let range = NSRange(location: 2, length: 4)
         editor.editor.setSelectedRange(range)
         for scheme in [ColorScheme.light, .dark] {
-            window.appearance = NSAppearance(named: scheme == .light ? .aqua : .darkAqua)
-            for requestID in [UUID().uuidString, Optional<String>.none] {
+            window.appearance = NSAppearance(named: scheme == .light ? .aqua : .accessibilityHighContrastDarkAqua)
+            for requestID in ["question", "approval", Optional<String>.none] {
                 host.rootView = content(requestID, scheme: scheme)
                 for _ in 0..<8 {
                     await Task.yield()
@@ -114,7 +123,7 @@ struct AgentChatInputDockTests {
                     try #require(bitmap.representation(using: .png, properties: [:])).write(
                         to:
                             repository.appendingPathComponent(
-                                ".build/chat-input-dock/\(scheme == .light ? "light" : "dark")-\(requestID == nil ? "draft" : "question").png"))
+                                ".build/chat-input-dock/\(scheme == .light ? "light" : "dark")-\(requestID ?? "draft").png"))
                 }
             }
         }

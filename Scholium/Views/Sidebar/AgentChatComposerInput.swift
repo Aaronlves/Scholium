@@ -177,6 +177,36 @@ struct AgentChatComposerInput: NSViewRepresentable {
 }
 
 @MainActor final class AgentChatComposerTextView: NSTextView {
+    // Placeholder visibility follows the native buffer, including uncommitted
+    // input-method text, rather than the asynchronously published SwiftUI draft.
+    var showsPlaceholder: Bool { string.isEmpty && !hasMarkedText() }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        guard showsPlaceholder else { return }
+        let origin = textContainerOrigin
+        let padding = textContainer?.lineFragmentPadding ?? 0
+        (String(localized: "Message", bundle: .module) as NSString).draw(
+            at: NSPoint(x: origin.x + padding, y: origin.y),
+            withAttributes: [.font: font ?? NSFont.systemFont(ofSize: NSFont.systemFontSize),
+                             .foregroundColor: NSColor.placeholderTextColor])
+    }
+
+    override func setMarkedText(_ string: Any, selectedRange: NSRange, replacementRange: NSRange) {
+        super.setMarkedText(string, selectedRange: selectedRange, replacementRange: replacementRange)
+        needsDisplay = true
+    }
+
+    override func unmarkText() {
+        super.unmarkText()
+        needsDisplay = true
+    }
+
+    override func didChangeText() {
+        super.didChangeText()
+        needsDisplay = true
+    }
+
     var onFocusChange: ((Bool) -> Void)?
     override func becomeFirstResponder() -> Bool {
         let accepted = super.becomeFirstResponder()

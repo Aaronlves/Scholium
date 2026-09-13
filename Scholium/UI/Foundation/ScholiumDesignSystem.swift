@@ -1607,6 +1607,36 @@ enum ScholiumMetrics {
         static let minimumTextScale = 1.0
         static let maximumTextScale = 2.0
         static let textScaleStep = 0.1
+        /// The outline rail yields before the document becomes too narrow to
+        /// remain readable. It is an overlay affordance, not a split item.
+        static let outlineRailMinimumWidth: CGFloat = ScholiumGrid.foundationUnit * 180
+        static let outlineRailWidth: CGFloat = ScholiumGrid.foundationUnit * 8
+        static let outlineRailVerticalInset = ScholiumGrid.Spacing.sectionSeparation
+        /// The compact rail keeps its visual rhythm denser than a regular
+        /// custom control under the compact-outline precision exception in
+        /// specification section 20. Each 32 x 12pt target is disjoint, spans
+        /// the rail, and retains a named keyboard/AX button. Overflow scrolls
+        /// rather than shrinking the targets further.
+        static let outlineMarkerTarget: CGFloat = ScholiumGrid.foundationUnit * 3
+        static let outlineMarkerHeight: CGFloat = ScholiumGrid.foundationUnit / 2
+        static let outlineMarkerActiveHeight: CGFloat = ScholiumGrid.foundationUnit * 0.625
+        /// Hierarchy uses length, current location uses stroke weight, and
+        /// pointer proximity supplies a continuous additional extension.
+        static let outlineMarkerHeadingOneWidth: CGFloat = ScholiumGrid.foundationUnit * 3
+        static let outlineMarkerHeadingTwoWidth: CGFloat = ScholiumGrid.foundationUnit * 1.5
+        static let outlineMarkerHoverMaximumWidth: CGFloat = ScholiumGrid.foundationUnit * 7
+        static let outlineMarkerHoverRadius: CGFloat = 4
+        static let outlineMarkerHoverHeight: CGFloat = ScholiumGrid.foundationUnit
+        static let outlineHoverHapticInterval: TimeInterval = 0.06
+        static let outlinePreviewCornerRadius: CGFloat = ScholiumGrid.foundationUnit * 1.5
+        static let outlinePreviewWidth: CGFloat = ScholiumGrid.foundationUnit * 64
+        static let outlineMarkerRestingOpacity: CGFloat = 0.32
+        static let outlineMarkerHoverOpacity: CGFloat = 0.78
+        static let outlineMarkerActiveOpacity: CGFloat = 0.72
+        static let outlineMarkerIncreasedContrastRestingOpacity: CGFloat = 0.52
+        static let outlineMarkerIncreasedContrastHoverOpacity: CGFloat = 0.78
+        static let outlineMarkerIncreasedContrastActiveOpacity: CGFloat = 0.92
+        static let outlineMarkerPressedOpacity: CGFloat = 0.78
     }
 
     enum Apparatus {
@@ -2870,6 +2900,10 @@ enum ScholiumMotion {
 
     static func disclosure(reduceMotion: Bool) -> Animation? {
         reduceMotion ? nil : .easeOut(duration: 0.12)
+    }
+
+    static func outlineInteraction(reduceMotion: Bool) -> Animation? {
+        reduceMotion ? nil : .smooth(duration: 0.38)
     }
 
     static func symbolReplacement(reduceMotion: Bool) -> Animation? {

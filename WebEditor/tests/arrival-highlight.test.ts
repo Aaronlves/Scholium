@@ -24,6 +24,8 @@ describe("arrival feedback", () => {
     const {root, navigation} = fixture();
     const original = root.textContent;
     expect(navigation.reveal(3)).toBe(true);
+    expect(root.querySelector<HTMLElement>("[data-source-line=\"2\"]")?.scrollIntoView)
+      .toHaveBeenCalledWith({block: "start", behavior: "smooth"});
     expect(root.ownerDocument.querySelector<HTMLElement>('.' + arrivalClass)?.style.height).toBe('24px');
     vi.advanceTimersByTime(arrivalDuration);
     expect(root.ownerDocument.querySelector('.' + arrivalClass)).toBeNull();

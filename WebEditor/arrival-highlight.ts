@@ -42,7 +42,12 @@ export function createReaderArrival(root: HTMLElement) {
         || span(a) - span(b));
     const target = candidates[0];
     if (!target) return false;
-    target.scrollIntoView({block: "start", behavior: "auto"});
+    const reduceMotion = typeof owner.matchMedia === "function"
+      && owner.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    target.scrollIntoView({
+      block: "start",
+      behavior: reduceMotion ? "auto" : "smooth",
+    });
     const range = root.ownerDocument.createRange();
     range.selectNodeContents(target);
     const rect = [...range.getClientRects()].find(rect => rect.width > 0 && rect.height > 0);

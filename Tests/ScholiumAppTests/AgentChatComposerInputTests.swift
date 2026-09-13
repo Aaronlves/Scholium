@@ -6,6 +6,29 @@ import Testing
 
 @Suite("Native chat input") @MainActor
 struct AgentChatComposerInputTests {
+    @Test("Placeholder yields to uncommitted Chinese input and returns after clearing")
+    func nativePlaceholder() {
+        let host = AgentChatComposerHost()
+        #expect(host.editor.showsPlaceholder)
+        host.editor.setMarkedText("pin", selectedRange: NSRange(location: 3, length: 0), replacementRange: NSRange(location: NSNotFound, length: 0))
+        #expect(host.editor.hasMarkedText() && !host.editor.showsPlaceholder)
+        host.editor.insertText("拼", replacementRange: NSRange(location: NSNotFound, length: 0))
+        #expect(host.editor.string == "拼" && !host.editor.showsPlaceholder)
+        host.editor.setSelectedRange(NSRange(location: 0, length: 1))
+        host.editor.deleteBackward(nil)
+        #expect(host.editor.string.isEmpty && host.editor.showsPlaceholder)
+    }
+
+    @Test("A blocked follow-up retains Stop, and stopping cannot become Send")
+    func primaryAction() {
+        #expect(AgentChatComposerAction(state: .working, canSend: false, queuesInput: false) == .stop)
+        #expect(AgentChatComposerAction(state: .working, canSend: true, queuesInput: false) == .sendNow)
+        #expect(AgentChatComposerAction(state: .working, canSend: true, queuesInput: true) == .queue)
+        #expect(AgentChatComposerAction(state: .compacting, canSend: false, queuesInput: false) == .stop)
+        #expect(AgentChatComposerAction(state: .stopping, canSend: true, queuesInput: false) == .stopping)
+        #expect(AgentChatComposerAction(state: .disconnected, canSend: false, queuesInput: false) == .send)
+    }
+
     @Test("Sizing probes preserve the live editor geometry and selection while measuring wrapping")
     func measurementDoesNotResizeEditor() {
         let host = AgentChatComposerHost()

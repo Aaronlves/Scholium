@@ -12,7 +12,11 @@
 - Ordinary small text meets at least **4.5:1** contrast; large or bold text
   meets at least **3:1**. Custom macOS controls target 28 × 28pt and never fall
   below 20 × 20pt; an important target below 28 × 28pt requires explicit audit
-  of spacing, precision, and alternative routes.
+  of spacing, precision, and alternative routes. The compact Document Outline
+  is a precision-navigation exception: rows may be 12pt high when targets span
+  at least 28pt horizontally, remain disjoint, and retain named keyboard and
+  accessibility activation. Overflow scrolls rather than shrinking the rows;
+  ordinary Document navigation and Find remain available.
 - Important state uses at least two suitable channels. Color, motion, sound,
   location, hover, drag, secondary click, gesture, and arrow direction are
   never the sole meaning or route.

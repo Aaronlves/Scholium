@@ -119,6 +119,7 @@ struct DocumentFeatureActions {
     let beginSearch: @MainActor (SearchInvocation) -> Void
     let clearRequestedPresentationMode: @MainActor () -> Void
     let consumeSourceLocation: @MainActor (UUID) -> Void
+    let navigateToSourceLine: @MainActor (Int, String?) -> Void
     let rememberScrollPosition: @MainActor (Double) -> Void
     let openInternalLink: @MainActor (String) -> Void
     let openExternalURL: @MainActor (URL) -> Void
@@ -215,6 +216,7 @@ private struct DocumentSessionFallback: View {
 
 struct NoteContentView: View {
     @Environment(\.scholiumFileSelectionPresenter) private var fileSelectionPresenter
+    @Environment(\.scholiumReduceMotion) private var reduceMotion
     @ObservedObject private var controller: DocumentController
     @ObservedObject private var documentSession: DocumentSessionModel
     let target: DocumentEditingTarget
@@ -226,6 +228,11 @@ struct NoteContentView: View {
     @State private var isInsertingImage = false
     @State private var announcedUnavailableIndexedImages: Set<String> = []
     @State private var indexedImageAvailabilityGeneration = 0
+    @State private var outlineEntries: [DocumentOutlineEntry] = []
+    @State private var outlineScrollFraction: Double
+    @State private var outlineScrollAnchor: EditorScrollAnchor?
+    @State private var outlineSelectionEntryID: DocumentOutlineEntry.ID?
+    @State private var outlineSelectionAwaitsScrollAnchor = false
 
     init(
         controller: DocumentController,
@@ -241,6 +248,8 @@ struct NoteContentView: View {
         self.note = note
         self.state = state
         self.actions = actions
+        _outlineScrollFraction = State(initialValue: documentSession.scrollFraction)
+        _outlineScrollAnchor = State(initialValue: documentSession.scrollAnchor)
     }
 
     private var isEditing: Bool {
@@ -472,6 +481,16 @@ struct NoteContentView: View {
         ) { _ in
             indexedImageAvailabilityGeneration &+= 1
         }
+        .task(id: outlineTaskIdentity) {
+            let entries = DocumentOutlineProjection.make(
+                relativePath: note.relativePath,
+                source: outlineSource
+            )
+            guard !Task.isCancelled else { return }
+            outlineSelectionEntryID = nil
+            outlineSelectionAwaitsScrollAnchor = false
+            outlineEntries = entries
+        }
         .task(id: readProjectionTaskIdentity) {
             PerformanceProbe.shared.markReadTaskStarted(
                 documentID: note.relativePath
@@ -569,6 +588,17 @@ struct NoteContentView: View {
         "\(note.relativePath):\(noteFingerprint.sha256)"
     }
 
+    private var outlineSource: String {
+        isEditing ? editingSource : note.rawContent
+    }
+
+    private var outlineTaskIdentity: String {
+        if isEditing {
+            return "editing:\(editorSession.documentID):\(DocumentFingerprint(content: editingSource).sha256)"
+        }
+        return "read:\(noteFingerprint.sha256)"
+    }
+
     private var previewTaskIdentity: String {
         let generation = state.workspaceCatalog?.graph?.generation ?? -1
         return "\(state.currentVaultID?.uuidString ?? "unavailable"):\(noteFingerprint.sha256):\(generation):\(presentationMode.rawValue):\(hasUnsavedChanges)"
@@ -654,10 +684,14 @@ struct NoteContentView: View {
                 onPasteImage: handlePastedImage,
                 onLinkActivation: openAuthoredLink,
                 onScrollFractionChange: {
+                    rememberOutlineScrollFraction($0)
                     documentSession.observeScrollFraction($0)
                     actions.rememberScrollPosition($0)
                 },
-                onScrollAnchorChange: { documentSession.observeScrollAnchor($0) },
+                onScrollAnchorChange: {
+                    rememberOutlineScrollAnchor($0)
+                    documentSession.observeScrollAnchor($0)
+                },
                 onAskAgent: actions.askAgent
             )
             .id(editorSession.viewReconstructionID)
@@ -714,6 +748,88 @@ struct NoteContentView: View {
                 .accessibilityHidden(true)
             }
         }
+        .overlay(alignment: .topLeading) {
+            documentOutlineOverlay
+        }
+    }
+
+    @ViewBuilder
+    private var documentOutlineOverlay: some View {
+        GeometryReader { proxy in
+            let hasSpace = proxy.size.width >= ScholiumMetrics.Document.outlineRailMinimumWidth
+            let canShow = hasSpace && outlineEntries.count > 1
+
+            Group {
+                if canShow {
+                    DocumentOutlineRail(
+                        entries: outlineEntries,
+                        activeEntryID: outlineSelectionEntryID
+                            ?? DocumentOutlineProjection.activeEntryID(
+                                entries: outlineEntries,
+                                sourceUTF16Offset: outlineScrollAnchor?.sourceUTF16Offset,
+                                scrollFraction: outlineScrollFraction
+                            ),
+                        select: navigateToOutlineEntry
+                    )
+                    .frame(
+                        height: max(
+                            0,
+                            proxy.size.height - ScholiumGrid.Spacing.regionContentInset
+                        ),
+                        alignment: .topLeading
+                    )
+                    .padding(.top, ScholiumGrid.Spacing.regionContentInset)
+                    .padding(.leading, ScholiumGrid.Spacing.inlineControlGap)
+                    .transition(reduceMotion ? .identity : .opacity)
+                }
+            }
+            .animation(
+                ScholiumMotion.disclosure(reduceMotion: reduceMotion),
+                value: canShow
+            )
+            .accessibilityHidden(!canShow)
+            .allowsHitTesting(canShow)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private func navigateToOutlineEntry(_ entry: DocumentOutlineEntry) {
+        outlineSelectionEntryID = entry.id
+        outlineSelectionAwaitsScrollAnchor = true
+        actions.navigateToSourceLine(
+            entry.sourceLine,
+            isEditing ? nil : noteFingerprint.sha256
+        )
+    }
+
+    private func rememberOutlineScrollFraction(_ fraction: Double) {
+        outlineScrollFraction = fraction
+        // The editor and reader report the fraction and source anchor in
+        // different orders. Let the matching anchor decide whether a
+        // click-selected marker should be cleared.
+    }
+
+    private func rememberOutlineScrollAnchor(_ anchor: EditorScrollAnchor) {
+        outlineScrollAnchor = anchor
+
+        // Keep a click-selected marker while the programmatic reveal settles.
+        // Once the reported source position belongs to another outline
+        // section, normal scroll tracking takes over again.
+        if outlineSelectionAwaitsScrollAnchor,
+            outlineSelectionEntryID != nil
+        {
+            outlineSelectionAwaitsScrollAnchor = false
+            return
+        }
+        guard let selectionID = outlineSelectionEntryID,
+            let resolvedID = DocumentOutlineProjection.activeEntryID(
+                entries: outlineEntries,
+                sourceUTF16Offset: anchor.sourceUTF16Offset,
+                scrollFraction: anchor.fallbackFraction
+            ),
+            resolvedID != selectionID
+        else { return }
+        outlineSelectionEntryID = nil
     }
 
     @ViewBuilder
@@ -857,11 +973,13 @@ struct NoteContentView: View {
                 )
             },
             onScrollFractionChange: {
+                rememberOutlineScrollFraction($0)
                 guard !isEditing else { return }
                 documentSession.observeScrollFraction($0)
                 actions.rememberScrollPosition($0)
             },
             onScrollAnchorChange: {
+                rememberOutlineScrollAnchor($0)
                 guard !isEditing else { return }
                 documentSession.observeScrollAnchor($0)
             },
@@ -1648,6 +1766,7 @@ private struct ConflictComparisonSheet: View {
         beginSearch: { _ in },
         clearRequestedPresentationMode: {},
         consumeSourceLocation: { _ in },
+        navigateToSourceLine: { _, _ in },
         rememberScrollPosition: { _ in },
         openInternalLink: { _ in },
         openExternalURL: { _ in },

@@ -180,7 +180,11 @@
       const candidates = [...root.querySelectorAll("[data-source-line]")].filter((element) => Number(element.dataset.sourceLine) <= line && Number(element.dataset.sourceEndLine ?? element.dataset.sourceLine) >= line).sort((a, b) => Number(Number(b.dataset.sourceLine) === line) - Number(Number(a.dataset.sourceLine) === line) || span(a) - span(b));
       const target = candidates[0];
       if (!target) return false;
-      target.scrollIntoView({ block: "start", behavior: "auto" });
+      const reduceMotion = typeof owner.matchMedia === "function" && owner.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      target.scrollIntoView({
+        block: "start",
+        behavior: reduceMotion ? "auto" : "smooth"
+      });
       const range = root.ownerDocument.createRange();
       range.selectNodeContents(target);
       const rect = [...range.getClientRects()].find((rect2) => rect2.width > 0 && rect2.height > 0);

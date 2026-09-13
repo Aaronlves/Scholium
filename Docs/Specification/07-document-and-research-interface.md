@@ -218,6 +218,34 @@ section and lower levels becoming progressively quieter. Review and Edit
 preserve those relative visual and accessible levels; Source exposes only the
 exact authored hierarchy and no projected title.
 
+Review, Edit and Source may show a compact Document Outline on the Document's
+logical leading edge. This source-ordered projection of authored H1-H2 headings
+has equal rows: H1 uses longer resting ticks than H2, and accessible labels
+identify both levels. H3-H6 are omitted. The resting rail has no filled track
+or persistent labels. Pointer proximity lengthens nearby ticks with broad,
+softly settling, reversible falloff. Distinct activation targets never overlap;
+overflow scrolls independently. The current section has a stronger stroke.
+
+Pointer proximity or keyboard focus immediately reveals the authored title
+beside the marker in a compact, noninteractive floating preview. It uses small
+system text and the shared native floating-surface material, with tight insets
+and a small rounded-rectangle shape instead of an arrowed capsule. The system
+owns its highlights, elevation and adaptation. Scanning updates title and
+position without waiting. The preview never takes focus or intercepts input;
+leaving the rail, Escape, activation, document departure or heading replacement
+removes it. Complete heading labels remain available to accessibility.
+
+Activation directly uses the current mode's revision-bound source-location route;
+preview is optional. Neither creates history, edits source nor substitutes for
+selection. Pointer activation has no rectangular plate; keyboard traversal
+retains system focus. A system haptic acknowledges pointer press while contact
+remains; crossing markers offers alignment feedback with jitter and rapid
+sweeps suppressed. Haptics follow system preferences and never claim arrival.
+Hover changes no selection; press feedback stays on the marker. Successful
+navigation uses a short smooth reveal and the existing transient arrival marker.
+Reduce Motion uses immediate positioning and static feedback. The rail hides
+before it would compress or cover readable Document content.
+
 Attachments appear as ordinary file links or image embeds in the Document.
 File activation uses system Quick Look with its standard opening and dismissal
 controls. File-menu insertion acts on the active editor selection. Scholium
@@ -292,8 +320,8 @@ attribution; qualifications use restrained grouping. Color is supplementary.
 The role name remains available to assistive
 technology, and Source always exposes the complete authored text.
 
-Outline and document statistics currently have no interface entry, including
-Inspector, toolbar, menus and popovers.
+The compact Document Outline rail is the only outline surface. Document
+statistics have no interface entry in Inspector, toolbar, menus or popovers.
 Toolbar placement and available commands belong to §18.2. Document Text Size
 is per-window and source-neutral.
 

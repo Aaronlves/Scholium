@@ -1336,14 +1336,6 @@ struct AgentChatView: View {
                     }
                 }
             )
-            .overlay(alignment: .topLeading) {
-                if controller.selected?.draft.isEmpty != false {
-                    Text("Message", bundle: .module).font(.body)
-                        .foregroundStyle(Color(nsColor: .placeholderTextColor))
-                        .padding(.horizontal, 9).padding(.vertical, 6).allowsHitTesting(false)
-                        .accessibilityHidden(true)
-                }
-            }
             .frame(maxWidth: .infinity)
             HStack {
                 Menu {
@@ -1400,6 +1392,12 @@ struct AgentChatView: View {
                         }
                     }.disabled(controller.isBusy)
                     Button("Context and Usage") { showsContext = true }
+                    if [.working, .compacting, .stopping].contains(controller.state) {
+                        Divider()
+                        Button("Stop") { controller.stop() }
+                            .keyboardShortcut(".", modifiers: .command)
+                            .disabled(controller.state == .stopping)
+                    }
                 } label: {
                     Label("Chat Actions", systemImage: "plus").labelStyle(.iconOnly)
                         .foregroundStyle(.primary)
@@ -1407,38 +1405,13 @@ struct AgentChatView: View {
                 .help("Chat Actions").accessibilityLabel("Chat Actions")
                 .accessibilityIdentifier("scholium.chat.addMaterial")
                 Spacer(minLength: 0)
-                if controller.state == .working || controller.state == .compacting || controller.state == .stopping {
-                    Button {
-                        controller.stop()
-                    } label: {
-                        Image(systemName: "stop.fill")
-                    }
-                    .disabled(controller.state == .stopping)
-                    .help("Stop").accessibilityLabel("Stop")
-                }
-                if !controller.isBusy || controller.selected?.draft.isEmpty == false {
-                    Button {
+                AgentChatComposerActionButton(
+                    state: controller.state, canSend: controller.canSend,
+                    queuesInput: inputBehavior == .queue,
+                    submit: {
+                        guard (NSApp.keyWindow?.firstResponder as? NSTextView)?.hasMarkedText() != true else { return }
                         controller.submitDraft(whileWorking: inputBehavior)
-                    } label: {
-                        Image(systemName: controller.state == .working && inputBehavior == .queue ? "text.badge.plus" : "arrow.up")
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .buttonBorderShape(.circle)
-                    .controlSize(.regular)
-                    .keyboardShortcut(.return, modifiers: .command)
-                    .disabled(!controller.canSend)
-                    .help(
-                        controller.state == .disconnected
-                            ? String(localized: "Connect an agent before sending.", bundle: .module)
-                            : controller.state == .working && controller.currentTurnID != nil
-                                ? String(localized: inputBehavior == .queue ? "Queue for Next Turn" : "Add this message to the current turn.", bundle: .module)
-                                : String(localized: "Send", bundle: .module)
-                    )
-                    .accessibilityLabel(
-                        controller.state == .working && controller.currentTurnID != nil
-                            ? String(localized: inputBehavior == .queue ? "Queue for Next Turn" : "Send Now", bundle: .module)
-                            : String(localized: "Send", bundle: .module))
-                }
+                    }, stop: controller.stop)
             }
             .controlSize(.regular)
             .menuStyle(.borderlessButton)

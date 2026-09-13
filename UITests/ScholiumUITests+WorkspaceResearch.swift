@@ -670,8 +670,6 @@ extension ScholiumUITests {
     }
 
     @MainActor
-
-    @MainActor
     func testMenuBarGroupsCommandsByTask() throws {
         XCTAssertFalse(app.menuBars.menuBarItems["Navigate"].exists)
         func menuItems(_ menu: String) -> [String] {

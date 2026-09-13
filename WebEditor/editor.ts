@@ -2585,9 +2585,85 @@ function convergeLivePreviewProjection() {
   editor.dispatch({effects: refreshLivePreviewEffect.of(null)});
 }
 
+let pendingSmoothRevealFrame: number | undefined;
+let smoothRevealGeneration = 0;
+let smoothRevealAnimationActive = false;
+
+function cancelPendingSmoothReveal() {
+  smoothRevealGeneration += 1;
+  smoothRevealAnimationActive = false;
+  if (pendingSmoothRevealFrame !== undefined) {
+    window.cancelAnimationFrame(pendingSmoothRevealFrame);
+    pendingSmoothRevealFrame = undefined;
+  }
+  editor.scrollDOM.scrollTo({
+    top: editor.scrollDOM.scrollTop,
+    left: editor.scrollDOM.scrollLeft,
+    behavior: "auto",
+  });
+}
+
+function scheduleSmoothEditorReveal(lineFrom: number, initialTop: number, initialLeft: number) {
+  if (typeof window.matchMedia === "function"
+      && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+  const generation = ++smoothRevealGeneration;
+  pendingSmoothRevealFrame = window.requestAnimationFrame(() => {
+    pendingSmoothRevealFrame = undefined;
+    if (generation !== smoothRevealGeneration) return;
+
+    const viewport = editor.scrollDOM.getBoundingClientRect();
+    const block = editor.lineBlockAt(lineFrom);
+    if (!block || viewport.height <= 0) return;
+
+    const maximumTop = Math.max(0, editor.scrollDOM.scrollHeight - editor.scrollDOM.clientHeight);
+    const documentInset = editor.documentTop - viewport.top + editor.scrollDOM.scrollTop;
+    const targetTop = Math.max(
+      0,
+      Math.min(
+        maximumTop,
+        documentInset + block.top + block.height / 2 - viewport.height / 2,
+      ),
+    );
+    const targetLeft = editor.scrollDOM.scrollLeft;
+    if (Math.abs(targetTop - initialTop) < 1 && Math.abs(targetLeft - initialLeft) < 1) return;
+
+    // CodeMirror's built-in reveal has already materialized and measured the
+    // target by this frame. Restore the pre-click position before the first
+    // paint, then use a bounded ease-out so a distant chapter does not make
+    // the browser's distance-dependent smooth-scroll animation linger.
+    editor.scrollDOM.scrollTo({top: initialTop, left: initialLeft, behavior: "auto"});
+    smoothRevealAnimationActive = true;
+    const distance = Math.abs(targetTop - initialTop);
+    const duration = Math.max(220, Math.min(380, 220 + Math.sqrt(distance) * 2));
+    const animate = (timestamp: number) => {
+      pendingSmoothRevealFrame = undefined;
+      if (generation !== smoothRevealGeneration || !smoothRevealAnimationActive) return;
+      const progress = Math.max(0, Math.min(1, (timestamp - startedAt) / duration));
+      const eased = 1 - Math.pow(1 - progress, 3);
+      editor.scrollDOM.scrollTop = initialTop + (targetTop - initialTop) * eased;
+      editor.scrollDOM.scrollLeft = initialLeft + (targetLeft - initialLeft) * eased;
+      if (progress >= 1) {
+        smoothRevealAnimationActive = false;
+        return;
+      }
+      pendingSmoothRevealFrame = window.requestAnimationFrame(animate);
+    };
+    const startedAt = performance.now();
+    pendingSmoothRevealFrame = window.requestAnimationFrame(animate);
+  });
+}
+
+for (const eventName of ["pointerdown", "wheel", "touchstart"]) {
+  editor.scrollDOM.addEventListener(eventName, () => {
+    if (smoothRevealAnimationActive) cancelPendingSmoothReveal();
+  }, {passive: true});
+}
+
 const editorOperations = {
   /** @param {string} text @param {string} sessionID @param {string} documentID */
   setDocument(text: string, sessionID: string, documentID: string, startingFingerprint: string) {
+    cancelPendingSmoothReveal();
     previewPopover.hide();
     compositionGate.rejectAll((pending) => rejected(
       pending.requestID,
@@ -2634,6 +2710,7 @@ const editorOperations = {
 
   /** @param {string} mode */
   async setMode(mode: string) {
+    cancelPendingSmoothReveal();
     const startedAt = performance.now();
     const transitionSequence = ++modeTransitionSequence;
     previewPopover.hide();
@@ -2692,11 +2769,15 @@ const editorOperations = {
   goToLine(requestedLine: number, focusesEditor: boolean) {
     const lineNumber = Math.max(1, Math.min(Math.trunc(requestedLine), editor.state.doc.lines));
     const line = editor.state.doc.line(lineNumber);
+    cancelPendingSmoothReveal();
+    const initialTop = editor.scrollDOM.scrollTop;
+    const initialLeft = editor.scrollDOM.scrollLeft;
     editor.dispatch({
       selection: { anchor: line.from },
       effects: [EditorView.scrollIntoView(line.from, { y: "center" }),
         showEditorArrival.of(requestedLine === lineNumber ? line.from : null)],
     });
+    if (requestedLine === lineNumber) scheduleSmoothEditorReveal(line.from, initialTop, initialLeft);
     if (focusesEditor) editor.focus();
   },
 
@@ -2706,6 +2787,7 @@ const editorOperations = {
     requestedToUTF16: number,
     focusesEditor = true,
   ) {
+    cancelPendingSmoothReveal();
     const documentLength = editor.state.doc.length;
     const from = Math.max(0, Math.min(Math.trunc(requestedFromUTF16), documentLength));
     const to = Math.max(from, Math.min(Math.trunc(requestedToUTF16), documentLength));

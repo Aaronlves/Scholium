@@ -38962,9 +38962,72 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     forceParsing(editor, parseTo, 12);
     editor.dispatch({ effects: refreshLivePreviewEffect.of(null) });
   }
+  var pendingSmoothRevealFrame;
+  var smoothRevealGeneration = 0;
+  var smoothRevealAnimationActive = false;
+  function cancelPendingSmoothReveal() {
+    smoothRevealGeneration += 1;
+    smoothRevealAnimationActive = false;
+    if (pendingSmoothRevealFrame !== void 0) {
+      window.cancelAnimationFrame(pendingSmoothRevealFrame);
+      pendingSmoothRevealFrame = void 0;
+    }
+    editor.scrollDOM.scrollTo({
+      top: editor.scrollDOM.scrollTop,
+      left: editor.scrollDOM.scrollLeft,
+      behavior: "auto"
+    });
+  }
+  function scheduleSmoothEditorReveal(lineFrom, initialTop, initialLeft) {
+    if (typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const generation = ++smoothRevealGeneration;
+    pendingSmoothRevealFrame = window.requestAnimationFrame(() => {
+      pendingSmoothRevealFrame = void 0;
+      if (generation !== smoothRevealGeneration) return;
+      const viewport = editor.scrollDOM.getBoundingClientRect();
+      const block = editor.lineBlockAt(lineFrom);
+      if (!block || viewport.height <= 0) return;
+      const maximumTop = Math.max(0, editor.scrollDOM.scrollHeight - editor.scrollDOM.clientHeight);
+      const documentInset = editor.documentTop - viewport.top + editor.scrollDOM.scrollTop;
+      const targetTop = Math.max(
+        0,
+        Math.min(
+          maximumTop,
+          documentInset + block.top + block.height / 2 - viewport.height / 2
+        )
+      );
+      const targetLeft = editor.scrollDOM.scrollLeft;
+      if (Math.abs(targetTop - initialTop) < 1 && Math.abs(targetLeft - initialLeft) < 1) return;
+      editor.scrollDOM.scrollTo({ top: initialTop, left: initialLeft, behavior: "auto" });
+      smoothRevealAnimationActive = true;
+      const distance = Math.abs(targetTop - initialTop);
+      const duration = Math.max(220, Math.min(380, 220 + Math.sqrt(distance) * 2));
+      const animate = (timestamp) => {
+        pendingSmoothRevealFrame = void 0;
+        if (generation !== smoothRevealGeneration || !smoothRevealAnimationActive) return;
+        const progress = Math.max(0, Math.min(1, (timestamp - startedAt) / duration));
+        const eased = 1 - Math.pow(1 - progress, 3);
+        editor.scrollDOM.scrollTop = initialTop + (targetTop - initialTop) * eased;
+        editor.scrollDOM.scrollLeft = initialLeft + (targetLeft - initialLeft) * eased;
+        if (progress >= 1) {
+          smoothRevealAnimationActive = false;
+          return;
+        }
+        pendingSmoothRevealFrame = window.requestAnimationFrame(animate);
+      };
+      const startedAt = performance.now();
+      pendingSmoothRevealFrame = window.requestAnimationFrame(animate);
+    });
+  }
+  for (const eventName of ["pointerdown", "wheel", "touchstart"]) {
+    editor.scrollDOM.addEventListener(eventName, () => {
+      if (smoothRevealAnimationActive) cancelPendingSmoothReveal();
+    }, { passive: true });
+  }
   var editorOperations = {
     /** @param {string} text @param {string} sessionID @param {string} documentID */
     setDocument(text, sessionID, documentID, startingFingerprint) {
+      cancelPendingSmoothReveal();
       previewPopover.hide();
       compositionGate.rejectAll((pending) => rejected(
         pending.requestID,
@@ -39006,6 +39069,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     },
     /** @param {string} mode */
     async setMode(mode) {
+      cancelPendingSmoothReveal();
       const startedAt = performance.now();
       const transitionSequence = ++modeTransitionSequence;
       previewPopover.hide();
@@ -39056,6 +39120,9 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     goToLine(requestedLine, focusesEditor) {
       const lineNumber = Math.max(1, Math.min(Math.trunc(requestedLine), editor.state.doc.lines));
       const line = editor.state.doc.line(lineNumber);
+      cancelPendingSmoothReveal();
+      const initialTop = editor.scrollDOM.scrollTop;
+      const initialLeft = editor.scrollDOM.scrollLeft;
       editor.dispatch({
         selection: { anchor: line.from },
         effects: [
@@ -39063,10 +39130,12 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
           showEditorArrival.of(requestedLine === lineNumber ? line.from : null)
         ]
       });
+      if (requestedLine === lineNumber) scheduleSmoothEditorReveal(line.from, initialTop, initialLeft);
       if (focusesEditor) editor.focus();
     },
     /** Selects an exact source range without changing Markdown or undo history. */
     revealSourceRange(requestedFromUTF16, requestedToUTF16, focusesEditor = true) {
+      cancelPendingSmoothReveal();
       const documentLength = editor.state.doc.length;
       const from = Math.max(0, Math.min(Math.trunc(requestedFromUTF16), documentLength));
       const to = Math.max(from, Math.min(Math.trunc(requestedToUTF16), documentLength));
