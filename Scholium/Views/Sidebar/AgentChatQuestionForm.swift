@@ -161,9 +161,22 @@ private struct AgentChatQuestionField: View {
                             Spacer(minLength: 0)
                             Image(systemName: answer == .option(option.label) ? "checkmark" : "chevron.forward")
                                 .font(.caption).foregroundStyle(.secondary)
-                        }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                        .scholiumContentControlInk(
+                            resting: .primaryText,
+                            emphasized: .accent
+                        )
                     }
                     .buttonStyle(.borderless)
+                    .scholiumActivationPointer()
+                    .scholiumContentControlPointerFeedback(
+                        in: RoundedRectangle(
+                            cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                            style: .continuous
+                        )
+                    )
                     .accessibilityAddTraits(answer == .option(option.label) ? .isSelected : [])
                     .help(Text(isLast ? "Send Answer" : "Next Question", bundle: .module))
                 }

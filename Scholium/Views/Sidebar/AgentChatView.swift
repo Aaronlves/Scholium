@@ -417,6 +417,13 @@ struct AgentChatView: View {
             row.contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .scholiumActivationPointer()
+        .scholiumContentControlPointerFeedback(
+            in: RoundedRectangle(
+                cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                style: .continuous
+            )
+        )
         .accessibilityIdentifier("scholium.chat.conversation.\(conversation.id)")
         .contextMenu { conversationActions(conversation) }
         .accessibilityActions { conversationActions(conversation) }

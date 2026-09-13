@@ -241,9 +241,20 @@ struct ConnectionsInspectorView: View {
                                         VStack(alignment: .leading, spacing: 4) {
                                             Text(link.label.isEmpty ? link.url.absoluteString : link.label)
                                                 .foregroundStyle(ScholiumNativeColorRole.label.color)
+                                                .scholiumContentControlInk(
+                                                    resting: .primaryText,
+                                                    emphasized: .accent
+                                                )
                                         }.frame(maxWidth: .infinity, alignment: .leading)
                                     }
                                     .buttonStyle(.borderless)
+                                    .scholiumActivationPointer()
+                                    .scholiumContentControlPointerFeedback(
+                                        in: RoundedRectangle(
+                                            cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                                            style: .continuous
+                                        )
+                                    )
                                     .disabled(!link.canOpen)
                                     .help(link.destination)
                                     .contextMenu {
@@ -337,6 +348,10 @@ private struct LinkOccurrenceRow: View {
                         .textRenderer(ResearchHighlightRenderer())
                         .font(ScholiumTypography.interface(.control))
                         .foregroundStyle(ScholiumNativeColorRole.label.color)
+                        .scholiumContentControlInk(
+                            resting: .primaryText,
+                            emphasized: .accent
+                        )
                         .frame(maxWidth: .infinity, alignment: .leading)
                         if let annotation = item.edge.occurrence.annotation {
                             Divider()
@@ -357,6 +372,13 @@ private struct LinkOccurrenceRow: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.borderless)
+            .scholiumActivationPointer()
+            .scholiumContentControlPointerFeedback(
+                in: RoundedRectangle(
+                    cornerRadius: ScholiumShape.editorialPanelCornerRadius,
+                    style: .continuous
+                )
+            )
             .disabled(item.source == nil)
             .help("Show this passage")
             .accessibilityLabel(Text(contextText))
@@ -365,8 +387,21 @@ private struct LinkOccurrenceRow: View {
             if item.direction == .outgoing, item.edge.occurrence.fragment != nil,
                 let peer = item.peer, let line = item.edge.destination?.span?.start.line
             {
-                Button("Open Linked Passage") { openReference(peer.reference, line) }
+                Button { openReference(peer.reference, line) } label: {
+                    Text("Open Linked Passage")
+                        .scholiumContentControlInk(
+                            resting: .secondaryText,
+                            emphasized: .accent
+                        )
+                }
                     .buttonStyle(.borderless)
+                    .scholiumActivationPointer()
+                    .scholiumContentControlPointerFeedback(
+                        in: RoundedRectangle(
+                            cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                            style: .continuous
+                        )
+                    )
             }
         }
     }

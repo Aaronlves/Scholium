@@ -43,14 +43,38 @@ struct AgentChatMaterialChip: View {
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .contentShape(Rectangle())
+                    .scholiumContentControlInk(
+                        resting: .primaryText,
+                        emphasized: .accent
+                    )
                 }
                 .buttonStyle(.plain)
+                .scholiumActivationPointer()
+                .scholiumContentControlPointerFeedback(
+                    in: RoundedRectangle(
+                        cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                        style: .continuous
+                    )
+                )
                 .help(attachment.relativePath)
                 .accessibilityLabel(Text("Preview material: \(title)"))
                 .accessibilityValue(Text("\(extent), \(source): \(excerpt.prefix(120))"))
                 if let remove {
-                    Button(action: remove) { Image(systemName: "xmark") }
-                        .buttonStyle(.plain).foregroundStyle(.secondary)
+                    Button(action: remove) {
+                        Image(systemName: "xmark")
+                            .scholiumContentControlInk(
+                                resting: .secondaryText,
+                                emphasized: .destructive
+                            )
+                    }
+                        .buttonStyle(.plain)
+                        .scholiumActivationPointer()
+                        .scholiumContentControlPointerFeedback(
+                            in: RoundedRectangle(
+                                cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                                style: .continuous
+                            )
+                        )
                         .help("Remove Material").accessibilityLabel(Text("Remove material: \(title)"))
                 }
             }

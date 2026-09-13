@@ -25,14 +25,47 @@ struct AgentChatDisclosureStyle: DisclosureGroupStyle {
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .contentShape(Rectangle())
+                    .scholiumContentControlInk(
+                        resting: .secondaryText,
+                        emphasized: .accent
+                    )
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(
+                    AgentChatDisclosureButtonStyle(
+                        isHovered: isHovered,
+                        isFocused: isFocused
+                    )
+                )
+                .scholiumActivationPointer()
                 .focused($isFocused)
                 .accessibilityValue(configuration.isExpanded ? String(localized: "Expanded") : String(localized: "Collapsed"))
                 if configuration.isExpanded { configuration.content }
             }
             .scholiumHoverState { isHovered = $0 }
         }
+    }
+}
+
+private struct AgentChatDisclosureButtonStyle: ButtonStyle {
+    let isHovered: Bool
+    let isFocused: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .environment(
+                \.scholiumContentControlIsEmphasized,
+                isHovered || isFocused || configuration.isPressed
+            )
+            .scholiumContentInteractionSurface(
+                isHovering: isHovered,
+                isFocused: isFocused,
+                isPressed: configuration.isPressed,
+                in: RoundedRectangle(
+                    cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                    style: .continuous
+                )
+            )
+            .opacity(configuration.isPressed ? 0.78 : 1)
     }
 }
 

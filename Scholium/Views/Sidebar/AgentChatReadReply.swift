@@ -109,7 +109,24 @@ struct AgentChatReadReply: View {
             + ScholiumChatAppearance.messageBodyCSS
             + ScholiumChatAppearance.inlineCodeCSS(dark: colorScheme == .dark, increasedContrast: contrast == .increased) + """
                 html, body { overflow: hidden; }
-                .scholium-document a { color: var(--scholium-color-accent); text-decoration-color: var(--scholium-color-accent); }
+                .scholium-document a { color: var(--scholium-document-accent); text-decoration-color: currentColor; }
+                .scholium-document a:hover {
+                    color: var(--scholium-color-accent);
+                    background: var(--scholium-content-hover-surface);
+                    border-radius: var(--scholium-corner-document-control);
+                    text-decoration-color: currentColor;
+                }
+                .scholium-document a:focus-visible {
+                    color: var(--scholium-color-accent);
+                    background: var(--scholium-content-keyboard-focus-surface);
+                    border-radius: var(--scholium-corner-document-control);
+                    outline: 2px solid var(--scholium-content-focus-ring);
+                    outline-offset: 2px;
+                    text-decoration-color: currentColor;
+                }
+                .scholium-document a:active {
+                    background: var(--scholium-content-keyboard-focus-surface);
+                }
                 .scholium-reply-object { margin-block: .85em; }
                 .scholium-reply-controls { display: flex; justify-content: end; gap: 8px; user-select: none; }
                 .scholium-reply-controls button { border: 0; background: transparent; color: var(--scholium-color-secondary-text); width: 24px; height: 24px; font: inherit; cursor: pointer; }

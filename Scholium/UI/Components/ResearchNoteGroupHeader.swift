@@ -41,12 +41,21 @@ struct ResearchNoteGroupHeader<Actions: View>: View {
                             .accessibilityHidden(true)
                     }
                     Spacer(minLength: 0)
-                }.contentShape(Rectangle())
-                    .researchGroupEntrance(entranceProgress)
+                }
+                .contentShape(Rectangle())
+                .scholiumContentControlInk(
+                    resting: .secondaryText,
+                    emphasized: .accent
+                )
+                .researchGroupEntrance(entranceProgress)
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(
+                ResearchNoteGroupHeaderButtonStyle(
+                    isHovered: hovered,
+                    isFocused: keyboardFocused
+                )
+            )
             .focused($keyboardFocused)
-            .foregroundStyle(ScholiumNativeColorRole.secondaryLabel.color)
             .accessibilityValue(expanded ? Text("Expanded") : Text("Collapsed"))
             .help(role.map { ScholiumL10n.dynamicString($0.displayName) } ?? title)
             Menu(content: actions) {
@@ -62,5 +71,28 @@ struct ResearchNoteGroupHeader<Actions: View>: View {
         }
         .onHover { hovered = $0 }
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.16), value: showsActions)
+    }
+}
+
+private struct ResearchNoteGroupHeaderButtonStyle: ButtonStyle {
+    let isHovered: Bool
+    let isFocused: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .environment(
+                \.scholiumContentControlIsEmphasized,
+                isHovered || isFocused || configuration.isPressed
+            )
+            .scholiumContentInteractionSurface(
+                isHovering: isHovered,
+                isFocused: isFocused,
+                isPressed: configuration.isPressed,
+                in: RoundedRectangle(
+                    cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                    style: .continuous
+                )
+            )
+            .opacity(configuration.isPressed ? 0.78 : 1)
     }
 }

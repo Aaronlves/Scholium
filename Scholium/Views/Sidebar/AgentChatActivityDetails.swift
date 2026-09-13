@@ -23,15 +23,28 @@ struct AgentChatActivityDetails: View {
                         outputWindow.present(activity)
                     } label: {
                         Image(systemName: "arrow.up.left.and.arrow.down.right").chatAccessory()
-                    }.buttonStyle(.borderless)
-                        .help(Text("Open Output", bundle: .module))
-                        .accessibilityLabel(Text("Open Output", bundle: .module))
+                    }
+                    .buttonStyle(
+                        AgentChatActivityAccessoryButtonStyle(
+                            isHovered: isHovered,
+                            isFocused: false
+                        )
+                    )
+                    .scholiumActivationPointer()
+                    .help(Text("Open Output", bundle: .module))
+                    .accessibilityLabel(Text("Open Output", bundle: .module))
                     Button(action: copyDetails) {
                         Image(systemName: copied ? "checkmark" : "doc.on.doc")
                             .chatAccessory()
                             .opacity(isHovered || copyIsFocused || copied ? 1 : 0)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(
+                        AgentChatActivityAccessoryButtonStyle(
+                            isHovered: isHovered,
+                            isFocused: copyIsFocused
+                        )
+                    )
+                    .scholiumActivationPointer()
                     .focused($copyIsFocused)
                     .accessibilityLabel(copied ? "Copied" : "Copy Details")
                     .help(copied ? String(localized: "Copied") : String(localized: "Copy Details"))
@@ -81,8 +94,23 @@ struct AgentChatActivityDetails: View {
             }
             ForEach(Array(activity.files.enumerated()), id: \.offset) { _, file in
                 if let id = file.noteID, file.effect != .trashed, let openNote {
-                    Button(file.path) { openNote(AgentChatReference.url(noteID: id)) }
-                        .buttonStyle(.link).help("Open Note")
+                    Button { openNote(AgentChatReference.url(noteID: id)) } label: {
+                        Text(file.path)
+                            .scholiumContentControlInk(
+                                resting: .primaryText,
+                                emphasized: .accent
+                            )
+                            .underline()
+                    }
+                        .buttonStyle(.link)
+                        .scholiumActivationPointer()
+                        .scholiumContentControlPointerFeedback(
+                            in: RoundedRectangle(
+                                cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                                style: .continuous
+                            )
+                        )
+                        .help("Open Note")
                         .contextMenu { AgentChatNoteMenu(url: AgentChatReference.url(noteID: id)) }
                 } else {
                     Text(verbatim: file.path).monospaced()
@@ -107,6 +135,29 @@ struct AgentChatActivityDetails: View {
     private func copyDetails() {
         NSPasteboard.general.clearContents()
         copied = NSPasteboard.general.setString(copyText, forType: .string)
+    }
+}
+
+private struct AgentChatActivityAccessoryButtonStyle: ButtonStyle {
+    let isHovered: Bool
+    let isFocused: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .environment(
+                \.scholiumContentControlIsEmphasized,
+                isHovered || isFocused || configuration.isPressed
+            )
+            .scholiumContentInteractionSurface(
+                isHovering: isHovered,
+                isFocused: isFocused,
+                isPressed: configuration.isPressed,
+                in: RoundedRectangle(
+                    cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                    style: .continuous
+                )
+            )
+            .opacity(configuration.isPressed ? 0.78 : 1)
     }
 }
 

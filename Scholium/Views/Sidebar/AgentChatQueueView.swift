@@ -26,9 +26,22 @@ struct AgentChatQueueView: View {
                                 Image(systemName: "text.badge.plus").foregroundStyle(.secondary)
                                 Text(message.text.isEmpty ? String(localized: "Materials", bundle: .module) : message.text)
                                     .lineLimit(1).truncationMode(.tail)
-                            }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
+                            .scholiumContentControlInk(
+                                resting: .primaryText,
+                                emphasized: .accent
+                            )
                         }
                         .help(Text("Queued message", bundle: .module))
+                        .scholiumActivationPointer()
+                        .scholiumContentControlPointerFeedback(
+                            in: RoundedRectangle(
+                                cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                                style: .continuous
+                            )
+                        )
                         deliveryButton(message)
                         Menu {
                             Button {
@@ -72,7 +85,15 @@ struct AgentChatQueueView: View {
     private func deliveryButton(_ message: AgentChatMessage) -> some View {
         if canSend(message) {
             Button("Send Next") { send(message.id) }
-                .fixedSize().help(Text("Send Next", bundle: .module))
+                .fixedSize()
+                .scholiumActivationPointer()
+                .scholiumContentControlPointerFeedback(
+                    in: RoundedRectangle(
+                        cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                        style: .continuous
+                    )
+                )
+                .help(Text("Send Next", bundle: .module))
         } else {
             Button {
                 steer(message.id)
@@ -84,6 +105,13 @@ struct AgentChatQueueView: View {
                 }
             }
             .fixedSize()
+            .scholiumActivationPointer()
+            .scholiumContentControlPointerFeedback(
+                in: RoundedRectangle(
+                    cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                    style: .continuous
+                )
+            )
             .disabled(!canSteer(message))
             .help(Text("Add to Current Turn", bundle: .module))
             .accessibilityLabel(Text("Add to Current Turn", bundle: .module))

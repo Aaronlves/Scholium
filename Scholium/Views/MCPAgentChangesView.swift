@@ -229,7 +229,12 @@ struct AgentChangesView: View {
                                     .scholiumForeground(.secondaryText).frame(width: 24)
                                 VStack(alignment: .leading, spacing: 6) {
                                     Text(AgentChangePresentation.displayName(for: change))
-                                        .font(ScholiumTypography.interface(.sectionTitle)).scholiumForeground(.primaryText).lineLimit(2)
+                                        .font(ScholiumTypography.interface(.sectionTitle))
+                                        .scholiumContentControlInk(
+                                            resting: .primaryText,
+                                            emphasized: .accent
+                                        )
+                                        .lineLimit(2)
                                     HStack(spacing: 8) {
                                         Text(AgentChangePresentation.shortOperationTitle(for: change.operation))
                                         if change.state == .undone { Text("Undone") }
@@ -245,6 +250,13 @@ struct AgentChangesView: View {
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
+                        .scholiumActivationPointer()
+                        .scholiumContentControlPointerFeedback(
+                            in: RoundedRectangle(
+                                cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                                style: .continuous
+                            )
+                        )
                         .accessibilityIdentifier("scholium.agentChanges.open.\(change.id.uuidString)")
                         if change.id != ordered.last?.id { Divider() }
                     }
@@ -271,6 +283,13 @@ struct AgentChangesView: View {
             HStack(spacing: ScholiumMetrics.ResearchSheet.footerControlSpacing) {
                 if initialChangeID == nil {
                     Button("All Changes") { showsCollection = true }
+                        .scholiumActivationPointer()
+                        .scholiumContentControlPointerFeedback(
+                            in: RoundedRectangle(
+                                cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                                style: .continuous
+                            )
+                        )
                         .disabled(undoingID != nil)
 
                     Button("Previous") { select(selectedIndex - 1) }
@@ -304,6 +323,13 @@ struct AgentChangesView: View {
                         viewedChangeData = ledger.data
                     }
                     .disabled(undoingID != nil)
+                    .scholiumActivationPointer()
+                    .scholiumContentControlPointerFeedback(
+                        in: RoundedRectangle(
+                            cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                            style: .continuous
+                        )
+                    )
                     .accessibilityIdentifier("scholium.agentChanges.markViewed")
                 }
 

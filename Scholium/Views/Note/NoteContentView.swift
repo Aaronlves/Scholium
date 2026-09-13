@@ -1595,6 +1595,10 @@ private struct ConflictComparisonSheet: View {
                             ) {
                                 Text(conflict.relativePath)
                                     .font(ScholiumTypography.interface(.rowTitle))
+                                    .scholiumContentControlInk(
+                                        resting: .primaryText,
+                                        emphasized: .accent
+                                    )
                                 Text("Editor and disk revisions differ")
                                     .font(ScholiumTypography.interface(.small))
                                     .scholiumForeground(.attention)
@@ -1607,6 +1611,12 @@ private struct ConflictComparisonSheet: View {
                     }
                     .scholiumActivationPointer()
                     .buttonStyle(.plain)
+                    .scholiumContentControlPointerFeedback(
+                        in: RoundedRectangle(
+                            cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                            style: .continuous
+                        )
+                    )
                     .accessibilityLabel(conflict.relativePath)
                     .accessibilityValue(
                         isDocumentExpanded ? "Expanded" : "Collapsed"

@@ -345,9 +345,19 @@ struct ExactSourceComparisonView: View {
             .padding(.horizontal, ScholiumGrid.Spacing.nestedContentInset)
             .padding(.vertical, ScholiumGrid.Spacing.labelAccessoryGap)
             .contentShape(Rectangle())
+            .scholiumContentControlInk(
+                resting: .secondaryText,
+                emphasized: .accent
+            )
         }
         .scholiumActivationPointer()
         .buttonStyle(.plain)
+        .scholiumContentControlPointerFeedback(
+            in: RoundedRectangle(
+                cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                style: .continuous
+            )
+        )
         .scholiumForeground(.secondaryText)
         .accessibilityHint(Text("Shows the folded unchanged lines", bundle: .module))
         .accessibilityIdentifier("\(identifierPrefix).unchanged.\(id)")

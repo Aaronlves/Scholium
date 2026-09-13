@@ -28,11 +28,40 @@ struct AgentChatLocalMaterialChip: View {
                         )
                         .font(.subheadline).lineLimit(1)
                         Text(AgentChatLocalMaterialLabels.summary(material)).font(.caption).foregroundStyle(.secondary).lineLimit(2)
-                    }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
-                }.buttonStyle(.plain).accessibilityLabel("Preview material: \(AgentChatLocalMaterialLabels.title(material))")
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+                    .scholiumContentControlInk(
+                        resting: .primaryText,
+                        emphasized: .accent
+                    )
+                }
+                .buttonStyle(.plain)
+                .scholiumActivationPointer()
+                .scholiumContentControlPointerFeedback(
+                    in: RoundedRectangle(
+                        cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                        style: .continuous
+                    )
+                )
+                .accessibilityLabel("Preview material: \(AgentChatLocalMaterialLabels.title(material))")
                 if let remove {
-                    Button(action: remove) { Image(systemName: "xmark") }
-                        .buttonStyle(.plain).foregroundStyle(.secondary).accessibilityLabel(
+                    Button(action: remove) {
+                        Image(systemName: "xmark")
+                            .scholiumContentControlInk(
+                                resting: .secondaryText,
+                                emphasized: .destructive
+                            )
+                    }
+                        .buttonStyle(.plain)
+                        .scholiumActivationPointer()
+                        .scholiumContentControlPointerFeedback(
+                            in: RoundedRectangle(
+                                cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                                style: .continuous
+                            )
+                        )
+                        .accessibilityLabel(
                             "Remove material: \(AgentChatLocalMaterialLabels.title(material))")
                 }
             }

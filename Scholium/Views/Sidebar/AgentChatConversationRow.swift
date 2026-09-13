@@ -74,7 +74,12 @@ struct AgentChatConversationRow: View {
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: ScholiumSidebarLayout.textSpacing) {
                 HStack(alignment: .firstTextBaseline) {
-                    Text(title).font(.body.weight(conversation.unreadAt != nil ? .semibold : .medium))
+                    Text(title)
+                        .font(.body.weight(conversation.unreadAt != nil ? .semibold : .medium))
+                        .scholiumContentControlInk(
+                            resting: .primaryText,
+                            emphasized: .accent
+                        )
                         .lineLimit(2).fixedSize(horizontal: false, vertical: true)
                         .layoutPriority(1)
                     Spacer(minLength: ScholiumSidebarLayout.textSpacing)

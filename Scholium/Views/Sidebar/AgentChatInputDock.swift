@@ -33,10 +33,24 @@ struct AgentChatInputDock<Request: View, Composer: View>: View {
         VStack(alignment: .leading, spacing: ScholiumSidebarLayout.itemSpacing) {
             if requestID != nil && !expanded {
                 HStack {
-                    Button(requestTitle) {
+                    Button {
                         composerIsFocused = false
                         presentation.isExpanded = true
-                    }.accessibilityIdentifier("scholium.chat.openPendingRequest")
+                    } label: {
+                        Text(requestTitle)
+                            .scholiumContentControlInk(
+                                resting: .secondaryText,
+                                emphasized: .accent
+                            )
+                    }
+                    .scholiumActivationPointer()
+                    .scholiumContentControlPointerFeedback(
+                        in: RoundedRectangle(
+                            cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                            style: .continuous
+                        )
+                    )
+                    .accessibilityIdentifier("scholium.chat.openPendingRequest")
                     Spacer(minLength: 0)
                     if requestCount > 1 { Text("\(requestCount) pending").font(.caption).foregroundStyle(.secondary) }
                 }

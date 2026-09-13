@@ -15,14 +15,42 @@ struct AgentChatReplyQuoteCard: View {
                 } label: {
                     HStack(alignment: .top, spacing: 6) {
                         Image(systemName: "quote.opening").foregroundStyle(.secondary)
-                        Text(verbatim: quote.text).lineLimit(2).multilineTextAlignment(.leading)
+                        Text(verbatim: quote.text)
+                            .scholiumContentControlInk(
+                                resting: .primaryText,
+                                emphasized: .accent
+                            )
+                            .lineLimit(2).multilineTextAlignment(.leading)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                }.buttonStyle(.plain).accessibilityLabel(Text("Reply Excerpt"))
+                }
+                .buttonStyle(.plain)
+                .scholiumActivationPointer()
+                .scholiumContentControlPointerFeedback(
+                    in: RoundedRectangle(
+                        cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                        style: .continuous
+                    )
+                )
+                .accessibilityLabel(Text("Reply Excerpt"))
                     .accessibilityValue(quote.text)
                 if let remove {
-                    Button(action: remove) { Image(systemName: "xmark") }
-                        .buttonStyle(.plain).foregroundStyle(.secondary).accessibilityLabel("Remove Quote")
+                    Button(action: remove) {
+                        Image(systemName: "xmark")
+                            .scholiumContentControlInk(
+                                resting: .secondaryText,
+                                emphasized: .destructive
+                            )
+                    }
+                        .buttonStyle(.plain)
+                        .scholiumActivationPointer()
+                        .scholiumContentControlPointerFeedback(
+                            in: RoundedRectangle(
+                                cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                                style: .continuous
+                            )
+                        )
+                        .accessibilityLabel("Remove Quote")
                 }
             }
         }

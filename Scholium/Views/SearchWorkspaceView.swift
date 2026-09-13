@@ -468,6 +468,10 @@ struct ResearchSearchView<Library: View>: View {
                     HStack(alignment: .firstTextBaseline, spacing: ScholiumMetrics.Search.resultContentSpacing) {
                         Text(completion.displayText)
                             .font(ScholiumTypography.exact(.body))
+                            .scholiumContentControlInk(
+                                resting: .primaryText,
+                                emphasized: .accent
+                            )
                         Text(completion.detail)
                             .font(ScholiumTypography.interface(.small))
                             .scholiumForeground(.secondaryText)
@@ -484,6 +488,12 @@ struct ResearchSearchView<Library: View>: View {
                 }
                 .scholiumActivationPointer()
                 .buttonStyle(.plain)
+                .scholiumContentControlPointerFeedback(
+                    in: RoundedRectangle(
+                        cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                        style: .continuous
+                    )
+                )
                 .accessibilityLabel("\(completion.displayText), \(completion.detail)")
                 .accessibilityAddTraits(
                     completionSelection == index ? .isSelected : []
@@ -800,6 +810,13 @@ struct ResearchSearchView<Library: View>: View {
             controller.selectSearchResult(resultID)
             open(.result(result))
         }
+        .scholiumActivationPointer()
+        .scholiumContentControlPointerFeedback(
+            in: RoundedRectangle(
+                cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                style: .continuous
+            )
+        )
         .accessibilityAction {
             controller.selectSearchResult(resultID)
             open(.result(result))
@@ -1041,6 +1058,10 @@ private struct NoteSearchResultRow: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(note.title)
                     .font(ScholiumTypography.interface(.rowTitle))
+                    .scholiumContentControlInk(
+                        resting: .primaryText,
+                        emphasized: .accent
+                    )
                     .lineLimit(1)
                 if !note.hasYAMLMatch && !note.snippet.isEmpty {
                     Text(highlightedSnippet)

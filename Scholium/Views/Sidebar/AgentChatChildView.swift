@@ -255,8 +255,19 @@ struct AgentChatCoordinationReferenceView: View {
                     Image(systemName: "person.2")
                 }
                 .lineLimit(2)
+                .scholiumContentControlInk(
+                    resting: .secondaryText,
+                    emphasized: .accent
+                )
             }
             .buttonStyle(.plain)
+            .scholiumActivationPointer()
+            .scholiumContentControlPointerFeedback(
+                in: RoundedRectangle(
+                    cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                    style: .continuous
+                )
+            )
             Menu {
                 Button(action: inspect) { Text("Open Agent", bundle: .module) }
                 if let openParent { Button(action: openParent) { Text("Open Parent", bundle: .module) } }

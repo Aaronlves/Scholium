@@ -67,10 +67,21 @@ private struct RelatedMaterialPassageView: View {
                 .textRenderer(ResearchHighlightRenderer())
                 .font(ScholiumTypography.interface(.control)).lineLimit(3)
                 .foregroundStyle(ScholiumNativeColorRole.label.color)
+                .scholiumContentControlInk(
+                    resting: .primaryText,
+                    emphasized: .accent
+                )
             }
             .researchGroupEntrance(entranceProgress)
         }
         .buttonStyle(.borderless)
+        .scholiumActivationPointer()
+        .scholiumContentControlPointerFeedback(
+            in: RoundedRectangle(
+                cornerRadius: ScholiumShape.editorialPanelCornerRadius,
+                style: .continuous
+            )
+        )
         .accessibilityLabel(Text(card.passage.excerpt))
         .help("Show this passage")
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {

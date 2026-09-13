@@ -272,8 +272,21 @@ struct SidebarView: View {
             .font(ScholiumTypography.interface(.small, emphasis: .medium))
             .scholiumForeground(.secondaryText)
             Spacer(minLength: 0)
-            Button("Clear", action: clearAllFilters)
+            Button(action: clearAllFilters) {
+                Text("Clear")
+                    .scholiumContentControlInk(
+                        resting: .secondaryText,
+                        emphasized: .accent
+                    )
+            }
                 .buttonStyle(.borderless)
+                .scholiumActivationPointer()
+                .scholiumContentControlPointerFeedback(
+                    in: RoundedRectangle(
+                        cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                        style: .continuous
+                    )
+                )
         }
         .frame(minHeight: ScholiumMetrics.Accessibility.preferredCustomTarget)
         .accessibilityElement(children: .contain)
@@ -290,7 +303,23 @@ struct SidebarView: View {
                 Text("Could Not Open Library"), detail: Text(error),
                 indicator: .symbol("exclamationmark.triangle", role: .attention)
             ) {
-                Button("Retry") { context.selectTriptychWorkspace(controller.library.workspaceSlot) }
+                Button {
+                    context.selectTriptychWorkspace(controller.library.workspaceSlot)
+                } label: {
+                    Text("Retry")
+                        .scholiumContentControlInk(
+                            resting: .secondaryText,
+                            emphasized: .accent
+                        )
+                }
+                .buttonStyle(.borderless)
+                .scholiumActivationPointer()
+                .scholiumContentControlPointerFeedback(
+                    in: RoundedRectangle(
+                        cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                        style: .continuous
+                    )
+                )
             }
             .accessibilityIdentifier("scholium.libraryError")
         } else if folderTree.isEmpty {

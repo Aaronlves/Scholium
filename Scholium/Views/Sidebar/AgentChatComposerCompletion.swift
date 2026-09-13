@@ -126,7 +126,12 @@ struct AgentChatComposerCandidates: View {
                             HStack(spacing: 8) {
                                 Image(systemName: candidate.symbol).frame(width: 18).accessibilityHidden(true)
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text(candidate.title).lineLimit(1)
+                                    Text(candidate.title)
+                                        .scholiumContentControlInk(
+                                            resting: .primaryText,
+                                            emphasized: .accent
+                                        )
+                                        .lineLimit(1)
                                     if !candidate.detail.isEmpty {
                                         Text(candidate.detail).font(.caption).lineLimit(1)
                                     }
@@ -134,7 +139,15 @@ struct AgentChatComposerCandidates: View {
                                 Spacer(minLength: 0)
                             }.frame(height: 34).contentShape(Rectangle())
                         }
-                        .buttonStyle(.borderless).tag(index)
+                        .buttonStyle(.borderless)
+                        .scholiumActivationPointer()
+                        .scholiumContentControlPointerFeedback(
+                            in: RoundedRectangle(
+                                cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                                style: .continuous
+                            )
+                        )
+                        .tag(index)
                     }
                 }
                 .listStyle(.plain).scrollContentBackground(.hidden)

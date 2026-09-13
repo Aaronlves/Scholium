@@ -64,8 +64,21 @@ struct SelectionActionsSettingsView: View {
 
                         TableColumn("Actions") { action in
                             HStack(spacing: 8) {
-                                Button("Edit…") { beginEditing(action) }
+                                Button { beginEditing(action) } label: {
+                                    Text("Edit…")
+                                        .scholiumContentControlInk(
+                                            resting: .secondaryText,
+                                            emphasized: .accent
+                                        )
+                                }
                                     .buttonStyle(.borderless)
+                                    .scholiumActivationPointer()
+                                    .scholiumContentControlPointerFeedback(
+                                        in: RoundedRectangle(
+                                            cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                                            style: .continuous
+                                        )
+                                    )
                                     .accessibilityIdentifier("scholium.selectionActions.edit")
 
                                 Menu {

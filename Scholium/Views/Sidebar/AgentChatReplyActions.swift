@@ -76,6 +76,13 @@ struct AgentChatReplyActions: View {
             .help(copied ? String(localized: "Copied") : String(localized: "Copy Reply"))
             .accessibilityLabel(copied ? "Copied" : "Copy Reply")
             .accessibilityIdentifier("scholium.chat.copyReply")
+            .scholiumActivationPointer()
+            .scholiumContentControlPointerFeedback(
+                in: RoundedRectangle(
+                    cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                    style: .continuous
+                )
+            )
             .task(id: copied) {
                 guard copied else { return }
                 do { try await Task.sleep(for: .seconds(2)) } catch { return }
@@ -88,9 +95,20 @@ struct AgentChatReplyActions: View {
                     HStack(spacing: 4) {
                         Image(systemName: "books.vertical").chatAccessory()
                         Text("Sources")
+                            .scholiumContentControlInk(
+                                resting: .secondaryText,
+                                emphasized: .accent
+                            )
                     }
                 }
                 .accessibilityIdentifier("scholium.chat.sources")
+                .scholiumActivationPointer()
+                .scholiumContentControlPointerFeedback(
+                    in: RoundedRectangle(
+                        cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                        style: .continuous
+                    )
+                )
                 .popover(isPresented: $showsSources, arrowEdge: .leading) {
                     AgentChatSourcesView(sources: sources, context: context, close: { showsSources = false }) { source in
                         showsSources = false
@@ -105,9 +123,20 @@ struct AgentChatReplyActions: View {
                     HStack(spacing: 4) {
                         Image(systemName: "paperclip").chatAccessory()
                         Text("Materials", bundle: .module)
+                            .scholiumContentControlInk(
+                                resting: .secondaryText,
+                                emphasized: .accent
+                            )
                     }
                 }
                 .accessibilityIdentifier("scholium.chat.materials")
+                .scholiumActivationPointer()
+                .scholiumContentControlPointerFeedback(
+                    in: RoundedRectangle(
+                        cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                        style: .continuous
+                    )
+                )
                 .popover(isPresented: $showsMaterials, arrowEdge: .leading) {
                     AgentChatMaterialsView(
                         context: context, openAttachment: openAttachment,
@@ -153,9 +182,24 @@ struct AgentChatSourcesView: View {
                             Label(source.destination, systemImage: source.isNote ? "doc.text" : source.isWeb ? "globe" : "doc")
                                 .font(.caption).foregroundStyle(.secondary).lineLimit(1)
                             if source.isNote || source.isWeb || source.isZotero {
-                                Button(source.title) {
+                                Button {
                                     open(source)
-                                }.buttonStyle(.link)
+                                } label: {
+                                    Text(source.title)
+                                        .scholiumContentControlInk(
+                                            resting: .primaryText,
+                                            emphasized: .accent
+                                        )
+                                        .underline()
+                                }
+                                .buttonStyle(.link)
+                                    .scholiumActivationPointer()
+                                    .scholiumContentControlPointerFeedback(
+                                        in: RoundedRectangle(
+                                            cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                                            style: .continuous
+                                        )
+                                    )
                                     .contextMenu { AgentChatNoteMenu(url: source.url) }
                             } else {
                                 Text(source.title).textSelection(.enabled)
