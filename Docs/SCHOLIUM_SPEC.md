@@ -23,7 +23,7 @@ must not create alternative product rules.
 | Chapter | Owns |
 | --- | --- |
 | [Foundation and Triptych](Specification/01-foundation-and-triptych.md) | §§1–4: terminology, authority, Triptych, and Works organization. |
-| [Notes and File Operations](Specification/02-notes-and-file-operations.md) | §§5–7: Note behavior, file operations, deletion, Settle, and annotation. |
+| [Notes and File Operations](Specification/02-notes-and-file-operations.md) | §§5–7 and Appendix A: Note behavior, file operations, deletion, Settle, annotation, and authored source properties. |
 | [Agent Collaboration and Research Workflows](Specification/03-agent-collaboration-and-workflows.md) | §§8–8.6, 9–11: MCP/Core Protocol collaboration and the Analysis, Topic, and Work workflows. |
 | [In-app Agent Chat](Specification/12-agent-chat.md) | §8.7: conversations, runtime capabilities, materials, Skills, execution and recovery. |
 | [Connect, Search, and Recovery](Specification/04-connect-search-and-recovery.md) | §§12–14: Connections, Search, Attention, save, and recovery. |
@@ -35,7 +35,6 @@ must not create alternative product rules.
 | [Scholium Design](../Design.md) | §19: stable global design philosophy, native/Liquid Glass relationship, background and Accent identity. |
 | [Accessibility and Adaptation](Specification/09-accessibility-and-adaptation.md) | §20: cross-cutting accessibility and adaptation. |
 | [Release and Open Decisions](Specification/10-release-and-open-decisions.md) | §§21–22: release requirements and unresolved target questions. |
-| [Source Properties](Specification/11-source-properties.md) | Appendix A: source-owned YAML properties and retrieval. |
 
 ## Reading routes
 
@@ -63,7 +62,7 @@ Architecture owns parser, module, runtime, and persistence mechanics.
 | Global design philosophy and identity | Design (§19); Agent edit admission and size limits are owned by AGENTS.md. |
 | Research meaning, authority and operations | Owning workflow chapter (§§1–17); interface chapters link to it. |
 | Feature layout, interaction and state wording | Owning interface section (§§18.1–18.7). |
-| Authored YAML properties and retrieval | Appendix A. |
+| Authored YAML properties and retrieval | Notes §5.2 and Appendix A. |
 | Accessibility requirements and human acceptance method | §20; feature chapters add no parallel checklist. |
 | Release profiles, gates and artifact requirements | §21; status records evidence only. |
 | Current implementation owners and mechanisms | Architecture set; source holds exact local defaults. |

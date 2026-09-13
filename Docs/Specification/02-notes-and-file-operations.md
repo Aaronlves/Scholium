@@ -120,16 +120,11 @@ Protected constructs follow these rules:
 
 ### 5.2 Authored YAML and source properties
 
-[Appendix A](11-source-properties.md#shared-authored-yaml) owns source properties.
-YAML and body share one exact Markdown authority, source fingerprint, revision
-checks, Undo and recovery. There is no separate managed Metadata record or
-form. User-defined properties need no catalog registration.
-
-Every Analysis, Topic and Work uses its filename without `.md` as its Note
-title. YAML titles, aliases and body headings never replace this identity.
-Rename does not synchronize authored property values or headings. Duplicate
-and standalone Markdown copy carry the same authored properties in their exact
-source; no separate metadata export is required.
+[Appendix A](#appendix-a-authored-source-properties) defines the cross-cutting
+source-property contract. YAML and body share one exact Markdown authority;
+§18.4 owns its editing and presentation. Source properties carry the same
+source fingerprint, revision checks, Undo and recovery as the body; there is no
+separate managed Metadata record or form.
 
 ### 5.3 Create, duplicate, rename, and identity
 
@@ -233,3 +228,42 @@ policy, or Agent requirement.
 Authoritative written annotation remains Markdown, including semantic
 Callouts and the occurrence-owned link annotations defined by §12. Selection
 creates no separate portable comment object.
+
+## Appendix A. Authored source properties
+
+YAML frontmatter is the sole authority for user-authored structured properties.
+All three Note roles permit user-defined keys and shapes. Scholium supplies no
+managed field catalog, mandatory bibliography, field lifecycle, role-based
+property restrictions, or separate Metadata record and editing surface.
+
+### Shared authored YAML
+
+The researcher or an authorized Agent edits exact Markdown. Comments, unknown
+keys, ordering, quoting, multiline scalars, BOM and newline style remain source.
+Parsing and indexing are read-only projections. Malformed or ambiguous YAML
+never authorizes reconstructed source or guessed values.
+
+`summary` and `keywords` can improve discovery; neither is required. Filename
+owns the Note title; app-owned stable identity remains separate. Authored `title`,
+`aliases`, `authors`/`author`, and `publication_date` may supply search/navigation
+text without becoming managed bibliographic truth. YAML cannot assign stable
+Note identity, Settlement, permissions, or research acceptance.
+
+Property Search uses the existing `property:` grammar. It discovers literal
+user keys, supports presence and normalized scalar/direct-list equality, and
+returns proved source ranges. Quoted keys may contain spaces or Unicode.
+Nested mappings remain authored data; Scholium does not infer creator names,
+flatten nested structures, or expand YAML aliases. §13 owns retrieval semantics
+and limits. There is no YAML-specific query namespace.
+
+Every Analysis, Topic and Work uses its filename without `.md` as its Note
+title. YAML titles, aliases and body headings never replace this identity.
+Rename does not synchronize authored property values or headings. Duplicate
+and standalone Markdown copy carry the same authored properties in their exact
+source; no separate metadata export is required.
+
+Creating a Note accepts complete authored Markdown, with optional YAML, and
+preserves its bytes. GUI New Note starts empty. No scaffold is injected.
+
+Unsupported control files remain byte-unchanged and nonauthorizing. Source
+properties have no migration or compatibility adapter.

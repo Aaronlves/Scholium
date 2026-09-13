@@ -231,7 +231,7 @@ def validate_line_lengths(paths: list[Path]) -> None:
 def validate_specification_sections(paths: list[Path]) -> set[str]:
     seen: dict[str, Path] = {}
     top_level: list[str] = []
-    expected_top_level = [*(str(number) for number in range(1, 23)), "Appendix A"]
+    expected_numeric_sections = [str(number) for number in range(1, 23)]
     for path in paths:
         for line in path.read_text(encoding="utf-8").splitlines():
             match = SECTION_ID.match(line)
@@ -245,11 +245,12 @@ def validate_specification_sections(paths: list[Path]) -> set[str]:
                     f"{path.relative_to(REPOSITORY_ROOT)}"
                 )
             seen[section_id] = path
-            if section_id in expected_top_level:
+            if section_id in expected_numeric_sections or section_id == "Appendix A":
                 top_level.append(section_id)
-    if top_level != expected_top_level:
+    numeric_sections = [section_id for section_id in top_level if section_id != "Appendix A"]
+    if numeric_sections != expected_numeric_sections or top_level.count("Appendix A") != 1:
         failure(
-            "specification top-level order mismatch: "
+            "specification top-level order or appendix count mismatch: "
             + ", ".join(top_level)
         )
     return set(seen)

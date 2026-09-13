@@ -81,10 +81,10 @@ Target prose is not proof of implementation. The completed migration roadmap
 and superseded decision records remain available through Git history rather
 than as parallel authorities.
 
-Task-specific operational references remain separate:
+Feature-specific details remain in their owning specifications:
 
 - [Advanced CSS target boundary](Docs/Specification/07-document-and-research-interface.md#1841-advanced-css-boundary)
-- [First-party Zotero MCP transport](Docs/ZOTERO_MCP.md)
+- [Zotero integration](Docs/Specification/05-integrations-onboarding-and-boundaries.md#15-zotero-integration)
 - [Scholium Core Protocol](ScholiumCore/Resources/Skills/Scholium%20System%20Skills/scholium-core-protocol/SKILL.md)
 
 ## Current implementation
@@ -334,7 +334,6 @@ Docs/Architecture/        Module, runtime, state, editor, and delivery chapters
 Docs/IMPLEMENTATION_STATUS.md
                            Current-evidence manifest and reading routes
 Docs/Status/              Capabilities, interface, open work, and dated proof
-Docs/ZOTERO_MCP.md         Non-normative first-party Zotero operator guide
 Tools/Scripts/             Build, verification, QA, performance, and release tools
 ```
 
@@ -358,3 +357,17 @@ Note references open in the central document region. Operation History retains
 actual MCP changes and eligible Undo. A disconnected or uncertain request is
 never automatically resent. Provider authentication, account availability,
 cloud execution and signed-distribution acceptance require their own checks.
+
+### First-party Zotero MCP (optional integration)
+
+Enable Zotero's local API in Zotero Settings → Advanced → **Allow other
+applications on this computer to communicate with Zotero**. In Scholium Settings
+→ Integrations → Agents & Chat → Skills and Tools, **Set Up Zotero…** uses the
+bundled helper with `zotero mcp serve --read-only`. **Check Connection** reports
+the API and MCP server separately; it does not read a source.
+
+The helper exposes seven bounded read tools and rejects imports. External hosts
+use the helper inside the installed App at
+`Contents/Helpers/ScholiumAgentHelper`; moving the App requires copying the
+setup command again. There is no standalone installation or updater. The
+supported scope and exact reference rules are in [Specification §15](Docs/Specification/05-integrations-onboarding-and-boundaries.md#15-zotero-integration).

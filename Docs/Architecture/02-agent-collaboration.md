@@ -130,8 +130,9 @@ Models](05-source-storage-and-read-models.md#vault-write-and-prewrite-recovery-b
 
 [Source Layout and Presentation](03-source-layout-and-presentation.md#presentation)
 owns Agent Changes composition;
-[Settings integrations](04-research-guidance.md#agents-chat) owns external-host
-setup. Both consume this chapter's bridge and mutation-evidence owners.
+[Settings integrations](03-source-layout-and-presentation.md#agents-chat) owns
+external-host setup. Both consume this chapter's bridge and mutation-evidence
+owners.
 
 ## Native Chat client
 

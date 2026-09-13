@@ -1,7 +1,7 @@
-# Architecture: Source Layout and Presentation
+# Architecture: Source Layout, Presentation, and Shared Boundaries
 
 [IMPLEMENTATION_ARCHITECTURE.md](../IMPLEMENTATION_ARCHITECTURE.md) · Source layout,
-native presentation, interface composition, and localization.
+native presentation, interface composition, integrations, and shared boundaries.
 
 ## Source layout
 
@@ -320,3 +320,185 @@ Because literal SwiftUI controls resolve against the outer app bundle, QA and
 release packaging mirror the compiled localization folders from the SwiftPM
 resource bundle into `Contents/Resources` while retaining the package bundle
 for explicit `Bundle.module` lookups. `Info.plist` declares `en` and `zh-Hans`.
+
+## Settings integrations
+
+The Settings **Integrations** pane is navigation, not an Agent runtime. It
+contains **Agents & Chat** and **Zotero**; those children preserve their
+separate feature owners, storage boundaries and connection semantics.
+
+### Agents & Chat
+
+`AgentIntegrationSettingsView` receives delivery-neutral availability values
+from `WorkspaceSettingsModel`. Application resolves the bundled helper and
+release-bundled Core Protocol locations. The App reports its own availability;
+the authenticated bridge status comes from the live App bridge owner.
+
+Host setup actions write one generated command through the shared native
+pasteboard boundary. The command contains the verified absolute helper path and
+`mcp serve`; Codex and Claude labels and scope are presentation choices only.
+Scholium does not execute the command, edit host configuration, install a Skill,
+or record a configuration-success claim.
+
+The Core Protocol reveal route is a Finder action over a release resource.
+The selected runtime owns researcher Skills; the Chat capability owner
+provides discovery and management under the Agent Collaboration chapter.
+
+### Zotero
+
+Zotero remains an optional integration with one Application-owned capability.
+Its settings, exact library/item identity, attachment containment, and
+source-derived reference navigation remain separate from MCP Agent collaboration.
+The first-party Zotero MCP transport follows Specification §15 and does not
+expand Scholium's knowledge-base MCP surface. `ZoteroMCPAccess` binds one helper
+session to read-only delivery. Core uses one predicate for discovery and
+dispatch, so hidden import tools cannot execute in read-only mode.
+Application reads and MCP share Core's bounded URLSession client and redirect
+policy. Foundation request injection stays inside Application composition;
+delivery and boundary tests never construct Core services. The client cancels
+oversized or cancelled responses.
+
+`ZoteroMCPAnnotations` uses that server's request factory and API validation for
+exact PDF/annotation reads, paginated snapshot pointers, record fingerprints
+and attachment revalidation; it owns no material store. `ZoteroMCPOriginals`
+resolves only an exact attachment's API file URL, checks its metadata and
+supported type, then reuses `VaultAttachmentStore` bounded, descriptor-relative
+coordinated reads. It rechecks metadata, URL and bytes before passing the
+snapshot to the same Core `AgentAttachmentContentReader` used by Note
+attachments. Only selected text/page/image coverage enters the tool response;
+originals have no second archive or writable projection.
+
+`ZoteroReference` owns library/item/PDF-page/annotation URL validation and
+serialization. Source-link presentation, MCP results, Chat links/Sources and
+native external navigation use it; a locator does not create source-read
+evidence.
+
+### Settings authority
+
+Workspace, Document and Notifications settings retain their existing owners;
+the Integrations and Interaction panes only compose those owners.
+`WorkspaceSettingsModel` presents immutable snapshots and delegates writes to
+Application capabilities. Portable Triptych settings contain Attention timing;
+source properties need no settings catalog. Unsupported pre-production state
+remains subject to the specification's non-migration and byte-preservation
+boundaries; architecture adds no compatibility policy.
+
+Settings search indexes static interface metadata only. It never searches
+research content, reads external Skill files, or supplies Agent permission.
+
+`SettingsToolbarAttachment` projects the five selected destinations to a native
+preference `NSToolbar`. Its coordinator owns only exact-window attachment and
+frame adjustment from the current top-left corner, constrained to the visible
+screen and immediate under Reduce Motion. SwiftUI retains destination and
+child-category state; feature owners retain configuration persistence. Native
+search filters static page/control metadata and restores the browsing context.
+`ScholiumHotkeyCommand` owns fixed and customizable menu bindings.
+`ScholiumHotkeyPreferences` validates recording, writes and persisted overrides
+against that catalog and native reservations. `ScholiumMenuShortcutModifier`
+projects current preferences into menus; only customizable commands appear in
+Settings. Fixed bindings have no second conflict-list definition.
+
+`DocumentWebViewContainer` gives the focused document's registered shortcuts
+to the native menu before WebKit, excluding hidden documents, other windows and
+composition; disabled commands cannot fall through. Formatting and Find use
+the existing editor bridge, while CodeMirror owns local text/navigation,
+history and Save. Task-owned menu content receives the window command revision
+explicitly. File, Edit, Format, Insert, View, Research and Window retain
+separate command views. Research's Settlement route reuses the window toolbar's
+exact-target availability and popover; it adds no mutation owner.
+
+`SettingsInteractionView` composes Keyboard Shortcuts and Selection Actions
+with a native segmented child selector. `SettingsIntegrationsView` composes
+Agents & Chat and Zotero in the same way; it does not copy either feature's
+state. Their scope notice is explanatory only and does not grant a broader
+write authority.
+
+The selected Triptych's Chat controller supplies connection settings through
+the [Agent client](02-agent-collaboration.md#native-chat-client), not a second
+runtime owned by the preferences window. `SelectionActionPreferences` owns the
+ordered, enabled action definitions in machine-local UserDefaults. The Settings
+pane retains editable drafts, validates count, native label width and prompt
+size, and commits through that single owner. The native selection menu reads
+those definitions; it owns no settings copy or installed-Skill inventory.
+
+## Shared presentation and boundary enforcement
+
+### Design-system implementation
+
+[Design](../../Design.md) owns global intent and identity; §18 owns feature
+presentation and state wording; §20 owns accessibility. This chapter maps shared
+presentation responsibilities to code. It does not require a wrapper around a
+standard system control or copy a feature's layout recipe.
+
+| Responsibility | Current implementation owner |
+| --- | --- |
+| Paper input and adapted document colors; system Accent role | `ScholiumColorVariables`, `ScholiumColorResolver`, `ScholiumColorRole` and `ScholiumNativeColorRole` in `Scholium/UI/Foundation/ScholiumDesignSystem.swift`. |
+| Native semantic colors | `ScholiumNativeColorRole`; AppKit/SwiftUI owns actual control rendering. |
+| Native-to-document style transport | `ScholiumWebDesignTokens`; generated CSS consumes resolved values, not another palette or settings store. |
+| Shared custom geometry | `ScholiumGrid`, `ScholiumMetrics`, `ScholiumShape`, surface/boundary/elevation roles; exact defaults remain in code. |
+| App-owned typography | `ScholiumTypography` in `Scholium/Styling`; standard controls retain system type. |
+| Chat message typography and ink | `ScholiumChatAppearance` in `ScholiumDesignSystem`; user and Agent bodies share adaptive system type and primary text, while authorship layout remains with Chat. |
+| Document typography | `DocumentAppearanceSettings` and the rendering pipeline in [Documents and Editor](06-documents-and-editor.md#shared-document-rendering). |
+| Shared symbols | `ScholiumSystemSymbol`; `ScholiumWebSymbolAssets` transports those symbols into WebKit. |
+| Purpose-specific custom motion | `ScholiumMotion`; native controls retain their system lifecycle. |
+| Page/pane state presentation | `ScholiumContentStateView`; compact Apparatus, field validation and recovery use their own bounded presentations. |
+
+Shared values need repeated semantic or adaptation responsibility. Equal numbers
+alone do not create a common owner. Native geometry stays with the platform;
+local values remain with their feature. No JSON palette, geometry mirror or
+second appearance configuration is authoritative.
+
+Buttons and menus use SwiftUI/AppKit styles directly. No shared wrapper rewrites
+command tint or destructive colors. `scholiumIconControl` in `ScholiumButtons`
+provides bounded native glass icon composition; it does not impose an app-owned
+palette. Native controls retain role, enabled, focus and appearance behavior.
+Remaining custom feedback paths are tracked in [Open Work](../Status/03-open-work.md).
+
+Custom link-equivalent cursors use `scholiumActivationPointer` and
+`ScholiumPointingHandButton` where the host does not already own the cursor.
+Standard native controls and list rows do not consume these adapters. Document
+CSS provides the corresponding link behavior in its renderer.
+
+### Component boundaries
+
+Reusable presentation leaves receive values and typed actions. They own no
+Document, workflow, permission, navigation or operation lifecycle. A shared
+component is justified by a repeated task, one presentation responsibility and
+an adaptation contract; feature-local views need no catalog promotion.
+
+Concrete feature ownership is recorded only in its chapter:
+
+- [Runtime and Ownership](01-runtime-and-ownership.md#document-tabs-and-native-shell):
+  native split, tabs, toolbar validation and window teardown.
+- [Source Layout and Presentation](03-source-layout-and-presentation.md#presentation):
+  window routes, Search, Inspector, Sidebar headers and notifications.
+- [Settings integrations](03-source-layout-and-presentation.md#settings-authority):
+  Settings composition and native preference-window geometry.
+- [Documents and Editor](06-documents-and-editor.md#editor-boundary-contract):
+  retained editor, native previews, completion, Find and cross-runtime input.
+- [Agent Collaboration](02-agent-collaboration.md#native-chat-client):
+  Chat runtime, conversation state and receipt projections.
+
+Native container adapters are bounded infrastructure: they own native attachment
+and teardown, delegate/target lifetime and geometry, translating typed intents
+without acquiring a competing domain state. A presentation reuse decision never
+moves a feature's authoritative state into a style or component.
+
+The selected Xcode also bundles `AppKit-Implementing-Liquid-Glass-Design.md`
+under `IDEIntelligenceChat.framework/Resources/AdditionalDocumentation`.
+It is an implementation reference, not a product design owner; sample custom
+controls do not override Design's native presentation boundary.
+
+### Boundary enforcement
+
+Contracts, Application and App suites exercise their own module, runtime,
+document and presentation responsibilities. Design checks cover semantic input
+ownership, native/WebKit transport, contrast and actual shared consumers; they
+must not freeze local implementation defaults or require obsolete custom skins.
+`Tools/Scripts/verify.sh` also checks package dependencies, imports, I/O and
+public symbols so delivery targets cannot acquire Core authority.
+
+Debug presentation proofs consume production components and values; they are
+not a second design system. [Verification Evidence](../Status/04-verification.md)
+owns dated outcomes. A structural check or compiled preview does not establish
+runtime interaction or human acceptance.

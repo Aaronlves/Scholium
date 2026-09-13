@@ -153,7 +153,7 @@ under its owning workflow contract.
 owns appearance controls, configuration-file editing and restoration; Settings
 does not create a second appearance owner or duplicate its controls. Its native
 form and Advanced CSS entry share the Document Appearance owner;
-profile changes never reset CSS snippets. [Source Properties Appendix A](11-source-properties.md)
+profile changes never reset CSS snippets. [Source Properties Appendix A](02-notes-and-file-operations.md#appendix-a-authored-source-properties)
 owns authored YAML; [Agent Chat §8.7](12-agent-chat.md) owns Selection
 Actions and runtime configuration. Agents & Chat keeps connection state and
 primary connect or sign-in actions in the main pane; custom connection paths,

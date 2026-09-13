@@ -59,10 +59,10 @@ Scholium 的人工核心不依赖 Obsidian、Zotero 或 Agent。它不是项目�
 目标文字不等于实现证明。已经完成使命的迁移 Roadmap 与被取代的决策记录保留在
 Git 历史中，不再作为平行权威。
 
-仍然独立的任务型操作参考包括：
+各功能的详细规则仍由对应的规范章节负责：
 
 - [高级 CSS 目标边界](Docs/Specification/07-document-and-research-interface.md#1841-advanced-css-boundary)
-- [第一方 Zotero MCP 传输](Docs/ZOTERO_MCP.md)
+- [Zotero 集成](Docs/Specification/05-integrations-onboarding-and-boundaries.md#15-zotero-integration)
 - [Scholium Core Protocol](ScholiumCore/Resources/Skills/Scholium%20System%20Skills/scholium-core-protocol/SKILL.md)
 
 ## 当前实现
@@ -227,6 +227,18 @@ bridge 工作；当应用、bridge、所选脉络或当前状态不可用时明�
 链接出现的方向、注释、局部上下文与来源位置；它们只公开作者写下的
 链接出现，不为其指定关系类别。
 
+## 第一方 Zotero MCP（可选集成）
+
+在 Zotero“设置 → 高级”中启用“允许本机其他应用与 Zotero 通信”。在 Scholium
+“设置 → 集成 → Agents & Chat → Skills and Tools”中选择“Set Up Zotero…”，使用
+应用内随附组件和 `zotero mcp serve --read-only`。“Check Connection”分别报告本机
+API 与 MCP 服务状态；检查连接不会读取来源。
+
+该组件只提供七个有界读取工具，并拒绝导入调用。外部 host 使用已安装应用内
+`Contents/Helpers/ScholiumAgentHelper` 的准确路径；移动应用后需重新复制设置命令。
+没有独立安装器或更新器。完整范围与引用规则见
+[规范 §15](Docs/Specification/05-integrations-onboarding-and-boundaries.md#15-zotero-integration)。
+
 ## 存储与安全
 
 权威研究内容始终保存在研究者选择的 Markdown 文件夹。位于“写作”旁边的小型
@@ -275,6 +287,5 @@ Docs/Architecture/        模块、运行时、状态、编辑器与交付章节
 Docs/IMPLEMENTATION_STATUS.md
                            当前证据清单与阅读路由
 Docs/Status/              能力、界面、开放工作与注明日期的证据
-Docs/ZOTERO_MCP.md         非规范性的第一方 Zotero 操作指南
 Tools/Scripts/             构建、验证、QA、性能与发布工具
 ```
