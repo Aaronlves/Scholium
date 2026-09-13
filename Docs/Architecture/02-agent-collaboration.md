@@ -235,6 +235,15 @@ machine-local AgentChangeViewedLedger, independent of evidence and Settlement.
 Public assistant phase metadata is retained on the message by streaming and history
 reconciliation. Timeline grouping uses explicit turn and phase metadata; a process
 disclosure owns only expansion, keeping each tool item distinct from the final answer.
+`AgentChatReadingStore` retains one window-local reading session per conversation.
+Its native transcript viewport is the sole scroll-offset writer, restoring a
+message anchor and relative offset after native layout and reader measurements.
+SwiftUI owns the bounded history window and row content; native row markers
+translate identity into geometry without owning a second offset. Explicit paging
+retains mounted rows; jumps and follow-to-latest bound the recent window.
+`AgentChatReplyProjection` serializes background Markdown projection, retains only
+the latest pending source, and rejects cancelled or replaced publication. The
+existing WebKit reconciliation keeps unchanged rendered blocks and selection.
 `AgentChatDisclosureStyle` keeps the disclosure transaction free of layout animation;
 only its leading indicator animates. Content mounts on first expansion and remains
 measured while collapsed, retaining native reader identity. The collapsed subtree

@@ -20,6 +20,12 @@ One click opens; native button focus and keyboard activation remain available. O
 current and archived lists, without batch mode.
 While the list is open, existing rows retain their order as live previews update.
 Re-entering the list refreshes recency order; newly visible conversations remain discoverable.
+Within a workspace window, returning to a conversation restores its reading
+message and relative position, together with explicit activity and plan disclosure
+choices. New content cannot turn a retained history-reading position into follow-to-latest.
+Long transcripts initially mount a bounded recent portion; Earlier/Later Messages
+expose retained history progressively. Paging preserves the visible passage;
+explicit jumps may replace the mounted portion without deleting history.
 Left swipe reveals Archive for current conversations, Delete and Restore for
 archives. Right swipe toggles read and
 important markers. Read/Important/Archive use system blue/orange/purple; Delete uses its destructive
@@ -120,8 +126,15 @@ promoting a different version or an uncovered cited line to verified reading.
 Runtime web access remains separately named. A compact Materials for This Turn
 disclosure reuses the existing Note/file/image previews and identifies the supplied
 representation; it never presents all materials as citations or adds another reader.
-Sources and conversation file-operation history have distinct scopes. Ratings and
-export actions are not part of this initial reply-action surface.
+Sources and conversation file-operation history have distinct scopes. A quiet row beneath each eligible message exposes Edit in New Branch,
+Branch from This Turn, Retry in New Branch and Quote in Reply through named SF
+Symbol buttons alongside reply Copy, Sources and Materials. Inapplicable actions
+stay absent; temporarily unavailable branch actions retain disabled state.
+Context menus remain equivalent routes. Clear action symbols replace repeated
+footer labels, retaining full Help and accessible names; counts and meaningful
+state text remain visible when an icon alone would be ambiguous. No swipe gesture
+is required.
+Ratings and export actions are not part of this reply-action surface.
 Reply prose fills the available width between the shared sidebar grid insets,
 using ordinary line wrapping without paragraph-wide line balancing or extra
 reading-column margins. User messages, public commentary and final answers
@@ -215,7 +228,11 @@ replacement is attached keeps the previous material and question.
 The conversation list has a native search field; the archived list retains its
 explicit scope. Matching rows show a passage containing the query. Changing the
 list query clears temporary archive/restore selection. Detail
-options provide Find in Conversation and Rename Conversation. Find opens a
+options provide Find in Conversation and Rename Conversation. A named Conversation
+Outline icon near the composer opens a searchable native question list with bounded
+answer previews. Selecting a question loads its retained portion and jumps to that
+exchange without changing the draft or execution. Keyboard and accessibility
+activation provide the same navigation as pointer selection. Find opens a
 compact native search field with previous/next, a matching-message position and
 Done. The focused search field accepts Return/Shift-Return to navigate and
 Escape to dismiss. The current matching message is revealed and identified
@@ -261,8 +278,12 @@ for the queued text without replacing the composer draft or its materials.
 Saving preserves queue identity, position and attached context. If already sent,
 the edit is not applied and remains available to copy. The composer shows only
 its text and necessary delivery controls. Chat Actions groups materials, Skills,
-web search, model/reasoning, permissions and context; these do not occupy permanent
-rows or separate icons. Native menus and named pickers expose selected values;
+web search, model/reasoning and permissions; these do not occupy permanent
+rows or separate icons. Context and Usage additionally has one compact named
+icon near the composer, showing only last-reported occupancy when available.
+A running turn with a reported plan shows its current step and completed-step
+count in one compact disclosure near the input; full steps open on demand.
+This summary never invents a plan, progress or token measurement. Native menus and named pickers expose selected values;
 short labels and direct
 actions lead, with explanations only for unavailable or consequential states.
 An explicit web-search mode is distinguishable from Note Search.
@@ -400,7 +421,11 @@ active answer field, restarts its identity, or delays a decision. Streaming dire
 renders received content in the retained reading surface. It has no separate
 visible-character counter, concealed text ranges or synthetic typing delay.
 The received text remains authoritative; later chunks complete its Markdown
-projection without replaying existing text. Completion, Stop, selection, copying,
+projection without replaying existing text. Reply parsing runs away from the
+interface executor, serially coalescing superseded pending snapshots. Completed
+prefixes may remain readable while appended source is projected; replacements,
+cancellation and final delivery preserve generation identity and exact final text.
+There is no artificial character-reveal delay. Completion, Stop, selection, copying,
 history reading and accessibility adaptation never leave received text hidden.
 Newly sent messages and arriving replies may
 fade in once, locally, without moving the transcript. Opening retained history,

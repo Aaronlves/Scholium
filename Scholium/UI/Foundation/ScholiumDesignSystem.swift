@@ -2908,10 +2908,6 @@ enum ScholiumMotion {
         reduceMotion ? nil : .easeOut(duration: 0.18)
     }
 
-    static func chatReturnToLatest(reduceMotion: Bool) -> Animation? {
-        reduceMotion ? nil : .smooth(duration: 0.24, extraBounce: 0)
-    }
-
     static func outlineInteraction(reduceMotion: Bool) -> Animation? {
         reduceMotion ? nil : .smooth(duration: 0.38)
     }

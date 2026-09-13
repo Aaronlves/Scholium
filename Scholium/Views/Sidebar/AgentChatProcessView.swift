@@ -11,9 +11,9 @@ struct AgentChatProcessView<Row: View>: View {
     var hasInspectedActivity = false
     var animates = true
     var inspect: () -> Void = {}
+    @Binding var userExpansion: Bool?
     @ViewBuilder let row: (AgentChatMessage) -> Row
     @State private var isExpanded = false
-    @State private var userExpansion: Bool?
 
     private var needsAttention: Bool {
         messages.contains {
@@ -51,6 +51,8 @@ struct AgentChatProcessView<Row: View>: View {
         .onChange(of: isActive, initial: true) { _, active in
             if needsAttention || forceExpanded {
                 isExpanded = true
+            } else if let userExpansion {
+                isExpanded = userExpansion
             } else if active {
                 isExpanded = userExpansion ?? true
             } else if !preservesReading && !hasInspectedActivity && userExpansion != true {

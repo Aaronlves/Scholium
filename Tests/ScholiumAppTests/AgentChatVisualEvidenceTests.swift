@@ -24,7 +24,7 @@ struct AgentChatVisualEvidenceTests {
             let content = VStack(alignment: .leading, spacing: 20) {
                 AgentChatProcessView(
                     messages: process, isActive: false, forceExpanded: false,
-                    status: .init(state: .completed, timing: .init(durationMilliseconds: 38_500)), animates: false
+                    status: .init(state: .completed, timing: .init(durationMilliseconds: 38_500)), animates: false, userExpansion: .constant(nil)
                 ) {
                     AgentChatMarkdown(text: $0.text)
                 }

@@ -83,14 +83,16 @@ enum AgentChatControlLabels {
 struct AgentChatPlanView: View {
     let plan: AgentChatPlan
     @State private var isExpanded: Bool
+    @Binding private var savedExpansion: Bool?
 
-    init(plan: AgentChatPlan) {
+    init(plan: AgentChatPlan, savedExpansion: Binding<Bool?> = .constant(nil)) {
         self.plan = plan
-        _isExpanded = State(initialValue: plan.runStatus.isActive)
+        _savedExpansion = savedExpansion
+        _isExpanded = State(initialValue: savedExpansion.wrappedValue ?? plan.runStatus.isActive)
     }
 
     var body: some View {
-        DisclosureGroup(isExpanded: $isExpanded) {
+        DisclosureGroup(isExpanded: Binding(get: { isExpanded }, set: { isExpanded = $0; savedExpansion = $0 })) {
             VStack(alignment: .leading, spacing: 8) {
                 if let explanation = plan.explanation, !explanation.isEmpty {
                     Text(explanation).foregroundStyle(.secondary).textSelection(.enabled)

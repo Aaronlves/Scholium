@@ -64,13 +64,14 @@ struct AgentChatReplyActions: View {
     var body: some View {
         let sources = AgentChatReplySource.collect(text)
         let availability = AgentChatReplyActionAvailability(sources: sources, hasMaterials: context.hasMaterials)
-        HStack(spacing: 12) {
+        HStack(spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
             Button {
                 NSPasteboard.general.clearContents()
                 copied = NSPasteboard.general.setString(text, forType: .string)
             } label: {
                 Image(systemName: copied ? "checkmark" : "doc.on.doc")
                     .chatAccessory()
+                    .frame(width: ScholiumGrid.Dimension.preferredCustomTarget, height: ScholiumGrid.Dimension.preferredCustomTarget)
                     .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
             }
             .help(copied ? String(localized: "Copied") : String(localized: "Copy Reply"))
@@ -92,15 +93,10 @@ struct AgentChatReplyActions: View {
                 Button {
                     showsSources = true
                 } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "books.vertical").chatAccessory()
-                        Text("Sources")
-                            .scholiumContentControlInk(
-                                resting: .secondaryText,
-                                emphasized: .accent
-                            )
-                    }
+                    Image(systemName: "books.vertical").chatAccessory()
+                        .frame(width: ScholiumGrid.Dimension.preferredCustomTarget, height: ScholiumGrid.Dimension.preferredCustomTarget)
                 }
+                .help("Sources").accessibilityLabel("Sources")
                 .accessibilityIdentifier("scholium.chat.sources")
                 .scholiumActivationPointer()
                 .scholiumContentControlPointerFeedback(
@@ -120,15 +116,10 @@ struct AgentChatReplyActions: View {
                 Button {
                     showsMaterials = true
                 } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "paperclip").chatAccessory()
-                        Text("Materials", bundle: .module)
-                            .scholiumContentControlInk(
-                                resting: .secondaryText,
-                                emphasized: .accent
-                            )
-                    }
+                    Image(systemName: "paperclip").chatAccessory()
+                        .frame(width: ScholiumGrid.Dimension.preferredCustomTarget, height: ScholiumGrid.Dimension.preferredCustomTarget)
                 }
+                .help("Materials").accessibilityLabel("Materials")
                 .accessibilityIdentifier("scholium.chat.materials")
                 .scholiumActivationPointer()
                 .scholiumContentControlPointerFeedback(
@@ -145,7 +136,6 @@ struct AgentChatReplyActions: View {
             }
         }
         .buttonStyle(.borderless).font(.caption).foregroundStyle(.secondary)
-        .padding(.top, 4)
     }
 }
 
@@ -271,5 +261,14 @@ struct AgentChatMaterialsView: View {
         .font(.body).foregroundStyle(.primary)
         .tint(nil as Color?)
         .accessibilityIdentifier("scholium.chat.materialsView")
+    }
+}
+
+/// One message-action definition serves both its native menu and icon footer.
+struct AgentChatReplyActionLabelStyle: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.icon
+            .imageScale(.small)
+            .frame(width: ScholiumGrid.Dimension.preferredCustomTarget, height: ScholiumGrid.Dimension.preferredCustomTarget)
     }
 }

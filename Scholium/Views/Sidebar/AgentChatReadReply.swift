@@ -14,22 +14,13 @@ struct AgentChatReadReply: View {
     @Environment(\.openChatNoteInSeparateWindow) private var openSeparate
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.colorSchemeContrast) private var contrast
-    @State private var projection: Projection?
+    @StateObject private var renderer = AgentChatReplyProjection()
     @State private var ready = false
     @State private var height: CGFloat = 120
     @State private var intrinsicWidth: CGFloat?
     @State private var failure: String?
     @State private var preview = AgentChatRichPreviewController()
     @State private var quoteRequest: UUID?
-
-    private struct Projection {
-        let document: NoteDocument
-        let html: String
-        init(_ source: String) {
-            document = NoteDocument(relativePath: "Reply.md", rawContent: source)
-            html = SafeMarkdownRenderer.render(document).htmlBody
-        }
-    }
 
     var body: some View {
         Group {
@@ -42,7 +33,7 @@ struct AgentChatReadReply: View {
                         ready = false
                     }
                 }
-            } else if let projection {
+            } else if let projection = renderer.snapshot {
                 SafeMarkdownReadWebView(
                     documentID: "chat-reply", fingerprint: projection.document.fingerprint.sha256,
                     source: projection.document.rawContent, htmlBody: projection.html, presentationCSS: css, userCSS: "",
@@ -64,24 +55,27 @@ struct AgentChatReadReply: View {
             }
         }
         .preference(key: AgentChatReplyReadyPreference.self, value: ready || failure != nil)
-        .onDisappear { preview.close() }
+        .onDisappear { preview.close(); renderer.cancel() }
         .onChange(of: isEnabled) { _, enabled in if !enabled { preview.close() } }
         .task(id: source) {
             preview.close()
             failure = nil
-            projection = Projection(source)
+            renderer.submit(source)
         }
     }
 
     private func receive(_ event: ReadReplyEvent, expectedSource: String) {
-        guard expectedSource == source else { return }
+        guard expectedSource == renderer.snapshot?.document.rawContent else { return }
         switch event {
         case .interaction: readingInteraction()
         case .layout(let value, let width):
             height = value
             intrinsicWidth = width
-        case .quote(let text): quote?(.reader(source: source, excerpt: text))
+        case .quote(let text):
+            guard expectedSource == source else { return }
+            quote?(.reader(source: source, excerpt: text))
         case .noteContext(let url, let point, let view):
+            guard expectedSource == source else { return }
             guard AgentChatReplySource.collect(source).contains(where: { $0.url == url && $0.isNote }) else { return }
             let menu = NSMenu()
             menu.addItem(AgentChatNoteMenuItem(ScholiumL10n.string("Open Note")) { openLink(url) })
@@ -91,6 +85,7 @@ struct AgentChatReadReply: View {
             menu.popUp(positioning: nil, at: point, in: view)
 
         case .object(let index, let copy, let size, let anchor, let view):
+            guard expectedSource == source else { return }
             let layout = AgentChatObjectProjection.layoutReply(source)
             let objects = AgentChatRichSegment.collect(layout).filter(\.isObject)
             guard objects.indices.contains(index) else { return }
