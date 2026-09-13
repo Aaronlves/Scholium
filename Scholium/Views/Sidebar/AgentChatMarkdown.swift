@@ -89,14 +89,19 @@ struct AgentChatMarkdownBlock: Identifiable {
 struct AgentChatMarkdown: View {
     let text: String
     var expandsToFillWidth = true
+    var animatesStreaming = false
+    var revealsInitialText = false
     var quoteSelection: ((AgentChatReplySelection) -> Void)? = nil
     @Environment(\.openURL) private var openURL
 
     var body: some View {
-        AgentChatReadReply(source: text, quote: quoteSelection, openLink: { openURL($0) }, fitsContent: !expandsToFillWidth)
-            .font(ScholiumChatAppearance.messageFont)
-            .foregroundStyle(ScholiumChatAppearance.messageForeground)
-            .frame(maxWidth: expandsToFillWidth ? .infinity : nil, alignment: .leading)
+        AgentChatReadReply(
+            source: text, quote: quoteSelection, openLink: { openURL($0) },
+            fitsContent: !expandsToFillWidth, animatesStreaming: animatesStreaming, revealsInitialText: revealsInitialText
+        )
+        .font(ScholiumChatAppearance.messageFont)
+        .foregroundStyle(ScholiumChatAppearance.messageForeground)
+        .frame(maxWidth: expandsToFillWidth ? .infinity : nil, alignment: .leading)
     }
 
 }

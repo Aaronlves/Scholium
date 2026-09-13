@@ -1,4 +1,5 @@
 import {installChatReply} from "./chat-reply";
+import {installReplyReveal} from "./chat-reply-reveal";
 import {createSelectionActions} from "./selection-actions";
 import {createReaderArrival} from "./arrival-highlight";
 import {createNativeFloatingBridge, previewSurface} from "./native-floating";
@@ -35,6 +36,7 @@ interface ReaderScrollEntry {
 }
 
 type ReaderWindow = Window & {
+  scholiumReplyReveal?: ReturnType<typeof installReplyReveal> & {loadGeneration: number};
   webkit?: {messageHandlers?: {scholiumRead?: ReaderMessageHandler}};
   scholiumReadReady?: Promise<void>;
   scholiumReadNavigation?: ReturnType<typeof createReaderArrival>;
@@ -320,6 +322,9 @@ async function initializeReader(value: unknown): Promise<void> {
   await readerWindow.scholiumMermaidReady;
   if (config.chatReply === true) {
     const disposeReply = installChatReply(documentRoot, post, localized);
+    const reveal = installReplyReveal(documentRoot, config.chatReplyPreviousHTML);
+    readerWindow.scholiumReplyReveal = {...reveal, loadGeneration};
+    window.addEventListener('pagehide', reveal.destroy, {once: true});
     window.addEventListener('pagehide', disposeReply, {once: true});
   }
   for (const mediaQuery of [

@@ -13,12 +13,13 @@ export interface ReaderLocalization {
 
 
 export interface ReaderConfiguration {
-  version: 5;
+  version: 6;
   documentID: string;
   fingerprint: string;
   loadGeneration: number;
   selectionEnabled: boolean;
   chatReply?: boolean;
+  chatReplyPreviousHTML?: string;
   testingEnabled: boolean;
   presentationCSS: string;
   userCSS: string;
@@ -29,7 +30,7 @@ export interface ReaderConfiguration {
 export function validatedReaderConfiguration(value: unknown): ReaderConfiguration | null {
   if (!value || typeof value !== "object") return null;
   const config = value as Partial<ReaderConfiguration>;
-  if (config.version !== 5
+  if (config.version !== 6
       || typeof config.documentID !== "string" || !config.documentID
       || config.documentID.length > 4_096
       || typeof config.fingerprint !== "string" || !config.fingerprint
@@ -37,6 +38,8 @@ export function validatedReaderConfiguration(value: unknown): ReaderConfiguratio
       || !Number.isSafeInteger(config.loadGeneration) || Number(config.loadGeneration) < 0
       || typeof config.selectionEnabled !== "boolean"
       || (config.chatReply !== undefined && typeof config.chatReply !== "boolean")
+      || (config.chatReplyPreviousHTML !== undefined && (config.chatReply !== true
+        || typeof config.chatReplyPreviousHTML !== 'string' || config.chatReplyPreviousHTML.length > 262_144))
       || typeof config.testingEnabled !== "boolean"
       || typeof config.presentationCSS !== "string"
       || typeof config.userCSS !== "string"

@@ -28,6 +28,8 @@ struct AgentChatView: View {
     @State private var deletionTarget: UUID?
     @State private var isAwayFromLatest = false
     @State private var transcriptIsScrolling = false
+    @State private var transcriptIsAnimatingScroll = false
+    @State private var arrivalBaseline: Set<String>?
     @State private var showsConversationList = true
     @State private var showsFiles = false
     @State private var showsContext = false
@@ -152,6 +154,8 @@ struct AgentChatView: View {
             expandedActivityIDs = []
             isAwayFromLatest = false
             transcriptIsScrolling = false
+            transcriptIsAnimatingScroll = false
+            arrivalBaseline = nil
             showsFind = false
             find = .init()
             renameID = nil
@@ -599,7 +603,8 @@ struct AgentChatView: View {
                 .simultaneousGesture(TapGesture().onEnded { completion.dismiss() })
                 .scrollEdgeEffectHidden(true, for: .bottom)
                 .onScrollPhaseChange { _, phase in
-                    transcriptIsScrolling = phase.isScrolling
+                    transcriptIsAnimatingScroll = phase == .animating
+                    transcriptIsScrolling = phase == .tracking || phase == .interacting || phase == .decelerating
                     // Yield follow-to-latest as soon as the user takes the scrollbar or
                     // starts a gesture, before asynchronous rich-content layout can change.
                     if phase == .tracking || phase == .interacting { isAwayFromLatest = true }
@@ -610,6 +615,9 @@ struct AgentChatView: View {
                         bottomDistance: geometry.contentSize.height
                             - geometry.contentOffset.y - geometry.containerSize.height)
                 } action: { previous, current in
+                    // A native Return to Latest animation is not a user gesture.
+                    // Intermediate offsets must not re-enable the latest button.
+                    guard !transcriptIsAnimatingScroll else { return }
                     // Accessibility scrolling can move the viewport without a scroll phase.
                     let viewportMoved =
                         previous.height == current.height
@@ -628,7 +636,9 @@ struct AgentChatView: View {
                             if isAwayFromLatest {
                                 Button {
                                     isAwayFromLatest = false
-                                    withAnimation(reduceMotion ? nil : .default) { proxy.scrollTo("latest", anchor: .bottom) }
+                                    withAnimation(ScholiumMotion.chatReturnToLatest(reduceMotion: reduceMotion)) {
+                                        proxy.scrollTo("latest", anchor: .bottom)
+                                    }
                                 } label: {
                                     Image(systemName: "arrow.down").padding(7)
                                 }
@@ -666,6 +676,8 @@ struct AgentChatView: View {
                 }
             }
         }
+        .onAppear { arrivalBaseline = Set(timelineMessages.map(\.id)) }
+        .onDisappear { arrivalBaseline = nil }
         .task { if isVisible && pendingRequest == nil && controller.pendingAsyncQuestion == nil { messageIsFocused = true } }
         .id(controller.selectedID)
     }
@@ -688,7 +700,9 @@ struct AgentChatView: View {
                 } else if let plan = message.plan {
                     AgentChatPlanView(plan: plan)
                 } else {
-                    AgentChatMarkdown(text: message.text).foregroundStyle(.secondary)
+                    AgentChatMarkdown(
+                        text: message.text, animatesStreaming: shouldAnimateStreaming(message), revealsInitialText: shouldAnimateArrival(message)
+                    ).foregroundStyle(.secondary)
                 }
             }
         } else if let message = item.messages.first {
@@ -718,6 +732,8 @@ struct AgentChatView: View {
                 } else if !message.text.isEmpty {
                     AgentChatMarkdown(
                         text: message.text, expandsToFillWidth: message.role != .user,
+                        animatesStreaming: shouldAnimateStreaming(message),
+                        revealsInitialText: shouldAnimateArrival(message),
                         quoteSelection: canQuote(message) ? { selection in quote(message, selection: selection, in: conversationID) } : nil)
                 }
                 if message.role == .assistant, message.asyncQuestion == nil, message.phase != .commentary, !message.text.isEmpty,
@@ -747,6 +763,11 @@ struct AgentChatView: View {
                 }
             }
         }
+        .modifier(
+            AgentChatMessageArrival(
+                enabled: shouldAnimateArrival(message) && !shouldAnimateStreaming(message),
+                waitsForContent: message.asyncQuestion == nil && !message.text.isEmpty)
+        )
         .accessibilityElement(children: .contain)
         .accessibilityLabel(message.role == .user ? ScholiumL10n.string("You", locale: locale) : "Codex")
         .contextMenu {
@@ -775,6 +796,21 @@ struct AgentChatView: View {
                 Button("Quote in Reply") { quote(message, selection: nil, in: conversationID) }
             }
         }
+    }
+
+    private func shouldAnimateArrival(_ message: AgentChatMessage) -> Bool {
+        guard let arrivalBaseline else { return false }
+        return !arrivalBaseline.contains(message.id) && allowsReplyMotion
+    }
+
+    private var allowsReplyMotion: Bool {
+        isVisible && !showsConversationList && !isAwayFromLatest && !transcriptIsScrolling && !controller.isRefreshingHistory
+    }
+
+    private func shouldAnimateStreaming(_ message: AgentChatMessage) -> Bool {
+        message.role == .assistant && message.asyncQuestion == nil && allowsReplyMotion
+            && controller.isBusy && controller.currentTurnID != nil && message.turnID == controller.currentTurnID
+            && controller.approvals.isEmpty && turnPresentation(message.turnID).isWorking
     }
 
     @ViewBuilder private func quoteCards(_ quotes: [AgentChatReplyQuote], editable: Bool) -> some View {

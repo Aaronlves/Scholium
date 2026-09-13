@@ -10,6 +10,7 @@ struct AgentChatDisclosureStyle: DisclosureGroupStyle {
         let configuration: DisclosureGroupStyleConfiguration
         @State private var isHovered = false
         @FocusState private var isFocused: Bool
+        @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
         var body: some View {
             VStack(alignment: .leading, spacing: 6) {
@@ -18,8 +19,11 @@ struct AgentChatDisclosureStyle: DisclosureGroupStyle {
                 } label: {
                     HStack(spacing: 6) {
                         configuration.label
-                        Image(systemName: configuration.isExpanded ? "chevron.down" : "chevron.right")
+                        Image(systemName: "chevron.right")
                             .chatAccessory()
+                            .animation(ScholiumMotion.disclosure(reduceMotion: reduceMotion)) { image in
+                                image.rotationEffect(.degrees(configuration.isExpanded ? 90 : 0))
+                            }
                             .opacity(isHovered || isFocused ? 1 : 0)
                             .accessibilityHidden(true)
                     }

@@ -103,6 +103,109 @@
     };
   }
 
+  // chat-reply-reveal.ts
+  var replyRevealDuration = 280;
+  var replyRevealHighlight = "scholium-reply-pending";
+  var excluded = "pre, table, button, script, style, .scholium-mermaid, .scholium-math, .katex, .scholium-reply-controls";
+  function replyTextNodes(root) {
+    const nodes = [];
+    const visit = (node) => {
+      if (node.nodeType === 3) {
+        if (node.textContent?.trim() && !node.parentElement?.closest(excluded)) nodes.push(node);
+        return;
+      }
+      for (const child of node.childNodes) visit(child);
+    };
+    visit(root);
+    return nodes;
+  }
+  function replyRevealBoundaries(previous, current) {
+    if (!current.startsWith(previous) || current.length <= previous.length || current.length > 65536) return [];
+    const segments = new Intl.Segmenter(void 0, { granularity: "grapheme" });
+    const ends = [...segments.segment(current)].map((part) => part.index + part.segment.length);
+    if (previous.length && !ends.includes(previous.length)) return [];
+    return ends.filter((end) => end > previous.length);
+  }
+  function installReplyReveal(root, previousHTML) {
+    const owner = root.ownerDocument.defaultView;
+    let frame = 0;
+    let finished = false;
+    const motion = owner.matchMedia("(prefers-reduced-motion: reduce)");
+    const contrast = owner.matchMedia("(prefers-contrast: more)");
+    const finish = () => {
+      finished = true;
+      owner.cancelAnimationFrame(frame);
+      owner.CSS?.highlights?.delete(replyRevealHighlight);
+    };
+    const adapted = () => {
+      if (motion.matches || contrast.matches) finish();
+    };
+    const selected = () => {
+      const selection = owner.getSelection();
+      if (selection && !selection.isCollapsed) finish();
+    };
+    const hidden = () => {
+      if (root.ownerDocument.hidden) finish();
+    };
+    const destroy = () => {
+      finish();
+      motion.removeEventListener("change", adapted);
+      contrast.removeEventListener("change", adapted);
+      root.removeEventListener("pointerdown", finish);
+      root.removeEventListener("keydown", finish);
+      root.removeEventListener("copy", finish);
+      root.ownerDocument.removeEventListener("selectionchange", selected);
+      root.ownerDocument.removeEventListener("visibilitychange", hidden);
+      owner.removeEventListener("blur", finish);
+    };
+    if (previousHTML === void 0 || motion.matches || contrast.matches || root.ownerDocument.hidden || !owner.CSS?.highlights || !owner.Highlight) return { finish, destroy };
+    const template = root.ownerDocument.createElement("template");
+    template.innerHTML = previousHTML;
+    const previous = replyTextNodes(template.content).map((node) => node.data).join("");
+    const nodes = replyTextNodes(root);
+    const current = nodes.map((node) => node.data).join("");
+    const boundaries = replyRevealBoundaries(previous, current);
+    if (!boundaries.length) return { finish, destroy };
+    const paint = (visible) => {
+      const ranges = [];
+      let offset = 0;
+      for (const node of nodes) {
+        const end = offset + node.length;
+        if (end > visible) {
+          const range = root.ownerDocument.createRange();
+          range.setStart(node, Math.max(0, visible - offset));
+          range.setEnd(node, node.length);
+          ranges.push(range);
+        }
+        offset = end;
+      }
+      owner.CSS.highlights.set(replyRevealHighlight, new owner.Highlight(...ranges));
+    };
+    paint(previous.length);
+    const started = owner.performance.now();
+    const duration = Math.min(replyRevealDuration, Math.max(60, boundaries.length * 16));
+    const tick = (now) => {
+      if (finished) return;
+      const count = Math.floor(boundaries.length * Math.min(1, (now - started) / duration));
+      if (count >= boundaries.length) {
+        finish();
+        return;
+      }
+      paint(count ? boundaries[count - 1] : previous.length);
+      frame = owner.requestAnimationFrame(tick);
+    };
+    frame = owner.requestAnimationFrame(tick);
+    motion.addEventListener("change", adapted);
+    contrast.addEventListener("change", adapted);
+    root.addEventListener("pointerdown", finish);
+    root.addEventListener("keydown", finish);
+    root.addEventListener("copy", finish);
+    root.ownerDocument.addEventListener("selectionchange", selected);
+    root.ownerDocument.addEventListener("visibilitychange", hidden);
+    owner.addEventListener("blur", finish);
+    return { finish, destroy };
+  }
+
   // selection-actions.ts
   function createSelectionActions(floating, current) {
     let id = null;
@@ -640,7 +743,7 @@
   function validatedReaderConfiguration(value) {
     if (!value || typeof value !== "object") return null;
     const config = value;
-    if (config.version !== 5 || typeof config.documentID !== "string" || !config.documentID || config.documentID.length > 4096 || typeof config.fingerprint !== "string" || !config.fingerprint || config.fingerprint.length > 256 || !Number.isSafeInteger(config.loadGeneration) || Number(config.loadGeneration) < 0 || typeof config.selectionEnabled !== "boolean" || config.chatReply !== void 0 && typeof config.chatReply !== "boolean" || typeof config.testingEnabled !== "boolean" || typeof config.presentationCSS !== "string" || typeof config.userCSS !== "string" || !config.localization || typeof config.localization !== "object" || !config.localization.strings || typeof config.localization.strings !== "object" || !Array.isArray(config.linkPreviews) || config.linkPreviews.length > 128) return null;
+    if (config.version !== 6 || typeof config.documentID !== "string" || !config.documentID || config.documentID.length > 4096 || typeof config.fingerprint !== "string" || !config.fingerprint || config.fingerprint.length > 256 || !Number.isSafeInteger(config.loadGeneration) || Number(config.loadGeneration) < 0 || typeof config.selectionEnabled !== "boolean" || config.chatReply !== void 0 && typeof config.chatReply !== "boolean" || config.chatReplyPreviousHTML !== void 0 && (config.chatReply !== true || typeof config.chatReplyPreviousHTML !== "string" || config.chatReplyPreviousHTML.length > 262144) || typeof config.testingEnabled !== "boolean" || typeof config.presentationCSS !== "string" || typeof config.userCSS !== "string" || !config.localization || typeof config.localization !== "object" || !config.localization.strings || typeof config.localization.strings !== "object" || !Array.isArray(config.linkPreviews) || config.linkPreviews.length > 128) return null;
     return config;
   }
 
@@ -909,6 +1012,9 @@
     await readerWindow.scholiumMermaidReady;
     if (config.chatReply === true) {
       const disposeReply = installChatReply(documentRoot, post, localized);
+      const reveal = installReplyReveal(documentRoot, config.chatReplyPreviousHTML);
+      readerWindow.scholiumReplyReveal = { ...reveal, loadGeneration };
+      window.addEventListener("pagehide", reveal.destroy, { once: true });
       window.addEventListener("pagehide", disposeReply, { once: true });
     }
     for (const mediaQuery of [

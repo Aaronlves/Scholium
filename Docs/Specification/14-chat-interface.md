@@ -112,7 +112,9 @@ disclosure reuses the existing Note/file/image previews and identifies the suppl
 representation; it never presents all materials as citations or adds another reader.
 Sources and conversation file-operation history have distinct scopes. Ratings and
 export actions are not part of this initial reply-action surface.
-Reply prose wraps normally. User messages, public commentary and final answers
+Reply prose fills the available width between the shared sidebar grid insets,
+using ordinary line wrapping without paragraph-wide line balancing or extra
+reading-column margins. User messages, public commentary and final answers
 share one Markdown presentation; adding a table or other rich object does not
 change existing prose or inline-code styling. Paragraphs, headings, lists and
 quotations share a compact, font-relative rhythm without inheriting Document
@@ -385,9 +387,16 @@ selection use system transitions; request-to-confirmation feedback changes in
 place with a persistent label and restrained native symbol replacement. Reduce
 Motion supplies the same state immediately. No full-form transition replaces an
 active answer field, restarts its identity, or delays a decision. Streaming displays
-arriving text without artificial typing delays, repeated entrance effects or
-reanimation of existing paragraphs. Changes preserve stable message identity,
+arriving text with a brief, bounded progressive reveal of newly received prose.
+The complete received text remains authoritative; presentation neither throttles
+the runtime nor invents pending work. Existing text does not replay. Code, tables
+and mathematics remain complete. Completion, Stop, selection, copying, history
+reading, inactive presentation and Reduce Motion reveal all received text
+immediately. Newly sent messages and arriving replies may
+fade in once, locally, without moving the transcript. Opening retained history,
+reading earlier messages and Reduce Motion show content immediately. Explicit
+process disclosure uses a short native transition; automatic completion collapse
+does not animate transcript geometry. Changes preserve stable message identity,
 selection and reading position. Completion, interruption and errors retain static
 labels; activity indicators stop when activity ends. No fabricated progress,
 reasoning trace or animated research-confidence meter is presented.
-

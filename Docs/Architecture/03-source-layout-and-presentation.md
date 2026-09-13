@@ -135,6 +135,11 @@ outside the tab subtree. Cards borrow existing request, material and execution
 values and add no transport, storage, policy or animation coordinator. Native
 symbol replacement is scoped to the delivery indicator; reduced motion keeps
 its textual state without an animated replacement.
+Chat's progressive reply reveal uses CSS Highlights over appended prose. The
+reader compares its previous sanitized HTML in an inert template and advances
+complete grapheme ranges without changing text nodes or queueing runtime output.
+Native Chat owns eligibility and cancellation through the generation-bound reader
+bridge. Selection, adaptation and teardown immediately expose the complete text.
 The
 Settings **Agents & Chat** destination shows exact Codex and Claude Code MCP
 registration commands and reveals the bundled Core Protocol Skill. It does not

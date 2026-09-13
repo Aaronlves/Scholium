@@ -40,6 +40,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
     var onRenderingReady: (() -> Void)? = nil
     var onReplyEvent: ((ReadReplyEvent) -> Void)? = nil
     var replyQuoteRequest: UUID? = nil
+    var replyRevealPreviousHTML: String? = nil
     var onRenderedDiagramSize: ((CGSize) -> Void)? = nil
     var findRequest: DocumentFindPresentationRequest? = nil
     var onFindResult: ((UInt64, Result<DocumentFindResult, any Error>) -> Void)? = nil
@@ -84,6 +85,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             coordinator.testingScrollRestoreDelayMilliseconds = testingScrollRestoreDelayMilliseconds
         #endif
         coordinator.onReplyEvent = onReplyEvent
+        coordinator.replyRevealPreviousHTML = replyRevealPreviousHTML
         coordinator.onRenderedDiagramSize = onRenderedDiagramSize
         coordinator.onAskAgent = onAskAgent
         coordinator.onSourceRangeUnavailable = onSourceRangeUnavailable
@@ -141,6 +143,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             context.coordinator.testingScrollRestoreDelayMilliseconds = testingScrollRestoreDelayMilliseconds
         #endif
         context.coordinator.onReplyEvent = onReplyEvent
+        context.coordinator.updateReplyReveal(replyRevealPreviousHTML, in: webView)
         context.coordinator.quoteReply(ifRequested: replyQuoteRequest, in: webView)
         context.coordinator.onRenderedDiagramSize = onRenderedDiagramSize
         context.coordinator.onAskAgent = onAskAgent
@@ -219,6 +222,18 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         private var onRenderingFailure: ((String) -> Void)?
         private var onRenderingLoading: (() -> Void)?
         var onReplyEvent: ((ReadReplyEvent) -> Void)?
+        var replyRevealPreviousHTML: String?
+
+        func updateReplyReveal(_ previousHTML: String?, in webView: WKWebView) {
+            let wasEnabled = replyRevealPreviousHTML != nil
+            replyRevealPreviousHTML = previousHTML
+            guard wasEnabled, previousHTML == nil else { return }
+            webView.callAsyncJavaScript(
+                "if (window.scholiumReplyReveal?.loadGeneration === generation) window.scholiumReplyReveal.finish()",
+                arguments: ["generation": loadGeneration], in: nil,
+                in: SafeMarkdownReadWebView.bridgeContentWorld,
+                completionHandler: nil)
+        }
         private var consumedReplyQuote: UUID?
         var onRenderedDiagramSize: ((CGSize) -> Void)?
         private var onRenderingReady: (() -> Void)?
@@ -531,6 +546,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                         loadGeneration: loadGeneration,
                         selectionEnabled: onSelectionChange != nil,
                         chatReply: onReplyEvent != nil,
+                        chatReplyPreviousHTML: replyRevealPreviousHTML,
                         linkPreviews: linkPreviews,
                         presentationCSS: presentationCSS,
                         userCSS: userCSS,
@@ -605,7 +621,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         ) {
             guard message.name == Self.messageHandlerName,
                 let payload = message.body as? [String: Any],
-                payload["version"] as? Int == 5,
+                payload["version"] as? Int == 6,
                 payload["documentID"] as? String == documentID,
                 payload["fingerprint"] as? String == fingerprint,
                 (payload["loadGeneration"] as? NSNumber)?.uint64Value == loadGeneration,
@@ -829,6 +845,11 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                         "scholium.renderedDocument.\(expectedDocumentID)"
                     )
                     await self.reportDiagramSize(in: webView, signature: expectedSignature)
+                    if self.onReplyEvent != nil && self.replyRevealPreviousHTML == nil {
+                        _ = try await webView.callAsyncJavaScript(
+                            "window.scholiumReplyReveal?.finish()", arguments: [:], in: nil,
+                            contentWorld: SafeMarkdownReadWebView.bridgeContentWorld)
+                    }
                     guard
                         self.isCurrentLoad(
                             navigation: navigation, generation: expectedLoadGeneration,
@@ -1505,6 +1526,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             let loadGeneration: UInt64
             let selectionEnabled: Bool
             let chatReply: Bool
+            let chatReplyPreviousHTML: String?
             let testingEnabled: Bool
             let presentationCSS: String
             let userCSS: String
@@ -1522,6 +1544,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             loadGeneration: UInt64,
             selectionEnabled: Bool,
             chatReply: Bool = false,
+            chatReplyPreviousHTML: String? = nil,
             linkPreviews: [DocumentLinkPreview],
             presentationCSS: String,
             userCSS: String,
@@ -1547,12 +1570,13 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 )
             }
             let configuration = ReadBridgeConfiguration(
-                version: 5,
+                version: 6,
                 documentID: documentID,
                 fingerprint: fingerprint,
                 loadGeneration: loadGeneration,
                 selectionEnabled: selectionEnabled,
                 chatReply: chatReply,
+                chatReplyPreviousHTML: chatReplyPreviousHTML,
                 testingEnabled: testingEnabled,
                 presentationCSS: presentationCSS,
                 userCSS: userCSS,

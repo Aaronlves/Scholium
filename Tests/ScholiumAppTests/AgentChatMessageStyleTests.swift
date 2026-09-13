@@ -14,10 +14,13 @@ struct AgentChatMessageStyleTests {
     @Test("One reader keeps streamed prose and rich content inside its allocated row")
     @MainActor
     func unifiedReplyLayout() async throws {
+        var contentReady = false
         func content(_ source: String, scheme: ColorScheme = .light) -> some View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
-                    AgentChatMarkdown(text: source)
+                    AgentChatMarkdown(text: source, animatesStreaming: true)
+                        .modifier(AgentChatMessageArrival(enabled: true))
+                        .onPreferenceChange(AgentChatReplyReadyPreference.self) { contentReady = $0 }
                     FollowingActivity().frame(height: 20)
                 }.padding(12)
             }.background(Color(nsColor: .windowBackgroundColor)).environment(\.colorScheme, scheme)
@@ -71,7 +74,7 @@ struct AgentChatMessageStyleTests {
                         let height = value["height"] as? Double, height > 0,
                         (value["text"] as? String)?.contains(source == "你好！" ? "你好！" : "准确的概览") == true,
                         (value["text"] as? String)?.contains("示例") == source.contains("示例"),
-                        abs(reader.frame.height - height) <= 1
+                        abs(reader.frame.height - height) <= 1, contentReady
                     {
                         if let retainedReader { #expect(reader === retainedReader) }
                         retainedReader = reader
@@ -117,7 +120,7 @@ struct AgentChatMessageStyleTests {
             ScrollView {
                 AgentChatMessageSurface(isUser: user) {
                     AgentChatMarkdown(text: source, expandsToFillWidth: !user)
-                }.padding(24)
+                }.padding(.horizontal, ScholiumSidebarLayout.textInset)
             }
         }
         let host = NSHostingView(rootView: content("好的。", user: true))
@@ -134,12 +137,13 @@ struct AgentChatMessageStyleTests {
             (view as? WKWebView).map { [$0] } ?? view.subviews.flatMap { readers($0) }
         }
         let long = "请比较 `works` 和 **topics**，保留中文、English 与引用的原始含义，不把解释混同于文献证据。"
-        let rich = "## 阅读方向\n\n先澄清问题。\n\n- 核对 **原文**。\n- 比较 `works` 与 `topics`。\n  - 保留出处。\n\n> 这是一段引用。\n\n最后区分解释与评价。"
+        let rich =
+            "## 阅读方向\n\n这是一段用于检查完整讨论排版的合成回答。我们可以沿着一个问题继续追问，让解释有足够的篇幅展开，也让每段文字各自表达一个清楚的意思。\n\n- 核对 **原文**。\n- 比较 `works` 与 `topics`。\n  - 保留出处。\n\n> 这是一段引用。\n\n最后区分解释与评价。"
         var narrowHeight = 0.0
         for (source, user, width, contrast) in [
             ("好的。", true, 300.0, ColorSchemeContrast.standard),
             (long, true, 240.0, .standard), (long, true, 480.0, .increased),
-            (rich, false, 300.0, .standard), (rich, true, 300.0, .increased),
+            (rich, false, 300.0, .standard), (rich, false, 420.0, .increased), (rich, true, 300.0, .increased),
         ] {
             host.rootView = content(source, user: user)
             window.appearance = NSAppearance(named: contrast == .increased ? .accessibilityHighContrastAqua : .aqua)
@@ -156,7 +160,10 @@ struct AgentChatMessageStyleTests {
                           const root = document.getElementById('scholium-document');
                           if (!root) return null;
                           const p = root.querySelector('p'), h = root.querySelector('h2');
+                          const range = document.createRange(); if (p) range.selectNodeContents(p);
                           return {text: root.innerText, height: Math.ceil(root.getBoundingClientRect().height),
+                            viewportWidth: innerWidth, paragraphWidth: p?.getBoundingClientRect().width,
+                            firstLineWidth: range.getClientRects()[0]?.width,
                             paragraphPadding: p ? getComputedStyle(p).paddingBottom : null,
                             headingPadding: h ? getComputedStyle(h).paddingTop : null,
                             headingFont: h ? parseFloat(getComputedStyle(h).fontSize) : 0,
@@ -181,6 +188,16 @@ struct AgentChatMessageStyleTests {
             #expect(actual["paragraphPadding"] as? String == "0px")
             #expect(actual["overflow"] as? Bool == false)
             if source == rich {
+                if !user {
+                    let expected = width - 2 * ScholiumSidebarLayout.textInset
+                    let viewport = try #require(actual["viewportWidth"] as? Double)
+                    let paragraph = try #require(actual["paragraphWidth"] as? Double)
+                    let firstLine = try #require(actual["firstLineWidth"] as? Double)
+                    let font = try #require(actual["bodyFont"] as? Double)
+                    #expect(abs(viewport - expected) <= 1)
+                    #expect(abs(paragraph - viewport) <= 1)
+                    #expect(firstLine >= paragraph - 2 * font)
+                }
                 #expect(actual["headingPadding"] as? String == "0px")
                 let heading = try #require(actual["headingFont"] as? Double)
                 let body = try #require(actual["bodyFont"] as? Double)

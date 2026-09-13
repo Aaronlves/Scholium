@@ -28,10 +28,12 @@ struct AgentChatProcessView<Row: View>: View {
         DisclosureGroup(
             isExpanded: Binding(
                 get: { isExpanded },
-                set: {
+                set: { expanded in
                     inspect()
-                    userExpansion = $0
-                    isExpanded = $0
+                    userExpansion = expanded
+                    withAnimation(ScholiumMotion.disclosure(reduceMotion: reduceMotion || !animates)) {
+                        isExpanded = expanded
+                    }
                 })
         ) {
             VStack(alignment: .leading, spacing: 12) {
@@ -48,7 +50,6 @@ struct AgentChatProcessView<Row: View>: View {
             }
         }
         .disclosureGroupStyle(AgentChatDisclosureStyle())
-        .animation(reduceMotion || preservesReading ? nil : .default, value: isExpanded)
         .onChange(of: isActive, initial: true) { _, active in
             if needsAttention || forceExpanded {
                 isExpanded = true

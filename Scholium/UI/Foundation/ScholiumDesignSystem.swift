@@ -2904,6 +2904,14 @@ enum ScholiumMotion {
         reduceMotion ? nil : .easeOut(duration: 0.12)
     }
 
+    static func chatMessageArrival(reduceMotion: Bool) -> Animation? {
+        reduceMotion ? nil : .easeOut(duration: 0.18)
+    }
+
+    static func chatReturnToLatest(reduceMotion: Bool) -> Animation? {
+        reduceMotion ? nil : .smooth(duration: 0.24, extraBounce: 0)
+    }
+
     static func outlineInteraction(reduceMotion: Bool) -> Animation? {
         reduceMotion ? nil : .smooth(duration: 0.38)
     }
@@ -3128,6 +3136,7 @@ enum ScholiumChatAppearance {
             padding: 0; margin: 0; max-width: none; display: flow-root;
             font: \(messageNSFont.pointSize)px/\(messageLineHeight) -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
             color: var(--scholium-color-primary-text); text-align: start;
+            text-wrap-style: auto;
             overflow-wrap: anywhere;
         }
         .scholium-document p { margin: 0 0 .75em; padding: 0; }
