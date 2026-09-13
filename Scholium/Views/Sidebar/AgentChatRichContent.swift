@@ -35,36 +35,22 @@ struct AgentChatRichSegment: Identifiable {
     }
 }
 
-/// Content of one expanded card; the inline reply is owned by its single reader.
+/// Expanded content fills the shared preview's viewport; source remains immutable.
 struct AgentChatRichContent: View {
-    let source: String
+    let text: NSAttributedString
+    let diagramSource: String?
+    let naturalSize: CGSize
     let openLink: (URL) -> Void
-    let onlySegment: Int
-    var expandedDiagramSize: CGSize?
 
     var body: some View {
-        let layout = AgentChatObjectProjection.layoutReply(source)
-        if let segment = AgentChatRichSegment.collect(layout).first(where: { $0.id == onlySegment }) {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Spacer()
-                    Button {
-                        NSPasteboard.general.clearContents()
-                        NSPasteboard.general.setString(segment.code ?? layout.text.attributedSubstring(from: segment.range).string, forType: .string)
-                    } label: {
-                        ScholiumSidebarIcon(systemImage: ScholiumSidebarAction.copy.symbol, placement: .action)
-                    }
-                    .buttonStyle(.borderless).help("Copy").accessibilityLabel("Copy")
-                }
-                if segment.language?.lowercased() == "mermaid", let code = segment.code {
-                    AgentChatDiagram(source: "```mermaid\n" + code + "\n```")
-                        .frame(height: max(80, (expandedDiagramSize?.height ?? 160) + 24))
-                } else {
-                    ScrollView(.horizontal) {
-                        AgentChatObjectText(text: layout.text.attributedSubstring(from: segment.range), openLink: openLink)
-                            .frame(width: max(280, expandedDiagramSize?.width ?? 400))
-                    }
-                }
+        if let diagramSource {
+            AgentChatDiagram(source: "```mermaid\n" + diagramSource + "\n```")
+        } else {
+            GeometryReader { viewport in
+                ScrollView([.horizontal, .vertical]) {
+                    AgentChatObjectText(text: text, openLink: openLink)
+                        .frame(width: max(viewport.size.width, naturalSize.width), alignment: .topLeading)
+                }.defaultScrollAnchor(.topLeading)
             }
         }
     }
@@ -116,7 +102,12 @@ struct AgentChatDiagram: View {
                 SafeMarkdownReadWebView(
                     documentID: "chat-diagram", fingerprint: projection.document.fingerprint.sha256,
                     source: source, htmlBody: projection.html,
-                    presentationCSS: Self.presentationCSS(dark: colorScheme == .dark, increasedContrast: contrast == .increased),
+                    presentationCSS: Self.presentationCSS(dark: colorScheme == .dark, increasedContrast: contrast == .increased) + """
+                        html, body { height: 100%; }
+                        .scholium-document { height: 100%; box-sizing: border-box; }
+                        .scholium-mermaid-rendered { height: 100%; display: flex; align-items: center; justify-content: center; }
+                        .scholium-mermaid-output { width: 100%; }
+                        """,
                     userCSS: "", onLinkClick: { _ in }, onOpenExternalURL: { _ in }, selectionSurfaceIsActive: false,
                     renderingReadinessIsAcknowledged: ready,
                     onRenderingFailure: { failure = $0 }, onRenderingLoading: { ready = false },
@@ -166,41 +157,4 @@ struct AgentChatDiagram: View {
             """
     }
 
-}
-
-@MainActor
-final class AgentChatRichPreviewController: NSObject, NSPopoverDelegate {
-    private(set) var popover: NSPopover?
-    func present<Content: View>(content: Content, naturalSize: CGSize, anchor: NSRect, of source: NSView) {
-        close()
-        guard let screen = source.window?.screen else { return }
-        let visibleAnchor = anchor.intersection(source.visibleRect)
-        guard !visibleAnchor.isEmpty else { return }
-        let size = Self.fittedSize(naturalSize, available: screen.visibleFrame.size)
-        let popover = NSPopover()
-        popover.behavior = .transient
-        popover.animates = !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-        let host = NSHostingController(
-            rootView: ScrollView {
-                content.frame(maxWidth: .infinity).padding(16)
-            }.frame(width: size.width, height: size.height))
-        host.sizingOptions = []
-        popover.contentViewController = host
-        popover.contentSize = size
-        popover.delegate = self
-        self.popover = popover
-        popover.show(relativeTo: visibleAnchor, of: source, preferredEdge: .maxY)
-    }
-    func close() {
-        popover?.close()
-        popover = nil
-    }
-    func popoverDidClose(_ notification: Notification) {
-        if let closed = notification.object as? NSPopover, closed === popover { popover = nil }
-    }
-    static func fittedSize(_ natural: CGSize, available: CGSize) -> CGSize {
-        CGSize(
-            width: min(max(280, natural.width + 32), available.width * 0.85),
-            height: min(max(144, natural.height + 80), available.height * 0.85))
-    }
 }

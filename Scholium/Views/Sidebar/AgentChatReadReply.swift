@@ -19,7 +19,7 @@ struct AgentChatReadReply: View {
     @State private var height: CGFloat = 120
     @State private var intrinsicWidth: CGFloat?
     @State private var failure: String?
-    @State private var preview = AgentChatRichPreviewController()
+    @State private var preview = ScholiumContentPreview()
     @State private var quoteRequest: UUID?
 
     var body: some View {
@@ -94,11 +94,17 @@ struct AgentChatReadReply: View {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(segment.code ?? layout.text.attributedSubstring(from: segment.range).string, forType: .string)
             } else {
+                guard !anchor.intersection(view.visibleRect).isEmpty else { return }
+                let isDiagram = segment.language?.lowercased() == "mermaid"
                 preview.present(
-                    content:
-                        AgentChatRichContent(
-                            source: source, openLink: openLink,
-                            onlySegment: segment.id, expandedDiagramSize: size), naturalSize: size, anchor: anchor, of: view)
+                    title: ScholiumL10n.string(isDiagram ? "Diagram" : segment.code != nil ? "Code" : "Table"),
+                    copyText: segment.code ?? layout.text.attributedSubstring(from: segment.range).string,
+                    from: view, anchor: anchor
+                ) {
+                    AgentChatRichContent(
+                        text: layout.text.attributedSubstring(from: segment.range),
+                        diagramSource: isDiagram ? segment.code : nil, naturalSize: size, openLink: openLink)
+                }
             }
         }
     }

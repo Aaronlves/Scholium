@@ -86,8 +86,8 @@ raw technical records are deeper. Each activity has one row and one disclosure f
 parameters, output and errors. Single calls have no extra grouping layer.
 Unknown commands may show their literal identifier as secondary text without
 inferring purpose. Details expose reported exit code, duration and directory;
-missing values stay absent. Long output opens in a resizable native read-only
-window with selection and copying. Failure and unconfirmed-outcome counts remain
+missing values stay absent. Long output opens in the shared resizable read-only preview
+with selection and copying. Failure and unconfirmed-outcome counts remain
 visible when the process is collapsed, regardless of a final answer or later
 successful calls. They report evidence, not an inferred need for intervention.
 Diagnostics remains an additional overview.
@@ -149,10 +149,20 @@ Tables and code retain bounded horizontal scrolling; Mermaid reuses the local
 safe renderer with visible failure fallback. Diagrams omit developer hints,
 format labels and a separate source disclosure; Copy returns exact diagram code.
 Rich objects offer Copy and Expand without executing content or changing Notes.
-Expand presents a native transient card near its source, fitted to measured content
-and bounded by the screen. It has no title bar, traffic-light controls, backdrop
-dimming or blocked workspace. Click outside or Escape dismisses it; large content
-scrolls within the card. Returning preserves the conversation and reading position.
+Expand opens one native temporary preview centered over its originating workspace,
+using most of that window's area while staying inside the visible screen. Code,
+tables, diagrams and operation output share its presentation and dismissal owner.
+There is no visible title bar, traffic-light control, popover arrow or dimming
+backdrop. A quiet header retains identity, Close and Copy. Escape, Close or clicking
+outside dismisses the preview; the outside click does not also activate a workspace
+control. Switching away or closing the originating window dismisses it. Closing
+from within returns focus to the origin and preserves conversation reading position.
+Opening expands from the initiating control into the preview; explicit dismissal
+shrinks and fades toward that same origin. The panel remains above its parent until
+dismissal completes, so it never appears merely hidden behind the workspace.
+Reduce Motion uses a short fade without spatial movement.
+Content fills the preview: text and tables scroll locally and diagrams fit the
+available canvas. Native resizing remains available without separate window chrome.
 Vertical scrolling over any inline reply object scrolls the conversation; horizontal
 scrolling stays local to wide tables and code. Loaded message heights remain stable
 while scrolling; reaching the latest reply never disables reverse scrolling. User

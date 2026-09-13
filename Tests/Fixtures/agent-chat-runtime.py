@@ -445,6 +445,13 @@ source → interpretation → objection
 | 仍不清楚的问题 | 继续追问并保留分歧 |
 
 最后一段测试正常的长回复。研究材料仍在正文区域；聊天负责让交流顺畅地持续下去。"""
+            if 'preview-fixture' in text:
+                reply = "以下是非私密的预览测试材料。\n\n```swift\n"
+                reply += "let stages = [\"source\", \"interpretation\", \"objection\"]\n"
+                reply += "\n".join(f'print(\"Line {i}: 保留完整原文与 English text\")' for i in range(1, 41))
+                reply += "\n```\n\n| 材料 | 原文 | 解释 | 后续工作 |\n|---|---|---|---|\n"
+                reply += "\n".join(f'| 材料 {i} | 精确引用 | 尚待核对 | 保留不确定性并回到来源 |' for i in range(1, 13))
+                reply += "\n\n```mermaid\nflowchart LR\n A[来源 Source] --> B[解释 Interpretation]\n B --> C{核对出处}\n C -->|支持| D[保留区分]\n C -->|未确认| E[继续研究]\n```"
             event('item/agentMessage/delta', {'threadId': tid, 'itemId': mid, 'delta': reply})
             item = {'type': 'agentMessage', 'id': mid, 'text': reply}
             if 'phased' in text: item['phase'] = 'final_answer'

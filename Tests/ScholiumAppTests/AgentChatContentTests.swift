@@ -50,36 +50,84 @@ struct AgentChatContentTests {
         override func scrollWheel(with event: NSEvent) { events.append(event) }
     }
 
-    @Test func expandedObjectIsTransientCard() async throws {
+    @Test func expandedObjectsShareOneParentedPreviewAndEscapeCloses() throws {
         _ = NSApplication.shared
         let window = NSWindow(
             contentRect: NSRect(x: 100, y: 100, width: 800, height: 600),
             styleMask: [.titled, .closable], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
-        let source = NSView(frame: NSRect(x: 0, y: 0, width: 800, height: 600))
-        window.contentView = source
+        let input = NSTextView(frame: NSRect(x: 0, y: 0, width: 800, height: 600))
+        window.contentView = input
         window.makeKeyAndOrderFront(nil)
-        let controller = AgentChatRichPreviewController()
-        defer {
-            controller.close()
-            window.close()
-        }
-        controller.present(
-            content: Text("Fixture"), naturalSize: CGSize(width: 400, height: 80),
-            anchor: NSRect(x: 100, y: 100, width: 24, height: 24), of: source)
-        let popover = try #require(controller.popover)
-        #expect(popover.behavior == .transient && popover.isShown)
-        controller.close()
-        for _ in 0..<100 where popover.isShown { try await Task.sleep(for: .milliseconds(10)) }
-        #expect(!popover.isShown)
+        window.makeFirstResponder(input)
+        let first = ScholiumContentPreview(animates: false), second = ScholiumContentPreview(animates: false)
+        defer { first.close(); second.close(); window.close() }
+        first.present(title: "Code", copyText: "exact fixture", from: input) { Text("Fixture") }
+        let initial = try #require(first.panel)
+        #expect(initial.parent === window && initial.isVisible)
+        let expected = ScholiumContentPreview.previewFrame(parent: window.convertToScreen(window.contentLayoutRect), available: window.screen?.visibleFrame ?? window.frame)
+        #expect(abs(initial.frame.width - expected.width) < 1 && abs(initial.frame.height - expected.height) < 1)
+        #expect(abs(initial.frame.midX - expected.midX) < 1 && abs(initial.frame.midY - expected.midY) < 1)
+        #expect(initial.standardWindowButton(.closeButton)?.isHidden != false)
+        #expect(initial.standardWindowButton(.miniaturizeButton)?.isHidden != false)
+        #expect(initial.standardWindowButton(.zoomButton)?.isHidden != false)
+        second.present(title: "Output", copyText: "output", from: input) { Text("Output") }
+        #expect(first.panel == nil && !initial.isVisible)
+        let replacement = try #require(second.panel)
+        #expect(window.childWindows?.filter { $0 is ScholiumContentPreview.Panel }.count == 1)
+        second.update(title: "Output", copyText: "updated") { Text("Updated output") }
+        #expect(second.panel === replacement)
+        replacement.cancelOperation(nil)
+        #expect(second.panel == nil && !replacement.isVisible)
+        #expect(window.childWindows?.contains(replacement) != true)
     }
 
-    @Test func expandedCardFitsContentAndBoundsLargeObjects() {
-        let available = CGSize(width: 1400, height: 900)
-        let small = AgentChatRichPreviewController.fittedSize(CGSize(width: 380, height: 70), available: available)
-        #expect(small == CGSize(width: 412, height: 150))
-        let large = AgentChatRichPreviewController.fittedSize(CGSize(width: 5000, height: 4000), available: available)
-        #expect(large == CGSize(width: 1190, height: 765))
+    @Test func animatedDismissalFinishesAboveParentAndRemovesThePanel() async throws {
+        _ = NSApplication.shared
+        let window = NSWindow(contentRect: NSRect(x: 100, y: 100, width: 800, height: 600),
+                              styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.makeKeyAndOrderFront(nil)
+        let source = try #require(window.contentView)
+        let controller = ScholiumContentPreview()
+        defer { controller.close(); window.close() }
+        controller.present(title: "Code", copyText: "exact", from: source) { Text("Fixture") }
+        let panel = try #require(controller.panel)
+        controller.dismiss()
+        #expect(panel.parent === window && panel.isVisible)
+        controller.dismiss() // Repeated dismissal must not restart the closing lifecycle.
+        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+        while controller.panel != nil && ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(controller.panel == nil && !panel.isVisible)
+        #expect(panel.parent == nil)
+    }
+
+    @Test func previewDoesNotSurviveItsOrigin() throws {
+        _ = NSApplication.shared
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
+                              styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.makeKeyAndOrderFront(nil)
+        let controller = ScholiumContentPreview(animates: false)
+        let input = try #require(window.contentView)
+        controller.present(title: "Diagram", copyText: "graph LR", from: input) { Text("Fixture") }
+        let panel = try #require(controller.panel)
+        window.close()
+        #expect(controller.panel == nil && !panel.isVisible)
+    }
+
+    @Test func immersivePreviewCentersOnOriginAndStaysInsideVisibleScreen() {
+        let screen = NSRect(x: -1440, y: 40, width: 1440, height: 860)
+        for parent in [NSRect(x: -1300, y: 100, width: 1100, height: 700),
+                       NSRect(x: -1800, y: -500, width: 2000, height: 1600)] {
+            let frame = ScholiumContentPreview.previewFrame(parent: parent, available: screen)
+            #expect(screen.contains(frame))
+            #expect(frame.width > 600 && frame.height > 400)
+        }
+        let centered = ScholiumContentPreview.previewFrame(parent: screen, available: screen)
+        #expect(centered.midX == screen.midX && centered.midY == screen.midY)
     }
 
     @Test func inlineCodeUsesNativeBackground() {

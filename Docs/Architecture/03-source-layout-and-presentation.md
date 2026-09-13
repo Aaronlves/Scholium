@@ -274,6 +274,13 @@ custom control targets. Copy feedback and custom disclosure arrows consume the
 caller's state; activity, delivery and list-state models retain their existing
 state and symbol authority. Native Source List disclosure remains AppKit-owned.
 
+`ScholiumContentPreview` owns the parented AppKit panel for Chat rich objects and
+operation output: one per originating window, screen-bounded geometry, focus return,
+outside-click/Escape dismissal and observer teardown. The initiating native view
+and rect anchor AppKit window animations; the child remains attached through closing. SwiftUI supplies read-only
+content and the shared Close/Copy header; exact object projection and live activity
+state remain caller-owned. Inline readers retain their selection and scroll owners.
+
 `AgentChatComposerInput` embeds one native scroll view and `NSTextView` across the
 whole message input slot. AppKit owns hit testing, caret placement, selection, Undo
 and marked text. The host grows to seven lines before scrolling; Return dispatches

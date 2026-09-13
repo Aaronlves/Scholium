@@ -8,7 +8,8 @@ struct AgentChatActivityDetails: View {
     var isInline = false
     var openNote: ((URL) -> Void)? = nil
     @Environment(\.locale) private var locale
-    @State private var outputWindow = AgentChatOutputWindow()
+    @State private var preview = ScholiumContentPreview()
+    @State private var originView: NSView?
     @State private var copied = false
     @State private var contentHeight: CGFloat = 180
     @State private var isHovered = false
@@ -23,8 +24,10 @@ struct AgentChatActivityDetails: View {
         .padding(.vertical, 6)
         .scholiumHoverState { isHovered = $0 }
         .contextMenu { Button("Copy Details", action: copyDetails) }
-        .onChange(of: activity) { _, value in outputWindow.update(value) }
-        .onDisappear { outputWindow.close() }
+        .onChange(of: activity) { _, value in
+            preview.update(title: previewTitle, copyText: copyText) { AgentChatOutputContents(activity: value) }
+        }
+        .onDisappear { preview.close(); originView = nil }
     }
 
     private var details: some View {
@@ -34,7 +37,10 @@ struct AgentChatActivityDetails: View {
                 else { Text(activity.kind == .command ? "Command" : "Operation").foregroundStyle(.secondary) }
                 Spacer()
                 Button {
-                    outputWindow.present(activity)
+                    guard let originView else { return }
+                    preview.present(title: previewTitle, copyText: copyText, from: originView) {
+                        AgentChatOutputContents(activity: activity)
+                    }
                 } label: {
                     ScholiumSidebarIcon(systemImage: ScholiumSidebarAction.expand.symbol, placement: .action)
                 }
@@ -48,6 +54,7 @@ struct AgentChatActivityDetails: View {
                     )
                 )
                 .scholiumActivationPointer()
+                .background(ScholiumPreviewAttachment { originView = $0 })
                 .help(Text("Open Output", bundle: .module))
                 .accessibilityLabel(Text("Open Output", bundle: .module))
                 Button(action: copyDetails) {
@@ -136,6 +143,10 @@ struct AgentChatActivityDetails: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    private var previewTitle: String {
+        ScholiumL10n.string(activity.kind == .command ? "Command Output" : "Operation Details")
+    }
+
     private var copyText: String {
         ([
             activity.status.label(locale: locale), activity.commandExecution?.workingDirectory ?? "",
@@ -168,43 +179,6 @@ private struct AgentChatCommandFacts: View {
     }
 }
 
-@MainActor
-private final class AgentChatOutputWindow: NSObject, NSWindowDelegate {
-    private var window: NSWindow?
-    private var host: NSHostingController<AgentChatOutputContents>?
-    func present(_ activity: AgentChatActivity) {
-        if let window {
-            update(activity)
-            window.makeKeyAndOrderFront(nil)
-            return
-        }
-        let host = NSHostingController(rootView: AgentChatOutputContents(activity: activity))
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 640, height: 480),
-            styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
-        window.title = ScholiumL10n.string(activity.kind == .command ? "Command Output" : "Operation Details")
-        window.contentViewController = host
-        window.setContentSize(NSSize(width: 640, height: 480))
-        window.contentMinSize = NSSize(width: 420, height: 280)
-        window.isReleasedWhenClosed = false
-        window.delegate = self
-        self.window = window
-        self.host = host
-        window.center()
-        window.makeKeyAndOrderFront(nil)
-    }
-    func update(_ activity: AgentChatActivity) { host?.rootView = AgentChatOutputContents(activity: activity) }
-    func close() {
-        window?.close()
-        window = nil
-        host = nil
-    }
-    func windowWillClose(_ notification: Notification) {
-        window = nil
-        host = nil
-    }
-}
-
 private struct AgentChatOutputContents: View {
     let activity: AgentChatActivity
     var body: some View {
@@ -227,7 +201,7 @@ private struct AgentChatOutputContents: View {
                     .fixedSize(horizontal: true, vertical: false)
             }.defaultScrollAnchor(.topLeading)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        }.padding(20).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .background(Color(nsColor: .windowBackgroundColor)).tint(nil as Color?)
     }
 }
