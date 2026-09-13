@@ -1,3 +1,3 @@
 public enum ScholiumProductIdentity {
-    public static let marketingVersion = "0.1.1"
+    public static let marketingVersion = "0.2.0"
 }

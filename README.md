@@ -5,11 +5,12 @@
 > A local-first, document-authoritative research environment for philosophy
 > and the humanities.
 
-**Previously published Core App Beta:** [v0.1.1-beta1](https://github.com/Aaronlves/Scholium/releases/tag/v0.1.1-beta1) ·
-[Download Scholium for Apple silicon](https://github.com/Aaronlves/Scholium/releases/download/v0.1.1-beta1/Scholium-v0.1.1-beta1-macos-arm64.dmg)
+**Current Core App Beta:** [v0.2.0-beta.1](https://github.com/Aaronlves/Scholium/releases/tag/v0.2.0-beta.1) ·
+[Download Scholium for Apple silicon](https://github.com/Aaronlves/Scholium/releases/download/v0.2.0-beta.1/Scholium-v0.2.0-beta.1-macos-arm64.dmg)
 
-The linked build predates the current App-only distribution changes. This
-README describes the current source; a new release requires its own validation.
+This is the current App-only Beta distribution. The release owner performs UI
+and accessibility acceptance separately; this release preparation does not
+claim those checks as automated evidence.
 
 Scholium is a native macOS research environment for sustained work in
 philosophy and the humanities. Its content core is a researcher-governed,

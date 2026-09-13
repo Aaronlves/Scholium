@@ -12,7 +12,7 @@ APP_ENTITLEMENTS = {
     "com.apple.security.app-sandbox": True,
     "com.apple.security.files.user-selected.read-write": True,
     "com.apple.security.files.bookmarks.app-scope": True,
-    "com.apple.security.network.helperent": True,
+    "com.apple.security.network.client": True,
     "com.apple.security.network.server": True,
     "com.apple.security.temporary-exception.files.home-relative-path.read-write": [
         "/Library/Application Support/Scholium/"
