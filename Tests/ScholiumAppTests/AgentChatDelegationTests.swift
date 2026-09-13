@@ -22,7 +22,7 @@ struct AgentChatDelegationTests {
     func continuity() async throws {
         let root = repository.appendingPathComponent(".build/agent-chat-tests/delegation-\(UUID())")
         defer { try? FileManager.default.removeItem(at: root) }
-        let controller = AgentChatController(triptychID: UUID(), root: root) { request in
+        let controller = fixtureChatController(triptychID: UUID(), root: root) { request in
             try! .init(requestID: request.requestID, result: .object([:]))
         }
         try await wait { controller.isLoaded }
@@ -55,7 +55,7 @@ struct AgentChatDelegationTests {
         try await controller.flushPersistence()
         let selected = controller.selectedID
         await controller.disconnect()
-        let reopened = AgentChatController(triptychID: controller.triptychID, root: root) { request in
+        let reopened = fixtureChatController(triptychID: controller.triptychID, root: root) { request in
             try! .init(requestID: request.requestID, result: .object([:]))
         }
         try await wait { reopened.isLoaded }

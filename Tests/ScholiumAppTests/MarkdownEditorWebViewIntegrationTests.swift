@@ -662,35 +662,70 @@ struct MarkdownEditorWebViewIntegrationTests {
         let harness = EditorHarness(source: source, initialMode: mode, laysOutForPointerTesting: true)
         defer { harness.close() }
         try await harness.waitUntilReady()
+        let webView = try #require(harness.session.webView)
+
+        func scrollPositionsAroundMeasurement() async throws -> [Double] {
+            let script = "return document.querySelector('.cm-scroller').scrollTop;"
+            let before = try #require(try await harness.callPageJavaScript(script) as? Double)
+            // The production anchor query reads CodeMirror's measured line
+            // blocks, flushing pending layout/scroll effects even when WebKit
+            // throttles animation frames in a noninteractive test process.
+            _ = try await harness.session.send(.queryScrollAnchor, in: webView)
+            let after = try #require(try await harness.callPageJavaScript(script) as? Double)
+            return [before, after]
+        }
+
+        // Bridge readiness is not a CodeMirror measurement barrier. Finish
+        // initial font and viewport work before scrolling away from the caret.
+        _ = try await harness.callPageJavaScript("await document.fonts.ready;")
+        _ = try await scrollPositionsAroundMeasurement()
         let geometryScript = """
             const content = document.querySelector('.cm-content');
             const style = getComputedStyle(content);
             return JSON.stringify([style.paddingTop, style.paddingBottom, content.offsetWidth]);
             """
-        let before = try await harness.callPageJavaScript(geometryScript) as? String
-        let scrollScript = """
-            return document.querySelector('.cm-scroller').scrollTop;
-            """
+        let before = try #require(try await harness.callPageJavaScript(geometryScript) as? String)
+        let selectionBefore = harness.session.context?.selections
+        let undoBefore = harness.session.context?.undoLabel
         _ = try await harness.callPageJavaScript("document.querySelector('.cm-scroller').scrollTop = 300;")
-        let scrollBefore = try await harness.callPageJavaScript(scrollScript) as? Double
-        _ = try await harness.session.performDocumentFind(
-            .init(
-                query: "findtarget", replacement: "", caseSensitive: false, wholeWord: false,
-                action: .present
-            ))
-        #expect(try await harness.callPageJavaScript(scrollScript) as? Double == scrollBefore)
+        let baseline = try await scrollPositionsAroundMeasurement()
+        #expect(baseline.allSatisfy { $0 == 300 })
+
+        let present = DocumentFindQuery(
+            query: "findtarget", replacement: "", caseSensitive: false, wholeWord: false,
+            action: .present
+        )
+        _ = try await harness.session.performDocumentFind(present)
+        // Check both immediate and measured results, without polling until a
+        // later value happens to match the expected position.
+        let opened = try await scrollPositionsAroundMeasurement()
+        #expect(opened == baseline)
+        #expect(try await harness.callPageJavaScript(geometryScript) as? String == before)
+        #expect(harness.session.context?.selections == selectionBefore)
+        #expect(harness.session.context?.undoLabel == undoBefore)
+        await harness.session.clearDocumentFind()
+        let closed = try await scrollPositionsAroundMeasurement()
+        #expect(closed == baseline)
+        #expect(harness.session.context?.selections == selectionBefore)
+
+        _ = try await harness.session.performDocumentFind(present)
         _ = try await harness.session.performDocumentFind(
             .init(
                 query: "findtarget", replacement: "", caseSensitive: false, wholeWord: false,
                 action: .update
             ))
+        let navigated = try await scrollPositionsAroundMeasurement()
+        #expect(try #require(navigated.last) < 300)
         #expect(try await harness.callPageJavaScript(geometryScript) as? String == before)
         #expect(harness.session.context?.selections.first?.anchor == 0)
         #expect(harness.session.context?.selections.first?.head == 10)
         #expect(harness.session.generation == 0)
         await harness.session.clearDocumentFind()
+        let dismissed = try await scrollPositionsAroundMeasurement()
+        #expect(dismissed.allSatisfy { $0 == navigated.last })
         #expect(try await harness.callPageJavaScript(geometryScript) as? String == before)
         #expect(harness.session.context?.selections.first?.head == 10)
+        #expect(harness.session.context?.undoLabel == undoBefore)
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
         await harness.closeAndDrain()
     }

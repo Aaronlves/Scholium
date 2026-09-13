@@ -16,7 +16,7 @@ struct MCPAppBridgeRequestRouterTests {
         let snapshot = try await handle.discovery.refresh()
         let topic = try #require(snapshot.vaults.flatMap(\.documents).first { $0.stableIdentity.resolvedID == fixture.topicNoteID })
         let router = MCPAppBridgeRequestRouter(runtime: fixture.runtime, flushEditors: { _ in }, openTriptychs: { [fixture.assignment] })
-        let controller = AgentChatController(triptychID: fixture.assignment.id, root: fixture.root.appendingPathComponent("Chat"), toolHandler: router.handle)
+        let controller = fixtureChatController(triptychID: fixture.assignment.id, root: fixture.root.appendingPathComponent("Chat"), toolHandler: router.handle)
         func wait(_ predicate: () -> Bool) async throws {
             let deadline = ContinuousClock.now.advanced(by: .seconds(8))
             while !predicate() {
@@ -303,7 +303,7 @@ struct MCPAppBridgeRequestRouterTests {
                         "mode": .string("body"), "content": .string("Agent ending\r\n"),
                     ])))
         let ending = try Data(contentsOf: file)
-        let controller = AgentChatController(
+        let controller = fixtureChatController(
             triptychID: fixture.assignment.id, root: fixture.root.appendingPathComponent("Chat"),
             previewUpdate: router.previewUpdate, toolHandler: router.handle)
         func wait(_ predicate: () -> Bool) async throws {
@@ -604,7 +604,7 @@ struct MCPAppBridgeRequestRouterTests {
         let router = MCPAppBridgeRequestRouter(
             runtime: fixture.runtime,
             flushEditors: { _ in }, openTriptychs: { [fixture.assignment] })
-        let controller = AgentChatController(
+        let controller = fixtureChatController(
             triptychID: fixture.assignment.id,
             root: fixture.root.appendingPathComponent("Chat"), previewUpdate: router.previewUpdate, toolHandler: router.handle)
         func wait(_ predicate: () -> Bool) async throws {

@@ -15,7 +15,7 @@ import Testing
         let triptych = UUID()
         let defaults = try #require(UserDefaults(suiteName: "inquiry-\(triptych)"))
         defer { defaults.removePersistentDomain(forName: "inquiry-\(triptych)") }
-        let chat = AgentChatController(triptychID: triptych, root: root, methodDefaults: defaults) { request in
+        let chat = fixtureChatController(triptychID: triptych, root: root, methodDefaults: defaults) { request in
             Issue.record("Preparing a question must not invoke a tool")
             return try! .init(requestID: request.requestID, result: .null)
         }

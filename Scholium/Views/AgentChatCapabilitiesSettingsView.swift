@@ -5,10 +5,9 @@ import SwiftUI
 struct AgentChatCapabilitiesSettingsView: View {
     @ObservedObject var controller: AgentChatController
     @ObservedObject var capabilities: AgentChatCapabilitiesController
-    @Environment(\.scholiumFileSelectionPresenter) private var fileSelectionPresenter
+
     @Environment(\.openURL) private var openURL
-    @State private var folderSelectionTask: Task<Void, Never>?
-    @State private var folderSelectionError: String?
+
     @State private var pendingMethod: AgentChatMethod?
     @State private var pendingEnabled = false
     @State private var pendingAuthentication: AgentChatConnectedTool?
@@ -29,7 +28,7 @@ struct AgentChatCapabilitiesSettingsView: View {
                 if capabilities.isRefreshing || capabilities.isChanging {
                     ProgressView().controlSize(.small).accessibilityLabel("Skills and Tools")
                 }
-                Button("Refresh") { capabilities.refresh(threadID: controller.selected?.threadID, applyAssociations: true) }
+                Button("Refresh") { capabilities.refresh(threadID: controller.selected?.threadID, reloadWorkspace: true) }
                     .disabled(!capabilities.isConnected || capabilities.isRefreshing || capabilities.isChanging)
             }
             if let confirmationError { Text(confirmationError).foregroundStyle(.secondary) }
@@ -40,32 +39,15 @@ struct AgentChatCapabilitiesSettingsView: View {
             coreProtocolSection
             settingsEditorSection("Skills") {
                 VStack(alignment: .leading, spacing: 10) {
-                    Button("Add Skills Folder…", action: chooseFolder)
-                        .disabled(!capabilities.canChangeAssociations || folderSelectionTask != nil)
-                    if let error = folderSelectionError ?? capabilities.associationError {
-                        Text(error).foregroundStyle(.secondary).textSelection(.enabled)
+                    if let workspace = capabilities.workspaceURL {
+                        Text("This Triptych").font(.caption).foregroundStyle(.secondary)
+                        Text("Chat uses AGENTS.md and the skills folder in this Triptych’s .scholium workspace.")
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Button("Open Chat Workspace in Finder") { NSWorkspace.shared.open(workspace) }
                     }
-                    if !capabilities.associatedFolders.isEmpty {
-                        Text("Associated Folders")
-                            .font(.subheadline.weight(.semibold))
-                            .accessibilityAddTraits(.isHeader)
-                        VStack(alignment: .leading, spacing: 8) {
-                            ForEach(capabilities.associatedFolders, id: \.self) { path in
-                                HStack {
-                                    Label(skillFolderName(path), systemImage: "folder")
-                                        .lineLimit(1)
-                                    Spacer(minLength: 4)
-                                    Button {
-                                        capabilities.removeAssociation(path, threadID: controller.selected?.threadID)
-                                    } label: {
-                                        Image(systemName: "minus.circle")
-                                    }
-                                    .help("Remove Association")
-                                    .accessibilityLabel("Remove Association: \(skillFolderName(path))")
-                                    .disabled(!capabilities.canChangeAssociations)
-                                }
-                            }
-                        }
+                    if let error = capabilities.workspaceError {
+                        Text(error).foregroundStyle(.secondary).textSelection(.enabled)
                     }
                     if let error = capabilities.methodError { Text(error).foregroundStyle(.secondary).textSelection(.enabled) }
                     ForEach(capabilities.methodErrors, id: \.self) { Text($0).foregroundStyle(.secondary).textSelection(.enabled) }
@@ -105,7 +87,7 @@ struct AgentChatCapabilitiesSettingsView: View {
                 }
             }
         }
-        .onDisappear { folderSelectionTask?.cancel() }
+
         .sheet(item: $toolEdit) { edit in
             AgentChatToolEditor(capabilities: capabilities, edit: edit)
         }
@@ -174,11 +156,6 @@ struct AgentChatCapabilitiesSettingsView: View {
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("scholium.agent.core-protocol")
         }
-    }
-
-    private func skillFolderName(_ path: String) -> String {
-        let name = URL(fileURLWithPath: path).lastPathComponent
-        return name.isEmpty ? String(localized: "Skills") : name
     }
 
     private func methodRow(_ method: AgentChatMethod) -> some View {
@@ -318,28 +295,6 @@ struct AgentChatCapabilitiesSettingsView: View {
         capabilities.signIn(server, threadID: controller.selected?.threadID) { url in openURL(url) }
     }
 
-    private func chooseFolder() {
-        guard folderSelectionTask == nil else { return }
-        folderSelectionError = nil
-        let home = capabilities.configurationHome
-        folderSelectionTask = Task { @MainActor in
-            defer { folderSelectionTask = nil }
-            do {
-                guard
-                    let url = try await fileSelectionPresenter.requiredForFileSelection()
-                        .selectURL(.init(kind: .directory(canCreateDirectories: false)))
-                else { return }
-                try Task.checkCancellation()
-                guard capabilities.configurationHome == home else {
-                    folderSelectionError = String(localized: "The connection changed. Choose the Skills folder again.")
-                    return
-                }
-                capabilities.associate(url, threadID: controller.selected?.threadID)
-            } catch is CancellationError {
-                return
-            } catch { folderSelectionError = error.localizedDescription }
-        }
-    }
 }
 
 enum AgentChatToolLabels {

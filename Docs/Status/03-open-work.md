@@ -66,20 +66,18 @@ then completes a real web access. Runtime-active/background-command waiting,
 malformed observations and launch failure pass fixtures. Complete live delegated
 work waiting and provider-specific cached/disabled behavior. Live background-command
 waiting now passes: the tool remains running after the reply; settings renewal
-waits for command exit, then preserves the draft and login. Associated Skill roots
-are initialized before connection readiness; renewal, rejection/recovery and
-cancellation pass focused fixtures. Complete combined real-provider Skill-root
-restoration acceptance.
+waits for command exit, then preserves the draft and login. Triptych Skills are initialized before connection readiness. Complete combined
+real-provider workspace instruction loading, Skill refresh and renewal acceptance.
 Improve discovery guidance for the observed recoverable resources/list probe;
 it is not evidence that source reads or the connection failed.
 Complete live tool setup/configuration and real-provider authentication acceptance,
 declared-dependency availability and search-result provenance. Skill discovery,
-inspection, effective enable/disable, local association/removal, explicit message
-selection and tool inventory have native implementation slices; verify the folder
-picker and shared-setting confirmation in a live window.
+inspection, effective enable/disable, Triptych-local workspace discovery, explicit
+message selection and tool inventory have native implementation slices; verify
+the workspace Finder route and shared-setting confirmation in a live window.
 The in-app Agent capability surface is now implemented and focused-tested: an
 active token-scoped turn can inspect runtime capabilities, manage researcher-owned
-Skills and discovery roots, version-check MCP Tool configuration, begin runtime
+Skills, version-check MCP Tool configuration, begin runtime
 sign-in and change next-turn Chat settings through the existing runtime owner.
 This does not yet replace real-provider/browser acceptance.
 Remote/local connection forms and version-checked configuration writes are

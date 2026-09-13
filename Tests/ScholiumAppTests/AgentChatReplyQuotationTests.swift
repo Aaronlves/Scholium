@@ -64,7 +64,7 @@ struct AgentChatReplyQuotationTests {
         try await storage.save([conversation])
         let defaults = try #require(UserDefaults(suiteName: "quote-\(triptych)"))
         defer { defaults.removePersistentDomain(forName: "quote-\(triptych)") }
-        let controller = AgentChatController(triptychID: triptych, root: root, methodDefaults: defaults) { request in
+        let controller = fixtureChatController(triptychID: triptych, root: root, methodDefaults: defaults) { request in
             Issue.record("Quoting must not invoke a tool")
             return try! .init(requestID: request.requestID, result: .null)
         }

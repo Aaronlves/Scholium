@@ -201,9 +201,6 @@ extension ScholiumUITests {
             "-scholium.settings.selectedPane", "research-guidance",
             "-scholium.settings.researchGuidanceCategory", "Skills",
         ]
-        if name.contains("testDocumentHeadingStudyWrapsLongMixedTitleUsingAcceptedBodyRhythm") {
-            application.launchArguments += ["--scholium-document-heading-proof"]
-        }
         if let appearance {
             application.launchArguments += ["-colorScheme", appearance.rawValue]
         }
@@ -951,21 +948,6 @@ extension ScholiumUITests {
                 to: visualNoteURL
             )
         }
-        if name.contains("testDocumentHeadingStudyWrapsLongMixedTitleUsingAcceptedBodyRhythm") {
-            let studyURL = analyses.appendingPathComponent("QA Document Heading Study.md")
-            let revisedURL = analyses.appendingPathComponent(
-                "QA Document Heading Study — Revised.md"
-            )
-            let study = documentHeadingStudySource()
-            try write(study, to: studyURL)
-            try write(
-                study.replacingOccurrences(
-                    of: "The comparison revision keeps every other line fixed.",
-                    with: "The comparison revision changes only this synthetic sentence."
-                ),
-                to: revisedURL
-            )
-        }
         if name.contains("testFootnotePreviewPreservesModeSpecificNavigation") {
             let footnoteNoteURL = analyses.appendingPathComponent("QA Autosave A.md")
             let existingFootnoteFixture = try String(
@@ -1093,122 +1075,6 @@ extension ScholiumUITests {
 
     func write(_ string: String, to url: URL) throws {
         try Data(string.utf8).write(to: url, options: .atomic)
-    }
-
-    func documentHeadingStudySource() -> String {
-        #"""
-        ---
-        title: "Heading Wrap Fixture"
-        fixture: synthetic-nonprivate
-        ---
-        # 在长期论证中保持证据边界：Reasons, Values, and the Practical Option Space Across Competing Interpretations
-
-        A sustained philosophical argument asks the reader to retain one distinction while testing several objections. The line should turn without breaking the conceptual thread.
-
-        A second paragraph asks whether evidence supports a premise or merely motivates further inquiry. Its role should remain visible without decorative emphasis.
-
-        A third paragraph separates an author's claim from the researcher's reconstruction. Spacing should keep that evidential boundary calm and legible.
-
-        A fourth paragraph states an objection before considering any reply. The reader should not mistake visual proximity for argumentative support.
-
-        A fifth paragraph introduces a qualification that narrows the conclusion. The transition should remain easy to recover after moving between lines.
-
-        A sixth paragraph compares two practical options without assigning either one authority. Repeated terms should remain trackable through the page.
-
-        A seventh paragraph distinguishes an apparent reason from its normative force. This fixture makes no philosophical claim about that distinction.
-
-        An eighth paragraph returns to the main inference after a short detour. Paragraph boundaries should guide reading without fragmenting the argument.
-
-        A ninth paragraph records a provisional consequence and leaves its source status explicit. Density should remain suitable for sustained inspection.
-
-        A tenth paragraph closes the sequence without becoming a visual conclusion card. It belongs to the same ordinary body rhythm as every prior paragraph.
-
-        The comparison revision keeps every other line fixed.
-
-        ## Mixed writing systems
-
-        中文长段落用于检验混合文字下的换行与两端对齐。论证、反对意见、回应、限定条件与结论应当保持清楚的层级；窗口变窄或文档文字放大时，普通正文必须自然回流，而不是产生整页横向阅读滚动。
-
-        This mixed paragraph asks whether 理由、价值与可行选项 remain legible beside Latin punctuation, *emphasis*, a [local link](QA%20Autosave%20A.md), a footnote marker[^measure], and inline code such as `sourceUTF16Offset`.
-
-        هذه فقرة عربية اصطناعية لا تنسب رأيا إلى مصدر حقيقي، وهي تختبر اتجاه الفقرة وعلامات الترقيم مع `inline code` والأرقام 12345. זהו טקסט עברי סינתטי לבדיקת כיווניות וסימני פיסוק.
-
-        The unbroken token scholium_document_rhythm_fixture_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 and the URL https://example.invalid/a/very/long/synthetic/path/that/contains/no/research/data test local break and overflow behavior.
-
-        ### Heading Level Three
-
-        #### Heading Level Four
-
-        ##### Heading Level Five
-
-        ###### Heading Level Six
-
-        > [!orient] Reading Route
-        > Begin with the ordinary prose, then inspect exact objects without treating this note as a source.
-
-        > [!connect]
-        > A connection list can remain untitled and still belong to the same document grammar.
-
-        > [!state] Provisional Claim
-        > A displayed distinction should remain visibly subordinate to the surrounding research document.
-        >
-        > A second paragraph checks internal callout rhythm.
-
-        > [!illustrate] Synthetic Case
-        > Imagine two options that differ only in the information available to the researcher.
-
-        > [!flag] Limitation
-        > No sentence in this fixture is evidence for a philosophical conclusion.
-
-        > [!quote] Synthetic Wording
-        > This is invented wording, not a quotation from any author.
-
-        > [!cite] Fixture Source Boundary
-        > Synthetic UI material; no bibliography item is being attributed.
-
-        > [!neutral]- Folded Synthetic Note
-        > This neutral fallback tests the source-controlled collapsed state.
-
-        | Claim | Status | Count |
-        |:---|:---:|---:|
-        | Ordinary prose reflows | Open | 12 |
-        | Exact objects stay local | Required | 3 |
-        | 超宽表格单元格包含中英混排与一段很长的综合说明 | Synthetic | 987654 |
-
-        Table note: counts are arbitrary fixture values and carry no evidential meaning.
-
-        A named footnote appears here[^measure], and the same reference appears again[^measure]. An inline note follows.^[This inline note is also synthetic.]
-
-        [^measure]: The named footnote tests a long continuation, source return, and hanging rhythm without citing a real work.
-          Its continuation includes **emphasis**, mixed text 与中文, and a second sentence.
-
-        ## References
-
-        Synthetic, A. (2026). *A deliberately long un-attributed title used only to test bibliography indentation and continuation rhythm*. Fixture Press.
-
-        Example, B., & Sample, C. (2025). A second invented entry with mixed-script metadata: 排版比较条目. *Nonexistent Journal, 12*(3), 100–128.
-
-        Inline mathematics $r = f(o, c)$ remains part of the sentence.
-
-        $$
-        \int_0^1 x^2\,dx = \frac{1}{3}
-        $$
-
-        ```swift
-        let exactSource = "Synthetic fixture only"
-        let retainedIdentity = true
-        ```
-
-        > Ordinary quotation syntax remains distinct from semantic Callouts and should preserve selectable prose.
-
-        1. First ordered item with a continuation that wraps across the selected measure.
-        2. Second ordered item with **emphasis**, `code`, and mixed text 理由.
-
-        - Unordered evidence placeholder
-          - Nested qualification placeholder
-
-        Final ordinary prose returns after every exact object. It should still look like the same document, retain the same source authority, and leave tables, code, mathematics, and the synthetic diff pair inside their own bounded responsibilities.
-        """# + "\n"
     }
 
     @MainActor

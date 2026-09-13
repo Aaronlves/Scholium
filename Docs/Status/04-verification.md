@@ -571,19 +571,22 @@ to the reachable chapters and outstanding acceptance to Open Work.
   shared confirmation and VoiceOver remain live acceptance gaps. No UI automation
   was used, and a prepared sign-in URL is not reported as a successful login.
 
-- **Local Skill association, 2026-09-08:** eight owning/presentation checks
-  passed in `.build/agent-chat-evolution/association-final-tests.log`, covering
-  association/removal, scope and reconnect, failed application without background
-  retry, shared-preference merging, Skill lifecycle and native style ownership.
-  The updated directory validation and recovery checks plus installed-runtime
-  association/withdrawal passed in `association-recovery-tests.log`. The official
-  runtime changed discovery without modifying the synthetic Skill file; no model
-  inference was used. The official check also passed both a direct Skill folder
-  and a collection containing nested Skill folders (`association-directory-shapes.log`).
-  Light/dark native offscreen Settings renders were visually
-  inspected, and localization validation passed in `association-localization.log`.
-  No UI automation was used. Real folder-picker, focus and VoiceOver acceptance
-  remain open; this is not external tool authentication or complete Chat acceptance.
+- **Triptych Chat workspace, 2026-09-14:** eight checks pass in
+  `.build/chat-workspace/integration-tests.log`: control-store routing,
+  isolated workspaces/Skills with shared login, discovery, renewal, cancellation,
+  failure/retry, containment and Settings renders. Installed Codex confirms Skills
+  and cwd without inference. Selection/active-turn configuration, Light/Dark,
+  localization, documentation, Release build, helper smoke and public symbols pass.
+  AGENTS.md model consumption, Finder and human accessibility acceptance remain open.
+  Earlier gate: Core 353+3, Contracts 73, Application 164+1 reported passing;
+  App reported 840 tests with eight issues in two tests. Removed obsolete Heading
+  Study remnants; retained renderer checks. Without Find, initial Live Preview
+  measurement changed scroll 300→324, exposing premature sampling
+  (`find-initial-measurement-control.log`). Find checks flush measurement, verifying
+  scroll, navigation, selection, Undo and exact source. Four focused checks pass
+  (`document-measured-fixes.log`). Full gate not rerun; not green.
+  Logs: `.build/chat-workspace/` and
+  `.build/verification/`.
 
 - **Skills and tool inventory, 2026-09-08:** four owning checks passed in
   `.build/agent-chat-evolution/methods-owning-tests.log`, including the installed

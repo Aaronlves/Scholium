@@ -126,7 +126,7 @@ struct CodexChatToolConfigurationTests {
             try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
             try Data("SCHOLIUM_TOOL_FIXTURE_TOKEN=synthetic-local-fixture\n".utf8)
                 .write(to: root.appendingPathComponent(".env"))
-            try await runtime.start(executable: URL(fileURLWithPath: path), home: root)
+            try await runtime.start(executable: URL(fileURLWithPath: path), home: root, workingDirectory: root)
             _ = try await runtime.request(
                 "initialize", params: ["clientInfo": .object(["name": .string("scholium-tool-config-test"), "version": .string("1")])])
             try await runtime.notify("initialized")

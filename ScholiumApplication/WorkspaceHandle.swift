@@ -3514,6 +3514,11 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         return currentSnapshot.research
     }
 
+    public func agentChatWorkspaceURL() async throws -> URL {
+        try requireActive()
+        return await services.controlStore.controlURL
+    }
+
     func triptychSettings() async throws -> TriptychSettingsSnapshot {
         try requireActive()
         return try await services.controlStore.settings()

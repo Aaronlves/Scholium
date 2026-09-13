@@ -182,12 +182,10 @@ Typing `$` offers available Skills in a compact native candidate popover;
 chosen Skills retain removable labels in the draft. Sent messages retain those labels as requested Skills, without an
 invocation badge unless the runtime supplies an invocation event.
 
-Skills settings offers Add Skills Folder and an Associated Folders
-list. A named folder chooser adds an association; each folder shows its name
-and an accessible Remove Association action. Concrete paths stay out of the
-default presentation. These
-associations affect Scholium's connected process, including when it reads a
-shared configuration; they do not change the other host's discovery settings.
+Skills settings identifies This Triptych and offers Open Chat Workspace in
+Finder for its `.scholium` directory. Adjacent copy identifies `AGENTS.md` and
+`skills/`; no folder chooser, association list or editable discovery path is
+shown. Refresh repairs a failed workspace discovery without erasing the draft.
 
 A tool requiring authentication offers Sign In. The runtime-provided page opens
 after the explicit action, with Continue Sign-In available while the flow is

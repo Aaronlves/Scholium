@@ -113,11 +113,12 @@ Works folders are researcher organization, not registered projects.
 
 ### 3.3 `.scholium` and machine-local state
 
-Portable `.scholium/` contains only synchronized control state needed to
-interpret the same Triptych:
+Portable `.scholium/` contains control state and researcher guidance for the
+same Triptych:
 
 - manifest and stable identity mappings;
 - the Triptych Guide and Triptych-local settings;
+- Chat instructions in `AGENTS.md` and local Skills in `skills/<name>/SKILL.md`;
 - attachment file identity/location catalogs, without Note relationships;
 - fingerprint-bound Settlement judgments.
 

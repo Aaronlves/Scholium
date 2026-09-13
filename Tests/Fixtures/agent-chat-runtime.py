@@ -126,9 +126,9 @@ for line in sys.stdin:
              'description': 'Compare the source and its interpretation.', 'scope': 'user',
              'enabled': enabled, 'interface': {'displayName': 'Source Analysis'},
              'dependencies': {'tools': [{'type': 'mcp', 'value': 'scholium'}]}}]
-        skills += [{'name': Path(root).name, 'path': str(Path(root) / 'SKILL.md'),
-            'description': 'Associated fixture method.', 'scope': 'user', 'enabled': True}
-            for root in extra_roots]
+        skills += [{'name': path.parent.name, 'path': str(path),
+            'description': 'Triptych fixture method.', 'scope': 'user', 'enabled': True}
+            for root in extra_roots for path in Path(root).rglob('SKILL.md')]
         result = {'data': [{'cwd': params['cwds'][0], 'skills': skills, 'errors': []}]}
     elif method == 'skills/extraRoots/set':
         counter = home / 'roots-request-count'

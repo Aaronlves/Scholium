@@ -23,7 +23,7 @@ struct AgentChatMethodsTests {
     func methodLifecycle() async throws {
         let root = repository.appendingPathComponent(".build/agent-chat-tests/method-\(UUID())")
         defer { try? FileManager.default.removeItem(at: root) }
-        let controller = AgentChatController(triptychID: UUID(), root: root) { request in
+        let controller = fixtureChatController(triptychID: UUID(), root: root) { request in
             try! .init(requestID: request.requestID, result: .object(["status": .string("ok")]))
         }
         try await wait { controller.isLoaded }

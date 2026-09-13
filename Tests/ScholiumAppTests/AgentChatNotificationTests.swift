@@ -18,7 +18,7 @@ struct AgentChatNotificationTests {
         }
     }
     private func makeController(_ root: URL, recorder: ChatNotificationRecorder) async throws -> AgentChatController {
-        let controller = AgentChatController(
+        let controller = fixtureChatController(
             triptychID: UUID(), root: root,
             notificationSink: { route, current in recorder.events.append((route, current)) }
         ) { request in
@@ -124,7 +124,7 @@ struct AgentChatNotificationTests {
         controller.setArchived(archived, archived: true)
         try await controller.flushPersistence()
         await controller.disconnect()
-        let reopened = AgentChatController(
+        let reopened = fixtureChatController(
             triptychID: triptych, root: root,
             notificationSink: { route, current in recorder.events.append((route, current)) }
         ) { request in

@@ -120,7 +120,7 @@ struct AgentChatVisualEvidenceTests {
             .deletingLastPathComponent().deletingLastPathComponent()
         let root = repository.appendingPathComponent(".build/agent-chat-evolution/render-fixture-\(UUID())")
         defer { try? FileManager.default.removeItem(at: root) }
-        let controller = AgentChatController(triptychID: UUID(), root: root) { request in
+        let controller = fixtureChatController(triptychID: UUID(), root: root) { request in
             try! .init(requestID: request.requestID, result: .object(["status": .string("ok")]))
         }
         try await wait { controller.isLoaded }
@@ -356,7 +356,7 @@ struct AgentChatVisualEvidenceTests {
             comparison: try ExactSourceComparisonBuilder.build(
                 startingData: before, endingData: after,
                 startingRevision: .init(data: before), endingRevision: .init(data: after)))
-        let controller = AgentChatController(triptychID: UUID(), root: root, previewUpdate: { _ in preview }) { request in
+        let controller = fixtureChatController(triptychID: UUID(), root: root, previewUpdate: { _ in preview }) { request in
             try! .init(requestID: request.requestID, result: .object([:]))
         }
         try await wait { controller.isLoaded }
@@ -399,7 +399,7 @@ struct AgentChatVisualEvidenceTests {
         for scheme in [ColorScheme.light, .dark] {
             let root = repository.appendingPathComponent(".build/agent-chat-evolution/child-render-\(UUID())")
             defer { try? FileManager.default.removeItem(at: root) }
-            let parent = AgentChatController(triptychID: UUID(), root: root) { request in
+            let parent = fixtureChatController(triptychID: UUID(), root: root) { request in
                 try! .init(requestID: request.requestID, result: .object([:]))
             }
             try await wait { parent.isLoaded }
@@ -496,7 +496,7 @@ struct AgentChatVisualEvidenceTests {
         let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         let root = repository.appendingPathComponent(".build/agent-chat-evolution/notification-render-\(UUID())")
         defer { try? FileManager.default.removeItem(at: root) }
-        let controller = AgentChatController(triptychID: UUID(), root: root) { request in
+        let controller = fixtureChatController(triptychID: UUID(), root: root) { request in
             try! .init(requestID: request.requestID, result: .object([:]))
         }
         try await wait { controller.isLoaded }
@@ -654,7 +654,7 @@ struct AgentChatVisualEvidenceTests {
             defaults.removePersistentDomain(forName: suite)
             try? FileManager.default.removeItem(at: root)
         }
-        let controller = AgentChatController(triptychID: UUID(), root: root, methodDefaults: defaults) { request in
+        let controller = fixtureChatController(triptychID: UUID(), root: root, methodDefaults: defaults) { request in
             try! .init(requestID: request.requestID, result: .object(["status": .string("ok")]))
         }
         try await wait { controller.isLoaded }
@@ -663,9 +663,7 @@ struct AgentChatVisualEvidenceTests {
         let fixture = repository.appendingPathComponent("Tests/Fixtures/agent-chat-runtime.py")
         controller.connect(executable: fixture, home: controller.runtimeHome, helper: fixture)
         try await wait { controller.capabilities.hasMethods && !controller.capabilities.isRefreshing }
-        let folder = root.appendingPathComponent("research-methods")
-        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        controller.capabilities.associate(folder, threadID: nil)
+        controller.capabilities.refresh(threadID: nil, reloadWorkspace: true)
         try await wait { controller.capabilities.hasMethods && !controller.capabilities.isRefreshing }
         let output = repository.appendingPathComponent(".build/agent-chat-evolution/renders")
         try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)

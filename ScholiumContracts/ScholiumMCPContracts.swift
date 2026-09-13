@@ -2,7 +2,7 @@ import Foundation
 
 public enum ScholiumMCPContract {
     public static let maximumDocumentUTF8ByteCount = 512 * 1_024
-    public static let currentToolSchemaVersion = 7
+    public static let currentToolSchemaVersion = 8
 }
 
 /// JSON values accepted at the MCP delivery boundary. Domain owners decode

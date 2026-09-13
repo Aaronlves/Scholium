@@ -85,7 +85,7 @@
   reveals the bundled `scholium-core-protocol` Skill. External-host setup
   stores no credentials. In-app Chat separately retains public conversation
   state and selected runtime configuration; its token-scoped capability tools
-  can manage runtime Skills, discovery roots, MCP connections and next-turn
+  can manage runtime Skills, MCP connections and next-turn
   Chat settings through the existing owner.
 - The Core Protocol uses ordinary Note operations for explicitly requested
   question/discussion writing. Substantive discussion does not authorize an

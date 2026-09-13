@@ -68,7 +68,7 @@ struct CodexChatMethodsTests {
         let runtime = CodexAppServer()
         do {
             let executable = try #require(ProcessInfo.processInfo.environment["SCHOLIUM_CODEX_SMOKE_EXECUTABLE"])
-            try await runtime.start(executable: URL(fileURLWithPath: executable), home: root)
+            try await runtime.start(executable: URL(fileURLWithPath: executable), home: root, workingDirectory: root)
             _ = try await runtime.request(
                 "initialize",
                 params: [

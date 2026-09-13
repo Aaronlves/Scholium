@@ -119,8 +119,8 @@ research discussion. Explicit selection handoff for the development Chat client
 follows the in-app Chat specification; it is not an external-host handoff service.
 
 The release bundles only the thin Scholium Core Protocol Skill. Researcher-owned
-method Skills live in the external Agent host; Scholium does not register,
-inspect, or execute them. These paths establish engineering reachability, not
+method Skills live in the Agent host or the Triptych Chat workspace and run
+through the Agent runtime. These paths establish engineering reachability, not
 human acceptance or general philosophical adequacy.
 
 See [Implementation Status](Docs/IMPLEMENTATION_STATUS.md) for exact evidence
@@ -345,8 +345,12 @@ switches between Links and Related Material. Chat uses native macOS text and con
 be full research discussions, while operation activity remains expandable.
 In Chat, choose a compatible official Codex executable
 and the App-bundled connection helper. Connect and sign in through Codex.
-The default configuration directory is separate; choosing an existing Codex
-configuration also inherits that environment's tools and settings.
+Login and runtime state use a shared machine-local Codex configuration directory;
+choosing an existing configuration inherits that environment's tools and settings.
+Each Triptych's `.scholium` is its Chat working directory. Edit `AGENTS.md` there
+for local instructions and place Skills in `skills/<name>/SKILL.md`; Codex discovers
+them automatically. Settings offers Open Chat Workspace in Finder and Refresh,
+with no Skill-folder path setup. Existing files are preserved on reconnect.
 
 Use View → Add Selection to Chat (Command-Shift-L) from Edit or Source. Adding
 material does not send it. Select Ask for Approval or Full Access, then Send.

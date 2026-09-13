@@ -18,7 +18,7 @@ struct AgentChatQuestionTests {
         }
     }
     private func controller(_ root: URL, text: String = "hold questions") async throws -> AgentChatController {
-        let value = AgentChatController(triptychID: UUID(), root: root) { request in
+        let value = fixtureChatController(triptychID: UUID(), root: root) { request in
             try! .init(requestID: request.requestID, result: .object([:]))
         }
         try await wait { value.isLoaded }

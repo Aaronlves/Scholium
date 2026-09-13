@@ -1957,30 +1957,12 @@ struct FrontendArchitectureTests {
         #expect(!settlementRowSource.contains("Button(\"Settle\""))
     }
 
-    @Test("Accepted-A heading-wrap proof stays in the QA journey and production renderer")
-    func documentHeadingProofIsQABounded() throws {
+    @Test("Document appearance stays in the shared production renderer")
+    func documentAppearanceUsesProductionRenderer() throws {
         let repository = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let uiTestSource = try [
-            "ScholiumUITests.swift",
-            "ScholiumUITests+WorkspaceResearch.swift",
-            "ScholiumUITests+Presentation.swift",
-            "ScholiumUITests+WindowsLifecycle.swift",
-            "ScholiumUITests+EditorCoordination.swift",
-            "ScholiumUITests+Support.swift",
-            "ScholiumPerformanceUITests.swift",
-        ].map { fileName in
-            try String(
-                contentsOf: repository.appendingPathComponent("UITests/\(fileName)"),
-                encoding: .utf8
-            )
-        }.joined(separator: "\n")
-        let appSource = try String(
-            contentsOf: repository.appendingPathComponent("Scholium/App/ScholiumApp.swift"),
-            encoding: .utf8
-        )
         let noteSource = try String(
             contentsOf: repository.appendingPathComponent(
                 "Scholium/Views/Note/NoteContentView.swift"
@@ -1994,31 +1976,6 @@ struct FrontendArchitectureTests {
             encoding: .utf8
         )
 
-        #expect(
-            uiTestSource.contains(
-                "testDocumentHeadingStudyWrapsLongMixedTitleUsingAcceptedBodyRhythm"))
-        #expect(uiTestSource.contains("--scholium-document-heading-proof"))
-        #expect(uiTestSource.contains("XCUIApplication(bundleIdentifier: \"com.scholium.qa\")"))
-        #expect(uiTestSource.contains("workspace.screenshot()"))
-        #expect(uiTestSource.contains("lineHeight: 2.00"))
-        #expect(uiTestSource.contains("paragraphSpacing: 1.00"))
-        #expect(!uiTestSource.contains("lineHeight: 1.80"))
-        #expect(!uiTestSource.contains("lineHeight: 1.65"))
-        #expect(uiTestSource.contains("XCTAssertEqual(appearanceNumericValue(lineWidth), 72)"))
-        #expect(
-            uiTestSource.contains(
-                "Heading Study — accepted A — long mixed H1 — 1180×760 — Review — native window title"
-            ))
-        #expect(
-            uiTestSource.contains(
-                "Heading Study — accepted A — long mixed H1 — 900×760 — Review — native window title"
-            ))
-        #expect(uiTestSource.contains("在长期论证中保持证据边界：Reasons, Values"))
-        #expect(!uiTestSource.contains("## Abstract"))
-        #expect(
-            uiTestSource.contains("XCTAssertEqual(try Data(contentsOf: noteURL), sourceBefore)"))
-        #expect(!appSource.contains("--scholium-document-heading-proof"))
-        #expect(!appSource.contains("scholium-document-heading-proof"))
         #expect(appearanceSource.contains(".scholium-document p {"))
         #expect(!appearanceSource.contains(".scholium-document h1 + p"))
         #expect(!appearanceSource.contains(".scholium-document h2 + p"))

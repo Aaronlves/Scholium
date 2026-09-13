@@ -347,6 +347,18 @@ struct AgentChatView: View {
                 }
             }
         }
+        if let error = controller.capabilities.workspaceError {
+            ScholiumSidebarState(Text("Skills Could Not Be Loaded"), indicator: .symbol("exclamationmark.triangle", role: .attention)) {
+                Button("Refresh Skills") {
+                    controller.capabilities.refresh(threadID: controller.selected?.threadID, reloadWorkspace: true)
+                }.disabled(controller.isBusy || controller.capabilities.isRefreshing)
+                Button("Diagnostics…") {
+                    diagnosticMessageID = nil
+                    diagnosticError = error
+                    showsDiagnostics = true
+                }
+            }
+        }
         if controller.historyUnavailable {
             ScholiumSidebarState(
                 Text("Conversation Unavailable"),
@@ -1321,7 +1333,7 @@ struct AgentChatView: View {
         case .methods:
             completion.editor?.insertText("$", replacementRange: NSRange(location: NSNotFound, length: 0))
         case .refreshMethods:
-            controller.capabilities.refresh(threadID: controller.selected?.threadID, applyAssociations: true)
+            controller.capabilities.refresh(threadID: controller.selected?.threadID, reloadWorkspace: true)
         case .manageMethods:
             UserDefaults.standard.set("integrations", forKey: "scholium.settings.selectedPane")
             UserDefaults.standard.set(SettingsIntegrationCategory.agents.rawValue, forKey: "scholium.settings.integrationCategory")
@@ -1525,7 +1537,7 @@ struct AgentChatView: View {
                             .disabled(!method.enabled)
                         }
                         Divider()
-                        Button("Refresh Skills") { controller.capabilities.refresh(threadID: controller.selected?.threadID, applyAssociations: true) }
+                        Button("Refresh Skills") { controller.capabilities.refresh(threadID: controller.selected?.threadID, reloadWorkspace: true) }
                             .disabled(!controller.capabilities.isConnected || controller.capabilities.isRefreshing)
                         Button("Manage Skills…") {
                             UserDefaults.standard.set("integrations", forKey: "scholium.settings.selectedPane")

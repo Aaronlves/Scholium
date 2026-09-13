@@ -29,7 +29,7 @@ struct AgentChatCapabilityToolTests {
             defaults.removePersistentDomain(forName: suite)
             try? FileManager.default.removeItem(at: root)
         }
-        let controller = AgentChatController(triptychID: UUID(), root: root, methodDefaults: defaults) { request in
+        let controller = fixtureChatController(triptychID: UUID(), root: root, methodDefaults: defaults) { request in
             try! .init(requestID: request.requestID, result: .object([:]))
         }
         try await wait { controller.isLoaded }
@@ -67,17 +67,16 @@ struct AgentChatCapabilityToolTests {
                 ], conversationToken: token, runtimeContext: context))
         #expect(reenabled.error == nil && reenabled.result?.objectValue?["effective_enabled"]?.boolValue == true)
 
-        let associated = root.appendingPathComponent("agent-managed-skill")
+        let associated = try #require(controller.workingDirectory).appendingPathComponent("skills/agent-managed-skill")
         try FileManager.default.createDirectory(at: associated, withIntermediateDirectories: true)
         try "---\nname: agent-managed-skill\ndescription: Synthetic capability fixture.\n---\nKeep the exact fixture.\n"
             .write(to: associated.appendingPathComponent("SKILL.md"), atomically: true, encoding: .utf8)
-        let addedRoot = await controller.handle(
-            .init(
-                tool: .configureSkill,
-                arguments: [
-                    "action": .string("add_root"), "path": .string(associated.path),
-                ], conversationToken: token, runtimeContext: context))
-        #expect(addedRoot.error == nil && addedRoot.result?.objectValue?["skill_roots"]?.arrayValue?.contains(.string(associated.path)) == true)
+        let refreshed = await controller.handle(.init(tool: .capabilities, conversationToken: token, runtimeContext: context))
+        #expect(refreshed.error == nil)
+        #expect(
+            refreshed.result?.objectValue?["skills"]?.arrayValue?.contains {
+                $0.objectValue?["path"]?.stringValue == associated.appendingPathComponent("SKILL.md").path
+            } == true)
 
         let added = await controller.handle(
             .init(

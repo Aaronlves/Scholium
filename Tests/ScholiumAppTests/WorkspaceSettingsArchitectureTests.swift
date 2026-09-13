@@ -666,7 +666,7 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(capabilities.contains("settingsEditorSection(\"Skills\")"))
         #expect(capabilities.contains("settingsEditorSection(\"Core Protocol\")"))
         #expect(capabilities.contains("Always included in Scholium Chat"))
-        #expect(capabilities.contains("skillFolderName"))
+        #expect(capabilities.contains("Open Chat Workspace in Finder"))
         #expect(!capabilities.contains("Text(home.path)"))
         #expect(!capabilities.contains("Text(method.selection.path)"))
         #expect(!capabilities.contains("Text(configuration.address)"))

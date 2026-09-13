@@ -87,8 +87,7 @@ final class ScholiumUITests: XCTestCase {
         if name.contains("testTwoHundredPercentDocumentTextPersistsAcrossEveryMode") {
             return 900
         }
-        if name.contains("testLibraryRemainsReadableAtItsNativeMinimum")
-        {
+        if name.contains("testLibraryRemainsReadableAtItsNativeMinimum") {
             return Int(QAWorkspaceMetricContract.preferredWidth)
         }
         return 1_380

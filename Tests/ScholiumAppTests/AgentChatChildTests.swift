@@ -18,7 +18,7 @@ struct AgentChatChildTests {
         }
     }
     private func make(_ root: URL, prompt: String = "hold delegation") async throws -> (AgentChatController, AgentChatChildController) {
-        let parent = AgentChatController(triptychID: UUID(), root: root) { request in
+        let parent = fixtureChatController(triptychID: UUID(), root: root) { request in
             try! .init(requestID: request.requestID, result: .object([:]))
         }
         try await wait { parent.isLoaded }
@@ -246,7 +246,7 @@ struct AgentChatChildTests {
         let conversation = try #require(stored.first { $0.id == owner })
         #expect(conversation.pendingMessageID != nil && conversation.childDrafts[child.childID] == "Next unsent adjustment")
         #expect(conversation.messages.filter { $0.text == "Exact adjustment" }.count == 1)
-        let reopened = AgentChatController(triptychID: parent.triptychID, root: root) { request in
+        let reopened = fixtureChatController(triptychID: parent.triptychID, root: root) { request in
             try! .init(requestID: request.requestID, result: .object([:]))
         }
         try await wait { reopened.isLoaded }

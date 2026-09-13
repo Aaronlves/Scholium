@@ -242,10 +242,9 @@ already-visible Chat does not toggle the Sidebar closed.
   Composer Skill selection persists in drafts and sent messages, sends explicit
   Skill inputs and blocks unavailable choices. The installed official runtime
   passed isolated local Skill discovery/disable/enable without inference.
-  Local folder association/removal is reachable through the native folder picker;
-  configuration-scoped launch preferences survive reconnect. Missing folders and
-  unconfirmed application have Refresh/removal repair routes. Official-runtime
-  checks confirm discovery and withdrawal without changing Skill bytes. Connected
+  Triptych-local Skills use the automatic `.scholium/skills` directory. Settings
+  identifies This Triptych and opens its Chat workspace in Finder; directory
+  association controls are removed. Failed discovery exposes Refresh repair. Connected
   Tools now offers native remote/local Add, Edit, enable/disable and Remove forms.
   Version-checked saves preserve other configuration fields; stale forms have
   explicit Reload. Advanced access fields name environment variables without

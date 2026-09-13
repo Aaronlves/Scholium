@@ -62,6 +62,8 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
     private var capabilityObservation: AnyCancellable?
     let triptychID: UUID
     let runtimeHome: URL
+    private let workspaceDirectory: @MainActor () async throws -> URL
+    private var connectedHome: URL?
     private let storage: AgentChatStorage
     private let materialStore: AgentChatMaterialStore
     @Published private(set) var preparingMaterials: Set<UUID> = []
@@ -80,7 +82,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
     private var connectionID: UUID?
     private var helperURL: URL?
     var zoteroToolExecutable: URL? { helperURL }
-    private var workingDirectory: URL?
+    private(set) var workingDirectory: URL?
     private var connectionDefaults: UserDefaults
     private var automaticConnection = false
     private var reconnectAttempt = 0
@@ -90,6 +92,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
 
     init(
         triptychID: UUID, root: URL,
+        workspaceDirectory: @escaping @MainActor () async throws -> URL,
         methodDefaults: UserDefaults = .standard,
         zotero: (any ZoteroUseCases)? = nil,
         displayWindow: @escaping @MainActor (UUID) -> AgentChatDisplayScope? = { _ in nil },
@@ -100,12 +103,13 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
         toolHandler: @escaping @MainActor (ScholiumMCPBridgeRequest) async -> ScholiumMCPBridgeResponse
     ) {
         self.triptychID = triptychID
+        self.workspaceDirectory = workspaceDirectory
         self.toolHandler = toolHandler
         self.displayWindow = displayWindow
         self.previewUpdate = previewUpdate
         self.notificationSink = notificationSink
         connectionDefaults = methodDefaults
-        capabilities = AgentChatCapabilitiesController(defaults: methodDefaults, zotero: zotero)
+        capabilities = AgentChatCapabilitiesController(zotero: zotero)
         runtimeHome = root.appendingPathComponent("Codex", isDirectory: true)
         storage = AgentChatStorage(
             root: root.appendingPathComponent(triptychID.uuidString, isDirectory: true))
@@ -423,7 +427,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
                 _ = try CodexChatBranch.retainedMessages(source: hydrated, through: turnIDs)
                 // No source execution token or automatic goal continuation may enter the new thread.
                 let branchRoute = UUID()
-                var params = self.threadParameters(source, configuration: self.toolConfiguration(token: branchRoute))
+                var params = try self.threadParameters(source, configuration: self.toolConfiguration(token: branchRoute))
                 params["threadId"] = .string(sourceThread)
                 params[messageID == nil ? "lastTurnId" : "beforeTurnId"] = .string(turnID)
                 params["deferGoalContinuation"] = .bool(true)
@@ -491,7 +495,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
         let execution = executions[conversation.id]
         return isLoaded && connectionState == .ready && account != nil && selectionIsAvailable(conversation.preferences)
             && (!isRenewingSettings || execution?.state == .working)
-            && !capabilities.isChanging && (message.methods ?? []).allSatisfy(capabilities.contains)
+            && capabilities.workspaceReady && !capabilities.isChanging && (message.methods ?? []).allSatisfy(capabilities.contains)
             && !message.localMaterials.contains(where: { $0.issue != nil })
             && (!message.localMaterials.contains(where: \.requiresImageInput)
                 || model(for: conversation.preferences)?.inputModalities.contains("image") == true)
@@ -858,7 +862,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
 
     func renewSettingsWhenIdle() {
         guard connectionState == .ready, settingsRenewalTask == nil, let runtime,
-            let executable = connectedExecutable, let home = workingDirectory, let helper = helperURL
+            let executable = connectedExecutable, let home = connectedHome, let helper = helperURL
         else { return }
         let id = UUID()
         let connection = connectionID
@@ -1025,7 +1029,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
         runtime = connection
         connectionID = connectionToken
         helperURL = helper
-        workingDirectory = home
+        connectedHome = home
 
         eventTask = Task { [weak self] in
             for await event in connection.events {
@@ -1037,7 +1041,11 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
             guard let self else { return }
             do {
                 guard self.connectionID == connectionToken, !Task.isCancelled else { return }
-                try await connection.start(executable: executable, home: home)
+                let directory = try await workspaceDirectory()
+                guard self.connectionID == connectionToken, !Task.isCancelled else { return }
+                let workspace = try AgentChatWorkspace.prepare(directory, runtimeHome: home)
+                workingDirectory = workspace
+                try await connection.start(executable: executable, home: home, workingDirectory: workspace)
                 guard self.connectionID == connectionToken else {
                     await connection.close()
                     return
@@ -1064,7 +1072,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
                 guard self.connectionID == connectionToken else { return }
                 self.runtimeDefaults = defaults
                 await self.capabilities.attach(
-                    connection, cwd: self.workingDirectory ?? home, home: home,
+                    connection, cwd: workspace, home: home,
                     isShared: home.standardizedFileURL != self.runtimeHome.standardizedFileURL,
                     threadID: self.selected?.threadID)
                 guard self.connectionID == connectionToken, !Task.isCancelled else { return }
@@ -1370,7 +1378,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
                 try await self.saveNow()
                 guard self.connectionID == connectionID, !Task.isCancelled else { return }
                 let thread: String
-                var params = self.threadParameters(selected, configuration: self.executions[conversationID]?.configuration ?? [:])
+                var params = try self.threadParameters(selected, configuration: self.executions[conversationID]?.configuration ?? [:])
                 if let existing = selected.threadID {
                     thread = existing
                     if expectedTurnID == nil {
@@ -1606,9 +1614,10 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
         }
     }
 
-    private func threadParameters(_ conversation: AgentChatConversation, configuration: [String: MCPJSONValue]) -> [String: MCPJSONValue] {
+    private func threadParameters(_ conversation: AgentChatConversation, configuration: [String: MCPJSONValue]) throws -> [String: MCPJSONValue] {
+        guard let workingDirectory else { throw CodexConnectionError.disconnected }
         var overrides = configuration
-        overrides["project_doc_max_bytes"] = .integer(0)
+        overrides["project_doc_max_bytes"] = .integer(AgentChatWorkspace.instructionByteLimit)
         overrides["project_root_markers"] = .array([])
         let preferences = conversation.preferences
         do {
@@ -1623,7 +1632,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
             }
         }
         var params: [String: MCPJSONValue] = [
-            "cwd": .string((workingDirectory ?? runtimeHome).path), "config": .object(overrides),
+            "cwd": .string(workingDirectory.path), "config": .object(overrides),
             "approvalPolicy": .string(conversation.permission.approvalPolicy), "sandbox": .string(conversation.permission.sandbox),
             "developerInstructions": .string(AgentChatResearchInstructions.developer(triptychID: triptychID)),
         ]
@@ -2399,7 +2408,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
         _ arguments: [String: MCPJSONValue],
         conversationID: UUID
     ) async throws -> MCPJSONValue {
-        try agentRequireOnly(arguments, keys: ["action", "path", "name", "roots"])
+        try agentRequireOnly(arguments, keys: ["action", "path", "name"])
         let action = try agentRequiredString(arguments["action"], name: "action")
         let threadID = conversation(conversationID)?.threadID
         switch action {
@@ -2407,34 +2416,14 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
             let path = try agentRequiredString(arguments["path"], name: "path")
             let name = try agentOptionalString(arguments["name"], name: "name")
             let method = try await capabilities.agentSetSkill(path: path, name: name, enabled: action == "enable", threadID: threadID)
-            let roots = (try? await capabilities.agentCapabilitySnapshot(threadID: threadID).skillRoots) ?? capabilities.associatedFolders
+            let roots = (try? await capabilities.agentCapabilitySnapshot(threadID: threadID).skillRoots) ?? capabilities.skillRoots
             return agentOK([
                 "action": .string(action), "path": .string(method.selection.path),
                 "effective_enabled": .bool(method.enabled), "skill_roots": .array(roots.map(MCPJSONValue.string)),
             ])
-        case "set_roots":
-            let roots = try agentRequiredStringArray(arguments["roots"], name: "roots")
-            let applied = try await capabilities.agentSetSkillRoots(roots, threadID: threadID)
-            return agentOK([
-                "action": .string(action), "path": .null, "effective_enabled": .null,
-                "skill_roots": .array(applied.map(MCPJSONValue.string)),
-            ])
-        case "add_root", "remove_root":
-            let path = try agentRequiredString(arguments["path"], name: "path")
-            let current = try await capabilities.agentCapabilitySnapshot(threadID: threadID).skillRoots
-            var roots = current
-            if action == "add_root" {
-                if !roots.contains(path) { roots.append(path) }
-            } else {
-                roots.removeAll { $0 == path }
-            }
-            let applied = try await capabilities.agentSetSkillRoots(roots, threadID: threadID)
-            return agentOK([
-                "action": .string(action), "path": .string(path), "effective_enabled": .null,
-                "skill_roots": .array(applied.map(MCPJSONValue.string)),
-            ])
+
         default:
-            throw agentInvalid("action", "Choose enable, disable, add_root, remove_root or set_roots.")
+            throw agentInvalid("action", "Choose enable or disable.")
         }
     }
 
@@ -3068,6 +3057,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
 final class AgentChatRegistry {
     private var controllers: [UUID: AgentChatController] = [:]
     private let root: URL
+    private let workspaceDirectory: @MainActor (UUID) async throws -> URL
     private let zotero: (any ZoteroUseCases)?
     private let displayWindow: @MainActor (UUID, UUID) -> AgentChatDisplayScope?
     private let handler: @MainActor (ScholiumMCPBridgeRequest) async -> ScholiumMCPBridgeResponse
@@ -3075,6 +3065,7 @@ final class AgentChatRegistry {
     private let notificationSink: AgentChatNotificationSink
     init(
         root: URL,
+        workspaceDirectory: @escaping @MainActor (UUID) async throws -> URL,
         zotero: (any ZoteroUseCases)? = nil,
         displayWindow: @escaping @MainActor (UUID, UUID) -> AgentChatDisplayScope? = { _, _ in nil },
         notificationSink: @escaping AgentChatNotificationSink = { _, _ in },
@@ -3082,6 +3073,7 @@ final class AgentChatRegistry {
         handler: @escaping @MainActor (ScholiumMCPBridgeRequest) async -> ScholiumMCPBridgeResponse
     ) {
         self.root = root
+        self.workspaceDirectory = workspaceDirectory
         self.zotero = zotero
         self.displayWindow = displayWindow
         self.handler = handler
@@ -3092,7 +3084,8 @@ final class AgentChatRegistry {
         if let current = controllers[triptychID] { return current }
         let displayWindow = self.displayWindow
         let controller = AgentChatController(
-            triptychID: triptychID, root: root, zotero: zotero, displayWindow: { displayWindow(triptychID, $0) }, notificationSink: notificationSink,
+            triptychID: triptychID, root: root, workspaceDirectory: { [workspaceDirectory] in try await workspaceDirectory(triptychID) }, zotero: zotero,
+            displayWindow: { displayWindow(triptychID, $0) }, notificationSink: notificationSink,
             previewUpdate: previewUpdate, toolHandler: handler)
         controllers[triptychID] = controller
         return controller

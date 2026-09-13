@@ -1,6 +1,60 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Skills Could Not Be Loaded" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Skills Could Not Be Loaded" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "无法加载技能" } }
+      }
+    },
+"Open Chat Workspace in Finder" : {
+  "localizations": {
+    "en": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "Open Chat Workspace in Finder"
+      }
+    },
+    "zh-Hans": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "在 Finder 中打开 Chat 工作区"
+      }
+    }
+  }
+},
+"Chat uses AGENTS.md and the skills folder in this Triptych’s .scholium workspace." : {
+  "localizations": {
+    "en": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "Chat uses AGENTS.md and the skills folder in this Triptych’s .scholium workspace."
+      }
+    },
+    "zh-Hans": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "Chat 使用此 Triptych 的 .scholium 工作区中的 AGENTS.md 和 skills 文件夹。"
+      }
+    }
+  }
+},
+"Refresh Skills when the current operation finishes to reload the workspace." : {
+  "localizations": {
+    "en": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "Refresh Skills when the current operation finishes to reload the workspace."
+      }
+    },
+    "zh-Hans": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "请在当前操作结束后刷新技能，以重新加载工作区。"
+      }
+    }
+  }
+},
     "Conversation Outline" : {
   "localizations": {
     "en": {

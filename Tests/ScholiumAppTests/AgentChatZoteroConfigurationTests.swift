@@ -25,7 +25,7 @@ struct AgentChatZoteroConfigurationTests {
         let executable = repository.appendingPathComponent("Tests/Fixtures/agent-chat-runtime.py")
         let triptych = UUID()
         func make() async throws -> AgentChatController {
-            let controller = AgentChatController(triptychID: triptych, root: root, zotero: operations) { request in
+            let controller = fixtureChatController(triptychID: triptych, root: root, zotero: operations) { request in
                 try! .init(requestID: request.requestID, result: .object([:]))
             }
             try await wait { controller.isLoaded }
@@ -44,7 +44,7 @@ struct AgentChatZoteroConfigurationTests {
         let builtIn = try #require(config["mcp_servers"]?.objectValue?["scholium-zotero"]?.objectValue)
         #expect(builtIn["args"] == .array(["zotero", "mcp", "serve", "--read-only"].map(MCPJSONValue.string)))
         #expect(builtIn["required"] == .bool(false))
-        #expect(config["project_doc_max_bytes"] == .integer(0))
+        #expect(config["project_doc_max_bytes"] == .integer(32768))
         #expect(config["project_root_markers"] == .array([]))
         #expect(defaults.objectValue?["developerInstructions"]?.stringValue?.contains(triptych.uuidString) == true)
         #expect(caps.zoteroConnection == nil)  // The app default never writes the user's config.

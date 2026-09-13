@@ -27,8 +27,9 @@ final class AgentChatCapabilitiesController: ObservableObject {
     @Published private(set) var isChanging = false
     @Published private(set) var hasMethods = false
     @Published private(set) var hasTools = false
-    @Published private(set) var associatedFolders: [String] = []
-    @Published private(set) var associationError: String?
+    @Published private(set) var workspaceURL: URL?
+    @Published private(set) var workspaceError: String?
+    var skillRoots: [String] { workspaceURL.map { [AgentChatWorkspace.skillsDirectory(in: $0).path] } ?? [] }
     @Published private(set) var authenticatingTool: String?
     @Published private(set) var authorizationURL: URL?
     @Published private(set) var authenticationNotice: String?
@@ -54,17 +55,10 @@ final class AgentChatCapabilitiesController: ObservableObject {
     private var authenticationTask: Task<Void, Never>?
     private var authenticationThreadID: String?
     private var agentAuthenticationThreadIDs: [String: String] = [:]
-    private let defaults: UserDefaults
     private var needsRootApplication = false
-    init(defaults: UserDefaults = .standard, zotero: (any ZoteroUseCases)? = nil) {
-        self.defaults = defaults
+    var workspaceReady: Bool { workspaceURL != nil && !needsRootApplication }
+    init(zotero: (any ZoteroUseCases)? = nil) {
         self.zotero = zotero
-    }
-    private var folderPreferenceKey: String? {
-        configurationHome.map { "agent.methodFolders.\($0.standardizedFileURL.path)" }
-    }
-    private var savedFolders: [String] {
-        folderPreferenceKey.flatMap { defaults.stringArray(forKey: $0) } ?? []
     }
     var mayChange: () -> Bool = { false }
     var isConnected: Bool { runtime != nil }
@@ -81,9 +75,9 @@ final class AgentChatCapabilitiesController: ObservableObject {
         self.cwd = cwd
         configurationHome = home
         self.isShared = isShared
-        associatedFolders = savedFolders
-        needsRootApplication = !associatedFolders.isEmpty
-        // These are the new process's saved launch roots, not a user configuration edit.
+        workspaceURL = cwd
+        needsRootApplication = true
+        // Each process discovers only its own Triptych's additional Skills.
         refresh(threadID: threadID, permitsRootApplication: true)
         await task?.value
     }
@@ -125,13 +119,13 @@ final class AgentChatCapabilitiesController: ObservableObject {
         configurationHome = nil
         isShared = false
         requestedThreadID = nil
-        associatedFolders = []
-        associationError = nil
+        workspaceURL = nil
+        workspaceError = nil
         needsRootApplication = false
     }
 
-    func refresh(threadID: String?, applyAssociations: Bool = false) {
-        refresh(threadID: threadID, permitsRootApplication: applyAssociations && mayChange())
+    func refresh(threadID: String?, reloadWorkspace: Bool = false) {
+        refresh(threadID: threadID, permitsRootApplication: reloadWorkspace && mayChange())
     }
 
     private func refresh(threadID: String?, permitsRootApplication: Bool) {
@@ -142,10 +136,6 @@ final class AgentChatCapabilitiesController: ObservableObject {
             return
         }
         guard let runtime, let cwd, !isChanging else { return }
-        if associatedFolders != savedFolders {
-            associatedFolders = savedFolders
-            needsRootApplication = true
-        }
         task?.cancel()
         let request = UUID()
         generation = request
@@ -160,10 +150,10 @@ final class AgentChatCapabilitiesController: ObservableObject {
         toolConfiguration = nil
         toolConnections = []
         toolConfigurationError = nil
-        let applyRoots = permitsRootApplication && (needsRootApplication || !associatedFolders.isEmpty)
+        let applyRoots = permitsRootApplication
         if applyRoots { needsRootApplication = true }
-        if needsRootApplication && !applyRoots && associationError == nil {
-            associationError = String(localized: "Refresh Skills when the current operation finishes to apply folder changes.")
+        if needsRootApplication && !applyRoots && workspaceError == nil {
+            workspaceError = String(localized: "Refresh Skills when the current operation finishes to reload the workspace.")
         }
         isChanging = applyRoots
         task = Task { [weak self] in
@@ -176,13 +166,13 @@ final class AgentChatCapabilitiesController: ObservableObject {
             }
             if applyRoots {
                 do {
-                    try await runtime.setChatMethodFolders(associatedFolders)
+                    try await runtime.setChatMethodFolders(skillRoots)
                     guard generation == request, !Task.isCancelled else { return }
                     needsRootApplication = false
-                    associationError = nil
+                    workspaceError = nil
                 } catch {
                     guard generation == request, !Task.isCancelled else { return }
-                    associationError = error.localizedDescription
+                    workspaceError = error.localizedDescription
                 }
                 isChanging = false
             }
@@ -306,34 +296,6 @@ final class AgentChatCapabilitiesController: ObservableObject {
         }
     }
 
-    var canChangeAssociations: Bool { isConnected && mayChange() && !isChanging && !isRefreshing }
-
-    func associate(_ directory: URL, threadID: String?) {
-        guard canChangeAssociations else {
-            associationError = String(localized: "Finish the current operation before changing Skill folders.")
-            return
-        }
-        do {
-            let path = try AgentChatMethodFolders.directory(directory).path
-            let folders = savedFolders
-            setFolders(folders.contains(path) ? folders : folders + [path], threadID: threadID)
-        } catch { associationError = error.localizedDescription }
-    }
-
-    func removeAssociation(_ path: String, threadID: String?) {
-        guard canChangeAssociations, associatedFolders.contains(path) else { return }
-        setFolders(savedFolders.filter { $0 != path }, threadID: threadID)
-    }
-
-    private func setFolders(_ paths: [String], threadID: String?) {
-        guard let key = folderPreferenceKey else { return }
-        guard paths != associatedFolders || needsRootApplication else { return }
-        associatedFolders = paths
-        defaults.set(paths, forKey: key)
-        needsRootApplication = true
-        refresh(threadID: threadID, applyAssociations: true)
-    }
-
     func contains(_ selection: AgentChatMethodSelection) -> Bool {
         hasMethods && methods.contains { $0.enabled && $0.selection.path == selection.path && $0.selection.name == selection.name }
     }
@@ -420,8 +382,11 @@ final class AgentChatCapabilitiesController: ObservableObject {
                 code: .workspaceNotReady,
                 message: "The Agent runtime is not connected.", recovery: "Connect the Scholium Agent runtime and inspect capabilities again.")
         }
-        let roots = savedFolders
-        associatedFolders = roots
+        guard !needsRootApplication else {
+            throw ScholiumMCPFailure(
+                code: .workspaceNotReady, message: "The Triptych Skills could not be loaded.", recovery: "Refresh Skills in Settings or reconnect Chat.")
+        }
+        let roots = skillRoots
         let methods = try await runtime.chatMethods(cwd: cwd)
         let tools = try await runtime.chatConnectedTools(threadID: threadID)
         let configuration = try await runtime.chatToolConfiguration(home: home)
@@ -464,48 +429,6 @@ final class AgentChatCapabilitiesController: ObservableObject {
         return .init(
             selection: method.selection, description: method.description, enabled: effective,
             scope: method.scope, dependencies: method.dependencies)
-    }
-
-    func agentSetSkillRoots(_ requested: [String], threadID: String?) async throws -> [String] {
-        guard let runtime else {
-            throw ScholiumMCPFailure(
-                code: .workspaceNotReady,
-                message: "The Agent runtime is not connected.", recovery: "Connect the Scholium Agent runtime and retry the Skill-root change.")
-        }
-        guard !isChanging else {
-            throw ScholiumMCPFailure(
-                code: .conflict,
-                message: "Another Skill or tool configuration change is in progress.", recovery: "Inspect capabilities again after that change finishes.")
-        }
-        let roots = try requested.map { try AgentChatMethodFolders.directory(URL(fileURLWithPath: $0)).path }
-        guard Set(roots).count == roots.count else {
-            throw ScholiumMCPFailure(
-                code: .invalidRequest,
-                message: "Skill discovery roots must be unique.", recovery: "Send each absolute directory only once.")
-        }
-        guard let key = folderPreferenceKey else {
-            throw ScholiumMCPFailure(
-                code: .workspaceNotReady,
-                message: "The runtime configuration scope is unavailable.", recovery: "Reconnect the Agent runtime and retry.")
-        }
-        let connection = connectionGeneration
-        isChanging = true
-        associatedFolders = roots
-        needsRootApplication = true
-        defaults.set(roots, forKey: key)
-        defer { if connectionGeneration == connection { isChanging = false } }
-        do {
-            try await runtime.setChatMethodFolders(roots)
-            guard connectionGeneration == connection, !Task.isCancelled else { throw CancellationError() }
-            needsRootApplication = false
-            associationError = nil
-            refresh(threadID: threadID)
-            return roots
-        } catch {
-            guard connectionGeneration == connection else { throw CancellationError() }
-            associationError = error.localizedDescription
-            throw error
-        }
     }
 
     func agentWriteTool(

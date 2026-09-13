@@ -19,7 +19,7 @@ struct AgentChatToolConfigurationTests {
         let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         let root = repository.appendingPathComponent(".build/agent-chat-tests/config-\(UUID())")
         defer { try? FileManager.default.removeItem(at: root) }
-        let controller = AgentChatController(triptychID: UUID(), root: root) { request in
+        let controller = fixtureChatController(triptychID: UUID(), root: root) { request in
             try! .init(requestID: request.requestID, result: .object([:]))
         }
         try await wait { controller.isLoaded }

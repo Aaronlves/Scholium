@@ -13,7 +13,7 @@ struct AgentChatTests {
         let root = try root()
         defer { try? FileManager.default.removeItem(at: root) }
         let triptych = UUID()
-        let controller = AgentChatController(triptychID: triptych, root: root, toolHandler: success)
+        let controller = fixtureChatController(triptychID: triptych, root: root, toolHandler: success)
         try await connect(controller)
         controller.editDraft("phased activity")
         controller.send()
@@ -36,7 +36,7 @@ struct AgentChatTests {
         #expect(!controller.canSend && !controller.canCompact)
         #expect(controller.selected?.updatedAt == order)
         await controller.disconnect()
-        let restored = AgentChatController(triptychID: triptych, root: root, toolHandler: success)
+        let restored = fixtureChatController(triptychID: triptych, root: root, toolHandler: success)
         try await eventually { restored.isLoaded }
         restored.select(id)
         #expect(restored.selected?.archivedAt != nil)
@@ -50,7 +50,7 @@ struct AgentChatTests {
         restored.deleteConversation(id)
         #expect(restored.selectedID == nil && !restored.conversations.contains { $0.id == id })
         await restored.disconnect()
-        let reopened = AgentChatController(triptychID: triptych, root: root, toolHandler: success)
+        let reopened = fixtureChatController(triptychID: triptych, root: root, toolHandler: success)
         try await eventually { reopened.isLoaded }
         #expect(!reopened.conversations.contains { $0.id == id })
         await reopened.disconnect()
@@ -60,7 +60,7 @@ struct AgentChatTests {
     func missingRuntimeHistory() async throws {
         let root = try root()
         defer { try? FileManager.default.removeItem(at: root) }
-        let controller = AgentChatController(triptychID: UUID(), root: root, toolHandler: success)
+        let controller = fixtureChatController(triptychID: UUID(), root: root, toolHandler: success)
         try await connect(controller)
         controller.editDraft("phased activity")
         controller.send()
@@ -90,7 +90,7 @@ struct AgentChatTests {
         let root = try root()
         defer { try? FileManager.default.removeItem(at: root) }
         let triptych = UUID()
-        let controller = AgentChatController(triptychID: triptych, root: root, toolHandler: success)
+        let controller = fixtureChatController(triptychID: triptych, root: root, toolHandler: success)
         try await connect(controller)
         controller.editDraft("timed activity")
         controller.send()
@@ -102,7 +102,7 @@ struct AgentChatTests {
         try await eventually { !controller.isRefreshingHistory }
         #expect(controller.selected?.turns.values.first == record)
         await controller.disconnect()
-        let restored = AgentChatController(triptychID: triptych, root: root, toolHandler: success)
+        let restored = fixtureChatController(triptychID: triptych, root: root, toolHandler: success)
         try await eventually { restored.isLoaded }
         #expect(restored.selected?.turns.values.first == record)
         await restored.disconnect()
@@ -112,7 +112,7 @@ struct AgentChatTests {
     func quoteDelivery() async throws {
         let root = try root()
         defer { try? FileManager.default.removeItem(at: root) }
-        let controller = AgentChatController(triptychID: UUID(), root: root, toolHandler: success)
+        let controller = fixtureChatController(triptychID: UUID(), root: root, toolHandler: success)
         try await connect(controller)
         controller.editDraft("phased activity")
         controller.send()
@@ -143,7 +143,7 @@ struct AgentChatTests {
     func atomicHistoryReconciliation() async throws {
         let root = try root()
         defer { try? FileManager.default.removeItem(at: root) }
-        let controller = AgentChatController(triptychID: UUID(), root: root, toolHandler: success)
+        let controller = fixtureChatController(triptychID: UUID(), root: root, toolHandler: success)
         try await connect(controller)
         controller.editDraft("phased activity")
         controller.send()
@@ -163,7 +163,7 @@ struct AgentChatTests {
     func backgroundActivityLifetime(exitCode: Int) async throws {
         let root = try root()
         defer { try? FileManager.default.removeItem(at: root) }
-        let controller = AgentChatController(triptychID: UUID(), root: root, toolHandler: success)
+        let controller = fixtureChatController(triptychID: UUID(), root: root, toolHandler: success)
         try await connect(controller)
         controller.editDraft("background activity")
         controller.send()
@@ -203,7 +203,7 @@ struct AgentChatTests {
         let root = try root()
         defer { try? FileManager.default.removeItem(at: root) }
         let id = UUID()
-        let controller = AgentChatController(triptychID: id, root: root) { request in
+        let controller = fixtureChatController(triptychID: id, root: root) { request in
             try! .init(requestID: request.requestID, result: .object([:]))
         }
         try await connect(controller)
@@ -215,7 +215,7 @@ struct AgentChatTests {
         #expect(messages.filter { $0.phase == .finalAnswer }.count == 1)
         #expect(messages.filter { $0.phase != nil }.allSatisfy { $0.turnID != nil })
         await controller.disconnect()
-        let reopened = AgentChatController(triptychID: id, root: root) { request in
+        let reopened = fixtureChatController(triptychID: id, root: root) { request in
             try! .init(requestID: request.requestID, result: .object([:]))
         }
         try await connect(reopened)
@@ -238,7 +238,7 @@ struct AgentChatTests {
         let root = try root()
         defer { try? FileManager.default.removeItem(at: root) }
         let triptych = UUID()
-        let controller = AgentChatController(triptychID: triptych, root: root, toolHandler: success)
+        let controller = fixtureChatController(triptychID: triptych, root: root, toolHandler: success)
         try await connect(controller)
         controller.editDraft(working ? "hold async-form" : "async-form")
         controller.send()
@@ -268,7 +268,7 @@ struct AgentChatTests {
         #expect(replies.map(\.answer) == ["Compare the passages", "第二段，保留原文。"])
         #expect(controller.selected?.messages.last(where: { $0.role == .user })?.text.contains("send_user_message") == false)
         await controller.disconnect()
-        let reopened = AgentChatController(triptychID: triptych, root: root, toolHandler: success)
+        let reopened = fixtureChatController(triptychID: triptych, root: root, toolHandler: success)
         try await eventually { reopened.isLoaded }
         #expect(reopened.pendingAsyncQuestion == nil)
         #expect(reopened.selected?.messages.first(where: { $0.id == message.id })?.asyncQuestion?.responses.count == 2)
@@ -280,7 +280,7 @@ struct AgentChatTests {
         let root = try root()
         defer { try? FileManager.default.removeItem(at: root) }
         let triptych = UUID()
-        let initial = AgentChatController(triptychID: triptych, root: root, toolHandler: success)
+        let initial = fixtureChatController(triptychID: triptych, root: root, toolHandler: success)
         try await connect(initial)
         initial.editDraft("async-form")
         initial.send()
@@ -289,7 +289,7 @@ struct AgentChatTests {
         let questions = try #require(request.asyncQuestion?.questions)
         initial.editAsyncAnswers(request.id, values: [questions[0].id: .text("保留回答草稿")])
         await initial.disconnect()
-        let controller = AgentChatController(triptychID: triptych, root: root, toolHandler: success)
+        let controller = fixtureChatController(triptychID: triptych, root: root, toolHandler: success)
         try await connect(controller)
         #expect(controller.pendingAsyncQuestion?.asyncQuestion?.answers[questions[0].id] == .text("保留回答草稿"))
         let conversationID = try #require(controller.selectedID)
@@ -324,7 +324,7 @@ struct AgentChatTests {
     func inputPreferenceAndQueueEditing(behavior: AgentChatInputBehavior) async throws {
         let root = try root()
         defer { try? FileManager.default.removeItem(at: root) }
-        let controller = AgentChatController(triptychID: UUID(), root: root, toolHandler: success)
+        let controller = fixtureChatController(triptychID: UUID(), root: root, toolHandler: success)
         try await connect(controller)
         controller.editDraft("hold activity")
         controller.submitDraft(whileWorking: behavior)  // Idle always starts a turn.
@@ -393,7 +393,7 @@ struct AgentChatTests {
     func renameConversation() async throws {
         let root = try root()
         defer { try? FileManager.default.removeItem(at: root) }
-        let controller = AgentChatController(triptychID: UUID(), root: root, toolHandler: success)
+        let controller = fixtureChatController(triptychID: UUID(), root: root, toolHandler: success)
         try await eventually { controller.isLoaded }
         let original = try #require(controller.selected)
         controller.newConversation()
@@ -412,7 +412,8 @@ struct AgentChatTests {
         defer { try? FileManager.default.removeItem(at: root) }
         var writtenNotes: [String] = []
         let triptych = UUID()
-        let registry = AgentChatRegistry(root: root, previewUpdate: preview) { request in
+        let registry = AgentChatRegistry(root: root, workspaceDirectory: { try agentChatFixtureWorkspace(root: root, triptychID: $0) }, previewUpdate: preview)
+        { request in
             if request.tool == .updateNote { writtenNotes.append(request.arguments["note_id"]?.stringValue ?? "") }
             return success(request)
         }
@@ -470,7 +471,7 @@ struct AgentChatTests {
     func switchDuringSend() async throws {
         let root = try root()
         defer { try? FileManager.default.removeItem(at: root) }
-        let controller = AgentChatController(triptychID: UUID(), root: root, toolHandler: success)
+        let controller = fixtureChatController(triptychID: UUID(), root: root, toolHandler: success)
         try await connect(controller)
         let first = try #require(controller.selectedID)
         controller.setEffort("high")
@@ -506,7 +507,7 @@ struct AgentChatTests {
     func mismatchedSteerAcknowledgement() async throws {
         let root = try root()
         defer { try? FileManager.default.removeItem(at: root) }
-        let controller = AgentChatController(triptychID: UUID(), root: root, toolHandler: success)
+        let controller = fixtureChatController(triptychID: UUID(), root: root, toolHandler: success)
         try await connect(controller)
         controller.editDraft("hold initial request")
         controller.send()
@@ -525,7 +526,7 @@ struct AgentChatTests {
         let root = try root()
         defer { try? FileManager.default.removeItem(at: root) }
         var writes = 0
-        let controller = AgentChatController(triptychID: UUID(), root: root, previewUpdate: preview) { request in
+        let controller = fixtureChatController(triptychID: UUID(), root: root, previewUpdate: preview) { request in
             if request.tool == .updateNote { writes += 1 }
             return success(request)
         }
@@ -560,7 +561,7 @@ struct AgentChatTests {
     func searchRenewalRuntimeWork() async throws {
         let root = try root()
         defer { try? FileManager.default.removeItem(at: root) }
-        let controller = AgentChatController(triptychID: UUID(), root: root) { request in success(request) }
+        let controller = fixtureChatController(triptychID: UUID(), root: root) { request in success(request) }
         try await connect(controller)
         controller.editDraft("establish")
         controller.send()
@@ -596,7 +597,7 @@ struct AgentChatTests {
     func searchRenewalOtherConversation() async throws {
         let root = try root()
         defer { try? FileManager.default.removeItem(at: root) }
-        let controller = AgentChatController(triptychID: UUID(), root: root) { request in success(request) }
+        let controller = fixtureChatController(triptychID: UUID(), root: root) { request in success(request) }
         try await connect(controller)
         let first = try #require(controller.selectedID)
         controller.editDraft("establish")
@@ -628,7 +629,7 @@ struct AgentChatTests {
     func searchRenewalCancellation() async throws {
         let root = try root()
         defer { try? FileManager.default.removeItem(at: root) }
-        let controller = AgentChatController(triptychID: UUID(), root: root) { request in success(request) }
+        let controller = fixtureChatController(triptychID: UUID(), root: root) { request in success(request) }
         try await connect(controller)
         controller.editDraft("establish")
         controller.send()
@@ -656,7 +657,7 @@ struct AgentChatTests {
     func searchRenewalLaunchFailure() async throws {
         let root = try root()
         defer { try? FileManager.default.removeItem(at: root) }
-        let controller = AgentChatController(triptychID: UUID(), root: root) { request in success(request) }
+        let controller = fixtureChatController(triptychID: UUID(), root: root) { request in success(request) }
         try await connect(controller)
         controller.editDraft("establish")
         controller.send()
@@ -683,7 +684,7 @@ struct AgentChatTests {
         let root = try root()
         defer { try? FileManager.default.removeItem(at: root) }
         let triptych = UUID()
-        let controller = AgentChatController(triptychID: triptych, root: root) { request in success(request) }
+        let controller = fixtureChatController(triptychID: triptych, root: root) { request in success(request) }
         try await connect(controller)
         let first = try #require(controller.selectedID)
         #expect(controller.selectedModel?.id == "fixture-picker")
@@ -714,7 +715,7 @@ struct AgentChatTests {
         try await eventually { !controller.isBusy }
         #expect(controller.selected?.preferences.effort == "high")
         await controller.disconnect()
-        let reopened = AgentChatController(triptychID: triptych, root: root) { request in success(request) }
+        let reopened = fixtureChatController(triptychID: triptych, root: root) { request in success(request) }
         try await eventually { reopened.isLoaded }
         reopened.select(first)
         #expect(reopened.selected?.preferences.webSearch == .live)
@@ -727,7 +728,7 @@ struct AgentChatTests {
     func resetRuntimePreferences() async throws {
         let root = try root()
         defer { try? FileManager.default.removeItem(at: root) }
-        let controller = AgentChatController(triptychID: UUID(), root: root) { request in success(request) }
+        let controller = fixtureChatController(triptychID: UUID(), root: root) { request in success(request) }
         try await connect(controller)
         controller.setModel("fixture-model")
         controller.setEffort("high")
@@ -753,7 +754,7 @@ struct AgentChatTests {
     func compactionLifecycle() async throws {
         let root = try root()
         defer { try? FileManager.default.removeItem(at: root) }
-        let controller = AgentChatController(triptychID: UUID(), root: root) { request in success(request) }
+        let controller = fixtureChatController(triptychID: UUID(), root: root) { request in success(request) }
         try await connect(controller)
         controller.editDraft("establish history")
         controller.send()
@@ -776,7 +777,7 @@ struct AgentChatTests {
     func steerQueuedInput(uncertain: Bool) async throws {
         let root = try root()
         defer { try? FileManager.default.removeItem(at: root) }
-        let controller = AgentChatController(triptychID: UUID(), root: root, toolHandler: success)
+        let controller = fixtureChatController(triptychID: UUID(), root: root, toolHandler: success)
         try await connect(controller)
         controller.editDraft("hold active turn")
         controller.send()
@@ -828,7 +829,7 @@ struct AgentChatTests {
     func steerQueuedMissingMaterial() async throws {
         let root = try root()
         defer { try? FileManager.default.removeItem(at: root) }
-        let controller = AgentChatController(triptychID: UUID(), root: root, toolHandler: success)
+        let controller = fixtureChatController(triptychID: UUID(), root: root, toolHandler: success)
         try await connect(controller)
         controller.editDraft("hold active turn")
         controller.send()
@@ -860,7 +861,7 @@ struct AgentChatTests {
     func queuedInput() async throws {
         let root = try root()
         defer { try? FileManager.default.removeItem(at: root) }
-        let controller = AgentChatController(triptychID: UUID(), root: root) { request in success(request) }
+        let controller = fixtureChatController(triptychID: UUID(), root: root) { request in success(request) }
         try await connect(controller)
         controller.editDraft("hold active turn")
         controller.send()
@@ -894,7 +895,7 @@ struct AgentChatTests {
     func queuedInputAutoDispatch() async throws {
         let root = try root()
         defer { try? FileManager.default.removeItem(at: root) }
-        let controller = AgentChatController(triptychID: UUID(), root: root) { request in success(request) }
+        let controller = fixtureChatController(triptychID: UUID(), root: root) { request in success(request) }
         try await connect(controller)
         controller.editDraft("hold-queue active turn")
         controller.send()
@@ -918,7 +919,7 @@ struct AgentChatTests {
     func stageContext() async throws {
         let root = try root()
         defer { try? FileManager.default.removeItem(at: root) }
-        let controller = AgentChatController(triptychID: UUID(), root: root) { request in success(request) }
+        let controller = fixtureChatController(triptychID: UUID(), root: root) { request in success(request) }
         try await eventually { controller.isLoaded }
         controller.editDraft("My existing question")
         let receiver: any AgentChatContextReceiving = controller
@@ -942,7 +943,7 @@ struct AgentChatTests {
         let root = try root()
         defer { try? FileManager.default.removeItem(at: root) }
         let triptych = UUID()
-        let controller = AgentChatController(triptychID: triptych, root: root) { request in
+        let controller = fixtureChatController(triptychID: triptych, root: root) { request in
             #expect(request.arguments["triptych_id"]?.stringValue == triptych.uuidString.lowercased())
             return try! .init(
                 requestID: request.requestID,
@@ -974,7 +975,7 @@ struct AgentChatTests {
         let original = AgentChatDisplayScope(windowID: UUID(), registrationID: UUID())
         var visible: AgentChatDisplayScope? = original
         var calls: [ScholiumMCPBridgeRequest] = []
-        let controller = AgentChatController(triptychID: UUID(), root: root, displayWindow: { _ in visible }) { request in
+        let controller = fixtureChatController(triptychID: UUID(), root: root, displayWindow: { _ in visible }) { request in
             calls.append(request)
             return try! .init(
                 requestID: request.requestID,
@@ -1011,7 +1012,7 @@ struct AgentChatTests {
         defer { try? FileManager.default.removeItem(at: root) }
         var release: CheckedContinuation<Void, Never>?
         var writes = 0
-        let controller = AgentChatController(
+        let controller = fixtureChatController(
             triptychID: UUID(), root: root,
             previewUpdate: { request in
                 await withCheckedContinuation { release = $0 }
@@ -1047,7 +1048,7 @@ struct AgentChatTests {
         defer { try? FileManager.default.removeItem(at: root) }
         var writes = 0
         let triptych = UUID()
-        let controller = AgentChatController(triptychID: triptych, root: root, previewUpdate: preview) { request in
+        let controller = fixtureChatController(triptychID: triptych, root: root, previewUpdate: preview) { request in
             #expect(request.arguments["triptych_id"] == .string(triptych.uuidString.lowercased()))
             if request.tool == tool { writes += 1 }
             return success(request)
@@ -1112,7 +1113,7 @@ struct AgentChatTests {
         defer { try? FileManager.default.removeItem(at: root) }
         let note = UUID()
         let change = UUID()
-        let controller = AgentChatController(triptychID: UUID(), root: root) { request in
+        let controller = fixtureChatController(triptychID: UUID(), root: root) { request in
             await Task.yield()
             let mode = request.arguments["content"]?.stringValue ?? "read"
             if mode == "failed" {
@@ -1182,7 +1183,7 @@ struct AgentChatTests {
         try await eventually { controller.state == .ready }
         #expect(controller.selected?.messages.contains { $0.activity?.kind == .command && $0.activity?.status == .failed } == true)
         await controller.disconnect()
-        let restored = AgentChatController(triptychID: controller.triptychID, root: root, toolHandler: success)
+        let restored = fixtureChatController(triptychID: controller.triptychID, root: root, toolHandler: success)
         try await eventually { restored.isLoaded }
         #expect(restored.selected?.messages.compactMap(\.activity).contains { $0.status.isActive } == false)
         #expect(restored.selected?.messages.first { $0.changeID == change }?.activity?.files.first?.effect == .edited)
@@ -1197,7 +1198,7 @@ struct AgentChatTests {
         let root = try root()
         defer { try? FileManager.default.removeItem(at: root) }
         let triptych = UUID()
-        let controller = AgentChatController(triptychID: triptych, root: root, toolHandler: success)
+        let controller = fixtureChatController(triptychID: triptych, root: root, toolHandler: success)
         try await connect(controller)
         controller.setPermission(.fullAccess)
         controller.editDraft("first")
@@ -1224,7 +1225,7 @@ struct AgentChatTests {
         controller.stop()
         try await eventually { controller.state == .ready }
         await controller.disconnect()
-        let restored = AgentChatController(triptychID: triptych, root: root, toolHandler: success)
+        let restored = fixtureChatController(triptychID: triptych, root: root, toolHandler: success)
         try await connect(restored)
         #expect(restored.selected?.permission == .fullAccess)
         #expect(restored.selected?.threadID == firstThread)
@@ -1236,7 +1237,7 @@ struct AgentChatTests {
     func uncertainDelivery() async throws {
         let root = try root()
         defer { try? FileManager.default.removeItem(at: root) }
-        let controller = AgentChatController(triptychID: UUID(), root: root, toolHandler: success)
+        let controller = fixtureChatController(triptychID: UUID(), root: root, toolHandler: success)
         try await connect(controller)
         controller.editDraft("disconnect")
         controller.send()
@@ -1253,7 +1254,7 @@ struct AgentChatTests {
     func disconnectDuringConnect() async throws {
         let root = try root()
         defer { try? FileManager.default.removeItem(at: root) }
-        let controller = AgentChatController(triptychID: UUID(), root: root, toolHandler: success)
+        let controller = fixtureChatController(triptychID: UUID(), root: root, toolHandler: success)
         try await eventually { controller.isLoaded }
         controller.connect(executable: executable, home: controller.runtimeHome, helper: executable)
         await controller.disconnect()
@@ -1268,7 +1269,7 @@ struct AgentChatTests {
         let root = try root()
         defer { try? FileManager.default.removeItem(at: root) }
         let runtime = CodexAppServer()
-        try await runtime.start(executable: executable, home: root)
+        try await runtime.start(executable: executable, home: root, workingDirectory: root)
         async let first = runtime.request("test/echo", params: ["text": .string("中文 😀")])
         async let second = runtime.request("test/echo", params: ["text": .string("second")])
         #expect(try await first.objectValue?["text"] == .string("中文 😀"))
@@ -1292,7 +1293,7 @@ struct AgentChatTests {
         let root = try root()
         defer { try? FileManager.default.removeItem(at: root) }
         let triptych = UUID()
-        let controller = AgentChatController(triptychID: triptych, root: root, toolHandler: success)
+        let controller = fixtureChatController(triptychID: triptych, root: root, toolHandler: success)
         try await connect(controller)
         controller.editDraft("A question")
         controller.send()
@@ -1308,7 +1309,7 @@ struct AgentChatTests {
         #expect(controller.selected?.messages == messages)
         try await controller.flushPersistence()
         await controller.disconnect()
-        let reopened = AgentChatController(triptychID: triptych, root: root, toolHandler: success)
+        let reopened = fixtureChatController(triptychID: triptych, root: root, toolHandler: success)
         try await eventually { reopened.isLoaded }
         let archived = try #require(reopened.conversations.first { $0.id == id })
         #expect(archived.archivedAt != nil && archived.draft == "A retained follow-up")
@@ -1328,7 +1329,7 @@ struct AgentChatTests {
         defer { defaults.removePersistentDomain(forName: suite) }
         defaults.set(executable.path, forKey: "agent.codex.executable")
         defaults.set(executable.path, forKey: "agent.scholium.helper")
-        let controller = AgentChatController(triptychID: UUID(), root: root, toolHandler: success)
+        let controller = fixtureChatController(triptychID: UUID(), root: root, toolHandler: success)
         try await eventually { controller.isLoaded }
         controller.connectConfigured(using: defaults)
         try await eventually { controller.state == .ready && controller.account != nil }
@@ -1349,7 +1350,7 @@ struct AgentChatTests {
         defaults.set(executable.path, forKey: "agent.codex.executable")
         defaults.set(executable.path, forKey: "agent.scholium.helper")
         let triptych = UUID()
-        let controller = AgentChatController(triptychID: triptych, root: root, methodDefaults: defaults, toolHandler: success)
+        let controller = fixtureChatController(triptychID: triptych, root: root, methodDefaults: defaults, toolHandler: success)
         try await eventually { controller.isLoaded }
         controller.connectConfigured()
         try await eventually { controller.account != nil && controller.state == .ready }
@@ -1366,11 +1367,11 @@ struct AgentChatTests {
             from: Data(contentsOf: controller.runtimeHome.appendingPathComponent("fixture-threads.json")))
         #expect(history.objectValue?[thread]?.objectValue?["turns"]?.arrayValue?.count == 1)
         await controller.disconnect()
-        let reopened = AgentChatController(triptychID: triptych, root: root, methodDefaults: defaults, toolHandler: success)
+        let reopened = fixtureChatController(triptychID: triptych, root: root, methodDefaults: defaults, toolHandler: success)
         try await eventually { reopened.isLoaded && reopened.account != nil && !reopened.isBusy }
         #expect(reopened.selected?.threadID == thread && reopened.selected?.messages.filter { $0.role == .user }.count == 1)
         await reopened.disconnectByUser()
-        let disconnected = AgentChatController(triptychID: triptych, root: root, methodDefaults: defaults, toolHandler: success)
+        let disconnected = fixtureChatController(triptychID: triptych, root: root, methodDefaults: defaults, toolHandler: success)
         try await eventually { disconnected.isLoaded }
         #expect(disconnected.connectionState == .disconnected && disconnected.account == nil)
         await disconnected.disconnect()
@@ -1385,7 +1386,7 @@ struct AgentChatTests {
         defer { defaults.removePersistentDomain(forName: suite) }
         defaults.set(executable.path, forKey: "agent.codex.executable")
         defaults.set(executable.path, forKey: "agent.scholium.helper")
-        let controller = AgentChatController(triptychID: UUID(), root: root, methodDefaults: defaults, toolHandler: success)
+        let controller = fixtureChatController(triptychID: UUID(), root: root, methodDefaults: defaults, toolHandler: success)
         try await eventually { controller.isLoaded }
         controller.connectConfigured()
         try await eventually { controller.account != nil && controller.state == .ready }
@@ -1417,7 +1418,7 @@ struct AgentChatTests {
         let root = try root()
         defer { try? FileManager.default.removeItem(at: root) }
         var reads = 0
-        let controller = AgentChatController(triptychID: UUID(), root: root) { request in
+        let controller = fixtureChatController(triptychID: UUID(), root: root) { request in
             reads += 1
             return success(request)
         }
@@ -1489,7 +1490,7 @@ struct AgentChatTests {
         defer { try? FileManager.default.removeItem(at: root) }
         let path = try #require(ProcessInfo.processInfo.environment["SCHOLIUM_CODEX_SMOKE_EXECUTABLE"])
         let runtime = CodexAppServer()
-        try await runtime.start(executable: URL(fileURLWithPath: path), home: root)
+        try await runtime.start(executable: URL(fileURLWithPath: path), home: root, workingDirectory: root)
         let initialized = try await runtime.request(
             "initialize",
             params: [

@@ -101,9 +101,10 @@ in Settings. These machine paths, credentials and runtime
 data stay outside portable `.scholium`; existing Triptych control settings keep their
 current portable owner. A separate configuration directory is the default; choosing an
 existing runtime directory explicitly inherits its configuration and tools. Scholium
-does not copy credentials or change global host settings. Research Chat excludes
-automatic repository instructions; Core Protocol and selected Skills supply
-research context. Notes remain usable offline.
+does not copy credentials or change global host settings. Each Triptych's
+`.scholium` is its Chat working directory, separate from the shared runtime home.
+Codex loads its `AGENTS.md` with normal instruction discovery bounded at the
+working directory. Core Protocol remains protected. Notes remain usable offline.
 
 After an explicit successful connection, Scholium remembers that connection intent
 locally and restores the connection when reopening the Triptych. Login remains
@@ -208,7 +209,7 @@ conversation. Show application progress without treating planned renewal as a
 connection failure. Cancellation or failure preserves input and never resends
 it; explicit disconnect cancels pending renewal. A setting is not presented as
 effective merely because a resume request accepted its configuration fields.
-Connection renewal reapplies associated Skill folders before reopening new-turn
+Connection renewal reapplies the Triptych Skills directory before reopening new-turn
 admission. Initialization is distinct from changing configuration during work;
 the renewal guard cannot prevent restoration of the new connection's own roots.
 Failed root application retains its scoped error and explicit recovery route.
@@ -228,14 +229,15 @@ summary never gains source authority or becomes a second research memory.
 
 ### 8.7.3 Skills and connected tools
 
-Settings provides runtime-backed discovery, association, installation,
-enable/disable and removal of Skills.
-Core Protocol appears separately as always included and read-only, with a Finder
-reveal; it is never optional.
-Chat provides explicit Skill selection for a message. Selected Skills remain
-distinct from runtime-confirmed invocations. Discovery errors, unavailable
-dependencies and disabled Skills remain visible. Core Protocol retains §8.1
-precedence and cannot be removed.
+Each Triptych owns `.scholium/AGENTS.md` and `skills/<name>/SKILL.md` with supporting
+files. Chat creates missing instruction/Skills entries, preserving existing files.
+Codex discovers local and global Skills without registration. Users and tasked
+Agents author local files with ordinary file tools; app-owned records retain their
+existing operations. Local guidance cannot expand permission or override Core Protocol.
+Settings offers discovery, Refresh and enable/disable. Core Protocol remains
+separate, always included, protected and read-only, with Finder reveal.
+Chat offers per-message Skill selection, distinct from confirmed invocation.
+Discovery errors, unavailable dependencies and disabled Skills remain visible.
 
 Skill choices belong to the unsent message and remain visible in the retained
 message after sending. Sending resolves each exact selected Skill against the
@@ -245,18 +247,14 @@ changes require idle; Agent capability tools may change runtime Skills during an
 active turn without changing its source or permission. Inventory failure remains
 distinct from emptiness.
 
-The runtime is the single owner of installed Skills and tool configuration;
-Scholium neither mirrors an editable inventory nor implements a second package
-manager. Removing an association preserves researcher-authored Skill files.
-Installation into, or mutation of, a selected shared runtime configuration
-states that scope before confirmation. No action silently changes another host.
+The runtime owns discovery, enablement and tool configuration; Scholium has no
+package manager. Shared configuration changes state their scope before confirmation.
 
-Local folder association is a Scholium launch preference scoped to the selected
-runtime configuration folder. It supplies additional discovery roots to that
-app-server process and is reapplied when connecting. The preference records
-only the researcher's chosen folders, not a second installed-Skill inventory.
-Native root changes wait for idle; Agent may apply a current-turn change.
-Removal preserves files; failed application remains visible.
+The Triptych Skills directory is process-bound on connection and renewal, with no
+path preference. Runtime notifications or Refresh reload Skills; instructions
+follow runtime session loading. Discovery failure preserves the draft and offers
+refresh/reconnect repair. Shared machine-local login and runtime state never merge
+Triptych conversations or local Skill directories.
 
 Connected tools expose identity, connection, authentication, availability and
 enabled state with runtime-supported setup, sign-in, refresh and removal routes.

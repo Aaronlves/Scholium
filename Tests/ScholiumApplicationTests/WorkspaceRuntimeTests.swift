@@ -45,6 +45,7 @@ struct WorkspaceRuntimeTests {
         )
 
         #expect(handle.assignment.id == manifest.id)
+        #expect(try await handle.agentChatWorkspaceURL().path == manifestURL.deletingLastPathComponent().path)
         for slot in WorkspaceVaultSlot.allCases {
             #expect(handle.assignment.vault(for: slot)?.id == manifest.vaultIDs[slot])
         }

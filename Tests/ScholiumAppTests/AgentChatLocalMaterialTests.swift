@@ -37,7 +37,7 @@ struct AgentChatLocalMaterialTests {
         let file = root.appendingPathComponent("scanned.pdf")
         let original = try #require(pdf.dataRepresentation())
         try original.write(to: file)
-        let controller = AgentChatController(triptychID: UUID(), root: root) { request in
+        let controller = fixtureChatController(triptychID: UUID(), root: root) { request in
             try! .init(requestID: request.requestID, result: .object([:]))
         }
         try await wait { controller.isLoaded }
@@ -90,7 +90,7 @@ struct AgentChatLocalMaterialTests {
         bitmap.bitmapData?.initialize(repeating: 255, count: bitmap.bytesPerRow * bitmap.pixelsHigh)
         let bytes = try #require(bitmap.representation(using: .png, properties: [:]))
         try bytes.write(to: file)
-        let controller = AgentChatController(triptychID: UUID(), root: root) { request in
+        let controller = fixtureChatController(triptychID: UUID(), root: root) { request in
             try! .init(requestID: request.requestID, result: .object([:]))
         }
         try await wait { controller.isLoaded }

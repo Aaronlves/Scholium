@@ -146,7 +146,7 @@ messages, drafts and permission. Each conversation has one `AgentChatExecutionSt
 value for its turn admission, connection route, input delivery, approvals, errors and task handles.
 `AgentChatStorage` atomically
 persists versioned machine-local history under `Chat/<triptych-id>`; a corrupt
-archive blocks overwriting it. The default Codex home is `Chat/Codex`.
+archive blocks overwriting it. The shared default Codex home is `Chat/Codex`; each Triptych has its own portable Chat cwd.
 
 The Chat controller retains successful connection intent per Triptych in its
 machine-local preferences; the existing configured paths and runtime login keep
@@ -459,7 +459,7 @@ including loaded descendants and background commands. Connection identity and
 cancellation guard replacement, preserving the existing archive and sign-in;
 presentation owns no parallel reconnect or replay loop.
 Connection construction awaits capability initialization before publishing
-readiness. The capability owner applies saved Skill roots through its private
+readiness. The capability owner applies the Triptych Skill root through its private
 connection-initialization route; ordinary configuration edits retain the existing
 idle admission check. Renewal cannot block its own initialization.
 
@@ -491,8 +491,8 @@ Only a successfully read configuration without that connection permits the defau
 read-only server in thread overrides; disabled/custom connections remain untouched.
 Chat's research instruction adapter provides Triptych routing and source-link
 context. The bundled Core Protocol owns research boundaries. Runtime launch and
-thread overrides disable automatic project-document discovery; selected Skills
-and runtime account/configuration remain with their existing owners.
+thread overrides enable native project-document discovery bounded by the working
+directory. Shared account/configuration stays outside the portable workspace.
 
 `AgentChatSearch` derives literal matches and passages directly from retained
 public conversation values. It owns no index, provider access or source reads.
@@ -586,17 +586,17 @@ choices remain visible and non-sending. The connection Settings owner refreshes
 inventory for its selected thread; its native capability subview owns visible
 grouping and shared-setting confirmation presentation.
 
-Associated Skill folders are launch preferences in UserDefaults, keyed by the
-normalized selected Codex configuration path. The capability owner reads the
-latest preference before editing or refreshing, so separate connections merge
-folder choices instead of overwriting a stale projection. Each process tracks
-whether it has applied that preference through `skills/extraRoots/set`; a
-background inventory refresh cannot apply new roots or retry a failed request.
-Explicit Refresh validates folders and reapplies them when idle. The Application
-boundary validates local directories without reading or changing Skill contents.
-Settings uses the existing window-owned folder picker and captures configuration
-scope across its asynchronous result. Removal changes only the launch preference
-and process discovery roots; source directories and Skill bytes remain untouched.
+The live WorkspaceHandle supplies its control-store URL to the Chat registry.
+Each controller resolves that Triptych workspace on connection; AgentChatWorkspace
+prepares skills/ and a missing AGENTS.md without overwriting researcher files.
+CODEX_HOME remains the selected machine-local configuration; process and thread cwd
+use .scholium. Empty project-root markers bound native instruction loading to cwd.
+AgentChatCapabilitiesController derives one process-local extra Skill
+root at .scholium/skills, applied through skills/extraRoots/set before readiness.
+It persists no folder preferences. Runtime notifications and explicit Refresh
+reload discovery; failed root application blocks sending until repaired.
+Configuration controls enable/disable existing Skills. Requested local Skill
+creation uses runtime file tools and normal discovery, with no registration API.
 
 Tool authentication has a separate connection-generation-bound task in the
 capability owner, so ordinary inventory refresh cannot cancel or falsely confirm

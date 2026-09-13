@@ -21,8 +21,9 @@ Scholium separates three instruction owners:
 2. The release-bundled **Scholium Core Protocol** is a protected, concise
    System Skill. It tells an Agent how to retrieve and use Scholium material
    without confusing source, inference, permission, or researcher authorship.
-3. Researcher-owned Skills are optional instructions installed and
-   selected in the Agent host. They may refine philosophical method but cannot
+3. Researcher-owned Skills are optional instructions discovered and
+   used by the Agent host, including Triptych-local Chat Skills under §8.7.
+   They may refine philosophical method but cannot
    create evidence, expand write scope, weaken source fidelity, or override the
    Core Protocol.
 
@@ -73,10 +74,11 @@ the verified absolute bundled-helper path. Scholium does not edit either externa
 settings or claim that its configuration succeeded. In-app Chat has an
 additional conversation-token-scoped capability surface: when the researcher
 explicitly asks the Agent to manage Scholium, it may inspect and change the
-selected runtime's Skills, discovery roots, MCP Tool connections and
+selected runtime's Skills, MCP Tool connections and
 conversation settings through the runtime owner. This does not edit host
 configuration files directly, create a second package manager or copy/delete
-Skill bytes. The Core Protocol is automatically supplied to in-app Chat and
+Skill bytes through configuration controls. Requested Triptych-local instruction
+and Skill authoring uses runtime file tools under §8.7. The Core Protocol is automatically supplied to in-app Chat and
 remains a protected application resource; external hosts may install it
 alongside their own Skills.
 

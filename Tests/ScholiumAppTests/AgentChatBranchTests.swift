@@ -19,7 +19,7 @@ struct AgentChatBranchTests {
         }
     }
     private func controller(root: URL) async throws -> AgentChatController {
-        let controller = AgentChatController(triptychID: UUID(), root: root) { request in
+        let controller = fixtureChatController(triptychID: UUID(), root: root) { request in
             try! .init(requestID: request.requestID, result: .object(["status": .string("ok")]))
         }
         try await wait { controller.isLoaded }

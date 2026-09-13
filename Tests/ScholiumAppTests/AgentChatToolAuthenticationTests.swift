@@ -31,7 +31,7 @@ struct AgentChatToolAuthenticationTests {
     func authentication() async throws {
         let root = repository.appendingPathComponent(".build/agent-chat-tests/auth-\(UUID())")
         defer { try? FileManager.default.removeItem(at: root) }
-        let controller = AgentChatController(triptychID: UUID(), root: root) { request in
+        let controller = fixtureChatController(triptychID: UUID(), root: root) { request in
             try! .init(requestID: request.requestID, result: .object([:]))
         }
         try await connect(controller)
@@ -72,7 +72,7 @@ struct AgentChatToolAuthenticationTests {
     func unsafeAndDisconnect() async throws {
         let root = repository.appendingPathComponent(".build/agent-chat-tests/auth-\(UUID())")
         defer { try? FileManager.default.removeItem(at: root) }
-        let controller = AgentChatController(triptychID: UUID(), root: root) { request in
+        let controller = fixtureChatController(triptychID: UUID(), root: root) { request in
             try! .init(requestID: request.requestID, result: .object([:]))
         }
         try await connect(controller)

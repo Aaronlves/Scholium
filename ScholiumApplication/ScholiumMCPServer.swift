@@ -519,7 +519,7 @@ public actor ScholiumMCPServer {
         tool(
             .capabilities,
             description:
-                "Inspect the current in-app Agent runtime: available Skills, associated Skill roots, connected MCP tools, and the writable tool-configuration revision. This is an observation, not permission to change research Notes.",
+                "Inspect the current in-app Agent runtime: available Skills, the Triptych Skills directory, connected MCP tools, and the writable tool-configuration revision. This is an observation, not permission to change research Notes.",
             properties: [:],
             required: [],
             readOnly: true,
@@ -529,12 +529,11 @@ public actor ScholiumMCPServer {
         tool(
             .configureSkill,
             description:
-                "Manage a runtime-owned Skill or its additional discovery roots at the researcher's explicit request. Skill files are never rewritten or deleted; the protected Scholium Core Protocol cannot be disabled.",
+                "Enable or disable an available Skill at the researcher's request. Triptych Skills are discovered automatically from the workspace skills directory. Use runtime file tools to create or edit a requested Skill there; this control does not rewrite files. The protected Scholium Core Protocol cannot be disabled.",
             properties: [
-                "action": enumSchema(["enable", "disable", "add_root", "remove_root", "set_roots"]),
-                "path": stringSchema("Exact Skill.md path for enable/disable, or exact directory path for root actions."),
-                "name": stringSchema("Optional Skill name used with an exact Skill.md path."),
-                "roots": arraySchema(stringSchema("Absolute local Skill discovery directory.")),
+                "action": enumSchema(["enable", "disable"]),
+                "path": stringSchema("Exact SKILL.md path for enable/disable."),
+                "name": stringSchema("Optional Skill name used with an exact SKILL.md path."),
             ],
             required: ["action"],
             readOnly: false,

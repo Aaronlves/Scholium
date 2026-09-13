@@ -85,7 +85,12 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
     var chatRegistry: AgentChatRegistry {
         if let current = chatRegistryStorage { return current }
         let registry = AgentChatRegistry(
-            root: applicationSupportURL.appendingPathComponent("Chat"), zotero: applicationRuntime.zotero,
+            root: applicationSupportURL.appendingPathComponent("Chat"),
+            workspaceDirectory: { [applicationRuntime] id in
+                let workspace = try await applicationRuntime.openWorkspace(id: id)
+                return try await workspace.agentChatWorkspaceURL()
+            },
+            zotero: applicationRuntime.zotero,
             displayWindow: { [weak self] triptych, conversation in self?.chatDisplayWindow(triptychID: triptych, conversationID: conversation) },
             notificationSink: { route, isCurrent in
                 SystemNotificationService.shared.receive(route, isCurrent: isCurrent)

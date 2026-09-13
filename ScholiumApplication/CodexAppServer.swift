@@ -34,7 +34,7 @@ public actor CodexAppServer {
         continuation = stream.continuation
     }
 
-    public func start(executable: URL, home: URL) throws {
+    public func start(executable: URL, home: URL, workingDirectory: URL) throws {
         guard process == nil else { return }
         try FileManager.default.createDirectory(
             at: home, withIntermediateDirectories: true,
@@ -46,10 +46,10 @@ public actor CodexAppServer {
         child.executableURL = executable
         child.arguments = [
             "app-server", "--stdio", "-c", "analytics.enabled=false",
-            "-c", "project_doc_max_bytes=0", "-c", "project_root_markers=[]",
+            "-c", "project_doc_max_bytes=32768", "-c", "project_root_markers=[]",
         ]
         child.environment = Self.processEnvironment(ProcessInfo.processInfo.environment, home: home)
-        child.currentDirectoryURL = home
+        child.currentDirectoryURL = workingDirectory
         child.standardInput = stdin
         child.standardOutput = stdout
         child.standardError = stderr
