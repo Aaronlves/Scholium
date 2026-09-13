@@ -99,57 +99,6 @@ extension ScholiumUITests {
     }
 
     @MainActor
-    func testExternalRenameConvergesAcrossIndependentWindows() throws {
-        app.terminate()
-        app = configuredApplication(
-            sessionID: sessionID,
-            initialWorkspaceWidth: 1380,
-            usesFixedSessionID: false
-        )
-        app.launch()
-        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 15))
-        waitForCurrentDocumentSurface()
-        let originalWindowID = app.windows.firstMatch.identifier
-
-        app.typeKey("n", modifierFlags: [.command])
-        XCTAssertTrue(waitUntil(timeout: 8) { self.app.windows.count == 2 })
-        let windows = app.windows.allElementsBoundByIndex
-        XCTAssertEqual(windows.count, 2)
-        if let newWindow = windows.first(where: { $0.identifier != originalWindowID }) {
-            openNote("QA Autosave A.md", expectedTitle: "QA Autosave A", in: newWindow)
-        } else {
-            XCTFail("New Window must create a distinct window identity.")
-        }
-        for window in windows {
-            XCTAssertTrue(waitForDocumentTitle("QA Autosave A", in: window))
-        }
-
-        let analyses = triptychDirectory.appendingPathComponent("01-analyses", isDirectory: true)
-        let originalURL = analyses.appendingPathComponent("QA Autosave A.md")
-        let renamedPath = "QA Shared Rename.md"
-        let renamedURL = analyses.appendingPathComponent(renamedPath)
-        let originalSource = try source(at: originalURL)
-        try FileManager.default.moveItem(at: originalURL, to: renamedURL)
-
-        for window in windows {
-            let renamedRow = window.descendants(matching: .any)["scholium.noteRow.\(renamedPath)"]
-            let originalRow = window.descendants(matching: .any)["scholium.noteRow.QA Autosave A.md"]
-            XCTAssertTrue(
-                renamedRow.waitForExistence(timeout: 12),
-                "Every independent window must receive the shared runtime rename."
-            )
-            XCTAssertTrue(waitUntil(timeout: 12) { !originalRow.exists })
-            XCTAssertTrue(
-                waitForDocumentTitle("QA Autosave A", in: window, timeout: 12),
-                "Each window must migrate its own selected document session to the rebound path."
-            )
-            XCTAssertFalse(window.staticTexts["Confirm Note Identity"].exists)
-        }
-        XCTAssertEqual(try source(at: renamedURL), originalSource)
-        XCTAssertFalse(FileManager.default.fileExists(atPath: originalURL.path))
-    }
-
-    @MainActor
     func testDirtyWindowRejectsAPeerCommitAndPreservesItsOwnBuffer() throws {
         app.terminate()
         app = configuredApplication(
@@ -207,45 +156,6 @@ extension ScholiumUITests {
 
         XCTAssertTrue(try source(at: noteURL).contains(peerToken))
         XCTAssertFalse(try source(at: noteURL).contains(localToken))
-    }
-
-    @MainActor
-    func testFocusedCommandsStayInTheActiveIndependentWindow() throws {
-        app.terminate()
-        app = configuredApplication(
-            sessionID: sessionID,
-            initialWorkspaceWidth: 1380,
-            usesFixedSessionID: false
-        )
-        app.launch()
-        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 15))
-        waitForCurrentDocumentSurface()
-        let firstWindowID = app.windows.firstMatch.identifier
-
-        app.typeKey("n", modifierFlags: [.command])
-        XCTAssertTrue(waitUntil(timeout: 8) { self.app.windows.count == 2 })
-        let openedWindows = app.windows.allElementsBoundByIndex
-        let secondWindowID = try XCTUnwrap(
-            openedWindows.first(where: { $0.identifier != firstWindowID })?.identifier
-        )
-        let firstWindow = app.windows[firstWindowID]
-        let secondWindow = app.windows[secondWindowID]
-        openNote("QA Autosave A.md", expectedTitle: "QA Autosave A", in: secondWindow)
-        focusWorkspaceWindow(firstWindow)
-        app.typeKey("f", modifierFlags: [.command, .shift])
-        let firstSearch = firstWindow.descendants(matching: .any)["scholium.searchWorkspace"]
-        let secondSearch = secondWindow.descendants(matching: .any)["scholium.searchWorkspace"]
-        XCTAssertTrue(firstSearch.waitForExistence(timeout: 5))
-        XCTAssertFalse(secondSearch.exists)
-        firstWindow.descendants(matching: .any)["scholium.closeSearchButton"].click()
-        XCTAssertTrue(waitUntil(timeout: 3) { !firstSearch.exists })
-
-        focusWorkspaceWindow(secondWindow)
-        app.typeKey("f", modifierFlags: [.command, .shift])
-        XCTAssertTrue(secondSearch.waitForExistence(timeout: 5))
-        XCTAssertFalse(firstSearch.exists)
-        secondWindow.descendants(matching: .any)["scholium.closeSearchButton"].click()
-        XCTAssertTrue(waitUntil(timeout: 3) { !secondSearch.exists })
     }
 
     @MainActor
@@ -336,71 +246,4 @@ extension ScholiumUITests {
         XCTAssertFalse(restoredA.descendants(matching: .any)["scholium.documentTabs"].exists)
         XCTAssertFalse(restoredB.descendants(matching: .any)["scholium.documentTabs"].exists)
     }
-
-    @MainActor
-    func testCommittedWindowModeRestoresAfterRelaunch() throws {
-        let mode = documentModeControl()
-        XCTAssertTrue(mode.waitForExistence(timeout: 10))
-        selectDocumentMode("Edit")
-        XCTAssertTrue(waitUntil(timeout: 5) { self.documentModeState(mode) == "Edit" })
-
-        let sessionFile = homeDirectory.appendingPathComponent("ApplicationSupport/Window Sessions")
-            .appendingPathComponent(sessionID.uuidString + ".json")
-        XCTAssertTrue(
-            waitUntil(timeout: 5) {
-                guard let data = try? Data(contentsOf: sessionFile),
-                    let text = String(data: data, encoding: .utf8)
-                else { return false }
-                return text.contains("livePreview")
-            })
-
-        app.terminate()
-        XCTAssertTrue(
-            waitUntil(timeout: 10) { self.app.state == .notRunning },
-            "The first application process must terminate before session restoration."
-        )
-        app = configuredApplication(sessionID: sessionID)
-        app.launch()
-        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 15))
-        waitForCurrentDocumentSurface()
-
-        let restoredMode = documentModeControl()
-        XCTAssertTrue(restoredMode.waitForExistence(timeout: 10))
-        XCTAssertTrue(
-            waitUntil(timeout: 8) {
-                restoredMode.value as? String == "Edit"
-            },
-            "The restored window session must reapply Live Preview after asynchronous workspace restoration."
-        )
-    }
-
-    @MainActor
-    func testDocumentHasNoFloatingMetadataSurfaceAndInspectorRemainsIndependent() throws {
-        selectDocumentMode("Review")
-        let renderedDocument = app.descendants(matching: .any)[
-            "scholium.renderedDocument.QA Autosave A.md"
-        ]
-        XCTAssertTrue(renderedDocument.waitForExistence(timeout: 10))
-        XCTAssertFalse(app.descendants(matching: .any)["scholium.documentContextCluster"].exists)
-        XCTAssertFalse(app.descendants(matching: .any)["scholium.documentContextControls"].exists)
-        XCTAssertFalse(app.descendants(matching: .any)["scholium.metadataPanel"].exists)
-
-        XCTAssertTrue(waitForDocumentTitle("QA Autosave A"))
-
-        let inspectorButton = inspectorVisibilityControl()
-        let inspector = app.descendants(matching: .any)["scholium.researchInspector"]
-        XCTAssertTrue(inspectorButton.waitForExistence(timeout: 5))
-        let inspectorWasVisible = inspector.exists
-        inspectorButton.coordinate(
-            withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
-        ).click()
-        XCTAssertTrue(waitUntil(timeout: 3) { inspector.exists != inspectorWasVisible })
-        XCTAssertTrue(renderedDocument.exists)
-        inspectorVisibilityControl().coordinate(
-            withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
-        ).click()
-        XCTAssertTrue(waitUntil(timeout: 3) { inspector.exists == inspectorWasVisible })
-        XCTAssertTrue(renderedDocument.exists)
-    }
-
 }

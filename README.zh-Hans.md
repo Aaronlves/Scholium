@@ -130,7 +130,8 @@ DEVELOPER_DIR="$developer_dir" swift test
 对 WebEditor 执行类型检查。`--fix` 会先原地格式化 Swift 源码，再执行检查。
 
 UI runner 使用一次性 TestVault 副本和仓库内被忽略的 `.build/` 状态。`smoke`
-运行规范旅程；`complete` 枚举当前测试套件、只构建一次并串行执行。这些属于自动化
+运行规范旅程；`complete` 枚举并串行执行保留下来的关键 UI 测试，只构建一次。普通功能
+级别的 UI 测试已从自动化测试包中直接删除，这些检查改为直接操作应用完成。这些属于自动化
 开发检查，不等于人类视觉或辅助技术验收。
 
 修改 `WebEditor/` 后，请重建并验证已检入的 bundle：

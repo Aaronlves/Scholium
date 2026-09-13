@@ -50,84 +50,6 @@ extension ScholiumUITests {
     }
 
     @MainActor
-    func testInlineSyntaxRemainsVisibleAtClosingBoundary() throws {
-        try enterLivePreviewAndAppend("\n\n*Source-role classification")
-        let editor = app.descendants(matching: .any)["Markdown editor, Edit mode"].firstMatch
-        app.typeText("*")
-        XCTAssertTrue(
-            waitUntil(timeout: 5) {
-                (editor.value as? String ?? "").contains("*Source-role classification*")
-            })
-        let line = app.staticTexts.matching(NSPredicate(format: "value CONTAINS %@", "Source-role classification")).firstMatch
-        func markersAreVisible() -> Bool {
-            (line.value as? String ?? "").contains("*Source-role classification*")
-        }
-        XCTAssertTrue(waitUntil(timeout: 5) { markersAreVisible() })
-        let active = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
-        active.name = "Muted syntax at closing caret boundary"
-        active.lifetime = .keepAlways
-        add(active)
-        app.typeKey(.leftArrow, modifierFlags: [])
-        app.typeKey(.leftArrow, modifierFlags: [])
-        XCTAssertTrue(markersAreVisible())
-        app.typeKey(.rightArrow, modifierFlags: [.command])
-        XCTAssertTrue(markersAreVisible())
-        app.typeText(" ")
-        XCTAssertTrue(waitUntil(timeout: 5) { !markersAreVisible() })
-        let noteURL = triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md")
-        XCTAssertTrue(
-            waitUntil(timeout: 12) {
-                (try? String(contentsOf: noteURL, encoding: .utf8))?.contains("*Source-role classification* ") == true
-            }, "Hidden syntax must remain byte-exact in the saved Markdown.")
-        let inactive = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
-        inactive.name = "Syntax hidden after leaving construct"
-        inactive.lifetime = .keepAlways
-        add(inactive)
-    }
-
-    @MainActor
-    func testHeadingTypingAndMarkerDeletionPreserveLivePresentation() throws {
-        try enterLivePreviewAndAppend("\n\n")
-        let editor = app.descendants(matching: .any)["Markdown editor, Edit mode"].firstMatch
-        let inputSource = TISCopyCurrentKeyboardInputSource().takeRetainedValue()
-        let isASCII =
-            TISGetInputSourceProperty(inputSource, kTISPropertyInputSourceIsASCIICapable)
-            .map { Unmanaged<CFBoolean>.fromOpaque($0).takeUnretainedValue() }
-            .map(CFBooleanGetValue) ?? true
-        app.typeText("# ")
-        app.typeText("headingprobe")
-        if !isASCII { app.typeKey(.return, modifierFlags: []) }
-        XCTAssertTrue(waitUntil(timeout: 5) { (editor.value as? String ?? "").contains("# headingprobe") })
-        let heading = app.staticTexts.matching(
-            NSPredicate(
-                format: "label CONTAINS %@ OR value CONTAINS %@", "headingprobe", "headingprobe")
-        ).firstMatch
-        XCTAssertTrue(heading.waitForExistence(timeout: 5))
-        let headingHeight = heading.frame.height
-        func capture(_ name: String) {
-            let attachment = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
-            attachment.name = name
-            attachment.lifetime = .keepAlways
-            add(attachment)
-        }
-        capture("Heading while typing")
-        app.typeKey(.return, modifierFlags: [])
-        XCTAssertEqual(heading.frame.height, headingHeight, accuracy: 1)
-        app.typeKey(.upArrow, modifierFlags: [])
-        XCTAssertEqual(heading.frame.height, headingHeight, accuracy: 1)
-        app.typeKey(.leftArrow, modifierFlags: [.command])
-        app.typeKey(.rightArrow, modifierFlags: [])
-        app.typeKey(.delete, modifierFlags: [])
-        XCTAssertTrue(waitUntil(timeout: 5) { !(editor.value as? String ?? "").contains("# headingprobe") })
-        XCTAssertTrue((editor.value as? String ?? "").contains("headingprobe"))
-        XCTAssertLessThan(heading.frame.height, headingHeight)
-        capture("Heading marker removed")
-        app.typeKey("z", modifierFlags: [.command])
-        XCTAssertTrue(waitUntil(timeout: 5) { (editor.value as? String ?? "").contains("# headingprobe") })
-        XCTAssertEqual(heading.frame.height, headingHeight, accuracy: 1)
-    }
-
-    @MainActor
     func testNativeCompletionPreservesFocusAndUndo() throws {
         try enterLivePreviewAndAppend("\n\ncompletionprobe\n\n")
         let editor = app.descendants(matching: .any)["Markdown editor, Edit mode"].firstMatch
@@ -281,28 +203,6 @@ extension ScholiumUITests {
         XCTAssertFalse(replacement.exists)
         app.typeKey(.escape, modifierFlags: [])
         XCTAssertTrue(waitUntil(timeout: 3) { !query.exists })
-    }
-
-    @MainActor
-    func testDirtyLivePreviewSearchesThisNoteWithoutSaving() throws {
-        let token = " searchunsavedtoken"
-        let noteURL = triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md")
-        try enterLivePreviewAndAppend(token)
-        XCTAssertFalse(try source(at: noteURL).contains(token))
-
-        app.typeKey("f", modifierFlags: [.command, .shift])
-        let search = app.descendants(matching: .any)["scholium.searchWorkspace"]
-        let field = app.descendants(matching: .any)["scholium.searchField"]
-        let result = searchResult(named: "QA Autosave A")
-        XCTAssertTrue(field.waitForExistence(timeout: 8))
-        selectResearchSearchScope("This Note", in: app)
-        typeCommittedText("searchunsavedtoken", into: field, in: app)
-        XCTAssertTrue(result.waitForExistence(timeout: 8))
-        XCTAssertFalse(try source(at: noteURL).contains(token))
-
-        app.descendants(matching: .any)["scholium.closeSearchButton"].click()
-        XCTAssertTrue(waitUntil(timeout: 3) { !search.exists })
-        XCTAssertFalse(try source(at: noteURL).contains(token))
     }
 
     @MainActor
@@ -485,38 +385,6 @@ extension ScholiumUITests {
             "A clean open document must refresh after an external filesystem edit."
         )
         XCTAssertEqual(try source(at: noteURL), changed)
-    }
-
-    @MainActor
-    func testCleanExternalRenamePreservesTheOpenDocumentSession() throws {
-        let analyses = triptychDirectory.appendingPathComponent("01-analyses", isDirectory: true)
-        let originalURL = analyses.appendingPathComponent("QA Autosave A.md")
-        let renamedPath = "QA Externally Renamed.md"
-        let renamedURL = analyses.appendingPathComponent(renamedPath)
-        let originalSource = try source(at: originalURL)
-
-        let originalRow = app.descendants(matching: .any)["scholium.noteRow.QA Autosave A.md"]
-        XCTAssertTrue(waitForDocumentTitle("QA Autosave A"))
-        XCTAssertTrue(originalRow.waitForExistence(timeout: 5))
-
-        try FileManager.default.moveItem(at: originalURL, to: renamedURL)
-
-        let renamedRow = app.descendants(matching: .any)["scholium.noteRow.\(renamedPath)"]
-        XCTAssertTrue(
-            renamedRow.waitForExistence(timeout: 12),
-            "The watcher must publish the externally renamed path."
-        )
-        XCTAssertTrue(
-            waitUntil(timeout: 12) { !originalRow.exists },
-            "The old path must leave the note list after identity recovery."
-        )
-        XCTAssertTrue(
-            waitForDocumentTitle("QA Autosave A", timeout: 12),
-            "A clean active document must remain selected after its path is rebound."
-        )
-        XCTAssertEqual(try source(at: renamedURL), originalSource)
-        XCTAssertFalse(FileManager.default.fileExists(atPath: originalURL.path))
-        XCTAssertFalse(app.staticTexts["Confirm Note Identity"].exists)
     }
 
     @MainActor
@@ -726,123 +594,6 @@ extension ScholiumUITests {
     }
 
     @MainActor
-    func testHundredThousandCJKEditorStressJourney() throws {
-        app.terminate()
-        let seed = "研究性能边界输入选择撤销渲染滚动保存恢复"
-        let cjkCharacters = String(
-            String(repeating: seed, count: 100_000 / seed.count + 1).prefix(100_000)
-        )
-        XCTAssertEqual(cjkCharacters.count, 100_000)
-        var cjkParagraphs: [String] = []
-        var paragraphStart = cjkCharacters.startIndex
-        while paragraphStart < cjkCharacters.endIndex {
-            let paragraphEnd =
-                cjkCharacters.index(
-                    paragraphStart,
-                    offsetBy: 1_000,
-                    limitedBy: cjkCharacters.endIndex
-                ) ?? cjkCharacters.endIndex
-            cjkParagraphs.append(String(cjkCharacters[paragraphStart..<paragraphEnd]))
-            paragraphStart = paragraphEnd
-        }
-        let cjkBody = cjkParagraphs.joined(separator: "\n\n")
-        let source = "---\ntitle: QA 100k CJK\nfixture: true\n---\n# CJK Stress\n\n\(cjkBody)\n"
-        let noteURL = triptychDirectory.appendingPathComponent("01-analyses/QA 100k CJK.md")
-        try write(source, to: noteURL)
-
-        // This relaunch intentionally changes the initial document. A fresh
-        // window-session identity prevents the preceding setUp launch's
-        // restored QA Autosave A selection from correctly taking precedence
-        // over what is only a first-launch test input.
-        sessionID = UUID()
-        app = configuredApplication(
-            sessionID: sessionID,
-            autosaveDelayMS: 300_000,
-            openNote: "QA 100k CJK.md"
-        )
-        app.launch()
-        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 20))
-
-        let mode = documentModeControl()
-        XCTAssertTrue(mode.waitForExistence(timeout: 20))
-        selectDocumentMode("Edit")
-
-        let editor = app.descendants(matching: .any)["Markdown editor, Edit mode"]
-        XCTAssertTrue(editor.waitForExistence(timeout: 30))
-        let window = app.windows.firstMatch
-        let visibleEditorFrame = editor.frame.intersection(window.frame)
-        XCTAssertFalse(visibleEditorFrame.isNull)
-        XCTAssertGreaterThan(visibleEditorFrame.width, 0)
-        XCTAssertGreaterThan(visibleEditorFrame.height, 0)
-        window.coordinate(
-            withNormalizedOffset: CGVector(
-                dx: (visibleEditorFrame.midX - window.frame.minX) / window.frame.width,
-                dy: (visibleEditorFrame.midY - window.frame.minY) / window.frame.height
-            )
-        ).click()
-
-        let beginningToken = "QA-CJK-BEGIN-\(UUID().uuidString)"
-        editor.typeKey(.home, modifierFlags: [.command])
-        try setPasteboardText(beginningToken)
-        editor.typeKey("v", modifierFlags: [.command])
-        editor.typeKey("z", modifierFlags: [.command])
-
-        for _ in 0..<24 { editor.typeKey(.pageDown, modifierFlags: []) }
-        let middleToken = "QA-CJK-MIDDLE-\(UUID().uuidString)"
-        try setPasteboardText(middleToken)
-        editor.typeKey("v", modifierFlags: [.command])
-        editor.typeKey("z", modifierFlags: [.command])
-
-        let endToken = "QA-CJK-END-\(UUID().uuidString)"
-        editor.typeKey(.end, modifierFlags: [.command])
-        try setPasteboardText(endToken)
-        editor.typeKey("v", modifierFlags: [.command])
-        XCTAssertTrue(
-            waitUntil(timeout: 20) {
-                (editor.value as? String ?? "").contains(endToken)
-            },
-            "The 100k editor must accept the complete end token before the save transition."
-        )
-        XCTAssertEqual(try Data(contentsOf: noteURL), Data(source.utf8))
-
-        let saveTransitionStarted = DispatchTime.now().uptimeNanoseconds
-        selectDocumentMode("Review")
-        XCTAssertTrue(app.descendants(matching: .any)["Rendered Markdown"].waitForExistence(timeout: 180))
-        XCTAssertTrue(
-            waitUntil(timeout: 30) {
-                (try? self.source(at: noteURL).contains(endToken)) == true
-            },
-            "The Read transition must not complete its acceptance journey before the exact editor buffer reaches disk."
-        )
-        let committedSource = try self.source(at: noteURL)
-        XCTAssertEqual(committedSource.components(separatedBy: endToken).count, 2)
-        XCTAssertEqual(
-            committedSource.replacingOccurrences(of: endToken, with: ""),
-            source,
-            "The 100k save may place the visual-end token before footnote definitions, but every pre-existing Markdown byte must remain exact."
-        )
-        let saveTransitionMilliseconds =
-            Double(
-                DispatchTime.now().uptimeNanoseconds - saveTransitionStarted
-            ) / 1_000_000
-        let evidence = XCTAttachment(
-            string:
-                "100,000-CJK-character dirty Live Preview reached byte-exact committed Read mode in \(saveTransitionMilliseconds) ms under the QA automation boundary."
-        )
-        evidence.name = "100k CJK byte-exact save transition observation"
-        evidence.lifetime = .keepAlways
-        add(evidence)
-
-        selectDocumentMode("Source")
-        XCTAssertTrue(app.descendants(matching: .any)["Markdown source editor"].waitForExistence(timeout: 15))
-        selectDocumentMode("Edit")
-        XCTAssertTrue(editor.waitForExistence(timeout: 15))
-        let reopenedSource = try self.source(at: noteURL)
-        XCTAssertEqual(reopenedSource.components(separatedBy: endToken).count, 2)
-        XCTAssertEqual(reopenedSource.replacingOccurrences(of: endToken, with: ""), source)
-    }
-
-    @MainActor
     func testOpenInNewTabUsesNativeContentTabsAndSharedLibrary() throws {
         waitForCurrentDocumentSurface()
         let secondPath = "QA Autosave B.md"
@@ -949,26 +700,6 @@ extension ScholiumUITests {
             "Closing the selected page must choose its previous neighbor without closing the workspace window."
         )
         XCTAssertTrue(app.windows.firstMatch.exists)
-    }
-
-    @MainActor
-    func testFileMenuDoesNotOfferDuplicateCurrentDocumentTab() throws {
-        XCTAssertTrue(waitForDocumentTitle("QA Autosave A"))
-
-        let fileMenuItem = app.menuBars.menuBarItems["File"]
-        fileMenuItem.click()
-        let fileMenu = fileMenuItem.menus.firstMatch
-        let openInNewTab = fileMenu.menuItems["Open in New Tab"]
-        XCTAssertFalse(
-            openInNewTab.exists,
-            "The current document cannot be duplicated through the File menu."
-        )
-        app.typeKey(.escape, modifierFlags: [])
-
-        let documentTabs = app.descendants(matching: .any)["scholium.documentTabs"]
-        XCTAssertFalse(documentTabs.exists)
-        XCTAssertTrue(app.windows.firstMatch.exists)
-        XCTAssertEqual(documentTitle(), "QA Autosave A")
     }
 
     @MainActor

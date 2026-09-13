@@ -165,8 +165,10 @@ formats Swift source in place before checking it.
 
 The UI runner uses a disposable TestVault copy and isolated state beneath the
 ignored repository `.build/` directory. `smoke` runs the canonical journey;
-`complete` enumerates the current suite, builds once, and runs serially. These
-are automated development checks, not human visual or assistive-technology
+`complete` enumerates and runs the retained critical UI suite, builds once, and
+runs serially. Ordinary feature-level UI tests are intentionally removed from
+the automated bundle; use the app directly for those checks. These are
+automated development checks, not human visual or assistive-technology
 acceptance.
 
 When `WebEditor/` changes, rebuild and verify its checked-in bundle:

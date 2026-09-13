@@ -87,13 +87,7 @@ final class ScholiumUITests: XCTestCase {
         if name.contains("testTwoHundredPercentDocumentTextPersistsAcrossEveryMode") {
             return 900
         }
-        if name.contains("testWorkspaceInitialDefaultPreservesNativeReachability")
-            || name.contains("testInspectorToolbarItemOpensAndClosesInspector")
-            || name.contains("testInspectorDividerResizesWithoutInteractiveCollapse")
-            || name.contains("testPeripheralToolbarVisibilityControlsToggleWithPointerCoordinates")
-            || name.contains("testAppearanceLineWidthVisualMatrixAndKeyboardControl")
-            || name.contains("testDocumentHeadingStudyWrapsLongMixedTitleUsingAcceptedBodyRhythm")
-            || name.contains("testLibraryRemainsReadableAtItsNativeMinimum")
+        if name.contains("testLibraryRemainsReadableAtItsNativeMinimum")
         {
             return Int(QAWorkspaceMetricContract.preferredWidth)
         }
@@ -101,15 +95,8 @@ final class ScholiumUITests: XCTestCase {
     }
 
     private var initialOpenNoteForCurrentTest: String? {
-        if name.contains("testRestoreAccessQuitScholiumTerminatesApplication")
-            || name.contains(
-                "testFixtureLaunchWithoutExplicitSessionIDUsesOneWindowSession"
-            )
-        {
+        if name.contains("testFixtureLaunchWithoutExplicitSessionIDUsesOneWindowSession") {
             return nil
-        }
-        if name.contains("testDocumentHeadingStudyWrapsLongMixedTitleUsingAcceptedBodyRhythm") {
-            return "QA Document Heading Study.md"
         }
         if name.contains("testAgentChangesShowsExactUpdateAndRestoresSettledBytes") {
             return "Agent Review.md"
@@ -117,12 +104,7 @@ final class ScholiumUITests: XCTestCase {
         return "QA Autosave A.md"
     }
 
-    private var initialWorkspaceReadyTimeout: TimeInterval {
-        if name.contains("testManagedNewNoteKeepsFixedYAMLAfterAddingCustomMetadataField") {
-            return 90
-        }
-        return 45
-    }
+    private let initialWorkspaceReadyTimeout: TimeInterval = 45
 
     @MainActor
     override func setUp() async throws {
@@ -149,9 +131,7 @@ final class ScholiumUITests: XCTestCase {
             usesFixedSessionID: !name.contains(
                 "testFixtureLaunchWithoutExplicitSessionIDUsesOneWindowSession"
             ),
-            autosaveDelayMS: name.contains(
-                "testDirtyLivePreviewSearchesThisNoteWithoutSaving"
-            ) ? 300_000 : 5_000,
+            autosaveDelayMS: 5_000,
             appearance: nil,
             openNote: initialOpenNoteForCurrentTest
         )
