@@ -235,6 +235,10 @@ machine-local AgentChangeViewedLedger, independent of evidence and Settlement.
 Public assistant phase metadata is retained on the message by streaming and history
 reconciliation. Timeline grouping uses explicit turn and phase metadata; a process
 disclosure owns only expansion, keeping each tool item distinct from the final answer.
+`AgentChatDisclosureStyle` keeps the disclosure transaction free of layout animation;
+only its leading indicator animates. Content mounts on first expansion and remains
+measured while collapsed, retaining native reader identity. The collapsed subtree
+is clipped, disabled and accessibility-hidden; disabled activity indicators pause.
 Reply actions copy original text and project explicit links into Sources.
 `AgentChatInputDock` owns only the view-local request disclosure. It keeps the
 native composer mounted and inert while a request occupies the same bottom

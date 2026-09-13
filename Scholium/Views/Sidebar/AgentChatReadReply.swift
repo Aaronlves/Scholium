@@ -9,6 +9,7 @@ struct AgentChatReadReply: View {
     let quote: ((AgentChatReplySelection) -> Void)?
     let openLink: (URL) -> Void
     var fitsContent = false
+    @Environment(\.isEnabled) private var isEnabled
     @Environment(\.chatReadingInteraction) private var readingInteraction
     @Environment(\.openChatNoteInSeparateWindow) private var openSeparate
     @Environment(\.colorScheme) private var colorScheme
@@ -64,6 +65,7 @@ struct AgentChatReadReply: View {
         }
         .preference(key: AgentChatReplyReadyPreference.self, value: ready || failure != nil)
         .onDisappear { preview.close() }
+        .onChange(of: isEnabled) { _, enabled in if !enabled { preview.close() } }
         .task(id: source) {
             preview.close()
             failure = nil

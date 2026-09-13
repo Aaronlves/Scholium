@@ -54,15 +54,22 @@ struct AgentChatTurnPresentation: Equatable {
 struct AgentChatTurnStatus: View {
     let presentation: AgentChatTurnPresentation
     var animates = true
+    var isActivityDisclosure = false
+    @Environment(\.isEnabled) private var isEnabled
     @Environment(\.locale) private var locale
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.controlActiveState) private var activeState
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1, paused: !presentation.isWorking || !animates || activeState == .inactive)) { context in
+        TimelineView(.animation(minimumInterval: 1, paused: !presentation.isWorking || !animates || !isEnabled || activeState == .inactive)) { context in
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
-                    if presentation.state == .completed, let elapsed = presentation.elapsedLabel(at: context.date, locale: locale) {
+                    if presentation.state == .completed, isActivityDisclosure {
+                        Text("Activity Log", bundle: .module)
+                        if let elapsed = presentation.elapsedLabel(at: context.date, locale: locale) {
+                            Text("· " + elapsed).accessibilityHidden(true)
+                        }
+                    } else if presentation.state == .completed, let elapsed = presentation.elapsedLabel(at: context.date, locale: locale) {
                         Text(elapsed)
                     } else {
                         Text(ScholiumL10n.string(presentation.titleKey, locale: locale))
@@ -78,7 +85,9 @@ struct AgentChatTurnStatus: View {
             }
             .font(.callout).monospacedDigit().foregroundStyle(.secondary)
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel(ScholiumL10n.string(presentation.titleKey, locale: locale))
+            .accessibilityLabel(
+                (isActivityDisclosure ? Text("Activity Log", bundle: .module) + Text(verbatim: ": ") : Text(""))
+                    + Text(ScholiumL10n.string(presentation.titleKey, locale: locale)))
             .accessibilityValue(
                 [
                     presentation.elapsedLabel(at: context.date, locale: locale),
@@ -87,7 +96,6 @@ struct AgentChatTurnStatus: View {
                 ]
                 .compactMap { $0 }.joined(separator: ", ")
             )
-            .help("Elapsed time for this turn, including tools and waits.")
         }
     }
 }

@@ -2313,6 +2313,22 @@
         }
       }
     },
+    "Activity Log" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Activity Log"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "活动记录"
+          }
+        }
+      }
+    },
     "Actual Size (100%)" : {
       "localizations" : {
         "en" : {

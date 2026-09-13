@@ -4,12 +4,13 @@ import SwiftUI
 struct AgentChatActivityText: View {
     let text: String
     let isCurrent: Bool
+    @Environment(\.isEnabled) private var isEnabled
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorSchemeContrast) private var contrast
     @Environment(\.controlActiveState) private var windowState
     @State private var began: Date?
 
-    private var animates: Bool { isCurrent && !reduceMotion && contrast != .increased && windowState != .inactive }
+    private var animates: Bool { isCurrent && isEnabled && !reduceMotion && contrast != .increased && windowState != .inactive }
 
     var body: some View {
         Text(verbatim: text)

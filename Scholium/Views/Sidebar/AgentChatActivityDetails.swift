@@ -5,6 +5,7 @@ import SwiftUI
 /// The same retained evidence is available in-place and in the diagnostic overview.
 struct AgentChatActivityDetails: View {
     let activity: AgentChatActivity
+    var isInline = false
     var openNote: ((URL) -> Void)? = nil
     @Environment(\.locale) private var locale
     @State private var outputWindow = AgentChatOutputWindow()
@@ -14,64 +15,9 @@ struct AgentChatActivityDetails: View {
     @FocusState private var copyIsFocused: Bool
 
     var body: some View {
-        GroupBox {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text(activity.kind == .command ? "Command" : "Operation").foregroundStyle(.secondary)
-                    Spacer()
-                    Button {
-                        outputWindow.present(activity)
-                    } label: {
-                        Image(systemName: "arrow.up.left.and.arrow.down.right").chatAccessory()
-                    }
-                    .buttonStyle(
-                        ScholiumContentControlButtonStyle(
-                            isHovering: isHovered,
-                            in: RoundedRectangle(
-                                cornerRadius: ScholiumShape.editorialControlCornerRadius,
-                                style: .continuous
-                            )
-                        )
-                    )
-                    .scholiumActivationPointer()
-                    .help(Text("Open Output", bundle: .module))
-                    .accessibilityLabel(Text("Open Output", bundle: .module))
-                    Button(action: copyDetails) {
-                        Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                            .chatAccessory()
-                            .opacity(isHovered || copyIsFocused || copied ? 1 : 0)
-                    }
-                    .buttonStyle(
-                        ScholiumContentControlButtonStyle(
-                            isFocused: copyIsFocused,
-                            isHovering: isHovered,
-                            in: RoundedRectangle(
-                                cornerRadius: ScholiumShape.editorialControlCornerRadius,
-                                style: .continuous
-                            )
-                        )
-                    )
-                    .scholiumActivationPointer()
-                    .focused($copyIsFocused)
-                    .accessibilityLabel(copied ? "Copied" : "Copy Details")
-                    .help(copied ? String(localized: "Copied") : String(localized: "Copy Details"))
-                    .accessibilityIdentifier("scholium.chat.copyActivityDetails")
-                    .task(id: copied) {
-                        guard copied else { return }
-                        do { try await Task.sleep(for: .seconds(2)) } catch { return }
-                        copied = false
-                    }
-                }
-                ScrollView {
-                    content.onGeometryChange(for: CGFloat.self) {
-                        $0.size.height
-                    } action: {
-                        contentHeight = $0
-                    }
-                }
-                .frame(height: min(180, contentHeight))
-                .accessibilityIdentifier("scholium.chat.activityOutput")
-            }
+        Group {
+            if isInline { details }
+            else { GroupBox { details } }
         }
         .font(.callout)
         .padding(.vertical, 6)
@@ -81,9 +27,70 @@ struct AgentChatActivityDetails: View {
         .onDisappear { outputWindow.close() }
     }
 
+    private var details: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                if isInline { Text(activity.status.label(locale: locale)) }
+                else { Text(activity.kind == .command ? "Command" : "Operation").foregroundStyle(.secondary) }
+                Spacer()
+                Button {
+                    outputWindow.present(activity)
+                } label: {
+                    Image(systemName: "arrow.up.left.and.arrow.down.right").chatAccessory()
+                }
+                .buttonStyle(
+                    ScholiumContentControlButtonStyle(
+                        isHovering: isHovered,
+                        in: RoundedRectangle(
+                            cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                            style: .continuous
+                        )
+                    )
+                )
+                .scholiumActivationPointer()
+                .help(Text("Open Output", bundle: .module))
+                .accessibilityLabel(Text("Open Output", bundle: .module))
+                Button(action: copyDetails) {
+                    Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                        .chatAccessory()
+                        .opacity(isInline || isHovered || copyIsFocused || copied ? 1 : 0)
+                }
+                .buttonStyle(
+                    ScholiumContentControlButtonStyle(
+                        isFocused: copyIsFocused,
+                        isHovering: isHovered,
+                        in: RoundedRectangle(
+                            cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                            style: .continuous
+                        )
+                    )
+                )
+                .scholiumActivationPointer()
+                .focused($copyIsFocused)
+                .accessibilityLabel(copied ? "Copied" : "Copy Details")
+                .help(copied ? String(localized: "Copied") : String(localized: "Copy Details"))
+                .accessibilityIdentifier("scholium.chat.copyActivityDetails")
+                .task(id: copied) {
+                    guard copied else { return }
+                    do { try await Task.sleep(for: .seconds(2)) } catch { return }
+                    copied = false
+                }
+            }
+            ScrollView {
+                content.onGeometryChange(for: CGFloat.self) {
+                    $0.size.height
+                } action: {
+                    contentHeight = $0
+                }
+            }
+            .frame(height: min(180, contentHeight))
+            .accessibilityIdentifier("scholium.chat.activityOutput")
+        }
+    }
+
     private var content: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(activity.status.label(locale: locale)).font(.callout)
+            if !isInline { Text(activity.status.label(locale: locale)).font(.callout) }
             AgentChatCommandFacts(activity: activity)
             if !activity.subject.isEmpty {
                 Text(verbatim: activity.subject).monospaced()

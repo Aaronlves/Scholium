@@ -59,9 +59,11 @@ A pending asynchronous answer count remains beside the turn status even after
 runtime completion; it does not change that recorded outcome.
 Completion shows total turn duration, including waits, never private thinking time;
 missing timing stays unnumbered. Waiting, interruption, uncertainty and failure
-have distinct text. The top status has no decorative symbol or pulse; only its
-disclosure affordance appears after its label on hover or keyboard focus. It
-retains a named, keyboard-accessible toggle. The current activity names its
+have distinct text. Completed process groups use an **Activity Log** label with
+reported duration when available; their accessible name retains the turn outcome.
+The header is a quiet text row with a leading disclosure triangle, without a
+full-width selection plate or link-colored hover treatment. Its entire row is a
+named, keyboard-accessible toggle. The current activity names its
 observed action and target, with intermittent text shimmer. Completed activities
 use quiet past-tense descriptions without repeated success badges. Other running
 items remain identifiable; no parallel work is silently marked complete. Short
@@ -87,7 +89,11 @@ Public progress commentary and individual
 tool calls form a leading-aligned Agent process group, separate from the final answer.
 Each call retains its own target and outcome rather than being replaced by counts
 by tool type. During execution public commentary remains readable while individual tool details stay collapsed unless opened. Accessory symbols share size and semantic
-secondary color; disclosure controls trail their labels and reveal on demand.
+secondary color in a shared leading gutter. Tool symbols yield to a disclosure
+triangle on hover or focus; the expanded triangle remains visible. Expanded
+content uses indentation and a quiet hierarchy rule rather than nested cards.
+Inline tool details lead with their outcome and expose Copy and Open Output
+directly, with exact execution facts and output below.
 After completion it collapses while the final answer remains visible, unless the
 user is reading earlier content or has explicitly expanded the process or an
 operation's details. Manual disclosure choices survive new items and outcomes.
@@ -398,9 +404,11 @@ projection without replaying existing text. Completion, Stop, selection, copying
 history reading and accessibility adaptation never leave received text hidden.
 Newly sent messages and arriving replies may
 fade in once, locally, without moving the transcript. Opening retained history,
-reading earlier messages and Reduce Motion show content immediately. Explicit
-process disclosure uses a short native transition; automatic completion collapse
-does not animate transcript geometry. Changes preserve stable message identity,
+reading earlier messages and Reduce Motion show content immediately. Disclosure
+motion is confined to its indicator. Content layout changes do not animate the
+following transcript or replay its text. Opened activity content retains its
+reading state when collapsed, with hidden controls excluded from interaction and
+accessibility. Changes preserve stable message identity,
 selection and reading position. Completion, interruption and errors retain static
 labels; activity indicators stop when activity ends. No fabricated progress,
 reasoning trace or animated research-confidence meter is presented.

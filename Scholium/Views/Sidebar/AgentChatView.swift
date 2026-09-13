@@ -614,7 +614,7 @@ struct AgentChatView: View {
                     transcriptIsScrolling = phase == .tracking || phase == .interacting || phase == .decelerating
                     // Yield follow-to-latest as soon as the user takes the scrollbar or
                     // starts a gesture, before asynchronous rich-content layout can change.
-                    if phase == .tracking || phase == .interacting { isAwayFromLatest = true }
+                    if phase == .tracking || phase == .interacting { readingIsPaused = true }
                 }
                 .onScrollGeometryChange(for: AgentChatScrollMetrics.self) { geometry in
                     .init(
@@ -635,13 +635,15 @@ struct AgentChatView: View {
                         if transcriptIsScrolling && current.bottomDistance <= 1 { readingIsPaused = false }
                     } else if !isAwayFromLatest && !readingIsPaused && (previous.height != current.height || previous.bottomInset != current.bottomInset) {
                         proxy.scrollTo("latest", anchor: .bottom)
+                    } else if readingIsPaused {
+                        isAwayFromLatest = current.bottomDistance > 80
                     }
                 }
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     VStack(spacing: ScholiumSidebarLayout.itemSpacing) {
                         HStack(spacing: ScholiumSidebarLayout.itemSpacing) {
                             filesButton
-                            if isAwayFromLatest || readingIsPaused {
+                            if isAwayFromLatest {
                                 Button {
                                     isAwayFromLatest = false
                                     readingIsPaused = false
@@ -702,7 +704,7 @@ struct AgentChatView: View {
                 preservesReading: isAwayFromLatest || readingIsPaused || transcriptIsScrolling,
                 hasInspectedActivity: item.messages.contains { expandedActivityIDs.contains($0.id) },
                 animates: isVisible && controller.approvals.isEmpty,
-                inspect: { isAwayFromLatest = true }
+                inspect: { readingIsPaused = true }
             ) { message in
                 if message.activity != nil {
                     activityRow(message)
@@ -904,16 +906,13 @@ struct AgentChatView: View {
                         isExpanded: Binding(
                             get: { expandedActivityIDs.contains(message.id) },
                             set: { expanded in
-                                isAwayFromLatest = true
+                                readingIsPaused = true
                                 if expanded { expandedActivityIDs.insert(message.id) } else { expandedActivityIDs.remove(message.id) }
                             })
                     ) {
-                        AgentChatActivityDetails(activity: activity, openNote: { _ = openReference($0) })
+                        AgentChatActivityDetails(activity: activity, isInline: true, openNote: { _ = openReference($0) })
                     } label: {
                         HStack(alignment: .firstTextBaseline, spacing: 6) {
-                            Image(systemName: activity.status.isActive || activity.status == .completed ? activity.kind.symbol : activity.status.symbol)
-                                .chatAccessory()
-                                .accessibilityHidden(true)
                             VStack(alignment: .leading, spacing: 2) {
                                 AgentChatActivityText(
                                     text: activitySummary(activity),
@@ -929,7 +928,10 @@ struct AgentChatView: View {
                             }
                         }
                     }
-                    .disclosureGroupStyle(AgentChatDisclosureStyle())
+                    .disclosureGroupStyle(AgentChatDisclosureStyle(
+                        animates: isVisible,
+                        symbol: activity.status.isActive || activity.status == .completed ? activity.kind.symbol : activity.status.symbol
+                    ))
                 }
             }
             .font(.callout)

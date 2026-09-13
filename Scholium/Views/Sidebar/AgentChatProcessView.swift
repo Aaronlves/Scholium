@@ -34,13 +34,13 @@ struct AgentChatProcessView<Row: View>: View {
                     isExpanded = expanded
                 })
         ) {
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
                 ForEach(messages) { row($0) }
-            }.padding(.top, 6)
+            }
         } label: {
             VStack(alignment: .leading, spacing: 4) {
                 if let status {
-                    AgentChatTurnStatus(presentation: status, animates: animates)
+                    AgentChatTurnStatus(presentation: status, animates: animates, isActivityDisclosure: true)
                 } else {
                     Text("Process", bundle: .module).font(.callout).foregroundStyle(.secondary)
                 }
