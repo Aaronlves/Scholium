@@ -424,7 +424,7 @@ symbol precedes the title; the disclosure chevron sits immediately after the
 title with the grid label-accessory gap, separate from the trailing action menu.
 It appears on hover or focus, retaining its space to avoid title reflow. The header toggles expansion without navigating;
 its link action inserts the Note link. Groups start expanded with the distinct
-passages already returned by retrieval (currently at most two per Note). A shared
+passages already returned by retrieval (at most two per Note). A shared
 native passage-card container owns the insets, type alignment and grouping in both
 panes. Each excerpt opens its checked paragraph; its chat action stages that
 paragraph and the captured writing context without sending. No action generates
@@ -634,7 +634,7 @@ paths, source, researcher prose, and Skill names remain verbatim.
 | Library | 研究文档 |
 | Analyses / Topics / Works | 分析 / 议题 / 写作 |
 | Agents & Chat / Agent Changes | 智能体与聊天 / Agent 修改 |
-| Research / Review / Judgment | 研究 / 审查 / 判断 |
+| Research / Judgment | 研究 / 判断 |
 | Settle / Settled | 暂定 / 已暂定 |
 | Attention / Connect | 关注 / 连接 |
 | Incoming Links / Outgoing Links | 传入连接 / 传出连接 |

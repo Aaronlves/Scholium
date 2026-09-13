@@ -26,7 +26,7 @@ struct WorkflowSchemaTests {
             ) == .genericMarkdown)
     }
 
-    @Test("CLI role aliases do not become persisted registry spellings")
+    @Test("Role aliases do not become persisted registry spellings")
     func roleAliases() throws {
         #expect(VaultRole(commandLineValue: "sources") == .sourceCorpus)
         #expect(VaultRole(commandLineValue: "knowledge") == .topicKnowledge)

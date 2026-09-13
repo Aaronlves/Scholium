@@ -103,7 +103,7 @@ struct AgentChatAssociationTests {
     private func connect(_ controller: AgentChatController, home: URL? = nil) async throws {
         try await wait { controller.isLoaded }
         let fixture = repository.appendingPathComponent("Tests/Fixtures/agent-chat-runtime.py")
-        controller.connect(executable: fixture, home: home ?? controller.runtimeHome, cli: fixture)
+        controller.connect(executable: fixture, home: home ?? controller.runtimeHome, helper: fixture)
         try await wait { controller.connectionState == .ready && !controller.capabilities.isRefreshing }
     }
 

@@ -1,7 +1,7 @@
 import Foundation
 import ScholiumContracts
 
-/// The same framing owner serves the standalone CLI and the app-owned helper.
+/// App-bundled MCP framing for external hosts and token-scoped Chat.
 public enum AgentMCPService {
     public typealias Handler = @Sendable (Data) async -> Data?
 
@@ -27,9 +27,16 @@ public enum AgentMCPService {
             let zotero = ZoteroOperations()
             return { await zotero.handle(requestData: $0, access: .readOnly) }
         }
-        guard arguments.count == 4, Array(arguments.prefix(3)) == ["mcp", "serve", "--conversation-token"],
-            let token = UUID(uuidString: arguments[3])
-        else { throw HelperFailure.unsupportedCommand }
+        let token: UUID?
+        if arguments == ["mcp", "serve"] {
+            token = nil
+        } else if arguments.count == 4, Array(arguments.prefix(3)) == ["mcp", "serve", "--conversation-token"],
+            let identifier = UUID(uuidString: arguments[3])
+        {
+            token = identifier
+        } else {
+            throw HelperFailure.unsupportedCommand
+        }
         let bridge = try MCPBridgeOperations(applicationSupportURL: ScholiumPaths.appBridgeContainerURL(environment: environment))
         let server = ScholiumMCPServer(conversationToken: token) { request in
             try await bridge.call(
@@ -42,6 +49,6 @@ public enum AgentMCPService {
 
     private enum HelperFailure: LocalizedError {
         case unsupportedCommand
-        var errorDescription: String? { "The Scholium connection helper accepts only app-scoped MCP or read-only Zotero service requests." }
+        var errorDescription: String? { "The Scholium connection helper accepts only MCP or read-only Zotero service requests." }
     }
 }

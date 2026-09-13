@@ -34,20 +34,13 @@ whether Zotero's existing capabilities already serve the Agent's need.
 
 ### 15.3 Optional external-agent Zotero MCP
 
-Beta supplies a protected Zotero integration Skill and a supported local MCP
-service or installation route. The Skill owns stable research and safety
-instructions; installed CLI help and tool schemas own current transport
-details.
-
-The integration may check readiness, search, inspect exact metadata and bounded
-attachment pointers, retrieve paper data for the current task, and import
-BibTeX/RIS. Any write requires an explicit current-task request for the exact
-record and destination, dry run, confirmation, and readback. Prior search,
-reading, analysis, or import grants no standing permission.
+The App-bundled helper provides a read-only Zotero MCP service. Its schemas
+own the supported discovery and bounded read operations. Scholium supplies no
+Zotero import or write service; researcher-configured third-party connections
+retain their own runtime and authorization boundaries.
 
 In-app Chat supplies the first-party read-only Zotero MCP through its existing
-helper when the runtime has no explicit Zotero connection. No additional CLI
-installation or command entry is needed. An existing disabled or custom connection wins;
+helper when the runtime has no explicit Zotero connection. No additional installation or command entry is needed. An existing disabled or custom connection wins;
 Chat never silently replaces it. Configuration edits retain version checks,
 shared-setting confirmation and active-turn guards. No global settings are
 written to provide the default. Disabled tools, failed transport and unavailable
@@ -56,9 +49,7 @@ Zotero local API remain distinct. Checking the API imports no research material.
 The default launches the configured first-party service with `--read-only`.
 Local transports refuse redirects rather than follow another resource.
 That mode publishes only read tools and rejects import calls before any local
-request, including forged calls to unadvertised tools. The external guarded
-import service retains its separately requested dry-run/confirmation contract;
-Chat read enablement grants no import authority. An unavailable optional server
+request, including forged calls to unadvertised tools. Read enablement grants no import authority. An unavailable optional server
 does not disable ordinary Note collaboration. Runtime tool connection status
 and local API availability are separate observations, never proof of reading.
 
@@ -71,7 +62,7 @@ configuration scans.
 
 One library-qualified reference identifies an item, a PDF attachment at an
 optional one-based physical page, or an annotation within that attachment.
-Native binding navigation and tool results use the same `zotero://select` or
+Native link navigation and tool results use the same `zotero://select` or
 `zotero://open-pdf` representation. A printed page label remains separate from
 the physical page; a reference proves neither successful arrival nor reading.
 Unsupported routes, malformed keys, duplicate parameters, and nonpositive
@@ -131,9 +122,8 @@ workspace shell, project model, feature tour, or duplicate navigation.
 
 Agent setup is optional and deferred until after first launch. §8.2 owns
 external-host commands and Core Protocol discovery; §8.7 owns in-app runtime
-connection through the App-bundled helper. Only external-host setup links a missing
-standalone CLI to its official installation instructions.
-§21.5 owns standalone CLI update and distribution requirements.
+connection through the App-bundled helper. §21.5 owns App distribution.
+Onboarding explains application operations, not how to conduct philosophy.
 
 Success attaches one native workspace window before Bootstrap closes. Expired
 access uses **Restore Access** without discarding active document state.

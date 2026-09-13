@@ -6,7 +6,7 @@ dependencies, state ownership, and windows.
 ## Architectural stance
 
 Scholium is one local modular monolith with compiler-enforced frontend/backend
-isolation. `ScholiumApp` and `ScholiumCLI` are delivery adapters over
+isolation. `ScholiumApp` and `ScholiumAgentHelper` are delivery adapters over
 `ScholiumApplication` plus internal `ScholiumCore`; both reach backend authority
 only through Application capabilities and immutable `ScholiumContracts`
 values. This in-process module and ownership boundary is not XPC or a service.
@@ -41,13 +41,12 @@ closed MCP schemas, structured errors, and deterministic exact-source parsing.
 `ScholiumCore` owns repositories, registries, SQLite indexes, watchers,
 coordinated mutations, portable stores, Agent Change evidence, the bundled Core
 Protocol, and Zotero transport. `ScholiumApplication` composes those owners
-into delivery-neutral workspace lifetimes and use cases. App and CLI depend only
+into delivery-neutral workspace lifetimes and use cases. App and helper depend only
 on Contracts and Application; Core is not a library product.
 
 ```text
 ScholiumApp → ScholiumApplication → ScholiumCore → ScholiumContracts
-ScholiumCLI → ScholiumApplication → ScholiumCore → ScholiumContracts
-ScholiumCLI → ScholiumCLIUpdate → ScholiumContracts
+ScholiumAgentHelper → ScholiumApplication → ScholiumCore → ScholiumContracts
 
 ApplicationBootstrapController
 └── WorkspaceStore
@@ -62,7 +61,7 @@ ApplicationBootstrapController
 
 The App bridge is process-global but operates only on currently open workspace
 capabilities. It is not an Agent lifecycle or workspace owner. The adjacent Chat registry
-owns in-app runtime connections under the Agent Collaboration chapter. The CLI stdio
+owns in-app runtime connections under the Agent Collaboration chapter. The helper stdio
 server is a delivery adapter and cannot import Core or construct services.
 
 ### Runtime bootstrap, refresh, and Search
@@ -81,7 +80,7 @@ explicitly supplied QA root uses the same validation. `WorkspaceRuntime` then
 has two configurations:
 live reuses stable Triptych/vault runtimes, watchers, and derived refresh while
 any app window needs them; snapshot performs one-shot loading without watchers
-and shuts down after each CLI invocation.
+and shuts down after each isolated test operation.
 
 The live macOS activation may ask `WorkspaceHandle.open` for one selected
 `WorkspaceVaultSlot`. One handle constructs all repositories, pooled catalogs,
@@ -106,7 +105,7 @@ the full reconcile cannot contend with that initial presentation; a bounded
 fallback still completes a Library-only window or a failed renderer. The
 complete snapshot replaces the opening phase; no second repository, catalog,
 watcher, index, or source owner is created. Cancellation and shutdown cancel
-and await that task. Snapshot/CLI opens and live callers without a selected
+and await that task. Snapshot opens and live callers without a selected
 opening Vault retain the complete one-shot path.
 
 Each `WorkspaceHandle` owns one Note `TriptychSearchIndex` at
@@ -171,7 +170,7 @@ source-and-derived save, move, folder mutation, system-Trash deletion, and
 identity resolution returns a `WorkspaceMutationOutcome` once its
 authoritative commit is proven. Disposable refresh or post-move identity-
 recovery failures travel as nonretryable warnings beside that committed value;
-they never replace it with a generic thrown error. GUI and CLI callers
+they never replace it with a generic thrown error. Application callers
 acknowledge the committed source and direct recovery through Refresh or
 identity repair without repeating the mutation. Multi-file GUI import
 aggregates both warning classes across every committed file instead of
@@ -198,7 +197,7 @@ lexical query remains independently available from its last complete compatible
 Note generation. There is no parallel direct-connection Search presentation;
 explicit direct-link clauses are the only Search consumer of Graph neighborhoods.
 `DiscoveryOperations` owns vault-qualified link occurrences and bounded Graph
-queries; CLI only formats results.
+queries; delivery surfaces only present results.
 Privacy-safe measurements record enumerate/read/parse/source-
 projection counts and durations, identity and research-state projection,
 graph construction, dynamic Search projection and synchronization, snapshot
@@ -363,7 +362,7 @@ overlay through the ordinary event gate. The window therefore activates the
 new stable identity without blocking on Triptych-wide identity reconciliation
 or graph construction and without creating a second source authority. The
 managed creator snapshots the current Settings revision and prepared role
-source before committing; GUI, researcher CLI, and Agent adapters never compose
+source before committing; GUI and Agent adapters never compose
 their own headers. A failed final source-and-identity proof persists one
 coordinated recovery record; researcher creation freezes only its exact path
 and reserved identity, while MCP creation links its machine-local Agent Change.
@@ -506,7 +505,7 @@ is active. Every identity-dependent interface command first captures one
 exact source revision remain one value through Window, controller, use case,
 and Application. Application re-resolves the stable identity under the source
 mutation lease before a move or deletion can commit, so path reuse cannot
-retarget a stale row or sheet command. The CLI retains its explicit
+retarget a stale row or sheet command. Application retains its explicit
 vault-qualified path plus exact-revision boundary. Context menus and
 accessibility actions are rendered from one semantic Note-command projection;
 only the surface-specific non-drag Move alternative differs.
@@ -690,24 +689,16 @@ never the workspace split, toolbar, or `WindowModel`. After first registration,
 the model keeps workspace routing closed while optional Agent preparation
 copies immutable instructions. Prompt-copy and confirmation remain
 presentation-local and create no durable readiness, machine-status, or
-research-access owner. The App neither installs nor maintains the standalone CLI.
+research-access owner. The App is the sole installation.
 In-app Chat uses a bundled `ScholiumAgentHelper`; Application owns its closed MCP
 service routes, while the executable owns process entry and error reporting.
 
-Packaging emits a sandboxed App archive and an independent CLI archive with `scholium`,
-its Core resource bundle, and a user-local installer. Both carry matching provenance.
-The CLI has no App Sandbox or App Group entitlement. The CLI update module owns
-verified, recoverable self-update and has no App authority. It promotes a complete
-transaction before replacement; the packaged installer is first-install-only. The App
-retains sandboxing, user-selected read-write access, app-scoped bookmarks, Zotero client
-access, and App Sandbox's required network-server entitlement for that listener. One
-home-relative exception exposes only `Library/Application Support/Scholium`; the App has
-no `.local` access or embedded general-purpose CLI. Its separately signed helper
-provides only token-scoped MCP and read-only Zotero service entry points. The copied Agent instruction limits installation to
-`~/.local/bin/scholium` and its adjacent resource bundle and never authorizes `sudo`,
-`PATH`, shell-profile, Agent-configuration, or quarantine mutation. Agent preparation
-starts Application registration before presenting Agent; its local gate prevents Ready
-until registration succeeds, while Application owns the transaction and failure.
+Packaging emits one sandboxed App DMG with the signed connection helper and
+Core resource bundle. App and helper share build provenance and update together.
+The helper exposes external and token-scoped MCP plus read-only Zotero; it has
+no installer, updater, workspace runtime or independent research-file access.
+The App retains its existing sandbox, selected-file, bookmark, network and
+Application Support privileges. Registration remains Application-owned.
 Bootstrap and Workspace use nonoptional Codable route bindings with a `defaultValue`;
 the route's `windowID` is their only session identity. Workspace restoration is
 automatic, while Bootstrap restoration is disabled. It recovers only Triptych and

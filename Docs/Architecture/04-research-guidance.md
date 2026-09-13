@@ -10,19 +10,19 @@ separate feature owners, storage boundaries and connection semantics.
 ## Agents & Chat
 
 `AgentIntegrationSettingsView` receives delivery-neutral availability values
-from `WorkspaceSettingsModel`. Application resolves the installed CLI and
+from `WorkspaceSettingsModel`. Application resolves the bundled helper and
 release-bundled Core Protocol locations. The App reports its own availability;
 the authenticated bridge status comes from the live App bridge owner.
 
 Host setup actions write one generated command through the shared native
-pasteboard boundary. The command contains the verified absolute CLI path and
+pasteboard boundary. The command contains the verified absolute helper path and
 `mcp serve`; Codex and Claude labels and scope are presentation choices only.
 Scholium does not execute the command, edit host configuration, install a Skill,
 or record a configuration-success claim.
 
 The Core Protocol reveal route is a Finder action over a release resource.
-Researcher-owned Skills remain in the external host and have no Scholium
-registration, parser, store, editor, or recovery state.
+The selected runtime owns researcher Skills; the Chat capability owner
+provides discovery and management under the Agent Collaboration chapter.
 
 ## Zotero
 
@@ -31,7 +31,7 @@ Its settings, exact library/item identity, attachment containment, and
 source-derived reference navigation remain separate from MCP Agent collaboration.
 The optional first-party Zotero MCP transport has its own operator guide and
 does not expand Scholium's knowledge-base MCP surface. `ZoteroMCPAccess` binds
-one CLI session to read-only or guarded-import delivery. Core uses one predicate
+one helper session to read-only delivery. Core uses one predicate
 for discovery and dispatch, so hidden import tools cannot execute in read-only
 mode. Application reads and MCP share Core's bounded URLSession client and
 redirect policy. Foundation request injection stays inside Application composition;
@@ -46,7 +46,7 @@ before passing the snapshot to the same Core `AgentAttachmentContentReader`
 used by Note attachments. Only selected text/page/image coverage enters the
 tool response; originals have no second archive or writable projection.
 `ZoteroReference` owns library/item/PDF-page/annotation URL validation and
-serialization. Binding presentation, MCP results, Chat links/Sources and native
+serialization. Source-link presentation, MCP results, Chat links/Sources and native
 external navigation use it; a locator does not create source-read evidence.
 
 ## Settings authority
@@ -62,7 +62,7 @@ policy.
 Settings search indexes static interface metadata only. It never searches
 research content, reads external Skill files, or supplies Agent permission.
 
-`SettingsToolbarAttachment` projects the six selected destinations to a native
+`SettingsToolbarAttachment` projects the five selected destinations to a native
 preference `NSToolbar`. Its coordinator owns only exact-window attachment and
 frame adjustment from the current top-left corner, constrained to the visible
 screen and immediate under Reduce Motion. SwiftUI retains destination and

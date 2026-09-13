@@ -172,7 +172,7 @@ integrations. Verify:
 - Zotero link labels and exact references remain available at narrow widths;
   source deletion removes the occurrence, and opening cannot imply source reading.
 
-- Agents & Chat exposes App/bridge/CLI state, distinct setup-copy actions
+- Agents & Chat exposes App/bridge/helper state, distinct setup-copy actions
   and the Finder route. Commands/paths are selectable; copy success does not
   claim host configuration. MCP failures retain distinct unavailable, scope,
   stale/conflict and uncertain-outcome explanations.

@@ -553,7 +553,7 @@ public actor TriptychSearchIndex {
                     hasMore: false
                 )
             }
-            let boundedLimit = min(max(1, request.limit), SearchContract.maximumCLIResults)
+            let boundedLimit = min(max(1, request.limit), SearchContract.maximumNoteResults)
             switch request.executionScope {
             case .currentNote(let source):
                 return try searchCurrentNote(

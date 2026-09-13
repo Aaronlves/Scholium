@@ -27,23 +27,4 @@ public enum ScholiumAgentIntegrationResources {
         executableURL(at: bundleURL.appendingPathComponent("Contents/Helpers/ScholiumAgentHelper").path)
     }
 
-    public static func scholiumCLIURL(
-        fileManager: FileManager = .default
-    ) -> URL? {
-        let candidate = fileManager.homeDirectoryForCurrentUser
-            .appendingPathComponent(".local/bin/scholium", isDirectory: false)
-            .resolvingSymlinksInPath()
-            .standardizedFileURL
-        var isDirectory: ObjCBool = false
-        guard
-            fileManager.fileExists(
-                atPath: candidate.path,
-                isDirectory: &isDirectory
-            ), !isDirectory.boolValue,
-            fileManager.isExecutableFile(atPath: candidate.path)
-        else {
-            return nil
-        }
-        return candidate
-    }
 }

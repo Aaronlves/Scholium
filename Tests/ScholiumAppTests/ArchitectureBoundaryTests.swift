@@ -30,11 +30,12 @@ struct ArchitectureBoundaryTests {
         )
         let compact = package.filter { !$0.isWhitespace }
 
+        #expect(!package.contains("ScholiumCLI"))
+        #expect(compact.contains(#"name:"ScholiumAgentHelper",dependencies:["ScholiumApplication"]"#))
         #expect(package.contains(#".library(name: "ScholiumContracts""#))
         #expect(!package.contains(#".library(name: "ScholiumCore""#))
         #expect(compact.contains(#"name:"ScholiumApplication",dependencies:["ScholiumContracts","ScholiumCore"]"#))
         #expect(compact.contains(#"name:"ScholiumApp",dependencies:["ScholiumContracts","ScholiumApplication",]"#))
-        #expect(compact.contains(#"name:"ScholiumCLI",dependencies:["ScholiumContracts","ScholiumApplication","ScholiumCLIUpdate"]"#))
     }
 
     @Test("Core and Application imports remain confined to composition roots")
@@ -43,7 +44,7 @@ struct ArchitectureBoundaryTests {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let roots = ["Scholium", "ScholiumCLI", "ScholiumAgentHelper"]
+        let roots = ["Scholium", "ScholiumAgentHelper"]
         var coreImports: [String] = []
         var applicationImports: [String] = []
         let allowedApplicationImports: Set<String> = [
@@ -59,9 +60,6 @@ struct ArchitectureBoundaryTests {
             "Scholium/Services/ScholiumAppBridgeRequestRouter.swift",
             "Scholium/Services/WindowSession.swift",
             "Scholium/Views/AgentIntegrationSettingsView.swift",
-            "ScholiumCLI/CLIContext.swift",
-            "ScholiumCLI/MCPCommandHandler.swift",
-            "ScholiumCLI/ZoteroCommandHandler.swift",
             "ScholiumAgentHelper/ScholiumAgentHelper.swift",
         ]
         for relativeRoot in roots {
@@ -199,10 +197,7 @@ struct ArchitectureBoundaryTests {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let deliveryRoots = [
-            repositoryRoot.appendingPathComponent("Scholium", isDirectory: true),
-            repositoryRoot.appendingPathComponent("ScholiumCLI", isDirectory: true),
-        ]
+        let deliveryRoots = [repositoryRoot.appendingPathComponent("Scholium", isDirectory: true)]
         let prohibitedConstructions: [(label: String, pattern: String)] = [
             ("vault repository", #"\bVaultRepository\s*\("#),
             ("Triptych Search index", #"\bTriptychSearchIndex\s*\.\s*openRecovering\s*\("#),

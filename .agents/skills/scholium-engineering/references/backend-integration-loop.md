@@ -20,7 +20,7 @@ connect loop, not a technology-selection exercise.
 2. Add or update the lowest deterministic contract or service test that can
    reject the behavior, including one relevant failure or cancellation path.
 3. Connect one real end-to-end consumer through the same typed boundary; do not
-   create a second route for GUI, CLI, agent, or test delivery.
+   create a second route for GUI, helper, agent, or test delivery.
 4. Run the owning test after each causal correction. Inspect retained evidence
    instead of rerunning an unchanged failure.
 5. When an internal contract is replaced, update every repository-owned caller

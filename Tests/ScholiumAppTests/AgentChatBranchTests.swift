@@ -24,7 +24,7 @@ struct AgentChatBranchTests {
         }
         try await wait { controller.isLoaded }
         let fixture = repository.appendingPathComponent("Tests/Fixtures/agent-chat-runtime.py")
-        controller.connect(executable: fixture, home: controller.runtimeHome, cli: fixture)
+        controller.connect(executable: fixture, home: controller.runtimeHome, helper: fixture)
         try await wait { controller.state == .ready && controller.account != nil }
         return controller
     }

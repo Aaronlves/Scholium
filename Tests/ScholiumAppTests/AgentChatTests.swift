@@ -373,7 +373,7 @@ struct AgentChatTests {
     private enum TestFailure: Error { case timeout }
     private func connect(_ controller: AgentChatController) async throws {
         try await eventually { controller.isLoaded }
-        controller.connect(executable: executable, home: controller.runtimeHome, cli: executable)
+        controller.connect(executable: executable, home: controller.runtimeHome, helper: executable)
         try await eventually { controller.state == .ready && controller.account != nil }
     }
     private func success(_ request: ScholiumMCPBridgeRequest) -> ScholiumMCPBridgeResponse {
@@ -1255,7 +1255,7 @@ struct AgentChatTests {
         defer { try? FileManager.default.removeItem(at: root) }
         let controller = AgentChatController(triptychID: UUID(), root: root, toolHandler: success)
         try await eventually { controller.isLoaded }
-        controller.connect(executable: executable, home: controller.runtimeHome, cli: executable)
+        controller.connect(executable: executable, home: controller.runtimeHome, helper: executable)
         await controller.disconnect()
         try await Task.sleep(for: .milliseconds(100))
         #expect(controller.state == .disconnected && controller.token == nil)

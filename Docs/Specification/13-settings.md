@@ -106,7 +106,7 @@ features or required literal translations.
 | Item | Wording | Example |
 | --- | --- | --- |
 | Category or group | Name the subject. | Document Appearance / 文稿外观 |
-| Behavioral preference | Describe the enabled behavior. | Use System Appearance / 跟随系统外观 |
+| Behavioral preference | Describe the enabled behavior. | Enable Selection Action / 启用选区操作 |
 | Parameter | Name the value being chosen. | Line Spacing / 行距 |
 | Action | Name the immediate action and object. | Check Connection / 检查连接 |
 | Status | State the observed fact. | Not Connected / 未连接 |
@@ -151,31 +151,16 @@ under its owning workflow contract.
 
 [Document Appearance §18.4](07-document-and-research-interface.md#184-document-modes-context-and-source-properties)
 owns appearance controls, configuration-file editing and restoration; Settings
-does not create a second appearance owner or duplicate its controls. One
-Appearance pane owns the Profile, Reading, Typography, Text Styles, Heading
-Hierarchy, Configuration File and Advanced CSS groups against the same draft.
-Text Styles uses an aligned Body/Headings matrix, while Heading Hierarchy shows
-an aligned H1–H6 summary matrix. Detailed per-level spacing stays in one
-explicit native child sheet, revealed on demand; it is not a second appearance
-owner. Letter spacing, word spacing, hyphenation, kerning and ligatures are
-intentionally omitted from the structured profile and native form; Advanced CSS
-is their explicit configuration surface for ordinary document content. Its
-child sheet exposes **Open CSS Folder**, **Reload**, import, enablement, order,
-and per-snippet recovery actions. Direct `.css` files in the managed folder are
-discovered and watched; invalid or missing files remain visible with errors.
-The public Callout selectors `.callout`, `.callout-title`, `.callout-body`,
-`.callout-content`, and `.callout-<role>` are supported there and projected to
-Review/Edit without exposing internal selectors. These matrices collapse before
-the available width or text size makes the form cramped. CSS remains an
-explicit action to the configuration surface and file, and profile saving does
-not reset CSS snippets. [Source Properties Appendix A](11-source-properties.md)
+does not create a second appearance owner or duplicate its controls. Its native
+form and Advanced CSS entry share the Document Appearance owner;
+profile changes never reset CSS snippets. [Source Properties Appendix A](11-source-properties.md)
 owns authored YAML; [Agent Chat §8.7](12-agent-chat.md) owns Selection
 Actions and runtime configuration. Agents & Chat keeps connection state and
 primary connect or sign-in actions in the main pane; custom connection paths,
 runtime Skills and Tools, and External Agent Hosts open in explicit native
 child sheets because they are distinct or low-frequency workflows. [Agent Collaboration §8](03-agent-collaboration-and-workflows.md)
 and [Zotero §15](05-integrations-onboarding-and-boundaries.md) own integration
-behavior. [Chat capability presentation](06-interface-shell-and-library.md#chat-capability-presentation)
+behavior. [Chat capability presentation](14-chat-interface.md#chat-capability-presentation)
 owns the Agent pane's feature-specific controls. [Triptych §§3–4](01-foundation-and-triptych.md)
 and [Attention §13](04-connect-search-and-recovery.md) own their respective
 workflow meanings. Their save, confirmation and source-preservation rules remain

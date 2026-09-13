@@ -78,8 +78,8 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
     private let notificationSink: AgentChatNotificationSink
     private var quotaTask: Task<Void, Never>?
     private var connectionID: UUID?
-    private var cliURL: URL?
-    var zoteroToolExecutable: URL? { cliURL }
+    private var helperURL: URL?
+    var zoteroToolExecutable: URL? { helperURL }
     private var workingDirectory: URL?
     private var connectionDefaults: UserDefaults
     private var automaticConnection = false
@@ -257,7 +257,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
         guard let turn = executions[id]?.turnID else { return }
         notify(.inputRequired, in: id, turnID: turn)
     }
-    var suggestedCLIPath: String? { ScholiumAgentIntegrationResources.chatHelperURL()?.path }
+    var suggestedHelperPath: String? { ScholiumAgentIntegrationResources.chatHelperURL()?.path }
     var selected: AgentChatConversation? { conversations.first { $0.id == selectedID } }
     var isBusy: Bool { selectedID.map(isBusy(in:)) ?? (connectionState == .connecting) }
     var hasActiveExecutions: Bool { executions.values.contains(where: \.isBusy) }
@@ -794,14 +794,14 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
         let executable =
             defaults.string(forKey: "agent.codex.executable").flatMap { $0.isEmpty ? nil : $0 }
             ?? suggestedRuntimePath
-        let cli =
+        let helper =
             defaults.string(forKey: "agent.scholium.helper").flatMap { $0.isEmpty ? nil : $0 }
-            ?? suggestedCLIPath
+            ?? suggestedHelperPath
         guard let executable, let executableURL = ScholiumAgentIntegrationResources.executableURL(at: executable) else {
             connectionError = String(localized: "Codex was not found. Open Agent settings to locate your installation.")
             return
         }
-        guard let cli, let cliURL = ScholiumAgentIntegrationResources.executableURL(at: cli) else {
+        guard let helper, let helperURL = ScholiumAgentIntegrationResources.executableURL(at: helper) else {
             connectionError = String(
                 localized: "Scholium’s connection helper is unavailable. Reinstall Scholium or check the custom helper in Advanced settings.")
             return
@@ -810,7 +810,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
         connect(
             executable: executableURL,
             home: home.isEmpty ? runtimeHome : URL(fileURLWithPath: home),
-            cli: cliURL, signInIfNeeded: !automatically)
+            helper: helperURL, signInIfNeeded: !automatically)
     }
 
     func editDraft(_ text: String) {
@@ -858,7 +858,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
 
     func renewSettingsWhenIdle() {
         guard connectionState == .ready, settingsRenewalTask == nil, let runtime,
-            let executable = connectedExecutable, let home = workingDirectory, let cli = cliURL
+            let executable = connectedExecutable, let home = workingDirectory, let helper = helperURL
         else { return }
         let id = UUID()
         let connection = connectionID
@@ -881,7 +881,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
                         else { continue }
                         await self.closeConnection(retainingAutomaticConnection: true, forSettingsRenewal: true)
                         guard !Task.isCancelled, self.settingsRenewalID == id else { return }
-                        self.beginConnection(executable: executable, home: home, cli: cli, signInIfNeeded: false)
+                        self.beginConnection(executable: executable, home: home, helper: helper, signInIfNeeded: false)
                         await self.connectionTask?.value
                         guard self.settingsRenewalID == id else { return }
                         self.isRenewingSettings = false
@@ -1010,12 +1010,12 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
         try await storage.save(conversations)
     }
 
-    func connect(executable: URL, home: URL, cli: URL, signInIfNeeded: Bool = false) {
+    func connect(executable: URL, home: URL, helper: URL, signInIfNeeded: Bool = false) {
         guard !isRenewingSettings else { return }
-        beginConnection(executable: executable, home: home, cli: cli, signInIfNeeded: signInIfNeeded)
+        beginConnection(executable: executable, home: home, helper: helper, signInIfNeeded: signInIfNeeded)
     }
 
-    private func beginConnection(executable: URL, home: URL, cli: URL, signInIfNeeded: Bool) {
+    private func beginConnection(executable: URL, home: URL, helper: URL, signInIfNeeded: Bool) {
         guard connectionState == .disconnected, isLoaded else { return }
         connectedExecutable = executable
         connectionState = .connecting
@@ -1024,7 +1024,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
         let connectionToken = UUID()
         runtime = connection
         connectionID = connectionToken
-        cliURL = cli
+        helperURL = helper
         workingDirectory = home
 
         eventTask = Task { [weak self] in
@@ -1463,7 +1463,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
     }
 
     private func configureTools(in conversationID: UUID) {
-        guard cliURL != nil else { return }
+        guard helperURL != nil else { return }
         executions[conversationID]?.permission = conversation(conversationID)?.permission ?? .ask
         executions[conversationID]?.notificationTurnID = nil
         let scope = executions[conversationID]?.routeToken ?? UUID()
@@ -1476,9 +1476,9 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
     }
 
     private func toolConfiguration(token scope: UUID) -> [String: MCPJSONValue] {
-        guard let cliURL else { return [:] }
+        guard let helperURL else { return [:] }
         var server: [String: MCPJSONValue] = [
-            "command": .string(cliURL.path),
+            "command": .string(helperURL.path),
             "args": .array([
                 .string("mcp"), .string("serve"), .string("--conversation-token"),
                 .string(scope.uuidString),

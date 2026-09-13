@@ -4,13 +4,12 @@ import Foundation
 /// Stable versions that make a Search generation reproducible and prevent a
 /// saved query or derived database from silently acquiring new semantics.
 public enum SearchContract {
+    public static let maximumNoteResults = 500
     public static let currentVersion = 18
     public static let schemaVersion = 15
     public static let tokenizerPolicyVersion = 2
     public static let rankingPolicyVersion = 2
     public static let maximumInterfaceResults = 100
-    public static let defaultCLIResults = 20
-    public static let maximumCLIResults = 500
     public static let maximumQueryUTF16Count = 16_384
     public static let maximumQueryTokenCount = 64
 

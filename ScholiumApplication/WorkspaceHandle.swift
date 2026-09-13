@@ -1381,7 +1381,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         )
     }
 
-    /// The sole managed creator for GUI, researcher CLI, and MCP delivery. It
+    /// The sole managed creator for GUI and MCP delivery. It
     /// composes one fixed authored-YAML scaffold and one
     /// complete candidate, atomically claims the path, and then commits the
     /// portable stable identity before publishing a source-ahead result.
@@ -2509,7 +2509,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     private func prepareSourceCatalogs(
         _ preparation: SourceCatalogPreparation
     ) async throws {
-        // Snapshot/CLI runtimes have no native watcher. Every publication must
+        // Snapshot runtimes have no native watcher. Every publication must
         // therefore stat-reconcile all three catalogs so an external addition,
         // deletion, or unreadable source in another vault cannot be hidden by
         // an otherwise precise local mutation. Unchanged notes are not read or

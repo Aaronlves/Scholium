@@ -39,7 +39,7 @@ The authority stack is:
 2. the researcher's current request and declared scope;
 3. the Core Protocol;
 4. an optional researcher-owned Skill; and
-5. primary texts, Analyses, Topics, Works, Search results, Metadata, links, and
+5. primary texts, Analyses, Topics, Works, Search results, authored properties, links, and
    prior research history in their actual evidential roles.
 
 Evidence never becomes instruction, permission, or researcher commitment.
@@ -48,8 +48,7 @@ averaged.
 
 ### 8.2 MCP server and installation
 
-The installed `scholium` executable exposes one local stdio server through
-`scholium mcp serve`. It adapts the Agent host to the currently running
+The App-bundled connection helper exposes one local stdio MCP server. It adapts the Agent host to the currently running
 Scholium App. The App remains the sole owner of live editors, workspace
 coordination, current source, and derived indexes. The adapter never opens a
 second workspace, reads the Triptych filesystem directly, starts the App, or
@@ -63,14 +62,14 @@ failures.
 
 Codex and Claude receive the same server name, tool names, schemas, results,
 and errors. Settings → Integrations → **Agents & Chat** shows App,
-bridge, and CLI availability and provides:
+bridge, and bundled helper availability and provides:
 
 - **Copy Codex Setup Command**;
 - **Copy Claude Setup Command**; and
 - **Show Core Protocol in Finder…**.
 
 The copied commands register the same local stdio server at user scope using
-the verified absolute CLI path. Scholium does not edit either external host's
+the verified absolute bundled-helper path. Scholium does not edit either external host's
 settings or claim that its configuration succeeded. In-app Chat has an
 additional conversation-token-scoped capability surface: when the researcher
 explicitly asks the Agent to manage Scholium, it may inspect and change the
@@ -172,7 +171,7 @@ Update has three mutually exclusive payload modes:
 
 One update call targets one Note. A request covering several named Notes uses
 separate calls and separate outcomes. No call automatically propagates to
-destination Notes, Metadata, links, or Settlement. Editing a link
+destination Notes, properties, links, or Settlement. Editing a link
 annotation is an ordinary source-Note update guarded by that Note's current
 fingerprint.
 
@@ -366,10 +365,9 @@ universal philosophical method. It requires an Agent to:
 
 1. obtain current workspace status before first access and after any explicit
    stale, conflict, external-change, or unavailable-state recovery;
-2. form a multilingual conceptual neighborhood from the research question,
-   issue several bounded queries, read relevant passages, revise retrieval, and
-   follow direct links where warranted;
-3. treat Search, Metadata, filenames, tags, and links as candidates and
+2. start from supplied material, retrieve exact passages when needed, and
+   disclose unavailable or partial material without imposing a search ritual;
+3. treat Search, authored properties, filenames, tags, and links as candidates and
    locators, never as substitutes for reading or philosophical judgment;
 4. distinguish primary text, source-reported view, Analysis reconstruction,
    Topic synthesis, Work commitment, prior research history, charitable repair,
@@ -380,7 +378,7 @@ universal philosophical method. It requires an Agent to:
 6. default to read-only discussion, mutate Notes only within the exact target
    and scope named by an explicit researcher request;
 7. preserve unrelated source and avoid automatic maintenance of related Notes,
-   Metadata, links, or Settle;
+   properties, links, or Settle;
 8. return to an accessible primary source when Topic and Analysis materially
    conflict about a paper's attribution or argument, and otherwise state the
    unresolved evidential limit;
@@ -409,62 +407,34 @@ The [In-app Agent Chat](12-agent-chat.md) chapter owns §8.7.
 
 ## 9. Analyses workflow
 
-Analyses reconstruct and assess identifiable papers or other sources. They are
-evidence about what a source has been understood to say, not automatic evidence
-that the source says it and not evidence of the researcher's own position.
-
-The Agent may discuss an Analysis directly from its current body while naming
-that evidential layer. A source-specific claim that matters to the answer is
-checked against the available primary text when the Analysis is incomplete,
-uncertain, internally unsupported, or materially conflicts with a Topic or
-another Analysis. Inaccessible, partial, OCR-dependent, edition-dependent, or
-otherwise limited source access narrows the claim.
-
-An explicit create/update request may establish, correct, extend, reorganize,
-or leave an Analysis unchanged. Reconstruction precedes criticism. Source
-claims, reported views, reconstruction, objections, replies, implications,
-charitable repair, and Agent evaluation remain distinct. Scholium never creates
-one Analysis per reading stage merely because an Agent task was separate.
+Analyses hold researcher-controlled accounts of identifiable papers and other
+sources. Their prose remains distinct from primary text and the researcher's
+own position. Ordinary read, edit, Search, source-link and authorized Agent
+operations apply. Scholium imposes no analysis stages, reconstruction template,
+method, automatic source assessment or one-Note-per-reading rule.
 
 ## 10. Topics workflow
 
-Topics organize philosophical questions, concepts, distinctions, arguments,
-positions, objections, and debates across sources. They synthesize material
-without becoming a fixed truth hierarchy or a complete statement of the
-researcher's view.
-
-The Agent searches conceptually across languages and neighboring vocabularies,
-then reads the passages that actually bear on the question. It preserves live
-disagreement, methodological asymmetry, conceptual variation, minority views,
-limitations, and uncertainty. Conflict or difference never supplies an
-automatic verdict, and a broad keyword neighborhood never establishes that two
-sources address the same claim.
-
-Topics change only under an explicit request naming the target. Adding or
-changing an Analysis never automatically updates a Topic. Discovery that new
-material may alter an older synthesis is a separate researcher-invoked task.
+Topics hold reusable questions, concepts, distinctions, arguments and syntheses.
+They use the same Note operations and may link to multiple Analyses and Works.
+Adding or changing an Analysis never automatically updates a Topic. Selection,
+comparison and synthesis methods belong to the researcher and chosen Skills;
+links and retrieval results confer no evidential verdict.
 
 ## 11. Works
 
 ### 11.1 Researcher-governed Works
 
-Works contain the researcher's plans, arguments, drafts, and finished writing.
-They are the primary durable evidence of the researcher's position, together
-with explicit current conversation and later adopted research history. An
-older Work that conflicts with a current statement is not automatically
-overridden by recency: the Agent identifies both positions, reconstructs their
-reasons, evaluates the more viable account, and asks the researcher to decide
-whether durable revision is wanted.
-
-Agents may discuss, criticize, develop, or edit a Work. Direct editing requires
-an explicit target and preserves the intended thesis unless the researcher asks
-for an alternative argument. Philosophical adequacy governs the result; the
-Agent need not imitate the researcher's sentence-level style.
+Works contain researcher-owned plans, arguments, drafts and finished writing.
+They use ordinary folders and Notes without project membership or mandatory
+workflow state. Agent changes require the researcher's named scope; source
+operations do not determine the researcher's position or philosophical adequacy.
 
 ### 11.2 Discussion and assessment
 
-Assessment follows the ordinary conversation and explicitly authorized Note
-operations in §8. Reports are ordinary researcher-controlled Notes, with no
-reserved directory, special read-only document type, registered action, result
-schema, or round-completion state. Agent assessments remain attributed and do
-not establish researcher acceptance or automatically change a Work or Settle.
+Discussion and assessment use ordinary Chat and authorized Note operations.
+Reports have no reserved directory, special document type, result schema or
+completion lifecycle. Agent assessments remain attributed and cannot establish
+researcher acceptance or automatically change a Work or Settle. Continuing
+research features beyond ordinary Notes and retained Chat remain future work;
+no dedicated Chat-to-document insertion action is required alongside copy/paste.

@@ -4,9 +4,11 @@
 
 > 面向哲学与人文研究、本地优先、以文档为权威的研究环境。
 
-**当前公开 Core App Beta：**[v0.1.1-beta1](https://github.com/Aaronlves/Scholium/releases/tag/v0.1.1-beta1) ·
-[下载 Apple 芯片版 Scholium](https://github.com/Aaronlves/Scholium/releases/download/v0.1.1-beta1/Scholium-v0.1.1-beta1-macos-arm64.dmg) ·
-[作为 Agent 协作 Preview 下载独立 CLI](https://github.com/Aaronlves/Scholium/releases/download/v0.1.1-beta1/Scholium-CLI-macos.zip)
+**此前发布的 Core App Beta：**[v0.1.1-beta1](https://github.com/Aaronlves/Scholium/releases/tag/v0.1.1-beta1) ·
+[下载 Apple 芯片版 Scholium](https://github.com/Aaronlves/Scholium/releases/download/v0.1.1-beta1/Scholium-v0.1.1-beta1-macos-arm64.dmg)
+
+上述历史构建尚不包含当前的 App 单一发行调整。本文说明当前源码，新的发行产物
+仍需独立完成验证。
 
 Scholium 是一款面向持续哲学与人文研究的原生 macOS 研究环境。它的内容核心是
 一套由研究者治理、以文档为权威，并可由一位研究者与获得授权的外部 Agent 共同
@@ -19,8 +21,7 @@ Markdown 始终是研究者所选文件夹中普通、可检查的文本。阅�
 只通过本机 MCP adapter 提供当前检索与准确 Note 变更，并为已确认变更保存本机
 Agent Change 证据。
 
-Core App Beta 的验收结论只覆盖本地人工研究环境。外部 Agent 协作与独立安装的
-CLI 保持为单独的 Preview，直到它们通过自己的验收 profile。
+Core App Beta 的验收结论只覆盖本地人工研究环境。外部 Agent 协作保持为单独的 Preview，直到它们通过自己的验收 profile。
 
 ## 产品定位
 
@@ -68,14 +69,14 @@ Git 历史中，不再作为平行权威。
 
 Scholium 是一个由编译器强制边界的模块化单体。不可变值与用例协议位于
 `ScholiumContracts`；内部仓储、存储、索引、监听与文件系统 I/O 位于
-`ScholiumCore`；原生应用与 CLI 共享无界面的 `ScholiumApplication` 层。两个
+`ScholiumCore`；原生应用与随附连接组件 共享无界面的 `ScholiumApplication` 层。两个
 交付目标都不导入 Core。
 
 当前产品支持独立脉络与窗口、准确来源 Markdown 编辑、搜索与关联、Note 与文件夹
 操作、外部编辑冲突、中断保存恢复、Settle、Zotero，以及固定的本机 MCP
-协作面。Search 始终是供应用、CLI 与 MCP adapter 共用的可丢弃 Note-only 投影。
+协作面。Search 始终是供应用与 MCP adapter 共用的可丢弃 Note-only 投影。
 
-已安装的 `scholium` 可执行文件通过 `scholium mcp serve` 启动 stdio server。它只把
+App 随附的 `ScholiumAgentHelper` 提供 stdio MCP 服务。它只把
 外部 MCP host 连接到当前正在运行的 Scholium App；不会启动应用、打开无界面
 workspace，或直接读取脉络文件。首版只提供 workspace status、Note 搜索／读取／链接，
 以及明确的创建／更新／移至系统纸篓操作。稳定 Note 身份、fingerprint compare-and-swap、
@@ -169,37 +170,13 @@ Beta 只运行受影响的 packaged series。规范性阈值、fixture、采样�
 
 ## 源码优先的 Beta 分发
 
-源码优先的 Core App Beta 在同一个 GitHub release 页面发布采用
-`GPL-3.0-or-later` 的准确标签源码、注明架构的应用 DMG 及其 SHA-256 校验值。
-Agent Collaboration Preview 可另外发布版本匹配的独立 `Scholium-CLI-macos.zip` 及其校验值。
-每个实际发布的产物都必须与 tag 和 package provenance 一致。应用启用 Sandbox，
-不包含也不安装 CLI。打开 DMG 时，Finder 会并列显示 Scholium 与“应用程序”别名，
-安装只需执行一次普通拖拽。
+Scholium.app 是唯一受支持的安装主体。发行从准确且干净的 tag 生成注明架构的
+应用 DMG、SHA-256 校验文件、GPL-3.0-or-later 源码和许可声明。签名的连接组件与
+Core Protocol 随应用一起更新，不再发行或支持独立 CLI、安装器或自更新程序。
 
-当前版本是
-[v0.1.1-beta1](https://github.com/Aaronlves/Scholium/releases/tag/v0.1.1-beta1)：
-
-- [macOS arm64 版 Scholium 应用 DMG](https://github.com/Aaronlves/Scholium/releases/download/v0.1.1-beta1/Scholium-v0.1.1-beta1-macos-arm64.dmg)
-  （[SHA-256](https://github.com/Aaronlves/Scholium/releases/download/v0.1.1-beta1/Scholium-v0.1.1-beta1-macos-arm64.dmg.sha256)）；
-- [独立 Scholium CLI](https://github.com/Aaronlves/Scholium/releases/download/v0.1.1-beta1/Scholium-CLI-macos.zip)
-  （[SHA-256](https://github.com/Aaronlves/Scholium/releases/download/v0.1.1-beta1/Scholium-CLI-macos.zip.sha256)）；
-- [准确标签源码](https://github.com/Aaronlves/Scholium/tree/v0.1.1-beta1)。
-
-把产物与对应 checksum 文件下载到同一文件夹后，先运行：
-
-```bash
-shasum -a 256 -c Scholium-v0.1.1-beta1-macos-arm64.dmg.sha256
-shasum -a 256 -c Scholium-CLI-macos.zip.sha256
-```
-
-准确 tag 已通过完整仓库门禁、优化 Release 构建、隔离 CLI 安装与 PATH 启动、
-DMG 结构与签名检查、package checksum 以及固定 5 + 30 的打包性能门禁。四个已发布
-资产随后均从 GitHub 重新下载并通过 release checksum。该版本采用的是当时有效的固定
-采样规则；当前开发改用规格 §21.4 的有界、预先声明协议。完整自动化 UI 运行加上聚焦的
-干净账户闭合验证建立了 88 项功能通过证据；环境没有提供 VoiceOver 时，可选的
-VoiceOver 服务自动化仍为条件性跳过。§20 所定义的有界真人 VoiceOver、键盘、IME 与
-视觉适应检查仍然开放，不计作已经通过的证据。准确测试数量与边界见
-[验证证据](Docs/Status/04-verification.md)。
+打开 DMG 后，将 Scholium 拖入“应用程序”别名即可安装。安装前核对对应校验文件。
+当前源码修改不会改变先前发布的产物；验收范围与产物证据以
+[实现状态](Docs/IMPLEMENTATION_STATUS.md)为准。
 
 便利版应用没有 Developer ID 签名，也未经过公证。DMG 版本从可信的项目 release
 下载并核对校验值后：
@@ -229,26 +206,20 @@ VoiceOver 服务自动化仍为条件性跳过。§20 所定义的有界真人 V
 
 ## Scholium MCP 设置
 
-打开**设置 → 研究指导 → Agent 集成**，可检查应用、bridge 与 CLI 的可用状态，
+打开**设置 → 集成 → Agents & Chat → External Agent Hosts**，可检查应用、bridge 与随附连接组件 的可用状态，
 复制对应 host 的设置命令，或在 Finder 中显示捆绑的 Core Protocol Skill。Scholium
 只复制命令，不修改 host 配置，也不宣称安装成功。
 
-源码 checkout 可先构建或安装 CLI，再用其绝对路径注册：
-
-```bash
-Tools/Scripts/install-cli.sh
-codex mcp add scholium -- "$PWD/.build/cli-prefix/bin/scholium" mcp serve
-claude mcp add scholium --scope user -- "$PWD/.build/cli-prefix/bin/scholium" mcp serve
-```
+使用设置中复制的命令，它包含当前应用内连接组件的准确绝对路径，无需单独安装。
+原位置更新应用可保留配置；移动应用后，需要重新复制并执行设置命令。
 
 应用必须已经运行，并打开预期脉络。stdio helper 通过只限当前用户且经过认证的本机
 bridge 工作；当应用、bridge、所选脉络或当前状态不可用时明确失败，绝不回退到直接
 文件系统或无界面 workspace 访问。
 
-当前协作界面发布七个 tools：`scholium_workspace_status`、`scholium_search`、
-`scholium_read_note`、`scholium_list_links`、`scholium_create_note`、
-`scholium_update_note` 与 `scholium_trash_note`。研究问题与选定讨论是普通 Works
-笔记，使用同样的明确写入授权与准确源码操作；应用不提供独立的问题生命周期或自动记录。
+当前工具范围以[Agent 协作 §8.3](Docs/Specification/03-agent-collaboration-and-workflows.md#83-tool-contract)
+为准，覆盖检索、来源附件、受控笔记操作和 Agent Changes 比较与恢复。
+研究问题与讨论使用普通笔记和明确授权，不具有自动记录生命周期。
 
 普通双链可携带由源 Note 拥有的多行 Markdown 注释：
 `[[目标]]{{注释}}`。Connect、Search 与 `scholium_list_links` 都保留每次
@@ -290,9 +261,8 @@ Bookmark、绝对路径、窗口 session、索引、保存的查询、恢复、�
 ```text
 ScholiumContracts/         不可变值、协议与源码语义
 ScholiumCore/              内部仓储、索引、监听与 I/O
-ScholiumApplication/       应用与 CLI 共享的无界面能力
+ScholiumApplication/       应用与随附组件共享的应用能力
 Scholium/                  原生 macOS 应用与面向人的交互
-ScholiumCLI/               CLI 解析、格式化与交付适配
 WebEditor/                 TypeScript 与 CodeMirror 源码
 Tests/                     Contracts、Core、Application 与 App 测试
 UITests/                   隔离的一次性 macOS UI 旅程

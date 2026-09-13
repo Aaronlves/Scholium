@@ -148,7 +148,7 @@ struct ZoteroOperationsTests {
             #"{"jsonrpc":"2.0","id":7,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}"#
                 .utf8
         )
-        let response = try #require(await operations.handle(requestData: request, access: .guardedImports))
+        let response = try #require(await operations.handle(requestData: request, access: .readOnly))
         let object = try #require(
             JSONSerialization.jsonObject(with: response) as? [String: Any]
         )
@@ -166,7 +166,7 @@ struct ZoteroOperationsTests {
         let notification = Data(
             #"{"jsonrpc":"2.0","method":"notifications/initialized"}"#.utf8
         )
-        #expect(await operations.handle(requestData: notification, access: .guardedImports) == nil)
+        #expect(await operations.handle(requestData: notification, access: .readOnly) == nil)
         await runtime.shutdown()
     }
 

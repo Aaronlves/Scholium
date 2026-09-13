@@ -95,7 +95,7 @@ public struct SearchCapabilities: Codable, Hashable, Sendable {
         ]
     )
 
-    /// Shared operator semantics for CLI help and the MCP query parameter.
+    /// Shared operator semantics for Search completion and the MCP query parameter.
     public var propertyQueryHelp: String {
         "property:key tests presence in top-level YAML. "
             + "property:key=value matches normalized whole scalar text or a direct list member. "

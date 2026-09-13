@@ -23,7 +23,7 @@ struct AgentChatChildTests {
         }
         try await wait { parent.isLoaded }
         let fixture = repository.appendingPathComponent("Tests/Fixtures/agent-chat-runtime.py")
-        parent.connect(executable: fixture, home: parent.runtimeHome, cli: fixture)
+        parent.connect(executable: fixture, home: parent.runtimeHome, helper: fixture)
         try await wait { parent.account != nil && parent.state == .ready }
         parent.editDraft(prompt)
         parent.send()

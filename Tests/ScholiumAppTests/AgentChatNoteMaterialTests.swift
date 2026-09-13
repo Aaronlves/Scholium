@@ -91,7 +91,7 @@ struct AgentChatNoteMaterialTests {
             try await chat.flushPersistence()
             chat.select(target)
             let fixture = repository.appendingPathComponent("Tests/Fixtures/agent-chat-runtime.py")
-            chat.connect(executable: fixture, home: chat.runtimeHome, cli: fixture)
+            chat.connect(executable: fixture, home: chat.runtimeHome, helper: fixture)
             try await wait { chat.canSend }
             chat.send()
             try await wait { chat.state == .ready && !chat.isBusy && chat.selected?.pendingMessageID == nil && chat.selected?.messages.isEmpty == false }

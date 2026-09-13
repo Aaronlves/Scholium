@@ -125,7 +125,7 @@ struct AgentChatVisualEvidenceTests {
         }
         try await wait { controller.isLoaded }
         let fixture = repository.appendingPathComponent("Tests/Fixtures/agent-chat-runtime.py")
-        controller.connect(executable: fixture, home: controller.runtimeHome, cli: fixture)
+        controller.connect(executable: fixture, home: controller.runtimeHome, helper: fixture)
         try await wait { controller.connectionState == .ready && controller.account != nil }
         controller.rename("原文与注释比较")
         controller.editDraft("hold approval")
@@ -361,7 +361,7 @@ struct AgentChatVisualEvidenceTests {
         }
         try await wait { controller.isLoaded }
         let executable = repository.appendingPathComponent("Tests/Fixtures/agent-chat-runtime.py")
-        controller.connect(executable: executable, home: controller.runtimeHome, cli: executable)
+        controller.connect(executable: executable, home: controller.runtimeHome, helper: executable)
         try await wait { controller.account != nil && controller.state == .ready }
         controller.editDraft("hold proposed edit")
         controller.send()
@@ -404,7 +404,7 @@ struct AgentChatVisualEvidenceTests {
             }
             try await wait { parent.isLoaded }
             let fixture = repository.appendingPathComponent("Tests/Fixtures/agent-chat-runtime.py")
-            parent.connect(executable: fixture, home: parent.runtimeHome, cli: fixture)
+            parent.connect(executable: fixture, home: parent.runtimeHome, helper: fixture)
             try await wait { parent.account != nil && parent.state == .ready }
             parent.rename("原文、解释与反对意见")
             parent.editDraft("hold delegation paginated-child")
@@ -501,7 +501,7 @@ struct AgentChatVisualEvidenceTests {
         }
         try await wait { controller.isLoaded }
         let fixture = repository.appendingPathComponent("Tests/Fixtures/agent-chat-runtime.py")
-        controller.connect(executable: fixture, home: controller.runtimeHome, cli: fixture)
+        controller.connect(executable: fixture, home: controller.runtimeHome, helper: fixture)
         try await wait { controller.account != nil && controller.state == .ready }
         controller.rename("原文与解释")
         controller.editDraft("hold questions")
@@ -661,7 +661,7 @@ struct AgentChatVisualEvidenceTests {
         try FileManager.default.createDirectory(at: controller.runtimeHome, withIntermediateDirectories: true)
         try Data().write(to: controller.runtimeHome.appendingPathComponent("oauth-fixture"))
         let fixture = repository.appendingPathComponent("Tests/Fixtures/agent-chat-runtime.py")
-        controller.connect(executable: fixture, home: controller.runtimeHome, cli: fixture)
+        controller.connect(executable: fixture, home: controller.runtimeHome, helper: fixture)
         try await wait { controller.capabilities.hasMethods && !controller.capabilities.isRefreshing }
         let folder = root.appendingPathComponent("research-methods")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)

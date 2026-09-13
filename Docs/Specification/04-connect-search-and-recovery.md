@@ -50,7 +50,7 @@ from the last complete compatible index whose source fingerprint still equals
 the authoritative opening snapshot and whose indexed stable identity, when
 present, still resolves there; it reports **Limited**, excludes new, changed,
 deleted, retargeted, or unverifiable Notes, and never publishes a partial
-generation. Triptych Note scope, managed-property and structured clauses,
+generation. Triptych Note scope, authored-property and structured clauses,
 direct links, and operations requiring complete Note Search remain unavailable
 until that complete generation publishes. Completion replaces the limitation
 without moving focus or invalidating usable results.
@@ -63,7 +63,7 @@ index, saved query, or navigation history.
 
 Search operates on Notes. Optional `kind:note` makes that target explicit;
 unsupported kinds are invalid and never broaden retrieval. Query text never
-changes visible scope. App, CLI, and Scholium MCP share one parser.
+changes visible scope. App and Scholium MCP share one parser.
 
 The Note provider uses one deterministic present-source corpus. It returns each
 occurrence for This Note and one row per Note for broader scopes. Its finite
@@ -128,7 +128,7 @@ An explicit focus supplies scoring terms rather than unrelated source-Note terms
 Every eligible lexical source is checked before paragraphs are selected; bounded
 Note channels never truncate this source set. A Note is eligible for display
 only when it contains an actual locally matching paragraph, including authored
-link-annotation wording. Metadata-only matches do not manufacture a paragraph.
+link-annotation wording. Property-only matches do not manufacture a paragraph.
 Within each eligible Note, paragraph-local BM25F chooses the excerpt. Note and
 paragraph scores use distinct statistics and are never numerically added.
 Results first show one paragraph per Note in Note-rank order, then additional
@@ -151,14 +151,14 @@ failed refresh may retain only that provider's last complete compatible
 generation. Derived indexes remain disposable and never writable authority.
 
 The parser exposes one typed capability description used by completion, **Explain
-Query**, CLI help, and the MCP tool schema. Completion edits only visible query text.
+Query** and the MCP tool schema. Completion edits only visible query text.
 Saved Searches store only raw query, visible scope, and contract version; they store no
 AST, resolved identity, result, or generation. Changed semantics require **Needs
 Editing** rather than silent rewrite or execution. Invalid saved bytes remain unchanged
 and nonexecuting; a damaged Saved Search store has a confirmed archive-and-reset route
 that never changes vault content.
 
-App, CLI, and Scholium MCP consume the same result identity,
+App and Scholium MCP consume the same result identity,
 reasons, provenance, availability, and freshness. Presentation may reword but
 never reparse, reorder, broaden, combine rankings, or change link direction.
 
@@ -170,7 +170,7 @@ lead. Missing or unbounded values receive no generated substitute. Search never
 writes or reconstructs YAML.
 
 New providers or fields require a versioned typed clause, discriminated result
-identity, capability entry, source/freshness contract, and App/CLI/MCP parity.
+identity, capability entry, source/freshness contract, and App/MCP parity.
 Vector search, embeddings, AI interpretation/ranking, automatic classification
 extraction, multi-hop expansion, arbitrary structured paths, and chat-style
 Search remain outside the target.

@@ -228,7 +228,7 @@ already-visible Chat does not toggle the Sidebar closed.
 ## Agents & Chat and Agent Changes
 
 - Settings includes **Agents & Chat**, with copyable Codex and Claude Code
-  MCP registration commands, live App/bridge/CLI availability, and a Finder
+  MCP registration commands, live App/bridge/helper availability, and a Finder
   route to the bundled Core Protocol Skill.
 - Optional in-app Codex Chat appears beside Library in the left sidebar.
   Agents & Chat now exposes runtime Skill discovery, inspection and

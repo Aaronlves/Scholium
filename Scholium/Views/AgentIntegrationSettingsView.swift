@@ -45,7 +45,7 @@ private struct ExternalAgentHostsSettingsView: View {
     @ObservedObject var settingsModel: WorkspaceSettingsModel
     @State private var copyStatus: String?
 
-    private let cliURL = ScholiumAgentIntegrationResources.scholiumCLIURL()
+    private let helperURL = ScholiumAgentIntegrationResources.chatHelperURL()
     private let coreProtocolURL =
         try? ScholiumAgentIntegrationResources
         .coreProtocolSkillDirectoryURL()
@@ -67,9 +67,9 @@ private struct ExternalAgentHostsSettingsView: View {
                         statusRow("App Bridge", detail: reason, available: false)
                     }
                     statusRow(
-                        "Scholium CLI",
-                        detail: cliURL == nil ? String(localized: "Unavailable") : String(localized: "Available"),
-                        available: cliURL != nil
+                        "Connection Helper",
+                        detail: helperURL == nil ? String(localized: "Unavailable") : String(localized: "Available"),
+                        available: helperURL != nil
                     )
                 }
             }
@@ -89,12 +89,12 @@ private struct ExternalAgentHostsSettingsView: View {
                             copySetupCommand(for: .claude)
                         }
                     }
-                    .disabled(cliURL == nil)
+                    .disabled(helperURL == nil)
 
                     if let copyStatus { Text(copyStatus).font(.caption).textSelection(.enabled) }
 
-                    if cliURL == nil {
-                        Text("Install the compatible Scholium CLI before copying a setup command.")
+                    if helperURL == nil {
+                        Text("The bundled connection helper is unavailable. Reinstall Scholium to restore it.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -138,8 +138,8 @@ private struct ExternalAgentHostsSettingsView: View {
     }
 
     private func copySetupCommand(for host: AgentIntegrationHost) {
-        guard let cliURL else { return }
-        let command = host.command(cliURL: cliURL)
+        guard let helperURL else { return }
+        let command = host.command(helperURL: helperURL)
         let copied = ScholiumPasteboardWriter.general.writeText(command)
         copyStatus =
             copied
@@ -160,8 +160,8 @@ private enum AgentIntegrationHost {
         }
     }
 
-    func command(cliURL: URL) -> String {
-        let executable = Self.shellQuoted(cliURL.path)
+    func command(helperURL: URL) -> String {
+        let executable = Self.shellQuoted(helperURL.path)
         return switch self {
         case .codex:
             "codex mcp add scholium -- \(executable) mcp serve"

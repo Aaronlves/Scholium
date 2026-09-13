@@ -15,8 +15,8 @@ dated evidence; acceptance reports link rather than copy it.
 ### 21.2 Primary acceptance journeys
 
 Release acceptance is profile-scoped. **Core App** covers the local manual
-research environment and never depends on an Agent or standalone CLI.
-**Agent Collaboration** adds the external host, compatible CLI, local stdio MCP,
+research environment and never depends on an Agent.
+**Agent Collaboration** adds the external host, App-bundled local stdio MCP,
 Core Protocol, live App bridge, current retrieval, guarded mutations, Agent
 Changes, and recovery to an already accepted Core App. Evidence or failure in
 one profile does not silently pass or block the other. Release names and notes
@@ -41,12 +41,12 @@ Guidance and Settings, Core Protocol discovery, user-scope Codex and Claude
 configuration, the knowledge-base MCP tools, multi-Triptych selection, App-unavailable
 behavior, source/Search/graph currentness, exact paging, role filtering, fingerprinted Note create/update/system-Trash, Agent Changes, direct Undo, outcome-unknown recovery,
 incoming/outgoing authored link occurrences and annotations, Attention, Zotero read-only/unavailable behavior, and
-App/CLI/MCP parity. Exact initial frames and coordinates remain implementation
+App/MCP parity. Exact initial frames and coordinates remain implementation
 defaults rather than release thresholds.
 
 Search acceptance covers scope authorization, Note ranking and freshness, source-property and direct-link provenance,
 `link_annotation` matches, Explain/completion, Saved Search
-re-evaluation, App/CLI/MCP parity, stale refusal, index rebuild, and incremental/clean equivalence. Retrieval success never
+re-evaluation, App/MCP parity, stale refusal, index rebuild, and incremental/clean equivalence. Retrieval success never
 establishes philosophical relevance, evidential support, or researcher
 acceptance.
 
@@ -57,21 +57,19 @@ An embedded provider runtime is not required for external-host acceptance.
 
 These are functional evidence categories, not one serial clean-account or human
 script. Deterministic fixtures own protocol variants and failure branches;
-packaged acceptance owns downloaded artifact, independent installation,
+packaged acceptance owns downloaded App, bundled helper,
 version, and production-bridge boundaries; §20 owns one representative human
 Agent journey. Do not repeat every deterministic variant in the packaged or
 human path merely to restate its coverage.
 
-Core Protocol acceptance follows §§8.5–8.6. Before the first Agent
-Collaboration Beta it passes representative complete-source, partial-source,
-conceptually-neighboring, conflicting-note, read-only, requested-update,
-stale-revision, uncertain-outcome, explicit writing scope,
-clear append/new, and ambiguous-boundary cases. Later releases repeat only
-affected cases after a material Core Protocol/tool change and retain a small
-regression set. Optional researcher-owned Skills are not release
-artifacts or general philosophical certification. This cadence never relaxes a
-known fabrication, source-fidelity, researcher-authority, privacy, or permission
-defect.
+Core Protocol acceptance verifies application responsibilities: exact supplied
+material and coverage, source identity, instruction delivery, scope, revision
+checks, read-only operation, authorized mutation and uncertain-outcome recovery.
+Fixtures include partial and conflicting material to verify that the application
+preserves the supplied evidence and uncertainty, not to grade a model's reasoning.
+Conceptual analysis, argument reconstruction and philosophical-method quality
+belong to the selected model and researcher-owned Skills; they are not App
+release gates. Optional Skills are not release artifacts or certification.
 
 Evidence that exercises research content uses disposable nonprivate fixtures.
 Focused development evidence records the procedure or command, inputs,
@@ -197,21 +195,16 @@ Each source-first Core App Beta release requires:
   alias; and
 - a checksum for the App artifact.
 
-An Agent Collaboration Beta additionally requires the separate version-matched
-CLI archive and its checksum. Packaging and provenance checks apply to every
-artifact actually emitted; a Core App-only release does not manufacture or
-validate a CLI merely to satisfy another profile.
+Scholium.app is the sole supported installation. Its signed, version-matched
+connection helper supplies external-host and token-scoped in-app MCP plus
+read-only Zotero service. No standalone CLI, installer, terminal research
+commands or self-updater is distributed or supported. Helper and Core Protocol
+resources update atomically with the App. The helper never becomes a headless
+workspace or a second source writer.
 
-The App ships a version-matched, signed helper limited to the in-app MCP bridge
-and read-only Zotero service. It has no CLI maintenance or installation commands.
-The independently distributed CLI retains its executable, release resources and
-user-local installer; in-app Chat does not require that installation. Neither artifact contains real vaults, private paths, credentials,
-bookmarks, indexes, or generated user state.
-
-CLI self-update uses only fixed official assets, verifies checksum,
-architecture, signature, and provenance, and replaces executable/resources as
-one recoverable transaction. It is explicit, never background, and never edits
-PATH, shell profiles, quarantine, or the App.
+The artifact contains no real vaults, private paths, credentials, bookmarks,
+indexes or generated user state. Packaging checks cover the App and nested
+helper, including resources, signatures and provenance.
 
 Ad-hoc signing is not Developer ID signing, notarization, or Gatekeeper
 acceptance. Documentation may describe **Open Anyway** for the trusted download
@@ -253,17 +246,16 @@ Trash emptying, and cleanup recovery remain deterministic or system-integration
 dimensions; they do not each create another human process interruption. Reuse
 an applicable §20 representative check instead of duplicating it.
 
-Agent Collaboration distribution additionally verifies independent CLI
-installation and version, both user-scope setup commands, Core Protocol
-availability, production-bridge availability, and one representative route
-through current status, Note retrieval, one Note mutation and Agent
-Change, recovery, and the unavailable-App fallback.
-Include CLI self-update when the updater or installer changes and for 1.0.
-Deterministic suites retain checksum/provenance rejection,
-interruption stages, multiple-workspace selection, stale/conflict,
-outcome-unknown, App restart, and path/fingerprint rejection coverage. Do not
-multiply those variants into the clean-account or §20 human journey. Use
-disposable fixtures only.
+Agent Collaboration distribution additionally verifies the installed App's
+helper and Core Protocol, both user-scope setup commands, production bridge,
+and one representative route through current status, Note retrieval, one
+mutation, Agent Change comparison and recovery, and unavailable-App failure.
+Moving the App requires regenerating host setup commands for its new path;
+updating in place retains the configured path. Verify those package boundaries.
+Deterministic suites retain multiple-workspace selection, stale/conflict,
+outcome-unknown, App restart and path/fingerprint rejection coverage. Do not
+multiply those variants into the clean-account or §20 human journey.
+Use disposable fixtures only.
 
 A future notarized channel must rebuild from the exact release commit and repeat
 external verification; never re-sign an already accepted artifact.

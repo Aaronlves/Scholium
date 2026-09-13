@@ -30,9 +30,8 @@ unaccepted until separately evidenced. No expanded Zotero write scope is implied
 The expanded target is owned by Specification §8.7 in `12-agent-chat.md`.
 Current work prioritizes general Agent interaction before specialized research
 features. Selection shortcuts now run Explain, Polish and custom prompts with checked
-source context; Ask Agent preserves the ordinary draft-only handoff. Complete representative scholarly
-validation across ambiguous concepts, implicit premises and unavailable originals;
-passing interface checks alone does not establish philosophical benefit.
+source context; Ask Agent preserves the ordinary draft-only handoff. Verify exact context delivery and explicit unavailable-source reporting;
+model reasoning and philosophical-method quality are outside App acceptance.
 Cross-block reply selection, quiet tool details, toolbar Chat Note-copy
 drops and tab-preserving source opening now have implementation slices. Keyboard
 cross-paragraph handoff and Library menu/native accessibility Add to Chat pass
@@ -48,8 +47,7 @@ scheduled execution remain open.
 The bounded signed-in research loop now passes with the disposable 500-Note
 Triptych: multi-turn reading, native approvals, one exact update, comparison,
 Undo, restart restoration and Stop. CHAT-LIVE-01/02 are closed for that path;
-see Verification for the evidence and limits. Broader provider, concurrent and
-philosophical-work acceptance remains open. A real same-turn additional request,
+see Verification for the evidence and limits. Broader provider and concurrent-execution acceptance remains open. A real same-turn additional request,
 completion while viewing another conversation, independent draft preservation
 and automatic recovery from idle runtime-process loss now pass. Complete
 prolonged offline and in-flight source-operation crash recovery acceptance. Idle
@@ -165,12 +163,20 @@ compositing artifacts; inspect the actual native window before judging them.
 - Complete human VoiceOver, installed-IME and visual-adaptation acceptance for
   the Chat composer, approvals, file navigation and Related Material.
 
+## Current integration boundary
+
+The CLI-removal owning checks pass. The complete repository gate is not green:
+12 unchanged Swift files fail formatting, and the full App run reports four
+assertions in `readScrollObservationDoesNotReplayRestoration`. That unchanged
+test also fails in isolation. These are open integration findings, not proof of
+a CLI-cutover regression or a release pass. Verification retains exact logs.
+
 ## External-host and release acceptance
 
 - Complete the packaged external-host journey required by §21.5. Keep protocol
   variants and failure branches in deterministic checks; do not multiply them
   into a second clean-account matrix. Local checks do not establish production
-  App/CLI installation, bridge or packaged-path behavior.
+  App/helper installation, bridge or packaged-path behavior.
 - Complete profile-appropriate distribution provenance, artifact checks and
   the clean-account smoke in §21.5 before claiming a distributable release.
   The source-first Beta uses ad-hoc signing; Developer ID and notarization

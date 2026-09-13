@@ -45,7 +45,6 @@ PY
 # discussion, browser, and local bridge owners must not return.
 LEGACY_AGENT_ROOTS=(
   "${ROOT}/Scholium"
-  "${ROOT}/ScholiumCLI"
   "${ROOT}/ScholiumAgentHelper"
   "${ROOT}/ScholiumApplication"
   "${ROOT}/ScholiumContracts"
@@ -75,7 +74,7 @@ if rg -n --glob '*.swift' --glob '*.sh' \
   'scholium[[:space:]]+(agent|research|skills|workflow)|agent[[:space:]]+(connect|start|resume|complete)|research-records' \
   "${LEGACY_AGENT_ROOTS[@]}" \
   "${ROOT}/Tools/Scripts/package-app.sh"; then
-  echo "Agent collaboration CLI/storage guard failed: a retired route or path returned." >&2
+  echo "Agent collaboration transport/storage guard failed: a retired route or path returned." >&2
   exit 1
 fi
 
@@ -108,7 +107,6 @@ if rg -n --hidden \
   "${ROOT}/ScholiumApplication" \
   "${ROOT}/ScholiumContracts" \
   "${ROOT}/ScholiumCore" \
-  "${ROOT}/ScholiumCLI" \
   "${ROOT}/Docs" \
   "${ROOT}/Tests" \
   "${ROOT}/UITests" \
@@ -118,8 +116,8 @@ if rg -n --hidden \
 fi
 
 # Delivery targets compile only against Contracts plus Application composition.
-# Core is internal and cannot be imported by App, CLI, or their boundary tests.
-DELIVERY_ROOTS=("${ROOT}/Scholium" "${ROOT}/ScholiumCLI" "${ROOT}/ScholiumAgentHelper")
+# Core is internal and cannot be imported by App, helper, or their boundary tests.
+DELIVERY_ROOTS=("${ROOT}/Scholium" "${ROOT}/ScholiumAgentHelper")
 if rg -n --glob '*.swift' \
   '\b(FileManager|URLSession|SQLite|FSEvent|AppKit|SwiftUI|Combine|UserDefaults|NSWorkspace|NSOpenPanel)\b' \
   "${ROOT}/ScholiumContracts"; then
@@ -169,9 +167,6 @@ while IFS= read -r file; do
     "${ROOT}/Scholium/Services/AgentChatCapabilitiesController.swift"|\
     "${ROOT}/Scholium/Services/AgentChatChildController.swift"|\
     "${ROOT}/Scholium/Views/AgentIntegrationSettingsView.swift"|\
-    "${ROOT}/ScholiumCLI/CLIContext.swift"|\
-    "${ROOT}/ScholiumCLI/MCPCommandHandler.swift"|\
-    "${ROOT}/ScholiumCLI/ZoteroCommandHandler.swift"|\
     "${ROOT}/ScholiumAgentHelper/ScholiumAgentHelper.swift") ;;
     *)
       echo "Compiler boundary guard failed: ScholiumApplication import outside a composition root: ${file}" >&2
@@ -228,41 +223,10 @@ if rg -n --glob '*.swift' '\bFSEventStreamCreate[[:space:]]*\(' \
 fi
 
 # Graph construction and publication belong behind ScholiumApplication. App
-# and CLI consume immutable snapshots and must not rebuild a competing graph.
+# and helper consume immutable snapshots and must not rebuild a competing graph.
 if rg -n --glob '*.swift' 'LinkGraphBuilder\.(build|resolve)' \
   "${DELIVERY_ROOTS[@]}"; then
   echo "Application ownership guard failed: a delivery target constructs or resolves a graph." >&2
-  exit 1
-fi
-
-# CLI graph commands resolve selectors and format outputs only. Vault-qualified
-# relationship membership and traversal semantics belong to Application.
-if rg -n --glob '*.swift' \
-  '\bGraphSnapshot\b|\btracePaths[[:space:]]*\(|\brelationshipTracePaths[[:space:]]*\(|subjectNote[[:space:]]*==[[:space:]]*nil' \
-  "${ROOT}/ScholiumCLI"; then
-  echo "Application ownership guard failed: the CLI owns Graph query semantics." >&2
-  exit 1
-fi
-
-# Executable syntax and rendered help derive from one command specification
-# registry; parallel rule/help dictionaries can drift silently.
-if rg -n --glob '*.swift' \
-  '\b(commandRules|commandHelp)[[:space:]]*[:=]' \
-  "${ROOT}/ScholiumCLI"; then
-  echo "CLI command registry guard failed: a parallel rule or help registry returned." >&2
-  exit 1
-fi
-if rg -n --glob '*.swift' --glob '!CLICommandCatalog.swift' \
-  '"Usage: scholium' "${ROOT}/ScholiumCLI"; then
-  echo "CLI command registry guard failed: a handler restates registered usage." >&2
-  exit 1
-fi
-
-# Zotero request handling is composed by ScholiumApplication; the CLI owns
-# only argument parsing, MCP framing, and output formatting.
-if rg -n --glob '*.swift' '\b(ZoteroMCPServer|ZoteroMCPTransportLocator)[[:space:]]*[.(]' \
-  "${ROOT}/ScholiumCLI"; then
-  echo "Application ownership guard failed: the CLI constructs a Zotero authority." >&2
   exit 1
 fi
 
@@ -286,7 +250,6 @@ fi
 
 for shell_script in \
   "${ROOT}/Tools/Scripts/build-qa-app.sh" \
-  "${ROOT}/Tools/Scripts/install-cli.sh" \
   "${ROOT}/Tools/Scripts/inspect-window-size.sh" \
   "${ROOT}/Tools/Scripts/manage-development-storage.sh" \
   "${ROOT}/Tools/Scripts/package-app.sh" \
@@ -461,4 +424,5 @@ fi
 release_summary="$(rg 'Build complete!' "${release_log}" | tail -n 1 || true)"
 print "Release build: ${release_summary:-passed}"
 
-python3 "${ROOT}/Tools/Scripts/verify-chat-cli.py" "${RELEASE_SCRATCH}/release/scholium"
+
+python3 "${ROOT}/Tools/Scripts/verify-agent-helper.py" "${RELEASE_SCRATCH}/release/ScholiumAgentHelper"

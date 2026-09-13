@@ -742,7 +742,7 @@ public enum ScholiumApplicationError: LocalizedError, Sendable {
 
     /// A direct retry would either repeat an already committed mutation or
     /// act before a commit-uncertain replacement has been reconciled. This
-    /// spelling is intentionally explicit for GUI and CLI error handling.
+    /// spelling is intentionally explicit for delivery error handling.
     public var mustNotRetryMutation: Bool { mutationRequiresReconciliation }
 
     /// `true` means retry is unsafe until the authoritative owner is reread.

@@ -166,7 +166,7 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(integration.contains("Show Core Protocol in Finder…"))
         #expect(integration.contains("External Agent Hosts"))
         #expect(integration.contains("ExternalAgentHostsSettingsView"))
-        #expect(!integration.contains("detail: cliURL?.path"))
+        #expect(!integration.contains("detail: helperURL?.path"))
         #expect(!integration.contains("Not found at $HOME/.local/bin/scholium"))
         #expect(!integration.contains("ScrollView"))
         #expect(!integration.contains("DisclosureGroup(\"Connect an External Agent\""))

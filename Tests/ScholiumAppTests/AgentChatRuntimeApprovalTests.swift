@@ -92,7 +92,7 @@ struct AgentChatRuntimeApprovalTests {
         }
         try await wait { controller.isLoaded }
         let executable = repository.appendingPathComponent("Tests/Fixtures/agent-chat-runtime.py")
-        controller.connect(executable: executable, home: controller.runtimeHome, cli: executable)
+        controller.connect(executable: executable, home: controller.runtimeHome, helper: executable)
         try await wait { controller.account != nil && controller.state == .ready }
         controller.editDraft("hold " + action)
         controller.send()

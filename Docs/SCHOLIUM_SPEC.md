@@ -1,7 +1,7 @@
 # Scholium Specification
 
 - **Status:** Canonical product, interface, and release specification
-- **Applies to:** Scholium for macOS and its local MCP/CLI adapter
+- **Applies to:** Scholium for macOS and its local App-bundled MCP adapter
 
 This file is the sole entry point and closed manifest for target product
 behavior. Only the chapters below are normative. Structural ownership belongs
@@ -29,6 +29,7 @@ must not create alternative product rules.
 | [Connect, Search, and Recovery](Specification/04-connect-search-and-recovery.md) | §§12–14: Connections, Search, Attention, save, and recovery. |
 | [Integrations, Onboarding, and Boundaries](Specification/05-integrations-onboarding-and-boundaries.md) | §§15–17: Zotero, onboarding, permanent boundaries, and deferrals. |
 | [Interface Shell and Library](Specification/06-interface-shell-and-library.md) | §§18.1–18.3: shell, Library, and Search presentation; Settings is declared separately below. |
+| [Chat Interface](Specification/14-chat-interface.md) | §18.2.2: conversation list, composer, transcript, materials and runtime-control presentation. |
 | [Settings](Specification/13-settings.md) | §18.2.1: settings navigation, scope, page composition, controls, writing, and change feedback. |
 | [Document and Research Interface](Specification/07-document-and-research-interface.md) | §§18.4–18.7: Document, Inspector, shared state language, and terminology. |
 | [Scholium Design](../Design.md) | §19: stable global design philosophy, native/Liquid Glass relationship, background and Accent identity. |
@@ -38,11 +39,21 @@ must not create alternative product rules.
 
 ## Reading routes
 
-Read this manifest, then the owning workflow chapter. Add the relevant interface
-and accessibility chapters for user-facing changes, §19 for visual-language
-changes, and §21 plus current implementation status for release work.
-For Settings design or implementation, start with §18.2.1, then follow its
-feature-ownership links for the affected pane and §20 for adaptation.
+Read this manifest, then the chapter that owns the question:
+
+| Question | Reading route |
+| --- | --- |
+| Product role and researcher responsibility | Foundation §§1–4; Boundaries §17. |
+| Source editing, file operations and recovery | Notes §§5–7; Recovery §14; Document §18.4. |
+| External Agent access | Collaboration §8; distribution §21.5. |
+| In-app Chat behavior and presentation | Chat §8.7; Chat Interface §18.2.2. |
+| Retrieval and authored links | Connect/Search §§12–13; Inspector §18.5. |
+| Native shell and preferences | Shell §§18.1–18.3; Settings §18.2.1. |
+| Release scope and outstanding evidence | Release §21; Implementation Status. |
+
+For interface changes add §20, and read Design only when the visual-language
+boundary is affected. Feature chapters own behavior; they reference shared
+presentation, accessibility and release rules instead of duplicating them.
 Architecture owns parser, module, runtime, and persistence mechanics.
 
 ## Single-owner editing rule

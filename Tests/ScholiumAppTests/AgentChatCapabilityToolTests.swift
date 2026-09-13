@@ -34,7 +34,7 @@ struct AgentChatCapabilityToolTests {
         }
         try await wait { controller.isLoaded }
         let fixture = repository.appendingPathComponent("Tests/Fixtures/agent-chat-runtime.py")
-        controller.connect(executable: fixture, home: controller.runtimeHome, cli: fixture)
+        controller.connect(executable: fixture, home: controller.runtimeHome, helper: fixture)
         try await wait { controller.state == .ready && controller.capabilities.hasMethods && !controller.capabilities.isRefreshing }
 
         controller.editDraft("hold capability configuration")

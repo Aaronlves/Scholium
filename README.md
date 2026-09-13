@@ -5,9 +5,11 @@
 > A local-first, document-authoritative research environment for philosophy
 > and the humanities.
 
-**Current public Core App Beta:** [v0.1.1-beta1](https://github.com/Aaronlves/Scholium/releases/tag/v0.1.1-beta1) ·
-[Download Scholium for Apple silicon](https://github.com/Aaronlves/Scholium/releases/download/v0.1.1-beta1/Scholium-v0.1.1-beta1-macos-arm64.dmg) ·
-[Agent collaboration Preview: download the independent CLI](https://github.com/Aaronlves/Scholium/releases/download/v0.1.1-beta1/Scholium-CLI-macos.zip)
+**Previously published Core App Beta:** [v0.1.1-beta1](https://github.com/Aaronlves/Scholium/releases/tag/v0.1.1-beta1) ·
+[Download Scholium for Apple silicon](https://github.com/Aaronlves/Scholium/releases/download/v0.1.1-beta1/Scholium-v0.1.1-beta1-macos-arm64.dmg)
+
+The linked build predates the current App-only distribution changes. This
+README describes the current source; a new release requires its own validation.
 
 Scholium is a native macOS research environment for sustained work in
 philosophy and the humanities. Its content core is a researcher-governed,
@@ -26,7 +28,7 @@ through the local MCP adapter, and records only machine-local Agent Change
 evidence for confirmed mutations.
 
 The Core App Beta verdict covers the local manual research environment. External
-Agent collaboration and the independently installed CLI remain a separate
+Agent collaboration remains a separate
 Preview until their own acceptance profile passes.
 
 ## Product position
@@ -89,19 +91,19 @@ Task-specific operational references remain separate:
 Scholium is a compiler-enforced modular monolith. Immutable values and use-case
 protocols live in `ScholiumContracts`; internal repositories, stores, indexes,
 watchers, and filesystem I/O live in `ScholiumCore`; one headless
-`ScholiumApplication` layer is shared by the native app and CLI. Neither
+`ScholiumApplication` layer is shared by the native App and bundled helper. Neither
 delivery target imports Core.
 
 The current product supports independent Triptychs and windows, exact-source
 Markdown editing, Search and Connections, Note and Folder file operations,
 external-edit conflicts, interrupted-save recovery, Settle, Zotero,
 and a fixed local MCP collaboration surface. Search remains one disposable
-Note-only projection for the App, CLI, and MCP adapter.
+Note-only projection for the App and MCP adapter.
 Ordinary Wikilinks may carry source-owned multiline Markdown annotations with
 `[[Target]]{{annotation}}`; Connect, Search, Review, Edit, and MCP all project
 the same authored occurrence without inventing semantic classification.
 
-The installed `scholium` executable exposes `scholium mcp serve`. It connects
+The App-bundled `ScholiumAgentHelper` provides the local MCP service. It connects
 an external MCP host only to the currently running Scholium App; it does not
 launch the App, open a headless workspace, or read Triptych files directly.
 The surface is exactly workspace status, Note search/read/link retrieval, and
@@ -207,44 +209,16 @@ current results and gaps are in Implementation Status.
 
 ## Source-first Beta distribution
 
-Source-first Core App Beta releases publish exact tagged source under
-`GPL-3.0-or-later` plus an architecture-labelled App DMG and SHA-256 checksum on
-the same GitHub release page. An Agent Collaboration Preview may additionally
-publish an independent version-matched `Scholium-CLI-macos.zip` and checksum.
-Every emitted artifact must agree with the tag and package provenance. The App
-is sandboxed and does not contain or install the CLI. Opening the DMG presents
-Scholium beside an Applications alias so installation is one ordinary Finder
-drag.
+Scholium.app is the sole supported installation. Packaging produces an
+architecture-labelled App DMG and SHA-256 checksum from an exact clean tag,
+with corresponding GPL-3.0-or-later source and notices. The signed connection
+helper and Core Protocol ship inside the App and update with it. There is no
+standalone CLI distribution, installer or self-updater.
 
-The current release is
-[v0.1.1-beta1](https://github.com/Aaronlves/Scholium/releases/tag/v0.1.1-beta1):
-
-- [Scholium App DMG for macOS arm64](https://github.com/Aaronlves/Scholium/releases/download/v0.1.1-beta1/Scholium-v0.1.1-beta1-macos-arm64.dmg)
-  ([SHA-256](https://github.com/Aaronlves/Scholium/releases/download/v0.1.1-beta1/Scholium-v0.1.1-beta1-macos-arm64.dmg.sha256));
-- [independent Scholium CLI](https://github.com/Aaronlves/Scholium/releases/download/v0.1.1-beta1/Scholium-CLI-macos.zip)
-  ([SHA-256](https://github.com/Aaronlves/Scholium/releases/download/v0.1.1-beta1/Scholium-CLI-macos.zip.sha256)); and
-- [exact tagged source](https://github.com/Aaronlves/Scholium/tree/v0.1.1-beta1).
-
-After downloading an artifact and its adjacent checksum file into the same
-folder, verify it before opening or installing:
-
-```bash
-shasum -a 256 -c Scholium-v0.1.1-beta1-macos-arm64.dmg.sha256
-shasum -a 256 -c Scholium-CLI-macos.zip.sha256
-```
-
-On the exact tagged commit, the complete repository gate, optimized Release
-build, DMG structure and signature checks, isolated CLI installation and PATH
-launch, package checksums, and fixed 5 + 30 packaged performance gate passed.
-That release used the then-current fixed sampling rule; current development uses
-the bounded predeclared protocol in Specification §21.4. All four published
-assets were downloaded again from GitHub and matched the release checksums. The
-complete automated UI run plus the focused clean-account
-closure established 88 functional passes; the opt-in VoiceOver-service
-automation remained conditionally skipped when unavailable. The bounded human
-VoiceOver, keyboard, IME and visual-adaptation checks in §20 remain open rather
-than becoming passed evidence. See [Verification Evidence](Docs/Status/04-verification.md)
-for exact test counts and boundaries.
+Opening the DMG presents Scholium beside an Applications alias. Verify the
+adjacent SHA-256 file before installing. Current source changes do not alter
+previously published artifacts; release acceptance and exact artifact evidence
+remain in [Implementation Status](Docs/IMPLEMENTATION_STATUS.md).
 
 The convenience app is not Developer ID signed or notarized. For a DMG release,
 after downloading it from the trusted project release and verifying the
@@ -279,30 +253,24 @@ Triptychs may not share the same Works-side control directory.
 
 ## Scholium MCP setup
 
-Open **Settings → Research Guidance → Agent Integration** to inspect App,
-bridge, and CLI availability, copy a host-specific setup command, or reveal the
+Open **Settings → Integrations → Agents & Chat → External Agent Hosts** to inspect App,
+bridge, and bundled-helper availability, copy a host-specific setup command, or reveal the
 bundled Core Protocol Skill. Scholium copies commands but never edits host
 configuration or claims installation succeeded.
 
-For a source checkout, build or install the CLI and register its absolute path:
-
-```bash
-Tools/Scripts/install-cli.sh
-codex mcp add scholium -- "$PWD/.build/cli-prefix/bin/scholium" mcp serve
-claude mcp add scholium --scope user -- "$PWD/.build/cli-prefix/bin/scholium" mcp serve
-```
+Use the copied command for the installed App. It names that App's absolute
+helper path; no separate installation is needed. After moving the App, copy and
+run its setup command again. Updating in place retains the configured path.
 
 The App must already be running with the intended Triptych open. The stdio
 helper uses a current-user-authenticated local bridge and fails explicitly when
 the App, bridge, selected Triptych, or current state is unavailable. It never
 falls back to direct filesystem or headless workspace access.
 
-The collaboration surface publishes seven tools: `scholium_workspace_status`,
-`scholium_search`, `scholium_read_note`, `scholium_list_links`,
-`scholium_create_note`, `scholium_update_note`, and `scholium_trash_note`.
-Research questions and selected discussion are ordinary Works Notes, using the
-same explicit writing authorization and exact-source operations. The App provides
-no separate inquiry lifecycle or automatic recording.
+The collaboration surface exposes the current bounded Note tools documented in
+[Agent Collaboration §8.3](Docs/Specification/03-agent-collaboration-and-workflows.md#83-tool-contract).
+It covers retrieval, source-linked attachments, guarded Note operations and
+Agent Change comparison/recovery; capability controls remain in-app only.
 
 An ordinary Wikilink may carry multiline, source-owned Markdown annotation as
 `[[Target]]{{annotation}}`. Connect, Search, and `scholium_list_links` preserve
@@ -350,9 +318,8 @@ Unless otherwise noted, Scholium's original source code is licensed under the
 ```text
 ScholiumContracts/         Immutable values, protocols, and source semantics
 ScholiumCore/              Internal repositories, indexes, watchers, and I/O
-ScholiumApplication/       Headless capabilities shared by app and CLI
+ScholiumApplication/       Application capabilities shared by App and helper
 Scholium/                  Native macOS app and human-facing interaction
-ScholiumCLI/               CLI parsing, formatting, and delivery adapters
 WebEditor/                 TypeScript and CodeMirror source
 Tests/                     Contract, Core, Application, and App tests
 UITests/                   Isolated disposable macOS UI journeys
@@ -374,7 +341,7 @@ The left sidebar switches between Library and Chat; the right document Inspector
 switches between Links and Related Material. Chat uses native macOS text and controls; replies may
 be full research discussions, while operation activity remains expandable.
 In Chat, choose a compatible official Codex executable
-and this checkout's built `scholium` CLI. Connect and sign in through Codex.
+and the App-bundled connection helper. Connect and sign in through Codex.
 The default configuration directory is separate; choosing an existing Codex
 configuration also inherits that environment's tools and settings.
 

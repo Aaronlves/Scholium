@@ -12,7 +12,7 @@ APP_ENTITLEMENTS = {
     "com.apple.security.app-sandbox": True,
     "com.apple.security.files.user-selected.read-write": True,
     "com.apple.security.files.bookmarks.app-scope": True,
-    "com.apple.security.network.client": True,
+    "com.apple.security.network.helperent": True,
     "com.apple.security.network.server": True,
     "com.apple.security.temporary-exception.files.home-relative-path.read-write": [
         "/Library/Application Support/Scholium/"
@@ -31,7 +31,7 @@ SIGNING_METADATA_ENTITLEMENTS = {
 def expected_entitlements(component: str) -> dict[str, object]:
     if component == "app":
         return APP_ENTITLEMENTS
-    if component == "cli":
+    if component == "helper":
         return {}
     raise ValueError(f"unknown component {component!r}")
 
@@ -77,21 +77,21 @@ def validate(component: str, actual: dict[str, object]) -> None:
 
 def self_test() -> None:
     validate("app", dict(APP_ENTITLEMENTS))
-    validate("cli", {})
+    validate("helper", {})
     validate("app", {
         **APP_ENTITLEMENTS,
         "com.apple.application-identifier": "TEAMID.com.scholium.app",
         "com.apple.developer.team-identifier": "TEAMID",
     })
-    validate("cli", {
-        "com.apple.application-identifier": "TEAMID.com.scholium.cli",
+    validate("helper", {
+        "com.apple.application-identifier": "TEAMID.com.scholium.helper",
         "com.apple.developer.team-identifier": "TEAMID",
     })
     for component, invalid in [
         ("app", {**APP_ENTITLEMENTS, "com.apple.security.device.camera": True}),
         ("app", {key: value for key, value in APP_ENTITLEMENTS.items()
                  if key != "com.apple.security.app-sandbox"}),
-        ("cli", {"com.apple.security.app-sandbox": True}),
+        ("helper", {"com.apple.security.app-sandbox": True}),
         ("app", {**APP_ENTITLEMENTS, "com.apple.security.get-task-allow": True}),
         ("app", {**APP_ENTITLEMENTS, "com.apple.developer.team-identifier": ""}),
     ]:
@@ -109,7 +109,7 @@ def main(argv: list[str]) -> int:
         return 0
     if len(argv) != 2:
         print(
-            "usage: validate-entitlements.py <app|cli> <entitlements.plist>",
+            "usage: validate-entitlements.py <app|helper> <entitlements.plist>",
             file=sys.stderr,
         )
         return 64

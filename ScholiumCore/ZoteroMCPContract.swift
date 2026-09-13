@@ -3,9 +3,7 @@ import Foundation
 import ScholiumContracts
 
 public enum ZoteroMCPTransportLocator {
-    /// Locates the configured executable without launching it. The currently
-    /// running `scholium` binary is accepted so source builds can probe their
-    /// own first-party server before installing it on PATH.
+    /// Locates the configured executable without launching it. The first-party transport is resolved only inside the App bundle.
     public static func report(
         descriptor: ZoteroMCPTransportDescriptor = .supportedLocal,
         environment: [String: String] = ProcessInfo.processInfo.environment
@@ -17,14 +15,14 @@ public enum ZoteroMCPTransportLocator {
                 state: .commandAvailable,
                 commandPath: path.path,
                 note:
-                    "The first-party executable is present; use `status --probe` for Scholium's data-free initialize check or configure an external MCP client to launch it."
+                    "The bundled helper is present; connection and source access remain separate observations."
             )
         }
         return ZoteroMCPTransportReport(
             descriptorID: descriptor.identifier,
             state: .notConfigured,
             note:
-                "Build or install the optional Scholium CLI transport and configure it in the external agent. The protected Skill remains available without a live connection."
+                "The bundled connection helper is unavailable. Reinstall Scholium to restore it."
         )
     }
 
@@ -130,6 +128,10 @@ public enum ZoteroMCPTransportLocator {
         descriptor: ZoteroMCPTransportDescriptor,
         environment: [String: String]
     ) -> URL? {
+        if descriptor.identifier == ZoteroMCPTransportDescriptor.supportedLocal.identifier {
+            let helper = Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/ScholiumAgentHelper")
+            return FileManager.default.isExecutableFile(atPath: helper.path) ? helper : nil
+        }
         if descriptor.command.hasPrefix("/") {
             let absolute = URL(fileURLWithPath: descriptor.command)
             return FileManager.default.isExecutableFile(atPath: absolute.path) ? absolute : nil
@@ -143,16 +145,6 @@ public enum ZoteroMCPTransportLocator {
                 FileManager.default.isExecutableFile(atPath: $0.path)
             }) {
                 return executable
-            }
-        }
-        if descriptor.identifier == ZoteroMCPTransportDescriptor.supportedLocal.identifier,
-            let currentArgument = ProcessInfo.processInfo.arguments.first
-        {
-            let current = URL(fileURLWithPath: currentArgument).standardizedFileURL
-            if current.lastPathComponent == descriptor.command,
-                FileManager.default.isExecutableFile(atPath: current.path)
-            {
-                return current
             }
         }
         return nil

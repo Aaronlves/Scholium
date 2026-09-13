@@ -240,7 +240,7 @@ public struct ScholiumMCPBridgeRequest: Codable, Hashable, Sendable {
             throw ScholiumMCPFailure(
                 code: .invalidRequest,
                 message: "The App bridge request schema is unsupported.",
-                recovery: "Use a Scholium CLI version compatible with the running App."
+                recovery: "Use the connection helper bundled with the running Scholium App."
             )
         }
         schemaVersion = version

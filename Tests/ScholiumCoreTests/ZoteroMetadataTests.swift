@@ -154,16 +154,11 @@ struct ZoteroMetadataTests {
     @Test("The external Zotero MCP descriptor remains separate from the built-in read-only UI")
     func externalMCPDescriptorIsExplicit() throws {
         let descriptor = ZoteroMCPTransportDescriptor.supportedLocal
-        #expect(descriptor.clientConfiguration.command == "scholium")
-        #expect(descriptor.clientConfiguration.arguments == ["zotero", "mcp", "serve"])
+        #expect(descriptor.clientConfiguration.command == "ScholiumAgentHelper")
+        #expect(descriptor.clientConfiguration.arguments == ["zotero", "mcp", "serve", "--read-only"])
         #expect(descriptor.capabilities.contains(.status))
         #expect(descriptor.capabilities.contains(.selectedTarget))
-        #expect(descriptor.supportsGuardedImports)
         #expect(descriptor.localReadOnlyByDefault)
-        #expect(!descriptor.importsRequireWebAPICredentials)
-        #expect(descriptor.importsUseLocalConnector)
-        #expect(descriptor.importsRequireDryRunAndConfirmation)
-        #expect(descriptor.importsRequireReadBackVerification)
         #expect(descriptor.sourceURL.contains("Scholium"))
     }
 
@@ -248,13 +243,9 @@ struct ZoteroMetadataTests {
             identifier: "test-zotero-mcp",
             displayName: "Test Zotero MCP",
             command: command,
-            installationCommand: "test",
-            setupCommand: "test",
             clientConfiguration: ZoteroMCPClientConfiguration(command: command),
             capabilities: [.status],
             localReadOnlyByDefault: true,
-            importsRequireWebAPICredentials: true,
-            importsRequireDryRunAndConfirmation: true,
             sourceURL: "https://example.invalid/zotero-mcp"
         )
     }

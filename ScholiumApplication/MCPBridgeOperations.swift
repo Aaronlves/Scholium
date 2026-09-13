@@ -1,7 +1,7 @@
 import Foundation
 import ScholiumContracts
 
-/// Standalone-CLI client for the current-user-only App bridge. The adapter
+/// Bundled-helper client for the current-user-only App bridge. The adapter
 /// owns no workspace, source, Search index, permission, or task state.
 public actor MCPBridgeOperations {
     private let client: ScholiumAppBridgeClient

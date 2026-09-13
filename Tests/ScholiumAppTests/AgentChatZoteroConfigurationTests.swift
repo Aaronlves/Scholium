@@ -29,7 +29,7 @@ struct AgentChatZoteroConfigurationTests {
                 try! .init(requestID: request.requestID, result: .object([:]))
             }
             try await wait { controller.isLoaded }
-            controller.connect(executable: executable, home: controller.runtimeHome, cli: executable)
+            controller.connect(executable: executable, home: controller.runtimeHome, helper: executable)
             try await wait { controller.capabilities.canConfigureTools }
             return controller
         }

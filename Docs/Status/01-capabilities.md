@@ -29,7 +29,7 @@
 
 ## External Agent collaboration
 
-- `scholium mcp serve` exposes sixteen MCP tools:
+- The bundled MCP helper exposes sixteen MCP tools:
   `scholium_workspace_status`, `scholium_browse`, `scholium_search`, `scholium_read_note`,
   `scholium_list_links`, `scholium_show_note`, `scholium_list_attachments`, `scholium_read_attachment`, `scholium_create_note`, `scholium_update_note`,
   `scholium_preview_move`, `scholium_move_note`, `scholium_list_changes`, `scholium_read_change`, `scholium_undo_change`,
@@ -97,15 +97,23 @@
   may configure the runtime during the admitted turn. Same-name custom
   connections are retained. Local API checks
   report disabled/unavailable/available separately from MCP connection state.
-  The first-party read-only CLI publishes seven read tools and rejects imports
+  The first-party read-only helper publishes seven read tools and rejects imports
   before contacting Zotero. Annotation listing/selected reads verify the exact
   PDF relationship and snapshot; text, comment, printed label and physical page
-  stay separate. Binding, Chat/Sources and MCP share validated Zotero locators.
+  stay separate. Source links, Chat/Sources and MCP share validated Zotero locators.
   Original reads verify bounded local bytes, metadata and API-resolved paths,
   then return the selected text/page/image and original fingerprint through the
   shared attachment reader. Sources retains matching runtime material reports
   by turn/location, identifying server/tool, representation, fingerprint and
   bounded excerpts without promoting reported access to independent verification.
+
+## Distribution
+
+Scholium.app includes the MCP/Zotero connection helper. External-host setup uses
+its verified bundle path. The standalone executable product, command catalog,
+installer, self-updater and archive packaging have been removed. Existing
+published artifacts are not changed by this source-tree cutover; current
+verification and package acceptance remain in their respective Status chapters.
 
 ## Deliberately unavailable
 

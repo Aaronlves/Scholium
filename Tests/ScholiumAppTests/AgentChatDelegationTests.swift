@@ -27,7 +27,7 @@ struct AgentChatDelegationTests {
         }
         try await wait { controller.isLoaded }
         let executable = repository.appendingPathComponent("Tests/Fixtures/agent-chat-runtime.py")
-        controller.connect(executable: executable, home: controller.runtimeHome, cli: executable)
+        controller.connect(executable: executable, home: controller.runtimeHome, helper: executable)
         try await wait { controller.account != nil && controller.state == .ready }
         controller.editDraft("hold delegation")
         controller.send()
@@ -62,7 +62,7 @@ struct AgentChatDelegationTests {
         reopened.select(try #require(selected))
         #expect(reopened.selected?.messages.first { $0.id == record.id }?.activity?.delegation == report)
         #expect(reopened.approvals.isEmpty && !reopened.isBusy)
-        reopened.connect(executable: executable, home: reopened.runtimeHome, cli: executable)
+        reopened.connect(executable: executable, home: reopened.runtimeHome, helper: executable)
         try await wait { reopened.account != nil && reopened.state == .ready }
         reopened.editDraft("continue branch")
         reopened.send()

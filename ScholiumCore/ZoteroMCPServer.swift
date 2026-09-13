@@ -77,15 +77,11 @@ public actor ZoteroMCPServer {
     public static let serverVersion = ScholiumProductIdentity.marketingVersion
 
     private let client: any ZoteroMCPHTTPClient
-    private let now: @Sendable () -> Date
-    private var importAuthorizations: [String: ImportAuthorization] = [:]
 
     public init(
-        client: any ZoteroMCPHTTPClient = ZoteroMCPURLSessionClient(),
-        now: @escaping @Sendable () -> Date = { Date() }
+        client: any ZoteroMCPHTTPClient = ZoteroMCPURLSessionClient()
     ) {
         self.client = client
-        self.now = now
     }
 
     /// Handles one JSON-RPC message body. Notifications intentionally return
@@ -180,10 +176,6 @@ public actor ZoteroMCPServer {
                 execution = .success(try await readOriginal(arguments))
             case "zotero_selected_target":
                 execution = .success(try await selectedTarget().value)
-            case "zotero_import_bibtex":
-                execution = try await importRecord(kind: .bibtex, arguments: arguments)
-            case "zotero_import_ris":
-                execution = try await importRecord(kind: .ris, arguments: arguments)
             default:
                 throw ZoteroMCPServiceError.unknownTool
             }
@@ -219,7 +211,7 @@ public actor ZoteroMCPServer {
             "local_api": .string(apiState),
             "connector": .string(connectorState),
             "retrieval_mode": .string("localhost-read-only"),
-            "guarded_imports": .bool(access == .guardedImports && apiState == "available" && connectorState == "available"),
+            "guarded_imports": .bool(false),
             "access_mode": .string(access.rawValue),
             "direct_database_access": .bool(false),
         ])
@@ -378,277 +370,6 @@ public actor ZoteroMCPServer {
         )
     }
 
-    private func importRecord(
-        kind: ImportKind,
-        arguments: [String: ZoteroMCPJSONValue]
-    ) async throws -> ToolExecution {
-        guard let content = arguments[kind.argumentName]?.stringValue else {
-            throw ZoteroMCPServiceError.invalidArguments
-        }
-        let normalized = content.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !normalized.isEmpty, content.utf8.count <= 2 * 1_024 * 1_024 else {
-            throw ZoteroMCPServiceError.invalidImportContent
-        }
-        let recordCount = try kind.recordCount(in: content)
-        guard (1...100).contains(recordCount) else {
-            throw ZoteroMCPServiceError.invalidImportContent
-        }
-        let dryRun = arguments["dry_run"]?.boolValue ?? true
-        let confirm = arguments["confirm"]?.boolValue ?? false
-        if arguments["dry_run"] != nil && arguments["dry_run"]?.boolValue == nil {
-            throw ZoteroMCPServiceError.invalidArguments
-        }
-        if arguments["confirm"] != nil && arguments["confirm"]?.boolValue == nil {
-            throw ZoteroMCPServiceError.invalidArguments
-        }
-        let contentHash = sha256(content)
-
-        if dryRun {
-            guard !confirm else { throw ZoteroMCPServiceError.invalidArguments }
-            let target = try await selectedTarget()
-            guard target.isWritable else { throw ZoteroMCPServiceError.targetNotWritable }
-            let resolvedTarget = try await resolve(target: target)
-            discardExpiredAuthorizations()
-            if importAuthorizations.count >= 32 { importAuthorizations.removeAll() }
-            let token = UUID().uuidString.lowercased()
-            let expiresAt = now().addingTimeInterval(10 * 60)
-            importAuthorizations[token] = ImportAuthorization(
-                kind: kind,
-                contentHash: contentHash,
-                selectedTargetFingerprint: target.fingerprint,
-                resolvedTarget: resolvedTarget,
-                recordCount: recordCount,
-                expiresAt: expiresAt
-            )
-            return .success(
-                .object([
-                    "status": .string("preview-only"),
-                    "dry_run": .bool(true),
-                    "kind": .string(kind.displayName),
-                    "record_count": .integer(recordCount),
-                    "content_bytes": .integer(content.utf8.count),
-                    "content_sha256": .string(contentHash),
-                    "selected_target": target.value,
-                    "resolved_destination": resolvedTarget.value,
-                    "authorization_token": .string(token),
-                    "expires_at": .string(expiresAt.ISO8601Format()),
-                ]))
-        }
-
-        guard confirm,
-            let token = arguments["authorization_token"]?.stringValue,
-            !token.isEmpty,
-            let authorization = importAuthorizations.removeValue(forKey: token)
-        else {
-            throw ZoteroMCPServiceError.importNotAuthorized
-        }
-        guard authorization.expiresAt > now() else {
-            throw ZoteroMCPServiceError.importAuthorizationExpired
-        }
-        guard authorization.kind == kind,
-            authorization.contentHash == contentHash,
-            authorization.recordCount == recordCount
-        else {
-            throw ZoteroMCPServiceError.importAuthorizationMismatch
-        }
-
-        let currentTarget = try await selectedTarget()
-        guard currentTarget.isWritable,
-            currentTarget.fingerprint == authorization.selectedTargetFingerprint
-        else {
-            throw ZoteroMCPServiceError.importTargetChanged
-        }
-        let currentResolvedTarget = try await resolve(target: currentTarget)
-        guard currentResolvedTarget == authorization.resolvedTarget else {
-            throw ZoteroMCPServiceError.importTargetChanged
-        }
-
-        // The Connector imports into Zotero's current selection rather than
-        // accepting an explicit destination parameter. Re-read and resolve
-        // immediately before sending so the API resolution phase cannot
-        // authorize a selection that has already changed.
-        let finalTarget = try await selectedTarget()
-        guard finalTarget.isWritable,
-            finalTarget.fingerprint == currentTarget.fingerprint
-        else {
-            throw ZoteroMCPServiceError.importTargetChanged
-        }
-        let finalResolvedTarget = try await resolve(target: finalTarget)
-        guard finalResolvedTarget == currentResolvedTarget else {
-            throw ZoteroMCPServiceError.importTargetChanged
-        }
-
-        let session = "scholium-\(UUID().uuidString.lowercased())"
-        guard
-            let request = ZoteroMCPRequestFactory.connector(
-                endpoint: .importRecord(
-                    session: session,
-                    contentType: kind.contentType,
-                    content: Data(content.utf8)
-                )
-            )
-        else { throw ZoteroMCPServiceError.invalidRequest }
-
-        let response: ZoteroMCPHTTPResponse
-        do {
-            response = try await sendConnector(request, isImport: true)
-        } catch {
-            return .failure(
-                uncertainImportValue(
-                    kind: kind,
-                    contentHash: contentHash,
-                    selectedTarget: finalTarget.value,
-                    importedKeys: [],
-                    error:
-                        "The Connector response was lost after the import request was sent. Do not retry automatically; inspect Zotero and the selected destination first."
-                ))
-        }
-        let importedKeys = importedItemKeys(from: response.body)
-
-        // The Connector has no destination argument. If Zotero's selection
-        // changed during the request, the response cannot be attributed to
-        // the reviewed target. Do not read back through the old route.
-        let postWriteTarget: SelectedTarget
-        do {
-            postWriteTarget = try await selectedTarget()
-        } catch {
-            return .failure(
-                uncertainImportValue(
-                    kind: kind,
-                    contentHash: contentHash,
-                    selectedTarget: finalTarget.value,
-                    importedKeys: importedKeys,
-                    error:
-                        "The import response arrived, but Zotero's destination could not be rechecked. Do not retry automatically; inspect Zotero before continuing."
-                ))
-        }
-        guard postWriteTarget.fingerprint == finalTarget.fingerprint else {
-            return .failure(
-                uncertainImportValue(
-                    kind: kind,
-                    contentHash: contentHash,
-                    selectedTarget: finalTarget.value,
-                    postWriteTarget: postWriteTarget.value,
-                    importedKeys: importedKeys,
-                    error: "The Connector import may have completed while Zotero's selected destination changed. No destination or read-back claim is made."
-                ))
-        }
-
-        guard !importedKeys.isEmpty else {
-            return .failure(
-                .object([
-                    "status": .string("import-response-unverifiable"),
-                    "write_may_have_completed": .bool(true),
-                    "selected_target": finalTarget.value,
-                    "content_sha256": .string(contentHash),
-                    "recovery": .string("Do not retry automatically. Inspect Zotero and confirm whether the selected destination received the import."),
-                    "error": .string("Zotero accepted the import but returned no item keys for read-back."),
-                ]))
-        }
-
-        var readBackItems: [ZoteroMCPJSONValue] = []
-        var warnings: [ZoteroMCPJSONValue] = []
-        var destinationVerified = true
-        for key in importedKeys {
-            do {
-                guard let match = try await fetchItem(key, route: finalResolvedTarget.route) else {
-                    destinationVerified = false
-                    warnings.append(.string("An imported item could not be read back from the selected library."))
-                    continue
-                }
-                let collectionKeys = decodedCollectionKeys(from: match.response.body)
-                if let expectedCollectionKey = finalResolvedTarget.collectionKey,
-                    !collectionKeys.contains(expectedCollectionKey)
-                {
-                    destinationVerified = false
-                    warnings.append(.string("An imported item was not found in the selected collection."))
-                }
-                readBackItems.append(try metadataValue(match.item, route: finalResolvedTarget.route))
-            } catch {
-                destinationVerified = false
-                warnings.append(.string("An imported item could not be verified through the local API."))
-            }
-        }
-
-        let countVerified = importedKeys.count == recordCount && readBackItems.count == importedKeys.count
-        let verified = countVerified && destinationVerified
-        return ToolExecution(
-            value: .object([
-                "status": .string(verified ? "imported-and-verified" : "imported-verification-failed"),
-                "write_completed": .bool(true),
-                "kind": .string(kind.displayName),
-                "selected_target": finalTarget.value,
-                "imported_item_keys": .array(importedKeys.map(ZoteroMCPJSONValue.string)),
-                "expected_item_count": .integer(recordCount),
-                "read_back_items": .array(readBackItems),
-                "item_count_verified": .bool(countVerified),
-                "destination_verified": .bool(destinationVerified),
-                "warnings": .array(warnings),
-            ]),
-            isError: !verified
-        )
-    }
-
-    private func uncertainImportValue(
-        kind: ImportKind,
-        contentHash: String,
-        selectedTarget: ZoteroMCPJSONValue,
-        postWriteTarget: ZoteroMCPJSONValue? = nil,
-        importedKeys: [String],
-        error: String
-    ) -> ZoteroMCPJSONValue {
-        var value: [String: ZoteroMCPJSONValue] = [
-            "status": .string("import-outcome-uncertain"),
-            "write_may_have_completed": .bool(true),
-            "kind": .string(kind.displayName),
-            "content_sha256": .string(contentHash),
-            "selected_target": selectedTarget,
-            "imported_item_keys": .array(importedKeys.map(ZoteroMCPJSONValue.string)),
-            "error": .string(error),
-            "recovery": .string("Do not retry automatically. Inspect Zotero and the selected destination before issuing a new dry run."),
-        ]
-        if let postWriteTarget {
-            value["post_write_target"] = postWriteTarget
-        }
-        return .object(value)
-    }
-
-    private func resolve(target: SelectedTarget) async throws -> ResolvedTarget {
-        let routes = try await libraryRoutes()
-        let matchingGroups = routes.filter { $0.groupID == target.libraryID }
-        guard matchingGroups.count <= 1 else {
-            throw ZoteroMCPServiceError.ambiguousTarget
-        }
-        let route = matchingGroups.first ?? .user
-
-        guard target.isCollection else {
-            return ResolvedTarget(
-                route: route,
-                collectionKey: nil,
-                collectionName: nil,
-                connectorTargetID: target.selectedID
-            )
-        }
-        guard
-            let request = ZoteroMCPRequestFactory.api(
-                route: route,
-                resource: .collections(query: [URLQueryItem(name: "limit", value: "1000")])
-            )
-        else { throw ZoteroMCPServiceError.invalidRequest }
-        let response = try await sendAPI(request)
-        let collections = try JSONDecoder().decode([CollectionEnvelope].self, from: response.body)
-            .filter { $0.data.name == target.selectedName }
-        guard collections.count == 1, let collection = collections.first else {
-            throw ZoteroMCPServiceError.ambiguousTarget
-        }
-        return ResolvedTarget(
-            route: route,
-            collectionKey: collection.key,
-            collectionName: collection.data.name,
-            connectorTargetID: target.selectedID
-        )
-    }
-
     private func libraryRoutes() async throws -> [LibraryRoute] {
         guard let request = ZoteroMCPRequestFactory.api(route: .user, resource: .groups) else {
             throw ZoteroMCPServiceError.invalidRequest
@@ -719,8 +440,7 @@ public actor ZoteroMCPServer {
     }
 
     private func sendConnector(
-        _ request: URLRequest,
-        isImport: Bool = false
+        _ request: URLRequest
     ) async throws -> ZoteroMCPHTTPResponse {
         let response: ZoteroMCPHTTPResponse
         do {
@@ -734,10 +454,6 @@ public actor ZoteroMCPServer {
             throw ZoteroMCPServiceError.responseTooLarge
         }
         guard (200..<300).contains(response.statusCode) else {
-            if response.statusCode == 400, isImport {
-                throw ZoteroMCPServiceError.invalidImportContent
-            }
-            if response.statusCode == 409 { throw ZoteroMCPServiceError.connectorSessionConflict }
             throw ZoteroMCPServiceError.connectorRejected
         }
         return response
@@ -751,32 +467,6 @@ public actor ZoteroMCPServer {
             }
         } catch {
             throw ZoteroMCPServiceError.invalidResponse
-        }
-    }
-
-    private func decodedCollectionKeys(from data: Data) -> [String] {
-        guard let value = try? JSONDecoder().decode(ZoteroMCPJSONValue.self, from: data),
-            let object = value.objectValue,
-            let itemData = object["data"]?.objectValue,
-            let collections = itemData["collections"]?.arrayValue
-        else { return [] }
-        return collections.compactMap(\.stringValue)
-    }
-
-    private func importedItemKeys(from data: Data) -> [String] {
-        guard let value = try? JSONDecoder().decode(ZoteroMCPJSONValue.self, from: data),
-            let items = value.arrayValue
-        else { return [] }
-        var seen: Set<String> = []
-        return items.compactMap { item in
-            guard let object = item.objectValue else { return nil }
-            let key =
-                object["key"]?.stringValue
-                ?? object["data"]?.objectValue?["key"]?.stringValue
-            guard let normalized = normalizedKey(key), seen.insert(normalized).inserted else {
-                return nil
-            }
-            return normalized
         }
     }
 
@@ -848,15 +538,6 @@ public actor ZoteroMCPServer {
         object[key] = .integer(value)
     }
 
-    private func discardExpiredAuthorizations() {
-        let current = now()
-        importAuthorizations = importAuthorizations.filter { $0.value.expiresAt > current }
-    }
-
-    private func sha256(_ value: String) -> String {
-        SHA256.hash(data: Data(value.utf8)).map { String(format: "%02x", $0) }.joined()
-    }
-
     private func normalizedKey(_ value: String?) -> String? {
         value.flatMap(ZoteroReference.normalizedKey)
     }
@@ -917,7 +598,7 @@ public actor ZoteroMCPServer {
     }
 
     private static func toolDefinitions(for access: ZoteroMCPAccess) -> [ZoteroMCPJSONValue] {
-        access == .guardedImports ? toolDefinitions : toolDefinitions.filter { $0.objectValue?["annotations"]?.objectValue?["readOnlyHint"]?.boolValue == true }
+        toolDefinitions
     }
 
     private static let toolDefinitions: [ZoteroMCPJSONValue] = [
@@ -955,14 +636,12 @@ public actor ZoteroMCPServer {
         ),
         tool(
             name: "zotero_selected_target",
-            description: "Report only the currently selected import library or collection and its editability.",
+            description: "Report only the currently selected library or collection and its editability.",
             properties: [:]
         ),
         annotationListTool,
         annotationReadTool,
         originalReadTool,
-        importTool(kind: .bibtex),
-        importTool(kind: .ris),
     ]
 
     static func tool(
@@ -990,27 +669,6 @@ public actor ZoteroMCPServer {
         ])
     }
 
-    private static func importTool(kind: ImportKind) -> ZoteroMCPJSONValue {
-        tool(
-            name: kind.toolName,
-            description:
-                "Preview or import exact \(kind.displayName) text through Zotero Connector. A real write requires the one-shot token returned by the matching dry run.",
-            properties: [
-                kind.argumentName: .object(["type": .string("string")]),
-                "dry_run": .object([
-                    "type": .string("boolean"), "default": .bool(true),
-                ]),
-                "confirm": .object([
-                    "type": .string("boolean"), "default": .bool(false),
-                ]),
-                "authorization_token": .object([
-                    "type": .string("string"),
-                    "description": .string("One-shot token from the matching dry run."),
-                ]),
-            ],
-            required: [kind.argumentName], readOnly: false
-        )
-    }
 }
 
 enum ZoteroMCPServiceError: LocalizedError, Sendable {
@@ -1023,16 +681,8 @@ enum ZoteroMCPServiceError: LocalizedError, Sendable {
     case localAPIDisabled
     case connectorUnavailable
     case connectorRejected
-    case connectorSessionConflict
     case itemMissing
     case ambiguousItem
-    case targetNotWritable
-    case ambiguousTarget
-    case invalidImportContent
-    case importNotAuthorized
-    case importAuthorizationExpired
-    case importAuthorizationMismatch
-    case importTargetChanged
     case materialChanged
     case originalUnavailable
     case originalReadFailed(String)
@@ -1048,16 +698,8 @@ enum ZoteroMCPServiceError: LocalizedError, Sendable {
         case .localAPIDisabled: "Zotero local API access is disabled."
         case .connectorUnavailable: "Zotero Connector is not responding on this Mac."
         case .connectorRejected: "Zotero Connector rejected the guarded operation."
-        case .connectorSessionConflict: "Zotero Connector rejected the one-shot import session."
         case .itemMissing: "No exact Zotero item was found in the requested library scope."
         case .ambiguousItem: "The item key exists in more than one library; specify the library."
-        case .targetNotWritable: "The selected Zotero destination is not editable."
-        case .ambiguousTarget: "The selected Zotero destination cannot be resolved unambiguously through the local API."
-        case .invalidImportContent: "The supplied BibTeX or RIS content is empty, unsupported, or outside the bounded import limit."
-        case .importNotAuthorized: "A real import requires confirm=true and the one-shot token from a matching dry run."
-        case .importAuthorizationExpired: "The dry-run authorization expired; run a new preview."
-        case .importAuthorizationMismatch: "The import content or operation no longer matches its dry run."
-        case .importTargetChanged: "The selected Zotero destination changed after the dry run."
         case .materialChanged: "The selected Zotero material changed. Refresh the selection before reading it."
         case .originalUnavailable:
             "The selected local original is missing, unsafe, unsupported or exceeds 20 MiB. Restore the attachment in Zotero and select it again."
@@ -1154,58 +796,6 @@ private struct ToolExecution: Sendable {
     }
 }
 
-private enum ImportKind: String, Hashable, Sendable {
-    case bibtex
-    case ris
-
-    var displayName: String { self == .bibtex ? "BibTeX" : "RIS" }
-    var argumentName: String { self == .bibtex ? "bibtex" : "ris" }
-    var toolName: String { "zotero_import_\(rawValue)" }
-    var contentType: String {
-        self == .bibtex ? "application/x-bibtex" : "application/x-research-info-systems"
-    }
-
-    func recordCount(in content: String) throws -> Int {
-        switch self {
-        case .bibtex:
-            let expression = try NSRegularExpression(
-                pattern: "@([A-Za-z]+)\\s*[\\{\\(]",
-                options: [.caseInsensitive]
-            )
-            let excluded: Set<String> = ["comment", "preamble", "string"]
-            let source = content as NSString
-            let count = expression.matches(
-                in: content,
-                range: NSRange(location: 0, length: source.length)
-            ).reduce(into: 0) { result, match in
-                guard match.numberOfRanges > 1 else { return }
-                let type = source.substring(with: match.range(at: 1)).lowercased()
-                if !excluded.contains(type) { result += 1 }
-            }
-            guard count > 0 else { throw ZoteroMCPServiceError.invalidImportContent }
-            return count
-        case .ris:
-            let hasType = content.split(whereSeparator: \Character.isNewline).contains {
-                $0.trimmingCharacters(in: .whitespaces).uppercased().hasPrefix("TY  -")
-            }
-            let count = content.split(whereSeparator: \Character.isNewline).filter {
-                $0.trimmingCharacters(in: .whitespaces).uppercased().hasPrefix("ER  -")
-            }.count
-            guard hasType, count > 0 else { throw ZoteroMCPServiceError.invalidImportContent }
-            return count
-        }
-    }
-}
-
-private struct ImportAuthorization: Sendable {
-    let kind: ImportKind
-    let contentHash: String
-    let selectedTargetFingerprint: String
-    let resolvedTarget: ResolvedTarget
-    let recordCount: Int
-    let expiresAt: Date
-}
-
 private struct SelectedTarget: Sendable {
     let libraryID: Int
     let libraryName: String
@@ -1233,21 +823,6 @@ private struct SelectedTarget: Sendable {
             "target_name": .string(selectedName),
             "target_editable": .bool(editable),
         ])
-    }
-}
-
-private struct ResolvedTarget: Hashable, Sendable {
-    let route: LibraryRoute
-    let collectionKey: String?
-    let collectionName: String?
-    let connectorTargetID: String?
-
-    var value: ZoteroMCPJSONValue {
-        var object = route.value.objectValue ?? [:]
-        object["collection_key"] = collectionKey.map(ZoteroMCPJSONValue.string) ?? .null
-        object["collection_name"] = collectionName.map(ZoteroMCPJSONValue.string) ?? .null
-        object["connector_target_id"] = connectorTargetID.map(ZoteroMCPJSONValue.string) ?? .null
-        return .object(object)
     }
 }
 
@@ -1343,16 +918,7 @@ private struct APILibrary: Decodable, Sendable {
     }
 }
 
-private struct CollectionEnvelope: Decodable, Sendable {
-    let key: String
-    let data: CollectionData
-
-    struct CollectionData: Decodable, Sendable {
-        let name: String
-    }
-}
-
-private struct AttachmentEnvelope: Decodable, Sendable {
+struct AttachmentEnvelope: Decodable, Sendable {
     let key: String
     let data: AttachmentData
 
@@ -1382,7 +948,6 @@ enum ZoteroMCPRequestFactory {
     enum ConnectorEndpoint {
         case ping
         case selectedTarget
-        case importRecord(session: String, contentType: String, content: Data)
     }
 
     static func api(route: LibraryRoute, resource: APIResource) -> URLRequest? {
@@ -1447,7 +1012,7 @@ enum ZoteroMCPRequestFactory {
         components.port = 23119
         var method = "POST"
         var body = Data("{}".utf8)
-        var contentType = "application/json"
+        let contentType = "application/json"
         switch endpoint {
         case .ping:
             components.path = "/connector/ping"
@@ -1455,16 +1020,7 @@ enum ZoteroMCPRequestFactory {
             body = Data()
         case .selectedTarget:
             components.path = "/connector/getSelectedCollection"
-        case .importRecord(let session, let type, let content):
-            guard
-                session.unicodeScalars.allSatisfy({
-                    CharacterSet.alphanumerics.contains($0) || $0 == "-"
-                })
-            else { return nil }
-            components.path = "/connector/import"
-            components.queryItems = [URLQueryItem(name: "session", value: session)]
-            body = content
-            contentType = type
+
         }
         guard let url = components.url else { return nil }
         var request = URLRequest(url: url)

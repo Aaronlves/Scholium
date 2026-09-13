@@ -5,12 +5,11 @@ mutation evidence, and Settings ownership.
 
 ## Delivery path
 
-`scholium mcp serve` is a stdio adapter. `ScholiumMCPServer` owns JSON-RPC
+`ScholiumAgentHelper mcp serve` is the App-bundled stdio adapter. `ScholiumMCPServer` owns JSON-RPC
 framing, initialization, fixed tool discovery, closed input/output schemas,
-annotations, and MCP error envelopes. `MCPCommandHandler` owns stdin/stdout
-only.
+annotations, and MCP error envelopes. `AgentMCPService` owns stdin/stdout framing.
 
-The CLI calls `ScholiumAppBridge`, which discovers one current-user App
+The helper calls `ScholiumAppBridge`, which discovers one current-user App
 endpoint and authenticates the live process. It does not construct a workspace
 runtime, start the App, or access Triptych files. `ScholiumAppBridgeRequestRouter`
 validates the bridge request and delegates one tool call to
@@ -22,7 +21,7 @@ open Triptychs require the caller's exact stable Triptych identity.
 
 ## Fixed tool surface
 
-`ScholiumMCPToolName` defines eighteen external research tools and four
+`ScholiumMCPToolName` defines sixteen external research tools and four
 token-scoped in-app capability controls, all with closed schemas. The external
 surface includes:
 
@@ -157,9 +156,9 @@ before a bounded controller-owned reconnection task; explicit Disconnect and
 shutdown cancel that task. Only explicit Disconnect clears saved connection
 intent. Recovery never replays input or source operations.
 
-The runtime config registers the existing CLI MCP server with a connection-local
+The runtime config registers the bundled MCP helper with a connection-local
 conversation route, retained across ordinary turns. MCP request metadata supplies
-the issuing runtime thread and turn; the CLI forwards that context and route in
+the issuing runtime thread and turn; the helper forwards that context and route in
 bridge schema 3. The App registry resolves the conversation route and its current
 execution owner requires the exact active runtime thread/turn before admission
 and again after an approval wait. Stop and completion revoke turn admission,
@@ -609,10 +608,9 @@ destination checks whether existing access settings would be reused and requires
 an explicit choice. Settings saving remains distinct from connection readiness.
 
 The Zotero preset reuses this configuration editor with the bundled connection helper
-and descriptor-owned `--read-only` arguments. `ScholiumAgentHelper` has only
-token-scoped Scholium MCP and read-only Zotero entry points. `AgentMCPService`
-owns framing for the helper and independent CLI; the App discovers its helper in
-`Contents/Helpers`, never through user-local CLI installation. Its enabled state remains in the
+and descriptor-owned `--read-only` arguments. `ScholiumAgentHelper` has external and
+token-scoped Scholium MCP plus read-only Zotero entry points. `AgentMCPService`
+owns helper framing; the App discovers it in `Contents/Helpers`. Its enabled state remains in the
 selected runtime settings file, including after reconnect. No per-turn override
 or secondary preference rewrites it. Existing same-name connections remain
 inspectable/editable through their actual effective configuration. Explicit local

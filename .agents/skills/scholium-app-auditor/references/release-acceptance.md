@@ -4,14 +4,14 @@ Use this mode when the researcher asks whether a release is ready, which gates r
 
 ## Establish the candidate
 
-Identify the release identifier, exact source revision and dirty state, intended build configuration, toolchain, app and CLI artifacts, signing identity, architectures, fixture versions, machine/account class, and distribution scope. If no exact candidate exists, assess readiness of the current tree but do not issue an artifact-level pass.
+Identify the release identifier, exact source revision and dirty state, intended build configuration, toolchain, App and bundled-helper artifacts, signing identity, architectures, fixture versions, machine/account class, and distribution scope. If no exact candidate exists, assess readiness of the current tree but do not issue an artifact-level pass.
 
 Read `Docs/SCHOLIUM_SPEC.md` first and follow its declared release chapter for gates and risks, then read the dated `Docs/IMPLEMENTATION_STATUS.md` evidence. Verify current claims against live scripts, tests, artifacts, and retained reports where proportionate. A successful repository verifier is code-health evidence, not automatic UI, accessibility, performance, clean-account, signing, notarization, or recovery acceptance.
 
 ## Keep evidence classes separate
 
 - **Implemented:** reachable behavior exists in the candidate source.
-- **Repository verified:** unit, integration, architecture, editor, CLI, or deterministic checks passed for an identified tree.
+- **Repository verified:** unit, integration, architecture, editor, transport, or deterministic checks passed for an identified tree.
 - **QA automated:** named disposable-fixture interaction journeys passed in an identified QA artifact.
 - **Release-artifact verified:** the exact candidate was exercised for the named gate.
 - **Human accepted:** retained evidence records genuine human input or judgment under the named environment.

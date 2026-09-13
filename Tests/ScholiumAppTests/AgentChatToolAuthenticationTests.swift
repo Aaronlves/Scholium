@@ -23,7 +23,7 @@ struct AgentChatToolAuthenticationTests {
         try FileManager.default.createDirectory(at: controller.runtimeHome, withIntermediateDirectories: true)
         try Data().write(to: controller.runtimeHome.appendingPathComponent("oauth-fixture"))
         let fixture = repository.appendingPathComponent("Tests/Fixtures/agent-chat-runtime.py")
-        controller.connect(executable: fixture, home: controller.runtimeHome, cli: fixture)
+        controller.connect(executable: fixture, home: controller.runtimeHome, helper: fixture)
         try await wait { controller.capabilities.hasTools && !controller.capabilities.isRefreshing }
     }
 

@@ -67,7 +67,7 @@ private enum ScholiumSettingsDestination: String, CaseIterable, Identifiable, Eq
                 }
         case .integrations:
             [
-                "Integrations", "Agents & Chat", "Chat", "MCP", "Codex", "Claude", "Core Protocol", "CLI", "bridge", "skills", "tools", "Zotero", "citation",
+                "Integrations", "Agents & Chat", "Chat", "MCP", "Codex", "Claude", "Core Protocol", "bridge", "skills", "tools", "Zotero", "citation",
                 "local API",
             ]
         }

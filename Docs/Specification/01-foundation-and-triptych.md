@@ -12,8 +12,8 @@
   source authority, retrieval, permission, mutation scope, and reporting. It
   is not a complete philosophical method.
 - A researcher-owned **Skill** is optional instruction installed in the
-  Agent host. Scholium does not register, inspect, execute, or grant authority
-  through it.
+  Agent runtime. In-app Chat may inspect and manage runtime-owned Skills under
+  §8.7; Skills never grant authority or become application-managed methods.
 - An **Agent Change** is one machine-local, exact MCP mutation record used for
   comparison and eligible recovery. It is not a research task, result,
   acceptance or review state.
@@ -98,14 +98,13 @@ a Works parent because `.scholium/` sits beside Works.
 A configured window belongs to one Triptych and presents Analyses, Topics, and
 Works as peer workspaces, not workflow stages. Each window retains workspace-
 specific Library state, Document tabs, selected document, live Document mode,
-and Inspector mode. A workspace switch first completes the source-safe
-transition, then restores the destination; failure retains the exact origin
-buffer and context.
+and Inspector mode. A document transition completes source-safety checks before
+selecting its destination; failure retains the origin buffer and context.
 
-Each stable Note appears at most once per window. Opening it again selects its
-existing workspace and tab. Cross-workspace navigation switches atomically.
-Other windows retain independent presentation sessions over shared workspace
-services. Closing the last tab leaves that workspace with no selected document.
+Library role browsing preserves the active Document. Explicit document opening,
+tabs and separate document windows follow §18.2's identity, source-safe
+transition and session-transfer rules. Presentation state is window-local;
+source coordination is shared across windows.
 
 **New Triptych…** creates a new configuration, **Open Triptych** opens a
 registered one, and **New Window** opens the focused Triptych. Missing

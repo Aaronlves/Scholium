@@ -87,8 +87,6 @@ if $run_swift; then
       "${ROOT}/Scholium"
       "${ROOT}/ScholiumAgentHelper"
       "${ROOT}/ScholiumApplication"
-      "${ROOT}/ScholiumCLI"
-      "${ROOT}/ScholiumCLIUpdate"
       "${ROOT}/ScholiumContracts"
       "${ROOT}/ScholiumCore"
       "${ROOT}/Tests"

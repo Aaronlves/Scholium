@@ -8,7 +8,7 @@ public enum ScholiumPaths {
     public static let appBridgeDirectoryName = "AppBridge"
 
     /// Creates or normalizes a directory that contains private Scholium
-    /// state. Both the App and the independently delivered CLI use this
+    /// state. Both the App and the bundled helper use this
     /// boundary so a fresh isolated Home cannot leave shared state readable
     /// by other local users.
     public static func ensurePrivateDirectory(
@@ -59,22 +59,8 @@ public enum ScholiumPaths {
         return current
     }
 
-    /// Returns the explicit isolated CLI home. Production machine state is
-    /// stored under Application Support; `SCHOLIUM_HOME` is reserved for
-    /// isolated launches and tests.
-    public static func cliHomeURL(
-        environment: [String: String] = ProcessInfo.processInfo.environment,
-        fileManager: FileManager = .default
-    ) -> URL {
-        if let override = environment["SCHOLIUM_HOME"], !override.isEmpty {
-            return URL(fileURLWithPath: (override as NSString).expandingTildeInPath, isDirectory: true)
-        }
-        return fileManager.homeDirectoryForCurrentUser
-            .appendingPathComponent(".scholium", isDirectory: true)
-    }
-
     /// Returns the login account's ordinary Application Support directory
-    /// shared by the sandboxed app and independently delivered CLI. Supplying
+    /// shared by the sandboxed app and bundled helper. Supplying
     /// a base URL keeps tests and explicit isolated launches deterministic.
     public static func sharedApplicationSupportURL(
         baseURL: URL? = nil,
@@ -99,7 +85,7 @@ public enum ScholiumPaths {
         )
     }
 
-    /// Stable private namespace used by the local App and CLI to derive the
+    /// Stable private namespace used by the local App and helper to derive the
     /// same loopback port and hold its process-generation authentication file.
     /// It contains transport state only; research content and recovery state
     /// remain with their existing owners.
@@ -117,8 +103,8 @@ public enum ScholiumPaths {
                 isDirectory: true
             ).standardizedFileURL
         }
-        if environment["SCHOLIUM_HOME"] != nil {
-            return cliHomeURL(environment: environment, fileManager: fileManager)
+        if let isolatedHome = environment["SCHOLIUM_HOME"], !isolatedHome.isEmpty {
+            return URL(fileURLWithPath: (isolatedHome as NSString).expandingTildeInPath, isDirectory: true)
                 .appendingPathComponent("ApplicationSupport", isDirectory: true)
                 .appendingPathComponent(appBridgeDirectoryName, isDirectory: true)
         }
@@ -176,19 +162,4 @@ public enum ScholiumPaths {
         return String(cString: account.pw_dir)
     }
 
-    /// The app and the ordinary CLI share one role-aware vault registry. An
-    /// explicit SCHOLIUM_HOME keeps tests and scripted environments isolated.
-    public static func workspaceRegistryURL(
-        homeURL: URL? = nil,
-        environment: [String: String] = ProcessInfo.processInfo.environment,
-        fileManager: FileManager = .default
-    ) throws -> URL {
-        if environment["SCHOLIUM_HOME"] != nil {
-            return (homeURL ?? cliHomeURL(environment: environment, fileManager: fileManager))
-                .appendingPathComponent("ApplicationSupport", isDirectory: true)
-                .appendingPathComponent("Workspace", isDirectory: true)
-        }
-        return try sharedApplicationSupportURL(fileManager: fileManager)
-            .appendingPathComponent("Workspace", isDirectory: true)
-    }
 }

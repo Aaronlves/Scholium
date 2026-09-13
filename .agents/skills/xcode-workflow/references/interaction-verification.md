@@ -18,7 +18,7 @@ state with bounded failure, not fixed sleeps. Keep one QA process and clean up
 test-owned state under repository rules.
 
 Exploratory Computer Use supplies observations rather than deterministic proof
-or human acceptance. Direct unit/CLI checks cannot establish app interaction.
+or human acceptance. Direct unit/transport checks cannot establish app interaction.
 A release artifact is required only for release-specific claims such as signing,
 entitlements, persisted access, packaging, or installation.
 

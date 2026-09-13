@@ -62,7 +62,7 @@ struct AgentChatLocalMaterialTests {
         #expect(rendered.fingerprint == old.fingerprint && rendered.id != old.id)
         #expect(controller.materialInputIssue != nil)
         let fixture = repository.appendingPathComponent("Tests/Fixtures/agent-chat-runtime.py")
-        controller.connect(executable: fixture, home: controller.runtimeHome, cli: fixture)
+        controller.connect(executable: fixture, home: controller.runtimeHome, helper: fixture)
         try await wait { controller.canSend }
         controller.send()
         try await wait { !controller.isBusy && controller.selected?.messages.isEmpty == false }
@@ -104,7 +104,7 @@ struct AgentChatLocalMaterialTests {
         #expect(material.kind == .image && material.issue == nil)
         #expect(controller.materialInputIssue != nil)
         let fixture = repository.appendingPathComponent("Tests/Fixtures/agent-chat-runtime.py")
-        controller.connect(executable: fixture, home: controller.runtimeHome, cli: fixture)
+        controller.connect(executable: fixture, home: controller.runtimeHome, helper: fixture)
         try await wait { controller.canSend }
         controller.send()
         controller.stop()

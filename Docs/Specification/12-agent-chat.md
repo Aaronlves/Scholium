@@ -95,7 +95,7 @@ change while loading leaves the Note open without selecting obsolete coordinates
 editor coordinate conversion preserves exact original newline and Unicode offsets.
 
 One-click connection locates Codex and the App-bundled, version-matched MCP helper,
-prepares tools and requests sign-in. It requires no standalone CLI installation.
+prepares tools and requests sign-in. It requires no additional installation.
 Missing runtime and missing helper expose distinct repairs; advanced paths live
 in Settings. These machine paths, credentials and runtime
 data stay outside portable `.scholium`; existing Triptych control settings keep their
@@ -668,7 +668,7 @@ disconnecting cannot imply that terminated local work will keep running.
 
 ### 8.7.7 Presentation and acceptance boundary
 
-§18.2 owns placement and interaction presentation; §19 owns global visual
+§18.2 owns placement; §18.2.2 owns Chat interaction presentation; §19 owns global visual
 identity and native motion; §20 owns accessibility. Inputs, source provenance,
 execution, research prose and operation evidence remain distinct in every mode.
 Core Note work remains usable without a connected or authenticated Agent.

@@ -2,15 +2,20 @@
 
 [IMPLEMENTATION_STATUS.md](../IMPLEMENTATION_STATUS.md) · Dated proof and its limits.
 
-## Agent knowledge-base tools, 2026-09-09
-
-Integration: 1,388 tests; two App assertions repaired/rechecked separately.
-Gate nonzero; symbols, Release/CLI, resources/docs/localization pass.
-Evidence: `.build/agent-knowledge-tools/completion-audit.md`, Xcode 27 beta
-27A5218g; `d75bceac` plus then-uncommitted changes. Native adaptation and real
-Zotero/provider acceptance remain open.
-
 ## Current verification snapshot
+
+**2026-09-13 — App-only delivery:** `ad0825a4` plus cutover worktree,
+Xcode 27 beta 27A5218g. 110 owning tests, Debug/Release helper protocol smoke,
+public-symbol boundary and Release compilation pass. Integration: Core 350+3,
+Contracts 73, Application 163+1 pass; App 819 reports four assertions in
+`readScrollObservationDoesNotReplayRestoration`, reproduced in isolation.
+The full gate also stops on formatting in 12 unchanged files; all 46 changed
+Swift files pass formatting. Documentation, 11 validator tests, localization,
+entitlements and toolkit checks pass. Logs: `.build/cli-removal-*.log` and
+`.build/verification/`. No new distribution artifact, clean-account installation
+or native/human UI acceptance is claimed. Earlier CLI evidence is historical,
+not support for a current product.
+
 
 **2026-09-13 — source-authority cutover:** Core, Contracts and Application
 checks pass. App coverage ran; obsolete implementation snapshots were removed
@@ -666,18 +671,7 @@ to the reachable chapters and outstanding acceptance to Open Work.
   App MCP create/update, Ask approval, comparison and byte-identical Undo;
   selection attachment, right Inspector Outline, persistence, bilingual text,
   long replies and 1000–1380pt windows were inspected.
-- **Whole-app attempt, 2026-09-07:** static/resource checks, 348 Core tests,
-  62 Contracts tests, 126 Application tests and architecture measurement passed.
-  Search timing initially exceeded two thresholds; all three performance checks
-  passed an isolated repeat at unchanged thresholds. The 637-test App run
-  reported 21 issues. Focused import, file-selection and translation repairs
-  passed; document scroll, editor projection/bridge and WebKit localization
-  failures remained. This is not a passing full gate.
-- Release App/CLI compilation and public-symbol validation passed separately;
-  Release CLI seven-tool discovery, absent-App refusal and malformed token
-  rejection passed. UI-test callers compiled with Xcode 27 beta; compilation
-  is not an executed UI journey. Integration logs: `.build/codex-integration/`
-  and `.build/verification/`.
+
 
 That Chat QA used deterministic runtimes and disposable Triptychs. Provider,
 VoiceOver/IME and adaptation acceptance remain open; retained QA availability

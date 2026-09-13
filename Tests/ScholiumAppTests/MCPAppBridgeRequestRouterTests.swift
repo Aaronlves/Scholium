@@ -27,7 +27,7 @@ struct MCPAppBridgeRequestRouterTests {
         try await wait { controller.isLoaded }
         let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         let runtime = repository.appendingPathComponent("Tests/Fixtures/agent-chat-runtime.py")
-        controller.connect(executable: runtime, home: controller.runtimeHome, cli: runtime)
+        controller.connect(executable: runtime, home: controller.runtimeHome, helper: runtime)
         try await wait { controller.state == .ready && controller.account != nil }
         controller.editDraft("hold source comparison")
         controller.send()
@@ -316,7 +316,7 @@ struct MCPAppBridgeRequestRouterTests {
         try await wait { controller.isLoaded }
         let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         let runtime = repository.appendingPathComponent("Tests/Fixtures/agent-chat-runtime.py")
-        controller.connect(executable: runtime, home: controller.runtimeHome, cli: runtime)
+        controller.connect(executable: runtime, home: controller.runtimeHome, helper: runtime)
         try await wait { controller.state == .ready && controller.account != nil }
         controller.editDraft("hold source comparison")
         controller.send()
@@ -617,7 +617,7 @@ struct MCPAppBridgeRequestRouterTests {
         try await wait { controller.isLoaded }
         let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         let executable = repository.appendingPathComponent("Tests/Fixtures/agent-chat-runtime.py")
-        controller.connect(executable: executable, home: controller.runtimeHome, cli: executable)
+        controller.connect(executable: executable, home: controller.runtimeHome, helper: executable)
         try await wait { controller.account != nil && controller.state == .ready }
         controller.editDraft("hold source comparison")
         controller.send()

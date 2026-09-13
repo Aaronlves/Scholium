@@ -13,7 +13,7 @@ source properties, Agent Changes, conflicts, and recovery.
 
 - **Review** renders committed content for reading, navigation, and selection.
 - **Edit** modifies source through a reversible semantic projection; Frontmatter
-  remains directly source-editable above the title under §18.4.
+  remains directly source-editable under §18.4.
 - **Source** edits complete Markdown and YAML with logical source-line numbers.
 
 All modes share one document session. A mode change preserves dirty source,
@@ -66,7 +66,7 @@ Inline Footnote inserts `^[…]` at each selection and retains selected text as
 its content. Each invocation is one source transaction and one Undo event.
 
 Statistics are derived from the current unsaved body or selection and are never stored.
-Their interface entry is currently withdrawn (§18.4). They report language-aware word tokens, Han
+They have no interface entry (§18.4). They report language-aware word tokens, Han
 characters, and Unicode grapheme clusters with and without whitespace while excluding
 YAML, delimiters, and link destinations. Word counts use the platform tokenizer rather
 than treating every script as Latin. Spelling and grammar use installed macOS text
@@ -138,7 +138,7 @@ vault root or exact selected folder. New paths are atomically claimed as
 `Untitled.md` or `Untitled Folder` with the next available ordinal and never
 replace an existing comparison-equivalent path.
 
-A managed New Note uses one Application-owned creator shared by GUI, CLI, and
+A managed New Note uses one Application-owned creator shared by GUI and
 Scholium MCP. Without explicitly supplied source values, it creates an empty,
 YAML-free document and opens Edit at the exact body start. It adds no YAML
 scaffold, H1, title, required Metadata, naming sheet, or classification step.

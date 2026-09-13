@@ -23,7 +23,7 @@ struct AgentChatQuestionTests {
         }
         try await wait { value.isLoaded }
         let fixture = repository.appendingPathComponent("Tests/Fixtures/agent-chat-runtime.py")
-        value.connect(executable: fixture, home: value.runtimeHome, cli: fixture)
+        value.connect(executable: fixture, home: value.runtimeHome, helper: fixture)
         try await wait { value.account != nil && value.state == .ready }
         value.editDraft(text)
         value.send()

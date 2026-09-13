@@ -26,7 +26,7 @@ extension MCPAppBridgeRequestRouterTests {
         let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         let executable = repository.appendingPathComponent("Tests/Fixtures/agent-chat-runtime.py")
         try await wait { controller.isLoaded }
-        controller.connect(executable: executable, home: controller.runtimeHome, cli: executable)
+        controller.connect(executable: executable, home: controller.runtimeHome, helper: executable)
         try await wait { controller.state == .ready && controller.account != nil }
         controller.editDraft("hold")
         controller.send()

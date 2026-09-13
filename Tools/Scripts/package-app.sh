@@ -31,7 +31,6 @@ esac
 APP="${OUTPUT}/Scholium.app"
 SCRATCH="${ROOT}/.build/release"
 STAGING_APP="${SCRATCH}/Scholium.app"
-CLI_STAGE="${SCRATCH}/Scholium-CLI"
 IDENTITY="${CODE_SIGN_IDENTITY:--}"
 DEPLOYMENT_TARGET="26.0"
 SDK_VERSION="${SCHOLIUM_SDK_VERSION:-$(xcrun --sdk macosx --show-sdk-version)}"
@@ -91,11 +90,9 @@ fi
 }
 rm -rf \
   "${APP}" \
-  "${OUTPUT}/Scholium-CLI-macos.zip" \
-  "${OUTPUT}/Scholium-CLI-macos.zip.sha256" \
   "${SCRATCH}"
 mkdir -p "${STAGING_APP}/Contents/MacOS" "${STAGING_APP}/Contents/Resources" "${STAGING_APP}/Contents/Helpers" \
-  "${CLI_STAGE}" "${OUTPUT}"
+  "${OUTPUT}"
 
 swift build \
   --package-path "${ROOT}" \
@@ -132,14 +129,8 @@ if [[ "$(find "${EDITOR_RESOURCES}" -maxdepth 1 -type f -name 'KaTeX_*.woff2' | 
   print -u2 "The packaged KaTeX font set is incomplete."
   exit 66
 fi
-cp "${SCRATCH}/release/scholium" "${CLI_STAGE}/scholium"
-chmod +x "${CLI_STAGE}/scholium"
-cp -R "${CORE_RESOURCE_BUNDLE}" "${CLI_STAGE}/Scholium_ScholiumCore.bundle"
-cp "${ROOT}/Tools/Packaging/install-scholium-cli.sh" "${CLI_STAGE}/install.sh"
-chmod +x "${CLI_STAGE}/install.sh"
 for packaged_core_bundle in \
-  "${STAGING_APP}/Contents/Resources/Scholium_ScholiumCore.bundle" \
-  "${CLI_STAGE}/Scholium_ScholiumCore.bundle"; do
+  "${STAGING_APP}/Contents/Resources/Scholium_ScholiumCore.bundle"; do
   for relative_resource in \
     "Skills/Scholium System Skills/scholium-core-protocol/SKILL.md"; do
     core_resource="${packaged_core_bundle}/Contents/Resources/${relative_resource}"
@@ -157,10 +148,6 @@ mkdir -p "${STAGING_APP}/Contents/Resources/Licenses"
 cp "${ROOT}/LICENSE" "${STAGING_APP}/Contents/Resources/Licenses/GPL-3.0-or-later.txt"
 cp "${ROOT}/THIRD_PARTY_NOTICES.md" "${STAGING_APP}/Contents/Resources/Licenses/THIRD_PARTY_NOTICES.md"
 cp -R "${LICENSE_SOURCE}/." "${STAGING_APP}/Contents/Resources/Licenses/"
-mkdir -p "${CLI_STAGE}/Licenses"
-cp "${ROOT}/LICENSE" "${CLI_STAGE}/Licenses/GPL-3.0-or-later.txt"
-cp "${ROOT}/THIRD_PARTY_NOTICES.md" "${CLI_STAGE}/Licenses/THIRD_PARTY_NOTICES.md"
-cp -R "${LICENSE_SOURCE}/." "${CLI_STAGE}/Licenses/"
 PROVENANCE="${STAGING_APP}/Contents/Resources/ScholiumBuildProvenance.plist"
 plutil -create xml1 "${PROVENANCE}"
 plutil -insert schema -string scholium-build-provenance-v1 "${PROVENANCE}"
@@ -175,8 +162,6 @@ plutil -insert worktree_patch_sha256 -string "${WORKTREE_PATCH_SHA256}" "${PROVE
 plutil -insert sdk_version -string "${SDK_VERSION}" "${PROVENANCE}"
 cp "${PROVENANCE}" \
   "${STAGING_APP}/Contents/Resources/Scholium_ScholiumCore.bundle/Contents/Resources/ScholiumBuildProvenance.plist"
-cp "${PROVENANCE}" \
-  "${CLI_STAGE}/Scholium_ScholiumCore.bundle/Contents/Resources/ScholiumBuildProvenance.plist"
 
 [[ "${MARKETING_VERSION}" == "0.1.1" ]]
 [[ "${BUILD_NUMBER}" == "1" ]]
@@ -196,33 +181,23 @@ mv "${STAGING_APP}/Contents/MacOS/Scholium.sdk-fixed" "${STAGING_APP}/Contents/M
 # Strip that non-runtime metadata before signing so a distributed package does
 # not disclose the builder's home-directory path.
 xcrun strip -S -x "${STAGING_APP}/Contents/MacOS/Scholium"
-xcrun strip -S -x "${CLI_STAGE}/scholium"
 xcrun strip -S -x "${STAGING_APP}/Contents/Helpers/ScholiumAgentHelper"
 xcrun vtool -show-build "${STAGING_APP}/Contents/MacOS/Scholium" | rg -q "sdk ${SDK_VERSION}"
 if LC_ALL=C grep -aEq '/Users/[^/]+/' \
   "${STAGING_APP}/Contents/MacOS/Scholium" \
-  "${CLI_STAGE}/scholium" \
   "${STAGING_APP}/Contents/Helpers/ScholiumAgentHelper"; then
   print -u2 "Refusing to package binaries containing a user home-directory path."
   exit 65
 fi
 xattr -cr "${STAGING_APP}"
-xattr -cr "${CLI_STAGE}"
 
-# Sign nested helper code before the app. The standalone CLI stays independent.
 codesign --force --options runtime --sign "${IDENTITY}" \
   "${STAGING_APP}/Contents/Helpers/ScholiumAgentHelper"
 codesign --verify --strict "${STAGING_APP}/Contents/Helpers/ScholiumAgentHelper"
-codesign --force --options runtime \
-  --sign "${IDENTITY}" "${CLI_STAGE}/scholium"
-codesign --verify --strict --verbose=2 \
-  "${CLI_STAGE}/scholium"
-CLI_ENTITLEMENTS="${SCRATCH}/cli-entitlements.plist"
-codesign -d --entitlements :- \
-  "${CLI_STAGE}/scholium" \
-  > "${CLI_ENTITLEMENTS}" 2>/dev/null || true
-python3 "${ROOT}/Tools/Scripts/validate-entitlements.py" cli \
-  "${CLI_ENTITLEMENTS}"
+HELPER_ENTITLEMENTS="${SCRATCH}/helper-entitlements.plist"
+codesign -d --entitlements :- "${STAGING_APP}/Contents/Helpers/ScholiumAgentHelper" > "${HELPER_ENTITLEMENTS}" 2>/dev/null || true
+python3 "${ROOT}/Tools/Scripts/validate-entitlements.py" helper "${HELPER_ENTITLEMENTS}"
+python3 "${ROOT}/Tools/Scripts/verify-agent-helper.py" "${STAGING_APP}/Contents/Helpers/ScholiumAgentHelper"
 codesign --force --options runtime \
   --entitlements "${ROOT}/Tools/Packaging/Scholium.entitlements" \
   --sign "${IDENTITY}" "${STAGING_APP}"
@@ -249,21 +224,6 @@ while IFS= read -r -d '' directory; do
   xattr -d com.apple.FinderInfo "${directory}" 2>/dev/null || true
 done < <(find "${APP}" -type d -print0)
 codesign --verify --deep --strict --verbose=2 "${APP}"
-PACKAGED_CLI_SMOKE="${SCRATCH}/packaged-cli-version.json"
-SCHOLIUM_HOME="${SCRATCH}/cli-smoke-home" \
-  "${CLI_STAGE}/scholium" version --format json > "${PACKAGED_CLI_SMOKE}"
-if ! jq -e \
-  --arg marketing "${MARKETING_VERSION}" \
-  --arg label "${RELEASE_LABEL}" \
-  --arg build "${BUILD_NUMBER}" \
-  '.schema_version == 1 and .product == "Scholium"
-    and .cli_version == $marketing
-    and .release_label == $label
-    and .build_number == $build' \
-  "${PACKAGED_CLI_SMOKE}" >/dev/null; then
-  print -u2 "Packaged standalone CLI did not return the current version contract."
-  exit 66
-fi
 ARCHITECTURES="$(lipo -archs "${APP}/Contents/MacOS/Scholium")"
 if [[ "${ARCHITECTURES}" == "arm64 x86_64" || "${ARCHITECTURES}" == "x86_64 arm64" ]]; then
   ARCHITECTURE_LABEL="universal"
@@ -273,14 +233,10 @@ fi
 DMG_NAME="Scholium-${RELEASE_LABEL}-macos-${ARCHITECTURE_LABEL}.dmg"
 DMG_PATH="${OUTPUT}/${DMG_NAME}"
 DMG_CHECKSUM_PATH="${DMG_PATH}.sha256"
-CLI_ZIP_NAME="Scholium-CLI-macos.zip"
-CLI_ZIP_PATH="${OUTPUT}/${CLI_ZIP_NAME}"
-CLI_CHECKSUM_PATH="${CLI_ZIP_PATH}.sha256"
 DMG_ROOT="${SCRATCH}/dmg-root"
 DMG_MOUNT="${SCRATCH}/dmg-mount"
 DMG_COPY_ROOT="${SCRATCH}/dmg-copy"
-rm -f "${DMG_PATH}" "${DMG_CHECKSUM_PATH}" \
-  "${CLI_ZIP_PATH}" "${CLI_CHECKSUM_PATH}"
+rm -f "${DMG_PATH}" "${DMG_CHECKSUM_PATH}"
 rm -rf "${DMG_ROOT}" "${DMG_MOUNT}" "${DMG_COPY_ROOT}"
 mkdir -p "${DMG_ROOT}" "${DMG_MOUNT}" "${DMG_COPY_ROOT}"
 ditto --norsrc --noextattr --noqtn --noacl \
@@ -332,45 +288,14 @@ diskutil eject "${DMG_MOUNT}" >/dev/null
 DMG_ATTACHED=false
 trap - EXIT INT TERM
 
-ditto -c -k --norsrc --noextattr --noqtn --noacl --keepParent \
-  "${CLI_STAGE}" "${CLI_ZIP_PATH}"
 (
   cd "${OUTPUT}"
   shasum -a 256 "${DMG_NAME}" > "${DMG_NAME}.sha256"
-  shasum -a 256 "${CLI_ZIP_NAME}" > "${CLI_ZIP_NAME}.sha256"
 )
-
-# Exercise the exact delivered CLI archive from an unrelated working directory.
-CLI_ARCHIVE_SMOKE="${SCRATCH}/cli-archive-smoke"
-CLI_INSTALL_PREFIX="${CLI_ARCHIVE_SMOKE}/installed"
-mkdir -p "${CLI_ARCHIVE_SMOKE}/expanded"
-ditto -x -k "${CLI_ZIP_PATH}" "${CLI_ARCHIVE_SMOKE}/expanded"
-SCHOLIUM_HOME="${CLI_ARCHIVE_SMOKE}/home" \
-SCHOLIUM_CLI_PREFIX="${CLI_INSTALL_PREFIX}" \
-  "${CLI_ARCHIVE_SMOKE}/expanded/Scholium-CLI/install.sh" \
-  > "${CLI_ARCHIVE_SMOKE}/install.log"
-PACKAGED_CLI_PATH_SMOKE="${CLI_ARCHIVE_SMOKE}/path-version.json"
-(
-  cd /
-  SCHOLIUM_HOME="${CLI_ARCHIVE_SMOKE}/path-home" \
-    PATH="${CLI_INSTALL_PREFIX}/bin:/usr/bin:/bin" \
-    scholium version --format json > "${PACKAGED_CLI_PATH_SMOKE}"
-)
-jq -e \
-  --arg marketing "${MARKETING_VERSION}" \
-  --arg label "${RELEASE_LABEL}" \
-  --arg build "${BUILD_NUMBER}" \
-  '.product == "Scholium"
-    and .cli_version == $marketing
-    and .release_label == $label
-    and .build_number == $build' \
-  "${PACKAGED_CLI_PATH_SMOKE}" >/dev/null
 
 echo "Packaged: ${APP}"
 echo "Package DMG: ${DMG_PATH}"
 echo "DMG checksum: ${DMG_CHECKSUM_PATH}"
-echo "CLI package: ${CLI_ZIP_PATH}"
-echo "CLI checksum: ${CLI_CHECKSUM_PATH}"
 if [[ "${IDENTITY}" == "-" ]]; then
   echo "Signing: ad hoc (not Developer ID signed or notarized)"
 else

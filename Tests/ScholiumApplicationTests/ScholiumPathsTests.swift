@@ -51,7 +51,7 @@ struct ScholiumPathsTests {
                     .appendingPathComponent("Workspace/workspace-registration-v3.json").path))
     }
 
-    @Test("The CLI ignores retired container state and uses ordinary Application Support")
+    @Test("The helper ignores retired container state and uses ordinary Application Support")
     func ordinaryApplicationSupportDiscovery() throws {
         let base = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         defer { try? FileManager.default.removeItem(at: base) }
@@ -72,23 +72,6 @@ struct ScholiumPathsTests {
                 .appendingPathComponent("fallback/Scholium/State-v1", isDirectory: true)
                 .standardizedFileURL)
         #expect(FileManager.default.fileExists(atPath: container.path))
-    }
-
-    @Test("An isolated App and CLI share one workspace registry")
-    func isolatedAppAndCLIWorkspaceState() throws {
-        let isolatedHome = FileManager.default.temporaryDirectory
-            .appendingPathComponent(UUID().uuidString, isDirectory: true)
-        let state = try ScholiumPaths.workspaceRegistryURL(
-            homeURL: isolatedHome,
-            environment: ["SCHOLIUM_HOME": "/a/different/process/value"]
-        )
-
-        #expect(
-            state.standardizedFileURL
-                == isolatedHome
-                .appendingPathComponent("ApplicationSupport", isDirectory: true)
-                .appendingPathComponent("Workspace", isDirectory: true)
-                .standardizedFileURL)
     }
 
     @Test("The production App bridge namespace selects one authentication file")

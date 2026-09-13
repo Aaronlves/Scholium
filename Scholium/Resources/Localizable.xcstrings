@@ -13188,12 +13188,12 @@
         }
       }
     },
-    "Install the compatible Scholium CLI before copying a setup command." : {
+    "The bundled connection helper is unavailable. Reinstall Scholium to restore it." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "复制设置命令前，请安装兼容的 Scholium CLI。"
+            "value" : "随附连接组件不可用。请重新安装 Scholium 以恢复。"
           }
         }
       }
@@ -22805,18 +22805,18 @@
         }
       }
     },
-    "Scholium CLI" : {
+    "Connection Helper" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Scholium CLI"
+            "value" : "Connection Helper"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Scholium CLI"
+            "value" : "Connection Helper"
           }
         }
       }
