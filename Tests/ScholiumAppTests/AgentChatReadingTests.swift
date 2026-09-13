@@ -3,6 +3,7 @@ import ScholiumContracts
 import SwiftUI
 import Testing
 import WebKit
+
 @testable import ScholiumApp
 
 @Suite("Chat reading continuity", .serialized) @MainActor
@@ -29,7 +30,8 @@ struct AgentChatReadingTests {
     @Test("Independent conversations retain reading and disclosure choices")
     func independentSessions() {
         let store = AgentChatReadingStore()
-        let a = UUID(), b = UUID()
+        let a = UUID()
+        let b = UUID()
         let session = store.session(for: a)
         session.anchor = .init(id: "old-answer", offset: -170)
         session.pause()
@@ -57,7 +59,10 @@ struct AgentChatReadingTests {
         let window = NSWindow(contentRect: scroll.frame, styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         window.contentView = scroll
-        defer { window.contentView = nil; window.close() }
+        defer {
+            window.contentView = nil
+            window.close()
+        }
         session.pause()
         session.anchor = .init(id: "answer", offset: -120)
         viewport.reconcile()
@@ -97,7 +102,10 @@ struct AgentChatReadingTests {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 300, height: 400), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         window.contentView = host
-        defer { window.contentView = nil; window.close() }
+        defer {
+            window.contentView = nil
+            window.close()
+        }
         func settle(_ id: String) async throws {
             let deadline = ContinuousClock.now.advanced(by: .seconds(3))
             while session.markers[id]?.view == nil && ContinuousClock.now < deadline {
@@ -133,16 +141,18 @@ struct AgentChatReadingTests {
         input.turnID = "turn"
         var reply = AgentChatMessage(role: .assistant, text: "[Source](https://example.org/paper)")
         reply.turnID = "turn"
-        let host = NSHostingView(rootView: HStack(spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
-            AgentChatReplyActions(text: reply.text, openNote: { _ in },
-                context: .init(reply: reply, history: [input, reply]), openAttachment: { _ in },
-                previewMaterial: { _ in URL(fileURLWithPath: "/synthetic/paper.pdf") })
-            Group {
-                Button("Branch from This Turn", systemImage: "arrow.triangle.branch") {}
-                Button("Retry in New Branch", systemImage: "arrow.clockwise") {}
-                Button("Quote in Reply", systemImage: "text.quote") {}
-            }.labelStyle(ScholiumSidebarActionLabelStyle())
-        }.buttonStyle(.borderless).environment(\.locale, Locale(identifier: "zh-Hans")).fixedSize())
+        let host = NSHostingView(
+            rootView: HStack(spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+                AgentChatReplyActions(
+                    text: reply.text, openNote: { _ in },
+                    context: .init(reply: reply, history: [input, reply]), openAttachment: { _ in },
+                    previewMaterial: { _ in URL(fileURLWithPath: "/synthetic/paper.pdf") })
+                Group {
+                    Button("Branch from This Turn", systemImage: "arrow.triangle.branch") {}
+                    Button("Retry in New Branch", systemImage: "arrow.clockwise") {}
+                    Button("Quote in Reply", systemImage: "text.quote") {}
+                }.labelStyle(ScholiumSidebarActionLabelStyle())
+            }.buttonStyle(.borderless).environment(\.locale, Locale(identifier: "zh-Hans")).fixedSize())
         #expect(host.fittingSize.width <= 260 - 2 * ScholiumSidebarLayout.textInset)
         #expect(host.fittingSize.height >= ScholiumGrid.Dimension.preferredCustomTarget)
     }
@@ -153,13 +163,14 @@ struct AgentChatReadingTests {
         for paged in [false, true] {
             let range = paged ? AgentChatHistoryWindow().range(in: ids) : ids.indices
             let start = ContinuousClock.now
-            let host = NSHostingView(rootView: ScrollView {
-                VStack {
-                    ForEach(Array(ids[range]), id: \.self) { id in
-                        AgentChatMarkdown(text: "Question \(id)\n\nA synthetic paragraph with **emphasis** and 中文.")
+            let host = NSHostingView(
+                rootView: ScrollView {
+                    VStack {
+                        ForEach(Array(ids[range]), id: \.self) { id in
+                            AgentChatMarkdown(text: "Question \(id)\n\nA synthetic paragraph with **emphasis** and 中文.")
+                        }
                     }
-                }
-            })
+                })
             let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 300, height: 600), styleMask: [.titled], backing: .buffered, defer: false)
             window.isReleasedWhenClosed = false
             window.contentView = host

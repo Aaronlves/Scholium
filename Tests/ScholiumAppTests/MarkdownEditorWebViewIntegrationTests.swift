@@ -437,12 +437,13 @@ struct MarkdownEditorWebViewIntegrationTests {
         )
         defer { harness.close() }
         try await harness.waitUntilReady()
-        let families = try #require(try await harness.callPageJavaScript(
-            """
-            return [getComputedStyle(document.querySelector('.cm-content')).fontFamily,
-                    getComputedStyle(document.querySelector('.cm-live-heading')).fontFamily];
-            """
-        ) as? [String])
+        let families = try #require(
+            try await harness.callPageJavaScript(
+                """
+                return [getComputedStyle(document.querySelector('.cm-content')).fontFamily,
+                        getComputedStyle(document.querySelector('.cm-live-heading')).fontFamily];
+                """
+            ) as? [String])
         #expect(families.count == 2)
         #expect(families[0].hasPrefix("Helvetica Neue,"))
         #expect(families[1].hasPrefix("Songti SC,"))
@@ -6043,8 +6044,12 @@ struct MarkdownEditorWebViewIntegrationTests {
                 fixedLayoutSize: fixedLayoutSize
             )
             let hostingController = NSHostingController(rootView: editor)
+            hostingController.sizingOptions = []
             self.hostingController = hostingController
             window.contentViewController = hostingController
+            window.setContentSize(initialWindowSize)
+            hostingController.view.frame = window.contentView?.bounds ?? .zero
+            hostingController.view.autoresizingMask = [.width, .height]
             window.orderFrontRegardless()
         }
 

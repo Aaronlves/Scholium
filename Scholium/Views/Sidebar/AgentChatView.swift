@@ -451,19 +451,28 @@ struct AgentChatView: View {
                 Button("Delete", systemImage: ScholiumSidebarAction.delete.symbol, role: .destructive) { deletionTarget = conversation.id }
                     .disabled(!controller.canArchive(conversation.id))
             }
-            Button(conversation.archivedAt == nil ? "Archive" : "Restore", systemImage: conversation.archivedAt == nil ? ScholiumSidebarAction.archive.symbol : ScholiumSidebarAction.restore.symbol) {
+            Button(
+                conversation.archivedAt == nil ? "Archive" : "Restore",
+                systemImage: conversation.archivedAt == nil ? ScholiumSidebarAction.archive.symbol : ScholiumSidebarAction.restore.symbol
+            ) {
                 controller.setArchived(conversation.id, archived: conversation.archivedAt == nil)
             }
             .tint(ScholiumNativeColorRole.archiveAction.color)
             .disabled(!controller.canArchive(conversation.id))
         }
         .swipeActions(edge: .leading) {
-            Button(conversation.unreadAt == nil ? "Unread" : "Read", systemImage: AgentChatListPresentation.readActionSymbol(isUnread: conversation.unreadAt != nil)) {
+            Button(
+                conversation.unreadAt == nil ? "Unread" : "Read",
+                systemImage: AgentChatListPresentation.readActionSymbol(isUnread: conversation.unreadAt != nil)
+            ) {
                 controller.setUnread(conversation.id, unread: conversation.unreadAt == nil)
             }
             .accessibilityLabel(conversation.unreadAt == nil ? "Mark as Unread" : "Mark as Read")
             .tint(ScholiumNativeColorRole.unreadAction.color)
-            Button(conversation.importantAt == nil ? "Important" : "Unmark", systemImage: AgentChatListPresentation.importanceActionSymbol(isImportant: conversation.importantAt != nil)) {
+            Button(
+                conversation.importantAt == nil ? "Important" : "Unmark",
+                systemImage: AgentChatListPresentation.importanceActionSymbol(isImportant: conversation.importantAt != nil)
+            ) {
                 controller.setImportant(conversation.id, important: conversation.importantAt == nil)
             }
             .accessibilityLabel(conversation.importantAt == nil ? "Mark as Important" : "Unmark Important")
@@ -563,10 +572,11 @@ struct AgentChatView: View {
             Button {
                 readingSession.viewport?.capture()
                 readingSession.pause()
-                if earlier { readingSession.history.earlier(in: ids) }
-                else { readingSession.history.later(in: ids) }
+                if earlier { readingSession.history.earlier(in: ids) } else { readingSession.history.later(in: ids) }
             } label: {
-                Label(earlier ? "Earlier Messages" : "Later Messages", systemImage: earlier ? ScholiumSidebarAction.earlier.symbol : ScholiumSidebarAction.later.symbol)
+                Label(
+                    earlier ? "Earlier Messages" : "Later Messages",
+                    systemImage: earlier ? ScholiumSidebarAction.earlier.symbol : ScholiumSidebarAction.later.symbol)
             }
             .buttonStyle(.borderless).font(.callout)
             .frame(maxWidth: .infinity, minHeight: ScholiumGrid.Dimension.preferredCustomTarget)
@@ -577,12 +587,15 @@ struct AgentChatView: View {
     private var currentReadingRequestID: String? {
         guard let anchor = readingSession.anchor,
             let item = timelineItems.first(where: { $0.id == anchor.id }),
-            let turnID = item.messages.first?.turnID else { return readingSession.anchor?.id }
+            let turnID = item.messages.first?.turnID
+        else { return readingSession.anchor?.id }
         return timelineMessages.first(where: { $0.turnID == turnID && $0.role == .user })?.id
     }
 
     private var turnNavigationButton: some View {
-        Button { showsTurns = true } label: {
+        Button {
+            showsTurns = true
+        } label: {
             ScholiumSidebarIcon(systemImage: ScholiumSidebarAction.outline.symbol, placement: .action)
         }
         .buttonStyle(.borderless).foregroundStyle(.primary)
@@ -599,7 +612,9 @@ struct AgentChatView: View {
     }
 
     private var contextMeterButton: some View {
-        Button { showsContext = true } label: {
+        Button {
+            showsContext = true
+        } label: {
             HStack(spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
                 ScholiumSidebarIcon(systemImage: ScholiumSidebarItem.context.symbol)
                 if let fraction = AgentChatContextPresentation.fraction(controller.selected?.contextUsage) {
@@ -612,8 +627,10 @@ struct AgentChatView: View {
         .buttonStyle(.borderless).foregroundStyle(.primary)
         .glassEffect(.clear.interactive(), in: Capsule())
         .help("Context and Usage").accessibilityLabel("Context and Usage")
-        .accessibilityValue(controller.selected?.contextUsage.flatMap { AgentChatContextPresentation.fraction($0) }
-            .map { $0.formatted(.percent.precision(.fractionLength(0))) } ?? String(localized: "Not Available", bundle: .module))
+        .accessibilityValue(
+            controller.selected?.contextUsage.flatMap { AgentChatContextPresentation.fraction($0) }
+                .map { $0.formatted(.percent.precision(.fractionLength(0))) } ?? String(localized: "Not Available", bundle: .module)
+        )
         .accessibilityIdentifier("scholium.chat.contextMeter")
     }
 
@@ -623,7 +640,9 @@ struct AgentChatView: View {
     }
 
     private func currentPlanButton(_ plan: AgentChatPlan) -> some View {
-        Button { showsPlan = true } label: {
+        Button {
+            showsPlan = true
+        } label: {
             HStack(spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
                 ScholiumSidebarIcon(systemImage: ScholiumSidebarItem.plan.symbol)
                 Text(verbatim: plan.steps.first(where: { $0.status == .inProgress })?.step ?? String(localized: "Plan", bundle: .module))
@@ -806,9 +825,11 @@ struct AgentChatView: View {
                 if message.activity != nil {
                     activityRow(message)
                 } else if let plan = message.plan {
-                    AgentChatPlanView(plan: plan, savedExpansion: Binding(
-                        get: { readingSession.planExpansions[message.id] },
-                        set: { readingSession.planExpansions[message.id] = $0 }))
+                    AgentChatPlanView(
+                        plan: plan,
+                        savedExpansion: Binding(
+                            get: { readingSession.planExpansions[message.id] },
+                            set: { readingSession.planExpansions[message.id] = $0 }))
                 } else {
                     AgentChatMarkdown(
                         text: message.text
@@ -836,9 +857,11 @@ struct AgentChatView: View {
                         coordinationReference(target)
                     }
                     if let plan = message.plan {
-                        AgentChatPlanView(plan: plan, savedExpansion: Binding(
-                            get: { readingSession.planExpansions[message.id] },
-                            set: { readingSession.planExpansions[message.id] = $0 }))
+                        AgentChatPlanView(
+                            plan: plan,
+                            savedExpansion: Binding(
+                                get: { readingSession.planExpansions[message.id] },
+                                set: { readingSession.planExpansions[message.id] = $0 }))
                     }
                     if let request = message.asyncQuestion {
                         ForEach(request.questions) { question in
@@ -1034,10 +1057,11 @@ struct AgentChatView: View {
                             }
                         }
                     }
-                    .disclosureGroupStyle(AgentChatDisclosureStyle(
-                        animates: isVisible,
-                        symbol: activity.status.isActive || activity.status == .completed ? activity.kind.symbol : activity.status.symbol
-                    ))
+                    .disclosureGroupStyle(
+                        AgentChatDisclosureStyle(
+                            animates: isVisible,
+                            symbol: activity.status.isActive || activity.status == .completed ? activity.kind.symbol : activity.status.symbol
+                        ))
                 }
             }
             .font(.callout)

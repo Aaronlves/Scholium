@@ -2,6 +2,54 @@
 
 These instructions apply to the Scholium package and all of its descendants.
 
+## Task execution and collaboration
+
+The execution guidance below adapts OpenAI's
+[GPT-6 Astra prompting guidance](https://developers.openai.com/api/docs/guides/latest-model?model=gpt-6-astra#prompting-best-practices),
+checked on 2026-09-14, to Scholium's development workflow. It governs agent
+collaboration; the product authorities and research-data boundaries below remain
+binding. It does not select a runtime model or change API configuration.
+
+- Carry an implementation or fix request through the required scoped
+  verification and a reviewable result. A plan or offer to continue is not
+  completion. Respect requests limited to discussion, diagnosis, or design.
+- Resolve routine implementation details from the owning documents and current
+  code. Ask only for missing facts or researcher-owned decisions that materially
+  affect correctness, scope, authorization, or an established product contract.
+  Do not invent research facts or silently decide an open product question.
+- Reuse authorization already established in the conversation. Continue
+  authorized inspection, edits, and checks while a separate decision is pending.
+  If a final action needs approval, first prepare the work the researcher can
+  review. Do not add permission gates for hypothetical risks or infer permission
+  to publish, distribute, or operate on real research vaults from a coding task.
+- Follow explicit researcher instructions over skill guidance, subject to
+  higher-priority instructions. Before treating a skill exception as a blocker,
+  check its scope and existing authorization. If an instruction actually prevents
+  progress, link the exact file, quote the relevant rule, and explain the blocked
+  action; distinguish the rule from your interpretation.
+- Treat follow-up corrections and status questions as steering the current task
+  unless the researcher changes the goal. Preserve completed work and outstanding
+  obligations across context compaction. Report an actual blocker precisely.
+
+### Parallel work
+
+Use subagents when a bounded, independent investigation, review, or implementation
+can improve quality or shorten the task while the parent advances other useful
+work. Keep small, sequential changes local. Assign each subagent a clear question
+or file ownership, relevant authority, and expected evidence. Avoid overlapping
+edits and duplicate test runs. The parent integrates results, checks claims against
+the workspace, and owns completion. Delegation does not expand authorization or
+the verification scope. Keep inter-agent messages readable to the researcher.
+
+### Communication
+
+Lead with the result or decision in plain, concise prose. Use lists and tables
+when they help comparison or sequencing; avoid repeated summaries, stock phrases,
+and unnecessary jargon. During longer work, give brief updates on findings and
+the next unresolved point. At completion, identify the change, relevant validation,
+and remaining uncertainty. Keep source evidence, inference, automated checks, and
+human acceptance distinct; never trade source fidelity for brevity.
+
 ## Documentation authority
 
 Use this hierarchy; keep target rules and current implementation evidence
@@ -213,7 +261,12 @@ opening excerpts; cap verbose commands and read only relevant failures; do not
 re-emit files or specification sections already loaded in the current task.
 
 Use the lowest deterministic layer that can invalidate the claim. During
-iteration, run only owning tests. Run the complete repository gate once only
+iteration, run only owning tests. Add tests for meaningful behavioral risks;
+avoid tests that merely restate a low-impact implementation. After the required
+scoped checks pass, stop testing unless a subsequent change, failure, unresolved
+concern, or required integration gate justifies more verification.
+
+Run the complete repository gate once only
 after a cross-layer implementation has stabilized, or at an explicitly
 identified final integration, including a release milestone. Documentation-only,
 decision-recording, design-only, audit, diagnosis, presentation-only, and

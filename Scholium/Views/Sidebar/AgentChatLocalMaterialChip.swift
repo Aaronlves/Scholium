@@ -24,7 +24,8 @@ struct AgentChatLocalMaterialChip: View {
                 } label: {
                     VStack(alignment: .leading, spacing: 4) {
                         Label(
-                            AgentChatLocalMaterialLabels.title(material), systemImage: material.kind == .image ? ScholiumSidebarItem.image.symbol : ScholiumSidebarItem.file.symbol
+                            AgentChatLocalMaterialLabels.title(material),
+                            systemImage: material.kind == .image ? ScholiumSidebarItem.image.symbol : ScholiumSidebarItem.file.symbol
                         )
                         .font(.subheadline).lineLimit(1)
                         Text(AgentChatLocalMaterialLabels.summary(material)).font(.caption).foregroundStyle(.secondary).lineLimit(2)

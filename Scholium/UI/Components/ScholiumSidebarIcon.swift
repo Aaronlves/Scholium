@@ -3,7 +3,8 @@ import SwiftUI
 /// Shared actions in Library and Chat. Domain-specific tool/state symbols remain
 /// with their existing presentation models; these values grant no action authority.
 enum ScholiumSidebarAction: CaseIterable {
-    case back, add, newConversation, newNote, newFolder, more, search, outline, archive, restore, delete, copy, quote, edit, branch, retry, expand, close, remove, earlier, later, previousMatch, nextMatch
+    case back, add, newConversation, newNote, newFolder, more, search, outline, archive, restore, delete, copy, quote, edit, branch, retry, expand, close,
+        remove, earlier, later, previousMatch, nextMatch
 
     var symbol: String {
         switch self {
@@ -71,7 +72,8 @@ struct ScholiumSidebarIcon: View {
             .symbolRenderingMode(.monochrome)
             .frame(
                 width: placement == .action ? ScholiumGrid.Dimension.preferredCustomTarget : ScholiumGrid.Dimension.iconTrackWidth,
-                height: placement == .action ? ScholiumGrid.Dimension.preferredCustomTarget : ScholiumGrid.Dimension.minimumCustomTarget)
+                height: placement == .action ? ScholiumGrid.Dimension.preferredCustomTarget : ScholiumGrid.Dimension.minimumCustomTarget
+            )
             .contentShape(Rectangle())
     }
 }

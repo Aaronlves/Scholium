@@ -92,7 +92,14 @@ struct AgentChatPlanView: View {
     }
 
     var body: some View {
-        DisclosureGroup(isExpanded: Binding(get: { isExpanded }, set: { isExpanded = $0; savedExpansion = $0 })) {
+        DisclosureGroup(
+            isExpanded: Binding(
+                get: { isExpanded },
+                set: {
+                    isExpanded = $0
+                    savedExpansion = $0
+                })
+        ) {
             VStack(alignment: .leading, spacing: 8) {
                 if let explanation = plan.explanation, !explanation.isEmpty {
                     Text(explanation).foregroundStyle(.secondary).textSelection(.enabled)

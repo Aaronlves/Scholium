@@ -55,7 +55,10 @@ struct AgentChatReadReply: View {
             }
         }
         .preference(key: AgentChatReplyReadyPreference.self, value: ready || failure != nil)
-        .onDisappear { preview.close(); renderer.cancel() }
+        .onDisappear {
+            preview.close()
+            renderer.cancel()
+        }
         .onChange(of: isEnabled) { _, enabled in if !enabled { preview.close() } }
         .task(id: source) {
             preview.close()

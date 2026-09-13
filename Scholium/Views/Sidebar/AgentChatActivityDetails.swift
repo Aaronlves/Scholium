@@ -17,8 +17,7 @@ struct AgentChatActivityDetails: View {
 
     var body: some View {
         Group {
-            if isInline { details }
-            else { GroupBox { details } }
+            if isInline { details } else { GroupBox { details } }
         }
         .font(.callout)
         .padding(.vertical, 6)
@@ -27,14 +26,20 @@ struct AgentChatActivityDetails: View {
         .onChange(of: activity) { _, value in
             preview.update(title: previewTitle, copyText: copyText) { AgentChatOutputContents(activity: value) }
         }
-        .onDisappear { preview.close(); originView = nil }
+        .onDisappear {
+            preview.close()
+            originView = nil
+        }
     }
 
     private var details: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                if isInline { Text(activity.status.label(locale: locale)) }
-                else { Text(activity.kind == .command ? "Command" : "Operation").foregroundStyle(.secondary) }
+                if isInline {
+                    Text(activity.status.label(locale: locale))
+                } else {
+                    Text(activity.kind == .command ? "Command" : "Operation").foregroundStyle(.secondary)
+                }
                 Spacer()
                 Button {
                     guard let originView else { return }

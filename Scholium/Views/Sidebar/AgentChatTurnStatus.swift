@@ -87,7 +87,8 @@ struct AgentChatTurnStatus: View {
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(
                 (isActivityDisclosure ? Text("Activity Log", bundle: .module) + Text(verbatim: ": ") : Text(""))
-                    + Text(ScholiumL10n.string(presentation.titleKey, locale: locale)))
+                    + Text(ScholiumL10n.string(presentation.titleKey, locale: locale))
+            )
             .accessibilityValue(
                 [
                     presentation.elapsedLabel(at: context.date, locale: locale),

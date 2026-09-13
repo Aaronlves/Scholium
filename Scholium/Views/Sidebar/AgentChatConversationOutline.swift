@@ -18,18 +18,26 @@ struct AgentChatConversationOutline: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
                     ForEach(requests) { message in
-                        Button { navigate(message.id) } label: {
+                        Button {
+                            navigate(message.id)
+                        } label: {
                             HStack(alignment: .top, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
                                 Image(systemName: currentMessageID == message.id ? "arrow.right" : "text.bubble")
                                     .frame(width: ScholiumGrid.Dimension.iconTrackWidth)
                                     .accessibilityHidden(true)
                                 VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
-                                    Text(verbatim: message.text.isEmpty ? String(localized: "Materials", bundle: .module) : String(AgentChatListPresentation.plainText(message.text).prefix(240)))
-                                        .lineLimit(3).foregroundStyle(.primary)
+                                    Text(
+                                        verbatim: message.text.isEmpty
+                                            ? String(localized: "Materials", bundle: .module)
+                                            : String(AgentChatListPresentation.plainText(message.text).prefix(240))
+                                    )
+                                    .lineLimit(3).foregroundStyle(.primary)
                                     if let response = messages.first(where: {
                                         $0.turnID != nil && $0.turnID == message.turnID && $0.role == .assistant && $0.phase != .commentary && !$0.text.isEmpty
                                     }) {
-                                        Text(verbatim: String(AgentChatListPresentation.plainText(response.text).prefix(180))).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                                        Text(verbatim: String(AgentChatListPresentation.plainText(response.text).prefix(180))).font(.caption).foregroundStyle(
+                                            .secondary
+                                        ).lineLimit(2)
                                     }
                                 }
                                 Spacer(minLength: 0)

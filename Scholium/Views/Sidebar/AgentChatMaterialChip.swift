@@ -33,8 +33,9 @@ struct AgentChatMaterialChip: View {
                     showsPreview.toggle()
                 } label: {
                     VStack(alignment: .leading, spacing: 4) {
-                        Label(title, systemImage: attachment.extent == .wholeNote ? ScholiumSidebarItem.note.symbol : ScholiumSidebarItem.passage.symbol).lineLimit(1).font(
-                            .subheadline)
+                        Label(title, systemImage: attachment.extent == .wholeNote ? ScholiumSidebarItem.note.symbol : ScholiumSidebarItem.passage.symbol)
+                            .lineLimit(1).font(
+                                .subheadline)
                         if attachment.extent == .wholeNote {
                             Text(extent).font(.caption).foregroundStyle(.secondary)
                         } else {

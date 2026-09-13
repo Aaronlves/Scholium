@@ -21,9 +21,11 @@ import SwiftUI
     private var generation = 0
     private let render: @Sendable (String) async -> Snapshot
 
-    init(render: @escaping @Sendable (String) async -> Snapshot = { source in
-        await Task.detached(priority: .userInitiated) { Snapshot(source) }.value
-    }) { self.render = render }
+    init(
+        render: @escaping @Sendable (String) async -> Snapshot = { source in
+            await Task.detached(priority: .userInitiated) { Snapshot(source) }.value
+        }
+    ) { self.render = render }
 
     func submit(_ source: String) {
         guard requested != source || worker == nil && snapshot?.document.rawContent != source else { return }

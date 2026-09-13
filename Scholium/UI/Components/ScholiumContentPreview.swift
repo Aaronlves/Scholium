@@ -19,7 +19,6 @@ final class ScholiumContentPreview: NSObject, NSWindowDelegate {
 
     init(animates: Bool = true) { self.animates = animates }
 
-
     final class Panel: NSPanel {
         override var canBecomeKey: Bool { true }
         override var canBecomeMain: Bool { false }
@@ -72,7 +71,8 @@ final class ScholiumContentPreview: NSObject, NSWindowDelegate {
         monitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
             let dismissed = MainActor.assumeIsolated {
                 guard let self, let panel = self.panel, let target = event.window,
-                      target !== panel, target == self.origin else { return false }
+                    target !== panel, target == self.origin
+                else { return false }
                 self.dismiss()
                 return true
             }
@@ -80,19 +80,22 @@ final class ScholiumContentPreview: NSObject, NSWindowDelegate {
             return dismissed ? nil : event
         }
         for (name, object) in [(NSApplication.didResignActiveNotification, nil), (NSWindow.willCloseNotification, window as Any?)] {
-            observations.append(NotificationCenter.default.addObserver(forName: name, object: object, queue: .main) { [weak self] _ in
-                MainActor.assumeIsolated { self?.close(restoringFocus: false) }
-            })
+            observations.append(
+                NotificationCenter.default.addObserver(forName: name, object: object, queue: .main) { [weak self] _ in
+                    MainActor.assumeIsolated { self?.close(restoringFocus: false) }
+                })
         }
     }
 
     func update<Content: View>(title: String, copyText: String, @ViewBuilder content: () -> Content) {
         guard let panel else { return }
         panel.title = title
-        let root = AnyView(PreviewContents(title: title, copyText: copyText, dismiss: { [weak self] in self?.dismiss() }, content: content())
-            .ignoresSafeArea().tint(nil as Color?))
-        if let host { host.rootView = root }
-        else {
+        let root = AnyView(
+            PreviewContents(title: title, copyText: copyText, dismiss: { [weak self] in self?.dismiss() }, content: content())
+                .ignoresSafeArea().tint(nil as Color?))
+        if let host {
+            host.rootView = root
+        } else {
             let host = NSHostingController(rootView: root)
             host.sizingOptions = []
             panel.contentViewController = host
@@ -117,13 +120,19 @@ final class ScholiumContentPreview: NSObject, NSWindowDelegate {
         let anchor = window.convertToScreen(sourceView.convert(visible, to: nil))
         let size = NSSize(width: max(320, frame.width * 0.4), height: max(240, frame.height * 0.4))
         let screen = window.screen?.visibleFrame ?? window.frame
-        return NSRect(x: min(max(anchor.midX - size.width / 2, screen.minX), screen.maxX - size.width),
-                      y: min(max(anchor.midY - size.height / 2, screen.minY), screen.maxY - size.height),
-                      width: size.width, height: size.height)
+        return NSRect(
+            x: min(max(anchor.midX - size.width / 2, screen.minX), screen.maxX - size.width),
+            y: min(max(anchor.midY - size.height / 2, screen.minY), screen.maxY - size.height),
+            width: size.width, height: size.height)
     }
 
     private func transition(_ panel: Panel, to frame: NSRect, opacity: CGFloat, closing: Bool, completion: @escaping @MainActor () -> Void) {
-        guard animates else { panel.setFrame(frame, display: false); panel.alphaValue = opacity; completion(); return }
+        guard animates else {
+            panel.setFrame(frame, display: false)
+            panel.alphaValue = opacity
+            completion()
+            return
+        }
         let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         NSAnimationContext.runAnimationGroup { context in
             context.duration = ScholiumMotion.contentPreviewDuration(closing: closing, reduceMotion: reduceMotion)
@@ -181,8 +190,9 @@ final class ScholiumContentPreview: NSObject, NSWindowDelegate {
         let bounds = available.insetBy(dx: ScholiumGrid.Spacing.regionContentInset, dy: ScholiumGrid.Spacing.regionContentInset)
         let width = min(bounds.width, max(640, min(1120, parent.width * 0.88)))
         let height = min(bounds.height, max(420, min(840, parent.height * 0.86)))
-        return NSRect(x: min(max(parent.midX - width / 2, bounds.minX), bounds.maxX - width),
-                      y: min(max(parent.midY - height / 2, bounds.minY), bounds.maxY - height), width: width, height: height)
+        return NSRect(
+            x: min(max(parent.midX - width / 2, bounds.minX), bounds.maxX - width),
+            y: min(max(parent.midY - height / 2, bounds.minY), bounds.maxY - height), width: width, height: height)
     }
 }
 
@@ -205,7 +215,9 @@ private struct PreviewContents<Content: View>: View {
                 Button {
                     NSPasteboard.general.clearContents()
                     copied = NSPasteboard.general.setString(copyText, forType: .string)
-                } label: { ScholiumSidebarCopyIcon(copied: copied) }
+                } label: {
+                    ScholiumSidebarCopyIcon(copied: copied)
+                }
                 .help(copied ? "Copied" : "Copy").accessibilityLabel(copied ? "Copied" : "Copy")
                 .accessibilityIdentifier("scholium.contentPreview.copy")
             }

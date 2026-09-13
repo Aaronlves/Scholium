@@ -163,8 +163,12 @@ struct AgentChatSourcesView: View {
                 VStack(alignment: .leading, spacing: 14) {
                     ForEach(sources) { source in
                         VStack(alignment: .leading, spacing: 4) {
-                            Label(source.destination, systemImage: source.isNote ? ScholiumSidebarItem.note.symbol : source.isWeb ? ScholiumSidebarItem.webpage.symbol : ScholiumSidebarItem.file.symbol)
-                                .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                            Label(
+                                source.destination,
+                                systemImage: source.isNote
+                                    ? ScholiumSidebarItem.note.symbol : source.isWeb ? ScholiumSidebarItem.webpage.symbol : ScholiumSidebarItem.file.symbol
+                            )
+                            .font(.caption).foregroundStyle(.secondary).lineLimit(1)
                             if source.isNote || source.isWeb || source.isZotero {
                                 Button {
                                     open(source)

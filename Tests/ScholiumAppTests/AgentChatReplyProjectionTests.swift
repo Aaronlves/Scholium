@@ -1,6 +1,7 @@
 import Foundation
 import ScholiumContracts
 import Testing
+
 @testable import ScholiumApp
 
 @Suite("Chat projection scheduling", .serialized) @MainActor
@@ -55,7 +56,8 @@ struct AgentChatReplyProjectionTests {
     func burstMeasurement() async throws {
         let body = String(repeating: "A source-faithful paragraph with **emphasis**, 中文 and `code`.\n\n", count: 70)
         let projection = AgentChatReplyProjection()
-        let clock = ContinuousClock(), start = ContinuousClock.now
+        let clock = ContinuousClock()
+        let start = ContinuousClock.now
         for i in 0..<80 { projection.submit(body + String(repeating: "尾", count: i)) }
         try await until { projection.snapshot?.document.rawContent == body + String(repeating: "尾", count: 79) }
         print("CHAT_PROJECTION_BURST snapshots=80 elapsed=\(start.duration(to: clock.now)) finalSourceExact=true")

@@ -80,7 +80,8 @@ final class ResearchController: ObservableObject {
         self.intentHandler = intentHandler
         // Consume the incoming selection synchronously: @Published delivers it
         // before DocumentController stores it, so never reread that property here.
-        documentSelectionObservation = selectedDocuments
+        documentSelectionObservation =
+            selectedDocuments
             .map { $0?.editingTarget }
             .removeDuplicates()
             .sink { [weak self] _ in self?.relatedMaterials.reset() }

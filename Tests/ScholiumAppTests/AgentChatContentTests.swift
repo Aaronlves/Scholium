@@ -60,12 +60,18 @@ struct AgentChatContentTests {
         window.contentView = input
         window.makeKeyAndOrderFront(nil)
         window.makeFirstResponder(input)
-        let first = ScholiumContentPreview(animates: false), second = ScholiumContentPreview(animates: false)
-        defer { first.close(); second.close(); window.close() }
+        let first = ScholiumContentPreview(animates: false)
+        let second = ScholiumContentPreview(animates: false)
+        defer {
+            first.close()
+            second.close()
+            window.close()
+        }
         first.present(title: "Code", copyText: "exact fixture", from: input) { Text("Fixture") }
         let initial = try #require(first.panel)
         #expect(initial.parent === window && initial.isVisible)
-        let expected = ScholiumContentPreview.previewFrame(parent: window.convertToScreen(window.contentLayoutRect), available: window.screen?.visibleFrame ?? window.frame)
+        let expected = ScholiumContentPreview.previewFrame(
+            parent: window.convertToScreen(window.contentLayoutRect), available: window.screen?.visibleFrame ?? window.frame)
         #expect(abs(initial.frame.width - expected.width) < 1 && abs(initial.frame.height - expected.height) < 1)
         #expect(abs(initial.frame.midX - expected.midX) < 1 && abs(initial.frame.midY - expected.midY) < 1)
         #expect(initial.standardWindowButton(.closeButton)?.isHidden != false)
@@ -84,18 +90,22 @@ struct AgentChatContentTests {
 
     @Test func animatedDismissalFinishesAboveParentAndRemovesThePanel() async throws {
         _ = NSApplication.shared
-        let window = NSWindow(contentRect: NSRect(x: 100, y: 100, width: 800, height: 600),
-                              styleMask: [.titled], backing: .buffered, defer: false)
+        let window = NSWindow(
+            contentRect: NSRect(x: 100, y: 100, width: 800, height: 600),
+            styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         window.makeKeyAndOrderFront(nil)
         let source = try #require(window.contentView)
         let controller = ScholiumContentPreview()
-        defer { controller.close(); window.close() }
+        defer {
+            controller.close()
+            window.close()
+        }
         controller.present(title: "Code", copyText: "exact", from: source) { Text("Fixture") }
         let panel = try #require(controller.panel)
         controller.dismiss()
         #expect(panel.parent === window && panel.isVisible)
-        controller.dismiss() // Repeated dismissal must not restart the closing lifecycle.
+        controller.dismiss()  // Repeated dismissal must not restart the closing lifecycle.
         let deadline = ContinuousClock.now.advanced(by: .seconds(2))
         while controller.panel != nil && ContinuousClock.now < deadline {
             try await Task.sleep(for: .milliseconds(10))
@@ -106,8 +116,9 @@ struct AgentChatContentTests {
 
     @Test func previewDoesNotSurviveItsOrigin() throws {
         _ = NSApplication.shared
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
-                              styleMask: [.titled], backing: .buffered, defer: false)
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
+            styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         window.makeKeyAndOrderFront(nil)
         let controller = ScholiumContentPreview(animates: false)
@@ -120,8 +131,10 @@ struct AgentChatContentTests {
 
     @Test func immersivePreviewCentersOnOriginAndStaysInsideVisibleScreen() {
         let screen = NSRect(x: -1440, y: 40, width: 1440, height: 860)
-        for parent in [NSRect(x: -1300, y: 100, width: 1100, height: 700),
-                       NSRect(x: -1800, y: -500, width: 2000, height: 1600)] {
+        for parent in [
+            NSRect(x: -1300, y: 100, width: 1100, height: 700),
+            NSRect(x: -1800, y: -500, width: 2000, height: 1600),
+        ] {
             let frame = ScholiumContentPreview.previewFrame(parent: parent, available: screen)
             #expect(screen.contains(frame))
             #expect(frame.width > 600 && frame.height > 400)

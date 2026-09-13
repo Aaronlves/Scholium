@@ -2106,8 +2106,12 @@ extension MarkdownEditorWebViewIntegrationTests {
                 laysOutForNativePreview: laysOutForNativePreview
             )
             let controller = NSHostingController(rootView: root)
+            controller.sizingOptions = []
             hostingController = controller
             window.contentViewController = controller
+            window.setContentSize(NSSize(width: 720, height: 420))
+            controller.view.frame = window.contentView?.bounds ?? .zero
+            controller.view.autoresizingMask = [.width, .height]
             window.orderFrontRegardless()
             if laysOutForNativePreview {
                 window.makeKeyAndOrderFront(nil)

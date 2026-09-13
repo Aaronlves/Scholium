@@ -148,7 +148,9 @@ struct AgentChatQueuedMessageContents: View {
                         }
                     }
                     ForEach(message.localMaterials) { material in
-                        Label(AgentChatLocalMaterialLabels.title(material), systemImage: material.kind == .image ? ScholiumSidebarItem.image.symbol : ScholiumSidebarItem.file.symbol)
+                        Label(
+                            AgentChatLocalMaterialLabels.title(material),
+                            systemImage: material.kind == .image ? ScholiumSidebarItem.image.symbol : ScholiumSidebarItem.file.symbol)
                         Text(AgentChatLocalMaterialLabels.summary(material)).foregroundStyle(.secondary)
                     }
                     ForEach(message.replyQuotes ?? []) { quote in

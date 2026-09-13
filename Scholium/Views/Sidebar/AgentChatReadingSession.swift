@@ -16,13 +16,19 @@ final class AgentChatReadingSession {
     @ObservationIgnored weak var viewport: AgentChatTranscriptViewport.View?
     @ObservationIgnored var markers: [String: WeakMarker] = [:]
 
-    struct Anchor: Equatable { let id: String; let offset: CGFloat }
+    struct Anchor: Equatable {
+        let id: String
+        let offset: CGFloat
+    }
     final class WeakMarker {
         weak var view: AgentChatReadingMarker.View?
         init(_ view: AgentChatReadingMarker.View) { self.view = view }
     }
 
-    func pause() { viewport?.capture(); isPaused = true }
+    func pause() {
+        viewport?.capture()
+        isPaused = true
+    }
     func navigate(to id: String, in ids: [String]) {
         isPaused = true
         history.reveal(id, in: ids)
@@ -102,7 +108,10 @@ struct AgentChatTranscriptViewport: NSViewRepresentable {
         private var queued = false
         private var writing = false
         private var lastDocumentSize = NSSize.zero
-        init(session: AgentChatReadingSession) { self.session = session; super.init(frame: .zero) }
+        init(session: AgentChatReadingSession) {
+            self.session = session
+            super.init(frame: .zero)
+        }
         required init?(coder: NSCoder) { nil }
         override func hitTest(_ point: NSPoint) -> NSView? { nil }
         override func viewDidMoveToWindow() {
@@ -114,13 +123,15 @@ struct AgentChatTranscriptViewport: NSViewRepresentable {
             let clip = scroll.contentView
             clip.postsBoundsChangedNotifications = true
             scroll.documentView?.postsFrameChangedNotifications = true
-            observers.append(NotificationCenter.default.addObserver(forName: NSView.boundsDidChangeNotification, object: clip, queue: .main) { [weak self] _ in
-                MainActor.assumeIsolated { self?.boundsChanged() }
-            })
-            if let document = scroll.documentView {
-                observers.append(NotificationCenter.default.addObserver(forName: NSView.frameDidChangeNotification, object: document, queue: .main) { [weak self] _ in
-                    MainActor.assumeIsolated { self?.scheduleLayout() }
+            observers.append(
+                NotificationCenter.default.addObserver(forName: NSView.boundsDidChangeNotification, object: clip, queue: .main) { [weak self] _ in
+                    MainActor.assumeIsolated { self?.boundsChanged() }
                 })
+            if let document = scroll.documentView {
+                observers.append(
+                    NotificationCenter.default.addObserver(forName: NSView.frameDidChangeNotification, object: document, queue: .main) { [weak self] _ in
+                        MainActor.assumeIsolated { self?.scheduleLayout() }
+                    })
             }
             scheduleLayout()
         }
@@ -130,7 +141,10 @@ struct AgentChatTranscriptViewport: NSViewRepresentable {
             if session.viewport === self { session.viewport = nil }
             scroll = nil
         }
-        override func layout() { super.layout(); scheduleLayout() }
+        override func layout() {
+            super.layout()
+            scheduleLayout()
+        }
         func scheduleLayout() {
             guard !queued else { return }
             queued = true
@@ -176,7 +190,10 @@ struct AgentChatTranscriptViewport: NSViewRepresentable {
         func reconcile() {
             guard let scroll, let document = scroll.documentView else { return }
             lastDocumentSize = document.frame.size
-            guard !session.isScrolling else { capture(); return }
+            guard !session.isScrolling else {
+                capture()
+                return
+            }
             var target = scroll.contentView.bounds.origin
             if !session.isPaused {
                 target.y = max(-scroll.contentInsets.top, document.frame.height - scroll.contentView.bounds.height + scroll.contentInsets.bottom)
@@ -207,13 +224,20 @@ struct AgentChatReadingMarker: NSViewRepresentable {
         let id: String
         let session: AgentChatReadingSession
         init(id: String, session: AgentChatReadingSession) {
-            self.id = id; self.session = session
+            self.id = id
+            self.session = session
             super.init(frame: .zero)
             session.markers[id] = .init(self)
         }
         required init?(coder: NSCoder) { nil }
         override func hitTest(_ point: NSPoint) -> NSView? { nil }
-        override func layout() { super.layout(); session.viewport?.scheduleLayout() }
-        override func viewDidMoveToWindow() { super.viewDidMoveToWindow(); session.viewport?.scheduleLayout() }
+        override func layout() {
+            super.layout()
+            session.viewport?.scheduleLayout()
+        }
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            session.viewport?.scheduleLayout()
+        }
     }
 }

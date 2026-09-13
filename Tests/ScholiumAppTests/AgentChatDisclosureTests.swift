@@ -38,8 +38,9 @@ struct AgentChatDisclosureTests {
     @Test("Disclosure retains its measured reader and the following reply selection", arguments: [false, true])
     func retainedReadersAndSelection(adapted: Bool) async throws {
         let model = Model()
-        let host = NSHostingView(rootView: Fixture(model: model)
-            .environment(\.colorScheme, adapted ? .light : .dark))
+        let host = NSHostingView(
+            rootView: Fixture(model: model)
+                .environment(\.colorScheme, adapted ? .light : .dark))
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: adapted ? 260 : 340, height: 650), styleMask: [.titled], backing: .buffered, defer: false)
         window.appearance = NSAppearance(named: adapted ? .accessibilityHighContrastAqua : .darkAqua)
         window.isReleasedWhenClosed = false

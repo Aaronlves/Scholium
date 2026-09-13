@@ -50,8 +50,9 @@ struct RelatedMaterialNoteGroupView: View {
                         card: card,
                         isLoading: isLoading,
                         entranceProgress: entranceProgress,
-                        open: { open(card) }, addToChat: { addToChat(card) })
-                        .accessibilityHidden(isLoading)
+                        open: { open(card) }, addToChat: { addToChat(card) }
+                    )
+                    .accessibilityHidden(isLoading)
                 }
             }
         }

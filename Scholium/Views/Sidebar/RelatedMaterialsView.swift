@@ -56,11 +56,12 @@ struct RelatedMaterialsView: View {
                             entranceProgress: reduceMotion ? 1 : entrance.progress(for: group.id, at: timeline.date),
                             open: { if !session.isLoading { open($0) } },
                             insert: { if !session.isLoading { insert($0) } },
-                            addToChat: { if !session.isLoading { addToChat($0) } })
-                            .redacted(reason: session.isLoading ? .placeholder : [])
-                            .modifier(ResearchSkeletonPulse(isActive: session.isLoading))
-                            .disabled(session.isLoading)
-                            .allowsHitTesting(!session.isLoading)
+                            addToChat: { if !session.isLoading { addToChat($0) } }
+                        )
+                        .redacted(reason: session.isLoading ? .placeholder : [])
+                        .modifier(ResearchSkeletonPulse(isActive: session.isLoading))
+                        .disabled(session.isLoading)
+                        .allowsHitTesting(!session.isLoading)
                     }
 
                 }
