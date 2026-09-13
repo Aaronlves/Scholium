@@ -1,10 +1,46 @@
 import Foundation
+import ScholiumContracts
 import Testing
 
 @testable import ScholiumCore
 
 @Suite("Interrupted save transactions")
 struct PrewriteRecoveryLedgerTests {
+    @Test("Redundant backup cleanup keeps its transaction address until restart")
+    func backupCleanupCanWaitWithoutLosingItsAddress() throws {
+        let fixture = try Fixture()
+        let ledger = try PrewriteRecoveryLedger(storageURL: fixture.storage)
+        let transaction = try ledger.beginMutation(relativePath: "Note.md", expected: Data("before".utf8), candidate: Data("after".utf8))
+        try fixture.writeVault("after", path: "Note.md")
+        try fixture.writeVault("before", path: transaction.backupPath.rawValue)
+        let access = try VaultDescriptorAccess(rootURL: fixture.vault)
+        try ledger.completeMutation(transaction, sourceAccess: access)
+        #expect(FileManager.default.fileExists(atPath: fixture.transactionDirectory(transaction.id).path))
+        let reopened = try PrewriteRecoveryLedger(storageURL: fixture.storage, vaultURL: fixture.vault)
+        #expect(try reopened.retainedMutations().isEmpty)
+        #expect(!FileManager.default.fileExists(atPath: fixture.transactionDirectory(transaction.id).path))
+        #expect(try access.read(MarkdownRelativePath("Note.md")) == Data("after".utf8))
+    }
+
+    @Test("A failed external-source retention leaves the system backup intact")
+    func failedDisplacedRetentionPreservesBackup() throws {
+        let fixture = try Fixture()
+        let ledger = try PrewriteRecoveryLedger(storageURL: fixture.storage)
+        let transaction = try ledger.beginMutation(relativePath: "Note.md", expected: Data("before".utf8), candidate: Data("candidate".utf8))
+        try fixture.writeVault("candidate", path: "Note.md")
+        try fixture.writeVault("external", path: transaction.backupPath.rawValue)
+        let obstruction = fixture.transactionDirectory(transaction.id).appendingPathComponent("displaced.md")
+        try FileManager.default.createDirectory(at: obstruction, withIntermediateDirectories: false)
+        let access = try VaultDescriptorAccess(rootURL: fixture.vault)
+        #expect(throws: (any Error).self) { try ledger.reconcileReplacementBackup(transaction, access: access, required: true) }
+        #expect(try access.read(transaction.backupPath) == Data("external".utf8))
+        try FileManager.default.removeItem(at: obstruction)
+        let reopened = try PrewriteRecoveryLedger(storageURL: fixture.storage, vaultURL: fixture.vault)
+        let retained = try #require(reopened.retainedMutations().first)
+        #expect(try reopened.candidateData(for: retained) == Data("external".utf8))
+        #expect(retained.recoveryExpected == DocumentFingerprint(content: "candidate"))
+    }
+
     @Test("A proven completed save leaves no transaction history")
     func completedMutationDisappears() throws {
         let fixture = try Fixture()
@@ -48,6 +84,7 @@ struct PrewriteRecoveryLedgerTests {
             expected: Data("before".utf8),
             candidate: Data("after".utf8)
         )
+        try fixture.writeVault("before", path: transaction.backupPath.rawValue)
         _ = try PrewriteRecoveryLedger(
             storageURL: fixture.storage,
             vaultURL: fixture.vault
@@ -112,7 +149,7 @@ private struct Fixture {
     }
 
     func transactionDirectory(_ id: UUID) -> URL {
-        storage.appendingPathComponent("save-transactions-v1", isDirectory: true)
+        storage.appendingPathComponent("save-transactions-v2", isDirectory: true)
             .appendingPathComponent(id.uuidString.lowercased(), isDirectory: true)
     }
 

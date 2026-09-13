@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import ScholiumContracts
 
@@ -5,7 +6,7 @@ import ScholiumContracts
 /// state has not yet been proven. Completed saves leave no record here.
 final class PrewriteRecoveryLedger {
     struct MutationTransaction: Codable, Hashable, Sendable {
-        static let currentSchemaVersion = 1
+        static let currentSchemaVersion = 2
 
         let schemaVersion: Int
         let id: UUID
@@ -14,6 +15,20 @@ final class PrewriteRecoveryLedger {
         let candidate: DocumentFingerprint
         let createdAt: Date
         var retainedReason: String?
+        var replacementReconciled: Bool
+        var displaced: DocumentFingerprint?
+
+        var recoveryExpected: DocumentFingerprint { displaced == nil ? expected : candidate }
+        var recoveryCandidate: DocumentFingerprint { displaced ?? candidate }
+        var recoveryFileName: String { displaced == nil ? "candidate.md" : "displaced.md" }
+        var backupPath: MarkdownRelativePath {
+            get throws {
+                let path = try MarkdownRelativePath(relativePath)
+                let parent = path.components.dropLast().joined(separator: "/")
+                let name = VaultMutationCoordinator.replacementBackupName(id)
+                return try MarkdownRelativePath(parent.isEmpty ? name : "\(parent)/\(name)")
+            }
+        }
 
         init(
             id: UUID = UUID(),
@@ -21,7 +36,9 @@ final class PrewriteRecoveryLedger {
             expected: DocumentFingerprint,
             candidate: DocumentFingerprint,
             createdAt: Date = Date(),
-            retainedReason: String? = nil
+            retainedReason: String? = nil,
+            replacementReconciled: Bool = false,
+            displaced: DocumentFingerprint? = nil
         ) {
             schemaVersion = Self.currentSchemaVersion
             self.id = id
@@ -32,6 +49,8 @@ final class PrewriteRecoveryLedger {
                 timeIntervalSince1970: floor(createdAt.timeIntervalSince1970)
             )
             self.retainedReason = retainedReason
+            self.replacementReconciled = replacementReconciled
+            self.displaced = displaced
         }
     }
 
@@ -54,11 +73,11 @@ final class PrewriteRecoveryLedger {
     ) throws {
         self.fileManager = fileManager
         try fileManager.createDirectory(at: storageURL, withIntermediateDirectories: true)
-        rootURL = storageURL.appendingPathComponent("save-transactions-v1", isDirectory: true)
+        rootURL = storageURL.appendingPathComponent("save-transactions-v2", isDirectory: true)
         try fileManager.createDirectory(at: rootURL, withIntermediateDirectories: true)
         storage = SecureRecordDirectory(
             trustedRootURL: storageURL,
-            components: ["save-transactions-v1"],
+            components: ["save-transactions-v2"],
             directoryMode: 0o700,
             fileMode: 0o600,
             maximumByteCount: .max
@@ -117,14 +136,86 @@ final class PrewriteRecoveryLedger {
         }
     }
 
-    func completeMutation(_ transaction: MutationTransaction) throws {
+    func completeMutation(_ transaction: MutationTransaction, sourceAccess: VaultDescriptorAccess? = nil) throws {
         try locked {
             let verified = try verifiedMutation(
                 matching: transaction,
                 requiresRetention: false
             )
+            if let sourceAccess,
+                try sourceAccess.presence(verified.transaction.backupPath) != .absent
+            {
+                // Keep the durable cleanup address without turning a verified
+                // ordinary save into another source write or visible failure.
+                return
+            }
             try fileManager.removeItem(at: transactionDirectory(verified.transaction.id))
         }
+    }
+
+    /// Capture the system-preserved original before either backup or transaction
+    /// cleanup. A late external revision becomes the existing Recovery candidate.
+    func reconcileReplacementBackup(
+        _ transaction: MutationTransaction,
+        access: VaultDescriptorAccess,
+        required: Bool = false
+    ) throws -> MutationTransaction {
+        try locked {
+            try reconcileReplacementBackupLocked(transaction, access: access, required: required)
+        }
+    }
+
+    private func reconcileReplacementBackupLocked(
+        _ reference: MutationTransaction,
+        access: VaultDescriptorAccess,
+        required: Bool
+    ) throws -> MutationTransaction {
+        var transaction = try verifiedMutation(matching: reference, requiresRetention: false).transaction
+        let path = try transaction.backupPath
+        let data: Data
+        do {
+            data = try access.read(path)
+        } catch VaultRepositoryError.fileDoesNotExist {
+            guard !required || transaction.replacementReconciled else {
+                throw VaultRepositoryError.recoveryLedgerUnavailable("The replaced source backup could not be verified.")
+            }
+            return transaction
+        }
+        let fingerprint = DocumentFingerprint(data: data)
+        if fingerprint != transaction.expected {
+            if let displaced = transaction.displaced, displaced != fingerprint {
+                throw VaultRepositoryError.recoveryLedgerUnavailable("The retained external source changed; its backup remains untouched.")
+            }
+            let displacedPath = try MarkdownRelativePath("\(transaction.id.uuidString.lowercased())/displaced.md")
+            if try byteAccess.presence(displacedPath) == .absent {
+                // Reuse exclusive exact-byte creation; JSON record storage is
+                // deliberately not a Markdown-file writer.
+                try VaultMutationCoordinator(
+                    resolver: VaultPathResolver(rootURL: rootURL),
+                    descriptorAccess: byteAccess
+                ).create(path: displacedPath, data: data)
+            }
+            guard try byteAccess.read(displacedPath) == data else {
+                throw VaultRepositoryError.recoveryLedgerUnavailable("The external source could not be retained exactly.")
+            }
+            transaction.displaced = fingerprint
+            transaction.retainedReason =
+                "Another program changed this Note during saving. Its displaced source is retained here; the attempted Scholium source remains in candidate.md. Inspect both before restoring."
+        }
+        transaction.replacementReconciled = true
+        try writeManifest(transaction)
+        if let reason = transaction.retainedReason {
+            healthDiagnostic = "A save transaction requires researcher-visible recovery: \(reason)"
+        }
+        // The exact bytes are now durable. Remove only the same checked backup.
+        try access.withOpenRegularFile(path) { descriptor, parent, name, status in
+            guard try VaultDescriptorAccess.readAll(from: descriptor) == data,
+                try VaultDescriptorAccess.identity(name: name, parentDescriptor: parent) == VaultDescriptorAccess.FileIdentity(status)
+            else { throw VaultRepositoryError.commitUncertain("The save backup changed before cleanup.") }
+            try access.verifyCurrentParent(path, retainedDescriptor: parent)
+            _ = unlinkat(parent, name, 0)
+        }
+        return transaction
     }
 
     func retainMutation(_ transaction: MutationTransaction, reason: String) throws {
@@ -181,7 +272,9 @@ final class PrewriteRecoveryLedger {
                     expected: transaction.expected,
                     candidate: transaction.candidate,
                     createdAt: transaction.createdAt,
-                    retainedReason: transaction.retainedReason
+                    retainedReason: transaction.retainedReason,
+                    replacementReconciled: transaction.replacementReconciled,
+                    displaced: transaction.displaced
                 )
                 try writeManifest(replacement)
             }
@@ -200,8 +293,9 @@ final class PrewriteRecoveryLedger {
         }
         do {
             try locked {
-                for transaction in try pendingMutationsLocked() {
+                for pending in try pendingMutationsLocked() {
                     do {
+                        let transaction = try reconcileReplacementBackupLocked(pending, access: access, required: false)
                         _ = try verifiedMutation(
                             matching: transaction,
                             requiresRetention: false
@@ -224,11 +318,16 @@ final class PrewriteRecoveryLedger {
                             )
                             continue
                         }
-                        if observed == transaction.candidate
-                            || (observed == transaction.expected
-                                && transaction.expected == transaction.candidate)
+                        if transaction.displaced != nil {
+                            try retainMutationLocked(transaction, reason: transaction.retainedReason!)
+                        } else if transaction.replacementReconciled
+                            && (observed == transaction.candidate
+                                || (observed == transaction.expected
+                                    && transaction.expected == transaction.candidate))
                         {
-                            try fileManager.removeItem(at: transactionDirectory(transaction.id))
+                            if try access.presence(transaction.backupPath) == .absent {
+                                try fileManager.removeItem(at: transactionDirectory(transaction.id))
+                            }
                         } else if observed == transaction.expected {
                             try retainMutationLocked(
                                 transaction,
@@ -318,6 +417,13 @@ final class PrewriteRecoveryLedger {
             throw VaultRepositoryError.recoveryLedgerUnavailable(
                 "The interrupted-save bytes no longer match their recorded fingerprints."
             )
+        }
+        if let fingerprint = manifest.displaced {
+            let displaced = try byteAccess.read(MarkdownRelativePath("\(directoryName)/displaced.md"))
+            guard manifest.replacementReconciled, manifest.retainedReason != nil,
+                DocumentFingerprint(data: displaced) == fingerprint
+            else { throw VaultRepositoryError.recoveryLedgerUnavailable("The retained external source failed verification.") }
+            return VerifiedMutation(transaction: manifest, candidate: displaced)
         }
         return VerifiedMutation(transaction: manifest, candidate: candidate)
     }

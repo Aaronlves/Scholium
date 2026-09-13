@@ -56,6 +56,9 @@ enum SystemTrashBindingPath {
 /// Coordinates short-lived filesystem commits while descriptor-relative,
 /// no-follow checks retain the actual authorization boundary.
 final class VaultMutationCoordinator {
+    static func replacementBackupName(_ id: UUID) -> String {
+        ".scholium-save-backup-\(id.uuidString.lowercased()).md"
+    }
     private let resolver: VaultPathResolver
     private let descriptorAccess: VaultDescriptorAccess
     private let hooks: VaultMutationHooks
@@ -79,7 +82,8 @@ final class VaultMutationCoordinator {
     func updateExisting(
         path: MarkdownRelativePath,
         expected: Data,
-        candidate: Data
+        candidate: Data,
+        backupID: UUID
     ) throws {
         let targetURL = try resolver.unresolvedURL(for: path)
         var replacementCompleted = false
@@ -127,13 +131,17 @@ final class VaultMutationCoordinator {
 
                 let stagingURL = targetURL.deletingLastPathComponent()
                     .appendingPathComponent(stagingName, isDirectory: false)
+                let backupName = Self.replacementBackupName(backupID)
+                guard self.filePresence(name: backupName, parentFD: parentFD) == .absent else {
+                    throw VaultRepositoryError.commitUncertain("The save backup location is not vacant.")
+                }
                 try self.hooks.didReach?(.replacing)
                 do {
                     _ = try FileManager.default.replaceItemAt(
                         targetURL,
                         withItemAt: stagingURL,
-                        backupItemName: nil,
-                        options: []
+                        backupItemName: backupName,
+                        options: [.withoutDeletingBackupItem]
                     )
                 } catch {
                     throw VaultRepositoryError.commitUncertain(

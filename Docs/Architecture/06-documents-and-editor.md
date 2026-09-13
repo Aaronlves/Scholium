@@ -389,6 +389,7 @@ scroll. Invalid ranges or fingerprints fall back to the normalized fraction.
 Live/Source also use CodeMirror's native snapshot. Reconstruction freezes a
 handoff anchor, and delayed restoration requires the same document or Review-load
 generation. It never depends only on throttle-prone animation frames.
+Review arrival awaits the scroll destination before publishing its anchor; superseded, timed-out or destroyed requests cannot confirm navigation.
 
 Markdown owns written annotation, including semantic Callouts; Scholium has no
 parallel comment store, margin widget, or passage-discussion anchor. Review is

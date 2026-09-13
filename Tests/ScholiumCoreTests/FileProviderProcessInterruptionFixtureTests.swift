@@ -10,11 +10,13 @@ struct FileProviderProcessInterruptionFixtureTests {
     enum InterruptionPoint: CaseIterable, Sendable, CustomTestStringConvertible {
         case staged
         case replaced
+        case replacedExternal
 
         var testDescription: String {
             switch self {
             case .staged: "before canonical replacement"
             case .replaced: "after canonical replacement"
+            case .replacedExternal: "after replacing a late external revision"
             }
         }
     }
@@ -76,7 +78,9 @@ struct FileProviderProcessInterruptionFixtureTests {
         let identityString = fixture.identity.id.uuidString
         let relativePath = fixture.relativePath
         let candidate = fixture.candidate
-        let killAfterReplacement = point == .replaced
+        let killAfterReplacement = point != .staged
+        let injectExternal = point == .replacedExternal
+        let external = fixture.external
 
         await #expect(processExitsWith: .failure) {
             [
@@ -86,6 +90,8 @@ struct FileProviderProcessInterruptionFixtureTests {
                 relativePath = relativePath as String,
                 candidate = candidate as String,
                 killAfterReplacement = killAfterReplacement as Bool,
+                injectExternal = injectExternal as Bool,
+                external = external as String,
             ] in
             let root = URL(fileURLWithPath: rootPath, isDirectory: true)
             let support = URL(fileURLWithPath: supportPath, isDirectory: true)
@@ -100,6 +106,9 @@ struct FileProviderProcessInterruptionFixtureTests {
                 identity: identity,
                 applicationSupportURL: support,
                 mutationHooks: VaultMutationHooks(didReach: { phase in
+                    if injectExternal, phase == .replacing {
+                        try Data(external.utf8).write(to: root.appendingPathComponent(relativePath), options: .atomic)
+                    }
                     guard phase == interruptionPhase else { return }
                     _ = kill(getpid(), SIGKILL)
                     _exit(137)
@@ -192,6 +201,14 @@ struct FileProviderProcessInterruptionFixtureTests {
             #expect(restored.document.rawContent == fixture.candidate)
             #expect(try Data(contentsOf: fixture.note) == fixture.candidateData)
             #expect(try await reopened.interruptedSaveRecoveries().isEmpty)
+        } else if point == .replacedExternal {
+            #expect(pending.count == 1)
+            let retained = try #require(try await reopened.interruptedSaveRecoveries().first)
+            #expect(try await reopened.interruptedSaveRecoveryContent(retained).exactSource == fixture.external)
+            #expect(retained.expectedRevision == DocumentFingerprint(data: fixture.candidateData))
+            let restored = try await reopened.restoreInterruptedSaveRecovery(retained)
+            #expect(restored.didReplaceSource)
+            #expect(try Data(contentsOf: fixture.note) == fixture.externalData)
         } else {
             #expect(pending.isEmpty)
             #expect(await reopened.recoveryLedgerHealthDiagnostic() == nil)
@@ -320,7 +337,7 @@ struct FileProviderProcessInterruptionFixtureTests {
                 support
                 .appendingPathComponent("Vaults", isDirectory: true)
                 .appendingPathComponent(identity.id.uuidString, isDirectory: true)
-                .appendingPathComponent("save-transactions-v1", isDirectory: true)
+                .appendingPathComponent("save-transactions-v2", isDirectory: true)
             guard FileManager.default.fileExists(atPath: directory.path) else { return [] }
             return try FileManager.default.contentsOfDirectory(
                 at: directory,

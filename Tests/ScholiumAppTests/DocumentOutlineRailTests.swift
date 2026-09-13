@@ -7,16 +7,16 @@ struct DocumentOutlineRailTests {
     @Test("Projection follows authored H1/H2 order and ignores frontmatter")
     func projectionUsesCurrentSourceHeadings() {
         let source = """
-        ---
-        title: "# Metadata, not a heading"
-        ---
-        # Introduction
+            ---
+            title: "# Metadata, not a heading"
+            ---
+            # Introduction
 
-        A paragraph.
+            A paragraph.
 
-        ## 第二节
-        ### Detail
-        """
+            ## 第二节
+            ### Detail
+            """
 
         let entries = DocumentOutlineProjection.make(
             relativePath: "notes/example.md",

@@ -214,6 +214,13 @@ and replaces canonical source only if the current revision still equals the
 recorded expectation. Changed, missing, unsafe, or unverifiable source is never
 overwritten or recreated.
 
+If another writer changes the source during final replacement, preserve the
+displaced bytes before releasing replacement evidence. This is **Autosave Failed**
+with Recovery, even when the attempted source is now canonical. Recovery identifies
+the displaced revision as its candidate and the attempted revision as its restore
+precondition; both remain inspectable. Neither interruption nor restart may silently
+discard the displaced version or automatically overwrite a further external edit.
+
 System-Trash receipt semantics are owned by §6 and recovery presentation by
 §18.6; neither restore-candidate handling nor source recovery may reuse its
 forward plan as source-replacement authority.
@@ -225,14 +232,14 @@ never authorizes changes to research prose.
 After Saving, a writable Document has exactly three outcomes:
 
 - **Saved** only when canonical Markdown readback exactly matches the validated
-  candidate; success is silent;
+  candidate and the replaced source is accounted for; success is silent;
 - **Conflict** when the expected revision differs, retaining the buffer and
   routing to comparison; or
-- **Autosave Failed** when commit or exact readback cannot be proven, retaining
-  the buffer and any useful recovery candidate.
+- **Autosave Failed** when commit, exact readback, or displaced-source safety
+  cannot be proven, retaining the buffer and any useful recovery candidate.
 
 Filesystem metadata, temporary replacement entries, directory synchronization,
 and app-owned housekeeping are not Document success predicates. Once exact
-readback proves the source, they do not create a warning or invite another
-write. Settle stores only its portable fingerprint marker and is never recovery
+readback and displaced-source reconciliation prove the source, they do not
+create a warning or invite another write. Settle stores only its portable fingerprint marker and is never recovery
 source.

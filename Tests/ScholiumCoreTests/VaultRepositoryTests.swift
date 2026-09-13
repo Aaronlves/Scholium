@@ -7,6 +7,57 @@ import Testing
 
 @Suite("Transactional vault repository")
 struct VaultRepositoryTests {
+    @Test("Late independent writers retain exact source through restart and explicit recovery", arguments: [false, true])
+    func lateWriterRemainsRecoverable(atomic: Bool) async throws {
+        let f = try fixture()
+        defer { try? FileManager.default.removeItem(at: f.root.deletingLastPathComponent()) }
+        let identity = VaultIdentity(id: UUID(), canonicalPath: f.root.path, bookmarkData: nil)
+        let candidate = "# Scholium edit\r\nExact candidate.\r\n"
+        let external = "\u{FEFF}---\r\ncustom: 'unchanged' # comment\r\n---\r\n外部新增 e\u{301} 📝\r\n"
+        let repository = try VaultRepository(
+            vaultURL: f.root, identity: identity, applicationSupportURL: f.support,
+            mutationHooks: VaultMutationHooks(didReach: { phase in
+                guard phase == .replacing else { return }
+                let writer = Process()
+                writer.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
+                writer.arguments = [
+                    "-c",
+                    "import os,sys; p=sys.argv[1]; q=p+'.external' if sys.argv[3]=='atomic' else p; open(q,'wb').write(sys.argv[2].encode()); os.replace(q,p) if q!=p else None",
+                    f.note.path, external, atomic ? "atomic" : "inplace",
+                ]
+                try writer.run()
+                writer.waitUntilExit()
+                guard writer.terminationStatus == 0 else { throw CocoaError(.fileWriteUnknown) }
+            })
+        )
+        let original = try await repository.load(relativePath: "topics/note.md")
+        let outcome = try await repository.saveOutcome(
+            relativePath: original.relativePath, changeSet: .source(candidate), expectedRevision: original.fingerprint)
+        guard case .recoveryRequired(let recovery) = outcome else {
+            Issue.record("A late external write must not become an ordinary successful save.")
+            return
+        }
+        #expect(try Data(contentsOf: f.note) == Data(candidate.utf8))
+        #expect(recovery.expectedRevision == DocumentFingerprint(content: candidate))
+        #expect(recovery.candidateRevision == DocumentFingerprint(content: external))
+        #expect(try await repository.interruptedSaveRecoveryContent(recovery).exactSource == external)
+        let reopened = try VaultRepository(vaultURL: f.root, identity: identity, applicationSupportURL: f.support)
+        let retained = try #require(try await reopened.interruptedSaveRecoveries().first)
+        #expect(retained.id == recovery.id)
+        let location = try await reopened.prepareInterruptedSaveRecoveryLocation(retained)
+        #expect(try Data(contentsOf: location) == Data(external.utf8))
+        #expect(try Data(contentsOf: location.deletingLastPathComponent().appendingPathComponent("candidate.md")) == Data(candidate.utf8))
+        // A later canonical edit cannot be overwritten by the retained candidate.
+        try Data("later independent edit".utf8).write(to: f.note)
+        await #expect(throws: VaultRepositoryError.self) { try await reopened.restoreInterruptedSaveRecovery(retained) }
+        #expect(try Data(contentsOf: f.note) == Data("later independent edit".utf8))
+        try Data(candidate.utf8).write(to: f.note)
+        let restored = try await reopened.restoreInterruptedSaveRecovery(retained)
+        #expect(restored.didReplaceSource)
+        #expect(try Data(contentsOf: f.note) == Data(external.utf8))
+        #expect(try await reopened.interruptedSaveRecoveries().isEmpty)
+    }
+
     private enum SaveFault: Error {
         case beforeSwap
         case afterSwap

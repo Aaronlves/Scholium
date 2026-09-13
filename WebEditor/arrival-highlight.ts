@@ -20,9 +20,11 @@ export function readerSourceRangeCandidate(root: HTMLElement, lower: number, upp
 
 export function createReaderArrival(root: HTMLElement) {
   let marker: HTMLElement | null = null;
+  let generation = 0;
   let timer: ReturnType<typeof setTimeout> | undefined;
   const owner = root.ownerDocument.defaultView;
   function clear() {
+    generation += 1;
     clearTimeout(timer);
     timer = undefined;
     marker?.remove();
@@ -30,8 +32,9 @@ export function createReaderArrival(root: HTMLElement) {
   }
   const span = (element: HTMLElement) => Number(element.dataset.sourceUtf16End ?? 0)
     - Number(element.dataset.sourceUtf16Start ?? 0);
-  function reveal(line: number): boolean {
+  async function reveal(line: number): Promise<boolean> {
     clear();
+    const requestGeneration = generation;
     if (!Number.isSafeInteger(line) || line < 1 || !owner) return false;
     // Inline source locators identify the visual line within a wrapped block.
     // Prefer an exact start and the narrowest source span, not a large ancestor.
@@ -44,10 +47,21 @@ export function createReaderArrival(root: HTMLElement) {
     if (!target) return false;
     const reduceMotion = typeof owner.matchMedia === "function"
       && owner.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const extent = Math.max(0, root.ownerDocument.documentElement.scrollHeight - owner.innerHeight);
+    const destination = Math.max(0, Math.min(extent, owner.scrollY + target.getBoundingClientRect().top));
     target.scrollIntoView({
       block: "start",
       behavior: reduceMotion ? "auto" : "smooth",
     });
+    // Starting native smooth scrolling is not an arrival receipt. Observe its
+    // destination before capturing the anchor or displaying arrival feedback.
+    // A bounded timer also works in a background WebView where frames pause.
+    const deadline = Date.now() + 2000;
+    while (Math.abs(owner.scrollY - destination) > 1) {
+      if (generation !== requestGeneration || Date.now() >= deadline) return false;
+      await new Promise<void>(resolve => setTimeout(resolve, 16));
+    }
+    if (generation !== requestGeneration || !target.isConnected) return false;
     const range = root.ownerDocument.createRange();
     range.selectNodeContents(target);
     const rect = [...range.getClientRects()].find(rect => rect.width > 0 && rect.height > 0);

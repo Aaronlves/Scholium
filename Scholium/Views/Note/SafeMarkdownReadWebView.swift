@@ -1235,7 +1235,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             else { return }
             let result = try? await webView.callAsyncJavaScript(
                 """
-                if (!window.scholiumReadNavigation?.reveal(requested)) return false;
+                if (!await window.scholiumReadNavigation?.reveal(requested)) return false;
                 const extent = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
                 const fraction = extent > 0 ? Math.max(0, Math.min(1, window.scrollY / extent)) : 0;
                 return {

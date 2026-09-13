@@ -1002,8 +1002,8 @@ struct DocumentOperationsTests {
         await runtime.shutdown()
     }
 
-    @Test("Interrupted save recovery stays vault-qualified and publishes its committed source")
-    func interruptedSaveRecoveryIsVaultQualified() async throws {
+    @Test("Interrupted save recovery stays vault-qualified and publishes its committed source", arguments: [false, true])
+    func interruptedSaveRecoveryIsVaultQualified(displaced: Bool) async throws {
         let fixture = try await LifecycleFixture.make()
         defer { fixture.remove() }
         let expected = try Data(
@@ -1012,13 +1012,14 @@ struct DocumentOperationsTests {
         let candidate = Data(
             [0xEF, 0xBB, 0xBF] + Array("# Target\r\n\r\nRecovered after interruption.\r\n".utf8)
         )
+        let recoveryBytes = displaced ? Data("# External revision\r\nPreserve this separate text.\r\n".utf8) : candidate
         let transactionID = UUID()
         let createdAt = Date(timeIntervalSince1970: floor(Date().timeIntervalSince1970))
         let transactionDirectory = fixture.applicationSupportURL
             .appendingPathComponent("Vaults", isDirectory: true)
             .appendingPathComponent(fixture.targetID.vaultID.uuidString, isDirectory: true)
             .appendingPathComponent(
-                "save-transactions-v1",
+                "save-transactions-v2",
                 isDirectory: true
             )
             .appendingPathComponent(
@@ -1031,8 +1032,8 @@ struct DocumentOperationsTests {
         )
         try expected.write(to: transactionDirectory.appendingPathComponent("expected.md"))
         try candidate.write(to: transactionDirectory.appendingPathComponent("candidate.md"))
-        let manifest = InterruptedSaveManifestFixture(
-            schemaVersion: 1,
+        var manifest = InterruptedSaveManifestFixture(
+            schemaVersion: 2,
             id: transactionID,
             relativePath: fixture.targetID.relativePath,
             expected: DocumentFingerprint(data: expected),
@@ -1040,6 +1041,13 @@ struct DocumentOperationsTests {
             createdAt: createdAt,
             retainedReason: nil
         )
+        if displaced {
+            try candidate.write(to: fixture.analysesURL.appendingPathComponent("Target.md"))
+            try recoveryBytes.write(to: transactionDirectory.appendingPathComponent("displaced.md"))
+            manifest.replacementReconciled = true
+            manifest.displaced = DocumentFingerprint(data: recoveryBytes)
+            manifest.retainedReason = "Late external source retained."
+        }
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
@@ -1062,7 +1070,7 @@ struct DocumentOperationsTests {
         #expect(recovery.relativePath == fixture.targetID.relativePath)
         #expect(recovery.sourceState == .expectedRevision)
         let content = try await handle.documents.interruptedSaveRecoveryContent(recovery)
-        #expect(Data(content.exactSource.utf8) == candidate)
+        #expect(Data(content.exactSource.utf8) == recoveryBytes)
 
         let otherVaultID = try #require(
             fixture.assignment.vault(for: .topicKnowledge)?.id
@@ -1086,27 +1094,29 @@ struct DocumentOperationsTests {
         let outcome = try await handle.documents.restoreInterruptedSaveRecovery(recovery)
         #expect(outcome.committedValue.didReplaceSource)
         #expect(outcome.derivedRefreshWarning == nil)
-        #expect(outcome.committedValue.document.sourceBytes == candidate)
+        #expect(outcome.committedValue.document.sourceBytes == recoveryBytes)
         #expect(
             try Data(
                 contentsOf: fixture.analysesURL.appendingPathComponent("Target.md")
-            ) == candidate)
+            ) == recoveryBytes)
         #expect(try await handle.documents.interruptedSaveRecoveries().isEmpty)
         #expect(
             try await handle.snapshot().document(id: fixture.targetID)?.document.sourceBytes
-                == candidate)
+                == recoveryBytes)
         await runtime.shutdown()
     }
 }
 
 private struct InterruptedSaveManifestFixture: Codable {
+    var replacementReconciled = false
+    var displaced: DocumentFingerprint?
     let schemaVersion: Int
     let id: UUID
     let relativePath: String
     let expected: DocumentFingerprint
     let candidate: DocumentFingerprint
     let createdAt: Date
-    let retainedReason: String?
+    var retainedReason: String?
 }
 
 private actor ManagedCreationTestGate {

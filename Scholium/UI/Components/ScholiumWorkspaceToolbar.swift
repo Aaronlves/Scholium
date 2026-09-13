@@ -824,8 +824,10 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
                     refreshError = error.localizedDescription
                 }
                 self.refreshPresentation()
-                return (!self.isInvalidated && self.currentSettlementTarget == target
-                    && self.presentedSettlementTarget == target && self.settlementPopover.isShown, refreshError)
+                return (
+                    !self.isInvalidated && self.currentSettlementTarget == target
+                        && self.presentedSettlementTarget == target && self.settlementPopover.isShown, refreshError
+                )
             },
             dismiss: { [weak self] in
                 self?.settlementPopover.performClose(nil)
@@ -1080,7 +1082,7 @@ private struct DocumentSettlementPopoverView: View {
                 try await Task.sleep(for: .seconds(1.8))
                 guard isVisible else { return }
                 dismiss()
-            } catch { /* Dismissal cancels only the presentation timer. */ }
+            } catch { /* Dismissal cancels only the presentation timer. */  }
         }
     }
 

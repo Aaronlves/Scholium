@@ -165,11 +165,10 @@ compositing artifacts; inspect the actual native window before judging them.
 
 ## Current integration boundary
 
-The CLI-removal owning checks pass. The complete repository gate is not green:
-12 unchanged Swift files fail formatting, and the full App run reports four
-assertions in `readScrollObservationDoesNotReplayRestoration`. That unchanged
-test also fails in isolation. These are open integration findings, not proof of
-a CLI-cutover regression or a release pass. Verification retains exact logs.
+The previously recorded formatting and reader-arrival failures are resolved by
+owning checks in Verification. The complete repository gate has not been rerun
+on that repair; scoped passes do not replace the earlier failed integration run
+or establish package and human acceptance.
 
 ## External-host and release acceptance
 
@@ -219,6 +218,10 @@ a CLI-cutover regression or a release pass. Verification retains exact logs.
   VoiceOver, keyboard, IME, or visual acceptance.
 
 ## Remaining product work
+
+- Include displaced external-source Recovery inspection and restoration in the
+  live filesystem/sync and human recovery acceptance; deterministic late-writer
+  and process-interruption evidence is recorded in Verification.
 
 - Continue performance, File Provider/sync, Finder restoration, and Zotero
   system-integration acceptance where the current specification requires

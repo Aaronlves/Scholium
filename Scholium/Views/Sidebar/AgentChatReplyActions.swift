@@ -193,14 +193,14 @@ struct AgentChatSourcesView: View {
                                         .underline()
                                 }
                                 .buttonStyle(.link)
-                                    .scholiumActivationPointer()
-                                    .scholiumContentControlPointerFeedback(
-                                        in: RoundedRectangle(
-                                            cornerRadius: ScholiumShape.editorialControlCornerRadius,
-                                            style: .continuous
-                                        )
+                                .scholiumActivationPointer()
+                                .scholiumContentControlPointerFeedback(
+                                    in: RoundedRectangle(
+                                        cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                                        style: .continuous
                                     )
-                                    .contextMenu { AgentChatNoteMenu(url: source.url) }
+                                )
+                                .contextMenu { AgentChatNoteMenu(url: source.url) }
                             } else {
                                 Text(source.title).textSelection(.enabled)
                             }

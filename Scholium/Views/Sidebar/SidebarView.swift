@@ -279,14 +279,14 @@ struct SidebarView: View {
                         emphasized: .accent
                     )
             }
-                .buttonStyle(.borderless)
-                .scholiumActivationPointer()
-                .scholiumContentControlPointerFeedback(
-                    in: RoundedRectangle(
-                        cornerRadius: ScholiumShape.editorialControlCornerRadius,
-                        style: .continuous
-                    )
+            .buttonStyle(.borderless)
+            .scholiumActivationPointer()
+            .scholiumContentControlPointerFeedback(
+                in: RoundedRectangle(
+                    cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                    style: .continuous
                 )
+            )
         }
         .frame(minHeight: ScholiumMetrics.Accessibility.preferredCustomTarget)
         .accessibilityElement(children: .contain)

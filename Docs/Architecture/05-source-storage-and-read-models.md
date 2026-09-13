@@ -31,11 +31,12 @@ update retains the original descriptor, writes and synchronizes one
 same-directory candidate, rechecks the exact expected bytes and parent
 identity, and delegates the atomic replacement to
 `FileManager.replaceItemAt` inside a `.forReplacing` coordinated accessor. The
-default replacement options let the system preserve or adjust standard
+`withoutDeletingBackupItem` option retains a transaction-named sibling backup;
+the system still preserves or adjusts standard
 filesystem metadata; Scholium neither copies nor compares the complete
 mode/owner/ACL/xattr/flags/birth-metadata envelope. It then performs canonical
 no-follow exact-byte readback and rechecks the current parent. Only that source
-authority determines whether the save committed.
+authority and reconciliation of the actual replaced bytes determine the outcome.
 
 Before canonical replacement can occur, the coordinator records the relative
 path and exact expected/candidate fingerprints in a schema-versioned
@@ -45,8 +46,13 @@ canonical source unchanged and removes the same-directory candidate on a
 best-effort basis. A failure after replacement never initiates a compensating
 source write: exact canonical readback may prove the candidate committed, while
 any other state retains the transaction for recovery and reports no Saved
-outcome. Successful readback makes transaction removal redundant, invisible
-housekeeping. There is no cleanup-warning contract or fourth Document outcome.
+outcome. Before success or transaction removal, Core no-follow reads the system
+backup. A differing source is exclusively persisted as `displaced.md` and bound
+in the manifest before the backup is removed. Recovery exposes it against the
+attempted canonical revision, retaining `expected.md` and `candidate.md` for
+inspection. Failure leaves the backup in place; startup reconciles that same
+transaction-named location before considering canonical readback or cleanup.
+There is no automatic compensating source write or fourth Document outcome.
 
 The retained interrupted-save candidate contributes a workspace health issue
 and a vault-qualified entry in the existing Recovery sheet. Core no-follow reads
@@ -59,10 +65,11 @@ evidence and remaining acceptance belong to
 [Implementation Status](../IMPLEMENTATION_STATUS.md).
 
 `PrewriteRecoveryLedger` is Core-only machine state under
-`Vaults/<vault-id>/save-transactions-v1/`. Each unresolved replacement owns one
-small manifest plus exact expected and candidate bytes. A proven committed or
-not-written operation deletes the directory immediately; only commit-uncertain
-or startup-interrupted transactions survive. Unsupported pre-use bytes remain
+`Vaults/<vault-id>/save-transactions-v2/`. Each unresolved replacement owns one
+small manifest plus exact expected, candidate and optional displaced bytes.
+The manifest records whether replacement evidence has been reconciled. Proven
+ordinary saves leave no history; uncertainty and displaced-source recovery survive
+restart even when canonical bytes equal the original attempted candidate. Unsupported pre-use bytes remain
 unchanged and nonauthorizing. The ledger exposes no versions or history API.
 `DocumentOperations` vault-qualifies listing, read-only content, Finder
 location, and restore; `ResearchController` owns that listing beside durable

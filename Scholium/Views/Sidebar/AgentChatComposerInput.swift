@@ -188,8 +188,10 @@ struct AgentChatComposerInput: NSViewRepresentable {
         let padding = textContainer?.lineFragmentPadding ?? 0
         (String(localized: "Message", bundle: .module) as NSString).draw(
             at: NSPoint(x: origin.x + padding, y: origin.y),
-            withAttributes: [.font: font ?? NSFont.systemFont(ofSize: NSFont.systemFontSize),
-                             .foregroundColor: NSColor.placeholderTextColor])
+            withAttributes: [
+                .font: font ?? NSFont.systemFont(ofSize: NSFont.systemFontSize),
+                .foregroundColor: NSColor.placeholderTextColor,
+            ])
     }
 
     override func setMarkedText(_ string: Any, selectedRange: NSRange, replacementRange: NSRange) {

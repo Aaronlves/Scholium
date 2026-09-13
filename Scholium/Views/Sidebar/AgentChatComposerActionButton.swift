@@ -44,8 +44,7 @@ struct AgentChatComposerActionButton: View {
     var body: some View {
         let action = AgentChatComposerAction(state: state, canSend: canSend, queuesInput: queuesInput)
         Button {
-            if action == .stop { stop() }
-            else if !action.isInterruption { submit() }
+            if action == .stop { stop() } else if !action.isInterruption { submit() }
         } label: {
             Image(systemName: action.symbol)
                 .contentTransition(ScholiumMotion.symbolReplacementContentTransition(reduceMotion: reduceMotion))

@@ -4,18 +4,31 @@
 
 ## Current verification snapshot
 
-**2026-09-13 — App-only delivery:** `ad0825a4` plus cutover worktree,
-Xcode 27 beta 27A5218g. 110 owning tests, Debug/Release helper protocol smoke,
-public-symbol boundary and Release compilation pass. Integration: Core 350+3,
-Contracts 73, Application 163+1 pass; App 819 reports four assertions in
-`readScrollObservationDoesNotReplayRestoration`, reproduced in isolation.
-The full gate also stops on formatting in 12 unchanged files; all 46 changed
-Swift files pass formatting. Documentation, 11 validator tests, localization,
-entitlements and toolkit checks pass. Logs: `.build/cli-removal-*.log` and
-`.build/verification/`. No new distribution artifact, clean-account installation
-or native/human UI acceptance is claimed. Earlier CLI evidence is historical,
-not support for a current product.
+**2026-09-13 — Late concurrent source preservation:** Xcode 27 beta 27A5218g,
+Swift 6.4. Both independent late-writer reproductions now return Recovery Required
+and retain exact external bytes. 111 selected tests pass (67 Core, 21 Application,
+23 App MCP-router), covering SIGKILL/restart, failed retention, deferred cleanup,
+revision-checked restoration and move/Agent Undo. Logs: `.build/note-safety-fix/`.
+Formatting and documentation authority pass. This is scoped source/fixture proof;
+installed-release, live sync-provider and human Recovery acceptance remain open.
 
+**2026-09-13 — Reader arrival and formatting:** `405a66b5` plus repair worktree,
+Xcode 27 beta 27A5218g. Smooth-scroll dispatch prematurely confirmed arrival;
+Review now waits for its destination before capturing the anchor and receipt.
+The original four assertions pass unchanged. All 135 native WKWebView tests,
+255 editor tests, resource reproducibility and whole-repository Swift formatting
+pass. Logs: `.build/repair-webkit.log`,
+`.build/repair-editor-verification.log`, `.build/repair-format-after.log`.
+This owning verification is not a rerun of the complete repository gate or
+packaged/human acceptance.
+
+**2026-09-13 — App-only delivery:** `ad0825a4` plus cutover worktree.
+110 owning tests, Debug/Release helper smoke, public symbols and Release build
+passed. Integration: Core 350+3, Contracts 73, Application 163+1 passed; App
+819 reported the reader failure resolved above. Formatting failures are also
+resolved above; the original full gate remains a failed historical run.
+Logs: `.build/cli-removal-*.log`, `.build/verification/`. No new artifact or
+clean-account acceptance was established. Earlier CLI evidence is historical.
 
 **2026-09-13 — source-authority cutover:** Core, Contracts and Application
 checks pass. App coverage ran; obsolete implementation snapshots were removed
@@ -176,15 +189,8 @@ bundled Core Protocol checks pass. Full verification and an adjacent architectur
 assertion stop at the existing AgentChatController I/O allowlist mismatch.
 Evidence: `.build/action-cleanup/`; no complete gate or GUI acceptance.
 
-**2026-09-08 — native sidebar layout cleanup:** Sidebar-owned container/content
-insets replace the old Library aliases into the peripheral editorial grid. The
-header label owns a wider full hit region and native typography; plain Buttons
-and Menus use one system secondary-label role with inherited tint reset. The
-custom header pointer/press painter and active-state parameter are removed.
-A disposable identical-symbol comparison exposed the borderless menu rendering
-difference before choosing the native plain path; all probe code was removed.
-The workspace navigator uses AppKit `fillEqually`, replacing manual per-segment
-widths that added to native chrome and overflowed the visual container edge.
+**2026-09-08 — native sidebar layout cleanup:** Sidebar geometry, native menu
+styling, navigator sizing and hit-area corrections have the scoped evidence below.
 
 The final 98 owning presentation/architecture checks pass. QA at a 300-point
 sidebar covers light/dark Chat list/detail, aligned text/container tracks,

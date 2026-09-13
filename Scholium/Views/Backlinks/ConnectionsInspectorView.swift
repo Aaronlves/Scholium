@@ -387,21 +387,23 @@ private struct LinkOccurrenceRow: View {
             if item.direction == .outgoing, item.edge.occurrence.fragment != nil,
                 let peer = item.peer, let line = item.edge.destination?.span?.start.line
             {
-                Button { openReference(peer.reference, line) } label: {
+                Button {
+                    openReference(peer.reference, line)
+                } label: {
                     Text("Open Linked Passage")
                         .scholiumContentControlInk(
                             resting: .secondaryText,
                             emphasized: .accent
                         )
                 }
-                    .buttonStyle(.borderless)
-                    .scholiumActivationPointer()
-                    .scholiumContentControlPointerFeedback(
-                        in: RoundedRectangle(
-                            cornerRadius: ScholiumShape.editorialControlCornerRadius,
-                            style: .continuous
-                        )
+                .buttonStyle(.borderless)
+                .scholiumActivationPointer()
+                .scholiumContentControlPointerFeedback(
+                    in: RoundedRectangle(
+                        cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                        style: .continuous
                     )
+                )
             }
         }
     }

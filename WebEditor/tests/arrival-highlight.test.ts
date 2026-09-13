@@ -9,21 +9,22 @@ function fixture() {
   const root = document.querySelector('article')! as unknown as HTMLElement;
   const rect = {left: 20, top: 100, width: 300, height: 18};
   for (const element of root.querySelectorAll<HTMLElement>('p')) {
-    element.scrollIntoView = vi.fn();
-    element.getBoundingClientRect = () => ({...rect, height: 160} as DOMRect);
+    element.scrollIntoView = vi.fn(() => { Object.assign(window, {scrollY: 100}); });
+    element.getBoundingClientRect = () => ({...rect, top: rect.top - window.scrollY, height: 160} as DOMRect);
   }
-  Object.assign(window, {scrollX: 0, scrollY: 0, getComputedStyle: () => ({lineHeight: '24px'})});
+  Object.assign(window, {scrollX: 0, scrollY: 0, innerHeight: 600, getComputedStyle: () => ({lineHeight: '24px'})});
+  Object.defineProperty(document.documentElement, "scrollHeight", {value: 1000});
   document.createRange = (() => ({selectNodeContents: () => {}, getClientRects: () => [rect]})) as unknown as typeof document.createRange;
   return {root, navigation: createReaderArrival(root)};
 }
 afterEach(() => vi.useRealTimers());
 
 describe("arrival feedback", () => {
-  it("highlights a containing paragraph, expires, and changes no content", () => {
+  it("highlights a containing paragraph, expires, and changes no content", async () => {
     vi.useFakeTimers();
     const {root, navigation} = fixture();
     const original = root.textContent;
-    expect(navigation.reveal(3)).toBe(true);
+    expect(await navigation.reveal(3)).toBe(true);
     expect(root.querySelector<HTMLElement>("[data-source-line=\"2\"]")?.scrollIntoView)
       .toHaveBeenCalledWith({block: "start", behavior: "smooth"});
     expect(root.ownerDocument.querySelector<HTMLElement>('.' + arrivalClass)?.style.height).toBe('24px');
@@ -31,24 +32,71 @@ describe("arrival feedback", () => {
     expect(root.ownerDocument.querySelector('.' + arrivalClass)).toBeNull();
     expect(root.textContent).toBe(original);
   });
-  it("repeated activation renews one marker and another target replaces it", () => {
+  it("repeated activation renews one marker and another target replaces it", async () => {
     vi.useFakeTimers();
     const {root, navigation} = fixture();
-    navigation.reveal(2);
+    await navigation.reveal(2);
     vi.advanceTimersByTime(arrivalDuration - 10);
-    navigation.reveal(2);
+    await navigation.reveal(2);
     vi.advanceTimersByTime(20);
     expect(root.ownerDocument.querySelectorAll('.' + arrivalClass).length).toBe(1);
-    navigation.reveal(7);
+    await navigation.reveal(7);
     expect(root.ownerDocument.querySelectorAll('.' + arrivalClass).length).toBe(1);
     expect(root.ownerDocument.querySelector<HTMLElement>('.' + arrivalClass)?.dataset.arrivalLine).toBe('7');
     navigation.clear();
     expect(vi.getTimerCount()).toBe(0);
   });
-  it("an unresolved line never highlights the preceding or first paragraph", () => {
+  it("an unresolved line never highlights the preceding or first paragraph", async () => {
     const {root, navigation} = fixture();
-    for (const line of [0, 1, 5, 99, NaN, 2.5]) expect(navigation.reveal(line)).toBe(false);
+    for (const line of [0, 1, 5, 99, NaN, 2.5]) expect(await navigation.reveal(line)).toBe(false);
     expect(root.ownerDocument.querySelector('.' + arrivalClass)).toBeNull();
+  });
+  it("confirms smooth arrival only at its destination and cancels superseded navigation", async () => {
+    vi.useFakeTimers();
+    const {root, navigation} = fixture();
+    for (const element of root.querySelectorAll<HTMLElement>('p')) element.scrollIntoView = vi.fn();
+    const first = navigation.reveal(2);
+    const second = navigation.reveal(7);
+    let completed = false;
+    void second.then(() => { completed = true; });
+    await vi.advanceTimersByTimeAsync(32);
+    expect(completed).toBe(false);
+    expect(await first).toBe(false);
+    expect(root.ownerDocument.querySelector('.' + arrivalClass)).toBeNull();
+    Object.assign(root.ownerDocument.defaultView!, {scrollY: 100});
+    await vi.advanceTimersByTimeAsync(16);
+    expect(await second).toBe(true);
+    expect(root.ownerDocument.querySelector<HTMLElement>('.' + arrivalClass)?.dataset.arrivalLine).toBe('7');
+    navigation.destroy();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+  it("retains immediate reduced-motion navigation and accepts a bottom-clamped destination", async () => {
+    vi.useFakeTimers();
+    const {root, navigation} = fixture();
+    const owner = root.ownerDocument.defaultView!;
+    Object.assign(owner, {matchMedia: () => ({matches: true})});
+    expect(await navigation.reveal(2)).toBe(true);
+    const target = root.querySelector<HTMLElement>('[data-source-line="7"]')!;
+    target.getBoundingClientRect = () => ({top: 900 - owner.scrollY, left: 20, width: 300, height: 160} as DOMRect);
+    target.scrollIntoView = vi.fn(() => { Object.assign(owner, {scrollY: 400}); });
+    expect(await navigation.reveal(7)).toBe(true);
+    expect(target.scrollIntoView).toHaveBeenCalledWith({block: "start", behavior: "auto"});
+    navigation.destroy();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+  it("does not report a stalled or destroyed scroll as reached", async () => {
+    vi.useFakeTimers();
+    const {root, navigation} = fixture();
+    for (const element of root.querySelectorAll<HTMLElement>('p')) element.scrollIntoView = vi.fn();
+    const stalled = navigation.reveal(2);
+    await vi.advanceTimersByTimeAsync(2016);
+    expect(await stalled).toBe(false);
+    const departed = navigation.reveal(7);
+    navigation.destroy();
+    await vi.advanceTimersByTimeAsync(16);
+    expect(await departed).toBe(false);
+    expect(root.ownerDocument.querySelector('.' + arrivalClass)).toBeNull();
+    expect(vi.getTimerCount()).toBe(0);
   });
   it("editor feedback preserves exact text and selection and clears on a source change", () => {
     const source = '\uFEFF中文 😀\r\nSecond passage';

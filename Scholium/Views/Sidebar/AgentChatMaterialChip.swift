@@ -67,15 +67,15 @@ struct AgentChatMaterialChip: View {
                                 emphasized: .destructive
                             )
                     }
-                        .buttonStyle(.plain)
-                        .scholiumActivationPointer()
-                        .scholiumContentControlPointerFeedback(
-                            in: RoundedRectangle(
-                                cornerRadius: ScholiumShape.editorialControlCornerRadius,
-                                style: .continuous
-                            )
+                    .buttonStyle(.plain)
+                    .scholiumActivationPointer()
+                    .scholiumContentControlPointerFeedback(
+                        in: RoundedRectangle(
+                            cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                            style: .continuous
                         )
-                        .help("Remove Material").accessibilityLabel(Text("Remove material: \(title)"))
+                    )
+                    .help("Remove Material").accessibilityLabel(Text("Remove material: \(title)"))
                 }
             }
         }

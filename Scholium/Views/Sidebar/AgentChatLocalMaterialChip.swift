@@ -53,16 +53,16 @@ struct AgentChatLocalMaterialChip: View {
                                 emphasized: .destructive
                             )
                     }
-                        .buttonStyle(.plain)
-                        .scholiumActivationPointer()
-                        .scholiumContentControlPointerFeedback(
-                            in: RoundedRectangle(
-                                cornerRadius: ScholiumShape.editorialControlCornerRadius,
-                                style: .continuous
-                            )
+                    .buttonStyle(.plain)
+                    .scholiumActivationPointer()
+                    .scholiumContentControlPointerFeedback(
+                        in: RoundedRectangle(
+                            cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                            style: .continuous
                         )
-                        .accessibilityLabel(
-                            "Remove material: \(AgentChatLocalMaterialLabels.title(material))")
+                    )
+                    .accessibilityLabel(
+                        "Remove material: \(AgentChatLocalMaterialLabels.title(material))")
                 }
             }
         }

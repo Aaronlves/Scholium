@@ -439,7 +439,7 @@ public actor VaultRepository {
         }
 
         let candidateData = Data(updatedContent.utf8)
-        let mutation = try recoveryLedger.beginMutation(
+        var mutation = try recoveryLedger.beginMutation(
             relativePath: relativePath,
             expected: currentData,
             candidate: candidateData
@@ -448,14 +448,19 @@ public actor VaultRepository {
             let recheckedData = try readSource(relativePath: relativePath)
             let recheckedFingerprint = DocumentFingerprint(data: recheckedData)
             guard recheckedFingerprint == expectedRevision else {
-                try recoveryLedger.completeMutation(mutation)
+                try recoveryLedger.completeMutation(mutation, sourceAccess: descriptorAccess)
                 return .notWritten(.conflict(recheckedFingerprint))
             }
             try mutationCoordinator.updateExisting(
                 path: markdownRelativePath(relativePath),
                 expected: currentData,
-                candidate: candidateData
+                candidate: candidateData,
+                backupID: mutation.id
             )
+            mutation = try recoveryLedger.reconcileReplacementBackup(mutation, access: descriptorAccess, required: true)
+            if mutation.displaced != nil {
+                return .recoveryRequired(try interruptedSaveRecovery(for: mutation))
+            }
             let readback = try readSource(relativePath: relativePath)
             let expectedFingerprint = DocumentFingerprint(content: updatedContent)
             let readbackFingerprint = DocumentFingerprint(data: readback)
@@ -469,21 +474,29 @@ public actor VaultRepository {
             // now-redundant transaction is invisible housekeeping;
             // if it fails, startup can observe the candidate revision and
             // retry without changing Document state.
-            try? recoveryLedger.completeMutation(mutation)
+            try? recoveryLedger.completeMutation(mutation, sourceAccess: descriptorAccess)
             return .committed(SaveResult(document: updated))
         } catch {
+            // This runs even when Foundation or post-replacement observation fails.
+            // Never infer success from candidate bytes while the replaced source
+            // has not been accounted for.
+            mutation = try recoveryLedger.reconcileReplacementBackup(mutation, access: descriptorAccess)
+            if mutation.displaced != nil {
+                return .recoveryRequired(try interruptedSaveRecovery(for: mutation))
+            }
             if let knownOutcome = knownNotWrittenOutcome(for: error) {
-                try? recoveryLedger.completeMutation(mutation)
+                try? recoveryLedger.completeMutation(mutation, sourceAccess: descriptorAccess)
                 return knownOutcome
             }
 
             // File Provider and coordinated replacement APIs can finish the
             // replacement and still report an error. Exact canonical bytes,
             // not that advisory error, determine the user-visible save state.
-            if let canonical = try? readSource(relativePath: relativePath),
+            if mutation.replacementReconciled,
+                let canonical = try? readSource(relativePath: relativePath),
                 canonical == candidateData
             {
-                try? recoveryLedger.completeMutation(mutation)
+                try? recoveryLedger.completeMutation(mutation, sourceAccess: descriptorAccess)
                 return .committed(SaveResult(document: updated))
             }
 
@@ -493,7 +506,7 @@ public actor VaultRepository {
             if let canonical = try? readSource(relativePath: relativePath),
                 canonical == currentData
             {
-                try? recoveryLedger.completeMutation(mutation)
+                try? recoveryLedger.completeMutation(mutation, sourceAccess: descriptorAccess)
                 throw VaultRepositoryError.writeFailed(error.localizedDescription)
             }
 
@@ -918,8 +931,8 @@ public actor VaultRepository {
                     transactionID: transaction.id
                 ),
                 relativePath: transaction.relativePath,
-                expectedRevision: transaction.expected,
-                candidateRevision: transaction.candidate,
+                expectedRevision: transaction.recoveryExpected,
+                candidateRevision: transaction.recoveryCandidate,
                 createdAt: transaction.createdAt,
                 retainedReason: transaction.retainedReason ?? "The interrupted save remains retained.",
                 sourceState: interruptedSaveSourceState(transaction)
@@ -940,7 +953,7 @@ public actor VaultRepository {
         return InterruptedSaveRecoveryContent(
             recoveryID: recovery.id,
             exactSource: exactSource,
-            fingerprint: transaction.candidate
+            fingerprint: transaction.recoveryCandidate
         )
     }
 
@@ -949,7 +962,7 @@ public actor VaultRepository {
     ) throws -> URL {
         let transaction = try retainedMutation(matching: recovery)
         return try recoveryLedger.retainedMutationDirectory(for: transaction)
-            .appendingPathComponent("candidate.md", isDirectory: false)
+            .appendingPathComponent(transaction.recoveryFileName, isDirectory: false)
     }
 
     public func restoreInterruptedSaveRecovery(
@@ -964,7 +977,7 @@ public actor VaultRepository {
         }
         let currentData = try readSource(relativePath: transaction.relativePath)
         let current = DocumentFingerprint(data: currentData)
-        if current == transaction.candidate {
+        if current == transaction.recoveryCandidate {
             let document = NoteDocument(
                 relativePath: transaction.relativePath,
                 rawContent: candidateContent
@@ -975,9 +988,9 @@ public actor VaultRepository {
                 didReplaceSource: false
             )
         }
-        guard current == transaction.expected else {
+        guard current == transaction.recoveryExpected else {
             throw VaultRepositoryError.conflict(
-                expected: transaction.expected,
+                expected: transaction.recoveryExpected,
                 current: current
             )
         }
@@ -985,7 +998,7 @@ public actor VaultRepository {
         let result = try save(
             relativePath: transaction.relativePath,
             changeSet: .exactContent(candidateContent),
-            expectedRevision: transaction.expected
+            expectedRevision: transaction.recoveryExpected
         )
         completeInterruptedSaveRecovery(transaction)
         return InterruptedSaveRecoveryRestoreCommit(
@@ -1006,13 +1019,13 @@ public actor VaultRepository {
             data: try readSource(
                 relativePath: transaction.relativePath
             ))
-        guard current == transaction.expected else {
+        guard current == transaction.recoveryExpected else {
             throw VaultRepositoryError.conflict(
-                expected: transaction.expected,
+                expected: transaction.recoveryExpected,
                 current: current
             )
         }
-        try recoveryLedger.completeMutation(transaction)
+        try recoveryLedger.completeMutation(transaction, sourceAccess: descriptorAccess)
     }
 
     /// Remaps machine-local pre-write evidence after a stable-identity move.
@@ -1039,8 +1052,8 @@ public actor VaultRepository {
             id: recovery.id.transactionID
         )
         guard transaction.relativePath == recovery.relativePath,
-            transaction.expected == recovery.expectedRevision,
-            transaction.candidate == recovery.candidateRevision,
+            transaction.recoveryExpected == recovery.expectedRevision,
+            transaction.recoveryCandidate == recovery.candidateRevision,
             transaction.createdAt == recovery.createdAt,
             transaction.retainedReason == recovery.retainedReason
         else {
@@ -1119,8 +1132,8 @@ public actor VaultRepository {
             let observed = DocumentFingerprint(
                 data: try readSource(relativePath: transaction.relativePath)
             )
-            if observed == transaction.expected { return .expectedRevision }
-            if observed == transaction.candidate { return .candidateRevision }
+            if observed == transaction.recoveryExpected { return .expectedRevision }
+            if observed == transaction.recoveryCandidate { return .candidateRevision }
             return .changed(observed)
         } catch VaultRepositoryError.fileDoesNotExist {
             return .missing
@@ -1134,7 +1147,7 @@ public actor VaultRepository {
     private func completeInterruptedSaveRecovery(
         _ transaction: PrewriteRecoveryLedger.MutationTransaction
     ) {
-        try? recoveryLedger.completeMutation(transaction)
+        try? recoveryLedger.completeMutation(transaction, sourceAccess: descriptorAccess)
     }
 
     private func readSource(relativePath: String) throws -> Data {

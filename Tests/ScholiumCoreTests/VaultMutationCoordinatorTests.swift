@@ -13,14 +13,17 @@ struct VaultMutationCoordinatorTests {
     func successfulExistingUpdate() throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
+        let backupID = UUID()
 
         try VaultMutationCoordinator(resolver: fixture.resolver).updateExisting(
             path: fixture.path,
             expected: fixture.original,
-            candidate: fixture.candidate
+            candidate: fixture.candidate,
+            backupID: backupID
         )
 
         #expect(try Data(contentsOf: fixture.note) == fixture.candidate)
+        #expect(try Data(contentsOf: fixture.root.appendingPathComponent(VaultMutationCoordinator.replacementBackupName(backupID))) == fixture.original)
         #expect(try fixture.replacementFiles().isEmpty)
     }
 
@@ -39,7 +42,8 @@ struct VaultMutationCoordinatorTests {
             try coordinator.updateExisting(
                 path: fixture.path,
                 expected: fixture.original,
-                candidate: fixture.candidate
+                candidate: fixture.candidate,
+                backupID: UUID()
             )
         }
         #expect(try Data(contentsOf: fixture.note) == fixture.original)
@@ -61,7 +65,8 @@ struct VaultMutationCoordinatorTests {
             try coordinator.updateExisting(
                 path: fixture.path,
                 expected: fixture.original,
-                candidate: fixture.candidate
+                candidate: fixture.candidate,
+                backupID: UUID()
             )
         }
         #expect(try Data(contentsOf: fixture.note) == fixture.candidate)
@@ -86,7 +91,8 @@ struct VaultMutationCoordinatorTests {
             try coordinator.updateExisting(
                 path: fixture.path,
                 expected: fixture.original,
-                candidate: fixture.candidate
+                candidate: fixture.candidate,
+                backupID: UUID()
             )
         }
         #expect(try Data(contentsOf: fixture.note) == external)
@@ -118,7 +124,8 @@ struct VaultMutationCoordinatorTests {
             try coordinator.updateExisting(
                 path: fixture.path,
                 expected: fixture.original,
-                candidate: fixture.candidate
+                candidate: fixture.candidate,
+                backupID: UUID()
             )
         }
         #expect(try Data(contentsOf: outside) == outsideBytes)
@@ -168,7 +175,8 @@ struct VaultMutationCoordinatorTests {
             try coordinator.updateExisting(
                 path: path,
                 expected: original,
-                candidate: candidate
+                candidate: candidate,
+                backupID: UUID()
             )
         }
         #expect(try Data(contentsOf: detached.appendingPathComponent("Note.md")) == original)
@@ -193,7 +201,8 @@ struct VaultMutationCoordinatorTests {
             try coordinator.updateExisting(
                 path: fixture.path,
                 expected: fixture.original,
-                candidate: fixture.candidate
+                candidate: fixture.candidate,
+                backupID: UUID()
             )
         }
         #expect(try Data(contentsOf: fixture.note) == external)
@@ -229,7 +238,8 @@ struct VaultMutationCoordinatorTests {
         try coordinator.updateExisting(
             path: fixture.path,
             expected: fixture.original,
-            candidate: fixture.candidate
+            candidate: fixture.candidate,
+            backupID: UUID()
         )
         #expect(try Data(contentsOf: fixture.note) == fixture.candidate)
     }
@@ -242,7 +252,8 @@ struct VaultMutationCoordinatorTests {
         try coordinator.updateExisting(
             path: fixture.path,
             expected: fixture.original,
-            candidate: fixture.candidate
+            candidate: fixture.candidate,
+            backupID: UUID()
         )
 
         let createdPath = try MarkdownRelativePath("Created.md")

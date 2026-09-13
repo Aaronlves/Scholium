@@ -165,26 +165,37 @@
   }
   function createReaderArrival(root) {
     let marker = null;
+    let generation = 0;
     let timer;
     const owner = root.ownerDocument.defaultView;
     function clear() {
+      generation += 1;
       clearTimeout(timer);
       timer = void 0;
       marker?.remove();
       marker = null;
     }
     const span = (element) => Number(element.dataset.sourceUtf16End ?? 0) - Number(element.dataset.sourceUtf16Start ?? 0);
-    function reveal(line) {
+    async function reveal(line) {
       clear();
+      const requestGeneration = generation;
       if (!Number.isSafeInteger(line) || line < 1 || !owner) return false;
       const candidates = [...root.querySelectorAll("[data-source-line]")].filter((element) => Number(element.dataset.sourceLine) <= line && Number(element.dataset.sourceEndLine ?? element.dataset.sourceLine) >= line).sort((a, b) => Number(Number(b.dataset.sourceLine) === line) - Number(Number(a.dataset.sourceLine) === line) || span(a) - span(b));
       const target = candidates[0];
       if (!target) return false;
       const reduceMotion = typeof owner.matchMedia === "function" && owner.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      const extent = Math.max(0, root.ownerDocument.documentElement.scrollHeight - owner.innerHeight);
+      const destination = Math.max(0, Math.min(extent, owner.scrollY + target.getBoundingClientRect().top));
       target.scrollIntoView({
         block: "start",
         behavior: reduceMotion ? "auto" : "smooth"
       });
+      const deadline = Date.now() + 2e3;
+      while (Math.abs(owner.scrollY - destination) > 1) {
+        if (generation !== requestGeneration || Date.now() >= deadline) return false;
+        await new Promise((resolve) => setTimeout(resolve, 16));
+      }
+      if (generation !== requestGeneration || !target.isConnected) return false;
       const range = root.ownerDocument.createRange();
       range.selectNodeContents(target);
       const rect = [...range.getClientRects()].find((rect2) => rect2.width > 0 && rect2.height > 0);

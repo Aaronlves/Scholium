@@ -33,7 +33,7 @@ struct AgentChatReplyQuoteCard: View {
                     )
                 )
                 .accessibilityLabel(Text("Reply Excerpt"))
-                    .accessibilityValue(quote.text)
+                .accessibilityValue(quote.text)
                 if let remove {
                     Button(action: remove) {
                         Image(systemName: "xmark")
@@ -42,15 +42,15 @@ struct AgentChatReplyQuoteCard: View {
                                 emphasized: .destructive
                             )
                     }
-                        .buttonStyle(.plain)
-                        .scholiumActivationPointer()
-                        .scholiumContentControlPointerFeedback(
-                            in: RoundedRectangle(
-                                cornerRadius: ScholiumShape.editorialControlCornerRadius,
-                                style: .continuous
-                            )
+                    .buttonStyle(.plain)
+                    .scholiumActivationPointer()
+                    .scholiumContentControlPointerFeedback(
+                        in: RoundedRectangle(
+                            cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                            style: .continuous
                         )
-                        .accessibilityLabel("Remove Quote")
+                    )
+                    .accessibilityLabel("Remove Quote")
                 }
             }
         }

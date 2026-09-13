@@ -1988,7 +1988,10 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             let record = try await recordUncertainNoteSave(
                 id: id,
                 expectedRevision: expectedRevision,
-                intendedRevision: sourceRecovery.candidateRevision,
+                // A displaced external revision is a restoration candidate,
+                // not the source this save originally attempted to write.
+                intendedRevision: sourceRecovery.expectedRevision == expectedRevision
+                    ? sourceRecovery.candidateRevision : nil,
                 repository: repository,
                 failure: sourceRecovery.retainedReason,
                 detail: "The coordinated save could not prove the canonical result. The exact source transaction remains machine-local for reconciliation."
