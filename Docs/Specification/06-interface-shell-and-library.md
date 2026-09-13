@@ -161,6 +161,14 @@ macOS owns their resting, hover, press, focus, disabled, menu, and accessibility
 presentation. Folder-local Expand/Collapse remains in each Folder's contextual
 and accessibility actions.
 
+Library and Chat share semantic action and object symbols. Repeated actions use
+one glyph; editing, creating, archiving, restoring, dismissing, removing supplied
+material, and deleting remain distinguishable. Custom accessory glyphs share an
+alignment track; compact action labels use the shared control target independently
+of glyph size. Native Source List and header controls retain their own geometry.
+Symbol-only actions retain complete accessibility names and pointer help. Domain
+state symbols remain paired with meaningful state text where a glyph is ambiguous.
+
 Content presence, including link annotations, is not an Integrity problem.
 A filtered empty result names the absence of matches and retains Clear; it
 does not claim the Library contains no Notes or invite creation as the remedy.

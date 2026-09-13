@@ -13,8 +13,6 @@ struct AgentChatDisclosureStyle: DisclosureGroupStyle {
         let configuration: DisclosureGroupStyleConfiguration
         let animates: Bool
         let symbol: String?
-        @Environment(\.controlActiveState) private var windowState
-        @Environment(\.accessibilityReduceMotion) private var reduceMotion
         @State private var isHovered = false
         @State private var hasOpened = false
         @FocusState private var isFocused: Bool
@@ -37,10 +35,7 @@ struct AgentChatDisclosureStyle: DisclosureGroupStyle {
                             if let symbol {
                                 Image(systemName: symbol).opacity(showsChevron ? 0 : 1)
                             }
-                            Image(systemName: "chevron.right")
-                                .animation(ScholiumMotion.disclosure(reduceMotion: reduceMotion || !animates || windowState == .inactive)) { image in
-                                    image.rotationEffect(.degrees(configuration.isExpanded ? 90 : 0))
-                                }
+                            ScholiumSidebarDisclosureIndicator(isExpanded: configuration.isExpanded, animates: animates)
                                 .opacity(showsChevron ? 1 : 0)
                         }
                         .font(.caption)
@@ -87,11 +82,5 @@ struct AgentChatDisclosureStyle: DisclosureGroupStyle {
                 if expanded { hasOpened = true }
             }
         }
-    }
-}
-
-extension Image {
-    func chatAccessory() -> some View {
-        imageScale(.small).foregroundStyle(.secondary).frame(width: 20, height: 20)
     }
 }

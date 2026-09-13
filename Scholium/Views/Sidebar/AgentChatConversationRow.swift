@@ -4,6 +4,11 @@ import SwiftUI
 
 /// Source-neutral list copy. Conversation storage and execution remain controller-owned.
 enum AgentChatListPresentation {
+    static let unreadSymbol = "circle.fill"
+    static let importantSymbol = "star.fill"
+    static func readActionSymbol(isUnread: Bool) -> String { isUnread ? "envelope.open" : "envelope.badge" }
+    static func importanceActionSymbol(isImportant: Bool) -> String { isImportant ? "star.slash" : "star" }
+
     static func plainText(_ source: String) -> String {
         MarkdownVisibleText.render(source).split(whereSeparator: \.isWhitespace).joined(separator: " ")
     }
@@ -67,7 +72,7 @@ struct AgentChatConversationRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: ScholiumSidebarLayout.itemSpacing) {
-            Image(systemName: "circle.fill")
+            Image(systemName: AgentChatListPresentation.unreadSymbol)
                 .font(.caption2)
                 .foregroundStyle(ScholiumNativeColorRole.controlAccent.color)
                 .opacity(conversation.unreadAt == nil ? 0 : 1)
@@ -84,7 +89,7 @@ struct AgentChatConversationRow: View {
                         .layoutPriority(1)
                     Spacer(minLength: ScholiumSidebarLayout.textSpacing)
                     if conversation.importantAt != nil {
-                        Image(systemName: "star.fill").foregroundStyle(.secondary).accessibilityHidden(true)
+                        Image(systemName: AgentChatListPresentation.importantSymbol).foregroundStyle(.secondary).accessibilityHidden(true)
                     }
                     if Calendar.current.isDateInToday(conversation.updatedAt) {
                         Text(conversation.updatedAt, format: .dateTime.hour().minute())

@@ -213,7 +213,7 @@ struct AgentChatView: View {
                 Button {
                     if !showsConversationList { showsConversationList = true } else { showsArchived = false }
                 } label: {
-                    ScholiumSidebarHeaderIcon(systemImage: "chevron.left")
+                    ScholiumSidebarHeaderIcon(systemImage: ScholiumSidebarAction.back.symbol)
                 }
                 .scholiumSidebarHeaderControl()
                 .help("Conversations").accessibilityLabel("Conversations")
@@ -246,7 +246,7 @@ struct AgentChatView: View {
                     showsConversationList = false
                     messageIsFocused = true
                 } label: {
-                    ScholiumSidebarHeaderIcon(systemImage: "square.and.pencil")
+                    ScholiumSidebarHeaderIcon(systemImage: ScholiumSidebarAction.newConversation.symbol)
                 }
                 .scholiumSidebarHeaderControl()
                 .disabled(!controller.isLoaded)
@@ -256,7 +256,7 @@ struct AgentChatView: View {
                     archiveMenu
                 } else {
                     Menu {
-                        Button("Conversation Outline", systemImage: "list.bullet.indent") { showsTurns = true }
+                        Button("Conversation Outline", systemImage: ScholiumSidebarAction.outline.symbol) { showsTurns = true }
                         Button("Find in Conversation") {
                             showsFind = true
                             messageIsFocused = false
@@ -294,7 +294,7 @@ struct AgentChatView: View {
                             showConversationChanges(controller.selected?.messages.compactMap(\.changeID) ?? [])
                         }.accessibilityIdentifier("scholium.chat.changeHistory")
                     } label: {
-                        ScholiumSidebarHeaderIcon(systemImage: "ellipsis")
+                        ScholiumSidebarHeaderIcon(systemImage: ScholiumSidebarAction.more.symbol)
                     }
                     .scholiumSidebarHeaderControl()
                     .accessibilityLabel("Chat Options")
@@ -312,7 +312,7 @@ struct AgentChatView: View {
             Button("Conversations") { showsArchived = false }
             Button("Archived Chats") { showsArchived = true }
         } label: {
-            ScholiumSidebarHeaderIcon(systemImage: "archivebox")
+            ScholiumSidebarHeaderIcon(systemImage: ScholiumSidebarAction.archive.symbol)
         }
         .scholiumSidebarHeaderControl()
         .help("Organize Chats").accessibilityLabel("Organize Chats")
@@ -448,22 +448,22 @@ struct AgentChatView: View {
         .accessibilityActions { conversationActions(conversation) }
         .swipeActions(edge: .trailing, allowsFullSwipe: conversation.archivedAt == nil) {
             if conversation.archivedAt != nil {
-                Button("Delete", systemImage: "trash", role: .destructive) { deletionTarget = conversation.id }
+                Button("Delete", systemImage: ScholiumSidebarAction.delete.symbol, role: .destructive) { deletionTarget = conversation.id }
                     .disabled(!controller.canArchive(conversation.id))
             }
-            Button(conversation.archivedAt == nil ? "Archive" : "Restore", systemImage: "archivebox") {
+            Button(conversation.archivedAt == nil ? "Archive" : "Restore", systemImage: conversation.archivedAt == nil ? ScholiumSidebarAction.archive.symbol : ScholiumSidebarAction.restore.symbol) {
                 controller.setArchived(conversation.id, archived: conversation.archivedAt == nil)
             }
             .tint(ScholiumNativeColorRole.archiveAction.color)
             .disabled(!controller.canArchive(conversation.id))
         }
         .swipeActions(edge: .leading) {
-            Button(conversation.unreadAt == nil ? "Unread" : "Read", systemImage: conversation.unreadAt == nil ? "envelope.badge" : "envelope.open") {
+            Button(conversation.unreadAt == nil ? "Unread" : "Read", systemImage: AgentChatListPresentation.readActionSymbol(isUnread: conversation.unreadAt != nil)) {
                 controller.setUnread(conversation.id, unread: conversation.unreadAt == nil)
             }
             .accessibilityLabel(conversation.unreadAt == nil ? "Mark as Unread" : "Mark as Read")
             .tint(ScholiumNativeColorRole.unreadAction.color)
-            Button(conversation.importantAt == nil ? "Important" : "Unmark", systemImage: conversation.importantAt == nil ? "star" : "star.slash") {
+            Button(conversation.importantAt == nil ? "Important" : "Unmark", systemImage: AgentChatListPresentation.importanceActionSymbol(isImportant: conversation.importantAt != nil)) {
                 controller.setImportant(conversation.id, important: conversation.importantAt == nil)
             }
             .accessibilityLabel(conversation.importantAt == nil ? "Mark as Important" : "Unmark Important")
@@ -566,7 +566,7 @@ struct AgentChatView: View {
                 if earlier { readingSession.history.earlier(in: ids) }
                 else { readingSession.history.later(in: ids) }
             } label: {
-                Label(earlier ? "Earlier Messages" : "Later Messages", systemImage: earlier ? "arrow.up" : "arrow.down")
+                Label(earlier ? "Earlier Messages" : "Later Messages", systemImage: earlier ? ScholiumSidebarAction.earlier.symbol : ScholiumSidebarAction.later.symbol)
             }
             .buttonStyle(.borderless).font(.callout)
             .frame(maxWidth: .infinity, minHeight: ScholiumGrid.Dimension.preferredCustomTarget)
@@ -583,7 +583,7 @@ struct AgentChatView: View {
 
     private var turnNavigationButton: some View {
         Button { showsTurns = true } label: {
-            Image(systemName: "list.bullet.indent").padding(7)
+            ScholiumSidebarIcon(systemImage: ScholiumSidebarAction.outline.symbol, placement: .action)
         }
         .buttonStyle(.borderless).foregroundStyle(.primary)
         .glassEffect(.clear.interactive(), in: Circle())
@@ -601,11 +601,13 @@ struct AgentChatView: View {
     private var contextMeterButton: some View {
         Button { showsContext = true } label: {
             HStack(spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
-                Image(systemName: "chart.pie")
+                ScholiumSidebarIcon(systemImage: ScholiumSidebarItem.context.symbol)
                 if let fraction = AgentChatContextPresentation.fraction(controller.selected?.contextUsage) {
                     Text(fraction.formatted(.percent.precision(.fractionLength(0)))).monospacedDigit()
                 }
-            }.font(.caption).padding(7)
+            }.font(.caption)
+                .padding(.horizontal, ScholiumGrid.Spacing.inlineControlGap)
+                .frame(minWidth: ScholiumGrid.Dimension.preferredCustomTarget, minHeight: ScholiumGrid.Dimension.preferredCustomTarget)
         }
         .buttonStyle(.borderless).foregroundStyle(.primary)
         .glassEffect(.clear.interactive(), in: Capsule())
@@ -623,12 +625,11 @@ struct AgentChatView: View {
     private func currentPlanButton(_ plan: AgentChatPlan) -> some View {
         Button { showsPlan = true } label: {
             HStack(spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
-                Image(systemName: "checklist")
+                ScholiumSidebarIcon(systemImage: ScholiumSidebarItem.plan.symbol)
                 Text(verbatim: plan.steps.first(where: { $0.status == .inProgress })?.step ?? String(localized: "Plan", bundle: .module))
                     .lineLimit(1)
                 Spacer(minLength: 0)
                 Text("\(plan.steps.filter { $0.status == .completed }.count)/\(plan.steps.count)").monospacedDigit()
-                Image(systemName: "chevron.up").imageScale(.small)
             }.font(.callout)
                 .padding(ScholiumGrid.Spacing.inlineControlGap)
         }
@@ -677,7 +678,7 @@ struct AgentChatView: View {
                                 if showsFind, let message = item.messages.first(where: { $0.id == find.selectedID }),
                                     let passage = AgentChatSearch.passage(in: message, query: AgentChatSearch.query(find.query))
                                 {
-                                    Label("Matching Message", systemImage: "magnifyingglass")
+                                    Label("Matching Message", systemImage: ScholiumSidebarAction.search.symbol)
                                         .font(.caption).foregroundStyle(.secondary)
                                     Text(passage).font(.callout).textSelection(.enabled)
                                 }
@@ -739,7 +740,7 @@ struct AgentChatView: View {
                                 Button {
                                     readingSession.latest(in: timelineItems.map(\.id))
                                 } label: {
-                                    Image(systemName: "arrow.down").padding(7)
+                                    ScholiumSidebarIcon(systemImage: ScholiumSidebarAction.later.symbol, placement: .action)
                                 }
                                 .buttonStyle(.borderless).foregroundStyle(.primary)
                                 .glassEffect(.clear.interactive(), in: Circle())
@@ -862,7 +863,7 @@ struct AgentChatView: View {
                         }
                     }
                     ForEach(message.methods ?? []) { method in
-                        Label(method.title, systemImage: "square.stack").font(.caption).foregroundStyle(.secondary)
+                        Label(method.title, systemImage: ScholiumSidebarItem.skill.symbol).font(.caption).foregroundStyle(.secondary)
                             .accessibilityLabel("Requested Skill: \(method.title)")
                     }
                 }
@@ -877,7 +878,7 @@ struct AgentChatView: View {
                             openAttachment: openAttachment, previewMaterial: { try await controller.previewLocalMaterial($0) })
                     }
                     messageActions(message, in: conversationID)
-                        .labelStyle(AgentChatReplyActionLabelStyle())
+                        .labelStyle(ScholiumSidebarActionLabelStyle())
                 }.buttonStyle(.borderless).foregroundStyle(.secondary)
             }
         }
@@ -894,21 +895,21 @@ struct AgentChatView: View {
     @ViewBuilder
     private func messageActions(_ message: AgentChatMessage, in conversationID: UUID?) -> some View {
         if controller.editableRequests.contains(where: { $0.id == message.id }) {
-            Button("Edit in New Branch", systemImage: "square.and.pencil") { controller.editInNewBranch(message.id) }
+            Button("Edit in New Branch", systemImage: ScholiumSidebarAction.edit.symbol) { controller.editInNewBranch(message.id) }
                 .disabled(!controller.canBranch)
                 .help("Edit in New Branch").accessibilityLabel("Edit in New Branch")
         }
         if let turnID = message.turnID {
-            Button("Branch from This Turn", systemImage: "arrow.triangle.branch") { controller.branch(through: turnID) }
+            Button("Branch from This Turn", systemImage: ScholiumSidebarAction.branch.symbol) { controller.branch(through: turnID) }
                 .disabled(!controller.canBranch || !controller.branchPoints.contains(where: { $0.turnID == turnID }))
                 .help("Branch from This Turn").accessibilityLabel("Branch from This Turn")
             if controller.canRetryInNewBranch(turnID: turnID) {
-                Button("Retry in New Branch", systemImage: "arrow.clockwise") { controller.retryInNewBranch(turnID: turnID) }
+                Button("Retry in New Branch", systemImage: ScholiumSidebarAction.retry.symbol) { controller.retryInNewBranch(turnID: turnID) }
                     .help("Retry in New Branch").accessibilityLabel("Retry in New Branch")
             }
         }
         if canQuote(message) {
-            Button("Quote in Reply", systemImage: "text.quote") { quote(message, selection: nil, in: conversationID) }
+            Button("Quote in Reply", systemImage: ScholiumSidebarAction.quote.symbol) { quote(message, selection: nil, in: conversationID) }
                 .help("Quote in Reply").accessibilityLabel("Quote in Reply")
         }
     }
@@ -988,8 +989,7 @@ struct AgentChatView: View {
     }
 
     private func activitySymbol(_ activity: AgentChatActivity) -> some View {
-        Image(systemName: activity.status.isActive ? activity.kind.symbol : activity.status.symbol)
-            .chatAccessory()
+        ScholiumSidebarIcon(systemImage: activity.status.isActive ? activity.kind.symbol : activity.status.symbol)
             .accessibilityHidden(true)
     }
 
@@ -1400,7 +1400,7 @@ struct AgentChatView: View {
                             Button {
                                 controller.toggleMethod(method)
                             } label: {
-                                Label(method.title, systemImage: "xmark.circle")
+                                Label(method.title, systemImage: ScholiumSidebarAction.remove.symbol)
                             }
                             .help("Remove Skill").accessibilityLabel("Remove Skill: \(method.title)")
                         }
@@ -1544,7 +1544,7 @@ struct AgentChatView: View {
                             .disabled(controller.state == .stopping)
                     }
                 } label: {
-                    Label("Chat Actions", systemImage: "plus").labelStyle(.iconOnly)
+                    Label("Chat Actions", systemImage: ScholiumSidebarAction.add.symbol).labelStyle(.iconOnly)
                         .foregroundStyle(.primary)
                 }
                 .help("Chat Actions").accessibilityLabel("Chat Actions")

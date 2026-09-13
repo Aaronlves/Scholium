@@ -51,10 +51,10 @@ struct AgentChatQueueView: View {
                             }
                             Button("Remove from Queue", role: .destructive) { remove(message.id) }
                         } label: {
-                            Image(systemName: "ellipsis")
+                            ScholiumSidebarIcon(systemImage: ScholiumSidebarAction.more.symbol, placement: .action)
                         }
                         .menuStyle(.borderlessButton).menuIndicator(.hidden)
-                        .accessibilityLabel("Queued message actions")
+                        .help("Queued message actions").accessibilityLabel("Queued message actions")
                     }.frame(minHeight: 24)
                 }
             }
@@ -148,7 +148,7 @@ struct AgentChatQueuedMessageContents: View {
                         }
                     }
                     ForEach(message.localMaterials) { material in
-                        Label(AgentChatLocalMaterialLabels.title(material), systemImage: material.kind == .image ? "photo" : "doc.text")
+                        Label(AgentChatLocalMaterialLabels.title(material), systemImage: material.kind == .image ? ScholiumSidebarItem.image.symbol : ScholiumSidebarItem.file.symbol)
                         Text(AgentChatLocalMaterialLabels.summary(material)).foregroundStyle(.secondary)
                     }
                     ForEach(message.replyQuotes ?? []) { quote in
@@ -156,7 +156,7 @@ struct AgentChatQueuedMessageContents: View {
                             .accessibilityLabel(Text("Quoted reply: \(quote.text)"))
                     }
                     ForEach(message.methods ?? []) { method in
-                        Label(method.title, systemImage: "square.stack")
+                        Label(method.title, systemImage: ScholiumSidebarItem.skill.symbol)
                             .accessibilityLabel("Requested Skill: \(method.title)")
                     }
                 }

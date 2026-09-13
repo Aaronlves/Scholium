@@ -124,7 +124,7 @@ struct AgentChatComposerCandidates: View {
                             completion.accept(candidate)
                         } label: {
                             HStack(spacing: 8) {
-                                Image(systemName: candidate.symbol).frame(width: 18).accessibilityHidden(true)
+                                ScholiumSidebarIcon(systemImage: candidate.symbol).accessibilityHidden(true)
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(candidate.title)
                                         .scholiumContentControlInk(

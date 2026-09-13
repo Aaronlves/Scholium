@@ -36,7 +36,7 @@ struct AgentChatActivityDetails: View {
                 Button {
                     outputWindow.present(activity)
                 } label: {
-                    Image(systemName: "arrow.up.left.and.arrow.down.right").chatAccessory()
+                    ScholiumSidebarIcon(systemImage: ScholiumSidebarAction.expand.symbol, placement: .action)
                 }
                 .buttonStyle(
                     ScholiumContentControlButtonStyle(
@@ -51,8 +51,7 @@ struct AgentChatActivityDetails: View {
                 .help(Text("Open Output", bundle: .module))
                 .accessibilityLabel(Text("Open Output", bundle: .module))
                 Button(action: copyDetails) {
-                    Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                        .chatAccessory()
+                    ScholiumSidebarCopyIcon(copied: copied)
                         .opacity(isInline || isHovered || copyIsFocused || copied ? 1 : 0)
                 }
                 .buttonStyle(

@@ -52,7 +52,7 @@ struct AgentChatRichContent: View {
                         NSPasteboard.general.clearContents()
                         NSPasteboard.general.setString(segment.code ?? layout.text.attributedSubstring(from: segment.range).string, forType: .string)
                     } label: {
-                        Image(systemName: "doc.on.doc").chatAccessory()
+                        ScholiumSidebarIcon(systemImage: ScholiumSidebarAction.copy.symbol, placement: .action)
                     }
                     .buttonStyle(.borderless).help("Copy").accessibilityLabel("Copy")
                 }

@@ -121,7 +121,7 @@ struct AgentChatPlanView: View {
             }.frame(maxWidth: .infinity, alignment: .leading).padding(.top, 6)
         } label: {
             HStack {
-                Label("Plan", systemImage: "list.bullet")
+                Label("Plan", systemImage: ScholiumSidebarItem.plan.symbol)
                 Spacer(minLength: 6)
                 Text("\(plan.steps.filter { $0.status == .completed }.count)/\(plan.steps.count)")
                     .monospacedDigit().foregroundStyle(.secondary)
@@ -231,7 +231,7 @@ struct AgentChatContextView: View {
                     Label {
                         Text("Refresh", bundle: .module)
                     } icon: {
-                        Image(systemName: "arrow.clockwise")
+                        Image(systemName: ScholiumSidebarAction.retry.symbol)
                     }
                 }
                 .disabled(isRefreshing || !canRefresh)

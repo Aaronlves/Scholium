@@ -141,7 +141,7 @@ struct AgentChatReadingTests {
                 Button("Branch from This Turn", systemImage: "arrow.triangle.branch") {}
                 Button("Retry in New Branch", systemImage: "arrow.clockwise") {}
                 Button("Quote in Reply", systemImage: "text.quote") {}
-            }.labelStyle(AgentChatReplyActionLabelStyle())
+            }.labelStyle(ScholiumSidebarActionLabelStyle())
         }.buttonStyle(.borderless).environment(\.locale, Locale(identifier: "zh-Hans")).fixedSize())
         #expect(host.fittingSize.width <= 260 - 2 * ScholiumSidebarLayout.textInset)
         #expect(host.fittingSize.height >= ScholiumGrid.Dimension.preferredCustomTarget)

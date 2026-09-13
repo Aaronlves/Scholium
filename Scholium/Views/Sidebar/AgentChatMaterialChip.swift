@@ -33,7 +33,7 @@ struct AgentChatMaterialChip: View {
                     showsPreview.toggle()
                 } label: {
                     VStack(alignment: .leading, spacing: 4) {
-                        Label(title, systemImage: attachment.extent == .wholeNote ? "doc.text" : "text.quote").lineLimit(1).font(
+                        Label(title, systemImage: attachment.extent == .wholeNote ? ScholiumSidebarItem.note.symbol : ScholiumSidebarItem.passage.symbol).lineLimit(1).font(
                             .subheadline)
                         if attachment.extent == .wholeNote {
                             Text(extent).font(.caption).foregroundStyle(.secondary)
@@ -61,10 +61,10 @@ struct AgentChatMaterialChip: View {
                 .accessibilityValue(Text("\(extent), \(source): \(excerpt.prefix(120))"))
                 if let remove {
                     Button(action: remove) {
-                        Image(systemName: "xmark")
+                        ScholiumSidebarIcon(systemImage: ScholiumSidebarAction.remove.symbol, placement: .action)
                             .scholiumContentControlInk(
                                 resting: .secondaryText,
-                                emphasized: .destructive
+                                emphasized: .primaryText
                             )
                     }
                     .buttonStyle(.plain)
@@ -89,9 +89,9 @@ struct AgentChatMaterialChip: View {
                     Button {
                         showsPreview = false
                     } label: {
-                        Image(systemName: "xmark")
+                        ScholiumSidebarIcon(systemImage: ScholiumSidebarAction.close.symbol, placement: .action)
                     }
-                    .buttonStyle(.plain).accessibilityLabel("Close")
+                    .buttonStyle(.plain).help("Close").accessibilityLabel("Close")
                 }
                 GroupBox {
                     VStack(alignment: .leading, spacing: 6) {

@@ -267,6 +267,13 @@ Native controls retain activation, keyboard focus, menu tracking and disabled
 state. Chat's temporary selection set belongs to its list presentation; archive
 persistence remains with `AgentChatController`.
 
+`ScholiumSidebarAction` and `ScholiumSidebarItem` own Library/Chat action and
+object glyph choices, reusing `ScholiumSystemSymbol` for native/WebKit identities.
+`ScholiumSidebarIcon` and its action label style separate accessory alignment from
+custom control targets. Copy feedback and custom disclosure arrows consume the
+caller's state; activity, delivery and list-state models retain their existing
+state and symbol authority. Native Source List disclosure remains AppKit-owned.
+
 `AgentChatComposerInput` embeds one native scroll view and `NSTextView` across the
 whole message input slot. AppKit owns hit testing, caret placement, selection, Undo
 and marked text. The host grows to seven lines before scrolling; Return dispatches

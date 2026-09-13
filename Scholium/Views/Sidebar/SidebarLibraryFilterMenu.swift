@@ -127,9 +127,7 @@ struct SidebarLibraryFilterMenu: View {
             }
         } label: {
             ScholiumSidebarHeaderIcon(
-                systemImage: activeFilterCount == 0
-                    ? "line.3.horizontal.decrease"
-                    : "line.3.horizontal.decrease.circle.fill")
+                systemImage: ScholiumSidebarHeaderIcon.filterSymbol(isActive: activeFilterCount > 0))
         }
         .scholiumSidebarHeaderControl()
         .help(

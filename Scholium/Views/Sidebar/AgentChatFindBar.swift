@@ -28,14 +28,14 @@ struct AgentChatFindBar: View {
                 Button {
                     move(true)
                 } label: {
-                    Image(systemName: "chevron.up")
+                    Image(systemName: ScholiumSidebarAction.previousMatch.symbol)
                 }
                 .help("Previous Matching Message").accessibilityLabel("Previous Matching Message")
                 .disabled(count == 0)
                 Button {
                     move(false)
                 } label: {
-                    Image(systemName: "chevron.down")
+                    Image(systemName: ScholiumSidebarAction.nextMatch.symbol)
                 }
                 .help("Next Matching Message").accessibilityLabel("Next Matching Message")
                 .disabled(count == 0)

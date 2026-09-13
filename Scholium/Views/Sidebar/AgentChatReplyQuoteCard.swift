@@ -36,10 +36,10 @@ struct AgentChatReplyQuoteCard: View {
                 .accessibilityValue(quote.text)
                 if let remove {
                     Button(action: remove) {
-                        Image(systemName: "xmark")
+                        ScholiumSidebarIcon(systemImage: ScholiumSidebarAction.remove.symbol, placement: .action)
                             .scholiumContentControlInk(
                                 resting: .secondaryText,
-                                emphasized: .destructive
+                                emphasized: .primaryText
                             )
                     }
                     .buttonStyle(.plain)

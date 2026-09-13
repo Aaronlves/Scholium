@@ -201,7 +201,7 @@ struct SidebarView: View {
                 Menu {
                     rootCreationActions
                 } label: {
-                    ScholiumSidebarHeaderIcon(systemImage: "plus")
+                    ScholiumSidebarHeaderIcon(systemImage: ScholiumSidebarAction.add.symbol)
                 }
                 .scholiumSidebarHeaderControl()
                 .disabled(!context.canMutateLibrary)
@@ -248,7 +248,7 @@ struct SidebarView: View {
         Button {
             context.createUntitledNote(nil)
         } label: {
-            Label("New Note", systemImage: "doc.badge.plus")
+            Label("New Note", systemImage: ScholiumSidebarAction.newNote.symbol)
         }
         .disabled(!context.canMutateLibrary)
         .accessibilityIdentifier("scholium.newNote")
@@ -256,7 +256,7 @@ struct SidebarView: View {
         Button {
             context.createUntitledFolder(nil)
         } label: {
-            Label("New Folder", systemImage: "folder.badge.plus")
+            Label("New Folder", systemImage: ScholiumSidebarAction.newFolder.symbol)
         }
         .disabled(!context.canMutateLibrary)
         .accessibilityIdentifier("scholium.newFolder")

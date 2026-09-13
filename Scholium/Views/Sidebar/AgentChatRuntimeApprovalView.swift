@@ -68,9 +68,9 @@ struct AgentChatRuntimeApprovalView: View {
                         Button(grant.label(locale: locale)) { respond(grant) }
                     }
                 } label: {
-                    Image(systemName: "ellipsis")
+                    ScholiumSidebarIcon(systemImage: ScholiumSidebarAction.more.symbol, placement: .action)
                 }
-                .menuStyle(.borderlessButton).menuIndicator(.hidden).frame(width: 20)
+                .menuStyle(.borderlessButton).menuIndicator(.hidden)
                 .help("More Approval Options").accessibilityLabel(Text("More Approval Options", bundle: .module))
             }
             if let first = request.grants.first {

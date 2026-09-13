@@ -135,7 +135,7 @@ struct SidebarTreeNodeRow: View {
 
     private var folderRow: some View {
         HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
-            Image(systemName: "folder")
+            Image(systemName: ScholiumSidebarItem.folder.symbol)
                 .font(
                     ScholiumTypography.nativeSourceList(
                         pointSize: presentation.textPointSize
@@ -361,7 +361,7 @@ struct SidebarNoteRow: View {
 
     var body: some View {
         HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
-            Image(systemName: "doc.text")
+            Image(systemName: ScholiumSidebarItem.note.symbol)
                 .font(
                     ScholiumTypography.nativeSourceList(
                         pointSize: presentation.textPointSize

@@ -24,7 +24,7 @@ struct AgentChatLocalMaterialChip: View {
                 } label: {
                     VStack(alignment: .leading, spacing: 4) {
                         Label(
-                            AgentChatLocalMaterialLabels.title(material), systemImage: material.kind == .image ? "photo" : "doc.text"
+                            AgentChatLocalMaterialLabels.title(material), systemImage: material.kind == .image ? ScholiumSidebarItem.image.symbol : ScholiumSidebarItem.file.symbol
                         )
                         .font(.subheadline).lineLimit(1)
                         Text(AgentChatLocalMaterialLabels.summary(material)).font(.caption).foregroundStyle(.secondary).lineLimit(2)
@@ -47,10 +47,10 @@ struct AgentChatLocalMaterialChip: View {
                 .accessibilityLabel("Preview material: \(AgentChatLocalMaterialLabels.title(material))")
                 if let remove {
                     Button(action: remove) {
-                        Image(systemName: "xmark")
+                        ScholiumSidebarIcon(systemImage: ScholiumSidebarAction.remove.symbol, placement: .action)
                             .scholiumContentControlInk(
                                 resting: .secondaryText,
-                                emphasized: .destructive
+                                emphasized: .primaryText
                             )
                     }
                     .buttonStyle(.plain)

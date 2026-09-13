@@ -43,6 +43,9 @@ struct ScholiumSidebarHeaderActions<Content: View>: View {
 
 /// The label owns its complete hit area; native controls own activation and state.
 struct ScholiumSidebarHeaderIcon: View {
+    static func filterSymbol(isActive: Bool) -> String {
+        isActive ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease"
+    }
     let systemImage: String
     // At body size, the compose symbol's visible strokes sit half a point down
     // and right of the archive/ellipsis optical center. Scale the correction
@@ -55,8 +58,8 @@ struct ScholiumSidebarHeaderIcon: View {
             .symbolRenderingMode(.monochrome)
             .foregroundStyle(ScholiumNativeColorRole.secondaryLabel.color)
             .offset(
-                x: systemImage == "square.and.pencil" ? -composeOpticalCorrection : 0,
-                y: systemImage == "square.and.pencil" ? -composeOpticalCorrection : 0
+                x: systemImage == ScholiumSidebarAction.newConversation.symbol ? -composeOpticalCorrection : 0,
+                y: systemImage == ScholiumSidebarAction.newConversation.symbol ? -composeOpticalCorrection : 0
             )
             .frame(width: ScholiumSidebarLayout.controlWidth, height: ScholiumSidebarLayout.controlHeight)
             .contentShape(Rectangle())

@@ -20,7 +20,7 @@ struct AgentChatChildView: View {
                 }
                 Spacer()
                 if child.isWorking {
-                    if reduceMotion { Image(systemName: "ellipsis") } else { ProgressView().controlSize(.small) }
+                    if reduceMotion { Image(systemName: AgentChatActivity.Status.running.symbol) } else { ProgressView().controlSize(.small) }
                 }
                 Button {
                     child.refresh()
@@ -273,9 +273,10 @@ struct AgentChatCoordinationReferenceView: View {
                 if let openParent { Button(action: openParent) { Text("Open Parent", bundle: .module) } }
                 if let remove { Button(action: remove) { Text("Remove Agent Target", bundle: .module) } }
             } label: {
-                Image(systemName: "ellipsis")
+                ScholiumSidebarIcon(systemImage: ScholiumSidebarAction.more.symbol, placement: .action)
             }
             .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+            .help(Text("Agent Target Actions", bundle: .module))
             .accessibilityLabel(Text("Agent Target Actions", bundle: .module))
         }
         .font(.caption).foregroundStyle(ScholiumNativeColorRole.secondaryLabel.color)
