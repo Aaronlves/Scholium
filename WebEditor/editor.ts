@@ -2588,10 +2588,12 @@ function convergeLivePreviewProjection() {
 let pendingSmoothRevealFrame: number | undefined;
 let smoothRevealGeneration = 0;
 let smoothRevealAnimationActive = false;
+let smoothRevealTarget: {top: number; left: number} | undefined;
 
 function cancelPendingSmoothReveal() {
   smoothRevealGeneration += 1;
   smoothRevealAnimationActive = false;
+  smoothRevealTarget = undefined;
   if (pendingSmoothRevealFrame !== undefined) {
     window.cancelAnimationFrame(pendingSmoothRevealFrame);
     pendingSmoothRevealFrame = undefined;
@@ -2628,37 +2630,37 @@ function scheduleSmoothEditorReveal(lineFrom: number, initialTop: number, initia
     const targetLeft = editor.scrollDOM.scrollLeft;
     if (Math.abs(targetTop - initialTop) < 1 && Math.abs(targetLeft - initialLeft) < 1) return;
 
-    // CodeMirror's built-in reveal has already materialized and measured the
-    // target by this frame. Restore the pre-click position before the first
-    // paint, then use a bounded ease-out so a distant chapter does not make
-    // the browser's distance-dependent smooth-scroll animation linger.
-    editor.scrollDOM.scrollTo({top: initialTop, left: initialLeft, behavior: "auto"});
+    // CodeMirror has materialized and measured the destination. Long jumps
+    // reveal only its neighborhood, avoiding projection/layout for every
+    // intervening chapter. WebKit owns the smooth scroll, including easing.
+    const travel = Math.max(-viewport.height, Math.min(viewport.height, targetTop - initialTop));
+    const startTop = targetTop - travel;
+    editor.scrollDOM.scrollTo({top: startTop, left: initialLeft, behavior: "auto"});
+    smoothRevealTarget = {top: targetTop, left: targetLeft};
     smoothRevealAnimationActive = true;
-    const distance = Math.abs(targetTop - initialTop);
-    const duration = Math.max(220, Math.min(380, 220 + Math.sqrt(distance) * 2));
-    const animate = (timestamp: number) => {
-      pendingSmoothRevealFrame = undefined;
-      if (generation !== smoothRevealGeneration || !smoothRevealAnimationActive) return;
-      const progress = Math.max(0, Math.min(1, (timestamp - startedAt) / duration));
-      const eased = 1 - Math.pow(1 - progress, 3);
-      editor.scrollDOM.scrollTop = initialTop + (targetTop - initialTop) * eased;
-      editor.scrollDOM.scrollLeft = initialLeft + (targetLeft - initialLeft) * eased;
-      if (progress >= 1) {
-        smoothRevealAnimationActive = false;
-        return;
-      }
-      pendingSmoothRevealFrame = window.requestAnimationFrame(animate);
-    };
-    const startedAt = performance.now();
-    pendingSmoothRevealFrame = window.requestAnimationFrame(animate);
+    editor.scrollDOM.scrollTo({...smoothRevealTarget, behavior: "smooth"});
   });
 }
 
 for (const eventName of ["pointerdown", "wheel", "touchstart"]) {
   editor.scrollDOM.addEventListener(eventName, () => {
-    if (smoothRevealAnimationActive) cancelPendingSmoothReveal();
+    if (smoothRevealAnimationActive || pendingSmoothRevealFrame !== undefined) cancelPendingSmoothReveal();
   }, {passive: true});
 }
+
+editor.scrollDOM.addEventListener("scrollend", () => {
+  smoothRevealAnimationActive = false;
+  smoothRevealTarget = undefined;
+});
+editor.contentDOM.addEventListener("keydown", () => {
+  if (smoothRevealAnimationActive || pendingSmoothRevealFrame !== undefined) cancelPendingSmoothReveal();
+}, {capture: true});
+window.matchMedia("(prefers-reduced-motion: reduce)").addEventListener("change", event => {
+  if (!event.matches) return;
+  const destination = smoothRevealTarget;
+  cancelPendingSmoothReveal();
+  if (destination) editor.scrollDOM.scrollTo({...destination, behavior: "auto"});
+});
 
 const editorOperations = {
   /** @param {string} text @param {string} sessionID @param {string} documentID */

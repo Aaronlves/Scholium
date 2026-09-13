@@ -589,13 +589,13 @@ This is not a universal runtime enum or second state store.
 | **Recovery** | Consequential repair after failure or interruption with verification. | Generic toast or overwrite |
 | **Disabled** | Known action lacks a prerequisite; keep discoverable when core. | Unavailable content |
 
-Every state retains its feature owner and visible context. Accessibility,
-announcement and persistent-repair requirements are owned by §20.
+Document Loading, Empty and Unavailable share centered presentation.
+Editor failure retains source and offers Retry Edit and Source. Notices above
+usable content share a bounded, centered measure with reflowing native actions.
 
-Settle and Dismiss retain their workflow meanings. Page and pane states may use
-a shared Content State presentation; field validation, compact rows, operation
-feedback, and recovery notices keep purpose-owned presentations while reusing
-this vocabulary.
+Owners retain state and context; §20 owns accessibility and persistent
+repair. Settle and Dismiss retain their meanings. Fields, rows and notices keep
+purpose-specific presentations using this vocabulary.
 
 These Document states retain their source-specific meanings:
 

@@ -7,22 +7,14 @@ struct ScholiumOperationIssueView: View {
     let dismiss: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Label(
-                issue.message, systemImage: issue.kind == .error ? "xmark.octagon" : (issue.kind == .information ? "info.circle" : "exclamationmark.triangle")
-            )
-            .font(ScholiumTypography.interface(.body))
-            .scholiumForeground(issue.kind == .error ? .destructive : (issue.kind == .information ? .information : .attention))
-            if let detail = issue.detail {
-                Text(detail).font(ScholiumTypography.interface(.small)).textSelection(.enabled)
-            }
-            HStack {
-                if issue.offersRefresh { Button("Retry Refresh", action: refresh) }
-                Button("Dismiss", action: dismiss)
-            }.controlSize(.small)
+        ScholiumDocumentStatusNotice(
+            issue.message,
+            detail: issue.detail ?? "",
+            kind: issue.kind == .error ? .destructive : (issue.kind == .information ? .information : .attention)
+        ) {
+            if issue.offersRefresh { Button("Retry Refresh", action: refresh) }
+            Button("Dismiss", action: dismiss)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("scholium.operationIssue")
     }
 }

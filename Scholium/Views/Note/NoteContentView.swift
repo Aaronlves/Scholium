@@ -707,7 +707,7 @@ struct NoteContentView: View {
             retainsEditor: documentSession.retainsEditorSurface,
             editorIsReady: editorSession.isLoaded
                 && editorSession.presentedMode == documentSession.activeEditorMode,
-            allowsPendingReadRecovery: editorSession.errorMessage != nil
+            allowsPendingReadRecovery: !editorSession.isLoaded && editorSession.errorMessage != nil
         ) {
             readSurface
         } editor: {
@@ -757,7 +757,11 @@ struct NoteContentView: View {
     private var documentOutlineOverlay: some View {
         GeometryReader { proxy in
             let hasSpace = proxy.size.width >= ScholiumMetrics.Document.outlineRailMinimumWidth
-            let canShow = hasSpace && outlineEntries.count > 1
+            let contentIsReady =
+                isEditing
+                ? editorSession.isLoaded
+                : documentSession.renderedReadReadyFingerprint == noteFingerprint.sha256
+            let canShow = hasSpace && contentIsReady && outlineEntries.count > 1
 
             Group {
                 if canShow {
@@ -834,15 +838,11 @@ struct NoteContentView: View {
 
     @ViewBuilder
     private var readSurface: some View {
-        if documentSession.isEnteringManagedCreation {
-            if let error = editorSession.errorMessage {
-                managedCreationEditorFailure(error)
-            } else {
-                // Managed creation never flashes Review or Empty Note while
-                // the exact editor waits for its typed mode acknowledgement.
-                Color.clear
-                    .accessibilityHidden(true)
-            }
+        if isEditing, !editorSession.isLoaded, let error = editorSession.errorMessage {
+            editorFailure(error)
+        } else if documentSession.isEnteringManagedCreation {
+            // The host covers preparation until the editor acknowledges its mode.
+            Color.clear.accessibilityHidden(true)
         } else if note.document.hasExactEmptyBody {
             emptyReviewState
         } else {
@@ -858,7 +858,6 @@ struct NoteContentView: View {
                     readProjectionPlaceholder
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .layoutPriority(1)
-                        .allowsHitTesting(false)
                 }
 
                 if hasWebProjection {
@@ -881,25 +880,30 @@ struct NoteContentView: View {
         .accessibilityIdentifier("scholium.emptyRenderedReview")
     }
 
-    private func managedCreationEditorFailure(_ error: String) -> some View {
+    private func editorFailure(_ error: String) -> some View {
         ScholiumContentStateView(
             "Edit Unavailable",
-            detail: Text("The note was created and its exact source is saved. \(error)"),
+            detail: documentSession.isEnteringManagedCreation
+                ? Text("The note was created and its exact source is saved. \(error)")
+                : Text(error),
             indicator: .symbol("exclamationmark.triangle", role: .attention)
         ) {
             HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
                 Button("Retry Edit") {
-                    retryManagedCreationEditor(in: .livePreview)
+                    retryEditor(in: .livePreview)
                 }
                 .scholiumActivationPointer()
                 .keyboardShortcut(.defaultAction)
                 Button("Source") {
-                    retryManagedCreationEditor(in: .source)
+                    retryEditor(in: .source)
                 }
                 .scholiumActivationPointer()
             }
         }
-        .accessibilityIdentifier("scholium.managedNewNote.editorFailure")
+        .accessibilityIdentifier(
+            documentSession.isEnteringManagedCreation
+                ? "scholium.managedNewNote.editorFailure" : "scholium.documentEditorFailure"
+        )
     }
 
     @ViewBuilder
@@ -909,7 +913,10 @@ struct NoteContentView: View {
                 "Review Mode Unavailable",
                 detail: Text("Use Source mode while the rendered document is unavailable."),
                 indicator: .symbol("exclamationmark.triangle", role: .attention)
-            )
+            ) {
+                Button("Source") { beginEditing(mode: .source) }
+                    .disabled(!editingIsAvailable)
+            }
         } else {
             ScholiumContentStateView(
                 "Loading Document…",
@@ -1566,7 +1573,7 @@ struct NoteContentView: View {
         editorSession.focusPreferred()
     }
 
-    private func retryManagedCreationEditor(in mode: MarkdownEditorMode) {
+    private func retryEditor(in mode: MarkdownEditorMode) {
         guard editingIsAvailable else {
             actions.notify(
                 String(

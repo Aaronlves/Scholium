@@ -38965,9 +38965,11 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
   var pendingSmoothRevealFrame;
   var smoothRevealGeneration = 0;
   var smoothRevealAnimationActive = false;
+  var smoothRevealTarget;
   function cancelPendingSmoothReveal() {
     smoothRevealGeneration += 1;
     smoothRevealAnimationActive = false;
+    smoothRevealTarget = void 0;
     if (pendingSmoothRevealFrame !== void 0) {
       window.cancelAnimationFrame(pendingSmoothRevealFrame);
       pendingSmoothRevealFrame = void 0;
@@ -38998,32 +39000,32 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       );
       const targetLeft = editor.scrollDOM.scrollLeft;
       if (Math.abs(targetTop - initialTop) < 1 && Math.abs(targetLeft - initialLeft) < 1) return;
-      editor.scrollDOM.scrollTo({ top: initialTop, left: initialLeft, behavior: "auto" });
+      const travel = Math.max(-viewport.height, Math.min(viewport.height, targetTop - initialTop));
+      const startTop = targetTop - travel;
+      editor.scrollDOM.scrollTo({ top: startTop, left: initialLeft, behavior: "auto" });
+      smoothRevealTarget = { top: targetTop, left: targetLeft };
       smoothRevealAnimationActive = true;
-      const distance = Math.abs(targetTop - initialTop);
-      const duration = Math.max(220, Math.min(380, 220 + Math.sqrt(distance) * 2));
-      const animate = (timestamp) => {
-        pendingSmoothRevealFrame = void 0;
-        if (generation !== smoothRevealGeneration || !smoothRevealAnimationActive) return;
-        const progress = Math.max(0, Math.min(1, (timestamp - startedAt) / duration));
-        const eased = 1 - Math.pow(1 - progress, 3);
-        editor.scrollDOM.scrollTop = initialTop + (targetTop - initialTop) * eased;
-        editor.scrollDOM.scrollLeft = initialLeft + (targetLeft - initialLeft) * eased;
-        if (progress >= 1) {
-          smoothRevealAnimationActive = false;
-          return;
-        }
-        pendingSmoothRevealFrame = window.requestAnimationFrame(animate);
-      };
-      const startedAt = performance.now();
-      pendingSmoothRevealFrame = window.requestAnimationFrame(animate);
+      editor.scrollDOM.scrollTo({ ...smoothRevealTarget, behavior: "smooth" });
     });
   }
   for (const eventName of ["pointerdown", "wheel", "touchstart"]) {
     editor.scrollDOM.addEventListener(eventName, () => {
-      if (smoothRevealAnimationActive) cancelPendingSmoothReveal();
+      if (smoothRevealAnimationActive || pendingSmoothRevealFrame !== void 0) cancelPendingSmoothReveal();
     }, { passive: true });
   }
+  editor.scrollDOM.addEventListener("scrollend", () => {
+    smoothRevealAnimationActive = false;
+    smoothRevealTarget = void 0;
+  });
+  editor.contentDOM.addEventListener("keydown", () => {
+    if (smoothRevealAnimationActive || pendingSmoothRevealFrame !== void 0) cancelPendingSmoothReveal();
+  }, { capture: true });
+  window.matchMedia("(prefers-reduced-motion: reduce)").addEventListener("change", (event) => {
+    if (!event.matches) return;
+    const destination = smoothRevealTarget;
+    cancelPendingSmoothReveal();
+    if (destination) editor.scrollDOM.scrollTo({ ...destination, behavior: "auto" });
+  });
   var editorOperations = {
     /** @param {string} text @param {string} sessionID @param {string} documentID */
     setDocument(text, sessionID, documentID, startingFingerprint) {

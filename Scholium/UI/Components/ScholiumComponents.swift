@@ -710,11 +710,13 @@ struct ScholiumRecoveryNotice<Action: View>: View {
 }
 
 enum ScholiumDocumentStatusKind: Sendable {
+    case information
     case attention
     case destructive
 
     var colorRole: ScholiumColorRole {
         switch self {
+        case .information: .information
         case .attention: .attention
         case .destructive: .destructive
         }
@@ -722,15 +724,15 @@ enum ScholiumDocumentStatusKind: Sendable {
 
     var symbol: String {
         switch self {
+        case .information: "info.circle"
         case .attention: "exclamationmark.triangle"
         case .destructive: "xmark.octagon"
         }
     }
 }
 
-/// Persistent Document-owned source-integrity feedback. The caller retains
-/// the autosave or conflict state and supplies only the recovery actions that
-/// are valid for that exact state.
+/// Persistent Document-area feedback. Each caller retains its operation or
+/// source-integrity state and supplies only the actions valid for that state.
 struct ScholiumDocumentStatusNotice<Actions: View>: View {
     let title: String
     let detail: String
@@ -750,27 +752,20 @@ struct ScholiumDocumentStatusNotice<Actions: View>: View {
     }
 
     var body: some View {
-        HStack(alignment: .center, spacing: ScholiumMetrics.Notice.contentSpacing) {
-            HStack(alignment: .center, spacing: ScholiumGrid.Spacing.inlineControlGap) {
-                Image(systemName: kind.symbol)
-                    .scholiumForeground(kind.colorRole)
-                    .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: ScholiumMetrics.Notice.detailSpacing) {
-                    Text(title)
-                        .font(ScholiumTypography.interface(.sectionTitle))
-                    Text(detail)
-                        .font(ScholiumTypography.interface(.small))
-                        .scholiumForeground(.secondaryText)
-                        .textSelection(.enabled)
-                }
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .center, spacing: ScholiumMetrics.Notice.contentSpacing) {
+                message
+                actionRow.fixedSize()
             }
-            .accessibilityElement(children: .combine)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            actions()
+            VStack(alignment: .leading, spacing: ScholiumMetrics.Notice.contentSpacing) {
+                message
+                actionRow
+                    .padding(.leading, ScholiumGrid.Dimension.iconTrackWidth + ScholiumGrid.Spacing.inlineControlGap)
+            }
         }
         .padding(.horizontal, ScholiumGrid.Spacing.sectionSeparation)
         .padding(.vertical, ScholiumMetrics.Notice.verticalInset)
-        .frame(maxWidth: 520, alignment: .leading)
+        .frame(maxWidth: ScholiumMetrics.Notice.readableWidth, alignment: .leading)
         .scholiumEditorialSurface(
             .boundedPanel,
             in: RoundedRectangle(
@@ -782,4 +777,33 @@ struct ScholiumDocumentStatusNotice<Actions: View>: View {
         .accessibilityLabel(title)
         .accessibilityValue(detail)
     }
+
+    private var message: some View {
+        HStack(alignment: .firstTextBaseline, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+            Image(systemName: kind.symbol)
+                .frame(width: ScholiumGrid.Dimension.iconTrackWidth)
+                .scholiumForeground(kind.colorRole)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: ScholiumMetrics.Notice.detailSpacing) {
+                Text(title)
+                    .font(ScholiumTypography.interface(.sectionTitle))
+                    .fixedSize(horizontal: false, vertical: true)
+                if !detail.isEmpty {
+                    Text(detail)
+                        .font(ScholiumTypography.interface(.small))
+                        .scholiumForeground(.secondaryText)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var actionRow: some View {
+        HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) { actions() }
+            .controlSize(.small)
+    }
+
 }

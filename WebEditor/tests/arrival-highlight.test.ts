@@ -32,6 +32,31 @@ describe("arrival feedback", () => {
     expect(root.ownerDocument.querySelector('.' + arrivalClass)).toBeNull();
     expect(root.textContent).toBe(original);
   });
+  it("bounds distant navigation to one viewport without changing its destination", async () => {
+    const {root, navigation} = fixture();
+    const owner = root.ownerDocument.defaultView!;
+    const scrollTo = vi.fn(({top}: ScrollToOptions) => Object.assign(owner, {scrollY: top}));
+    Object.assign(owner, {innerHeight: 40, scrollTo});
+    const original = root.textContent;
+    expect(await navigation.reveal(2)).toBe(true);
+    expect(scrollTo).toHaveBeenCalledWith({top: 60, behavior: "auto"});
+    expect(owner.scrollY).toBe(100);
+    expect(root.textContent).toBe(original);
+    navigation.destroy();
+  });
+
+  it("reduced motion goes straight to a distant destination", async () => {
+    const {root, navigation} = fixture();
+    const owner = root.ownerDocument.defaultView!;
+    const scrollTo = vi.fn();
+    Object.assign(owner, {innerHeight: 40, scrollTo, matchMedia: () => ({matches: true})});
+    expect(await navigation.reveal(2)).toBe(true);
+    expect(scrollTo).not.toHaveBeenCalled();
+    expect(root.querySelector<HTMLElement>("p")?.scrollIntoView)
+      .toHaveBeenCalledWith({block: "start", behavior: "auto"});
+    navigation.destroy();
+  });
+
   it("repeated activation renews one marker and another target replaces it", async () => {
     vi.useFakeTimers();
     const {root, navigation} = fixture();

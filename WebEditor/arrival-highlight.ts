@@ -49,6 +49,10 @@ export function createReaderArrival(root: HTMLElement) {
       && owner.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const extent = Math.max(0, root.ownerDocument.documentElement.scrollHeight - owner.innerHeight);
     const destination = Math.max(0, Math.min(extent, owner.scrollY + target.getBoundingClientRect().top));
+    if (!reduceMotion && Math.abs(destination - owner.scrollY) > owner.innerHeight) {
+      const travel = Math.sign(destination - owner.scrollY) * owner.innerHeight;
+      owner.scrollTo({top: destination - travel, behavior: "auto"});
+    }
     target.scrollIntoView({
       block: "start",
       behavior: reduceMotion ? "auto" : "smooth",

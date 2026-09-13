@@ -1570,6 +1570,8 @@ enum ScholiumMetrics {
     }
 
     enum Notice {
+        static let readableWidth = ScholiumGrid.foundationUnit * 130
+        static let maximumStackHeight = ScholiumGrid.foundationUnit * 45
         static let contentSpacing = ScholiumGrid.foundationUnit * 2.5
         static let detailSpacing = ScholiumGrid.foundationUnit * 0.5
         static let verticalInset = ScholiumGrid.foundationUnit * 2.5

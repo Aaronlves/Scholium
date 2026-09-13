@@ -453,6 +453,12 @@ struct FrontendArchitectureTests {
         gate.reconcile(documentID: "A", presentsEditor: true, editorIsReady: false)
         #expect(gate.showsEditor(documentID: "A", presentsEditor: true, editorIsReady: false))
 
+        #expect(
+            gate.allowsReadHitTesting(
+                documentID: "A", presentsEditor: true, editorIsReady: false,
+                allowsPendingRecovery: true
+            ))
+
         gate.reconcile(documentID: "A", presentsEditor: false, editorIsReady: false)
         #expect(!gate.showsEditor(documentID: "A", presentsEditor: false, editorIsReady: false))
 
@@ -545,7 +551,7 @@ struct FrontendArchitectureTests {
         )
         #expect(
             componentSource.contains(
-                "HStack(alignment: .center, "
+                "HStack(alignment: .firstTextBaseline, "
                     + "spacing: ScholiumGrid.Spacing.inlineControlGap)"
             )
         )

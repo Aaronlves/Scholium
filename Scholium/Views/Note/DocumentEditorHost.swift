@@ -25,11 +25,12 @@ struct DocumentEditorPresentationGate: Equatable {
         editorIsReady: Bool,
         allowsPendingRecovery: Bool
     ) -> Bool {
-        !showsEditor(
-            documentID: documentID,
-            presentsEditor: presentsEditor,
-            editorIsReady: editorIsReady
-        ) && (!presentsEditor || allowsPendingRecovery)
+        (allowsPendingRecovery && !editorIsReady)
+            || !showsEditor(
+                documentID: documentID,
+                presentsEditor: presentsEditor,
+                editorIsReady: editorIsReady
+            ) && (!presentsEditor || allowsPendingRecovery)
     }
 
     func allowsEditorFocus(
@@ -78,11 +79,12 @@ struct DocumentEditorHost<ReadSurface: View, EditorSurface: View>: View {
     }
 
     private var showsEditor: Bool {
-        presentationGate.showsEditor(
-            documentID: documentID,
-            presentsEditor: presentsEditor,
-            editorIsReady: editorIsReady
-        )
+        !allowsPendingReadRecovery
+            && presentationGate.showsEditor(
+                documentID: documentID,
+                presentsEditor: presentsEditor,
+                editorIsReady: editorIsReady
+            )
     }
 
     var body: some View {
@@ -120,10 +122,9 @@ struct DocumentEditorHost<ReadSurface: View, EditorSurface: View>: View {
                 // Keep WebKit participating in real layout while the document
                 // plane covers preparation. Hiding the WebView itself defers
                 // the very rendering work that determines readiness.
-                Color.clear
+                ScholiumContentStateView("Loading Document…", indicator: .progress)
                     .scholiumSurface(.document)
-                    .allowsHitTesting(false)
-                    .accessibilityHidden(true)
+                    .accessibilityIdentifier("scholium.documentPreparing")
                     .zIndex(2)
             }
         }
@@ -145,6 +146,13 @@ struct DocumentEditorHost<ReadSurface: View, EditorSurface: View>: View {
                 presentsEditor: presentsEditor,
                 editorIsReady: editorIsReady
             )
+        }
+        .onChange(of: allowsPendingReadRecovery) { _, allowsRecovery in
+            if allowsRecovery {
+                presentationGate.reconcile(
+                    documentID: documentID, presentsEditor: false, editorIsReady: false
+                )
+            }
         }
         .onChange(of: editorIsReady) { _, _ in
             presentationGate.reconcile(

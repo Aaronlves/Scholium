@@ -705,7 +705,7 @@ struct ContentView: View {
             }
             if !shellState.operationIssues.isEmpty || appState.refreshStatusText != nil {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
                         ForEach(shellState.operationIssues) { issue in
                             ScholiumOperationIssueView(
                                 issue: issue,
@@ -713,8 +713,10 @@ struct ContentView: View {
                                 dismiss: { shellState.dismissOperationIssue(id: issue.id) })
                         }
                         if let status = appState.refreshStatusText {
-                            HStack {
-                                Text(status).font(ScholiumTypography.interface(.body)).textSelection(.enabled)
+                            ScholiumDocumentStatusNotice(
+                                status, detail: "",
+                                kind: appState.hasDerivedRefreshFailure ? .attention : .information
+                            ) {
                                 if appState.hasDerivedRefreshFailure {
                                     Button("Retry Refresh") { Task { await appState.retryDerivedRefresh() } }
                                 }
@@ -722,14 +724,16 @@ struct ContentView: View {
                             .accessibilityIdentifier("scholium.refreshStatus")
                         }
                     }
-                    .padding(12)
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, ScholiumGrid.Spacing.regionContentInset)
+                    .padding(.vertical, ScholiumGrid.Spacing.inlineControlGap)
                     .onGeometryChange(for: CGFloat.self) {
                         $0.size.height
                     } action: {
                         operationIssueHeight = $0
                     }
                 }
-                .frame(height: min(operationIssueHeight, 180))
+                .frame(height: min(operationIssueHeight, ScholiumMetrics.Notice.maximumStackHeight))
             }
             detailContent
         }

@@ -598,10 +598,12 @@ extension ScholiumUITests {
         ]
         XCTAssertTrue(conflictStatus.exists)
         XCTAssertTrue(accessibilityText(of: conflictStatus).contains("Autosave Paused"))
+        XCTAssertGreaterThanOrEqual(compare.frame.minX, conflictStatus.frame.minX)
+        XCTAssertLessThanOrEqual(compare.frame.maxX, conflictStatus.frame.maxX)
+        XCTAssertGreaterThanOrEqual(compare.frame.minY, conflictStatus.frame.minY)
         XCTAssertLessThanOrEqual(
-            abs(compare.frame.midY - conflictStatus.frame.midY),
-            1,
-            "The conflict action must be vertically centered in the inline conflict status."
+            compare.frame.maxY, conflictStatus.frame.maxY,
+            "Conflict recovery must remain within the notice when actions reflow below its message."
         )
         XCTAssertFalse(reload.exists)
         XCTAssertFalse(keepEditing.exists)
@@ -652,10 +654,10 @@ extension ScholiumUITests {
             "A soft-wrapped diff row must stay within the comparison sheet."
         )
         let currentRevision = app.descendants(matching: .any).matching(
-            NSPredicate(format: "label CONTAINS %@", "Current Editor")
+            NSPredicate(format: "label == %@ OR value == %@", "Current Editor", "Current Editor")
         ).firstMatch
         let diskRevision = app.descendants(matching: .any).matching(
-            NSPredicate(format: "label CONTAINS %@", "Disk Version")
+            NSPredicate(format: "label == %@ OR value == %@", "Disk Version", "Disk Version")
         ).firstMatch
         XCTAssertTrue(currentRevision.exists)
         XCTAssertTrue(diskRevision.exists)
