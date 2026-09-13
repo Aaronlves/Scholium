@@ -211,6 +211,10 @@ struct AgentChatMessageStyleTests {
     func sharedRichStyle() {
         for (dark, increasedContrast) in [(false, false), (true, false), (false, true), (true, true)] {
             let css = AgentChatDiagram.presentationCSS(dark: dark, increasedContrast: increasedContrast)
+            #expect(css.contains("--scholium-corner-document-control:"))
+            #expect(css.contains("--scholium-content-hover-surface:"))
+            #expect(css.contains("--scholium-content-keyboard-focus-surface:"))
+            #expect(css.contains("--scholium-document-accent:"))
             for (role, key) in [(ScholiumColorRole.primaryText, "primary-text"), (.accent, "accent")] {
                 if role == .accent {
                     #expect(

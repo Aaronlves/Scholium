@@ -25,9 +25,12 @@ struct AgentChatActivityDetails: View {
                         Image(systemName: "arrow.up.left.and.arrow.down.right").chatAccessory()
                     }
                     .buttonStyle(
-                        AgentChatActivityAccessoryButtonStyle(
-                            isHovered: isHovered,
-                            isFocused: false
+                        ScholiumContentControlButtonStyle(
+                            isHovering: isHovered,
+                            in: RoundedRectangle(
+                                cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                                style: .continuous
+                            )
                         )
                     )
                     .scholiumActivationPointer()
@@ -39,9 +42,13 @@ struct AgentChatActivityDetails: View {
                             .opacity(isHovered || copyIsFocused || copied ? 1 : 0)
                     }
                     .buttonStyle(
-                        AgentChatActivityAccessoryButtonStyle(
-                            isHovered: isHovered,
-                            isFocused: copyIsFocused
+                        ScholiumContentControlButtonStyle(
+                            isFocused: copyIsFocused,
+                            isHovering: isHovered,
+                            in: RoundedRectangle(
+                                cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                                style: .continuous
+                            )
                         )
                     )
                     .scholiumActivationPointer()
@@ -94,7 +101,9 @@ struct AgentChatActivityDetails: View {
             }
             ForEach(Array(activity.files.enumerated()), id: \.offset) { _, file in
                 if let id = file.noteID, file.effect != .trashed, let openNote {
-                    Button { openNote(AgentChatReference.url(noteID: id)) } label: {
+                    Button {
+                        openNote(AgentChatReference.url(noteID: id))
+                    } label: {
                         Text(file.path)
                             .scholiumContentControlInk(
                                 resting: .primaryText,
@@ -102,16 +111,16 @@ struct AgentChatActivityDetails: View {
                             )
                             .underline()
                     }
-                        .buttonStyle(.link)
-                        .scholiumActivationPointer()
-                        .scholiumContentControlPointerFeedback(
-                            in: RoundedRectangle(
-                                cornerRadius: ScholiumShape.editorialControlCornerRadius,
-                                style: .continuous
-                            )
+                    .buttonStyle(.link)
+                    .scholiumActivationPointer()
+                    .scholiumContentControlPointerFeedback(
+                        in: RoundedRectangle(
+                            cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                            style: .continuous
                         )
-                        .help("Open Note")
-                        .contextMenu { AgentChatNoteMenu(url: AgentChatReference.url(noteID: id)) }
+                    )
+                    .help("Open Note")
+                    .contextMenu { AgentChatNoteMenu(url: AgentChatReference.url(noteID: id)) }
                 } else {
                     Text(verbatim: file.path).monospaced()
                 }
@@ -135,29 +144,6 @@ struct AgentChatActivityDetails: View {
     private func copyDetails() {
         NSPasteboard.general.clearContents()
         copied = NSPasteboard.general.setString(copyText, forType: .string)
-    }
-}
-
-private struct AgentChatActivityAccessoryButtonStyle: ButtonStyle {
-    let isHovered: Bool
-    let isFocused: Bool
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .environment(
-                \.scholiumContentControlIsEmphasized,
-                isHovered || isFocused || configuration.isPressed
-            )
-            .scholiumContentInteractionSurface(
-                isHovering: isHovered,
-                isFocused: isFocused,
-                isPressed: configuration.isPressed,
-                in: RoundedRectangle(
-                    cornerRadius: ScholiumShape.editorialControlCornerRadius,
-                    style: .continuous
-                )
-            )
-            .opacity(configuration.isPressed ? 0.78 : 1)
     }
 }
 

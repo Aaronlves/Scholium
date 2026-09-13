@@ -31,9 +31,13 @@ struct AgentChatDisclosureStyle: DisclosureGroupStyle {
                     )
                 }
                 .buttonStyle(
-                    AgentChatDisclosureButtonStyle(
-                        isHovered: isHovered,
-                        isFocused: isFocused
+                    ScholiumContentControlButtonStyle(
+                        isFocused: isFocused,
+                        isHovering: isHovered,
+                        in: RoundedRectangle(
+                            cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                            style: .continuous
+                        )
                     )
                 )
                 .scholiumActivationPointer()
@@ -43,29 +47,6 @@ struct AgentChatDisclosureStyle: DisclosureGroupStyle {
             }
             .scholiumHoverState { isHovered = $0 }
         }
-    }
-}
-
-private struct AgentChatDisclosureButtonStyle: ButtonStyle {
-    let isHovered: Bool
-    let isFocused: Bool
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .environment(
-                \.scholiumContentControlIsEmphasized,
-                isHovered || isFocused || configuration.isPressed
-            )
-            .scholiumContentInteractionSurface(
-                isHovering: isHovered,
-                isFocused: isFocused,
-                isPressed: configuration.isPressed,
-                in: RoundedRectangle(
-                    cornerRadius: ScholiumShape.editorialControlCornerRadius,
-                    style: .continuous
-                )
-            )
-            .opacity(configuration.isPressed ? 0.78 : 1)
     }
 }
 

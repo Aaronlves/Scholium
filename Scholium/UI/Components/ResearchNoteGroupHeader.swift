@@ -50,9 +50,13 @@ struct ResearchNoteGroupHeader<Actions: View>: View {
                 .researchGroupEntrance(entranceProgress)
             }
             .buttonStyle(
-                ResearchNoteGroupHeaderButtonStyle(
-                    isHovered: hovered,
-                    isFocused: keyboardFocused
+                ScholiumContentControlButtonStyle(
+                    isFocused: keyboardFocused,
+                    isHovering: hovered,
+                    in: RoundedRectangle(
+                        cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                        style: .continuous
+                    )
                 )
             )
             .focused($keyboardFocused)
@@ -71,28 +75,5 @@ struct ResearchNoteGroupHeader<Actions: View>: View {
         }
         .onHover { hovered = $0 }
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.16), value: showsActions)
-    }
-}
-
-private struct ResearchNoteGroupHeaderButtonStyle: ButtonStyle {
-    let isHovered: Bool
-    let isFocused: Bool
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .environment(
-                \.scholiumContentControlIsEmphasized,
-                isHovered || isFocused || configuration.isPressed
-            )
-            .scholiumContentInteractionSurface(
-                isHovering: isHovered,
-                isFocused: isFocused,
-                isPressed: configuration.isPressed,
-                in: RoundedRectangle(
-                    cornerRadius: ScholiumShape.editorialControlCornerRadius,
-                    style: .continuous
-                )
-            )
-            .opacity(configuration.isPressed ? 0.78 : 1)
     }
 }

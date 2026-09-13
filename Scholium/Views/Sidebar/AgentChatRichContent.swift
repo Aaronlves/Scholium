@@ -134,8 +134,9 @@ struct AgentChatDiagram: View {
     static func presentationCSS(dark: Bool, increasedContrast: Bool) -> String {
         let colors: [(String, ScholiumColorRole)] = [
             ("document-background", .documentBackground), ("surface-background", .surfaceBackground),
+            ("raised-surface-background", .raisedSurfaceBackground),
             ("primary-text", .primaryText), ("secondary-text", .secondaryText),
-            ("separator", .separator), ("accent", .accent),
+            ("separator", .separator), ("accent", .accent), ("attention", .attention),
         ]
         let declarations = colors.map { key, role in
             if role == .accent {
@@ -145,8 +146,18 @@ struct AgentChatDiagram: View {
                 format: "--scholium-color-%@: #%06x;", key,
                 role.resolvedRGBValue(isDark: dark, increasedContrast: increasedContrast))
         }.joined(separator: "\n")
+        let interactionDeclarations =
+            increasedContrast
+            ? ScholiumContentInteractionSurface.increasedContrastWebCSSDeclarations
+            : ScholiumContentInteractionSurface.webCSSDeclarations
         return """
-            :root { color-scheme: \(dark ? "dark" : "light"); \(declarations) }
+            :root {
+                color-scheme: \(dark ? "dark" : "light");
+                \(declarations)
+                \(ScholiumShape.webCSSDeclarations)
+                \(interactionDeclarations)
+                \(ScholiumWebDesignTokens.documentMarkupCSSDeclarations)
+            }
             html, body { background: transparent; color: var(--scholium-color-primary-text); }
             .scholium-document { padding: 8px; margin: 0; max-width: none; font-family: system-ui; }
             .scholium-document > .scholium-mermaid { margin-block: 0; }

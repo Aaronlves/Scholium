@@ -2377,19 +2377,20 @@ private struct ScholiumHoverStateModifier: ViewModifier {
 
 private struct ScholiumContentControlButtonFeedbackModifier<S: Shape>: ViewModifier {
     @Environment(\.isEnabled) private var isEnabled
-    @State private var isHovering = false
+    @State private var observedHovering = false
 
     let isActive: Bool
     let isSelected: Bool
     let isFocused: Bool
     let isPressed: Bool
+    let hoverOverride: Bool?
     let tracksHover: Bool
     let pressedOpacity: Double
     let shape: S
 
     @ViewBuilder
     func body(content: Content) -> some View {
-        let effectiveIsHovering = tracksHover && isHovering
+        let effectiveIsHovering = hoverOverride ?? (tracksHover && observedHovering)
         let hasTransientEmphasis =
             isEnabled && (effectiveIsHovering || isFocused || isPressed)
         let isEmphasized = isActive || isSelected || hasTransientEmphasis
@@ -2408,8 +2409,8 @@ private struct ScholiumContentControlButtonFeedbackModifier<S: Shape>: ViewModif
 
         feedback.modifier(
             ScholiumHoverStateModifier(
-                tracksHover: tracksHover,
-                stateDidChange: { isHovering = $0 }
+                tracksHover: hoverOverride == nil && tracksHover,
+                stateDidChange: { observedHovering = $0 }
             )
         )
     }
@@ -2440,10 +2441,14 @@ class ScholiumPointingHandButton: NSButton {
     }
 }
 
+/// Shared ButtonStyle for content controls. Leave `isHovering` nil for local
+/// button tracking; supply it when a surrounding custom control already owns
+/// the pointer region used by its auxiliary state.
 struct ScholiumContentControlButtonStyle<S: Shape>: ButtonStyle {
     let isActive: Bool
     let isSelected: Bool
     let isFocused: Bool
+    let isHovering: Bool?
     let tracksHover: Bool
     let pressedOpacity: Double
     let shape: S
@@ -2452,6 +2457,7 @@ struct ScholiumContentControlButtonStyle<S: Shape>: ButtonStyle {
         isActive: Bool = false,
         isSelected: Bool = false,
         isFocused: Bool = false,
+        isHovering: Bool? = nil,
         tracksHover: Bool = true,
         pressedOpacity: Double = 0.78,
         in shape: S
@@ -2459,6 +2465,7 @@ struct ScholiumContentControlButtonStyle<S: Shape>: ButtonStyle {
         self.isActive = isActive
         self.isSelected = isSelected
         self.isFocused = isFocused
+        self.isHovering = isHovering
         self.tracksHover = tracksHover
         self.pressedOpacity = pressedOpacity
         self.shape = shape
@@ -2471,6 +2478,7 @@ struct ScholiumContentControlButtonStyle<S: Shape>: ButtonStyle {
                 isSelected: isSelected,
                 isFocused: isFocused,
                 isPressed: configuration.isPressed,
+                isHovering: isHovering,
                 tracksHover: tracksHover,
                 pressedOpacity: pressedOpacity,
                 in: shape
@@ -2999,6 +3007,7 @@ extension View {
         isSelected: Bool = false,
         isFocused: Bool = false,
         isPressed: Bool,
+        isHovering: Bool? = nil,
         tracksHover: Bool = true,
         pressedOpacity: Double = 0.78,
         in shape: S
@@ -3009,6 +3018,7 @@ extension View {
                 isSelected: isSelected,
                 isFocused: isFocused,
                 isPressed: isPressed,
+                hoverOverride: isHovering,
                 tracksHover: tracksHover,
                 pressedOpacity: pressedOpacity,
                 shape: shape
