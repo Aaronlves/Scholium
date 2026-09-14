@@ -234,8 +234,10 @@ already-visible Chat does not toggle the Sidebar closed.
   Unicode/CRLF, ranking, cancellation, freshness, missing sources and context staging.
   Isolated light/dark QA verified three relevant paragraphs, cross-vault navigation,
   compact material previews, unchanged drafts and stale-source refusal/refresh.
-  Authored live paragraph anchors now provide persistent targets independently
-  of these retrieval excerpts. Supported-minimum-width and human adaptation
+  Insert Paragraph Link checks a complete current paragraph, saves a new anchor
+  when needed and inserts its live reference at the retained writing cursor.
+  Partial/stale results and dirty sources refuse; a saved anchor followed by failed
+  insertion is reported separately. Supported-minimum-width and human adaptation
   acceptance remain open.
 
 ## Agents & Chat and Agent Changes

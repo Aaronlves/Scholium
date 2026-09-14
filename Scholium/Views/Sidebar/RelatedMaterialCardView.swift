@@ -4,10 +4,12 @@ import SwiftUI
 struct RelatedMaterialNoteGroupView: View {
     let group: RelatedMaterialsSession.NoteGroup
     let canInsert: Bool
+    let canInsertParagraph: Bool
     let isLoading: Bool
     let entranceProgress: CGFloat
     let open: (RelatedMaterialCard) -> Void
     let insert: (RelatedMaterialCard) -> Void
+    let insertParagraph: (RelatedMaterialCard) -> Void
     let addToChat: (RelatedMaterialCard) -> Void
     @State private var expanded = true
 
@@ -20,6 +22,19 @@ struct RelatedMaterialNoteGroupView: View {
             ) {
                 Button("Link to This Note") { insert(first) }
                     .disabled(!canInsert || first.linkTarget == nil)
+                Menu("Insert Paragraph Link") {
+                    ForEach(Array(group.passages.enumerated()), id: \.element.id) { index, card in
+                        Button {
+                            insertParagraph(card)
+                        } label: {
+                            Text(
+                                verbatim: "\(index + 1). " + String(card.passage.excerpt.prefix(8))
+                                    + (card.passage.excerpt.count > 8 ? "…" : ""))
+                        }.disabled(!canInsertParagraph || card.linkTarget == nil)
+                    }
+                }
+                .disabled(!canInsertParagraph)
+                .help("Creates a paragraph anchor in the source note when needed, then inserts a link at the writing cursor.")
                 Button("Open Linked Note") { open(first) }
                 Menu("Add to Chat") {
                     ForEach(Array(group.passages.enumerated()), id: \.element.id) { index, card in
@@ -50,6 +65,8 @@ struct RelatedMaterialNoteGroupView: View {
                         card: card,
                         isLoading: isLoading,
                         entranceProgress: entranceProgress,
+                        canInsertParagraph: canInsertParagraph && card.linkTarget != nil,
+                        insertParagraph: { insertParagraph(card) },
                         open: { open(card) }, addToChat: { addToChat(card) }
                     )
                     .accessibilityHidden(isLoading)
@@ -63,6 +80,8 @@ private struct RelatedMaterialPassageView: View {
     let card: RelatedMaterialCard
     let isLoading: Bool
     let entranceProgress: CGFloat
+    let canInsertParagraph: Bool
+    let insertParagraph: () -> Void
     let open: () -> Void
     let addToChat: () -> Void
 
@@ -100,11 +119,15 @@ private struct RelatedMaterialPassageView: View {
         }
         .contextMenu {
             if !isLoading {
+                Button("Insert Paragraph Link", action: insertParagraph).disabled(!canInsertParagraph)
                 Button("Add to Chat", action: addToChat).disabled(card.attachment == nil)
                 Button("Open Linked Note", action: open)
             }
         }
         .accessibilityActions {
+            if !isLoading && canInsertParagraph {
+                Button("Insert Paragraph Link", action: insertParagraph)
+            }
             if !isLoading && card.attachment != nil {
                 Button("Add to Chat", action: addToChat)
             }

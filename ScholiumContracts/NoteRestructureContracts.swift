@@ -9,21 +9,41 @@ public enum NoteRestructureDestination: Codable, Hashable, Sendable {
     case newNote(relativePath: String)
 }
 
+public enum NoteRestructurePropertyResolution: String, Codable, Hashable, Sendable {
+    case keepDestination, useSource
+}
+
+public struct NoteRestructurePropertyConflict: Equatable, Sendable, Identifiable {
+    public let key: String
+    public let sourceEntry: String
+    public let destinationEntry: String
+    public var id: String { key }
+
+    public init(key: String, sourceEntry: String, destinationEntry: String) {
+        self.key = key
+        self.sourceEntry = sourceEntry
+        self.destinationEntry = destinationEntry
+    }
+}
+
 public struct NoteRestructureRequest: Codable, Hashable, Sendable {
     public let id: UUID
     public let source: NoteMutationTarget
     public let selectionUTF8: Range<Int>?
     public let destination: NoteRestructureDestination
     public let operation: NoteRestructureOperation
+    public let propertyResolutions: [String: NoteRestructurePropertyResolution]
 
     public init(
-        id: UUID = UUID(), source: NoteMutationTarget, selectionUTF8: Range<Int>?, destination: NoteRestructureDestination, operation: NoteRestructureOperation
+        id: UUID = UUID(), source: NoteMutationTarget, selectionUTF8: Range<Int>?, destination: NoteRestructureDestination, operation: NoteRestructureOperation,
+        propertyResolutions: [String: NoteRestructurePropertyResolution] = [:]
     ) {
         self.id = id
         self.source = source
         self.selectionUTF8 = selectionUTF8
         self.destination = destination
         self.operation = operation
+        self.propertyResolutions = propertyResolutions
     }
 }
 
@@ -76,9 +96,11 @@ public struct NoteRestructureCommit: Sendable {
 
 public enum NoteRestructureError: LocalizedError, Equatable, Sendable {
     case unavailable(String)
+    case propertyConflicts([NoteRestructurePropertyConflict])
     public var errorDescription: String? {
         switch self {
         case .unavailable(let detail): return detail
+        case .propertyConflicts: return "Choose which authored YAML entry to keep for each conflicting property before reviewing the merge."
         }
     }
 }

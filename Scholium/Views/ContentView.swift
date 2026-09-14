@@ -776,6 +776,7 @@ struct ContentView: View {
                 openRelated: { card in Task { _ = await appState.useRelatedMaterial(card, inChat: false) }
                 },
                 insertRelated: { card in Task { await appState.insertRelatedMaterialLink(card) } },
+                insertRelatedParagraph: { card in Task { await appState.insertRelatedMaterialParagraphLink(card) } },
                 discussRelated: { card in
                     Task {
                         if await appState.useRelatedMaterial(card, inChat: true),

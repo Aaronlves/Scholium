@@ -266,9 +266,16 @@ public struct CalloutBlock: Codable, Hashable, Sendable {
     public let headerSpan: SourceSpan
 }
 
+/// One exact content slice; normalized line separators and continuation prefixes are not writable content.
+public struct FootnoteContentSlice: Codable, Hashable, Sendable {
+    public let contentUTF8Range: Range<Int>
+    public let sourceSpan: SourceSpan
+}
+
 public struct FootnoteDefinition: Codable, Hashable, Sendable {
     public let identifier: String
     public let content: String
+    public let contentSlices: [FootnoteContentSlice]
     public let ordinal: Int?
     public let isInline: Bool
     public let span: SourceSpan
@@ -448,7 +455,7 @@ public struct MarkdownSemanticDocument: Codable, Hashable, Sendable {
 
 public enum MarkdownSemanticParser {
     /// Shared source-literal exclusions for derived identity and presentation planners.
-    static func commentRanges(in document: NoteDocument) -> [Range<Int>] {
+    public static func commentRanges(in document: NoteDocument) -> [Range<Int>] {
         parseComments(
             body: document.body,
             bodyUTF16Offset: document.bodyUTF16Offset,
@@ -774,6 +781,7 @@ public enum MarkdownSemanticParser {
     private struct RawFootnoteDefinition {
         let identifier: String
         let content: String
+        let contentRanges: [NSRange]
         let relativeRange: NSRange
         let isInline: Bool
     }
@@ -783,6 +791,35 @@ public enum MarkdownSemanticParser {
         let relativeRange: NSRange
         let isInline: Bool
         let inlineContent: String?
+    }
+
+    private static func footnoteContentSlices(
+        _ definition: RawFootnoteDefinition, body: NSString, offset: Int, mapper: SemanticSourceMapper
+    ) -> [FootnoteContentSlice] {
+        let joined = definition.contentRanges.map { body.substring(with: $0) }.joined(separator: "\n") as NSString
+        let retained: NSRange
+        if definition.isInline {
+            retained = NSRange(location: 0, length: joined.length)
+        } else {
+            let nonWhitespace = CharacterSet.whitespacesAndNewlines.inverted
+            let first = joined.rangeOfCharacter(from: nonWhitespace)
+            let last = joined.rangeOfCharacter(from: nonWhitespace, options: .backwards)
+            guard first.location != NSNotFound else { return [] }
+            retained = NSRange(location: first.location, length: NSMaxRange(last) - first.location)
+        }
+        var cursor = 0
+        var slices: [FootnoteContentSlice] = []
+        for range in definition.contentRanges {
+            let overlap = NSIntersectionRange(NSRange(location: cursor, length: range.length), retained)
+            if overlap.length > 0,
+                let span = mapper.span(for: NSRange(location: offset + range.location + overlap.location - cursor, length: overlap.length))
+            {
+                let start = joined.substring(with: NSRange(location: retained.location, length: overlap.location - retained.location)).utf8.count
+                slices.append(FootnoteContentSlice(contentUTF8Range: start..<(start + span.utf8Range.count), sourceSpan: span))
+            }
+            cursor += range.length + 1
+        }
+        return slices
     }
 
     private static func parseFootnotes(
@@ -815,6 +852,7 @@ public enum MarkdownSemanticParser {
 
             let identifier = nsBody.substring(with: match.range(at: 1))
             var definitionEnd = NSMaxRange(lineRange)
+            var contentRanges = [match.range(at: 2)]
             var contentParts = [nsBody.substring(with: match.range(at: 2))]
             var next = definitionEnd
             while next < nsBody.length {
@@ -822,6 +860,8 @@ public enum MarkdownSemanticParser {
                 let candidateContent = lineContentRange(candidateLine, in: nsBody)
                 let candidate = nsBody.substring(with: candidateContent)
                 guard candidate.hasPrefix("  ") || candidate.hasPrefix("\t") || candidate.isEmpty else { break }
+                let prefix = candidate.hasPrefix("  ") ? 2 : candidate.hasPrefix("\t") ? 1 : 0
+                contentRanges.append(NSRange(location: candidateContent.location + prefix, length: candidateContent.length - prefix))
                 contentParts.append(
                     candidate.replacingOccurrences(
                         // Remove exactly one Scholium continuation indent. Any
@@ -840,6 +880,7 @@ public enum MarkdownSemanticParser {
                 RawFootnoteDefinition(
                     identifier: identifier,
                     content: contentParts.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines),
+                    contentRanges: contentRanges,
                     relativeRange: wholeRange,
                     isInline: false
                 ))
@@ -876,6 +917,7 @@ public enum MarkdownSemanticParser {
                 RawFootnoteDefinition(
                     identifier: identifier,
                     content: content,
+                    contentRanges: [match.range(at: 1)],
                     relativeRange: match.range,
                     isInline: true
                 ))
@@ -935,6 +977,7 @@ public enum MarkdownSemanticParser {
                 FootnoteDefinition(
                     identifier: raw.identifier,
                     content: raw.content,
+                    contentSlices: footnoteContentSlices(raw, body: nsBody, offset: bodyUTF16Offset, mapper: sourceMapper),
                     ordinal: ordinal,
                     isInline: raw.isInline,
                     span: span

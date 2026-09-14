@@ -4,6 +4,31 @@
 
 ## Current verification snapshot
 
+**2026-09-14 — Paragraph reuse and academic Note reorganization:** 57 scoped Core,
+33 App and five Contracts tests pass with Xcode 27. Coverage includes footnote
+resource relocation across folders (CRLF, Tab, Unicode and multiline labels),
+reference-scope isolation and literal escaping, independent YAML comments and
+scalar values, clean background-session convergence and dirty conflicts. A real
+WKWebView test confirms the exact disk commit and receipt survive detachment before
+save acknowledgement. Existing identity, cancellation and destination-table checks
+also pass. The complete background-tab insertion GUI journey remains unverified.
+Evidence: `.build/knowledge-reuse-fixes-tests.log`,
+`.build/knowledge-reuse-fixes-dialect.log` and `.build/knowledge-reuse-fixes-research.md`.
+Earlier standard 500-Note disposable Triptych QA plus three synthetic Notes verified Related Material
+paragraph insertion, destination Undo/Redo, initially unselected YAML choices,
+three-file preview, Escape cancellation with unchanged bytes, and native Merge.
+Exact readback confirms selected properties, retained target content, renamed
+footnotes and incoming references following the same anchor; the original leaves
+the vault through native Trash. Dark-window screenshots were inspected. Full human
+input/accessibility and adaptation acceptance remain open. QA app, fixtures,
+state were removed. macOS denied access to `QA Reuse Source.md` in Trash, so its
+post-Trash bytes and cleanup were not verified and that item remains. Evidence:
+`.build/knowledge-reuse-tests.log`, `.build/knowledge-reuse-qa.md` and
+`.build/knowledge-reuse-qa-build.log`. Documentation and scoped Swift lint pass.
+The full repository gate stops at the unchanged `input-suggestions.ts`
+localization false positive; `.build/knowledge-reuse-fixes-gate.log` records
+that failure, not an integration pass.
+
 **2026-09-14 — Preview renderer reuse:** An opt-in native-owner diagnostic uses
 eight disclosures per build (one cold, seven subsequent) on Xcode 27 Debug,
 macOS 27 and synthetic mixed-script content. Subsequent synchronous preparation

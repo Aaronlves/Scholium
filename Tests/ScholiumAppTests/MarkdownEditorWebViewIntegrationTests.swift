@@ -29,6 +29,69 @@ struct MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
+    @Test("A paragraph anchor commit survives loss of the editor before save acknowledgement")
+    func paragraphAnchorCommitBeforeEditorLoss() async throws {
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent(".build/paragraph-save-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let vaults = ["Analyses", "Topics", "Works"].map { root.appendingPathComponent("Triptych/" + $0) }
+        for vault in vaults { try FileManager.default.createDirectory(at: vault, withIntermediateDirectories: true) }
+        let original = "A claim.\n"
+        let candidate = "A claim. ^claim\n"
+        let file = vaults[1].appendingPathComponent("Source.md")
+        try Data(original.utf8).write(to: file)
+        let store = try WorkspaceStore(applicationSupportURL: root.appendingPathComponent("ApplicationSupport"))
+        do {
+            let capabilities = try await store.configureTriptychCapabilities(
+                paperAnalysisURL: vaults[0], topicKnowledgeURL: vaults[1], outputURL: vaults[2],
+                portableContainerURL: root.appendingPathComponent("Triptych"), triptychName: "Paragraph save fixture")
+            let sourceVault = try #require(try await capabilities.documents.snapshot().first { $0.vault.role == .topicKnowledge })
+            let snapshot = try #require(sourceVault.documents.first { $0.id.relativePath == "Source.md" })
+            let controller = DocumentController()
+            controller.installOpenedDocument(snapshot, vaultName: "Topics", vaultRole: .topicKnowledge)
+            let descriptor = try #require(controller.activeDocument)
+            let session = controller.session(for: descriptor)
+            controller.beginEditing(
+                session: session, target: .workspace(descriptor.sessionKey), source: original,
+                revision: snapshot.fingerprint, mode: .source)
+            let harness = EditorHarness(
+                source: original, usesSessionDocumentIdentity: true,
+                suppliedSession: session.editorSession, initialMode: .source)
+            defer {
+                harness.close()
+                session.cancelScheduledWork()
+            }
+            try await harness.waitUntilReady()
+            let web = try #require(session.editorSession.webView)
+            controller.bind(
+                to: capabilities.documents,
+                documentDidCommit: { _ in
+                    // The repository has returned the durable revision. Remove the
+                    // actual WebKit endpoint before performEditingSave sends its ack.
+                    session.editorSession.detach(web)
+                })
+            _ = try await session.editorSession.send(
+                .replacePassage(
+                    expectedText: original, fromUTF16: 8, toUTF16: 8,
+                    replacement: " ^claim", preserveSelection: true), in: web)
+            var confirmed: [String] = []
+            await #expect(throws: (any Error).self) {
+                try await controller.flushForExternalOperation(
+                    session: session, target: .workspace(descriptor.sessionKey),
+                    onCommitted: { confirmed.append($0.rawContent) })
+            }
+            #expect(confirmed == [candidate])
+            #expect(try Data(contentsOf: file) == Data(candidate.utf8))
+            #expect(session.originalEditingSource == candidate)
+            #expect(session.editError != nil)
+            await harness.closeAndDrain()
+            await store.shutdownApplicationRuntime()
+        } catch {
+            await store.shutdownApplicationRuntime()
+            throw error
+        }
+    }
+
     @Test("A production document identity preserves Undo and selection across WebView transfer")
     func productionIdentitySurvivesTransfer() async throws {
         let source = "# Fixture\n\nOriginal text."
@@ -6185,6 +6248,7 @@ struct MarkdownEditorWebViewIntegrationTests {
             usesSessionDocumentIdentity: Bool = false,
             linkPreviews: [DocumentLinkPreview] = [],
             bridgeDispatcher: (any MarkdownEditorBridgeDispatching)? = nil,
+            suppliedSession: MarkdownEditorSession? = nil,
             lifecyclePolicy: ScholiumLifecyclePolicy = ScholiumLifecyclePolicy(),
             initialMode: MarkdownEditorMode = .livePreview,
             initialPresentationCSS: String = "",
@@ -6198,7 +6262,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         ) {
             _ = NSApplication.shared
             session =
-                bridgeDispatcher.map {
+                suppliedSession ?? bridgeDispatcher.map {
                     MarkdownEditorSession(
                         bridgeDispatcher: $0,
                         lifecyclePolicy: lifecyclePolicy

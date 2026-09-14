@@ -1,6 +1,103 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Choose which authored entry to keep for each property. Other properties are retained in the merge preview.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose which authored entry to keep for each property. Other properties are retained in the merge preview."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请选择每个属性要保留的原始条目。其他属性会保留在合并预览中。"
+          }
+        }
+      }
+    },
+    "Destination Note": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Destination Note"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "目标文档"
+          }
+        }
+      }
+    },
+    "Keep property from": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keep property from"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保留属性的来源"
+          }
+        }
+      }
+    }
+,
+    "Insert Paragraph Link": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Insert Paragraph Link"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "插入段落链接"
+          }
+        }
+      }
+    },
+    "Creates a paragraph anchor in the source note when needed, then inserts a link at the writing cursor.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Creates a paragraph anchor in the source note when needed, then inserts a link at the writing cursor."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "必要时在来源笔记中创建段落锚点，然后在写作光标处插入链接。"
+          }
+        }
+      }
+    },
+    "The source paragraph anchor was saved, but the link was not inserted. Find related material again before retrying.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The source paragraph anchor was saved, but the link was not inserted. Find related material again before retrying."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "来源段落锚点已保存，但链接未插入。请重新查找相关材料后重试。"
+          }
+        }
+      }
+    },
   "Change": {
     "localizations": {
       "en": {

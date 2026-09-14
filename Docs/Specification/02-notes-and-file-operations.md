@@ -179,21 +179,31 @@ retaining source navigation. Creating a paragraph link may add its anchor as
 one exact editor transaction; save must succeed before the link is copied.
 
 Extract to New Note, Move Passage to Note and Copy Passage to Note operate on
-an explicitly captured selection or current ordinary paragraph. A partial
-selection is never silently expanded. Extract creates a same-vault Note and
+an explicitly captured selection of complete top-level Markdown blocks or the
+current ordinary paragraph. A partial selection is never silently expanded.
+Extract creates a same-vault Note and
 leaves a link in place; Move appends to an existing same-vault Note and leaves
 a link; Copy retains the original content. Merge appends the complete source
 body, updates references, then moves the original Note to system Trash.
-Nonempty source frontmatter must be reconciled before merging.
+Merge transfers independently bounded source YAML entries without reserialization.
+Conflicting authored entries require an explicit per-key source/destination choice
+before preview; unrelated fields, comments, quoting and value structure remain exact.
+Ambiguous keys, invalid YAML and cross-entry anchor/alias dependencies are refused.
 
 Each operation previews every changed file and binds source, destination and
 incoming links to their exact revisions. Moving redirects existing references
 to transferred targets; copying changes internal references to copied targets
 without redirecting references to the original. Missing, ambiguous or deleted
 targets remain explicit rather than being replaced by similar text. A selection
-that cuts an identity, protected construct, or unresolved footnote dependency
-is refused without changing source. Relative attachments and links must retain
-their destination or the operation is refused.
+that cuts an identity or protected construct is refused without changing source.
+Referenced footnote definitions travel with the passage; definitions still used
+at the origin remain there. Incoming identifier collisions are renamed locally,
+with all transferred references updated. Proven reference-style links may become
+equivalent inline links in the preview. Literal bracketed text remains literal
+when reference-definition scopes meet; any necessary escaping appears in the preview.
+Relative attachments and links retain
+their original destination through exact destination edits. Unresolved dependency
+or target identity refuses the operation rather than guessing.
 
 Reorganization preserves exact bytes outside its declared edits and uses durable
 machine-local recovery before its first write. A failure restores only still-matching

@@ -45,7 +45,9 @@ remains unavailable.
 Body context menus and Research commands expose §5.4. Review mutations require
 verified source and Edit. Reorganization sheets use native search and a striped
 Name/Folder table sharing its visible width, then exact preview in the same resizable sheet, with Change,
-Cancel and operation-specific confirmation.
+Cancel and operation-specific confirmation. Merge property conflicts show both
+authored entries and a named, initially unselected source/destination choice for
+each key. All choices precede the exact preview; changing destination clears them.
 
 Formatting and insertion remain available through native Format/Insert menus,
 keyboard shortcuts, and exact Markdown input. These routes preserve the current
@@ -105,15 +107,18 @@ Composition, focus outside the editor and pointer interaction in the pane suspen
 automatic replacement. A retry action appears only for a failed or incomplete retrieval. The pane
 never opens itself. Unchanged results retain their card identities and ordering;
 a fresh, valid caret receipt restores insertion without another confirmation.
-Each Note has one collapsible group with up to two distinct ranked passages,
-source navigation and explicit Wikilink insertion where a safe target is available. Inability to
-insert a link never hides an otherwise readable Note. No excerpts are copied and
-no prose is generated. The waiting state shows the command's actual
-shortcut, or its menu path if unbound. Typing never opens the pane.
-Within one Note, results and context survive writing or failed replacement;
-§18.5 owns loading and departure. Text or selection changes invalidate the insertion
-position; a successful automatic query supplies a fresh caret receipt without
-a separate confirmation or standing refresh indication.
+Each Note group has up to two ranked passages, navigation
+and Note/paragraph link insertion. Unavailable insertion never hides
+readable material. No excerpts or generated prose are inserted. Waiting shows
+the actual shortcut or unbound command's menu path. Typing never opens the pane.
+Same-Note writing or failed retrieval retains results/context; §18.5 owns departure.
+Text/selection changes invalidate insertion; successful retrieval renews its caret
+receipt without confirmation or a standing refresh indicator.
+Paragraph insertion is explicit: it validates the complete current ordinary
+paragraph, creates an authored anchor only when needed, saves and rechecks that
+source, then inserts its live link. It neither navigates away from the draft nor
+reuses an old range after revision drift. If anchor saving succeeds but insertion
+fails, report both outcomes without reverting a later source edit.
 Insertion checks session identity, document generation, caret and composition
 again in the editor and forms one Undo transaction. New results replace the old
 cards and context together. Loading, empty, cancelled, failed and stale outcomes
@@ -413,18 +418,14 @@ Pane content never repeats that selector. Each
 workspace retains its selection across Note and tab changes. Hiding Inspector
 moves no content elsewhere. Without a Document it presents No Document Selected.
 
-Related Material follows the selection or paused paragraph in Edit or Source,
-including unsaved writing. Opening the pane captures the existing selection; while
-visible, selection changes trigger a short debounced search. Composition suspends
-retrieval. Closing the pane cancels pending work, and newer selections invalidate
-older responses. The Research-menu command retains an explicit keyboard route.
-Pane focus preserves context until a successful query. Switching or closing a Note,
-including opening a recommendation, synchronously clears results, context and insertion
-position and cancels retrieval. Departed requests cannot publish, even after returning.
-The pane begins with
-results, without a standing context summary, refresh command or caret-confirmation
-step. Opening the pane, switching editors, changing selection and pausing in a
-paragraph schedule automatic retrieval; closing cancels it.
+Related Material follows selected or paused Edit/Source text, including unsaved
+writing. Opening, switching editors and selection changes schedule debounced
+retrieval; composition suspends it. New selections invalidate older responses;
+closing cancels pending work. The Research menu retains its keyboard route.
+Pane focus preserves context until a successful query. Note departure, including
+opening a recommendation, synchronously clears results, context and insertion;
+departed requests cannot publish after returning. Results lead without a standing
+context summary, refresh command or caret-confirmation step.
 The pane uses §13's local material retrieval over Analyses and Topics. Results lead
 with the Note title, then a bounded excerpt around a verified wording match, then
 quiet role information and two named icon actions: Link to This Note and Add to Chat.
@@ -445,7 +446,7 @@ never inserts, attaches or sends. Native List owns gesture direction arbitration
 closing, scrolling and action feedback. Only one reveal remains open; reverse
 swipe, outside interaction or Escape closes it. A group action menu revealed by pointer hover, keyboard focus or accessibility focus
 provides named keyboard and pointer alternatives, including selection of a
-paragraph for Chat. Paragraph choices use an ordinal plus at most eight source
+paragraph for Chat or Insert Paragraph Link. Paragraph choices use an ordinal plus at most eight source
 characters and an ellipsis; the attached source remains complete. Context menus and accessibility actions remain additional
 routes. Actions take no width from the resting excerpt. Both panes share native List rows, identity headers, passage containers and
 secondary heading color. Their copy rail and spacing follow Library Sidebar
@@ -496,10 +497,9 @@ compact material cards; activation reveals a read-only excerpt preview and sourc
 opening, while removal remains visible and keyboard-accessible. Preview uses readable
 text, while handoff preserves exact source. An earlier snapshot can open its current
 Note but never claims that an old offset still locates the same passage.
-Changed or unavailable sources cannot be passed as current excerpts. Empty,
-loading, cancelled, unavailable and omitted-source states retain their distinct
-meaning and an explicit retry route. Results and selection are disposable window
-state, with no new index, research record, or automatically inserted citation syntax.
+Changed or unavailable sources cannot be passed as current excerpts. Distinct
+empty, loading, cancelled, unavailable and omitted-source states retain retry.
+Results and selection are disposable window state, never a new index or research record.
 
 External contains authored destinations outside all registered vaults, including
 web, Zotero, other application URLs and outside-file references; internal Note and

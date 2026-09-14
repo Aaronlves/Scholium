@@ -469,6 +469,66 @@ struct DocumentControllerConvergenceTests {
         #expect(dirtySession.editError?.contains("deleted outside Scholium") == true)
     }
 
+    @Test("A committed background source updates its clean detached editor without selecting it")
+    func committedBackgroundSource() throws {
+        let vault = UUID()
+        let noteID = UUID()
+        let original = note(vaultID: vault, noteID: noteID, path: "Source.md", source: "A claim.\n")
+        let saved = note(vaultID: vault, noteID: noteID, path: "Source.md", source: "A claim. ^claim\n")
+        let draft = note(vaultID: vault, noteID: UUID(), path: "Draft.md", source: "Draft.\n")
+        let controller = DocumentController()
+        controller.installOpenedDocument(original, vaultName: "Topics", vaultRole: .topicKnowledge)
+        let key = DocumentSessionKey(vaultID: vault, noteID: noteID)
+        let session = controller.session(for: key)
+        controller.beginEditing(
+            session: session, target: .workspace(key), source: original.document.rawContent,
+            revision: original.fingerprint, mode: .source)
+        controller.installOpenedDocument(draft, vaultName: "Topics", vaultRole: .topicKnowledge)
+        let selected = controller.selectedDocument
+        #expect(session.isEditing && !session.editorSession.hasAttachedWebView)
+        #expect(!session.hasUnsavedChanges)
+
+        controller.recordCommittedSnapshot(saved, vaultName: "Topics", vaultRole: .topicKnowledge)
+
+        #expect(controller.selectedDocument == selected)
+        #expect(session.editingRevision == saved.fingerprint)
+        #expect(session.editingSource == saved.document.rawContent)
+        #expect(session.editorSession.checkedSource == saved.document.rawContent)
+        #expect(!session.hasUnsavedChanges)
+
+        session.suppressAutosave = true
+        session.editingSource = "Researcher's newer draft.\n"
+        let later = note(vaultID: vault, noteID: noteID, path: "Source.md", source: "External change.\n")
+        controller.recordCommittedSnapshot(later, vaultName: "Topics", vaultRole: .topicKnowledge)
+        #expect(session.editingSource == "Researcher's newer draft.\n")
+        #expect(session.conflict != nil)
+    }
+
+    @Test("Joining a save retains its confirmed commit when editor acknowledgement fails", arguments: [false, true])
+    func joinedSaveCommitReceipt(commitsBeforeFailure: Bool) async throws {
+        let controller = DocumentController()
+        let key = DocumentSessionKey(vaultID: UUID(), noteID: UUID())
+        let session = controller.session(for: key)
+        let saved = NoteDocument(relativePath: "Source.md", rawContent: "A claim. ^claim\n")
+        let receipt = EditorSaveCommitReceipt()
+        session.activeSaveCommitReceipt = receipt
+        session.activeSaveTask = Task { @MainActor in
+            if commitsBeforeFailure { receipt.document = saved }
+            throw DocumentControllerError.editorUnavailable
+        }
+        defer { session.cancelScheduledWork() }
+        var confirmed: [NoteDocument] = []
+
+        await #expect(throws: DocumentControllerError.editorUnavailable) {
+            try await controller.flushForExternalOperation(
+                session: session, target: .workspace(key),
+                onCommitted: { confirmed.append($0) })
+        }
+
+        #expect(confirmed.map(\.rawContent) == (commitsBeforeFailure ? [saved.rawContent] : []))
+        #expect(session.editError != nil)
+    }
+
     @Test("The note view delegates editor persistence and conflicts to one controller")
     func noteViewDelegatesEditorBehavior() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)

@@ -236,7 +236,6 @@ extension WindowModel {
     func prepareNoteRestructure(_ request: NoteRestructureRequest) async throws -> NoteRestructurePreview {
         guard let capabilities = windowWorkspaceController.activeCapabilities else { throw AgentChatNoteMaterialError.unavailable }
         try await workspaceStore.flushEditors(in: capabilities.runtimeIdentity.triptychID)
-        var currentRequest = request
         if case .existing(let selected) = request.destination {
             let vaults = try await capabilities.documents.snapshot()
             guard
@@ -244,12 +243,9 @@ extension WindowModel {
                     $0.id == selected.documentID && $0.stableIdentity.resolvedID == selected.stableNoteID && $0.capabilities.canEditSource
                 })
             else { throw AgentChatNoteMaterialError.changedSource }
-            currentRequest = .init(
-                id: request.id, source: request.source, selectionUTF8: request.selectionUTF8,
-                destination: .existing(.init(documentID: current.id, stableNoteID: selected.stableNoteID, revision: current.fingerprint)),
-                operation: request.operation)
+            guard current.fingerprint == selected.revision else { throw AgentChatNoteMaterialError.changedSource }
         }
-        return try await capabilities.documents.prepareNoteRestructure(currentRequest)
+        return try await capabilities.documents.prepareNoteRestructure(request)
     }
 
     func commitNoteRestructure(_ preview: NoteRestructurePreview) async throws {

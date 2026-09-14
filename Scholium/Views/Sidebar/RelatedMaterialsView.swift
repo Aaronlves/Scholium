@@ -11,6 +11,7 @@ struct RelatedMaterialsView: View {
     let open: (RelatedMaterialCard) -> Void
     let addToChat: (RelatedMaterialCard) -> Void
     let insert: (RelatedMaterialCard) -> Void
+    let insertParagraph: (RelatedMaterialCard) -> Void
     @State private var pointerInReferences = false
     @State private var entrance = ResearchGroupEntrance()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -51,11 +52,13 @@ struct RelatedMaterialsView: View {
                     ForEach(session.noteGroups) { group in
                         RelatedMaterialNoteGroupView(
                             group: group,
-                            canInsert: editor != nil && session.insertionPoint != nil && !session.isLoading,
+                            canInsert: editor != nil && session.insertionPoint != nil && !session.isLoading && !session.isInsertingParagraphLink,
+                            canInsertParagraph: editor != nil && session.canInsertParagraphLink,
                             isLoading: session.isLoading,
                             entranceProgress: reduceMotion ? 1 : entrance.progress(for: group.id, at: timeline.date),
                             open: { if !session.isLoading { open($0) } },
                             insert: { if !session.isLoading { insert($0) } },
+                            insertParagraph: insertParagraph,
                             addToChat: { if !session.isLoading { addToChat($0) } }
                         )
                         .redacted(reason: session.isLoading ? .placeholder : [])

@@ -27,12 +27,11 @@ unaccepted until separately evidenced. No expanded Zotero write scope is implied
 
 ## Note reorganization integration
 
-The first slice supports same-vault ordinary paragraphs and guarded whole-note
-merge. Cold-start anchor clipboard delivery, Review actions, native menu
-visibility and exact move/copy journeys have scoped automated and AX evidence
-in Verification. Complete visual/assistive-technology acceptance and the native
-system-Trash merge journey. Unsafe footnote, reference-definition and
-relative-resource relocation remain refused.
+Same-vault complete-block reorganization, footnote dependencies, proven link/resource
+relocation and YAML merge choices have scoped implementation and deterministic
+evidence. Nested/multiline reference definitions, cross-directory linked images,
+ambiguous YAML and unresolved destinations remain refused. Complete visual and
+assistive-technology acceptance; Verification records the native journey boundary.
 
 ## In-app Chat acceptance
 
@@ -172,12 +171,12 @@ compositing artifacts; inspect the actual native window before judging them.
 
 ## Current integration boundary
 
-The 2026-09-14 execution covers all product tests, performance measurements,
-public-symbol boundaries, Release build and helper checks. Its App run has one
-obsolete toolbar-order assertion, now updated and passing its owning suite;
-the full App product was not repeated after that test-only correction. Verification
-records the staged results and earlier runs. Package and human acceptance remain
-separate.
+The latest knowledge-reuse change has scoped Core/App and isolated Debug QA
+evidence. Its complete gate stops at the unchanged WebEditor localization guard:
+the command catalog's keys are matched as direct UI labels before their existing
+localization mapping. No full gate pass is claimed. Verification retains the earlier
+2026-09-14 product-test, performance and Release evidence with its original
+boundary; package and human acceptance remain separate.
 
 ## External-host and release acceptance
 

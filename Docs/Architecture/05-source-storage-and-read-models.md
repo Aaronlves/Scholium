@@ -177,7 +177,14 @@ for those preproduction records.
 Graph contract 8 projects their current locations. Editor bridge protocol 36 carries
 the corresponding source-derived presentation without making the projection writable.
 `NoteRestructurePlanner` validates the captured range, destination, link resolution and
-identity consequences. `DocumentOperations` routes prepare/commit through the workspace
+identity consequences. Its dependency planner derives exact footnote closures and
+Markdown link edits from the existing semantic parser and swift-markdown.
+Parser-owned footnote content slices map normalized content back to exact source;
+footnotes and protected projections are isolated before reference resolution.
+The append planner reparses both scopes, escapes newly captured literal openers,
+and verifies existing link occurrences retain their meaning. Frontmatter planning
+separates parser-proven entries from independent comment/blank-line slices and
+checks combined values; per-key choices remain in the revision-bound request. `DocumentOperations` routes prepare/commit through the workspace
 source gate. `NoteRestructureCoordinator` rechecks revisions, records exact recovery
 bytes before writes, and uses existing repository and system-Trash owners. The Note
 Actions and passage menus share `WindowDocumentActions`; their preview sheet never

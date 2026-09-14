@@ -29,6 +29,7 @@ struct ResearchInspectorView: View {
     let retryRelated: () -> Void
     let openRelated: (RelatedMaterialCard) -> Void
     let insertRelated: (RelatedMaterialCard) -> Void
+    let insertRelatedParagraph: (RelatedMaterialCard) -> Void
     let discussRelated: (RelatedMaterialCard) -> Void
 
     init(
@@ -48,6 +49,7 @@ struct ResearchInspectorView: View {
         retryRelated: @escaping () -> Void,
         openRelated: @escaping (RelatedMaterialCard) -> Void,
         insertRelated: @escaping (RelatedMaterialCard) -> Void,
+        insertRelatedParagraph: @escaping (RelatedMaterialCard) -> Void,
         discussRelated: @escaping (RelatedMaterialCard) -> Void
     ) {
         self.editor = editor
@@ -66,6 +68,7 @@ struct ResearchInspectorView: View {
         self.retryRelated = retryRelated
         self.openRelated = openRelated
         self.insertRelated = insertRelated
+        self.insertRelatedParagraph = insertRelatedParagraph
         self.discussRelated = discussRelated
     }
 
@@ -76,7 +79,7 @@ struct ResearchInspectorView: View {
                     session: research.relatedMaterials, isVisible: shellState.inspector.isVisible,
                     editor: editor, find: findRelated,
                     retry: retryRelated,
-                    open: openRelated, addToChat: discussRelated, insert: insertRelated)
+                    open: openRelated, addToChat: discussRelated, insert: insertRelated, insertParagraph: insertRelatedParagraph)
             }
             if shellState.inspector.mode == .links {
                 ConnectionsInspectorView(

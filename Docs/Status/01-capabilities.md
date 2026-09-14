@@ -29,10 +29,13 @@
 - Authored `^id` anchors identify current ordinary paragraphs; links follow live
   source without snapshot citations. Graph contract 8 derives their locations.
 - Note reorganization prepares exact before/after previews for same-vault
-  paragraph extraction, move and copy, and whole-note merge. Moving preserves
+  complete-block extraction, move and copy, and whole-note merge. Moving preserves
   anchor identity; copying assigns new identities. The planner maintains proved
-  incoming links and rejects unsafe footnote, reference-definition and relative
-  resource relocation. Checked writes retain exact rollback evidence before
+  incoming links, transfers footnote dependencies with collision renaming, and
+  rewrites proven reference-style links and relative resources. Merge transfers
+  exact YAML entries with explicit conflict choices. Partial/ambiguous structures,
+  nested reference definitions and unsafe linked-image relocation remain refused.
+  Checked writes retain exact rollback evidence before
   mutation; uncertainty preserves source and machine-local recovery records.
   Native integration and acceptance limits remain in Open Work and Verification.
 

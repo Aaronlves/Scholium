@@ -326,4 +326,39 @@ struct RelatedMaterialsTests {
         #expect(model.presentation == .waiting)
     }
 
+    @Test("Only complete current results allow paragraph insertion, and one insertion owns the request", arguments: [false, true])
+    func paragraphInsertionAdmission(partial: Bool) async {
+        let model = RelatedMaterialsSession()
+        var seed = seed()
+        seed.insertionPoint = .init(sessionID: UUID(), documentID: "draft", generation: 1, selection: .init(anchor: 3, head: 3))
+        let captured = seed
+        let complete = populatedResponse(seed)
+        let response = RelatedContentResponse(
+            requestID: complete.requestID, seedFingerprint: complete.seedFingerprint,
+            freshnessToken: complete.freshnessToken, availability: complete.availability,
+            state: partial ? .partial : .current, identityCandidates: complete.identityCandidates,
+            lexicalCandidates: complete.lexicalCandidates, identityHasMore: false, lexicalHasMore: false,
+            passages: complete.passages)
+        await model.find(capture: { captured }, retrieve: { _ in response }, references: [reference()]).value
+        let card = model.cards[0]
+        #expect(model.canInsertParagraphLink == !partial)
+        #expect(model.beginParagraphInsertion(card) == !partial)
+        #expect(!model.beginParagraphInsertion(card))
+        if !partial {
+            await model.find(
+                capture: { captured },
+                retrieve: { _ in
+                    Issue.record("Retrieval replaced a request during its source mutation")
+                    return response
+                }, references: []
+            ).value
+            #expect(model.cards == [card])
+            model.invalidateWritingContext()
+            model.finishParagraphInsertion()
+            #expect(!model.canInsertParagraphLink)
+        }
+        model.reset()
+        #expect(!model.canInsertParagraphLink)
+    }
+
 }

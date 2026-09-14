@@ -9,13 +9,12 @@ CodeMirror/WebKit, exact source, rendering, and editor performance.
 CodeMirror document identity survives attachment while transport identity rotates.
 Renames preserve state.
 
-The store acquires destination leases before release. Dirty, conflict,
-save-in-flight, retryable-recovery, and recovery-buffer states pin a session.
-Tab close flushes before membership removal; a clean unleased, unpinned session
-discards editor, source, Undo, HTML, and previews. Only an in-memory
-64-entry scroll LRU survives close; memory pressure reduces it to 16 or clears
-it, and app relaunch does not retain it. Vault-qualified keys prevent equal
-paths in different Triptych vaults from sharing state.
+Destination leases precede release. Dirty, conflict, save-in-flight,
+retryable-recovery and recovery-buffer states pin sessions. Tab close flushes
+before membership removal; clean unleased, unpinned sessions discard editor,
+source, Undo, HTML and previews. Only a volatile 64-entry scroll LRU survives
+close; memory pressure reduces it to 16 or clears it. Vault-qualified keys
+isolate equal paths across Triptych vaults.
 
 `DocumentController` defaults `currentPresentationMode`
 to Edit. Writable selections inherit it; unavailable Notes present
@@ -34,17 +33,18 @@ Each retained `DocumentSessionModel` owns:
 - rendered Review projection state; and
 - save error, conflict, retry, and comparison presentation state.
 
-CodeMirror remains authoritative while editing. The boundary uses
-generation-bound full-buffer reads at explicit lifecycle edges, an
-incrementally mutated native exact-source mirror, fingerprint-gated save,
-committed-text synchronization, conflict comparison, and
-flush-before-agent-work. The Swift
-model retains these facts across SwiftUI view reconstruction; it never
-reconstructs writable Markdown from HTML, parsed YAML, or another projection.
+CodeMirror owns editing. The boundary uses generation-bound full-buffer reads
+at lifecycle edges, an incremental exact-source mirror, fingerprint-gated save,
+committed-text synchronization, conflict comparison and flush-before-agent-work.
+SwiftUI reconstruction retains these facts; HTML, parsed YAML and other
+projections never reconstruct writable Markdown.
 `DocumentConflictSnapshot` supplies exact editor/disk inputs to the Contracts-
 owned `ExactSourceComparisonBuilder`, the sole line-diff owner. Document still
 owns conflict actions and buffer authority, while the
 comparison value and future shared sheet remain pure disposable presentation.
+Save tasks record confirmed commits before editor acknowledgement; flush callers
+receive receipts after failure or when joining autosave. Committed snapshots reconcile
+clean detached sessions without selection changes; dirty sessions retain conflicts.
 
 `DocumentEditorHost` is the persistent presentation boundary for one selected
 document session. Review is mounted continuously; after first editor allocation,

@@ -9,6 +9,12 @@ struct DocumentSessionKey: Hashable, Sendable {
     let noteID: UUID
 }
 
+/// A single save attempt records durable bytes independently of editor acknowledgement.
+@MainActor
+final class EditorSaveCommitReceipt {
+    var document: NoteDocument?
+}
+
 enum EditorSaveOutcome: Equatable {
     case clean
     case changedDuringSave
@@ -94,6 +100,7 @@ final class DocumentSessionModel: ObservableObject {
     var autosaveTask: Task<Void, Never>?
     var autosaveDeadline: ContinuousClock.Instant?
     var activeSaveTask: Task<EditorSaveOutcome, Error>?
+    var activeSaveCommitReceipt: EditorSaveCommitReceipt?
     var activeSaveToken: UUID?
     private var editorCancellable: AnyCancellable?
     private var nextScrollRestoreRequestID: UInt64 = 0
@@ -214,6 +221,7 @@ final class DocumentSessionModel: ObservableObject {
         cancelAutosave()
         activeSaveTask?.cancel()
         activeSaveTask = nil
+        activeSaveCommitReceipt = nil
         activeSaveToken = nil
     }
 

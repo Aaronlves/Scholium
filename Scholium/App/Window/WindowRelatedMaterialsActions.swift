@@ -85,7 +85,8 @@ extension WindowModel {
     @MainActor
     func insertRelatedMaterialLink(_ card: RelatedMaterialCard) async {
         let materials = researchController.relatedMaterials
-        guard canFindWritingReferences, !materials.isLoading, let descriptor = currentDocumentDescriptor, let point = materials.insertionPoint,
+        guard canFindWritingReferences, !materials.isLoading, !materials.isInsertingParagraphLink,
+            let descriptor = currentDocumentDescriptor, let point = materials.insertionPoint,
             let seed = materials.seed,
             seed.request.seed.noteID == VaultQualifiedNoteID(vaultID: descriptor.reference.vaultID, relativePath: descriptor.reference.relativePath)
         else {
@@ -103,6 +104,123 @@ extension WindowModel {
             guard materials.seed?.request.id == seed.request.id else { return }
             materials.invalidateWritingContext()
             materials.report(RelatedMaterialsError.insertionChanged)
+        }
+    }
+
+    @MainActor
+    func insertRelatedMaterialParagraphLink(_ card: RelatedMaterialCard) async {
+        let materials = researchController.relatedMaterials
+        guard canFindWritingReferences, let descriptor = currentDocumentDescriptor,
+            let point = materials.insertionPoint, let seed = materials.seed,
+            let capabilities = windowWorkspaceController.activeCapabilities,
+            seed.request.seed.noteID == .init(vaultID: descriptor.reference.vaultID, relativePath: descriptor.reference.relativePath),
+            card.candidate.note != seed.request.seed.noteID,
+            materials.beginParagraphInsertion(card)
+        else { return }
+        defer { materials.finishParagraphInsertion() }
+        let editor = documentController.session(for: descriptor).editorSession
+        var savedNewAnchor = false
+        func validateDestination() throws {
+            guard canFindWritingReferences,
+                currentDocumentDescriptor?.sessionKey == descriptor.sessionKey,
+                windowWorkspaceController.activeCapabilities?.runtimeIdentity == capabilities.runtimeIdentity,
+                materials.seed?.request.id == seed.request.id, materials.insertionPoint == point,
+                editor.acceptsInsertionPoint(point),
+                workspaceCatalog?.notes.contains(where: { $0.reference == card.reference }) == true
+            else { throw RelatedMaterialsError.insertionChanged }
+        }
+        do {
+            try validateDestination()
+            guard let noteLink = await relatedLinkTarget(card.reference, from: descriptor) else {
+                throw RelatedMaterialsError.changedSource
+            }
+            try validateDestination()
+            let vaults = try await capabilities.documents.snapshot()
+            guard
+                let source = vaults.first(where: { $0.vault.id == card.reference.vaultID })?.documents.first(where: {
+                    $0.id == card.candidate.note && $0.stableIdentity.resolvedID?.uuidString.lowercased() == card.reference.stableNoteID?.lowercased()
+                }), source.capabilities.canEditSource, let sourceID = source.stableIdentity.resolvedID
+            else { throw RelatedMaterialsError.changedSource }
+            let document = try await capabilities.documents.load(card.candidate.note)
+            let plan = try RelatedParagraphLink.plan(for: card, in: document)
+            let key = DocumentSessionKey(vaultID: card.reference.vaultID, noteID: sourceID)
+            let owner = workspaceStore.documentLocations.existingOwner(of: card.reference, excluding: self) ?? self
+            let sourceSession = owner.documentController.retainedSession(for: key)
+            func validateSourceOwner() throws {
+                let currentOwner = workspaceStore.documentLocations.existingOwner(of: card.reference, excluding: self) ?? self
+                guard currentOwner === owner, !owner.transferInProgress,
+                    owner.documentController.retainedSession(for: key) === sourceSession,
+                    sourceSession?.hasUnsavedChanges != true, sourceSession?.conflict == nil,
+                    sourceSession?.editorSession.isComposing != true
+                else { throw RelatedMaterialsError.changedSource }
+            }
+            try validateSourceOwner()
+            if let sourceSession, sourceSession.isEditing, sourceSession.editorSession.hasAttachedWebView {
+                let current = try await sourceSession.editorSession.currentText()
+                guard current.utf8.elementsEqual(document.rawContent.utf8) else { throw RelatedMaterialsError.changedSource }
+            }
+            try validateDestination()
+            try validateSourceOwner()
+            if let edit = plan.edits.first {
+                if let sourceSession, sourceSession.isEditing, sourceSession.editorSession.hasAttachedWebView {
+                    let sourceEditor = sourceSession.editorSession
+                    guard let webView = sourceEditor.webView, plan.edits.count == 1 else { throw RelatedMaterialsError.changedSource }
+                    let bytes = Array(document.rawContent.utf8)
+                    let from = String(decoding: bytes[..<edit.startUTF8], as: UTF8.self).utf16.count
+                    let to = String(decoding: bytes[..<edit.endUTF8], as: UTF8.self).utf16.count
+                    _ = try await sourceEditor.send(
+                        .replacePassage(
+                            expectedText: document.rawContent, fromUTF16: from, toUTF16: to,
+                            replacement: edit.replacement, preserveSelection: true), in: webView)
+                    try await owner.documentController.flushForExternalOperation(
+                        session: sourceSession, target: .workspace(key),
+                        onCommitted: { committed in
+                            if ParagraphAnchorPlanner.anchors(in: committed).contains(where: { $0.id == plan.anchorID }) {
+                                savedNewAnchor = true
+                            }
+                        })
+                } else {
+                    _ = try await capabilities.documents.save(
+                        card.candidate.note, changeSet: .source(plan.candidateSource), expectedRevision: document.fingerprint)
+                    savedNewAnchor = true
+                }
+            }
+            guard await relatedLinkTarget(card.reference, from: descriptor) == noteLink else {
+                throw RelatedMaterialsError.changedSource
+            }
+            let saved = try await capabilities.documents.load(card.candidate.note)
+            try RelatedParagraphLink.verify(plan, saved: saved)
+            if !plan.edits.isEmpty { savedNewAnchor = true }
+            if let sourceSession, !sourceSession.editorSession.hasAttachedWebView {
+                guard let savedSnapshot = try await owner.documentController.noteSnapshot(card.candidate.note),
+                    savedSnapshot.fingerprint == saved.fingerprint,
+                    savedSnapshot.stableIdentity.resolvedID == sourceID
+                else { throw RelatedMaterialsError.changedSource }
+                try validateSourceOwner()
+                owner.documentController.recordCommittedSnapshot(
+                    savedSnapshot, vaultName: card.reference.vaultName, vaultRole: card.reference.vaultRole)
+            }
+            if let sourceSession, sourceSession.isEditing, sourceSession.editorSession.hasAttachedWebView {
+                let current = try await sourceSession.editorSession.currentText()
+                guard current.utf8.elementsEqual(saved.rawContent.utf8), !sourceSession.hasUnsavedChanges else {
+                    throw RelatedMaterialsError.changedSource
+                }
+            }
+            try validateDestination()
+            try validateSourceOwner()
+            // Completion supplies a bare, unambiguous target; the editor owns syntax
+            // insertion and the single destination Undo transaction.
+            try await editor.insertReference("\(noteLink)#^\(plan.anchorID)", at: point)
+        } catch {
+            guard materials.seed?.request.id == seed.request.id else {
+                if savedNewAnchor { reportOperationIssue(RelatedMaterialsError.anchorSavedWithoutLink.localizedDescription, kind: .error) }
+                return
+            }
+            if savedNewAnchor {
+                materials.report(RelatedMaterialsError.anchorSavedWithoutLink)
+            } else {
+                materials.report(error)
+            }
         }
     }
 

@@ -12,7 +12,10 @@ struct NoteRestructureView: View {
     @State private var preview: NoteRestructurePreview?
     @State private var comparisons: [VaultQualifiedNoteID: ExactSourceComparison] = [:]
     @State private var isWorking = false
+    @State private var operationTask: Task<Void, Never>?
     @State private var errorMessage: String?
+    @State private var propertyConflicts: [NoteRestructurePropertyConflict] = []
+    @State private var propertyResolutions: [String: NoteRestructurePropertyResolution] = [:]
 
     @State private var searchFocusRequest = UUID()
     @State private var expandedFiles: Set<VaultQualifiedNoteID> = []
@@ -24,6 +27,8 @@ struct NoteRestructureView: View {
             Group {
                 if let preview {
                     changedFiles(preview)
+                } else if !propertyConflicts.isEmpty {
+                    propertyChoices
                 } else if request.createsNote {
                     TextField("New note path", text: $newPath)
                         .textFieldStyle(.roundedBorder)
@@ -62,6 +67,7 @@ struct NoteRestructureView: View {
         .accessibilityElement(children: .contain)
         .accessibilityAddTraits(.isModal)
         .accessibilityIdentifier("scholium.restructure")
+        .onDisappear { if preview == nil { operationTask?.cancel() } }
     }
 
     private var header: some View {
@@ -169,6 +175,46 @@ struct NoteRestructureView: View {
         }
     }
 
+    private var propertyChoices: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: ScholiumMetrics.ResearchSheet.bodySectionSpacing) {
+                Text("Choose which authored entry to keep for each property. Other properties are retained in the merge preview.")
+                    .font(.callout).fixedSize(horizontal: false, vertical: true)
+                ForEach(propertyConflicts) { conflict in
+                    VStack(alignment: .leading, spacing: ScholiumMetrics.ResearchSheet.fieldSpacing) {
+                        Text(verbatim: conflict.key).font(.headline).accessibilityHeading(.h2)
+                        LabeledContent("Destination Note") {
+                            Text(verbatim: conflict.destinationEntry)
+                                .font(ScholiumTypography.exact(.body)).textSelection(.enabled)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        LabeledContent("Source Note") {
+                            Text(verbatim: conflict.sourceEntry)
+                                .font(ScholiumTypography.exact(.body)).textSelection(.enabled)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Picker(
+                            "Keep property from",
+                            selection: Binding<NoteRestructurePropertyResolution?>(
+                                get: { propertyResolutions[conflict.key] },
+                                set: { propertyResolutions[conflict.key] = $0 }
+                            )
+                        ) {
+                            Text("Choose…").tag(nil as NoteRestructurePropertyResolution?)
+                            Text("Destination Note").tag(NoteRestructurePropertyResolution.keepDestination as NoteRestructurePropertyResolution?)
+                            Text("Source Note").tag(NoteRestructurePropertyResolution.useSource as NoteRestructurePropertyResolution?)
+                        }
+                        .accessibilityLabel(Text(verbatim: ScholiumL10n.string("Keep property from") + ": " + conflict.key))
+                        .accessibilityIdentifier("scholium.restructure.property.\(conflict.key)")
+                    }
+                }
+                Button("Change destination note") { changeDestination() }
+            }
+            .padding(ScholiumMetrics.ResearchSheet.contentInset)
+        }
+        .accessibilityIdentifier("scholium.restructure.properties")
+    }
+
     private var footer: some View {
         HStack(spacing: ScholiumMetrics.ResearchSheet.footerControlSpacing) {
             if isWorking {
@@ -180,12 +226,15 @@ struct NoteRestructureView: View {
                     .font(.callout).foregroundStyle(.secondary)
             }
             Spacer(minLength: ScholiumMetrics.ResearchSheet.footerControlSpacing)
-            Button("Cancel") { dismiss() }
-                .keyboardShortcut(.cancelAction).disabled(isWorking)
-                .accessibilityIdentifier("scholium.restructure.cancel")
+            Button("Cancel") {
+                operationTask?.cancel()
+                dismiss()
+            }
+            .keyboardShortcut(.cancelAction).disabled(isWorking && preview != nil)
+            .accessibilityIdentifier("scholium.restructure.cancel")
             Button(preview == nil ? ScholiumL10n.string("Preview Changes") : commitTitle) { perform() }
                 .keyboardShortcut(.defaultAction)
-                .disabled(isWorking || (preview == nil && destination == nil))
+                .disabled(isWorking || (preview == nil && (destination == nil || propertyConflicts.contains { propertyResolutions[$0.key] == nil })))
                 .accessibilityIdentifier("scholium.restructure.confirm")
         }
     }
@@ -208,6 +257,8 @@ struct NoteRestructureView: View {
         comparisons = [:]
         expandedFiles = []
         errorMessage = nil
+        propertyConflicts = []
+        propertyResolutions = [:]
         searchFocusRequest = UUID()
     }
 
@@ -237,8 +288,11 @@ struct NoteRestructureView: View {
         guard !isWorking else { return }
         isWorking = true
         errorMessage = nil
-        Task { @MainActor in
-            defer { isWorking = false }
+        operationTask = Task { @MainActor in
+            defer {
+                isWorking = false
+                operationTask = nil
+            }
             do {
                 if let preview {
                     try await commit(preview)
@@ -247,7 +301,9 @@ struct NoteRestructureView: View {
                     let prepared = try await prepare(
                         .init(
                             source: request.source, selectionUTF8: request.selectionUTF8,
-                            destination: destination, operation: request.isMerge ? .merge : request.action == .copy ? .copy : .move))
+                            destination: destination, operation: request.isMerge ? .merge : request.action == .copy ? .copy : .move,
+                            propertyResolutions: propertyResolutions))
+                    try Task.checkCancellation()
                     comparisons = try await Task.detached {
                         var result: [VaultQualifiedNoteID: ExactSourceComparison] = [:]
                         for edit in prepared.edits {
@@ -258,9 +314,15 @@ struct NoteRestructureView: View {
                         }
                         return result
                     }.value
+                    try Task.checkCancellation()
                     expandedFiles = [prepared.destination]
                     preview = prepared
                 }
+            } catch is CancellationError {
+                return
+            } catch NoteRestructureError.propertyConflicts(let conflicts) {
+                guard !Task.isCancelled else { return }
+                propertyConflicts = conflicts
             } catch {
                 errorMessage = error.localizedDescription
             }

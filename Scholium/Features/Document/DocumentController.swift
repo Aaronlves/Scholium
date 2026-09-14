@@ -844,13 +844,16 @@ final class DocumentController: ObservableObject {
             stableNoteID: stableID.uuidString
         )
         retainedReferences[key] = reference
-        guard activeDocument?.sessionKey == key else { return }
-        updateDocumentProjection(
-            WindowDocumentDescriptor(
-                sessionKey: key,
-                reference: reference
-            ))
-        reconcile(session: session(for: key), with: snapshot)
+        if activeDocument?.sessionKey == key {
+            updateDocumentProjection(
+                WindowDocumentDescriptor(
+                    sessionKey: key,
+                    reference: reference
+                ))
+        }
+        if let session = retainedSession(for: key) {
+            reconcile(session: session, with: snapshot)
+        }
     }
 
     /// Updates mutable path and title projections without replacing the
@@ -1458,22 +1461,27 @@ final class DocumentController: ObservableObject {
 
     func flushCurrentEditor(
         session: DocumentSessionModel,
-        target: DocumentEditingTarget
+        target: DocumentEditingTarget,
+        onCommitted: ((NoteDocument) -> Void)? = nil
     ) async throws {
         session.cancelAutosave()
         for _ in 0..<4 {
-            let outcome = try await saveEditingSource(session: session, target: target)
+            let outcome = try await saveEditingSource(session: session, target: target, onCommitted: onCommitted)
             if outcome != .changedDuringSave { return }
         }
         throw DocumentControllerError.changedDuringSave
     }
 
+    /// Reports each attempt's durable result even when its editor acknowledgement
+    /// subsequently fails, including an autosave already in flight when joined.
+    /// The callback is delivered before returning or rethrowing the attempt.
     func flushForExternalOperation(
         session: DocumentSessionModel,
-        target: DocumentEditingTarget
+        target: DocumentEditingTarget,
+        onCommitted: ((NoteDocument) -> Void)? = nil
     ) async throws {
         do {
-            try await flushCurrentEditor(session: session, target: target)
+            try await flushCurrentEditor(session: session, target: target, onCommitted: onCommitted)
         } catch is CancellationError {
             throw CancellationError()
         } catch {
@@ -1539,16 +1547,22 @@ final class DocumentController: ObservableObject {
 
     private func saveEditingSource(
         session: DocumentSessionModel,
-        target: DocumentEditingTarget
+        target: DocumentEditingTarget,
+        onCommitted: ((NoteDocument) -> Void)? = nil
     ) async throws -> EditorSaveOutcome {
         if let activeSaveTask = session.activeSaveTask {
+            let receipt = session.activeSaveCommitReceipt
+            defer { if let document = receipt?.document { onCommitted?(document) } }
             return try await activeSaveTask.value
         }
 
+        let receipt = EditorSaveCommitReceipt()
+        defer { if let document = receipt.document { onCommitted?(document) } }
         let token = UUID()
         let task = Task { @MainActor in
-            try await self.performEditingSave(session: session, target: target)
+            try await self.performEditingSave(session: session, target: target, receipt: receipt)
         }
+        session.activeSaveCommitReceipt = receipt
         session.activeSaveToken = token
         session.activeSaveTask = task
         session.isSavingEdit = true
@@ -1576,6 +1590,7 @@ final class DocumentController: ObservableObject {
             return repositoryConflict(for: session)
         }
         session.activeSaveTask = nil
+        session.activeSaveCommitReceipt = nil
         session.activeSaveToken = nil
         session.isSavingEdit = false
         return reconcileLatestDeferredWorkspaceSnapshot(for: session)
@@ -1609,7 +1624,8 @@ final class DocumentController: ObservableObject {
 
     private func performEditingSave(
         session: DocumentSessionModel,
-        target: DocumentEditingTarget
+        target: DocumentEditingTarget,
+        receipt: EditorSaveCommitReceipt
     ) async throws -> EditorSaveOutcome {
         guard session.isEditing else { return .clean }
         let path = relativePath(for: target)
@@ -1653,6 +1669,7 @@ final class DocumentController: ObservableObject {
             expectedRevision: revision
         )
         let saved = result.document
+        receipt.document = saved
         session.editingRevision = saved.fingerprint
         session.originalEditingSource = saved.rawContent
         await documentDidCommit(result)

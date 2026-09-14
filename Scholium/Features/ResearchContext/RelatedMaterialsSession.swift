@@ -30,8 +30,13 @@ struct RelatedMaterialCard: Identifiable, Equatable, Sendable {
 
 enum RelatedMaterialsError: LocalizedError, Equatable {
     case changedSource, insertionChanged, selectionRequired, unavailable, chatUnavailable, staleIndex, invalidSeed
+    case anchorSavedWithoutLink
     var errorDescription: String? {
         switch self {
+        case .anchorSavedWithoutLink:
+            String(
+                localized: "The source paragraph anchor was saved, but the link was not inserted. Find related material again before retrying.", bundle: .module
+            )
         case .insertionChanged: String(localized: "Confirm the current cursor before inserting a link.", bundle: .module)
         case .staleIndex: String(localized: "Search needs refreshing before it can find current material.", bundle: .module)
         case .invalidSeed: String(localized: "This passage has no searchable wording. Try another selection.", bundle: .module)
@@ -55,6 +60,22 @@ enum RelatedMaterialsError: LocalizedError, Equatable {
     @Published private(set) var needsRefresh = false
     @Published private(set) var insertionPoint: MarkdownEditorInsertionPoint?
     @Published private(set) var contextChanged = false
+    @Published private(set) var isInsertingParagraphLink = false
+    private var hasCompleteCurrentResults = false
+
+    var canInsertParagraphLink: Bool {
+        hasCompleteCurrentResults && !isLoading && !isInsertingParagraphLink
+            && issue == nil && omittedCount == 0 && insertionPoint != nil
+    }
+
+    func beginParagraphInsertion(_ card: RelatedMaterialCard) -> Bool {
+        guard canInsertParagraphLink, cards.contains(card) else { return false }
+        stopAutomaticSearch()
+        isInsertingParagraphLink = true
+        return true
+    }
+
+    func finishParagraphInsertion() { isInsertingParagraphLink = false }
 
     struct NoteGroup: Identifiable {
         let id: VaultQualifiedNoteID
@@ -113,6 +134,7 @@ enum RelatedMaterialsError: LocalizedError, Equatable {
         insertionPoint = nil
         contextChanged = false
         cards = []
+        hasCompleteCurrentResults = false
         didSearch = false
         omittedCount = 0
         issue = nil
@@ -120,6 +142,7 @@ enum RelatedMaterialsError: LocalizedError, Equatable {
     }
 
     func scheduleAutomaticSearch(selection: Bool, immediate: Bool = false, find: @escaping @MainActor () -> Void) {
+        guard !isInsertingParagraphLink else { return }
         stopAutomaticSearch()
         scheduledSearch = Task { [weak self] in
             if !immediate {
@@ -156,6 +179,7 @@ enum RelatedMaterialsError: LocalizedError, Equatable {
         canPublish: @escaping @MainActor () -> Bool = { true },
         linkTarget: @escaping @MainActor (VaultNoteReference) async -> String? = { _ in nil }
     ) -> Task<Void, Never> {
+        if isInsertingParagraphLink { return Task {} }
         if !automatic {
             scheduledSearch?.cancel()
             scheduledSearch = nil
@@ -231,6 +255,7 @@ enum RelatedMaterialsError: LocalizedError, Equatable {
                 contextChanged = false
                 if cards != loaded { cards = loaded }
                 omittedCount = omitted
+                hasCompleteCurrentResults = response.state == .current && omitted == 0
                 didSearch = true
                 isLoading = false
             } catch {

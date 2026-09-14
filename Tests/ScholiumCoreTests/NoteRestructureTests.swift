@@ -41,7 +41,7 @@ struct NoteRestructureTests {
         #expect(plan.edits.first?.after == "Claim [[Target#^\(id)|itself]]. ^\(id)")
     }
 
-    @Test("Move refuses duplicate IDs, partial paragraphs, and stranded footnotes")
+    @Test("Move refuses duplicate IDs, partial paragraphs, and undefined footnotes")
     func refusesUnsafeSelections() throws {
         let vault = UUID()
         let source = note(vault, "Source.md", "Claim. ^same\n")
@@ -54,7 +54,7 @@ struct NoteRestructureTests {
         #expect(throws: NoteRestructureError.self) {
             try prepare(source: source, target: empty, range: 1..<5, operation: .move, documents: Dictionary(uniqueKeysWithValues: [source, empty]))
         }
-        let footnote = note(vault, "Source.md", "Claim[^1].\n\n[^1]: Authority.\n")
+        let footnote = note(vault, "Source.md", "Claim[^missing].\n")
         let span = try #require(MarkdownSemanticDocument(parsing: footnote.1).blocks.first).span
         #expect(throws: NoteRestructureError.self) {
             try prepare(
@@ -98,16 +98,16 @@ struct NoteRestructureTests {
         }
     }
 
-    @Test("A shortcut link cannot leave its external definition behind")
+    @Test("A shortcut link becomes self-contained while its original definition stays exact")
     func shortcutReferenceDependency() throws {
         let vault = UUID()
         let source = note(vault, "Source.md", "[site]\n\n[site]: https://example.com\n")
         let target = note(vault, "Target.md", "")
         let docs = Dictionary(uniqueKeysWithValues: [source, target])
         let range = try #require(MarkdownSemanticDocument(parsing: source.1).blocks.first).span.utf8Range
-        #expect(throws: NoteRestructureError.self) {
-            try prepare(source: source, target: target, range: range, operation: .move, documents: docs)
-        }
+        let plan = try prepare(source: source, target: target, range: range, operation: .move, documents: docs)
+        #expect(plan.edits.first(where: { $0.note == target.0 })?.after?.contains("[site](https://example.com)") == true)
+        #expect(plan.edits.first(where: { $0.note == source.0 })?.after?.contains("[site]: https://example.com") == true)
     }
 
     @Test("A complete merge plans original-file Trash and keeps heading and paragraph references live", arguments: ["\u{FEFF}", "\u{FEFF}---\n\n---\n"])
