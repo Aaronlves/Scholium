@@ -200,10 +200,9 @@ struct ContentView: View {
                     alignment: .topLeading
                 )
         }
-        // The native split and each semantic background fill the complete
-        // titlebar frame. Native Liquid Glass controls float above those planes;
-        // the toolbar contributes no competing full-width material band.
-        .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
+        // Native window chrome owns the integrated toolbar material. The
+        // Document content host may pass beneath it; the renderer's existing
+        // top content inset keeps the initial readable content below the toolbar.
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .ignoresSafeArea(.container, edges: .top)
         .overlay {

@@ -781,6 +781,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
     private func configureWindowFrame(_ window: NSWindow) {
         ScholiumWindowAppearance.apply(colorScheme, to: window)
         window.styleMask.insert(.fullSizeContentView)
+        window.toolbarStyle = .unified
         window.titlebarAppearsTransparent = true
         window.titlebarSeparatorStyle = .none
         window.backgroundColor = ScholiumColorRole.documentBackground.nsColor

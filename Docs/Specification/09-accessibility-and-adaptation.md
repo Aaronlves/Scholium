@@ -32,6 +32,10 @@
   Light/Dark, active/inactive, Increase Contrast, and Reduce Transparency
   adaptation. Its warm Paper underlay is decorative context, not the sole source
   of separation, selection, focus, or meaning.
+- When the Document scroll plane passes beneath the native toolbar, the native
+  titlebar and toolbar material remains system-owned. Reduce Transparency and
+  Increase Contrast preserve a clear title/content boundary without using
+  translucency as the only semantic distinction.
 - Text and controls grow or reflow instead of clipping. Enlarged prose has no
   page-level horizontal reading scroll; intrinsically wide technical objects
   keep bounded local overflow or scaling.

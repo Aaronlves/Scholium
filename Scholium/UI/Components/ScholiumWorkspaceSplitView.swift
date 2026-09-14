@@ -10,12 +10,15 @@ import SwiftUI
 final class ScholiumSurfaceContainerViewController: NSViewController {
     let contentViewController: NSViewController
     let backgroundView: NSView
+    private let contentUnderlapsTitlebar: Bool
 
     init(
         contentViewController: NSViewController,
-        backgroundRole: ScholiumSurfaceRole
+        backgroundRole: ScholiumSurfaceRole,
+        contentUnderlapsTitlebar: Bool = false
     ) {
         self.contentViewController = contentViewController
+        self.contentUnderlapsTitlebar = contentUnderlapsTitlebar
         let backgroundHost = NSHostingView(
             rootView: backgroundRole.colorRole.color
         )
@@ -44,6 +47,10 @@ final class ScholiumSurfaceContainerViewController: NSViewController {
         containerView.addSubview(backgroundView)
         containerView.addSubview(contentView)
 
+        let contentTopAnchor: NSLayoutYAxisAnchor =
+            contentUnderlapsTitlebar
+            ? containerView.topAnchor
+            : containerView.safeAreaLayoutGuide.topAnchor
         let constraints = [
             backgroundView.leadingAnchor.constraint(
                 equalTo: containerView.leadingAnchor
@@ -64,7 +71,7 @@ final class ScholiumSurfaceContainerViewController: NSViewController {
                 equalTo: containerView.safeAreaLayoutGuide.trailingAnchor
             ),
             contentView.topAnchor.constraint(
-                equalTo: containerView.safeAreaLayoutGuide.topAnchor
+                equalTo: contentTopAnchor
             ),
             contentView.bottomAnchor.constraint(
                 equalTo: containerView.safeAreaLayoutGuide.bottomAnchor
@@ -318,7 +325,8 @@ struct ScholiumWorkspaceSplitView<Library: View, Chat: View, Document: View, App
             self.apparatusHost = apparatusHost
             documentBackgroundController = ScholiumSurfaceContainerViewController(
                 contentViewController: documentTabsController,
-                backgroundRole: .document
+                backgroundRole: .document,
+                contentUnderlapsTitlebar: true
             )
             apparatusBackgroundController = ScholiumSurfaceContainerViewController(
                 contentViewController: apparatusHost,
@@ -589,6 +597,7 @@ final class ScholiumDocumentTabsViewController<Document: View>: NSViewController
         self.reorderTab = reorderTab
         let placeholderHost = NSHostingController(rootView: document)
         placeholderHost.sizingOptions = []
+        placeholderHost.safeAreaRegions = []
         self.placeholderHost = placeholderHost
         placeholderItem = NSTabViewItem(viewController: placeholderHost)
         super.init(nibName: nil, bundle: nil)
@@ -668,6 +677,7 @@ final class ScholiumDocumentTabsViewController<Document: View>: NSViewController
             if pageHosts[tab.id] == nil {
                 let host = NSHostingController(rootView: document)
                 host.sizingOptions = []
+                host.safeAreaRegions = []
                 let item = NSTabViewItem(viewController: host)
                 item.identifier = tab.id
                 pageHosts[tab.id] = host

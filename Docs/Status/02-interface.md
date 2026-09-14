@@ -32,11 +32,13 @@ already-visible Chat does not toggle the Sidebar closed.
 - AppKit's Sidebar split item now owns the complete regular Liquid Glass
   navigation plane. The adjacent Document Paper surface extends beneath it
   through the native safe-area contract; Sidebar content adds no custom fill,
-  visual-effect host, or edge shadow. Document and Apparatus remain continuous
-  through the transparent titlebar with no separate toolbar band. Standard
-  AppKit toolbar items own their native Liquid Glass, and compact Sidebar-header
-  controls retain their established 28pt targets. The native Inspector
-  projection control and split geometry remain unchanged.
+  visual-effect host, or edge shadow. The Document scroll plane also reaches the
+  transparent titlebar; its initial content remains clear through the existing
+  inset, while standard AppKit toolbar items retain their native Liquid Glass.
+  Document and Apparatus remain continuous through the transparent titlebar with
+  no separate toolbar band. Compact Sidebar-header controls retain their
+  established 28pt targets. The native Inspector projection control and split
+  geometry remain unchanged.
 - The Sidebar begins with a persistent native Search field, a neutral workspace
   segmented control, and the muted Library operation row. It has no wordmark
   header. Notifications uses a native toolbar button with a nonnumeric

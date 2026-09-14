@@ -31,8 +31,10 @@ menus, popovers, sheets, dialogs and previews, even when opened from that window
 The interface has a content layer and a navigation/operation layer. The main
 Document provides a calm, opaque Paper background for sustained reading;
 adjacent research content shares that background identity. The background may
-continue beneath native chrome so the workspace feels continuous. Text remains
-within the native safe area.
+continue beneath native chrome so the workspace feels continuous. The initial
+readable Document content remains within the native safe area; its scrolling
+plane may continue beneath the native toolbar so material can soften
+content at the overlap.
 
 Liquid Glass belongs to the system's navigation and floating controls. Let
 native containers establish their material, grouping, scroll-edge separation,

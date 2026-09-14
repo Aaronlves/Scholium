@@ -361,9 +361,18 @@ final class DocumentTabContainerView: NSView {
     override func layout() {
         super.layout()
         let inset = ScholiumDocumentTabStyle.inset
-        let headerHeight = showsTabs ? ScholiumDocumentTabStyle.height + 2 * inset : 0
+        let titlebarSafeInset = showsTabs ? safeAreaInsets.top : 0
+        let headerHeight =
+            showsTabs
+            ? titlebarSafeInset + ScholiumDocumentTabStyle.height + 2 * inset
+            : 0
         strip.isHidden = !showsTabs
-        strip.frame = NSRect(x: inset, y: inset, width: max(0, bounds.width - 2 * inset), height: ScholiumDocumentTabStyle.height)
+        strip.frame = NSRect(
+            x: inset,
+            y: titlebarSafeInset + inset,
+            width: max(0, bounds.width - 2 * inset),
+            height: ScholiumDocumentTabStyle.height
+        )
         document.frame = NSRect(x: 0, y: headerHeight, width: bounds.width, height: max(0, bounds.height - headerHeight))
     }
 }

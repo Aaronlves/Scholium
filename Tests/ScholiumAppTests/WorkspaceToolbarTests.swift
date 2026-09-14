@@ -94,6 +94,7 @@ struct WorkspaceToolbarTests {
         controller.install(in: window)
 
         let toolbar = try #require(window.toolbar)
+        #expect(window.toolbarStyle == .unified)
         #expect(toolbar.itemIdentifiers == ScholiumWorkspaceToolbarController.itemIdentifiers)
         let modeIndex = try #require(toolbar.itemIdentifiers.firstIndex(of: ScholiumWorkspaceToolbarController.Item.documentMode))
         #expect(toolbar.itemIdentifiers[modeIndex + 1] == ScholiumWorkspaceToolbarController.Item.noteActions)

@@ -820,6 +820,12 @@ struct FrontendArchitectureTests {
             ),
             encoding: .utf8
         )
+        let documentTabSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/UI/Components/DocumentTabStrip.swift"
+            ),
+            encoding: .utf8
+        )
         let workspaceSplitStart = try #require(
             splitSource.range(of: "struct ScholiumWorkspaceSplitView<")
         )
@@ -913,12 +919,22 @@ struct FrontendArchitectureTests {
             ))
         #expect(
             splitSource.contains(
-                "equalTo: containerView.topAnchor"
+                "let contentTopAnchor: NSLayoutYAxisAnchor =\n            contentUnderlapsTitlebar"
             ))
         #expect(
             splitSource.contains(
-                "equalTo: containerView.safeAreaLayoutGuide.topAnchor"
+                "? containerView.topAnchor"
             ))
+        #expect(
+            splitSource.contains(
+                ": containerView.safeAreaLayoutGuide.topAnchor"
+            ))
+        #expect(splitSource.contains("contentUnderlapsTitlebar: true"))
+        #expect(splitSource.contains("placeholderHost.safeAreaRegions = []"))
+        #expect(splitSource.contains("host.safeAreaRegions = []"))
+        #expect(documentTabSource.contains("let titlebarSafeInset = showsTabs ? safeAreaInsets.top : 0"))
+        #expect(documentTabSource.contains("y: titlebarSafeInset + inset"))
+        #expect(documentTabSource.contains("y: headerHeight"))
         #expect(contentSource.contains(".ignoresSafeArea(.container, edges: .top)"))
         #expect(!splitSource.contains("workspaceWindowDidBecomeKey"))
         #expect(splitSource.contains("researchInspectorVisibilityDidChange"))
@@ -1028,10 +1044,9 @@ struct FrontendArchitectureTests {
             ))
         #expect(windowManagementSource.contains("window.styleMask.insert(.fullSizeContentView)"))
         #expect(!contentSource.contains(".toolbarBackground(.clear, for: .windowToolbar)"))
-        #expect(
-            contentSource.contains(
-                ".toolbarBackgroundVisibility(.hidden, for: .windowToolbar)"
-            ))
+        #expect(!contentSource.contains(".toolbarBackgroundVisibility(.hidden, for: .windowToolbar)"))
+        #expect(appSource.contains(".windowToolbarStyle(.unified(showsTitle: true))"))
+        #expect(windowManagementSource.contains("window.toolbarStyle = .unified"))
         #expect(!appSource.contains("Collapse Note"))
         #expect(sidebarTreeRowsSource.contains("ScholiumTypography.nativeSourceList("))
         #expect(sidebarSource.contains("ScholiumTypography.interface(.small, emphasis: .medium)"))

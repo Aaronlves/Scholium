@@ -579,11 +579,13 @@ the coordinator retains those requests until visible. Window shell state selects
 SwiftUI and source-list content remain transparent so AppKit's regular Sidebar Glass, inset edge,
 shadow, and adaptation stay visible. The Document item enables
 `automaticallyAdjustsSafeAreaInsets`, extending its opaque Paper background
-beneath the floating Sidebar while constraining readable content to the native
-safe area. Apparatus retains its opaque semantic background. The standard
-SwiftUI toolbar background is hidden, with no custom visual-effect view,
-Sidebar fill or shadow, full-width material band, or duplicate color source.
-Native titlebar and split behavior remain authoritative.
+beneath the floating Sidebar while allowing the Document scroll plane to pass
+beneath the transparent titlebar; its existing renderer inset keeps initial
+readable content clear, and the native tab strip retains the safe area.
+Apparatus retains its opaque semantic background. The standard AppKit toolbar
+owns integrated toolbar material and controls; no custom visual-effect view,
+Sidebar fill or shadow, full-width material band, or duplicate color source is
+introduced. Native titlebar and split behavior remain authoritative.
 
 The one `NSWindow.toolbar` is divided into Library, Document, and Apparatus
 sections by native tracking separators. Ordinary actions are standard bordered

@@ -27,8 +27,10 @@ Each configured window contains one native split view:
 
 Native split behavior governs resizing and collapse. Scholium requests the
 initial Inspector reveal but never continuously reasserts divider positions.
-The main/auxiliary color and material boundary follows §19.1; native safe areas
-protect content through window zoom and resize. Only the selected Sidebar page
+The main/auxiliary color and material boundary follows §19.1. Native safe areas
+protect Sidebar, tabs, Apparatus, and the initial readable Document content
+through window zoom and resize; the Document scrolling plane may continue
+beneath the integrated native toolbar. Only the selected Sidebar page
 participates in pointer, tooltip, keyboard and accessibility interaction; retained
 pages cannot intercept another page. A popover remains an auxiliary surface.
 
