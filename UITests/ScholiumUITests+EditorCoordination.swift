@@ -246,9 +246,7 @@ extension ScholiumUITests {
         try enterLivePreviewAndAppend(token)
         XCTAssertFalse(try source(at: firstURL).contains(token))
 
-        let secondRow = app.descendants(matching: .any)["scholium.noteRow.QA Autosave B.md"]
-        XCTAssertTrue(secondRow.waitForExistence(timeout: 5))
-        secondRow.click()
+        _ = clickLibraryRow("QA Autosave B.md")
         XCTAssertTrue(
             waitUntil(timeout: 15) {
                 self.documentTitle() == "QA Autosave B"
@@ -315,12 +313,8 @@ extension ScholiumUITests {
 
         selectMode("Edit")
         XCTAssertTrue(editor.waitForExistence(timeout: 8))
-        let secondRow = app.descendants(matching: .any)[
-            "scholium.noteRow.QA Autosave B.md"
-        ]
-        XCTAssertTrue(secondRow.waitForExistence(timeout: 5))
         let firstToSecondStart = DispatchTime.now().uptimeNanoseconds
-        secondRow.click()
+        _ = clickLibraryRow("QA Autosave B.md")
         XCTAssertTrue(
             waitUntil(timeout: 8) {
                 self.documentTitle() == "QA Autosave B"
@@ -333,12 +327,8 @@ extension ScholiumUITests {
                 DispatchTime.now().uptimeNanoseconds - firstToSecondStart
             ) / 1_000_000
 
-        let firstRow = app.descendants(matching: .any)[
-            "scholium.noteRow.QA Autosave A.md"
-        ]
-        XCTAssertTrue(firstRow.waitForExistence(timeout: 5))
         let secondToFirstStart = DispatchTime.now().uptimeNanoseconds
-        firstRow.click()
+        _ = clickLibraryRow("QA Autosave A.md")
         XCTAssertTrue(
             waitUntil(timeout: 8) {
                 self.documentTitle() == "QA Autosave A"
@@ -598,16 +588,18 @@ extension ScholiumUITests {
         waitForCurrentDocumentSurface()
         let secondPath = "QA Autosave B.md"
         let inspectorToggle = inspectorVisibilityControl()
-        let inspector = app.scrollViews["scholium.researchInspector"].firstMatch
+        let inspector = app.descendants(matching: .any)[
+            "scholium.researchInspector"
+        ].firstMatch
         XCTAssertTrue(inspectorToggle.waitForExistence(timeout: 5))
         if !inspector.exists {
-            app.typeKey("b", modifierFlags: [.command, .option])
+            inspectorToggle.coordinate(
+                withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
+            ).click()
         }
         XCTAssertTrue(inspector.waitForExistence(timeout: 5))
 
-        let secondRow = app.descendants(matching: .any)["scholium.noteRow.\(secondPath)"]
-        XCTAssertTrue(secondRow.waitForExistence(timeout: 10))
-        secondRow.rightClick()
+        _ = clickLibraryRow(secondPath, rightMouseButton: true)
         let noteContextMenu = app.menus["scholium.noteRow.\(secondPath)"]
         XCTAssertTrue(noteContextMenu.waitForExistence(timeout: 3))
         let openInNewTab = noteContextMenu.menuItems["Open in New Tab"]
@@ -617,16 +609,35 @@ extension ScholiumUITests {
         // Expand a known collection only after opening the second root note.
         // Expanding a large first folder can move root notes outside the lazy
         // Library viewport, which is not evidence about document tabs.
-        let sharedFolder = app.descendants(matching: .any)[
-            "scholium.folderRow.格式与检索"
-        ]
         let noteList = app.outlines["scholium.noteList"].firstMatch
-        for _ in 0..<8 where !sharedFolder.exists {
-            noteList.swipeUp(velocity: .slow)
-        }
+        let sharedFolder = noteList.descendants(matching: .outlineRow).containing(
+            .any,
+            identifier: "scholium.folderRow.格式与检索"
+        ).firstMatch
         XCTAssertTrue(sharedFolder.waitForExistence(timeout: 8))
         if sharedFolder.value as? String != "Expanded" {
-            sharedFolder.click()
+            let disclosure = sharedFolder.descendants(
+                matching: .disclosureTriangle
+            ).firstMatch
+            XCTAssertTrue(
+                disclosure.waitForExistence(timeout: 3),
+                "The shared Library folder must expose its native disclosure control."
+            )
+            disclosure.coordinate(
+                withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
+            ).click()
+            if !waitUntil(
+                timeout: 2,
+                condition: { sharedFolder.value as? String == "Expanded" }
+            ) {
+                // If the triangle itself is not exposed as a hit target at
+                // the viewport edge, select the row and use NSOutlineView's
+                // native Right Arrow expansion command.
+                sharedFolder.coordinate(
+                    withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
+                ).click()
+                app.typeKey(.rightArrow, modifierFlags: [])
+            }
         }
         XCTAssertTrue(
             waitUntil(timeout: 5) {
@@ -652,7 +663,7 @@ extension ScholiumUITests {
 
         func sharedPresentationIsPreserved(expectedNote: String) -> Bool {
             let folder = currentSharedFolder()
-            let currentInspector = self.app.scrollViews[
+            let currentInspector = self.app.descendants(matching: .any)[
                 "scholium.researchInspector"
             ].firstMatch
             return folder.exists

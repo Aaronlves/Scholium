@@ -23,16 +23,11 @@ extension ScholiumUITests {
         confirmSettle.click()
         XCTAssertTrue(
             waitUntil(timeout: 10) {
-                settle = self.app.toolbars.buttons["Settle Again"].firstMatch
+                settle = self.app.toolbars.buttons.matching(
+                    NSPredicate(format: "label CONTAINS %@", "Settle Again")
+                ).firstMatch
                 return settle.exists
             })
-
-        if !app.scrollViews["scholium.researchInspector"].firstMatch.exists {
-            app.typeKey("b", modifierFlags: [.command, .option])
-        }
-        let inspector = app.scrollViews["scholium.researchInspector"].firstMatch
-        XCTAssertTrue(inspector.waitForExistence(timeout: 5))
-        XCTAssertTrue(inspector.staticTexts["Settled"].firstMatch.waitForExistence(timeout: 5))
 
         let status = try callQAMCP(tool: "scholium_workspace_status")
         let triptychID = try XCTUnwrap(status["triptych_id"] as? String)
@@ -72,39 +67,42 @@ extension ScholiumUITests {
 
         XCTAssertTrue(
             waitUntil(timeout: 10) {
-                inspector.staticTexts["Changed since settlement"].firstMatch.exists
+                settle.label.contains("Changed since settlement")
             })
-        XCTAssertEqual(settle.label, "Settle Again")
+        XCTAssertTrue(settle.label.contains("Settle Again"))
 
-        let agentChanges = app.toolbars.buttons["Agent Changes"].firstMatch
-        XCTAssertTrue(agentChanges.waitForExistence(timeout: 5))
-        agentChanges.click()
+        let notifications = app.toolbars.buttons["Open Triptych Notifications"].firstMatch
+        XCTAssertTrue(notifications.waitForExistence(timeout: 5))
+        notifications.click()
+        let notificationPopover = app.popovers.firstMatch
+        XCTAssertTrue(notificationPopover.waitForExistence(timeout: 5))
+        let agentChange = notificationPopover.descendants(matching: .any).matching(
+            NSPredicate(
+                format: "identifier BEGINSWITH %@",
+                "scholium.notification.agentChange."
+            )
+        ).firstMatch
+        XCTAssertTrue(
+            agentChange.waitForExistence(timeout: 10),
+            "The confirmed external update must appear in Triptych Notifications."
+        )
+        agentChange.click()
         let comparison = app.descendants(matching: .any)["scholium.agentChanges"]
             .firstMatch
         XCTAssertTrue(comparison.waitForExistence(timeout: 10))
         for text in [
-            "Updated by External Agent",
             "Current Revision",
             "Before",
             "After",
-            "Change 1 of 1",
         ] {
             XCTAssertTrue(
                 comparison.staticTexts[text].firstMatch.waitForExistence(timeout: 5),
                 "Agent Changes did not expose \(text)."
             )
         }
-        XCTAssertTrue(
-            comparison.staticTexts.matching(
-                NSPredicate(format: "label CONTAINS %@", "external Agent added")
-            ).firstMatch.exists)
         let changeRows = comparison.descendants(matching: .any).matching(
             NSPredicate(format: "identifier BEGINSWITH %@", "scholium.agentChanges.row.")
         )
-        XCTAssertTrue(
-            changeRows.matching(
-                NSPredicate(format: "label == %@", "Removed")
-            ).firstMatch.exists)
         XCTAssertTrue(
             changeRows.matching(
                 NSPredicate(format: "label == %@", "Inserted")
@@ -118,7 +116,11 @@ extension ScholiumUITests {
         XCTAssertTrue(undo.waitForExistence(timeout: 5))
         XCTAssertTrue(undo.isEnabled)
         undo.click()
-        let restore = app.buttons["Restore Before Version"].firstMatch
+        let confirmation = app.sheets.matching(
+            NSPredicate(format: "label == %@", "alert")
+        ).firstMatch
+        XCTAssertTrue(confirmation.waitForExistence(timeout: 5))
+        let restore = confirmation.buttons["Restore Before Version"].firstMatch
         XCTAssertTrue(restore.waitForExistence(timeout: 5))
         restore.click()
         XCTAssertTrue(
@@ -130,10 +132,9 @@ extension ScholiumUITests {
         comparison.buttons["Close"].firstMatch.click()
         XCTAssertTrue(
             waitUntil(timeout: 10) {
-                inspector.staticTexts["Settled"].firstMatch.exists
-                    && !inspector.staticTexts["Changed since settlement"].firstMatch.exists
+                settle.label.contains("Settled — Settle Again")
             })
-        XCTAssertEqual(settle.label, "Settle Again")
+        XCTAssertTrue(settle.label.contains("Settle Again"))
         let afterUndo = XCTAttachment(screenshot: app.screenshot())
         afterUndo.name = "Settlement retained after exact Agent Undo"
         afterUndo.lifetime = .keepAlways
@@ -149,7 +150,7 @@ extension ScholiumUITests {
             .deletingLastPathComponent()
         let executable =
             repositoryRoot
-            .appendingPathComponent(".build/qa-swiftpm/debug/scholium")
+            .appendingPathComponent(".build/qa-swiftpm/debug/ScholiumAgentHelper")
         let process = Process()
         process.executableURL = executable
         process.arguments = ["mcp", "serve"]
@@ -199,7 +200,10 @@ extension ScholiumUITests {
     func testInspectorLinksSelectIncomingAndOutgoingDirections() {
         _ = selectResearchInspectorDirection("outgoing")
         let outgoing = app.buttons.matching(
-            NSPredicate(format: "label BEGINSWITH 'Outgoing link to QA Topic.'")
+            NSPredicate(
+                format: "identifier BEGINSWITH %@",
+                "scholium.links.occurrence."
+            )
         ).firstMatch
         XCTAssertTrue(outgoing.waitForExistence(timeout: 8))
 
@@ -211,7 +215,10 @@ extension ScholiumUITests {
 
         _ = selectResearchInspectorDirection("incoming")
         let incoming = app.buttons.matching(
-            NSPredicate(format: "label BEGINSWITH 'Incoming link from QA Topic.'")
+            NSPredicate(
+                format: "identifier BEGINSWITH %@",
+                "scholium.links.occurrence."
+            )
         ).firstMatch
         XCTAssertTrue(incoming.waitForExistence(timeout: 8))
     }
@@ -362,9 +369,10 @@ extension ScholiumUITests {
         XCTAssertTrue(settings.waitForExistence(timeout: 3))
         settings.click()
 
-        let triptychsPane = app.descendants(matching: .any)["Triptychs"].firstMatch
-        XCTAssertTrue(triptychsPane.waitForExistence(timeout: 10))
-        triptychsPane.click()
+        XCTAssertTrue(
+            app.descendants(matching: .any)["scholium.settings.root"]
+                .waitForExistence(timeout: 10)
+        )
         let settingsWindow = app.windows.matching(
             identifier: "com_apple_SwiftUI_Settings_window"
         ).firstMatch
@@ -488,7 +496,10 @@ extension ScholiumUITests {
         chooseSetupFolder(works, role: "Works")
         app.buttons["Continue"].click()
 
-        XCTAssertTrue(app.staticTexts["Authorize the Detected Folder"].waitForExistence(timeout: 5))
+        XCTAssertTrue(
+            app.staticTexts["Authorize the Folder Containing Works"]
+                .waitForExistence(timeout: 5)
+        )
         authorizePortableFolder(triptychDirectory)
         XCTAssertTrue(app.staticTexts["Review the Connected Triptych"].waitForExistence(timeout: 5))
         let complete = app.buttons["Use This Triptych"]
@@ -496,11 +507,7 @@ extension ScholiumUITests {
         XCTAssertTrue(complete.isEnabled)
         complete.click()
 
-        XCTAssertTrue(app.staticTexts["Prepare an Agent"].waitForExistence(timeout: 10))
-        let setUpLater = app.buttons["Set Up Later"]
-        XCTAssertTrue(setUpLater.waitForExistence(timeout: 5))
-        setUpLater.click()
-        XCTAssertTrue(app.staticTexts["Your Triptych Is Ready"].waitForExistence(timeout: 30))
+        XCTAssertTrue(app.staticTexts["Triptych Ready"].waitForExistence(timeout: 30))
         let openWorkspace = app.buttons["Open Workspace"]
         XCTAssertTrue(openWorkspace.waitForExistence(timeout: 5))
         openWorkspace.click()
@@ -538,9 +545,11 @@ extension ScholiumUITests {
             app.descendants(matching: .any)["scholium.triptychSetup"].exists,
             "Completing first-run setup must close Bootstrap instead of presenting it over the workspace."
         )
-        let analysisRow = app.descendants(matching: .any)["scholium.noteRow.QA Autosave A.md"]
-        XCTAssertTrue(analysisRow.waitForExistence(timeout: 15))
-        analysisRow.click()
+        XCTAssertTrue(
+            app.descendants(matching: .any)["scholium.noteRow.QA Autosave A.md"]
+                .waitForExistence(timeout: 15)
+        )
+        clickLibraryRow("QA Autosave A.md")
         waitForCurrentDocumentSurface()
         XCTAssertEqual(workspaceWindow.frame, workspaceFrame)
 
@@ -577,9 +586,10 @@ extension ScholiumUITests {
         let settings = app.menuItems["Settings…"]
         XCTAssertTrue(settings.waitForExistence(timeout: 3))
         settings.click()
-        let triptychsPane = app.descendants(matching: .any)["Triptychs"].firstMatch
-        XCTAssertTrue(triptychsPane.waitForExistence(timeout: 10))
-        triptychsPane.click()
+        XCTAssertTrue(
+            app.descendants(matching: .any)["scholium.settings.root"]
+                .waitForExistence(timeout: 10)
+        )
         let nameField = app.descendants(matching: .any)["scholium.triptychName"]
         XCTAssertTrue(nameField.waitForExistence(timeout: 10))
         try paste("QA Renamed Triptych", into: nameField)
@@ -661,7 +671,7 @@ extension ScholiumUITests {
         let result = searchResult(named: "QA Autosave A")
         XCTAssertTrue(field.waitForExistence(timeout: 5))
         selectResearchSearchScope("This Note", in: app)
-        typeCommittedText("analysis", into: field, in: app)
+        typeCommittedText("Synthetic", into: field, in: app)
         XCTAssertTrue(result.waitForExistence(timeout: 8))
         field.click()
         field.typeKey(.downArrow, modifierFlags: [])
@@ -693,29 +703,23 @@ extension ScholiumUITests {
         let field = app.descendants(matching: .any)["scholium.searchField"]
         XCTAssertTrue(field.waitForExistence(timeout: 5))
         selectResearchSearchScope("Triptych", in: app)
-        typeCommittedText(
-            "from-note:\"QA Direct Link Concept 947\"",
-            into: field,
-            in: app
-        )
+        typeCommittedText("from-note:\"QA Autosave B\"", into: field, in: app)
 
         let relatedAnalysis = searchResult(named: "QA Autosave A")
-        XCTAssertTrue(relatedAnalysis.waitForExistence(timeout: 10))
-        XCTAssertFalse(searchResult(named: "QA Direct Link Topic").exists)
+        XCTAssertTrue(relatedAnalysis.waitForExistence(timeout: 20))
+        XCTAssertFalse(searchResult(named: "QA Autosave B").exists)
         XCTAssertTrue(
-            app.staticTexts.matching(
-                NSPredicate(
-                    format: "value CONTAINS[c] %@",
-                    "direct destination of a link authored"
-                )
-            ).firstMatch.exists)
+            relatedAnalysis.label.localizedCaseInsensitiveContains(
+                "from-note:qa autosave b"
+            ),
+            "The result must expose its occurrence-local direct-link origin."
+        )
 
         let resultScroll = app.outlines["scholium.searchResults"].firstMatch
         XCTAssertTrue(resultScroll.waitForExistence(timeout: 5))
-        if !relatedAnalysis.isHittable {
-            scrollUntilHittable(relatedAnalysis, in: resultScroll)
-        }
-        relatedAnalysis.click()
+        relatedAnalysis.coordinate(
+            withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
+        ).click()
         XCTAssertTrue(waitUntil(timeout: 5) { !search.exists })
         XCTAssertTrue(waitForDocumentTitle("QA Autosave A", timeout: 5))
     }

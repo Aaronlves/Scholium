@@ -1797,6 +1797,16 @@ private func deliverWorkspaceEvents(
     }
 }
 
+private func deliverConfirmedAgentChange(
+    _ change: AgentChange,
+    to model: WindowModel?
+) {
+    Task { @MainActor in
+        guard model?.workspaceAssignment?.id == change.triptychID else { return }
+        model?.researchController.scheduleAgentChangesRefresh()
+    }
+}
+
 private func deliverWindowSessionPersistence(to model: WindowModel?) {
     Task { @MainActor in
         model?.persistWindowSessionNow()
@@ -2474,6 +2484,14 @@ final class WindowModel: ObservableObject {
         }
         workspaceStore.$workspaceEvents
             .sink(receiveValue: workspaceEventsHandler)
+            .store(in: &workspaceCancellables)
+
+        let confirmedAgentChangeHandler: @Sendable (AgentChange?) -> Void = { change in
+            guard let change else { return }
+            deliverConfirmedAgentChange(change, to: relay.model)
+        }
+        workspaceStore.$lastConfirmedAgentChange
+            .sink(receiveValue: confirmedAgentChangeHandler)
             .store(in: &workspaceCancellables)
 
         observeWindowSessionChanges()

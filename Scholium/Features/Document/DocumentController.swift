@@ -1351,6 +1351,7 @@ final class DocumentController: ObservableObject {
         session.finishEditing()
         session.returnToReadAfterSave = false
         session.suppressAutosave = false
+        session.dismissConflictComparison()
         session.conflict = nil
         session.canRetrySave = false
         if editingDocumentPath == relativePath(for: target) {
@@ -1505,11 +1506,12 @@ final class DocumentController: ObservableObject {
         target: DocumentEditingTarget
     ) async throws {
         guard let conflict = session.conflict else { return }
+        let comparedConflict = session.conflictComparison ?? conflict
         do {
             let document = try await loadDocument(for: target)
-            guard document.fingerprint == conflict.diskRevision else {
+            guard document.fingerprint == comparedConflict.diskRevision else {
                 throw VaultRepositoryError.conflict(
-                    expected: conflict.diskRevision,
+                    expected: comparedConflict.diskRevision,
                     current: document.fingerprint
                 )
             }
@@ -1524,12 +1526,12 @@ final class DocumentController: ObservableObject {
                 mode: session.retainedEditorMode
             )
             session.suppressAutosave = false
-            session.showConflictComparison = false
+            session.dismissConflictComparison()
             session.editError = nil
             setSaveError(nil)
             finishEditing(session: session, target: target)
         } catch {
-            session.showConflictComparison = false
+            session.dismissConflictComparison()
             await presentSaveFailure(error, session: session, target: target)
             throw error
         }

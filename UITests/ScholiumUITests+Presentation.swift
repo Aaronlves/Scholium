@@ -134,9 +134,7 @@ extension ScholiumUITests {
         let topics = navigator.descendants(matching: .any)["Topics"].firstMatch
         XCTAssertTrue(topics.waitForExistence(timeout: 5))
         topics.click()
-        let topicNote = app.descendants(matching: .any)["scholium.noteRow.QA Topic.md"].firstMatch
-        XCTAssertTrue(topicNote.waitForExistence(timeout: 8))
-        topicNote.click()
+        _ = clickLibraryRow("QA Topic.md")
         XCTAssertTrue(waitForDocumentTitle("QA Topic", timeout: 5))
         let attachment = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
         attachment.name = "Native workspace tabs and retained Library"
@@ -206,9 +204,7 @@ extension ScholiumUITests {
         let sourceURL = triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md")
         let movedURL = triptychDirectory.appendingPathComponent("01-analyses/QA Button Move.md")
         let originalBytes = try Data(contentsOf: sourceURL)
-        let row = app.descendants(matching: .any)["scholium.noteRow.QA Autosave A.md"].firstMatch
-        XCTAssertTrue(row.waitForExistence(timeout: 5))
-        row.rightClick()
+        let row = clickLibraryRow("QA Autosave A.md", rightMouseButton: true)
         app.menuItems["Move Note…"].firstMatch.click()
         let sheet = app.sheets.firstMatch
         XCTAssertTrue(sheet.waitForExistence(timeout: 5))
@@ -233,9 +229,7 @@ extension ScholiumUITests {
         XCTAssertTrue(waitUntil(timeout: 5) { FileManager.default.fileExists(atPath: movedURL.path) })
         XCTAssertEqual(try Data(contentsOf: movedURL), originalBytes)
         XCTAssertFalse(FileManager.default.fileExists(atPath: sourceURL.path))
-        let movedRow = app.descendants(matching: .any)["scholium.noteRow.QA Button Move.md"].firstMatch
-        XCTAssertTrue(movedRow.waitForExistence(timeout: 5))
-        movedRow.rightClick()
+        let movedRow = clickLibraryRow("QA Button Move.md", rightMouseButton: true)
         app.menuItems["Move to Trash…"].firstMatch.click()
         let confirmation = app.sheets.firstMatch
         XCTAssertTrue(confirmation.waitForExistence(timeout: 5))

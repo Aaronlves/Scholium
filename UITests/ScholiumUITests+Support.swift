@@ -69,15 +69,18 @@ extension ScholiumUITests {
         }
         guard !isVisiblyHittable() else { return }
 
-        // XCUITest exposes offscreen SwiftUI rows with their actual frame. A
-        // swipe can advance by more than one viewport on macOS and oscillate
-        // around a compact target, so use bounded native scroll-wheel deltas.
+        // XCUITest exposes offscreen SwiftUI rows with their actual frame. Use
+        // bounded native swipes before asking XCTest to synthesize the click;
+        // otherwise XCTest may try to auto-scroll the enclosing ScrollView and
+        // fail to find a hit point on macOS when the window has just changed
+        // focus.
         for _ in 0..<24 where !isVisiblyHittable() {
             if element.frame.midY < scrollView.frame.midY {
-                scrollView.scroll(byDeltaX: 0, deltaY: 120)
+                scrollView.swipeDown(velocity: .slow)
             } else {
-                scrollView.scroll(byDeltaX: 0, deltaY: -120)
+                scrollView.swipeUp(velocity: .slow)
             }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
         }
         XCTAssertTrue(
             isVisiblyHittable(),
@@ -258,12 +261,23 @@ extension ScholiumUITests {
             XCTFail("The requested workspace must expose its native scene identity.")
             return
         }
+        let stableWindow = app.windows[targetIdentifier]
         XCTAssertEqual(
             notify_post("com.scholium.qa.focus-workspace.\(windowID.uuidString)"),
             UInt32(NOTIFY_STATUS_OK),
             "The QA workspace focus request could not be posted."
         )
         RunLoop.current.run(until: Date().addingTimeInterval(1))
+
+        // The notification makes the native window key, but macOS can still
+        // leave an overlapping workspace as XCUITest's event target. A
+        // title-bar click completes the user-visible focus transition before
+        // the next keyboard or pointer event is synthesized.
+        let titlebar = stableWindow.coordinate(
+            withNormalizedOffset: CGVector(dx: 0.42, dy: 0.025)
+        )
+        titlebar.click()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.25))
     }
 
     @MainActor
@@ -473,17 +487,52 @@ extension ScholiumUITests {
         expectedTitle: String,
         in window: XCUIElement
     ) {
-        focusWorkspaceWindow(window)
-        let row = window.descendants(matching: .any)["scholium.noteRow.\(relativePath)"]
+        let stableWindow = stableWorkspaceWindow(window)
+        clickLibraryRow(relativePath, in: stableWindow)
+        XCTAssertTrue(
+            waitForDocumentTitle(expectedTitle, in: stableWindow, timeout: 10),
+            "The target window must finish opening the requested note."
+        )
+    }
+
+    @MainActor
+    func stableWorkspaceWindow(_ window: XCUIElement) -> XCUIElement {
+        let identifier = window.identifier
+        guard identifier.hasPrefix("scholium-main-") else { return window }
+        return app.windows[identifier]
+    }
+
+    @MainActor
+    @discardableResult
+    func clickLibraryRow(
+        _ relativePath: String,
+        in window: XCUIElement? = nil,
+        rightMouseButton: Bool = false
+    ) -> XCUIElement {
+        let targetWindow = stableWorkspaceWindow(window ?? app.windows.firstMatch)
+        if targetWindow.identifier.hasPrefix("scholium-main-") {
+            focusWorkspaceWindow(targetWindow)
+        }
+
+        let rowIdentifier = "scholium.noteRow.\(relativePath)"
+        let row = targetWindow.descendants(matching: .outlineRow).containing(
+            .any,
+            identifier: rowIdentifier
+        ).firstMatch
         XCTAssertTrue(
             row.waitForExistence(timeout: 10),
             "The requested note must be available in the target window."
         )
-        row.click()
-        XCTAssertTrue(
-            waitForDocumentTitle(expectedTitle, in: window, timeout: 10),
-            "The target window must finish opening the requested note."
+
+        let point = row.coordinate(
+            withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
         )
+        if rightMouseButton {
+            point.rightClick()
+        } else {
+            point.click()
+        }
+        return row
     }
 
     @MainActor
@@ -546,8 +595,9 @@ extension ScholiumUITests {
 
     @MainActor
     func selectDocumentMode(_ title: String, in root: XCUIElement? = nil) {
-        if let root { focusWorkspaceWindow(root) }
-        let mode = documentModeControl(in: root)
+        let stableRoot = root.map(stableWorkspaceWindow)
+        if let stableRoot { focusWorkspaceWindow(stableRoot) }
+        let mode = documentModeControl(in: stableRoot)
         XCTAssertTrue(mode.waitForExistence(timeout: 10))
         if documentModeState(mode) == title { return }
 
@@ -675,22 +725,24 @@ extension ScholiumUITests {
         timeout: TimeInterval = 10
     ) -> Bool {
         waitUntil(timeout: timeout) {
-            self.documentTitle(in: root) == expectedTitle
+            self.documentTitle(in: root.map(self.stableWorkspaceWindow)) == expectedTitle
         }
     }
 
     @MainActor
     func enterLivePreview(in root: XCUIElement? = nil) -> XCUIElement {
-        selectDocumentMode("Edit", in: root)
+        let stableRoot = root.map(stableWorkspaceWindow)
+        selectDocumentMode("Edit", in: stableRoot)
 
         let editor =
-            root?.descendants(matching: .any)["Markdown editor, Edit mode"]
+            stableRoot?.descendants(matching: .any)["Markdown editor, Edit mode"]
             ?? app.descendants(matching: .any)["Markdown editor, Edit mode"]
         XCTAssertTrue(editor.waitForExistence(timeout: 8))
         XCTAssertTrue(waitUntil(timeout: 8) { editor.isHittable })
         // The mode transition requests focus, but XCUITest must still prove
         // that the WebKit text surface is the active command target before it
         // sends editing or document-session shortcuts.
+        if let stableRoot { focusWorkspaceWindow(stableRoot) }
         editor.click()
         return editor
     }
@@ -704,7 +756,9 @@ extension ScholiumUITests {
         let panel = app.descendants(matching: .any)["open-panel"]
         XCTAssertTrue(panel.waitForExistence(timeout: 5))
         app.typeKey("g", modifierFlags: [.command, .shift])
-        let goToFolderSheet = panel.sheets.firstMatch
+        let goToFolderSheet = app.sheets.matching(
+            NSPredicate(format: "identifier != %@", "open-panel")
+        ).firstMatch
         XCTAssertTrue(goToFolderSheet.waitForExistence(timeout: 5))
         let pathField = goToFolderSheet.textFields.firstMatch
         XCTAssertTrue(pathField.waitForExistence(timeout: 5))
@@ -715,19 +769,36 @@ extension ScholiumUITests {
         // accessibility value while it resolves a long path. The Open panel
         // closing and the configured workspace journeys below prove that the
         // requested folder was actually selected.
-        for _ in 0..<2 where goToFolderSheet.exists {
-            app.typeKey(.return, modifierFlags: [])
-            _ = waitUntil(timeout: 2) { !goToFolderSheet.exists }
+        let confirmFolder = goToFolderSheet.buttons.allElementsBoundByIndex
+            .reversed()
+            .first(where: {
+                $0.isEnabled
+                    && $0.label != "Cancel"
+                    && $0.label != "Close"
+                    && $0.identifier != "CancelButton"
+                    && $0.identifier != "CloseButton"
+            })
+        if let confirmFolder {
+            confirmFolder.click()
+        } else {
+            pathField.typeKey(.return, modifierFlags: [])
         }
         XCTAssertTrue(waitUntil(timeout: 5) { !goToFolderSheet.exists })
 
+        // On current macOS, the second Return can activate the Open panel's
+        // default action as it dismisses Go to Folder. In that case the panel
+        // is already closed and the selected URL has been delivered to the
+        // setup flow; there is no second OKButton to click.
+        guard panel.exists else { return }
+
         let choose = panel.buttons["OKButton"]
         XCTAssertTrue(choose.waitForExistence(timeout: 5))
-        XCTAssertTrue(waitUntil(timeout: 5) { choose.isEnabled })
-        choose.click()
+        choose.coordinate(
+            withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
+        ).click()
 
         XCTAssertTrue(
-            waitUntil(timeout: 5) { !choose.exists },
+            waitUntil(timeout: 5) { !panel.exists },
             "Expected the standard Open panel to close after choosing the \(role) folder."
         )
     }
@@ -754,19 +825,44 @@ extension ScholiumUITests {
             )
         }
         if owner != nil {
-            let folderEntry = panel.descendants(matching: .any).matching(
-                NSPredicate(format: "value == %@", folder.lastPathComponent)
+            // The panel's folder list can be laid out outside the active
+            // display on macOS 27. Resolve the exact directory through the
+            // native Go to Folder sheet instead of asking XCUITest to scroll
+            // that internal list to a hit point.
+            app.typeKey("g", modifierFlags: [.command, .shift])
+            let goToFolderSheet = app.sheets.matching(
+                NSPredicate(format: "identifier != %@", "open-panel")
             ).firstMatch
-            XCTAssertTrue(folderEntry.waitForExistence(timeout: 5))
-            folderEntry.click()
+            XCTAssertTrue(goToFolderSheet.waitForExistence(timeout: 5))
+            let pathField = goToFolderSheet.textFields.firstMatch
+            XCTAssertTrue(pathField.waitForExistence(timeout: 5))
+            pathField.click()
+            pathField.typeKey("a", modifierFlags: .command)
+            pathField.typeText(folder.path)
+            let confirmFolder = goToFolderSheet.buttons.allElementsBoundByIndex
+                .reversed()
+                .first(where: {
+                    $0.isEnabled
+                        && $0.label != "Cancel"
+                        && $0.label != "Close"
+                        && $0.identifier != "CancelButton"
+                        && $0.identifier != "CloseButton"
+                })
+            if let confirmFolder {
+                confirmFolder.click()
+            } else {
+                pathField.typeKey(.return, modifierFlags: [])
+            }
+            XCTAssertTrue(waitUntil(timeout: 5) { !goToFolderSheet.exists })
         }
 
         let authorize = panel.buttons["OKButton"]
         XCTAssertTrue(authorize.waitForExistence(timeout: 5))
-        XCTAssertTrue(waitUntil(timeout: 5) { authorize.isEnabled })
-        authorize.click()
+        authorize.coordinate(
+            withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
+        ).click()
 
-        XCTAssertTrue(waitUntil(timeout: 5) { !authorize.exists })
+        XCTAssertTrue(waitUntil(timeout: 5) { !panel.exists })
     }
 
     func source(at url: URL) throws -> String {
@@ -962,17 +1058,11 @@ extension ScholiumUITests {
         }
         if name.contains("testSearchQueriesOneDirectAuthoredLinkWithoutParallelResults") {
             try write(
-                """
-                ---
-                title: "QA Direct Link Concept 947"
-                aliases: ["QA Direct Link Alias 947"]
-                status: seed
-                ---
-                # QA Direct Link Concept 947
-
-                Synthetic navigation fixture: [[QA Autosave A|a distinct analysis]]{{A direct authored connection with occurrence-local context.}}.
-                """ + "\n",
-                to: topics.appendingPathComponent("QA Direct Link Topic.md")
+                try String(
+                    contentsOf: analyses.appendingPathComponent("QA Autosave B.md"),
+                    encoding: .utf8
+                ) + "\n[[QA Autosave A]]{{A direct authored connection with occurrence-local context.}}.\n",
+                to: analyses.appendingPathComponent("QA Autosave B.md")
             )
         }
         if name.contains("testSearchExplainsTitleAliasHeadingAndBodyRanking") {

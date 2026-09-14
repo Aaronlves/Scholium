@@ -299,7 +299,16 @@ struct NoteContentView: View {
     }
     private var showConflictComparison: Bool {
         get { documentSession.showConflictComparison }
-        nonmutating set { documentSession.showConflictComparison = newValue }
+        nonmutating set {
+            if newValue {
+                documentSession.presentConflictComparison()
+            } else {
+                documentSession.dismissConflictComparison()
+            }
+        }
+    }
+    private var conflictForComparison: DocumentConflictSnapshot? {
+        documentSession.conflictComparison ?? documentSession.conflict
     }
     private var editorSession: MarkdownEditorSession { documentSession.editorSession }
 
@@ -409,7 +418,7 @@ struct NoteContentView: View {
                 set: { showConflictComparison = $0 }
             )
         ) {
-            if let conflict {
+            if let conflict = conflictForComparison {
                 ConflictComparisonSheet(
                     conflict: conflict,
                     onReturnToEditing: {

@@ -143,6 +143,21 @@ case "${profile}" in
     ;;
 esac
 test_arguments=("$@")
+critical_ui_tests=(
+  "-only-testing:ScholiumUITests/ScholiumUITests/testFixtureLaunchWithoutExplicitSessionIDUsesOneWindowSession"
+  "-only-testing:ScholiumUITests/ScholiumUITests/testStorageUnavailableRetriesWithoutConstructingWorkspace"
+  "-only-testing:ScholiumUITests/ScholiumUITests/testPortableFolderPanelRejectsWrongExactFolderAndRecovers"
+  "-only-testing:ScholiumUITests/ScholiumUITests/testRestoreAccessFolderSelectionUsesScenePresenter"
+  "-only-testing:ScholiumUITests/ScholiumUITests/testAgentChangesShowsExactUpdateAndRestoresSettledBytes"
+  "-only-testing:ScholiumUITests/ScholiumUITests/testDirtyLivePreviewCommitsBeforeSwitchingNotes"
+  "-only-testing:ScholiumUITests/ScholiumUITests/testDocumentModeAndLibrarySwitchHandoffsStayBoundedWithoutSourceExposure"
+  "-only-testing:ScholiumUITests/ScholiumUITests/testDirtyExternalEditPreservesTheBufferAndPresentsConflictRecovery"
+  "-only-testing:ScholiumUITests/ScholiumUITests/testConflictReloadRejectsADiskRevisionThatChangedAfterComparison"
+  "-only-testing:ScholiumUITests/ScholiumUITests/testDirtyEditorBufferSurvivesTheQAFaultRoute"
+  "-only-testing:ScholiumUITests/ScholiumUITests/testDirtyExternalRenameRebindsAndPreservesTheUncommittedEditorBuffer"
+  "-only-testing:ScholiumUITests/ScholiumUITests/testNativeCommandButtonsPreserveDefaultDisabledAndCancelActions"
+  "-only-testing:ScholiumUITests/ScholiumUITests/testNativeTriptychWorkspaceNavigatorUsesSelectionAndArrowKeys"
+)
 common_arguments=(
   -project "${ROOT}/ScholiumUITests.xcodeproj" \
   -scheme ScholiumUITests \
@@ -154,13 +169,13 @@ common_arguments=(
 
 if [[ "${profile}" == "smoke" ]]; then
   test_arguments=(
-    "-only-testing:ScholiumUITests/ScholiumUITests/testFixtureLaunchWithoutExplicitSessionIDUsesOneWindowSession"
+    "${critical_ui_tests[1]}"
     "${test_arguments[@]}"
   )
   DEVELOPER_DIR="${DEVELOPER_DIR}" xcodebuild "${common_arguments[@]}" test "${test_arguments[@]}"
 elif [[ "${profile}" == "complete" ]]; then
   manifest="${ROOT}/.build/qa-complete-test-manifest.json"
-  acceptance_filter="-only-testing:ScholiumUITests/ScholiumUITests"
+  acceptance_filters=("${critical_ui_tests[@]}" "${test_arguments[@]}")
   rm -f "${manifest}"
   DEVELOPER_DIR="${DEVELOPER_DIR}" xcodebuild "${common_arguments[@]}" build-for-testing
   DEVELOPER_DIR="${DEVELOPER_DIR}" xcodebuild \
@@ -169,8 +184,7 @@ elif [[ "${profile}" == "complete" ]]; then
     -test-enumeration-style flat \
     -test-enumeration-format json \
     -test-enumeration-output-path "${manifest}" \
-    "${acceptance_filter}" \
-    "${test_arguments[@]}" \
+    "${acceptance_filters[@]}" \
     test-without-building
   [[ -s "${manifest}" ]] || {
     print -u2 "Complete UI test enumeration produced no manifest."
@@ -178,8 +192,7 @@ elif [[ "${profile}" == "complete" ]]; then
   }
   DEVELOPER_DIR="${DEVELOPER_DIR}" xcodebuild \
     "${common_arguments[@]}" \
-    "${acceptance_filter}" \
-    "${test_arguments[@]}" \
+    "${acceptance_filters[@]}" \
     test-without-building
 else
   DEVELOPER_DIR="${DEVELOPER_DIR}" xcodebuild "${common_arguments[@]}" test "${test_arguments[@]}"

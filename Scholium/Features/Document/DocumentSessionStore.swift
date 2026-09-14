@@ -78,6 +78,10 @@ final class DocumentSessionModel: ObservableObject {
     @Published var isAttachingDocument = false
     var readSelection: MarkdownReviewSelection?
     @Published var conflict: DocumentConflictSnapshot?
+    /// The exact conflict revision shown in the open comparison sheet. A
+    /// later filesystem observation may update `conflict`, but it must never
+    /// change the bytes that the current Reload action is authorized to use.
+    @Published private(set) var conflictComparison: DocumentConflictSnapshot?
     @Published var canRetrySave = false
     @Published var showConflictComparison = false
     /// Present only until a managed New Note's acknowledged editor has placed
@@ -108,6 +112,17 @@ final class DocumentSessionModel: ObservableObject {
     var retainsEditorSurface: Bool { presentation.retainsEditorSurface }
     var isEnteringManagedCreation: Bool {
         managedCreationBodyStartUTF16 != nil
+    }
+
+    func presentConflictComparison() {
+        guard let conflict else { return }
+        conflictComparison = conflict
+        showConflictComparison = true
+    }
+
+    func dismissConflictComparison() {
+        showConflictComparison = false
+        conflictComparison = nil
     }
 
     func beginManagedCreationEntry(bodyStartUTF16: Int) {
@@ -226,6 +241,7 @@ final class DocumentSessionModel: ObservableObject {
         previewCatalog = nil
         readSelection = nil
         conflict = nil
+        conflictComparison = nil
         editError = nil
         canRetrySave = false
         managedCreationBodyStartUTF16 = nil

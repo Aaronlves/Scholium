@@ -117,6 +117,10 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
     private(set) var appBridgeStartupFailure: ScholiumAppBridgeError?
 
     @Published private(set) var workspaceSnapshots: [UUID: WorkspaceSnapshot] = [:]
+    /// A confirmed Agent mutation is published after its durable evidence is
+    /// stored. Window models use this edge to refresh their Agent Changes
+    /// projection after the source-commit event has already been delivered.
+    @Published private(set) var lastConfirmedAgentChange: AgentChange?
     /// Latest accepted typed Application event per active Triptych. This is
     /// the narrow delivery adapter for event-specific projections such as a
     /// stable-identity move; WorkspaceStore remains the only stream consumer.
@@ -172,7 +176,10 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
                     guard let self else { throw WorkspaceStore.displayUnavailable() }
                     try await self.displayAgentNote(windowID: window, target: target, request: request)
                 },
-                didConfirmChange: { SystemNotificationService.shared.receive($0) },
+                didConfirmChange: { [weak self] change in
+                    SystemNotificationService.shared.receive(change)
+                    self?.lastConfirmedAgentChange = change
+                },
                 chatHandler: { [weak self] request in
                     guard let self else {
                         return try! ScholiumMCPBridgeResponse(
