@@ -4662,7 +4662,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "App 桥接"
+            "value" : "应用桥接"
           }
         }
       }
@@ -5972,7 +5972,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Callout"
+            "value" : "语义块"
           }
         }
       }
@@ -5988,7 +5988,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Callout"
+            "value" : "语义块"
           }
         }
       }
@@ -5998,7 +5998,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Callout 继承正文排版；每种角色只控制间距与构成。"
+            "value" : "语义块继承正文排版；每种角色只控制间距与构成。"
           }
         }
       }
@@ -6014,7 +6014,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Callout：.callout、.callout-title、.callout-body 以及 .callout-<role>。"
+            "value" : "语义块：.callout、.callout-title、.callout-body 以及 .callout-<role>。"
           }
         }
       }
@@ -6824,7 +6824,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "选择 Note"
+            "value" : "选择笔记"
           }
         }
       }
@@ -6834,7 +6834,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "选择 Note…"
+            "value" : "选择笔记…"
           }
         }
       }
@@ -8342,7 +8342,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "通过本地 MCP 适配器，将外部智能体宿主连接到当前正在运行的 Scholium App。"
+            "value" : "通过本地 MCP 适配器，将外部智能体宿主连接到当前正在运行的 Scholium 应用。"
           }
         }
       }
@@ -12489,7 +12489,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "请先完成输入法组字，再尝试添加此 Note。"
+            "value" : "请先完成输入法组字，再尝试添加此笔记。"
           }
         }
       }
@@ -12673,7 +12673,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Folder/Note.md"
+            "value" : "文件夹/笔记.md"
           }
         }
       }
@@ -17205,7 +17205,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "暂无可用的 Note"
+            "value" : "暂无可用的笔记"
           }
         }
       }
@@ -18150,7 +18150,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Notes"
+            "value" : "笔记"
           }
         }
       }
@@ -20576,7 +20576,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "正在读取 Note"
+            "value" : "正在读取笔记"
           }
         }
       }
@@ -23783,7 +23783,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Scholium App"
+            "value" : "Scholium 应用"
           }
         }
       }
@@ -23799,7 +23799,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Connection Helper"
+            "value" : "连接助手"
           }
         }
       }
@@ -26856,7 +26856,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "此 Note 在读取期间发生了变化。请等待文库刷新后重新选择。"
+            "value" : "此笔记在读取期间发生了变化。请等待文库刷新后重新选择。"
           }
         }
       }
@@ -26866,7 +26866,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "此 Note 或对话已不可用。"
+            "value" : "此笔记或对话已不可用。"
           }
         }
       }
@@ -27084,7 +27084,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "当前编辑器快照不可用。请保持 Note 打开后重试。"
+            "value" : "当前编辑器快照不可用。请保持笔记打开后重试。"
           }
         }
       }
@@ -30396,7 +30396,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "整篇 Note"
+            "value" : "整篇笔记"
           }
         }
       }
@@ -32282,6 +32282,278 @@
           "stringUnit": {
             "state": "translated",
             "value": "复制链接"
+          }
+        }
+      }
+    },
+    "The duplicate preserves the exact source bytes and receives a new stable note identity." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The duplicate preserves the exact source bytes and receives a new stable note identity."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "副本会保留源文件的精确字节内容，并获得新的稳定笔记身份。"
+          }
+        }
+      }
+    },
+    "Note Name" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Note Name"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "笔记名称"
+          }
+        }
+      }
+    },
+    "Choose a folder" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Choose a folder"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "选择文件夹"
+          }
+        }
+      }
+    },
+    "Save Triptych" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Save Triptych"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保存脉络"
+          }
+        }
+      }
+    },
+    "Reading" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Reading"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "阅读"
+          }
+        }
+      }
+    },
+    "Body Typography" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Body Typography"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正文排版"
+          }
+        }
+      }
+    },
+    "Heading Typography" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Heading Typography"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "标题排版"
+          }
+        }
+      }
+    },
+    "Text Styles" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Text Styles"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "文本样式"
+          }
+        }
+      }
+    },
+    "Heading Hierarchy" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Heading Hierarchy"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "标题层级"
+          }
+        }
+      }
+    },
+    "Role" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Role"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "角色"
+          }
+        }
+      }
+    },
+    "Bold Font" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Bold Font"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "粗体字体"
+          }
+        }
+      }
+    },
+    "Italic Font" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Italic Font"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "斜体字体"
+          }
+        }
+      }
+    },
+    "Font" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Font"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "字体"
+          }
+        }
+      }
+    },
+    "Weight" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Weight"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "字重"
+          }
+        }
+      }
+    },
+    "Level" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Level"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "级别"
+          }
+        }
+      }
+    },
+    "%@ setup command copied" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%@ setup command copied"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已复制 %@ 设置命令"
+          }
+        }
+      }
+    },
+    "%@ setup command could not be copied." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%@ setup command could not be copied."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 设置命令复制失败。"
           }
         }
       }

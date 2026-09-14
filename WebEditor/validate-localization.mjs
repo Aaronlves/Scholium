@@ -51,11 +51,12 @@ for (const key of keys) {
   }
 }
 
+// `label` and `meaning` also name typed data fields; their rendering sites
+// localize the values, so object fields are not direct DOM sinks.
 const directUISinkPatterns = [
   /setAttribute\(\s*["']aria-label["']\s*,\s*["'`]\s*[A-Z]/g,
   /\.textContent\s*=\s*["'`]\s*[A-Z]/g,
   /(?:createToolbarButton|addMenuItem|addSubmenuItem)\(\s*["'`]\s*[A-Z]/g,
-  /\b(?:label|meaning)\s*:\s*["'`]\s*[A-Z]/g,
   /announceEditorMessage\([\s\S]{0,160}?,\s*["'`]\s*[A-Z]/g,
 ];
 const editorUISources = [

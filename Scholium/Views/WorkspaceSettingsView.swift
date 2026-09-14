@@ -2218,7 +2218,7 @@ private struct CSSSnippetRow: View {
 private struct WorkspacePathEditor: View {
     @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
 
-    let completionTitle: String
+    let completionTitle: LocalizedStringResource
     var targetTriptychID: UUID? = nil
     var showsCancel = true
     let onCompletion: (() -> Void)?
@@ -2505,22 +2505,22 @@ struct WorkspaceFolderRow: View {
         VStack(alignment: .leading, spacing: ScholiumMetrics.Settings.rowDetailSpacing) {
             HStack(spacing: ScholiumGrid.Spacing.nestedContentInset) {
                 VStack(alignment: .leading, spacing: ScholiumMetrics.Settings.rowDetailSpacing) {
-                    Text(ScholiumL10n.dynamicString(title))
+                    Text(localizedTitle)
                         .font(.body)
-                    Text(url?.path(percentEncoded: false) ?? "No folder selected")
+                    Text(url?.path(percentEncoded: false) ?? ScholiumL10n.string("No folder selected"))
                         .font(.caption)
                         .foregroundStyle(url == nil ? .secondary : .primary)
                         .lineLimit(1)
                         .truncationMode(.middle)
-                        .help(url?.path(percentEncoded: false) ?? "Choose a folder")
+                        .help(url?.path(percentEncoded: false) ?? ScholiumL10n.string("Choose a folder"))
                 }
 
                 Spacer(minLength: ScholiumMetrics.Settings.trailingControlMinimumSpacing)
 
-                Button(url == nil ? "Choose…" : "Change…") {
+                Button(url == nil ? ScholiumL10n.string("Choose…") : ScholiumL10n.string("Change…")) {
                     chooseFolder()
                 }
-                .accessibilityLabel("Choose \(title) folder")
+                .accessibilityLabel(Text(verbatim: chooseFolderAccessibilityLabel))
             }
             if let selectionError {
                 Text(selectionError)
@@ -2531,6 +2531,18 @@ struct WorkspaceFolderRow: View {
             }
         }
         .padding(.vertical, ScholiumGrid.Spacing.labelAccessoryGap)
+    }
+
+    private var localizedTitle: String {
+        ScholiumL10n.dynamicString(title)
+    }
+
+    private var chooseFolderAccessibilityLabel: String {
+        String(
+            format: ScholiumL10n.string("Choose %@ Folder", locale: Locale.current),
+            locale: Locale.current,
+            localizedTitle
+        )
     }
 
     private func chooseFolder() {
@@ -2549,7 +2561,7 @@ struct WorkspaceFolderRow: View {
             title: String(
                 format: ScholiumL10n.string("Choose %@ Folder"),
                 locale: Locale.current,
-                title
+                localizedTitle
             ),
             prompt: ScholiumL10n.string("Choose"),
             initialDirectoryURL: initialDirectoryURL,

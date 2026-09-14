@@ -73,10 +73,48 @@ struct ScholiumLocalizationTests {
             ("Move Note", "移动笔记"),
             ("No Document Selected", "未选择文档"),
             ("Expand All Folders", "展开所有文件夹"),
+            ("Save Triptych", "保存脉络"),
+            ("Reading", "阅读"),
+            ("Body Typography", "正文排版"),
+            ("Heading Typography", "标题排版"),
+            ("Text Styles", "文本样式"),
+            ("Heading Hierarchy", "标题层级"),
+            ("Role", "角色"),
+            ("Bold Font", "粗体字体"),
+            ("Italic Font", "斜体字体"),
+            ("Font", "字体"),
+            ("Weight", "字重"),
+            ("Level", "级别"),
+            ("Callout", "语义块"),
+            ("Callouts", "语义块"),
+            ("Choose Note", "选择笔记"),
+            ("Choose Note…", "选择笔记…"),
+            ("Notes", "笔记"),
+            ("No Notes Available", "暂无可用的笔记"),
+            ("No Matching Notes", "无匹配笔记"),
+            ("Reading Note", "正在读取笔记"),
+            ("App Bridge", "应用桥接"),
+            ("Connection Helper", "连接助手"),
+            ("Scholium App", "Scholium 应用"),
+            ("Whole Note", "整篇笔记"),
         ]
         for (key, expected) in expectations {
             #expect(ScholiumL10n.string(key, locale: simplifiedChinese) == expected)
         }
+
+        let copied = String(
+            format: ScholiumL10n.string("%@ setup command copied", locale: simplifiedChinese),
+            locale: simplifiedChinese,
+            "Codex"
+        )
+        #expect(copied == "已复制 Codex 设置命令")
+
+        let failed = String(
+            format: ScholiumL10n.string("%@ setup command could not be copied.", locale: simplifiedChinese),
+            locale: simplifiedChinese,
+            "Codex"
+        )
+        #expect(failed == "Codex 设置命令复制失败。")
 
         let count = String(
             format: ScholiumL10n.string("%lld notes", locale: simplifiedChinese),

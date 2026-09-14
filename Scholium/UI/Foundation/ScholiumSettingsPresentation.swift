@@ -89,8 +89,9 @@ func settingsEditorSection<Content: View>(
     _ title: LocalizedStringResource,
     @ViewBuilder content: () -> Content
 ) -> some View {
-    HStack(alignment: .top, spacing: 16) {
-        Text(verbatim: String(localized: title) + ":")
+    let separator = Locale.current.identifier.lowercased().hasPrefix("zh") ? "：" : ":"
+    return HStack(alignment: .top, spacing: 16) {
+        Text(verbatim: String(localized: title) + separator)
             .font(.body.weight(.semibold))
             .multilineTextAlignment(.trailing)
             .frame(width: 160, alignment: .trailing)

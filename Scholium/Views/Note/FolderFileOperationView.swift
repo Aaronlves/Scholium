@@ -67,7 +67,7 @@ struct FolderFileOperationView: View {
         .frame(minWidth: 0, idealWidth: 520, minHeight: 0, idealHeight: 260)
         .onAppear { configureDefaults() }
         .alert(
-            "Could Not \(actionTitle) Folder",
+            alertTitle,
             isPresented: Binding(
                 get: { errorMessage != nil },
                 set: { if !$0 { errorMessage = nil } }
@@ -78,6 +78,14 @@ struct FolderFileOperationView: View {
         } message: {
             Text(errorMessage ?? "")
         }
+    }
+
+    private var alertTitle: String {
+        String(
+            format: ScholiumL10n.string("Could Not %@ Folder", locale: Locale.current),
+            locale: Locale.current,
+            actionTitle
+        )
     }
 
     private var target: FolderMutationTarget { request.target }

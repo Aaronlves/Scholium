@@ -143,8 +143,16 @@ private struct ExternalAgentHostsSettingsView: View {
         let copied = ScholiumPasteboardWriter.general.writeText(command)
         copyStatus =
             copied
-            ? "\(host.title) setup command copied"
-            : "\(host.title) setup command could not be copied."
+            ? String(
+                format: ScholiumL10n.string("%@ setup command copied", locale: Locale.current),
+                locale: Locale.current,
+                host.title
+            )
+            : String(
+                format: ScholiumL10n.string("%@ setup command could not be copied.", locale: Locale.current),
+                locale: Locale.current,
+                host.title
+            )
 
     }
 }

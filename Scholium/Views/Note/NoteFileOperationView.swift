@@ -62,7 +62,7 @@ struct NoteFileOperationView: View {
         .frame(minWidth: 0, idealWidth: 540, minHeight: 0, idealHeight: 460)
         .onAppear { configureDefaults() }
         .alert(
-            "Could Not \(actionTitle)",
+            alertTitle,
             isPresented: Binding(
                 get: { errorMessage != nil },
                 set: { if !$0 { errorMessage = nil } }
@@ -77,7 +77,7 @@ struct NoteFileOperationView: View {
 
     @ViewBuilder
     private func adaptiveField<WideContent: View, CompactContent: View>(
-        _ title: String,
+        _ title: LocalizedStringResource,
         @ViewBuilder wide: () -> WideContent,
         @ViewBuilder compact: () -> CompactContent
     ) -> some View {
@@ -95,7 +95,7 @@ struct NoteFileOperationView: View {
         }
     }
 
-    private var sheetTitle: String {
+    private var sheetTitle: LocalizedStringResource {
         switch request {
         case .duplicate: "Duplicate Note"
         case .rename: "Rename Note"
@@ -103,12 +103,20 @@ struct NoteFileOperationView: View {
         }
     }
 
-    private var actionTitle: String {
+    private var actionTitle: LocalizedStringResource {
         switch request {
         case .duplicate: "Duplicate"
         case .rename: "Rename"
         case .move: "Move"
         }
+    }
+
+    private var alertTitle: String {
+        String(
+            format: ScholiumL10n.string("Could Not %@", locale: Locale.current),
+            locale: Locale.current,
+            ScholiumL10n.localized(actionTitle, locale: Locale.current)
+        )
     }
 
     private var symbol: String {
@@ -119,7 +127,7 @@ struct NoteFileOperationView: View {
         }
     }
 
-    private var helpText: String {
+    private var helpText: LocalizedStringResource {
         switch request {
         case .duplicate:
             "The duplicate preserves the exact source bytes and receives a new stable note identity."
@@ -130,11 +138,11 @@ struct NoteFileOperationView: View {
         }
     }
 
-    private var fieldTitle: String {
+    private var fieldTitle: LocalizedStringResource {
         if case .rename = request { "Name" } else { "Location" }
     }
 
-    private var fieldPlaceholder: String {
+    private var fieldPlaceholder: LocalizedStringResource {
         if case .rename = request { "Note Name" } else { "Folder/Note.md" }
     }
 
