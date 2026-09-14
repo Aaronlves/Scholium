@@ -30,6 +30,21 @@ describe("Lezer-backed semantic projection", () => {
     return semanticProjectionRanges(state, [{from: 0, to: source.length}], 2_000, tree);
   }
 
+  it("projects only paragraph identity suffixes outside protected syntax", () => {
+    const source = "Paragraph. ^identity-1\n\n`code ^literal`\n\n```\nCode ^no\n```\n\n%% hidden ^no %%\n\nTrailing.";
+    const ranges = completeProjection(source);
+    const anchors = ranges.inlines.filter((inline) => inline.kind === "blockAnchor");
+    expect(anchors.map((anchor) => source.slice(anchor.from, anchor.to))).toEqual(["^identity-1"]);
+    expect(anchors[0].visibleRanges).toEqual([]);
+    expect(anchors[0].markerRanges).toEqual([{from: source.indexOf("^identity-1"), to: source.indexOf("^identity-1") + 11}]);
+    for (const protectedSource of ["- Listed ^no", "> Quoted ^no", "%%\n\nHidden ^no\n\n%%", "Math $x$ ^no", "Inline ^[note] ^no", "^orphan"]) {
+      expect(completeProjection(protectedSource).inlines.filter((inline) => inline.kind === "blockAnchor")).toEqual([]);
+    }
+    const standalone = "Paragraph.\n\n^one\n\nNext.";
+    expect(completeProjection(standalone).inlines.filter((inline) => inline.kind === "blockAnchor")
+      .map((inline) => standalone.slice(inline.from, inline.to))).toEqual(["^one"]);
+  });
+
   it("proves representative standard Markdown ranges", () => {
     const source = "## Claim\n\n**strong**, *emphasis*, and ==highlight== with [link](https://example.test).\n\n| A | B |\n|---|---|\n| 1 | 2 |";
     const ranges = completeProjection(source);

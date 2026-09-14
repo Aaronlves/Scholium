@@ -29,6 +29,14 @@ public actor DocumentOperations: DocumentUseCases {
         self.reference = reference
     }
 
+    public func prepareNoteRestructure(_ request: NoteRestructureRequest) async throws -> NoteRestructurePreview {
+        try await reference.requireHandle().prepareNoteRestructure(request)
+    }
+
+    public func commitNoteRestructure(_ preview: NoteRestructurePreview) async throws -> WorkspaceMutationOutcome<NoteRestructureCommit> {
+        try await reference.requireHandle().commitNoteRestructure(preview)
+    }
+
     public func snapshot() async throws -> [WorkspaceVaultSnapshot] {
         let handle = try await reference.requireHandle()
         return try await handle.snapshot().vaults

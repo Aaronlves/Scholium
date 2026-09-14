@@ -620,7 +620,7 @@ enum WorkspaceSnapshotBuilder {
                             outgoing: graph?.outgoing[id]?.count ?? 0,
                             broken: diagnostics.count { $0.code == .broken },
                             ambiguous: diagnostics.count {
-                                $0.code == .ambiguous || $0.code == .ambiguousHeading
+                                $0.code == .ambiguous || $0.code == .ambiguousHeading || $0.code == .ambiguousBlock
                             }
                         ),
                         headings: loaded.semantics[

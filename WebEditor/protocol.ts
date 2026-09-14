@@ -1,4 +1,4 @@
-export const EDITOR_PROTOCOL_VERSION = 33;
+export const EDITOR_PROTOCOL_VERSION = 34;
 export const MAX_INBOUND_BYTES = 2_500_000;
 export const MAX_SOURCE_UTF8_BYTES = 8_000_000;
 
@@ -122,7 +122,7 @@ export type EditorOperation =
   | {type: "restoreRecovery"; snapshot: RecoverySnapshot}
   | {type: "acknowledgeCommittedSnapshot"; expectedText: string; committedText: string; committedFingerprint: string}
   | {type: "insertReference"; selection: SelectionRange; generation: number; target: string}
-  | {type: "replacePassage"; expectedText: string; fromUTF16: number; toUTF16: number; replacement: string}
+  | {type: "replacePassage"; expectedText: string; fromUTF16: number; toUTF16: number; replacement: string; preserveSelection: boolean}
   | {type: "command"; command: MarkdownEditorCommand; argument?: string}
   | {type: "markClean"} | {type: "focus"} | {type: "focusTitle"} | {type: "blur"};
 export interface EditorRequest {
@@ -335,9 +335,10 @@ function validOperation(operation: Record<string, unknown>) {
   }
   case "replacePassage":
     return typeof operation.expectedText === "string" && typeof operation.replacement === "string"
+      && typeof operation.preserveSelection === "boolean"
       && operation.replacement.length > 0 && operation.replacement.length <= 500_000
       && Number.isSafeInteger(operation.fromUTF16) && Number.isSafeInteger(operation.toUTF16)
-      && Number(operation.fromUTF16) >= 0 && Number(operation.toUTF16) > Number(operation.fromUTF16);
+      && Number(operation.fromUTF16) >= 0 && Number(operation.toUTF16) >= Number(operation.fromUTF16);
   case "command":
     return typeof operation.command === "string" && commandTypes.has(operation.command as MarkdownEditorCommand)
       && (operation.argument === undefined || typeof operation.argument === "string");

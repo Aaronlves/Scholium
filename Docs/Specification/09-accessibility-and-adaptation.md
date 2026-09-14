@@ -115,6 +115,10 @@ YAML interaction; §18.6 owns state/action wording. Verify:
   native selection in Review or opens its exact Source range; a read-only
   rendering that cannot select the passage reports the limitation and retains
   the supplied-text preview.
+- Note Actions has a complete accessible name in both window types. Paragraph
+  menus preserve the visible target and have Research-menu alternatives. Reorganization
+  exposes destination search, exact changed-file previews, cancellation before commit,
+  persistent failure, and valid recovery; no drag or secondary click is required.
 - Suggestions expose one listbox selection while retaining editor focus and
   yield immediately to marked text. Find exposes query, options, count,
   navigation, replacement availability and close in keyboard order, then restores
@@ -211,11 +215,12 @@ integrations. Verify:
 ### Agent Changes
 
 §8.4 owns evidence and Undo; §18.5 owns comparison presentation. Each comparison
-exposes Note, operation, exact revisions/position, `change_id` and applicable
+exposes Note, operation, Before/After position and applicable
 Earlier Revision, Created by External Agent or system-Trash state. Before/After
 and inserted/removed/changed structure remain perceivable without color.
-Previous/Next and progressive path/fingerprint detail have keyboard, pointer,
-focus and accessibility equivalents. Closing implies no review or Settlement.
+Previous/Next and complete Note identity have keyboard, pointer, focus and
+accessibility equivalents. Viewed means a confirmed detail was displayed; it
+requires no confirmation and implies no acceptance or Settlement.
 Undo states its current-fingerprint prerequisite and outcome. Source deletion
 and Agent Change recovery retain different consequences and return context.
 

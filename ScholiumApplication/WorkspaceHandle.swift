@@ -2209,7 +2209,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         )
     }
 
-    private func systemTrashCoordinator(
+    func systemTrashCoordinator(
         vaultID: UUID
     ) throws -> NoteSystemTrashDeletionCoordinator {
         let repository = try repository(vaultID: vaultID)
@@ -2544,7 +2544,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         }
     }
 
-    private static func catalogPreparation(
+    static func catalogPreparation(
         upserts: [VaultQualifiedNoteID] = [],
         deletions: [VaultQualifiedNoteID] = [],
         refreshFolderVaultIDs: Set<UUID> = []

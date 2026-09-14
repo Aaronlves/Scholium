@@ -958,6 +958,7 @@ struct FrontendArchitectureTests {
                 ScholiumWorkspaceToolbarController.Item.settlement,
                 .space,
                 ScholiumWorkspaceToolbarController.Item.documentMode,
+                ScholiumWorkspaceToolbarController.Item.noteActions,
                 ScholiumWorkspaceToolbarController.Item.apparatusDivider,
                 ScholiumWorkspaceToolbarController.Item.inspectorModes,
                 .flexibleSpace,

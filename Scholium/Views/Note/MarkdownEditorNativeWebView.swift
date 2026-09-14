@@ -18,6 +18,7 @@ final class WindowAttachedWebView: WKWebView {
     var onFirstWindowAttachment: (() -> Void)?
     var onPasteImage: ((EditorPastedImageSource) -> Bool)?
     weak var editorSession: MarkdownEditorSession?
+    var onPassageAction: ((DocumentPassageAction) -> Void)?
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
@@ -152,6 +153,26 @@ final class WindowAttachedWebView: WKWebView {
             ))
         menu.addItem(.separator())
         menu.addItem(spellingAndGrammarItem())
+
+        if onPassageAction != nil {
+            menu.addItem(.separator())
+            let generation = editorSession?.generation
+            let sessionID = editorSession?.sessionID
+            for action in DocumentPassageAction.allCases {
+                let item = PassageMenuItem(
+                    title: action.title,
+                    enabled: !context.composing && context.selections.count == 1
+                ) { [weak self] in
+                    guard let self, let session = self.editorSession,
+                        session.generation == generation, session.sessionID == sessionID,
+                        session.context?.selections == context.selections, !session.isComposing
+                    else { return }
+                    self.onPassageAction?(action)
+                }
+                item.identifier = NSUserInterfaceItemIdentifier("scholium.passage.\(action.rawValue)")
+                menu.addItem(item)
+            }
+        }
 
         // System edit actions are always first. Scholium adds only commands
         // whose meaning depends on one collapsed, clicked Edit construct.

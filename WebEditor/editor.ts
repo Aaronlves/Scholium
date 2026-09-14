@@ -979,7 +979,10 @@ function buildLiveDecorations(
         // Exact parser-owned delimiters share one presentation; unrecognized
         // punctuation is ordinary source, never guessed by a styling regex.
         for (const construct of rangesIntersecting(parsedProjection.inlines, scanFrom, lineQueryTo)) {
-          if (!inlineConstructIsActive(construct.from, construct.to)) continue;
+          if (!inlineConstructIsActive(construct.from, construct.to)) {
+            if (construct.kind === "blockAnchor") addHidden(construct.from, construct.to);
+            continue;
+          }
           for (const marker of construct.markerRanges) {
             addMark(Math.max(scanFrom, marker.from), Math.min(scanTo, marker.to), "cm-live-syntax-marker");
           }
@@ -2384,10 +2387,13 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
       return rejected(request.requestID, documentVersion, "The suggestion is too large.");
     }
     editor.dispatch({changes: change,
-      selection: EditorSelection.single(change.from, change.from + change.insert.length),
-      annotations: [Transaction.userEvent.of("input.scholium.adopt"), isolateHistory.of("full")]});
-    lastUndoLabel = lastRedoLabel = "Adopt Suggestion";
-    return successfulResult(request.requestID, true, "Adopt Suggestion");
+      ...(operation.preserveSelection ? {} : {
+        selection: EditorSelection.single(change.from, change.from + change.insert.length),
+      }),
+      annotations: [Transaction.userEvent.of(operation.preserveSelection ? "input.scholium.paragraphAnchor" : "input.scholium.adopt"), isolateHistory.of("full")]});
+    const undoLabel = operation.preserveSelection ? "Create Paragraph Link" : "Adopt Suggestion";
+    lastUndoLabel = lastRedoLabel = undoLabel;
+    return successfulResult(request.requestID, true, undoLabel);
   }
   case "command": {
     let argument = operation.argument;

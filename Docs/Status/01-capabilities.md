@@ -13,7 +13,7 @@
   native system Trash, and recoverable uncertainty.
 - Note creation accepts exact complete Markdown; GUI New Note starts empty.
   Source, stable identity, Settlement and recovery retain their existing owners.
-- Search contract 18/schema 14 indexes user-authored YAML through `property:`
+- Search contract 18/schema 16 indexes user-authored YAML through `property:`
   without a managed catalog. Quoted keys, scalar/direct-list values and block
   summaries retain source locations. Filename owns Note display identity.
 - The source-authority cutover removes managed Metadata and Zotero Note binding
@@ -26,6 +26,15 @@
   Relationships are derived from source, including manually authored contained
   file links. Quick Look and Agent reads retain exact containment/bookmark checks;
   removing a link never deletes the file.
+- Authored `^id` anchors identify current ordinary paragraphs; links follow live
+  source without snapshot citations. Graph contract 8 derives their locations.
+- Note reorganization prepares exact before/after previews for same-vault
+  paragraph extraction, move and copy, and whole-note merge. Moving preserves
+  anchor identity; copying assigns new identities. The planner maintains proved
+  incoming links and rejects unsafe footnote, reference-definition and relative
+  resource relocation. Checked writes retain exact rollback evidence before
+  mutation; uncertainty preserves source and machine-local recovery records.
+  Native integration and acceptance limits remain in Open Work and Verification.
 
 ## External Agent collaboration
 

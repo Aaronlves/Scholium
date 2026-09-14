@@ -4,6 +4,50 @@
 
 ## Current verification snapshot
 
+**2026-09-14 — Native research sheets:** Twenty-four scoped checks pass across
+native two/three-column layout, both collection scopes, exact comparisons,
+Viewed timing and a real SwiftUI sheet lifecycle. The lifecycle check displays
+an actual parent window and verifies its frame through loading, detail and full
+dismissal. Two adaptation checks also pass after aligning their host with the
+sheet minimum height. Debug build, localization, scoped formatting and
+documentation validation pass. Final disposable-fixture QA confirms automatic
+Viewed after opening detail, absent technical/manual-viewing controls, stable
+list/detail navigation, and destination search → keyboard selection → preview
+→ cancellation with unchanged source. AppKit owns native column allocation;
+header dragging and imperative sheet resizing are removed. Light/Dark and
+narrow/high-contrast component renders were inspected. Full assistive-technology,
+IME and release acceptance remain open. No full repository gate was run.
+Evidence: `.build/native-research-sheet-tests.log`,
+`.build/native-research-sheets-qa.md`, `.build/agent-changes-review/` and
+`.build/note-picker-review/`. The isolated QA bundle and state were removed.
+
+**2026-09-14 — Note actions and paragraph reorganization:** The integration
+execution passes Core 367 plus 3 performance tests, Contracts 81, and Application
+164 plus 1 architecture measurement. The App run executes 854 tests with one
+failure: its old toolbar-order expectation omitted More. Updating that assertion
+passes all 77 owning architecture tests; the full App product was not repeated
+after this test-only correction. A matching-fingerprint malformed semantic cache
+initially exposed an anchor-parser bounds exception; source-coordinate validation
+and fresh parsing resolve it before the complete Core rerun. Nine focused App
+checks also pass for exact paragraph selection, hidden identities and the real
+WebView selection/Undo bridge. Typechecking, 262 editor tests, reproducible bundles,
+localization, Swift formatting, documentation, public-symbol boundaries, Release
+build (166.67 seconds) and the bundled-helper checks pass. Gate phases were
+completed in stages; this is not a claim of a single uninterrupted green run.
+
+Disposable-fixture AX QA confirms main More after Review/Edit, one separate More
+with correct window commands, separate Find-field focus, native Copy Note Link
+visibility and exact clipboard delivery. Cold-start paragraph-link creation saves
+its anchor before copying and preserves neighboring source. Extract retains its
+ID and redirects incoming links; Review Copy assigns a new ID and retains the
+original. Partial selection is refused and cancellation works. Native first-item
+hiding and invalid/nested anchor projections have regression tests. Screenshot
+capture was unavailable; visual adaptations, native Trash-merge and human
+acceptance remain open. QA bundle and temporary state were removed. Evidence:
+`.build/note-actions-qa.md`, `.build/note-actions-integration.log`,
+`.build/note-actions-integration-resumed.log`, `.build/note-actions-integration-final.log`,
+`.build/note-actions-final-boundaries.log` and `.build/paragraph-anchor-semantic-safety-tests.log`.
+
 **2026-09-14 — Triptych Chat workspace:** Eight integration checks pass for
 control-store routing, isolated workspaces and Skills with shared login,
 discovery, renewal, cancellation, failure/retry, containment and Settings

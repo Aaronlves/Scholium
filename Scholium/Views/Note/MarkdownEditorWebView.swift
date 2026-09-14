@@ -35,6 +35,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
     let onScrollAnchorChange: (EditorScrollAnchor) -> Void
 
     var onAskAgent: AgentSelectionInquiryHandler? = nil
+    var onPassageAction: ((DocumentPassageAction) -> Void)? = nil
 
     static func requiresMathRuntime(
         source: String,
@@ -143,6 +144,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         context.coordinator.activeWebView = webView
         webView.editorSession = session
         webView.onPasteImage = onPasteImage
+        webView.onPassageAction = onPassageAction
         webView.navigationDelegate = context.coordinator
         webView.setValue(false, forKey: "drawsBackground")
         context.coordinator.documentID = documentID
@@ -185,6 +187,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         if let webView = webView as? WindowAttachedWebView {
             webView.editorSession = session
             webView.onPasteImage = onPasteImage
+            webView.onPassageAction = onPassageAction
         }
         context.coordinator.onAskAgent = onAskAgent
         context.coordinator.performanceDocumentID = performanceDocumentID

@@ -14,6 +14,7 @@ enum AgentChangesScope {
 
 enum WindowSheetRoute: Identifiable {
     case noteFileOperation(NoteFileRequest)
+    case noteRestructure(WindowNoteRestructureRequest)
     case folderFileOperation(FolderFileRequest)
     case systemTrash(SystemTrashDeletionPreview)
     case transactionRecovery
@@ -22,6 +23,7 @@ enum WindowSheetRoute: Identifiable {
 
     var id: String {
         switch self {
+        case .noteRestructure(let request): "note-restructure:\(request.id)"
         case .noteFileOperation(let request): "note-file-operation:\(request.id)"
         case .folderFileOperation(let request): "folder-file-operation:\(request.id)"
         case .systemTrash(let preview):

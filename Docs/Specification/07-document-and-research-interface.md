@@ -38,6 +38,11 @@ and visible validation. Ask Agent, its Research-menu action and shortcut retain 
 draft-only handoff to Chat under §8.7. A source range that cannot be verified
 remains unavailable.
 
+Body context menus and Research commands expose §5.4. Review mutations require
+verified source and Edit. Reorganization sheets use native search and a striped
+Name/Folder table sharing its visible width, then exact preview in the same resizable sheet, with Change,
+Cancel and operation-specific confirmation.
+
 Formatting and insertion remain available through native Format/Insert menus,
 keyboard shortcuts, and exact Markdown input. These routes preserve the current
 selection and share the existing source transaction and Undo behavior.
@@ -364,17 +369,16 @@ window, search category, or management commands.
 
 **Agent Changes** opens on explicit request and lists the most recent operation
 per Note, independent of Notifications dismissal. Older receipts remain retained
-and individually addressable. Chat's Conversation Changes opens the same interface
+and individually addressable. Chat's Conversation Changes opens this interface
 scoped to all retained receipt IDs from that conversation, including earlier
-changes to the same Note. Runtime-only reports never fabricate exact receipts. Its collection
-and exact comparison remain native software-operation views throughout. The
-collection fits short lists and uses bounded scrolling for longer histories;
-it does not reserve the comparison canvas. Shared logical insets align title,
-rows and actions. Each row leads with Note identity, then concise operation,
-time and viewed state, with one explicit comparison action. The comparison
-uses a larger reading area, a Note-first summary and a separate stable footer
-for navigation, viewed marking and eligible Undo. Empty and unavailable states
-retain the same compact collection frame; no decorative empty canvas is added. It is
+changes to the same Note. Runtime-only reports never fabricate exact receipts. The collection uses a native striped single-selection table. Columns share the
+visible width using native autoresizing: identity absorbs spare space and
+secondary columns stay compact. Header dragging is disabled; long histories
+scroll vertically. Shared insets align title, rows and actions.
+Note identity leads, followed by operation, time and viewed state; one explicit
+action opens comparison. A single system-owned resizable sheet retains its geometry across list,
+comparison and dismissal. The Note-first comparison has a stable navigation/Undo
+footer. Empty and unavailable states use the same shell. It is
 not a fourth Document mode, durable review state, or
 research history. An Agent Change notification opens one exact
 `(change_id, Note ID)` result. An updated Note shows only the exact preimage and
@@ -386,13 +390,13 @@ boundary; it is not rendered as an editable deletion diff.
 Several Agent Changes never become one cumulative diff. The current collection uses
 exact position and **Previous**/**Next** routes. A direct receipt link opens only that
 change, without unrelated history navigation. The compact header names Note, operation,
-time, and current-revision state; `change_id`, complete path, and exact fingerprints use
-progressive detail. Ordinary Review continues to show the current complete Note. If
+time, and current-revision state. Hide receipt IDs, hashes and encoding details; Help exposes full Note paths. Ordinary Review continues to show the current complete Note. If
 current saved source differs from the ending fingerprint, comparison is **Earlier
 Revision** and is never overlaid on current prose.
 
-Closing returns to the originating context, records no viewed/unread progress,
-and never changes Settlement. Direct Undo remains per eligible update and uses
+Displayed confirmed changes become Viewed automatically.
+Selection/loading/failure never marks Viewed; no confirmation button remains.
+Closing returns to the originating context without changing Settlement. Direct Undo remains per eligible update and uses
 §8.4's revision requirement; creation and system Trash have no fabricated
 source preimage or Undo.
 
@@ -438,12 +442,9 @@ swipe, outside interaction or Escape closes it. A group action menu revealed by 
 provides named keyboard and pointer alternatives, including selection of a
 paragraph for Chat. Paragraph choices use an ordinal plus at most eight source
 characters and an ellipsis; the attached source remains complete. Context menus and accessibility actions remain additional
-routes. Actions take no width from the resting excerpt. Both Inspector panes
-share the identity header, passage container and secondary heading color. Their
-outer copy rail and top/section spacing reuse the Library Sidebar layout roles;
-Both Links and Related Material use native List with the same shared container
-and row configuration; Links controls use the same horizontal rail. No second
-outer horizontal padding is applied to the Links list.
+routes. Actions take no width from the resting excerpt. Both panes share native List rows, identity headers, passage containers and
+secondary heading color. Their copy rail and spacing follow Library Sidebar
+layout roles; Links controls use that rail, without extra outer horizontal padding.
 The action menu uses the same image-only label and native control treatment as
 the Library Sidebar, with a reserved target to prevent reflow. Analysis, Topic and Work use the existing three workspace role symbols. There is no refresh header; shortcut guidance appears only before the first usable query. Empty results show
 one concise empty state without repeating writing instructions. Waiting, empty

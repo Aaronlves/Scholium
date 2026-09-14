@@ -151,6 +151,27 @@ final class DocumentWindowLocationStore {
         }
     }
 
+    /// Opens the same Triptych's research surface without moving a detached Note.
+    func mainWindow(for source: WindowModel) async throws -> WindowModel {
+        if !source.isDetachedDocumentWindow { return source }
+        guard let triptychID = source.workspaceAssignment?.id,
+            let coordinator = source.nativeWindowCoordinator
+        else { throw DocumentControllerError.documentUnavailable }
+        let original = origins[source.nativeWindowID].flatMap { windows[$0]?.model }
+        if let existing = ([original] + windows.values.map(\.model)).compactMap({ $0 }).first(where: {
+            !$0.isDetachedDocumentWindow && !$0.windowCloseCoordinator.isFinalized
+                && $0.workspaceAssignment?.id == triptychID && !$0.transferInProgress
+        }) {
+            return existing
+        }
+        guard let openMainWindow else { throw DocumentControllerError.documentUnavailable }
+        let route = TriptychWindowRoute(triptychID: triptychID)
+        openMainWindow(route)
+        try await coordinator.registry.waitUntilReady(id: route.windowID)
+        guard let ready = windows[route.windowID]?.model else { throw DocumentControllerError.documentUnavailable }
+        return ready
+    }
+
     func moveBack(from source: WindowModel) async throws {
         guard source.isDetachedDocumentWindow, !source.transferInProgress,
             let tab = source.documentTabController.selectedTab,

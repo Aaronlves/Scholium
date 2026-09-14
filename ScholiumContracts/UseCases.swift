@@ -4,6 +4,8 @@ import Foundation
 /// coordinator. Document presentation and editor-session owners do not need
 /// this capability merely to load or save one active document.
 public protocol LibraryMutationUseCases: Sendable {
+    func prepareNoteRestructure(_ request: NoteRestructureRequest) async throws -> NoteRestructurePreview
+    func commitNoteRestructure(_ preview: NoteRestructurePreview) async throws -> WorkspaceMutationOutcome<NoteRestructureCommit>
     func importMarkdown(
         at sourceURL: URL,
         intoVault vaultID: UUID
@@ -44,6 +46,12 @@ public protocol LibraryMutationUseCases: Sendable {
 }
 
 public extension LibraryMutationUseCases {
+    func prepareNoteRestructure(_ request: NoteRestructureRequest) async throws -> NoteRestructurePreview {
+        throw NoteRestructureError.unavailable("Note reorganization is unavailable in this workspace.")
+    }
+    func commitNoteRestructure(_ preview: NoteRestructurePreview) async throws -> WorkspaceMutationOutcome<NoteRestructureCommit> {
+        throw NoteRestructureError.unavailable("Note reorganization is unavailable in this workspace.")
+    }
     func createUntitledNote(
         inVault vaultID: UUID,
         folderRelativePath: String?

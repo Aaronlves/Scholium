@@ -8,6 +8,24 @@ import WebKit
 
 @Suite("Markdown editor protocol")
 struct MarkdownEditorProtocolTests {
+    @Test("Passage replacement requires an explicit selection policy")
+    func passageReplacementSelectionPolicy() throws {
+        for preserve in [false, true] {
+            let operation = MarkdownEditorOperation.replacePassage(
+                expectedText: "Paragraph.", fromUTF16: 10, toUTF16: 10,
+                replacement: " ^one", preserveSelection: preserve)
+            let data = try JSONEncoder().encode(operation)
+            var object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+            #expect(object["preserveSelection"] as? Bool == preserve)
+            #expect(try JSONDecoder().decode(MarkdownEditorOperation.self, from: data) == operation)
+            object.removeValue(forKey: "preserveSelection")
+            let missing = try JSONSerialization.data(withJSONObject: object)
+            #expect(throws: DecodingError.self) {
+                try JSONDecoder().decode(MarkdownEditorOperation.self, from: missing)
+            }
+        }
+    }
+
     @Test("Presentation CSS round trips independently from user CSS")
     func presentationCSSOperationRoundTrip() throws {
         let operation = MarkdownEditorOperation.setPresentationCSS(":root { --scale: 1.2; }")
@@ -166,7 +184,7 @@ struct MarkdownEditorProtocolTests {
             """
             {
               "type": "contextMenuRequested",
-              "protocolVersion": 33,
+              "protocolVersion": 34,
               "sessionID": "11111111-2222-3333-4444-555555555555",
               "documentID": "topics:Scope.md",
               "startingFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -204,7 +222,7 @@ struct MarkdownEditorProtocolTests {
     func documentTitleRenameMessageDecoding() throws {
         let object: [String: Any] = [
             "type": "requestDocumentTitleRename",
-            "protocolVersion": 33,
+            "protocolVersion": 34,
             "sessionID": "11111111-2222-3333-4444-555555555555",
             "documentID": "topics:Scope.md",
             "startingFingerprint": String(repeating: "a", count: 64),
@@ -235,7 +253,7 @@ struct MarkdownEditorProtocolTests {
     @Test("Inbound bridge rejects unknown, stale-version, and extra-field messages")
     func inboundBridgeRejectsUnrecognizedContracts() {
         let envelope: [String: Any] = [
-            "protocolVersion": 33,
+            "protocolVersion": 34,
             "sessionID": "11111111-2222-3333-4444-555555555555",
             "documentID": "session-document",
             "startingFingerprint": String(repeating: "a", count: 64),
@@ -276,7 +294,7 @@ struct MarkdownEditorProtocolTests {
     func interactionFocusTargetDecoding() throws {
         let envelope: [String: Any] = [
             "type": "interactionChanged",
-            "protocolVersion": 33,
+            "protocolVersion": 34,
             "sessionID": "11111111-2222-3333-4444-555555555555",
             "documentID": "session-document",
             "startingFingerprint": String(repeating: "a", count: 64),
@@ -303,7 +321,7 @@ struct MarkdownEditorProtocolTests {
     func inboundDeltaUsesTypedDirectDecoder() throws {
         let object: [String: Any] = [
             "type": "documentChanged",
-            "protocolVersion": 33,
+            "protocolVersion": 34,
             "sessionID": "11111111-2222-3333-4444-555555555555",
             "documentID": "session-document",
             "startingFingerprint": String(repeating: "a", count: 64),

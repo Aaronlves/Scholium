@@ -885,6 +885,32 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         try await currentTextSnapshot(for: expectedDocumentID).text
     }
 
+    func passageSourceSnapshot(expectedSelections: [MarkdownEditorSelectionRange]?, expectedGeneration: Int) async throws -> MarkdownSourceSelectionSnapshot {
+        guard !isComposing, isReady, isLoaded, let webView else { throw SessionError.unavailable }
+        let epoch = requestEpoch
+        let identity = documentID
+        let result = try await send(.queryText, in: webView)
+        guard epoch == requestEpoch, identity == documentID, self.webView === webView,
+            result.resultingGeneration == generation, generation == expectedGeneration,
+            result.selections == expectedSelections, !isComposing, let source = result.text,
+            result.selections.count == 1, let selection = result.selections.first
+        else { throw SessionError.invalidResult }
+        if selection.isNonempty {
+            let captured = try MarkdownWritingContextProjection.capture(source: source, selections: result.selections, paragraph: false)
+            guard
+                let span = try? ParagraphAnchorPlanner.paragraph(
+                    in: NoteDocument(relativePath: identity, rawContent: source), atUTF16: captured.sourceRange.utf16LowerBound)
+            else { return captured }
+            return DocumentPassageSnapshot.includingParagraphIdentity(captured, paragraphSpan: span)
+        }
+        guard let offset = EditorSourceOffsetMap(source: source).sourceUTF16Offset(forEditorUTF16Offset: selection.head) else {
+            throw SessionError.invalidResult
+        }
+        let span = try ParagraphAnchorPlanner.paragraph(in: NoteDocument(relativePath: identity, rawContent: source), atUTF16: offset)
+        guard let snapshot = DocumentPassageSnapshot.capture(source: source, range: span.nsRange) else { throw SessionError.invalidResult }
+        return snapshot
+    }
+
     func selectedSourceSnapshot() async throws -> MarkdownSourceSelectionSnapshot {
         try await writingContextSnapshot(paragraph: false).snapshot
     }

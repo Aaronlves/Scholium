@@ -6,19 +6,22 @@ public struct LinkCatalogNote: Codable, Hashable, Sendable {
     public let aliases: [String]
     public let headings: [HeadingNode]
     public let blockAnchors: [String: SourceSpan]
+    public let ambiguousBlockAnchors: Set<String>
 
     public init(
         id: VaultQualifiedNoteID,
         title: String? = nil,
         aliases: [String] = [],
         headings: [HeadingNode] = [],
-        blockAnchors: [String: SourceSpan] = [:]
+        blockAnchors: [String: SourceSpan] = [:],
+        ambiguousBlockAnchors: Set<String> = []
     ) {
         self.id = id
         self.title = title
         self.aliases = aliases
         self.headings = headings
         self.blockAnchors = blockAnchors
+        self.ambiguousBlockAnchors = ambiguousBlockAnchors
     }
 
     public init(
@@ -32,45 +35,9 @@ public struct LinkCatalogNote: Codable, Hashable, Sendable {
         title = ResearchNoteTitleResolver.resolve(document: document)
         aliases = SearchPropertyProjection(document: document).textValues(forExactKey: "aliases")
         headings = semantic.headings
-        blockAnchors = Self.blockAnchors(in: document, blocks: semantic.blocks)
-    }
-
-    private static func blockAnchors(in document: NoteDocument, blocks: [MarkdownBlock]) -> [String: SourceSpan] {
-        guard
-            let regex = try? NSRegularExpression(
-                pattern: #"(?:^|\s)\^([A-Za-z0-9][A-Za-z0-9_-]*)\s*$"#,
-                options: [.anchorsMatchLines]
-            )
-        else { return [:] }
-        let body = document.body as NSString
-        var anchors: [String: SourceSpan] = [:]
-        for match in regex.matches(in: document.body, range: NSRange(location: 0, length: body.length)) where match.numberOfRanges > 1 {
-            let identifier = body.substring(with: match.range(at: 1))
-            let lineRange = (body as String).lineRange(containingUTF16Offset: match.range.location)
-            let fullFileLine =
-                document.rawContent.prefixUTF16Length(beforeBodyUTF8Offset: document.bodyByteRange.lowerBound)
-                .map { offset in
-                    (document.rawContent as NSString).substring(to: offset + lineRange.location)
-                        .reduce(into: 1) { if $1 == "\n" { $0 += 1 } }
-                } ?? 1
-            guard let block = blocks.first(where: { $0.span.start.line <= fullFileLine && $0.span.end.line >= fullFileLine }) else { continue }
-            if anchors[identifier] == nil { anchors[identifier] = block.span }
-        }
-        return anchors
-    }
-}
-
-private extension String {
-    func prefixUTF16Length(beforeBodyUTF8Offset byteOffset: Int) -> Int? {
-        guard let utf8Index = utf8.index(utf8.startIndex, offsetBy: byteOffset, limitedBy: utf8.endIndex),
-            let index = String.Index(utf8Index, within: self)
-        else { return nil }
-        return self[..<index].utf16.count
-    }
-
-    func lineRange(containingUTF16Offset offset: Int) -> NSRange {
-        let nsString = self as NSString
-        return nsString.lineRange(for: NSRange(location: min(max(0, offset), nsString.length), length: 0))
+        let grouped = Dictionary(grouping: ParagraphAnchorPlanner.anchors(in: document, semantic: semantic), by: \.id)
+        ambiguousBlockAnchors = Set(grouped.filter { $0.value.count > 1 }.map(\.key))
+        blockAnchors = grouped.compactMapValues { $0.count == 1 ? $0.first?.paragraphSpan : nil }
     }
 }
 
@@ -111,6 +78,7 @@ public enum LinkGraphDiagnosticCode: String, Codable, Hashable, Sendable {
     case missingHeading
     case ambiguousHeading
     case missingBlock
+    case ambiguousBlock
 }
 
 public struct LinkGraphDiagnostic: Codable, Hashable, Sendable {
@@ -122,7 +90,7 @@ public struct LinkGraphDiagnostic: Codable, Hashable, Sendable {
 }
 
 public struct GraphSnapshot: Codable, Sendable {
-    public static let currentContractVersion = 7
+    public static let currentContractVersion = 8
     public let contractVersion: Int
     public let generation: Int
     /// Hash of the complete source manifest from which this graph was built.
@@ -168,6 +136,7 @@ public enum LinkNavigationResolution: Hashable, Sendable {
     case missingHeading
     case ambiguousHeading
     case missingBlock
+    case ambiguousBlock
 }
 
 /// Reusable immutable lookup state for consumers that need the same
@@ -203,6 +172,7 @@ public struct LinkResolutionCatalog: Sendable {
             }
             if fragment.hasPrefix("^") {
                 let key = String(fragment.dropFirst())
+                guard !note.ambiguousBlockAnchors.contains(key) else { return .ambiguousBlock }
                 guard let span = note.blockAnchors[key] else { return .missingBlock }
                 return .resolved(
                     LinkDestination(note: id, kind: .block, fragment: fragment, span: span)
@@ -516,10 +486,12 @@ public enum LinkGraphBuilder {
                 nil,
                 [
                     LinkGraphDiagnostic(
-                        code: .missingBlock,
+                        code: note.ambiguousBlockAnchors.contains(key) ? .ambiguousBlock : .missingBlock,
                         source: source,
                         target: occurrence.target,
-                        message: "The target note has no block anchor ^\(key).",
+                        message: note.ambiguousBlockAnchors.contains(key)
+                            ? "The target note has more than one block anchor ^\(key)."
+                            : "The target note has no block anchor ^\(key).",
                         span: occurrence.span
                     )
                 ]

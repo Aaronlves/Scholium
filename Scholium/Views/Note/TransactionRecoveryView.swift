@@ -328,6 +328,7 @@ struct TransactionRecoveryView: View {
 
     private func operationName(_ operation: TriptychMutationOperation) -> String {
         switch operation {
+        case .noteRestructure: ScholiumL10n.string("Reorganize Notes")
         case .noteSave: "Save Note"
         case .noteCreation: "Create Note"
         case .noteMove: "Move or Rename Note"
@@ -396,7 +397,7 @@ struct TransactionRecoveryActionPresentation: Equatable {
                 localized:
                     "Scholium will recheck the exact Markdown source and portable identity. It may add the reserved identity to the exact created source, or remove that same reserved identity when the source is absent. Any other identity at the path, changed or unreadable state stops for separate researcher resolution. Markdown source is never created, replaced, or removed, and no other portable identity is changed."
             )
-        case .noteSave, .noteMove, .folderMove, .systemTrashDeletion:
+        case .noteSave, .noteMove, .folderMove, .systemTrashDeletion, .noteRestructure:
             self = .generic
         }
     }

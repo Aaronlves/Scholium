@@ -150,6 +150,7 @@ struct ExactSourceComparisonView: View {
     let startingOnlyLabel: LocalizedStringResource
     let endingOnlyLabel: LocalizedStringResource
     let identifierPrefix: String
+    var showsRevisionDetails = true
 
     @State private var expandedFoldIDs: Set<Int> = []
 
@@ -204,49 +205,51 @@ struct ExactSourceComparisonView: View {
             }
             .font(ScholiumTypography.interface(.sectionTitle))
 
-            DisclosureGroup {
-                ViewThatFits(in: .horizontal) {
-                    HStack(
-                        alignment: .top,
-                        spacing: ScholiumGrid.Spacing.sectionSeparation
-                    ) {
-                        revisionLabel(
-                            title: startingLabel,
-                            fingerprint: comparison.startingRevision,
-                            hasBOM: comparison.startingHasUTF8BOM,
-                            lineEndings: revisionLineEndings(starting: true)
-                        )
-                        revisionLabel(
-                            title: endingLabel,
-                            fingerprint: comparison.endingRevision,
-                            hasBOM: comparison.endingHasUTF8BOM,
-                            lineEndings: revisionLineEndings(starting: false)
-                        )
+            if showsRevisionDetails {
+                DisclosureGroup {
+                    ViewThatFits(in: .horizontal) {
+                        HStack(
+                            alignment: .top,
+                            spacing: ScholiumGrid.Spacing.sectionSeparation
+                        ) {
+                            revisionLabel(
+                                title: startingLabel,
+                                fingerprint: comparison.startingRevision,
+                                hasBOM: comparison.startingHasUTF8BOM,
+                                lineEndings: revisionLineEndings(starting: true)
+                            )
+                            revisionLabel(
+                                title: endingLabel,
+                                fingerprint: comparison.endingRevision,
+                                hasBOM: comparison.endingHasUTF8BOM,
+                                lineEndings: revisionLineEndings(starting: false)
+                            )
+                        }
+                        VStack(
+                            alignment: .leading,
+                            spacing: ScholiumGrid.Spacing.nestedContentInset
+                        ) {
+                            revisionLabel(
+                                title: startingLabel,
+                                fingerprint: comparison.startingRevision,
+                                hasBOM: comparison.startingHasUTF8BOM,
+                                lineEndings: revisionLineEndings(starting: true)
+                            )
+                            revisionLabel(
+                                title: endingLabel,
+                                fingerprint: comparison.endingRevision,
+                                hasBOM: comparison.endingHasUTF8BOM,
+                                lineEndings: revisionLineEndings(starting: false)
+                            )
+                        }
                     }
-                    VStack(
-                        alignment: .leading,
-                        spacing: ScholiumGrid.Spacing.nestedContentInset
-                    ) {
-                        revisionLabel(
-                            title: startingLabel,
-                            fingerprint: comparison.startingRevision,
-                            hasBOM: comparison.startingHasUTF8BOM,
-                            lineEndings: revisionLineEndings(starting: true)
-                        )
-                        revisionLabel(
-                            title: endingLabel,
-                            fingerprint: comparison.endingRevision,
-                            hasBOM: comparison.endingHasUTF8BOM,
-                            lineEndings: revisionLineEndings(starting: false)
-                        )
-                    }
+                    .padding(.top, ScholiumGrid.Spacing.inlineControlGap)
+                } label: {
+                    Text("Revision Details", bundle: .module)
                 }
-                .padding(.top, ScholiumGrid.Spacing.inlineControlGap)
-            } label: {
-                Text("Revision Details", bundle: .module)
+                .scholiumActivationPointer()
+                .font(ScholiumTypography.interface(.compact))
             }
-            .scholiumActivationPointer()
-            .font(ScholiumTypography.interface(.compact))
         }
         .padding(ScholiumGrid.Spacing.nestedContentInset)
     }

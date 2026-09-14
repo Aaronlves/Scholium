@@ -54,6 +54,12 @@ already-visible Chat does not toggle the Sidebar closed.
 - A window-wide native content-tab collection retains documents across Library
   role changes. AppKit renders tabs; guarded selection and close retain source
   safety. File exposes Close Tab and View exposes tab navigation and overflow.
+- Main-window Review/Edit is followed by a native Note Actions **More** menu;
+  separate windows extend their existing single More. Shared note actions use
+  the owning window's document and retain its specific transfer/close routes.
+  Passage menus connect to exact-range actions and a source-comparison preview
+  for extraction, move and copy; merge is note-level. Current native mapping,
+  clipboard and integration limitations are recorded in Open Work.
 - Library presents Analyses, Topics, and Works through native single-choice
   segments. Complete localized labels adapt to role symbols at narrow widths;
   selection and disabled-workspace semantics remain native. The file tree keeps
@@ -222,8 +228,9 @@ already-visible Chat does not toggle the Sidebar closed.
   Unicode/CRLF, ranking, cancellation, freshness, missing sources and context staging.
   Isolated light/dark QA verified three relevant paragraphs, cross-vault navigation,
   compact material previews, unchanged drafts and stale-source refusal/refresh.
-  Formal persistent paragraph citations and additional Agent runtime adapters are
-  not implemented; supported-minimum-width and human adaptation acceptance remain open.
+  Authored live paragraph anchors now provide persistent targets independently
+  of these retrieval excerpts. Supported-minimum-width and human adaptation
+  acceptance remain open.
 
 ## Agents & Chat and Agent Changes
 

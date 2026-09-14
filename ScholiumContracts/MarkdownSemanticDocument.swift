@@ -447,6 +447,17 @@ public struct MarkdownSemanticDocument: Codable, Hashable, Sendable {
 }
 
 public enum MarkdownSemanticParser {
+    /// Shared source-literal exclusions for derived identity and presentation planners.
+    static func commentRanges(in document: NoteDocument) -> [Range<Int>] {
+        parseComments(
+            body: document.body,
+            bodyUTF16Offset: document.bodyUTF16Offset,
+            sourceMapper: SemanticSourceMapper(document.rawContent)
+        ).ranges.map {
+            ($0.location + document.bodyUTF16Offset)..<(NSMaxRange($0) + document.bodyUTF16Offset)
+        }
+    }
+
     public static func parse(_ document: NoteDocument) -> MarkdownSemanticDocument {
         let sourceMapper = SemanticSourceMapper(document.rawContent)
         let bodyOffset = sourceMapper.utf16Offset(forUTF8Offset: document.bodyByteRange.lowerBound) ?? 0
@@ -1541,7 +1552,7 @@ public enum MarkdownSemanticParser {
     }
 }
 
-private struct SemanticSourceMapper {
+struct SemanticSourceMapper {
     let source: String
     let nsSource: NSString
     let lineStartsUTF16: [Int]

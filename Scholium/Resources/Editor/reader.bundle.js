@@ -1454,7 +1454,9 @@
           event.stopPropagation();
         }
       }, true);
+      let passageSelection = null;
       const clearReviewSelection = () => {
+        passageSelection = null;
         selectionActions.update();
         post("selectionChanged");
       };
@@ -1527,9 +1529,36 @@
           startLine: Math.min(startLine, endLine),
           endLine: Math.max(startLine, endLine)
         };
+        passageSelection = payload;
         post("selectionChanged", payload);
         selectionActions.update();
       };
+      reviewDocument?.addEventListener("contextmenu", (event) => {
+        if (!reviewSelectionSurfaceActive) return;
+        const target = event.target instanceof Element ? event.target : null;
+        if (!target || target.closest("a, img, table, pre, .scholium-embedded-note, [data-scholium-protected]")) return;
+        const paragraph = target.closest("p[data-source-utf16-start][data-source-utf16-end]");
+        if (!paragraph) return;
+        const selection = window.getSelection();
+        const range = selection?.rangeCount === 1 && !selection.isCollapsed ? selection.getRangeAt(0) : null;
+        const inSelection = range && (event.button === 0 && event.detail === 0 || [...range.getClientRects()].some((rect) => event.clientX >= rect.left && event.clientX <= rect.right && event.clientY >= rect.top && event.clientY <= rect.bottom));
+        if (!inSelection) {
+          const selectedParagraph = document.createRange();
+          selectedParagraph.selectNodeContents(paragraph);
+          selection?.removeAllRanges();
+          selection?.addRange(selectedParagraph);
+        }
+        updateReviewSelection();
+        event.preventDefault();
+        selectionActions.dismiss();
+        post("passageContextMenu", {
+          clientX: event.clientX,
+          clientY: event.clientY,
+          selection: inSelection ? passageSelection : null,
+          paragraphLower: Number(paragraph.dataset.sourceUtf16Start),
+          paragraphUpper: Number(paragraph.dataset.sourceUtf16End)
+        });
+      });
       document.addEventListener("selectionchange", updateReviewSelection);
       reviewDocument?.addEventListener("pointerdown", (event) => {
         if (!reviewSelectionSurfaceActive || event.button !== 0) return;

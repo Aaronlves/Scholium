@@ -136,8 +136,9 @@ paragraphs within the per-Note and overall bounds. Repeated visible paragraphs
 in one Note appear once. A multi-term focus requires more than one matching term.
 Paragraphs retain exact source ranges and bytes, separate readable text, bounded
 match-centered excerpts and checked UTF-16 highlight ranges. These projections
-never substitute for source locators. No persistent paragraph IDs, embeddings,
-argumentative predicates or inferred evidence are created.
+never substitute for source locators. Retrieval creates no paragraph identities, embeddings,
+argumentative predicates or inferred evidence. Authored paragraph anchors follow §5.4
+and are excluded from searchable prose.
 Research usefulness is evaluated by whether results help the researcher clarify
 concepts, examine arguments, compare alternatives or investigate objections.
 Lexical ranking does not certify any of those roles or the correctness of a Note.

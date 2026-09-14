@@ -1503,6 +1503,23 @@ enum ScholiumMetrics {
         static let statusVerticalInset = ScholiumGrid.ResearchSheet.statusVerticalInset
         static let fieldSpacing = ScholiumGrid.foundationUnit * 1.5
 
+        enum NoteRestructure {
+            static let folderColumnWidth: CGFloat = 240
+            static let minimumWidth: CGFloat = 560
+            static let idealWidth: CGFloat = 760
+            static let minimumHeight: CGFloat = 420
+            static let idealHeight: CGFloat = 560
+        }
+
+        enum AgentChanges {
+            static let minimumWidth: CGFloat = 680
+            static let idealWidth: CGFloat = 760
+            static let minimumHeight: CGFloat = 420
+            static let idealHeight: CGFloat = 560
+            static let changeColumnWidth: CGFloat = 180
+            static let dateColumnWidth: CGFloat = 145
+        }
+
         enum Comparison {
             static let minimumWidth: CGFloat = 760
             static let idealWidth: CGFloat = 900

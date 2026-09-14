@@ -23,9 +23,10 @@ extension ScholiumUITests {
         confirmSettle.click()
         XCTAssertTrue(
             waitUntil(timeout: 10) {
-                settle = self.app.toolbars.buttons.matching(
-                    NSPredicate(format: "label CONTAINS %@", "Settle Again")
-                ).firstMatch
+                settle =
+                    self.app.toolbars.buttons.matching(
+                        NSPredicate(format: "label CONTAINS %@", "Settle Again")
+                    ).firstMatch
                 return settle.exists
             })
 

@@ -27,6 +27,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
     let onLinkClick: (String) -> Void
     let onOpenExternalURL: (URL) -> Void
     var onAskAgent: AgentSelectionInquiryHandler? = nil
+    var onPassageAction: ((DocumentPassageAction, MarkdownSourceSelectionSnapshot) -> Void)? = nil
     var onSelectionChange: ((MarkdownReviewSelection?) -> Void)? = nil
     /// Derived visibility only. Review remains the sole selection-surface
     /// owner; the coordinator transports mode changes to its retained page.
@@ -86,6 +87,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         coordinator.onReplyEvent = onReplyEvent
         coordinator.onRenderedDiagramSize = onRenderedDiagramSize
         coordinator.onAskAgent = onAskAgent
+        coordinator.onPassageAction = onPassageAction
         coordinator.onSourceRangeUnavailable = onSourceRangeUnavailable
         coordinator.onSourceRevisionChanged = onSourceRevisionChanged
         return coordinator
@@ -145,6 +147,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         context.coordinator.quoteReply(ifRequested: replyQuoteRequest, in: webView)
         context.coordinator.onRenderedDiagramSize = onRenderedDiagramSize
         context.coordinator.onAskAgent = onAskAgent
+        context.coordinator.onPassageAction = onPassageAction
         context.coordinator.onSourceRangeUnavailable = onSourceRangeUnavailable
         context.coordinator.onSourceRevisionChanged = onSourceRevisionChanged
         context.coordinator.update(
@@ -211,6 +214,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         private var onLinkClick: (String) -> Void
         private var onOpenExternalURL: (URL) -> Void
         var onAskAgent: AgentSelectionInquiryHandler?
+        var onPassageAction: ((DocumentPassageAction, MarkdownSourceSelectionSnapshot) -> Void)?
         private var onSelectionChange: ((MarkdownReviewSelection?) -> Void)?
         private let selectionCoordinator: SafeMarkdownReadSelectionCoordinator
         private let floatingSurfaces = DocumentFloatingSurfaceController()
@@ -759,6 +763,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 else { return }
                 onLinkClick(target)
 
+            case "passageContextMenu":
+                if let webView = message.webView { presentPassageMenu(payload, in: webView) }
             case "selectionChanged":
                 guard payload["text"] != nil else {
                     onSelectionChange?(nil)
@@ -772,6 +778,49 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 )
             default:
                 return
+            }
+        }
+
+        private func presentPassageMenu(_ payload: [String: Any], in webView: WKWebView) {
+            guard selectionCoordinator.isActive, onPassageAction != nil,
+                let x = payload["clientX"] as? Double, let y = payload["clientY"] as? Double,
+                x.isFinite, y.isFinite, let lower = payload["paragraphLower"] as? Int,
+                let upper = payload["paragraphUpper"] as? Int, upper > lower,
+                let span = try? ParagraphAnchorPlanner.paragraph(
+                    in: NoteDocument(relativePath: documentID, rawContent: selectionSource), atUTF16: lower),
+                span.utf16LowerBound == lower, upper <= span.utf16UpperBound
+            else { return }
+            let snapshot: MarkdownSourceSelectionSnapshot?
+            if let selected = payload["selection"] as? [String: Any] {
+                snapshot = reviewSelection(from: selected).flatMap {
+                    MarkdownReviewSourceSelection.passage($0, source: selectionSource, paragraphSpan: span)
+                }
+            } else {
+                snapshot = DocumentPassageSnapshot.capture(source: selectionSource, range: span.nsRange)
+            }
+            let menu = NSMenu()
+            let copy = NSMenuItem(title: ScholiumL10n.string("Copy"), action: #selector(NSText.copy(_:)), keyEquivalent: "")
+            menu.addItem(copy)
+            menu.addItem(.separator())
+            let generation = loadGeneration
+            for action in DocumentPassageAction.allCases {
+                let item = PassageMenuItem(title: action.title, enabled: snapshot != nil) { [weak self, weak webView] in
+                    guard let self, let webView, self.activeWebView === webView,
+                        self.loadGeneration == generation, self.selectionCoordinator.isActive, let snapshot,
+                        snapshot.source.utf8.elementsEqual(self.selectionSource.utf8)
+                    else { return }
+                    self.onPassageAction?(action, snapshot)
+                }
+                item.identifier = NSUserInterfaceItemIdentifier("scholium.passage.\(action.rawValue)")
+                menu.addItem(item)
+            }
+            menu.autoenablesItems = false
+            let point = NSPoint(
+                x: min(max(0, x), webView.bounds.width),
+                y: webView.isFlipped ? y : webView.bounds.height - y)
+            DispatchQueue.main.async { [weak self, weak webView] in
+                guard let self, let webView, self.loadGeneration == generation, webView.window != nil else { return }
+                menu.popUp(positioning: nil, at: point, in: webView)
             }
         }
 

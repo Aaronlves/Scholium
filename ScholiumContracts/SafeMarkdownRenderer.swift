@@ -59,6 +59,14 @@ public enum SafeMarkdownRenderer {
         var blockHTML: [String: String] = [:]
         var inlineHTML: [String: String] = [:]
 
+        let paragraphAnchors = ParagraphAnchorPlanner.anchors(in: document, semantic: semantic)
+        let standaloneAnchorSpans = semantic.blocks.filter { block in
+            block.kind == .paragraph
+                && paragraphAnchors.contains { anchor in
+                    block.span.utf16LowerBound == anchor.markerSpan.utf16LowerBound
+                        && block.span.utf16UpperBound == anchor.markerSpan.utf16UpperBound
+                }
+        }.map(\.span)
         let outerCallouts = semantic.callouts.filter { callout in
             !semantic.callouts.contains { candidate in
                 candidate.span.utf16LowerBound < callout.span.utf16LowerBound
@@ -72,7 +80,7 @@ public enum SafeMarkdownRenderer {
             depth == 0
             ? Dictionary(
                 grouping: semantic.blocks.filter { block in
-                    !(outerCallouts.map(\.span) + removedDefinitionSpans).contains {
+                    !(outerCallouts.map(\.span) + removedDefinitionSpans + standaloneAnchorSpans).contains {
                         $0.utf16LowerBound <= block.span.utf16LowerBound
                             && $0.utf16UpperBound >= block.span.utf16UpperBound
                     }
@@ -203,6 +211,13 @@ public enum SafeMarkdownRenderer {
             let contentRange = NSRange(location: relative.location + 2, length: relative.length - 4)
             inlineHTML[key] = "<mark class=\"scholium-highlight\">\(escapeHTML(body.substring(with: contentRange)))</mark>"
             replacements.append(Replacement(range: relative, text: key))
+        }
+
+        for anchor in paragraphAnchors {
+            guard let relative = relativeRange(anchor.markerSpan, bodyStart: bodyStart, bodyLength: bodyLength),
+                !overlaps(relative, replacements.map(\.range))
+            else { continue }
+            replacements.append(Replacement(range: relative, text: ""))
         }
 
         let transformed = apply(replacements, to: document.body)

@@ -175,11 +175,11 @@ struct AgentChatContentTests {
         let uncertain = change(.outcomeUncertain)
         let all = [first, next, undone, uncertain]
         var ledger = AgentChangeViewedLedger()
-        ledger.setViewed(true, id: first.id)
+        ledger.markViewed(id: first.id)
         let restored = AgentChangeViewedLedger(data: ledger.data)
         #expect(restored.pending(all, receiptIDs: Set(all.map(\.id))).map(\.id) == [next.id])
-        ledger.setViewed(false, id: first.id)
-        #expect(ledger.pending(all, receiptIDs: [first.id]).map(\.id) == [first.id])
+        ledger.markViewed(id: first.id)
+        #expect(ledger.pending(all, receiptIDs: [first.id]).isEmpty)
         #expect(first.state == .confirmed && uncertain.state == .outcomeUncertain)
     }
 }

@@ -18,6 +18,22 @@ describe("adopt exact passage", () => {
     expect(undo({state, dispatch: transaction => { state = transaction.state; }})).toBe(true);
     expect(state.doc.toString()).toBe(normalizedDocumentText(source));
   });
+  it("inserts an identity without selecting the paragraph and undoes exactly once", () => {
+    const source = "\uFEFFParagraph 😀.\r\n\r\nFollowing.";
+    const insertion = source.indexOf("\r\n");
+    const change = passageReplacement(source, source, insertion, insertion, " ^one")!;
+    let state = EditorState.create({doc: normalizedDocumentText(source), selection: {anchor: 2, head: 6}, extensions: [history()]});
+    state = state.update({changes: change, annotations: isolateHistory.of("full")}).state;
+    expect(state.selection.main.anchor).toBe(2);
+    expect(state.selection.main.head).toBe(6);
+    expect(applyNormalizedChangesToExactSource(source, [change])).toBe(source.slice(0, insertion) + " ^one" + source.slice(insertion));
+    expect(undo({state, dispatch: transaction => { state = transaction.state; }})).toBe(true);
+    expect(state.doc.toString()).toBe(normalizedDocumentText(source));
+    expect(passageReplacement("😀x", "😀x", 1, 1, " ^one")).toBeNull();
+    expect(passageReplacement("a\r\nb", "a\r\nb", 2, 2, " ^one")).toBeNull();
+    expect(passageReplacement("abc", "abc", 1, 1, "")).toBeNull();
+    expect(passageReplacement("\uFEFFtext", "\uFEFFtext", 0, 0, "prefix")).toBeNull();
+  });
   it("rejects later edits, split surrogate pairs, split CRLF, empty proposals and composition", () => {
     expect(passageReplacement("later", "older", 0, 3, "new")).toBeNull();
     expect(passageReplacement("😀x", "😀x", 1, 2, "new")).toBeNull();

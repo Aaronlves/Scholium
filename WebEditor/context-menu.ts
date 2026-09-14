@@ -1,4 +1,5 @@
 import {EditorSelection, Transaction, type Extension} from "@codemirror/state";
+import {syntaxTree} from "@codemirror/language";
 import {EditorView, ViewPlugin} from "@codemirror/view";
 import type {EditorContext, EditorMode} from "./protocol";
 
@@ -22,6 +23,14 @@ export function selectionForContextClick(
     (range) => !range.empty && position >= range.from && position < range.to,
   );
   return belongsToSelection ? selection : EditorSelection.single(position);
+}
+
+export function selectionForParagraphContext(
+  selection: EditorSelection, position: number, paragraph: {from: number; to: number} | null,
+): EditorSelection {
+  const clicked = selectionForContextClick(selection, position);
+  if (!clicked.main.empty || !paragraph || position < paragraph.from || position > paragraph.to) return clicked;
+  return EditorSelection.single(paragraph.from, paragraph.to);
 }
 
 /**
@@ -48,7 +57,11 @@ export function createEditorContextMenuExtension(options: {
         const position = options.positionAtEvent?.(view, event)
           ?? view.posAtCoords({x: event.clientX, y: event.clientY});
         if (position !== null) {
-          const selection = selectionForContextClick(view.state.selection, position);
+          let node = syntaxTree(view.state).resolveInner(position, 1);
+          while (node.parent && node.name !== "Paragraph") node = node.parent;
+          const paragraph = node.name === "Paragraph" && node.parent?.name === "Document"
+            ? {from: node.from, to: node.to} : null;
+          const selection = selectionForParagraphContext(view.state.selection, position, paragraph);
           if (!selection.eq(view.state.selection)) {
             view.dispatch({
               selection,

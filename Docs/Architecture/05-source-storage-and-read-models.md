@@ -136,7 +136,7 @@ proves source ranges, refusing ambiguous keys or unbounded scalar tokens.
 aliases, author text and publication date. These are discovery projections,
 not bibliographic validation or writable source.
 
-Search contract 18 and disposable schema 14 use the existing `property:`
+Search contract 18 and disposable schema 16 use the existing `property:`
 grammar with quoted literal keys and normalized scalar/direct-list equality.
 All property rows come from source; no source-kind discriminator or managed
 record refresh path remains. Rebuild and incremental publication consume the
@@ -170,3 +170,15 @@ from a caller-supplied arbitrary path. Link deletion never deletes file bytes.
 Retired Metadata, Zotero-binding and Note-attachment control files remain
 untouched and nonauthorizing. There are no readers, writers or migration paths
 for those preproduction records.
+
+## Note reorganization
+
+`ParagraphAnchorPlanner` derives authored paragraph identities and exact source edits;
+Graph contract 8 projects their current locations. Editor bridge protocol 34 carries
+the corresponding source-derived presentation without making the projection writable.
+`NoteRestructurePlanner` validates the captured range, destination, link resolution and
+identity consequences. `DocumentOperations` routes prepare/commit through the workspace
+source gate. `NoteRestructureCoordinator` rechecks revisions, records exact recovery
+bytes before writes, and uses existing repository and system-Trash owners. The Note
+Actions and passage menus share `WindowDocumentActions`; their preview sheet never
+owns source. Recovery bytes are machine-local transaction evidence, not research citations.

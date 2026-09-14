@@ -1,7 +1,7 @@
 import Foundation
 import ScholiumContracts
 
-let markdownEditorProtocolVersion = 33
+let markdownEditorProtocolVersion = 34
 let markdownEditorMaximumInboundBytes = 2_500_000
 let markdownEditorMaximumSelectionRangeCount = 128
 
@@ -230,7 +230,7 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
     case clearDocumentFind
     case restoreRecovery(MarkdownEditorRecoverySnapshot)
     case acknowledgeCommittedSnapshot(expected: String, committed: String, fingerprint: String)
-    case replacePassage(expectedText: String, fromUTF16: Int, toUTF16: Int, replacement: String)
+    case replacePassage(expectedText: String, fromUTF16: Int, toUTF16: Int, replacement: String, preserveSelection: Bool)
     case insertReference(selection: MarkdownEditorSelectionRange, generation: Int, target: String)
     case command(MarkdownEditorCommand, argument: String?)
     case markClean, focus, focusTitle, blur
@@ -251,7 +251,7 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case type, text, mode, dialect, initialSelection, value, line, focusesEditor, fromUTF16, toUTF16, fraction, anchor, snapshot, x, y
-        case selection, generation, target, replacement, expectedText, committedText, committedFingerprint, command, argument
+        case selection, generation, target, replacement, preserveSelection, expectedText, committedText, committedFingerprint, command, argument
     }
     private enum Kind: String, Codable {
         case initialize, setMode, setDocumentTitle, setPresentationCSS, setUserCSS, setLinkPreviews, showPreview, measureVisibleProjection, showPreviewAt,
@@ -317,7 +317,8 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
                 expectedText: container.decode(String.self, forKey: .expectedText),
                 fromUTF16: container.decode(Int.self, forKey: .fromUTF16),
                 toUTF16: container.decode(Int.self, forKey: .toUTF16),
-                replacement: container.decode(String.self, forKey: .replacement))
+                replacement: container.decode(String.self, forKey: .replacement),
+                preserveSelection: container.decode(Bool.self, forKey: .preserveSelection))
         case .insertReference:
             self = try .insertReference(
                 selection: container.decode(MarkdownEditorSelectionRange.self, forKey: .selection),
@@ -384,12 +385,13 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
             try container.encode(expected, forKey: .expectedText)
             try container.encode(committed, forKey: .committedText)
             try container.encode(fingerprint, forKey: .committedFingerprint)
-        case .replacePassage(let expectedText, let fromUTF16, let toUTF16, let replacement):
+        case .replacePassage(let expectedText, let fromUTF16, let toUTF16, let replacement, let preserveSelection):
             try container.encode(Kind.replacePassage, forKey: .type)
             try container.encode(expectedText, forKey: .expectedText)
             try container.encode(fromUTF16, forKey: .fromUTF16)
             try container.encode(toUTF16, forKey: .toUTF16)
             try container.encode(replacement, forKey: .replacement)
+            try container.encode(preserveSelection, forKey: .preserveSelection)
         case .insertReference(let selection, let generation, let target):
             try container.encode(Kind.insertReference, forKey: .type)
             try container.encode(selection, forKey: .selection)

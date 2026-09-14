@@ -103,6 +103,12 @@ intents. It is not a vertical workspace table or a custom selection plate.
 options menu; query/scope values and commands come from the feature model.
 Notification consumers reuse that native presentation.
 
+`NativeResearchTable` presents destination Notes and Agent Change collections.
+Feature models retain rows and selected identity. AppKit owns single selection,
+row reuse and column allocation: the first column autoresizes, secondary columns
+retain their supplied widths, and header dragging is disabled. SwiftUI owns the
+containing sheet lifecycle; the table never reads or resizes its window.
+
 Bootstrap, configured Workspace, and Settings scene roots each own one
 `ScholiumFileSelectionPresenter`. A bounded native attachment supplies that
 presenter with the exact scene window; it serializes one `NSOpenPanel` sheet at

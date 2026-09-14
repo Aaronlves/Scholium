@@ -120,6 +120,10 @@ public enum DocumentPreviewCatalogBuilder {
         destination: LinkDestination,
         in document: NoteDocument
     ) -> String {
+        if destination.kind == .block, let span = destination.span {
+            let paragraph = (document.rawContent as NSString).substring(with: span.nsRange)
+            return occurrence.syntax == .embed ? paragraph : String(paragraph.prefix(maximumExcerptCharacters))
+        }
         if occurrence.syntax == .embed {
             return document.body
         }

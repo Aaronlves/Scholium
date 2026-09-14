@@ -73,7 +73,7 @@ extension WindowModel {
                     _ = try await session.editorSession.send(
                         .replacePassage(
                             expectedText: snapshot.text,
-                            fromUTF16: range.utf16LowerBound, toUTF16: range.utf16UpperBound, replacement: replacement), in: webView)
+                            fromUTF16: range.utf16LowerBound, toUTF16: range.utf16UpperBound, replacement: replacement, preserveSelection: false), in: webView)
                 }
             } else {
                 adopt = nil

@@ -76,6 +76,7 @@ final class DocumentSessionModel: ObservableObject {
     @Published var failedReadFingerprint: String?
     @Published var previewCatalog: DocumentPreviewCatalog?
     @Published var isAttachingDocument = false
+    let findRequested = PassthroughSubject<Void, Never>()
     var readSelection: MarkdownReviewSelection?
     @Published var conflict: DocumentConflictSnapshot?
     /// The exact conflict revision shown in the open comparison sheet. A

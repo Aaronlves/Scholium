@@ -5,6 +5,7 @@ public enum TriptychMutationOperation: String, Codable, Hashable, Sendable {
     case noteCreation
     case noteMove
     case folderMove
+    case noteRestructure
     case systemTrashDeletion = "system_trash_deletion"
 }
 
@@ -92,6 +93,7 @@ public struct TriptychMutationRecoveryRecord: Codable, Hashable, Sendable, Ident
     public let files: [TriptychMutationRecoveryFile]
     public let systemTrashDeletionPlan: SystemTrashDeletionPlan?
     public let managedCreation: ManagedCreationRecoveryReference?
+    public let restructureEdits: [NoteRestructureFileEdit]?
 
     public init(
         id: UUID = UUID(),
@@ -100,7 +102,8 @@ public struct TriptychMutationRecoveryRecord: Codable, Hashable, Sendable, Ident
         createdAt: Date = Date(),
         failure: String,
         files: [TriptychMutationRecoveryFile],
-        managedCreation: ManagedCreationRecoveryReference? = nil
+        managedCreation: ManagedCreationRecoveryReference? = nil,
+        restructureEdits: [NoteRestructureFileEdit]? = nil
     ) {
         self.id = id
         self.triptychID = triptychID
@@ -110,6 +113,7 @@ public struct TriptychMutationRecoveryRecord: Codable, Hashable, Sendable, Ident
         self.files = files
         self.systemTrashDeletionPlan = nil
         self.managedCreation = managedCreation
+        self.restructureEdits = restructureEdits
     }
 
     public init(
@@ -128,6 +132,7 @@ public struct TriptychMutationRecoveryRecord: Codable, Hashable, Sendable, Ident
         self.files = files
         self.systemTrashDeletionPlan = systemTrashDeletionPlan
         self.managedCreation = nil
+        self.restructureEdits = nil
     }
 }
 

@@ -95,6 +95,12 @@ struct WorkspaceToolbarTests {
 
         let toolbar = try #require(window.toolbar)
         #expect(toolbar.itemIdentifiers == ScholiumWorkspaceToolbarController.itemIdentifiers)
+        let modeIndex = try #require(toolbar.itemIdentifiers.firstIndex(of: ScholiumWorkspaceToolbarController.Item.documentMode))
+        #expect(toolbar.itemIdentifiers[modeIndex + 1] == ScholiumWorkspaceToolbarController.Item.noteActions)
+        let noteActions = try #require(item(ScholiumWorkspaceToolbarController.Item.noteActions, in: toolbar) as? DocumentNoteActionsToolbarItem)
+        #expect(!noteActions.showsIndicator)
+        #expect(!noteActions.isEnabled)
+        #expect(noteActions.menuFormRepresentation?.submenu === noteActions.menu)
 
         let documentTitle = try #require(
             item(
@@ -229,7 +235,17 @@ struct WorkspaceToolbarTests {
         controller.activateSidebar(.chat)
         #expect(model.shellState.sidebarContent == .triptych)
         #expect(toolbar.delegate == nil)
-        #expect(toolbar.items.allSatisfy { $0.action == nil && $0.menuFormRepresentation == nil })
+        for command in toolbar.items {
+            #expect(command.action == nil && command.target == nil && !command.isEnabled)
+            if let noteActions = command as? DocumentNoteActionsToolbarItem {
+                #expect(noteActions.menu.items.isEmpty && noteActions.menu.delegate == nil)
+                let overflow = try #require(noteActions.menuFormRepresentation)
+                #expect(overflow.submenu === noteActions.menu)
+                #expect(overflow.submenu?.items.isEmpty == true)
+            } else {
+                #expect(command.menuFormRepresentation == nil)
+            }
+        }
     }
 
     @Test("Peripheral controls mirror their current accessible visibility state")

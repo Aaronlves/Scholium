@@ -25,6 +25,15 @@ coverage is recorded in Verification; native acceptance remains. Specification
 Real provider, Zotero page/annotation opening and researcher accessibility remain
 unaccepted until separately evidenced. No expanded Zotero write scope is implied.
 
+## Note reorganization integration
+
+The first slice supports same-vault ordinary paragraphs and guarded whole-note
+merge. Cold-start anchor clipboard delivery, Review actions, native menu
+visibility and exact move/copy journeys have scoped automated and AX evidence
+in Verification. Complete visual/assistive-technology acceptance and the native
+system-Trash merge journey. Unsafe footnote, reference-definition and
+relative-resource relocation remain refused.
+
 ## In-app Chat acceptance
 
 The expanded target is owned by Specification §8.7 in `12-agent-chat.md`.
@@ -163,10 +172,12 @@ compositing artifacts; inspect the actual native window before judging them.
 
 ## Current integration boundary
 
-The previously recorded formatting and reader-arrival failures are resolved by
-owning checks in Verification. The complete repository gate has not been rerun
-on that repair; scoped passes do not replace the earlier failed integration run
-or establish package and human acceptance.
+The 2026-09-14 execution covers all product tests, performance measurements,
+public-symbol boundaries, Release build and helper checks. Its App run has one
+obsolete toolbar-order assertion, now updated and passing its owning suite;
+the full App product was not repeated after that test-only correction. Verification
+records the staged results and earlier runs. Package and human acceptance remain
+separate.
 
 ## External-host and release acceptance
 

@@ -261,16 +261,19 @@ public struct SearchDocumentProjection: Codable, Hashable, Sendable {
                 ))
         }
 
+        let anchorRanges = ParagraphAnchorPlanner.anchors(in: document, semantic: semantic).map(\.markerSpan.utf16Range)
         let excluded =
             semantic.headings.map(\.span.utf16Range)
             + semantic.callouts.map(\.span.utf16Range)
             + semantic.footnoteDefinitions.map(\.span.utf16Range)
             + semantic.links.compactMap { $0.annotation?.span.utf16Range }
+            + anchorRanges
         let bodyStart = document.rawContent.utf16.count - document.body.utf16.count
         var collector = SearchVisibleTextCollector(
             source: document.body,
             fullSourceUTF16Offset: bodyStart,
             excludedFullSourceRanges: excluded,
+            anchorFullSourceRanges: anchorRanges,
             links: semantic.links
         )
         collector.visit(Document(parsing: document.body))
@@ -611,6 +614,7 @@ private struct SearchVisibleTextCollector: MarkupWalker {
     private let mapper: SearchMarkdownSourceMapper
     private let fullSourceUTF16Offset: Int
     private let excludedFullSourceRanges: [Range<Int>]
+    private let anchorFullSourceRanges: [Range<Int>]
     private let links: [LinkOccurrence]
     private(set) var text = ""
     private(set) var fragments: [SearchVisibleFragment] = []
@@ -620,12 +624,14 @@ private struct SearchVisibleTextCollector: MarkupWalker {
         source: String,
         fullSourceUTF16Offset: Int,
         excludedFullSourceRanges: [Range<Int>],
+        anchorFullSourceRanges: [Range<Int>],
         links: [LinkOccurrence]
     ) {
         self.source = source
         mapper = SearchMarkdownSourceMapper(source)
         self.fullSourceUTF16Offset = fullSourceUTF16Offset
         self.excludedFullSourceRanges = excludedFullSourceRanges
+        self.anchorFullSourceRanges = anchorFullSourceRanges
         self.links = links
     }
 
@@ -673,6 +679,26 @@ private struct SearchVisibleTextCollector: MarkupWalker {
                     )) == value
             } ?? false
         if let fullRange, exact, appendProjectedSource(in: fullRange) { return }
+        // Entity decoding can make a Text node nonexact. Remove the known literal
+        // suffix from its visible text while retaining the decoded neighboring prose.
+        if !exact, let fullRange,
+            let anchor = anchorFullSourceRanges.first(where: {
+                fullRange.lowerBound < $0.lowerBound && $0.upperBound <= fullRange.upperBound
+            })
+        {
+            let suffixRange = NSRange(
+                location: anchor.lowerBound - fullSourceUTF16Offset,
+                length: fullRange.upperBound - anchor.lowerBound
+            )
+            let suffix = (source as NSString).substring(with: suffixRange)
+            let prefixRange = fullRange.lowerBound..<anchor.lowerBound
+            if value.hasSuffix(suffix),
+                !excludedFullSourceRanges.contains(where: { overlaps($0, prefixRange) })
+            {
+                appendFragment(String(value.dropLast(suffix.count)), sourceRange: prefixRange, exact: false)
+                return
+            }
+        }
         if let fullRange, excludedFullSourceRanges.contains(where: { overlaps($0, fullRange) }) {
             return
         }

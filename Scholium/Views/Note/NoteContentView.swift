@@ -113,6 +113,7 @@ struct DocumentFeatureState {
 }
 
 struct DocumentFeatureActions {
+    var passageAction: @MainActor (DocumentPassageAction, MarkdownSourceSelectionSnapshot?) -> Void = { _, _ in }
     var askAgent: AgentSelectionInquiryHandler = { _, _ in nil }
     let requestIdentityResolution: @MainActor () -> Void
     let retryIdentityRecovery: @MainActor () async -> Void
@@ -550,6 +551,7 @@ struct NoteContentView: View {
         .task(id: previewTaskIdentity) {
             await rebuildPreviewCatalog()
         }
+        .onReceive(documentSession.findRequested) { documentFind.present() }
         .task(id: documentFind.request) {
             guard let request = documentFind.request else { return }
             if case .clear = request.operation {
@@ -701,7 +703,8 @@ struct NoteContentView: View {
                     rememberOutlineScrollAnchor($0)
                     documentSession.observeScrollAnchor($0)
                 },
-                onAskAgent: actions.askAgent
+                onAskAgent: actions.askAgent,
+                onPassageAction: { actions.passageAction($0, nil) }
             )
             .id(editorSession.viewReconstructionID)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -949,6 +952,7 @@ struct NoteContentView: View {
             onLinkClick: openAuthoredLink,
             onOpenExternalURL: { openAuthoredLink($0.absoluteString) },
             onAskAgent: actions.askAgent,
+            onPassageAction: { actions.passageAction($0, $1) },
             onSelectionChange: { selection in
                 guard !isEditing else { return }
                 documentSession.readSelection = selection

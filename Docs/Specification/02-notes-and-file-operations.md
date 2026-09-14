@@ -168,6 +168,39 @@ available. Cross-vault moves, stale revisions,
 invalid descendants, and self/descendant folder targets fail without source
 change.
 
+### 5.4 Paragraph references and Note reorganization
+
+An ordinary top-level paragraph may carry an authored `^identifier` anchor.
+`[[Note#^identifier]]` refers to its current content, never a frozen excerpt.
+Editing retains that identity; moving preserves it; copying assigns fresh
+identifiers. Duplicate identifiers are ambiguous and never choose a winner.
+Source exposes anchors; Review and inactive Edit suppress the marker while
+retaining source navigation. Creating a paragraph link may add its anchor as
+one exact editor transaction; save must succeed before the link is copied.
+
+Extract to New Note, Move Passage to Note and Copy Passage to Note operate on
+an explicitly captured selection or current ordinary paragraph. A partial
+selection is never silently expanded. Extract creates a same-vault Note and
+leaves a link in place; Move appends to an existing same-vault Note and leaves
+a link; Copy retains the original content. Merge appends the complete source
+body, updates references, then moves the original Note to system Trash.
+Nonempty source frontmatter must be reconciled before merging.
+
+Each operation previews every changed file and binds source, destination and
+incoming links to their exact revisions. Moving redirects existing references
+to transferred targets; copying changes internal references to copied targets
+without redirecting references to the original. Missing, ambiguous or deleted
+targets remain explicit rather than being replaced by similar text. A selection
+that cuts an identity, protected construct, or unresolved footnote dependency
+is refused without changing source. Relative attachments and links must retain
+their destination or the operation is refused.
+
+Reorganization preserves exact bytes outside its declared edits and uses durable
+machine-local recovery before its first write. A failure restores only still-matching
+written revisions; external changes are retained for recovery. Source Trash remains
+Finder-owned. No research snapshot, redirect-note shell or second content authority
+is created. Existing Note moves retain their own contracts.
+
 ## 6. System Trash deletion and recovery
 
 Scholium has no application Trash, erase command, or source restore command.

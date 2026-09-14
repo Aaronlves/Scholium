@@ -63,10 +63,19 @@ and buffer.
 The native toolbar remains a bounded, stable set for frequent or high-value
 commands: the native **Library / Chat** sidebar selector, Triptych Notifications, Back/Forward,
 current-Document identity and mode,
-Settlement, confirmed Agent Changes when present, Inspector
+Settlement, Note Actions, confirmed Agent Changes when present, Inspector
 projection, and Inspector visibility. Commands retain their menus. One catalog
 defines menu shortcuts and conflicts. Window-scoped menus govern execution,
 including embedded editors. Native overflow preserves access. Toolbar customization is not required.
+
+One native **Note Actions** menu sits immediately after Review/Edit in both
+window types; the separate window reuses its existing More button. It groups
+Note-link copying and Add to Chat; Rename, Move, Duplicate and Merge; Find and
+current-Note Agent Changes; Finder and window actions; then system Trash.
+Settle and Document Mode retain their direct controls. Menu execution remains
+bound to its captured Note even when Library selection or the active tab changes.
+Separate-window Add to Chat opens the same Triptych's main Chat without moving
+the Note. Copied links must resolve unambiguously across the current Triptych.
 
 Search is directly editable at the top of the Sidebar. Triptych Notifications
 has one stable toolbar bell, available with either sidebar presentation or with
@@ -90,7 +99,8 @@ Selected. Failure retains the tab with Retry. Menus provide Close/Next/Previous 
 Tabs drag with an insertion gap; dropping back reorders, Escape cancels. Dropping
 outside, or **Move to Separate Window**, moves the same session into one document window: Review/Edit, Find, and
 save/conflict/recovery actions; no Library, Chat, Inspector, tabs, or floating
-priority. **More** contains **Move to Main Window** and **Close Window**. Hover/focus reveals ×; right-click targets its tab. Removal is immediate. Preparation
+priority. **More** reuses the shared Note Actions menu, with **Move to Main Window** and
+**Close Window** as its window-specific actions. Hover/focus reveals ×; right-click targets its tab. Removal is immediate. Preparation
 precedes removal; source, Undo, selection, scroll, mode, and conflicts travel
 without forced save. Saving finishes first; composition or failure keeps
 its location. **Move to Main Window** appends and selects, reusing the

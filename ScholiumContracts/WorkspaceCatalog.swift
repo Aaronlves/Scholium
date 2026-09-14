@@ -357,7 +357,7 @@ public enum WorkspaceCatalogBuilder {
                 guard let note = references["\(diagnostic.source.vaultID.uuidString):\(diagnostic.source.relativePath)"] else { continue }
                 let queueKind: AttentionQueueKind
                 switch diagnostic.code {
-                case .ambiguous, .ambiguousHeading:
+                case .ambiguous, .ambiguousHeading, .ambiguousBlock:
                     queueKind = .ambiguousConnection
                 case .broken, .missingHeading, .missingBlock:
                     queueKind = .brokenConnection
@@ -408,6 +408,8 @@ public enum WorkspaceCatalogBuilder {
             "Missing heading"
         case .missingBlock:
             "Missing block"
+        case .ambiguousBlock:
+            "Multiple matching paragraphs"
         }
     }
 

@@ -1554,9 +1554,7 @@ private struct ScholiumResearchCommandContent: View {
 
     var body: some View {
         Button("Find Related Material") {
-            appState?.researchController.selectInspectorMode(.related)
-            workspaceWindowActions?.setResearchInspectorVisible(true)
-            appState?.findRelatedMaterials()
+            appState?.performPassageAction(.relatedMaterial)
         }
         .disabled(appState?.currentNote == nil)
         Button("Add Selection to Chat") {
@@ -1570,6 +1568,13 @@ private struct ScholiumResearchCommandContent: View {
         }
         .scholiumKeyboardShortcut(.addSelectionToChat)
         .disabled(appState?.currentNote == nil)
+        Divider()
+        ForEach([DocumentPassageAction.copyLink, .extract, .move, .copy], id: \.rawValue) { action in
+            Button(action.title) { appState?.performPassageAction(action) }
+                .disabled(appState?.canEditCurrentNote != true)
+        }
+        Button("Merge into Another Note…") { appState?.requestMergeCurrentNote() }
+            .disabled(appState?.canMergeCurrentNote != true)
         Divider()
         Button(workspaceWindowActions?.settlementMenuTitle() ?? ScholiumL10n.string("Settle")) {
             workspaceWindowActions?.showSettlement()
@@ -5998,7 +6003,11 @@ final class WindowModel: ObservableObject {
         guard destinations.count == 1, let destination = destinations.first else {
             let hasAmbiguity = matching.contains {
                 if case .ambiguous = $0.occurrence.resolution { return true }
-                return false
+                let edge = $0
+                return graph.diagnostics.contains {
+                    $0.source == edge.source && $0.span == edge.occurrence.span
+                        && ($0.code == .ambiguousBlock || $0.code == .ambiguousHeading)
+                }
             }
             let message =
                 hasAmbiguity

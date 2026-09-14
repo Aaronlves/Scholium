@@ -232,7 +232,8 @@ and cannot resize the live editor or its accessibility frame. Its completion own
 only the current query range and candidate selection. Candidate actions capture the
 conversation and never rewrite the whole draft. Reply links open Notes; activity
 details retain read targets. Changes uses ResearchController receipts and a shared
-machine-local AgentChangeViewedLedger, independent of evidence and Settlement.
+machine-local AgentChangeViewedLedger, updated after confirmed detail presentation
+and independent of evidence and Settlement.
 Public assistant phase metadata is retained on the message by streaming and history
 reconciliation. Timeline grouping uses explicit turn and phase metadata; a process
 disclosure owns only expansion, keeping each tool item distinct from the final answer.
@@ -336,8 +337,8 @@ card anchored to its source, bounded by measured content and screen size. Closin
 or recycling the source removes the card; geometry messages grant no source authority.
 `AgentChatCommandOutput` bounds retained public output to 256 KiB and reconciles
 stream deltas with aggregate or tail-only completion without replacing prior output.
-Agent Changes projects its collection/comparison size through a sheet-only native
-attachment, leaving workspace geometry and receipt selection with their owners. `AgentChatTimelineItem` groups
+Agent Changes uses one stable SwiftUI sheet for collection and comparison;
+no native attachment writes sheet or workspace geometry. `AgentChatTimelineItem` groups
 contiguous operation messages for disclosure without shortening public replies.
 `CodexChatTranscript` owns public item, turn and transcript-event decoding for
 live delivery, history restoration and child inspection. Contracts carry typed

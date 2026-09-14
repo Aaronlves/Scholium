@@ -31,7 +31,7 @@ const dialect = {
 
 describe("editor protocol", () => {
   it("uses the coalesced interaction bridge protocol", () => {
-    expect(EDITOR_PROTOCOL_VERSION).toBe(33);
+    expect(EDITOR_PROTOCOL_VERSION).toBe(34);
   });
   it("accepts a complete versioned request", () => expect(isEditorRequest(request)).toBe(true));
   it("rejects retired title positioning while retaining blur", () => {
@@ -228,8 +228,11 @@ describe("editor protocol", () => {
 });
 
  it("admits only bounded exact-passage replacements with the current generation", () => {
-   const operation = {type: "replacePassage", expectedText: "Original", fromUTF16: 0, toUTF16: 8, replacement: "Proposal"};
+   const operation = {type: "replacePassage", expectedText: "Original", fromUTF16: 0, toUTF16: 8, replacement: "Proposal", preserveSelection: false};
    expect(isEditorRequest({...request, operation})).toBe(true);
+   expect(isEditorRequest({...request, operation: {...operation, fromUTF16: 8, toUTF16: 8, preserveSelection: true}})).toBe(true);
+   expect(isEditorRequest({...request, operation: {...operation, preserveSelection: undefined}})).toBe(false);
+   expect(isEditorRequest({...request, operation: {...operation, preserveSelection: "true"}})).toBe(false);
    expect(isEditorRequest({...request, operation: {...operation, replacement: ""}})).toBe(false);
    expect(isEditorRequest({...request, operation: {...operation, fromUTF16: -1}})).toBe(false);
    expect(generationCanExecuteEditorRequest("replacePassage", 3, 4)).toBe(false);

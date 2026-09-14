@@ -30,6 +30,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
         static let documentMode = NSToolbarItem.Identifier(
             "scholium.toolbar.documentMode"
         )
+        static let noteActions = NSToolbarItem.Identifier("scholium.toolbar.noteActions")
         static let settlement = NSToolbarItem.Identifier(
             "scholium.toolbar.settlement"
         )
@@ -112,10 +113,14 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
         settlementPopoverHostingController = nil
         presentedSettlementTarget = nil
         for item in toolbar.items {
+            if let noteActions = item as? DocumentNoteActionsToolbarItem {
+                noteActions.invalidate()
+            } else {
+                item.menuFormRepresentation = nil
+            }
             item.target = nil
             item.action = nil
             item.isEnabled = false
-            item.menuFormRepresentation = nil
             (item.view as? ScholiumSidebarModeControl)?.invalidateNoteDrops()
             if let control = item.view as? NSControl {
                 control.target = nil
@@ -144,6 +149,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
             Item.documentTitle,
             .space,
             Item.documentMode,
+            Item.noteActions,
             Item.settlement,
             Item.apparatusDivider,
             Item.inspectorModes,
@@ -165,6 +171,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
             Item.settlement,
             .space,
             Item.documentMode,
+            Item.noteActions,
             Item.apparatusDivider,
             Item.inspectorModes,
             .flexibleSpace,
@@ -231,6 +238,8 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
             return item
         case Item.documentMode:
             return ScholiumDocumentModeToolbarItem(identifier: itemIdentifier, model: appState)
+        case Item.noteActions:
+            return DocumentNoteActionsToolbarItem(identifier: itemIdentifier, model: appState)
         case Item.settlement:
             let item = actionItem(
                 identifier: itemIdentifier,
@@ -540,6 +549,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
         }
 
         (toolbarItem(Item.documentMode) as? ScholiumDocumentModeToolbarItem)?.refreshPresentation()
+        (toolbarItem(Item.noteActions) as? DocumentNoteActionsToolbarItem)?.refreshPresentation()
 
         if let item = toolbarItem(Item.settlement) {
             let hasDocument = appState.currentNote != nil
@@ -622,6 +632,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
         case Item.inspector: appState.canToggleResearchInspector
         case Item.inspectorModes: appState.currentNote != nil && appState.shellState.inspector.isVisible
         case Item.documentMode: ScholiumDocumentModeToolbarItem.isAvailable(in: appState)
+        case Item.noteActions: appState.currentNote != nil && !appState.transferInProgress
         default: true
         }
     }

@@ -359,6 +359,10 @@ struct ContentView: View {
         let documentKey = appState.currentDocumentDescriptor?.sessionKey
         let documentPath = appState.currentNote?.relativePath
         return DocumentFeatureActions(
+            passageAction: { action, snapshot in
+                guard appState.currentDocumentDescriptor?.sessionKey == documentKey else { return }
+                appState.performPassageAction(action, captured: snapshot)
+            },
             askAgent: { inquiry, validate in
                 guard appState.currentDocumentDescriptor?.sessionKey == documentKey else { return nil }
                 return await appState.runSelectionInquiry(inquiry, validate: validate) {
@@ -563,6 +567,8 @@ struct ContentView: View {
     @ViewBuilder
     private func sheetContent(for route: WindowSheetRoute) -> some View {
         switch route {
+        case .noteRestructure(let request):
+            NoteRestructureView(request: request, prepare: appState.prepareNoteRestructure, commit: appState.commitNoteRestructure)
         case .noteFileOperation(let request):
             NoteFileOperationView(
                 request: request,

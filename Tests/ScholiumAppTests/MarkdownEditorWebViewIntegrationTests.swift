@@ -10,6 +10,25 @@ import WebKit
 @Suite("Markdown editor WKWebView integration", .serialized)
 @MainActor
 struct MarkdownEditorWebViewIntegrationTests {
+    @Test("Adding a paragraph anchor preserves selection and has its own Undo action")
+    func paragraphAnchorPreservesSelection() async throws {
+        let source = "A paragraph 😀.\r\n\r\nFollowing."
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        let web = try #require(harness.session.webView)
+        let selection = harness.session.context?.selections
+        let end = (source as NSString).range(of: "\r\n").location
+        let result = try await harness.session.send(
+            .replacePassage(
+                expectedText: source, fromUTF16: end, toUTF16: end,
+                replacement: " ^one", preserveSelection: true), in: web)
+        #expect(result.sourceChanged && result.undoLabel == "Create Paragraph Link")
+        #expect(try await harness.session.currentText() == "A paragraph 😀. ^one\r\n\r\nFollowing.")
+        #expect(harness.session.context?.selections == selection)
+        await harness.closeAndDrain()
+    }
+
     @Test("A production document identity preserves Undo and selection across WebView transfer")
     func productionIdentitySurvivesTransfer() async throws {
         let source = "# Fixture\n\nOriginal text."
@@ -22,7 +41,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         _ = try await harness.session.send(
             .replacePassage(
                 expectedText: source, fromUTF16: 0, toUTF16: source.utf16.count,
-                replacement: source + " Added 😀."
+                replacement: source + " Added 😀.", preserveSelection: false
             ), in: web)
         let expected = try await harness.session.currentText()
         let selection = harness.session.context?.selections
@@ -60,7 +79,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         let web = try #require(harness.session.webView)
         let operation = MarkdownEditorOperation.replacePassage(
             expectedText: source,
-            fromUTF16: range.location, toUTF16: NSMaxRange(range), replacement: "新的原文 😀。")
+            fromUTF16: range.location, toUTF16: NSMaxRange(range), replacement: "新的原文 😀。", preserveSelection: false)
         let encoded = try JSONEncoder().encode(operation)
         #expect(try JSONDecoder().decode(MarkdownEditorOperation.self, from: encoded) == operation)
         let result = try await harness.session.send(operation, in: web)

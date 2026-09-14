@@ -3560,7 +3560,7 @@
 
   // passage-replacement.ts
   function passageReplacement(source, expected, from, to, replacement) {
-    if (source !== expected || !Number.isSafeInteger(from) || !Number.isSafeInteger(to) || from < 0 || to <= from || to > source.length || replacement.length === 0) return null;
+    if (source !== expected || !Number.isSafeInteger(from) || !Number.isSafeInteger(to) || from < 0 || to < from || to > source.length || replacement.length === 0 || from === 0 && to === 0 && source.charCodeAt(0) === 65279) return null;
     function boundary(offset) {
       if (offset <= 0 || offset >= source.length) return true;
       const before = source.charCodeAt(offset - 1), after = source.charCodeAt(offset);
@@ -21677,7 +21677,7 @@
   }
 
   // protocol.ts
-  var EDITOR_PROTOCOL_VERSION = 33;
+  var EDITOR_PROTOCOL_VERSION = 34;
   var MAX_INBOUND_BYTES = 25e5;
   var MAX_SOURCE_UTF8_BYTES = 8e6;
   var operationTypes = /* @__PURE__ */ new Set([
@@ -21847,7 +21847,7 @@
         return Number.isSafeInteger(operation.generation) && Number(operation.generation) >= 0 && typeof operation.target === "string" && operation.target.length > 0 && operation.target.length <= 1024 && !/[\r\n\[\]]/u.test(operation.target) && Number.isSafeInteger(selection?.anchor) && Number(selection?.anchor) >= 0 && selection?.anchor === selection?.head;
       }
       case "replacePassage":
-        return typeof operation.expectedText === "string" && typeof operation.replacement === "string" && operation.replacement.length > 0 && operation.replacement.length <= 5e5 && Number.isSafeInteger(operation.fromUTF16) && Number.isSafeInteger(operation.toUTF16) && Number(operation.fromUTF16) >= 0 && Number(operation.toUTF16) > Number(operation.fromUTF16);
+        return typeof operation.expectedText === "string" && typeof operation.replacement === "string" && typeof operation.preserveSelection === "boolean" && operation.replacement.length > 0 && operation.replacement.length <= 5e5 && Number.isSafeInteger(operation.fromUTF16) && Number.isSafeInteger(operation.toUTF16) && Number(operation.fromUTF16) >= 0 && Number(operation.toUTF16) >= Number(operation.fromUTF16);
       case "command":
         return typeof operation.command === "string" && commandTypes.has(operation.command) && (operation.argument === void 0 || typeof operation.argument === "string");
       case "documentFind": {
@@ -30676,6 +30676,33 @@ ${fence}
         }
       }
     });
+    const paragraphIsProtected = (block) => source.slice(block.from, block.to).includes("%%") || source.slice(block.from, block.to).includes("<!--") || result.inlines.some((inline) => ["inlineMath", "inlineFootnote"].includes(inline.kind) && inline.from < block.to && inline.to > block.from) || result.blocks.some((candidate) => ["footnoteDefinition", "displayMath", "comment", "blockQuote", "listItem", "orderedList", "unorderedList", "table"].includes(candidate.kind) && candidate.from < block.to && candidate.to > block.from);
+    for (const block of result.blocks) {
+      if (block.kind !== "paragraph" || paragraphIsProtected(block)) continue;
+      const paragraph = source.slice(block.from, block.to);
+      const match = /(?:^|[ \t\r\n])\^([A-Za-z0-9-]+)[ \t]*$/.exec(paragraph);
+      if (!match) continue;
+      const markerFrom = block.from + match.index + match[0].indexOf("^");
+      const markerTo = markerFrom + match[1].length + 1;
+      if (paragraph.trim() === source.slice(markerFrom, markerTo)) {
+        const preceding = result.blocks.filter((candidate) => candidate.to < block.from).at(-1);
+        if (!preceding || preceding.kind !== "paragraph" || source.slice(preceding.to, block.from).trim() !== "" || paragraphIsProtected(preceding)) continue;
+      }
+      if (result.inlines.some((inline) => inline.from < markerTo && inline.to > markerFrom) || result.blocks.some((candidate) => ["footnoteDefinition", "displayMath", "comment", "code", "html"].includes(candidate.kind) && candidate.from <= markerFrom && candidate.to >= markerTo) || result.literals.some((literal2) => literal2.from < markerTo && literal2.to > markerFrom)) continue;
+      result.inlines.push({
+        kind: "blockAnchor",
+        nodeName: "ParagraphAnchor",
+        from: markerFrom,
+        to: markerTo,
+        markerRanges: [{ from: markerFrom, to: markerTo }],
+        visibleRanges: [],
+        targetRange: null,
+        aliasRange: null,
+        linkRange: null,
+        annotationRange: null,
+        annotationContentRange: null
+      });
+    }
     result.blocks.sort((left, right) => left.from - right.from || right.to - left.to || left.kind.localeCompare(right.kind));
     result.inlines.sort((left, right) => left.from - right.from || right.to - left.to || left.kind.localeCompare(right.kind));
     result.literals.sort((left, right) => left.from - right.from || right.to - left.to);
@@ -32755,6 +32782,11 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     );
     return belongsToSelection ? selection : EditorSelection.single(position);
   }
+  function selectionForParagraphContext(selection, position, paragraph) {
+    const clicked = selectionForContextClick(selection, position);
+    if (!clicked.main.empty || !paragraph || position < paragraph.from || position > paragraph.to) return clicked;
+    return EditorSelection.single(paragraph.from, paragraph.to);
+  }
   function createEditorContextMenuExtension(options) {
     return ViewPlugin.define((view) => {
       const handleContextMenu = (event) => {
@@ -32764,7 +32796,10 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         if (isPointerInvocation) {
           const position = options.positionAtEvent?.(view, event) ?? view.posAtCoords({ x: event.clientX, y: event.clientY });
           if (position !== null) {
-            const selection = selectionForContextClick(view.state.selection, position);
+            let node = syntaxTree(view.state).resolveInner(position, 1);
+            while (node.parent && node.name !== "Paragraph") node = node.parent;
+            const paragraph = node.name === "Paragraph" && node.parent?.name === "Document" ? { from: node.from, to: node.to } : null;
+            const selection = selectionForParagraphContext(view.state.selection, position, paragraph);
             if (!selection.eq(view.state.selection)) {
               view.dispatch({
                 selection,
@@ -37504,7 +37539,10 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
             continue;
           }
           for (const construct of projectionRangesIntersecting(parsedProjection.inlines, scanFrom, lineQueryTo)) {
-            if (!inlineConstructIsActive(construct.from, construct.to)) continue;
+            if (!inlineConstructIsActive(construct.from, construct.to)) {
+              if (construct.kind === "blockAnchor") addHidden(construct.from, construct.to);
+              continue;
+            }
             for (const marker of construct.markerRanges) {
               addMark(Math.max(scanFrom, marker.from), Math.min(scanTo, marker.to), "cm-live-syntax-marker");
             }
@@ -38777,11 +38815,14 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         }
         editor.dispatch({
           changes: change,
-          selection: EditorSelection.single(change.from, change.from + change.insert.length),
-          annotations: [Transaction.userEvent.of("input.scholium.adopt"), isolateHistory.of("full")]
+          ...operation.preserveSelection ? {} : {
+            selection: EditorSelection.single(change.from, change.from + change.insert.length)
+          },
+          annotations: [Transaction.userEvent.of(operation.preserveSelection ? "input.scholium.paragraphAnchor" : "input.scholium.adopt"), isolateHistory.of("full")]
         });
-        lastUndoLabel = lastRedoLabel = "Adopt Suggestion";
-        return successfulResult(request.requestID, true, "Adopt Suggestion");
+        const undoLabel = operation.preserveSelection ? "Create Paragraph Link" : "Adopt Suggestion";
+        lastUndoLabel = lastRedoLabel = undoLabel;
+        return successfulResult(request.requestID, true, undoLabel);
       }
       case "command": {
         let argument = operation.argument;
