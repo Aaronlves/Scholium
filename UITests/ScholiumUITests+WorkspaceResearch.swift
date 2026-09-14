@@ -654,7 +654,8 @@ extension ScholiumUITests {
         XCTAssertTrue(inspector.exists)
 
         app.typeKey("f", modifierFlags: [.command, .shift])
-        // Search first focuses its field; results expand only after input.
+        XCTAssertTrue(app.windows["scholium.advancedSearchWindow"].waitForExistence(timeout: 5))
+        // Advanced Search directly focuses its field.
         // Paste without clicking to prove the shortcut actually moved focus.
         try setPasteboardText("shortcut-probe")
         app.typeKey("v", modifierFlags: [.command])
@@ -667,12 +668,13 @@ extension ScholiumUITests {
         waitForCurrentDocumentSurface()
 
         app.typeKey("f", modifierFlags: [.command, .shift])
-        let search = app.descendants(matching: .any)["scholium.searchWorkspace"]
-        let field = app.descendants(matching: .any)["scholium.searchField"]
+        let advanced = app.windows["scholium.advancedSearchWindow"]
+        XCTAssertTrue(advanced.waitForExistence(timeout: 5))
+        let field = advanced.searchFields["scholium.searchField"]
         let result = searchResult(named: "QA Autosave A")
         XCTAssertTrue(field.waitForExistence(timeout: 5))
-        selectResearchSearchScope("This Note", in: app)
-        typeCommittedText("Synthetic", into: field, in: app)
+        selectResearchSearchScope("This Vault", in: app)
+        typeCommittedText("body:Synthetic title:\"QA Autosave A\"", into: field, in: app)
         XCTAssertTrue(result.waitForExistence(timeout: 8))
         field.click()
         field.typeKey(.downArrow, modifierFlags: [])
@@ -684,7 +686,7 @@ extension ScholiumUITests {
 
         field.typeKey(.return, modifierFlags: [])
 
-        XCTAssertTrue(waitUntil(timeout: 5) { !search.exists })
+        XCTAssertTrue(advanced.exists, "Opening a result retains the advanced search window.")
         XCTAssertTrue(waitForDocumentTitle("QA Autosave A", timeout: 5))
         let sourceEditor = app.descendants(matching: .any)["Markdown source editor"]
         XCTAssertTrue(
@@ -700,8 +702,9 @@ extension ScholiumUITests {
         waitForCurrentDocumentSurface()
 
         app.typeKey("f", modifierFlags: [.command, .shift])
-        let search = app.descendants(matching: .any)["scholium.searchWorkspace"]
-        let field = app.descendants(matching: .any)["scholium.searchField"]
+        let advanced = app.windows["scholium.advancedSearchWindow"]
+        XCTAssertTrue(advanced.waitForExistence(timeout: 5))
+        let field = advanced.searchFields["scholium.searchField"]
         XCTAssertTrue(field.waitForExistence(timeout: 5))
         selectResearchSearchScope("Triptych", in: app)
         typeCommittedText("from-note:\"QA Autosave B\"", into: field, in: app)
@@ -721,7 +724,7 @@ extension ScholiumUITests {
         relatedAnalysis.coordinate(
             withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
         ).click()
-        XCTAssertTrue(waitUntil(timeout: 5) { !search.exists })
+        XCTAssertTrue(advanced.exists, "Opening a result retains the advanced search window.")
         XCTAssertTrue(waitForDocumentTitle("QA Autosave A", timeout: 5))
     }
 }

@@ -379,6 +379,8 @@ final class ScholiumWindowLifecycleRegistry: ObservableObject {
 }
 
 struct WorkspaceWindowActions {
+    let toggleFocusLayout: @MainActor () -> Void
+    let canToggleFocusLayout: @MainActor () -> Bool
     let setLibraryVisible: @MainActor (Bool) -> Void
     let setResearchInspectorVisible: @MainActor (Bool) -> Void
     let activateSidebar: @MainActor (SidebarContent) -> Void
@@ -434,6 +436,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
     private var advancedSearchWindow: AdvancedSearchWindowController?
     private var toolbarController: ScholiumWorkspaceToolbarController?
     private let loadingToolbar: NSToolbar
+    private let focusLayout = WorkspaceFocusLayout()
     private var colorScheme = WindowColorSchemeChoice.system
     private var reduceMotion = false
     private var closeIsAuthorized = false
@@ -482,6 +485,8 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
 
     var actions: WorkspaceWindowActions {
         WorkspaceWindowActions(
+            toggleFocusLayout: { [weak self] in self?.toggleFocusLayout() },
+            canToggleFocusLayout: { [weak self] in self?.canToggleFocusLayout == true },
             setLibraryVisible: { [weak self] visible in
                 self?.setLibraryVisible(visible)
             },
@@ -489,6 +494,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
                 self?.setResearchInspectorVisible(visible)
             },
             activateSidebar: { [weak self] content in
+                guard self?.focusLayout.isFullScreenEnforced != true else { return }
                 self?.toolbarController?.activateSidebar(content)
             },
             showAttention: { [weak self] request in
@@ -583,6 +589,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
             markReadyIfPossible()
             return
         }
+        resetFocusLayout()
         removeToolbar()
         detachWindow()
         self.window = window
@@ -602,6 +609,9 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
     }
 
     func attach(splitController: any ScholiumWorkspaceSplitControlling) {
+        if self.splitController != nil, self.splitController !== splitController {
+            resetFocusLayout()
+        }
         self.splitController = splitController
         if let visible = pendingLibraryVisibility {
             pendingLibraryVisibility = nil
@@ -618,6 +628,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
 
     func detach(splitController: any ScholiumWorkspaceSplitControlling) {
         guard self.splitController === splitController else { return }
+        resetFocusLayout()
         self.splitController = nil
         replaceConfiguredToolbarWithLoadingToolbar()
     }
@@ -629,6 +640,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
     }
 
     func detach() {
+        resetFocusLayout()
         appState.searchController.dismiss()
         closeAdvancedSearch()
         advancedSearchWindow = nil
@@ -679,6 +691,55 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
             appState.attentionPopoverSession.resetForWorkspaceSwitch()
         }
         previousDelegate?.windowDidBecomeKey?(notification)
+    }
+
+    func windowWillEnterFullScreen(_ notification: Notification) {
+        beginFullScreenFocus()
+        previousDelegate?.windowWillEnterFullScreen?(notification)
+    }
+
+    func windowDidEnterFullScreen(_ notification: Notification) {
+        previousDelegate?.windowDidEnterFullScreen?(notification)
+        beginFullScreenFocus()
+    }
+
+    func windowDidExitFullScreen(_ notification: Notification) {
+        previousDelegate?.windowDidExitFullScreen?(notification)
+        endFullScreenFocus()
+    }
+
+    func windowDidFailToEnterFullScreen(_ window: NSWindow) {
+        previousDelegate?.windowDidFailToEnterFullScreen?(window)
+        endFullScreenFocus()
+    }
+
+    func windowDidFailToExitFullScreen(_ window: NSWindow) {
+        previousDelegate?.windowDidFailToExitFullScreen?(window)
+        beginFullScreenFocus()
+    }
+
+    private func beginFullScreenFocus() {
+        guard let window, splitController != nil || appState.isDetachedDocumentWindow else { return }
+        focusLayout.beginFullScreen(in: window, split: splitController)
+        publishFocusLayout()
+    }
+
+    private func endFullScreenFocus() {
+        guard let window else { return }
+        focusLayout.endFullScreen(in: window, split: splitController)
+        publishFocusLayout()
+    }
+
+    private func publishFocusLayout() {
+        appState.shellState.recordFocusLayout(
+            focusLayout.isActive, lockedByFullScreen: focusLayout.isFullScreenEnforced
+        )
+    }
+
+    private func resetFocusLayout() {
+        guard let window else { return }
+        focusLayout.reset(in: window, split: splitController)
+        publishFocusLayout()
     }
 
     func windowWillClose(_ notification: Notification) {
@@ -737,6 +798,8 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
     }
 
     private func setLibraryVisible(_ visible: Bool) {
+        guard !visible || !focusLayout.isFullScreenEnforced else { return }
+        if visible { exitFocusLayout() }
         guard let splitController else {
             pendingLibraryVisibility = visible
             return
@@ -745,7 +808,9 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
     }
 
     private func setResearchInspectorVisible(_ visible: Bool) {
+        guard !visible || !focusLayout.isFullScreenEnforced else { return }
         guard !visible || appState.canToggleResearchInspector else { return }
+        if visible { exitFocusLayout() }
         guard let splitController else {
             pendingInspectorVisibility = visible
             return
@@ -762,7 +827,45 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         )
     }
 
+    var restoredLibraryVisibility: Bool? { focusLayout.restoredLibraryVisibility }
+    var restoredInspectorVisibility: Bool? { focusLayout.restoredInspectorVisibility }
+
+    private var canToggleFocusLayout: Bool {
+        guard let window, window.attachedSheet == nil,
+            !flushInFlight, !didFinalizeWindowAttachments, !focusLayout.isFullScreenEnforced,
+            !window.styleMask.contains(.fullScreen),
+            splitController != nil || appState.isDetachedDocumentWindow
+        else { return false }
+        return (window.firstResponder as? any NSTextInputClient)?.hasMarkedText() != true
+    }
+
+    private func toggleFocusLayout() {
+        guard canToggleFocusLayout, let window else { return }
+        if focusLayout.isActive {
+            exitFocusLayout()
+        } else {
+            focusLayout.enter(in: window, split: splitController)
+            appState.shellState.recordFocusLayout(focusLayout.isActive)
+        }
+        NSAccessibility.post(
+            element: window, notification: .announcementRequested,
+            userInfo: [
+                .announcement: ScholiumL10n.string(
+                    focusLayout.isActive ? "Entered Focus Layout" : "Exited Focus Layout"
+                ),
+                .priority: NSAccessibilityPriorityLevel.medium.rawValue,
+            ]
+        )
+    }
+
+    private func exitFocusLayout() {
+        guard !focusLayout.isFullScreenEnforced, focusLayout.isActive, let window else { return }
+        focusLayout.exit(in: window, split: splitController)
+        appState.shellState.recordFocusLayout(false)
+    }
+
     private func markReadyIfPossible() {
+        if window?.styleMask.contains(.fullScreen) == true { beginFullScreenFocus() }
         if appState.isDetachedDocumentWindow, window != nil, !readinessWasMarked {
             readinessWasMarked = true
             lifecycleRegistry.markReady(id: windowID)

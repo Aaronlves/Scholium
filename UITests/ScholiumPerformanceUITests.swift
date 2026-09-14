@@ -608,7 +608,9 @@ final class ScholiumPerformanceUITests: XCTestCase {
             return
         }
         application.typeKey("f", modifierFlags: [.command, .shift])
-        let field = application.descendants(matching: .any)["scholium.searchField"]
+        let advanced = application.windows["scholium.advancedSearchWindow"]
+        XCTAssertTrue(advanced.waitForExistence(timeout: 10))
+        let field = advanced.searchFields["scholium.searchField"]
         XCTAssertTrue(field.waitForExistence(timeout: 10))
         replaceCommittedText("scopeSetup", in: field, application: application)
         selectResearchSearchScope("This Vault", in: application)
@@ -628,7 +630,7 @@ final class ScholiumPerformanceUITests: XCTestCase {
         case .warmLibraryLaunch, .firstReadActivation, .firstEditActivation:
             return
         case .indexedSearch:
-            let field = application.descendants(matching: .any)["scholium.searchField"]
+            let field = application.windows["scholium.advancedSearchWindow"].searchFields["scholium.searchField"]
             XCTAssertTrue(field.waitForExistence(timeout: 10))
             replaceCommittedText(
                 environment["SCHOLIUM_PERFORMANCE_DRIVER_QUERY"] ?? "RDF1WarmAnalysis",

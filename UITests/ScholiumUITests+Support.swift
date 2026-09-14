@@ -1239,7 +1239,11 @@ extension ScholiumUITests {
 
 @MainActor
 func selectResearchSearchScope(_ title: String, in application: XCUIApplication) {
-    let field = application.searchFields["scholium.searchField"].firstMatch
+    let advanced = application.windows["scholium.advancedSearchWindow"]
+    let field =
+        advanced.exists
+        ? advanced.searchFields["scholium.searchField"]
+        : application.searchFields["scholium.searchField"].firstMatch
     XCTAssertTrue(field.waitForExistence(timeout: 5))
     field.buttons.firstMatch.click()
     field.menuItems["Search scope"].click()

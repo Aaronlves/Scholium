@@ -231,7 +231,15 @@ struct FrontendArchitectureTests {
             driver.contains(
                 "application.typeKey(\"f\", modifierFlags: [.command, .shift])"
             ))
-        #expect(app.contains(".scholiumKeyboardShortcut(.searchResearch)"))
+        #expect(
+            app.contains(
+                """
+                Button("Advanced Search…") { searchActions?.advanced() }
+                            .scholiumActivationPointer()
+                            .scholiumKeyboardShortcut(.searchResearch)
+                """
+            ))
+        #expect(!app.contains("Button(\"Search…\")"))
         #expect(hotkeys.contains("ScholiumHotkeyBinding(key: \"f\", modifiers: [.shift, .command])"))
     }
 
@@ -919,19 +927,11 @@ struct FrontendArchitectureTests {
             ))
         #expect(
             splitSource.contains(
-                "let contentTopAnchor: NSLayoutYAxisAnchor =\n            contentUnderlapsTitlebar"
+                "equalTo: containerView.safeAreaLayoutGuide.topAnchor"
             ))
-        #expect(
-            splitSource.contains(
-                "? containerView.topAnchor"
-            ))
-        #expect(
-            splitSource.contains(
-                ": containerView.safeAreaLayoutGuide.topAnchor"
-            ))
-        #expect(splitSource.contains("contentUnderlapsTitlebar: true"))
-        #expect(splitSource.contains("placeholderHost.safeAreaRegions = []"))
-        #expect(splitSource.contains("host.safeAreaRegions = []"))
+        #expect(!splitSource.contains("contentUnderlapsTitlebar"))
+        #expect(!splitSource.contains("placeholderHost.safeAreaRegions = []"))
+        #expect(!splitSource.contains("host.safeAreaRegions = []"))
         #expect(documentTabSource.contains("let titlebarSafeInset = showsTabs ? safeAreaInsets.top : 0"))
         #expect(documentTabSource.contains("y: titlebarSafeInset + inset"))
         #expect(documentTabSource.contains("y: headerHeight"))
@@ -1031,8 +1031,8 @@ struct FrontendArchitectureTests {
         #expect(appSource.contains(".toolbar(removing: .sidebarToggle)"))
         #expect(windowManagementSource.contains("window.titlebarAppearsTransparent = true"))
         #expect(windowManagementSource.contains("window.titlebarSeparatorStyle = .none"))
-        #expect(!windowManagementSource.contains("windowDidEnterFullScreen"))
-        #expect(!windowManagementSource.contains("windowDidExitFullScreen"))
+        #expect(windowManagementSource.contains("windowDidEnterFullScreen"))
+        #expect(windowManagementSource.contains("windowDidExitFullScreen"))
         #expect(windowManagementSource.contains("ScholiumWindowAppearance.apply"))
         #expect(!windowManagementSource.contains("titlebarContainer"))
         #expect(!windowManagementSource.contains("layer?.backgroundColor"))
@@ -1043,8 +1043,8 @@ struct FrontendArchitectureTests {
                 "loadingToolbar.itemIdentifiers = [.flexibleSpace]"
             ))
         #expect(windowManagementSource.contains("window.styleMask.insert(.fullSizeContentView)"))
-        #expect(!contentSource.contains(".toolbarBackground(.clear, for: .windowToolbar)"))
-        #expect(!contentSource.contains(".toolbarBackgroundVisibility(.hidden, for: .windowToolbar)"))
+        #expect(contentSource.contains(".toolbarBackground(.clear, for: .windowToolbar)"))
+        #expect(contentSource.contains(".toolbarBackgroundVisibility(.visible, for: .windowToolbar)"))
         #expect(appSource.contains(".windowToolbarStyle(.unified(showsTitle: true))"))
         #expect(windowManagementSource.contains("window.toolbarStyle = .unified"))
         #expect(!appSource.contains("Collapse Note"))
@@ -1316,6 +1316,24 @@ struct FrontendArchitectureTests {
         #expect(contentController.view.superview === controller.view)
         #expect(controller.view.subviews.first === background)
         #expect(controller.view.subviews.last === contentController.view)
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
+            styleMask: [.titled, .resizable, .fullSizeContentView], backing: .buffered, defer: false
+        )
+        window.isReleasedWhenClosed = false
+        defer { window.close() }
+        window.titlebarAppearsTransparent = true
+        window.toolbar = NSToolbar(identifier: "native-surface-safe-area")
+        window.contentViewController = controller
+        window.setContentSize(NSSize(width: 800, height: 600))
+        for toolbarVisible in [true, false] {
+            window.toolbar?.isVisible = toolbarVisible
+            window.layoutIfNeeded()
+            let foreground = contentController.view.convert(contentController.view.bounds, to: nil)
+            #expect(background.frame == controller.view.bounds)
+            #expect(foreground.maxY <= window.contentLayoutRect.maxY + 1)
+            #expect(foreground.height > 0)
+        }
     }
 
     @Test("Native Sidebar owns glass above the extended Document Paper plane")

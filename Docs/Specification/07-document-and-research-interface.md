@@ -19,8 +19,8 @@ Editor failure retains the Note and offers **Retry Edit** and **Source**. An
 exact empty body has a distinct quiet state; malformed YAML, whitespace,
 unavailable source, and render failure are not Empty.
 
-The Document scroll plane may continue beneath toolbar material; its inset keeps
-initial content clear. Selection, focus, Undo, composition, and
+Document backgrounds continue behind toolbar controls; native safe areas
+keep scrolling content below them. Selection, focus, Undo, composition, and
 restoration are unchanged.
 
 Edit keeps text selection unobscured, without a floating formatting toolbar.

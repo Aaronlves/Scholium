@@ -200,9 +200,10 @@ struct ContentView: View {
                     alignment: .topLeading
                 )
         }
-        // Native window chrome owns the integrated toolbar material. The
-        // Document content host may pass beneath it; the renderer's existing
-        // top content inset keeps the initial readable content below the toolbar.
+        // Expose each split item's background without adding a pane-specific
+        // toolbar fill. Full-screen material remains controlled by the system.
+        .toolbarBackground(.clear, for: .windowToolbar)
+        .toolbarBackgroundVisibility(.visible, for: .windowToolbar)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .ignoresSafeArea(.container, edges: .top)
         .overlay {
@@ -213,13 +214,13 @@ struct ContentView: View {
         .focusedSceneValue(
             \.scholiumSearchActions,
             ScholiumSearchActions(
-                begin: { searchController.begin($0) },
                 advanced: { searchController.beginAdvanced() }
             )
         )
         .onChange(of: searchController.focusRequestID) { _, _ in
             switch searchController.presentation {
             case .sidebar:
+                if shellState.isFocusLayoutLockedByFullScreen { return }
                 _ = shellState.activateSidebar(.triptych)
                 windowCoordinator.actions.setLibraryVisible(true)
                 windowCoordinator.closeAdvancedSearch()

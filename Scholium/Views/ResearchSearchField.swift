@@ -92,13 +92,16 @@ struct ResearchSearchField: NSViewRepresentable {
     }
 
     @MainActor final class Coordinator: NSObject, NSSearchFieldDelegate, NSMenuItemValidation {
+        private static let scopeOptions: [(scope: SearchPresentationScope, title: String)] = [
+            (.currentVault, "This Vault"), (.triptych, "Triptych"),
+        ]
         var parent: ResearchSearchField
         init(_ parent: ResearchSearchField) { self.parent = parent }
         func makeSearchMenu() -> NSMenu {
             let menu = NSMenu(title: ScholiumL10n.string("Search"))
             let scopeMenu = NSMenu(title: ScholiumL10n.string("Search scope"))
-            for (index, title) in ["This Note", "This Vault", "Triptych"].enumerated() {
-                let item = NSMenuItem(title: ScholiumL10n.dynamicString(title), action: #selector(selectScope(_:)), keyEquivalent: "")
+            for (index, option) in Self.scopeOptions.enumerated() {
+                let item = NSMenuItem(title: ScholiumL10n.dynamicString(option.title), action: #selector(selectScope(_:)), keyEquivalent: "")
                 item.tag = index
                 item.target = self
                 scopeMenu.addItem(item)
@@ -119,9 +122,8 @@ struct ResearchSearchField: NSViewRepresentable {
             return menu
         }
         @objc func selectScope(_ sender: NSMenuItem) {
-            let modes: [SearchPresentationScope] = [.thisNote, .currentVault, .triptych]
-            guard modes.indices.contains(sender.tag) else { return }
-            parent.scope = modes[sender.tag]
+            guard Self.scopeOptions.indices.contains(sender.tag) else { return }
+            parent.scope = Self.scopeOptions[sender.tag].scope
         }
         @objc func clearFilters(_ sender: NSMenuItem) {
             parent.scope = .triptych
@@ -129,7 +131,8 @@ struct ResearchSearchField: NSViewRepresentable {
         @objc func advancedSearch(_ sender: NSMenuItem) { parent.openAdvanced?() }
         func validateMenuItem(_ item: NSMenuItem) -> Bool {
             if item.action == #selector(selectScope(_:)) {
-                item.state = [.thisNote, .currentVault, .triptych][item.tag] == parent.scope ? .on : .off
+                guard Self.scopeOptions.indices.contains(item.tag) else { return false }
+                item.state = Self.scopeOptions[item.tag].scope == parent.scope ? .on : .off
             } else if item.action == #selector(clearFilters(_:)) {
                 return parent.scope != .triptych
             }

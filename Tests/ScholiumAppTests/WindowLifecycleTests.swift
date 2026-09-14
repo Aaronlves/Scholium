@@ -456,6 +456,94 @@ struct WindowLifecycleTests {
         coordinator.detach()
     }
 
+    @Test("Focus Layout exits before explicit pane opening or native split replacement")
+    func focusLayoutCoordinator() throws {
+        let model = WindowModel(workspaceStore: makeTestWorkspaceStore())
+        let coordinator = WorkspaceWindowCoordinator(
+            windowID: model.nativeWindowID, appState: model,
+            lifecycleRegistry: ScholiumWindowLifecycleRegistry()
+        )
+        #expect(!coordinator.actions.canToggleFocusLayout())
+        let window = testWindow()
+        let split = TestWorkspaceSplitController()
+        window.contentViewController = split
+        coordinator.attach(to: window)
+        coordinator.attach(splitController: split)
+        defer {
+            coordinator.windowWillClose(Notification(name: NSWindow.willCloseNotification, object: window))
+            window.close()
+        }
+        let toolbar = try #require(window.toolbar)
+        #expect(coordinator.actions.canToggleFocusLayout())
+        coordinator.actions.toggleFocusLayout()
+        #expect(model.shellState.isFocusLayoutActive)
+        #expect(!toolbar.isVisible)
+        #expect(coordinator.restoredLibraryVisibility == true)
+        coordinator.attach(splitController: split)
+        #expect(model.shellState.isFocusLayoutActive)
+        #expect(!toolbar.isVisible)
+
+        coordinator.actions.setLibraryVisible(true)
+        #expect(!model.shellState.isFocusLayoutActive)
+        #expect(toolbar.isVisible)
+        #expect(split.libraryIsVisible)
+        coordinator.actions.toggleFocusLayout()
+        let replacement = TestWorkspaceSplitController()
+        replacement.setLibraryVisible(false, animated: false)
+        replacement.setResearchInspectorVisible(false, animated: false)
+        window.contentViewController = replacement
+        coordinator.attach(splitController: replacement)
+        #expect(!model.shellState.isFocusLayoutActive)
+        #expect(window.toolbar?.isVisible == true)
+        #expect(!replacement.libraryIsVisible)
+        #expect(!replacement.researchInspectorIsVisible)
+        #expect(coordinator.restoredLibraryVisibility == nil)
+    }
+
+    @Test("Native full-screen lifecycle restores windowed focus and rejects pane reveals", arguments: [false, true])
+    func fullScreenFocusLifecycle(manuallyFocused: Bool) throws {
+        let model = WindowModel(workspaceStore: makeTestWorkspaceStore())
+        let coordinator = WorkspaceWindowCoordinator(
+            windowID: model.nativeWindowID, appState: model,
+            lifecycleRegistry: ScholiumWindowLifecycleRegistry()
+        )
+        let window = testWindow()
+        let split = TestWorkspaceSplitController()
+        window.contentViewController = split
+        coordinator.attach(to: window)
+        coordinator.attach(splitController: split)
+        defer {
+            coordinator.windowWillClose(Notification(name: NSWindow.willCloseNotification, object: window))
+            window.close()
+        }
+        if manuallyFocused { coordinator.actions.toggleFocusLayout() }
+        let enter = Notification(name: NSWindow.willEnterFullScreenNotification, object: window)
+        coordinator.windowWillEnterFullScreen(enter)
+        #expect(model.shellState.isFocusLayoutActive)
+        #expect(model.shellState.isFocusLayoutLockedByFullScreen)
+        #expect(!coordinator.actions.canToggleFocusLayout())
+        coordinator.actions.toggleFocusLayout()
+        coordinator.actions.setLibraryVisible(true)
+        coordinator.actions.setResearchInspectorVisible(true)
+        coordinator.actions.activateSidebar(.chat)
+        #expect(!split.libraryIsVisible && !split.researchInspectorIsVisible)
+        #expect(model.shellState.sidebarContent == .triptych)
+        coordinator.windowDidEnterFullScreen(Notification(name: NSWindow.didEnterFullScreenNotification, object: window))
+        coordinator.windowDidFailToExitFullScreen(window)
+        #expect(model.shellState.isFocusLayoutLockedByFullScreen)
+        #expect(window.toolbar?.isVisible == false)
+        coordinator.windowDidExitFullScreen(Notification(name: NSWindow.didExitFullScreenNotification, object: window))
+        #expect(!model.shellState.isFocusLayoutLockedByFullScreen)
+        #expect(model.shellState.isFocusLayoutActive == manuallyFocused)
+        #expect(coordinator.actions.canToggleFocusLayout())
+        #expect(window.toolbar?.isVisible == !manuallyFocused)
+        // A failed subsequent entry has the same restoration obligation.
+        coordinator.windowWillEnterFullScreen(enter)
+        coordinator.windowDidFailToEnterFullScreen(window)
+        #expect(!model.shellState.isFocusLayoutLockedByFullScreen)
+        #expect(model.shellState.isFocusLayoutActive == manuallyFocused)
+    }
+
     @Test("Split state mirrors native collapse and keeps two windows isolated")
     func splitVisibilityMirroringAndIsolation() {
         var firstLibraryChanges: [Bool] = []

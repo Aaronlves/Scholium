@@ -579,13 +579,27 @@ the coordinator retains those requests until visible. Window shell state selects
 SwiftUI and source-list content remain transparent so AppKit's regular Sidebar Glass, inset edge,
 shadow, and adaptation stay visible. The Document item enables
 `automaticallyAdjustsSafeAreaInsets`, extending its opaque Paper background
-beneath the floating Sidebar while allowing the Document scroll plane to pass
-beneath the transparent titlebar; its existing renderer inset keeps initial
-readable content clear, and the native tab strip retains the safe area.
+beneath the floating Sidebar and transparent titlebar. Foreground hosts, including
+the Document scroll plane and tab strip, retain the native safe area.
 Apparatus retains its opaque semantic background. The standard AppKit toolbar
-owns integrated toolbar material and controls; no custom visual-effect view,
+owns its control materials; the persistent SwiftUI root specifies a clear toolbar
+background rather than a single pane's color or a one-time window attachment value.
+No custom visual-effect view,
 Sidebar fill or shadow, full-width material band, or duplicate color source is
 introduced. Native titlebar and split behavior remain authoritative.
+
+`WorkspaceWindowCoordinator` owns a transient `WorkspaceFocusLayout` transaction
+over the existing native toolbar and split items. It captures toolbar visibility,
+titlebar transparency, pane visibility and widths once, restores through AppKit,
+and publishes active state to
+`WindowShellState`. Session persistence reads pre-focus visibility while active;
+no document host or editor session is replaced. The same owner records whether
+focus preceded native full screen. Native entry locks focus; successful exit or
+failed entry restores that prior focus state, while failed exit keeps the lock.
+Window teardown clears both transient snapshots. Explicit pane-opening intents
+exit ordinary focus, but cannot override full-screen focus. The Search shortcut
+and View command route directly to the existing full-screen-auxiliary advanced
+window; native Sidebar field input stays inline without layout-dependent rerouting.
 
 The one `NSWindow.toolbar` is divided into Library, Document, and Apparatus
 sections by native tracking separators. Ordinary actions are standard bordered

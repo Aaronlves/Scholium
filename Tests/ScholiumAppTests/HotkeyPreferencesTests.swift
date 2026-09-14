@@ -11,9 +11,16 @@ struct HotkeyPreferencesTests {
         let data = ScholiumHotkeyPreferences.defaultData
 
         #expect(
+            ScholiumHotkeyPreferences.binding(for: .toggleFocusLayout, data: data)
+                == ScholiumHotkeyBinding(key: "l", modifiers: [.control, .command])
+        )
+
+        #expect(
             ScholiumHotkeyPreferences.binding(for: .searchResearch, data: data)
                 == ScholiumHotkeyBinding(key: "f", modifiers: [.shift, .command])
         )
+        #expect(ScholiumHotkeyCommand.searchResearch.title == LocalizedStringResource("Advanced Search"))
+        #expect(ScholiumHotkeyCommand.searchResearch.menuPath == LocalizedStringResource("View → Advanced Search"))
         #expect(
             ScholiumHotkeyPreferences.binding(for: .toggleLibrary, data: data)
                 == ScholiumHotkeyBinding(key: "s", modifiers: [.control, .command])

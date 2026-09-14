@@ -25,6 +25,14 @@ already-visible Chat does not toggle the Sidebar closed.
 - Bootstrap creates or connects one Triptych and explicitly enters the
   workspace. Configured windows use one native Library–Document–Inspector split
   and one stable toolbar.
+- View offers a window-local Focus Layout with a configurable Control–Command–L
+  shortcut. It hides the native toolbar and both peripheral panes, then restores
+  their prior visibility and widths; explicit pane-opening commands exit it.
+  Existing document hosts, modes, text appearance, and source remain unchanged.
+  Native full screen now requires focus, locks the checked menu toggle, and
+  restores the preceding windowed focus state on exit. The independent windowed
+  toggle remains available. Shift–Command–F and View → Advanced Search always open
+  the existing advanced window; quick search remains in Sidebar's field.
 - Native Sidebar and Inspector controls mirror actual split visibility. AppKit
   owns window, toolbar, divider, collapse, resize, fullscreen, and focus
   behavior. Each workspace window retains its own Library, document tabs,
@@ -32,11 +40,13 @@ already-visible Chat does not toggle the Sidebar closed.
 - AppKit's Sidebar split item now owns the complete regular Liquid Glass
   navigation plane. The adjacent Document Paper surface extends beneath it
   through the native safe-area contract; Sidebar content adds no custom fill,
-  visual-effect host, or edge shadow. The Document scroll plane also reaches the
-  transparent titlebar; its initial content remains clear through the existing
-  inset, while standard AppKit toolbar items retain their native Liquid Glass.
-  Document and Apparatus remain continuous through the transparent titlebar with
-  no separate toolbar band. Compact Sidebar-header controls retain their
+  visual-effect host, or edge shadow. The Document scroll plane stays in the native
+  safe area; only its background reaches the transparent titlebar, while standard
+  AppKit toolbar items retain their native Liquid Glass.
+  In ordinary windows, Document and Apparatus remain continuous through the
+  transparent titlebar with no separate toolbar band. Full screen uses Focus
+  Layout rather than exposing the system toolbar backing.
+  Compact Sidebar-header controls retain their
   established 28pt targets. The native Inspector projection control and split
   geometry remain unchanged.
 - The Sidebar begins with a persistent native Search field, a neutral workspace
@@ -205,7 +215,9 @@ already-visible Chat does not toggle the Sidebar closed.
   current Document mode and locate the rendered block or editor line after
   presentation readiness. It has no Actions mode.
 - Search uses a persistent native field. Its magnifying-glass menu contains
-  scope, Clear Filters, and the quick-only Advanced Search entry.
+  This Vault / Triptych scope, Clear Filters, and the quick-only Advanced Search
+  entry. The duplicate adjacent close button and This Note scope menu item are
+  removed; the native clear button restores the retained Library.
   The advanced window retains query/results when opening a Note, keeps Saved
   Searches in a compact action line, and exposes concise query conditions in a
   transient information popover. Native Search-field composition owns input;

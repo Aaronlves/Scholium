@@ -19,6 +19,7 @@ final class AdvancedSearchWindowController: NSWindowController, NSWindowDelegate
         window.identifier = NSUserInterfaceItemIdentifier("scholium.advancedSearchWindow")
         window.isReleasedWhenClosed = false
         window.tabbingMode = .disallowed
+        window.collectionBehavior.insert(.fullScreenAuxiliary)
         window.contentMinSize = NSSize(width: 480, height: 340)
         window.contentViewController = NSHostingController(rootView: content)
         super.init(window: window)

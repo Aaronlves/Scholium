@@ -68,6 +68,8 @@ final class WindowShellState: ObservableObject {
     private var inspectorWorkspace: WorkspaceVaultSlot = .paperAnalysis
     @Published private var inspectorModesByWorkspace: [WorkspaceVaultSlot: ResearchInspectorMode]
     @Published private(set) var libraryVisible = true
+    @Published private(set) var isFocusLayoutActive = false
+    @Published private(set) var isFocusLayoutLockedByFullScreen = false
     @Published private(set) var sidebarContent: SidebarContent = .triptych
     @Published private(set) var hasCompletedInitialRestore = false
     @Published var colorScheme: WindowColorSchemeChoice {
@@ -126,6 +128,13 @@ final class WindowShellState: ObservableObject {
     func recordLibraryVisibility(_ isVisible: Bool) {
         guard libraryVisible != isVisible else { return }
         libraryVisible = isVisible
+    }
+
+    func recordFocusLayout(_ isActive: Bool, lockedByFullScreen: Bool = false) {
+        if isFocusLayoutActive != isActive { isFocusLayoutActive = isActive }
+        if isFocusLayoutLockedByFullScreen != lockedByFullScreen {
+            isFocusLayoutLockedByFullScreen = lockedByFullScreen
+        }
     }
 
     func restoreLibraryVisibility(_ isVisible: Bool) {

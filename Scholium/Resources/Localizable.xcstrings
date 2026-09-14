@@ -7519,22 +7519,6 @@
         }
       }
     },
-    "Close Search" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Close Search"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "关闭搜索"
-          }
-        }
-      }
-    },
     "Closed" : {
       "localizations" : {
         "zh-Hans" : {
@@ -11237,6 +11221,26 @@
         }
       }
     },
+    "Entered Focus Layout" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Entered Focus Layout" }
+        },
+        "zh-Hans" : {
+          "stringUnit" : { "state" : "translated", "value" : "已进入专注布局" }
+        }
+      }
+    },
+    "Exited Focus Layout" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : { "state" : "translated", "value" : "Exited Focus Layout" }
+        },
+        "zh-Hans" : {
+          "stringUnit" : { "state" : "translated", "value" : "已退出专注布局" }
+        }
+      }
+    },
     "Enter a connection name without line breaks or control characters." : {
       "localizations" : {
         "zh-Hans" : {
@@ -12600,6 +12604,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "首行缩进"
+          }
+        }
+      }
+    },
+    "Focus Layout" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Focus Layout"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "专注布局"
           }
         }
       }
@@ -24374,16 +24394,6 @@
         }
       }
     },
-    "Search Research" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "搜索研究资料"
-          }
-        }
-      }
-    },
     "Search Research Materials" : {
       "localizations" : {
         "en" : {
@@ -24692,22 +24702,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在搜索…"
-          }
-        }
-      }
-    },
-    "Search…" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Search…"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "搜索…"
           }
         }
       }
@@ -30121,6 +30115,22 @@
         }
       }
     },
+    "View → Focus Layout" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "View → Focus Layout"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示 → 专注布局"
+          }
+        }
+      }
+    },
     "View → Research Inspector" : {
       "localizations" : {
         "zh-Hans" : {
@@ -30131,12 +30141,12 @@
         }
       }
     },
-    "View → Search" : {
+    "View → Advanced Search" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "显示 → 搜索"
+            "value" : "显示 → 高级搜索"
           }
         }
       }

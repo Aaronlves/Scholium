@@ -939,7 +939,6 @@ private struct ScholiumSettingsRoot: View {
 }
 
 struct ScholiumSearchActions {
-    let begin: (SearchInvocation) -> Void
     let advanced: () -> Void
 }
 
@@ -1410,19 +1409,25 @@ private struct ScholiumViewCommandContent: View {
         .scholiumActivationPointer()
         .disabled(appState?.documentNavigationHistoryController.canGoForward != true)
         Divider()
-        Button("Search…") {
-            searchActions?.begin(.general)
-        }
-        .scholiumActivationPointer()
-        .scholiumKeyboardShortcut(.searchResearch)
-        .disabled(searchActions == nil)
         Button("Advanced Search…") { searchActions?.advanced() }
+            .scholiumActivationPointer()
+            .scholiumKeyboardShortcut(.searchResearch)
             .disabled(searchActions == nil)
         Button("Go to Frontmatter") {
             editorActions?.goToFrontmatter()
         }
         .scholiumKeyboardShortcut(.goToFrontmatter)
         .disabled(editorActions?.canEditFrontmatter != true || editorActions?.isComposing == true)
+        Divider()
+        Toggle(
+            "Focus Layout",
+            isOn: Binding(
+                get: { appState?.shellState.isFocusLayoutActive == true },
+                set: { _ in workspaceWindowActions?.toggleFocusLayout() }
+            )
+        )
+        .scholiumKeyboardShortcut(.toggleFocusLayout)
+        .disabled(workspaceWindowActions?.canToggleFocusLayout() != true || editorActions?.isComposing == true)
         Divider()
         Button(
             ScholiumL10n.dynamicString(
@@ -1434,13 +1439,13 @@ private struct ScholiumViewCommandContent: View {
         }
         .scholiumActivationPointer()
         .scholiumKeyboardShortcut(.toggleLibrary)
-        .disabled(workspaceWindowActions == nil)
+        .disabled(workspaceWindowActions == nil || appState?.shellState.isFocusLayoutLockedByFullScreen == true)
         Button("Library") {
             workspaceWindowActions?.activateSidebar(.triptych)
         }
-        .disabled(workspaceWindowActions == nil)
+        .disabled(workspaceWindowActions == nil || appState?.shellState.isFocusLayoutLockedByFullScreen == true)
         Button("Chat") { workspaceWindowActions?.activateSidebar(.chat) }
-            .disabled(appState?.workspaceAssignment == nil)
+            .disabled(appState?.workspaceAssignment == nil || appState?.shellState.isFocusLayoutLockedByFullScreen == true)
         Button(
             ScholiumL10n.dynamicString(
                 appState?.researchInspectorVisible == true
@@ -1455,7 +1460,10 @@ private struct ScholiumViewCommandContent: View {
         }
         .scholiumActivationPointer()
         .scholiumKeyboardShortcut(.toggleResearchInspector)
-        .disabled(workspaceWindowActions == nil || appState?.canToggleResearchInspector != true)
+        .disabled(
+            workspaceWindowActions == nil || appState?.canToggleResearchInspector != true
+                || appState?.shellState.isFocusLayoutLockedByFullScreen == true
+        )
         Divider()
         Button(
             ScholiumL10n.dynamicString(
@@ -3920,8 +3928,8 @@ final class WindowModel: ObservableObject {
             openDocuments: documentTabController.tabs.compactMap { vaultQualifiedID(for: $0.document) },
             selectedDocument: documentTabController.selectedTab.flatMap { vaultQualifiedID(for: $0.document) },
             workspaceSessions: workspaceSessions,
-            libraryVisible: sidebarVisible,
-            inspectorVisible: researchInspectorVisible,
+            libraryVisible: nativeWindowCoordinator?.restoredLibraryVisibility ?? sidebarVisible,
+            inspectorVisible: nativeWindowCoordinator?.restoredInspectorVisibility ?? researchInspectorVisible,
             searchState: SearchWorkspaceState(scope: searchController.ordinaryScope),
             documentTextScale: documentTextScale
         )

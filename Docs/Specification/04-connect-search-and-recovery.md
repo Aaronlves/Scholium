@@ -35,11 +35,14 @@ edge, or expands a multi-hop path.
 
 ## 13. Search and Attention
 
-Search has three visible scopes:
+The quick and advanced Search menus offer two scopes:
 
-- **This Note** searches the open Note's unsaved buffer;
 - **This Vault** searches present Notes in the selected role vault; and
 - **Triptych** searches all present Notes.
+
+The bounded **This Note** provider searches the open Note's unsaved buffer but
+is not a selectable Search-menu scope. Document Find remains its separate
+document-local operation below.
 
 Search owns known-Note retrieval. §18.3 owns quick/advanced presentation and
 session dismissal; neither presentation creates Recents or navigation history.

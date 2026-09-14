@@ -29,8 +29,11 @@ Native split behavior governs resizing and collapse. Scholium requests the
 initial Inspector reveal but never continuously reasserts divider positions.
 The main/auxiliary color and material boundary follows §19.1. Native safe areas
 protect Sidebar, tabs, Apparatus, and the initial readable Document content
-through window zoom and resize; the Document scrolling plane may continue
-beneath the integrated native toolbar. Only the selected Sidebar page
+through window zoom, full screen and resize. Content backgrounds continue behind
+native toolbar controls without a separate background band. The same background
+policy applies in full screen, without custom chrome or repainting. The Document
+scrolling plane stays inside the native safe area, without a blur-through effect.
+Only the selected Sidebar page
 participates in pointer, tooltip, keyboard and accessibility interaction; retained
 pages cannot intercept another page. A popover remains an auxiliary surface.
 
@@ -69,6 +72,27 @@ Settlement, Note Actions, confirmed Agent Changes when present, Inspector
 projection, and Inspector visibility. Commands retain their menus. One catalog
 defines menu shortcuts and conflicts. Window-scoped menus govern execution,
 including embedded editors. Native overflow preserves access. Toolbar customization is not required.
+
+**Focus Layout** is a temporary, current-window layout, entered and exited from
+the checked View-menu toggle and its configurable shortcut, independently of full
+screen. It hides the native toolbar and collapses
+Sidebar and Apparatus without changing Document mode, text appearance, tabs,
+source, selection, Undo, or reading context. It does not enter full screen,
+dim paragraphs, or add typewriter scrolling. The titlebar background becomes
+transparent so the Document surface continues to the top; native window controls remain.
+Exit restores prior toolbar/pane visibility and pane widths within the current
+window's native constraints. In an ordinary window, explicitly opening a pane or
+Sidebar Search first exits Focus Layout. Entering native full screen always
+enables Focus Layout; its toggle stays checked and disabled, and peripheral-pane
+commands cannot reveal another layout. Exiting full screen restores the prior
+windowed focus state: independently enabled focus remains enabled, otherwise the
+original toolbar and panes return. A failed entry restores that same prior state;
+a failed exit retains full-screen focus. Native temporary Sidebar reveal remains
+available without leaving focus; its field retains quick search. Advanced Search
+has the same explicit menu and shortcut entry in every window layout. Menus,
+keyboard routes, and persistent document error,
+conflict, and recovery surfaces remain available. The layout is not persisted;
+window-session restoration retains the pre-focus pane visibility.
 
 One native **Note Actions** menu sits immediately after Review/Edit in both
 window types; the separate window reuses its existing More button. It groups
@@ -291,13 +315,20 @@ one keyboard selection with results.
 
 Quick Search keeps its native editable field in place and shows concise results
 below it. The field's native magnifying-glass menu holds scope,
-Reset Filters, and Advanced Search. Active scope remains visible
+Reset Filters, and Advanced Search. Scope choices are This Vault and Triptych,
+without a This Note menu option; document-local Find remains separate.
+The field's native clear button is the only pointer clear/dismiss control for
+quick search, with no adjacent custom close button. Active scope remains visible
 in one muted result-summary line. Reset affects these menu filters, not query
 text. Clearing quick-search text reveals the retained Library immediately.
 Its result list inherits the Sidebar's existing background without painting a
 second content surface; the system continues to own row selection feedback.
 
-Advanced Search opens explicitly from that menu or View, carrying query and scope into a
+Advanced Search opens explicitly from that menu or **View → Advanced Search…**;
+its configurable shortcut defaults to **Shift–Command–F** and always opens the
+advanced window regardless of Sidebar visibility, Focus Layout or full screen.
+Quick Search is reached directly by opening Sidebar and using its field; it has
+no separate app-menu command. Advanced Search carries query and scope into a
 resizable native window. Its own search menu has no Advanced Search entry. It uses one
 query field, one quiet summary/action line, and an independently scrolling native result
 list. The system owns row selection, focus feedback, and keyboard traversal. Note rows

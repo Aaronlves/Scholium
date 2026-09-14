@@ -71,8 +71,8 @@ persistent `ScholiumWorkspaceSplitView` root for each configured workspace
 window. Its bounded AppKit bridge creates the three-item split described above;
 role-owned backgrounds fill each container while Library and Apparatus content
 stays foreground in the live safe area. The Document reading and writing scroll
-plane may continue beneath the integrated native toolbar; its initial readable
-content stays clear through the existing Document content inset. Bootstrap never
+plane also stays in that safe area; only its background continues behind native
+toolbar controls. Bootstrap never
 constructs this split. Loading and document states replace hosted content, not
 the shell. The window-wide document collection enters one central
 `NSTabViewController`; its native content tabs render selection while the

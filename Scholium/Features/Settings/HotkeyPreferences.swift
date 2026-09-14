@@ -23,6 +23,7 @@ enum ScholiumHotkeyCommand: String, CaseIterable, Codable, Identifiable, Sendabl
     case searchResearch
     case toggleLibrary
     case toggleResearchInspector
+    case toggleFocusLayout
     case toggleReviewEdit
     case showSource
     case showAttention
@@ -54,7 +55,7 @@ enum ScholiumHotkeyCommand: String, CaseIterable, Codable, Identifiable, Sendabl
 
     var isCustomizable: Bool {
         switch self {
-        case .searchResearch, .toggleLibrary, .toggleResearchInspector,
+        case .searchResearch, .toggleLibrary, .toggleResearchInspector, .toggleFocusLayout,
             .toggleReviewEdit, .showSource, .showAttention,
             .insertFootnote, .insertInlineFootnote, .findWritingReferences:
             true
@@ -66,7 +67,7 @@ enum ScholiumHotkeyCommand: String, CaseIterable, Codable, Identifiable, Sendabl
 
     var category: ScholiumHotkeyCategory {
         switch self {
-        case .searchResearch, .toggleLibrary, .toggleResearchInspector,
+        case .searchResearch, .toggleLibrary, .toggleResearchInspector, .toggleFocusLayout,
             .showAttention, .newWindow, .newNote, .closeTab, .nextTab, .previousTab:
             .workspace
         default:
@@ -95,9 +96,10 @@ enum ScholiumHotkeyCommand: String, CaseIterable, Codable, Identifiable, Sendabl
         case .increaseTextSize: "Increase Text Size"
         case .decreaseTextSize: "Decrease Text Size"
         case .actualTextSize: "Actual Size (100%)"
-        case .searchResearch: "Search Research"
+        case .searchResearch: "Advanced Search"
         case .toggleLibrary: "Show or Hide Library"
         case .toggleResearchInspector: "Show or Hide Research Inspector"
+        case .toggleFocusLayout: "Focus Layout"
         case .toggleReviewEdit: "Switch Review and Edit"
         case .showSource: "Show Source"
         case .showAttention: "Show Attention"
@@ -128,9 +130,10 @@ enum ScholiumHotkeyCommand: String, CaseIterable, Codable, Identifiable, Sendabl
         case .increaseTextSize: "View → Document Text Size → Increase Text Size"
         case .decreaseTextSize: "View → Document Text Size → Decrease Text Size"
         case .actualTextSize: "View → Document Text Size → Actual Size (100%)"
-        case .searchResearch: "View → Search"
+        case .searchResearch: "View → Advanced Search"
         case .toggleLibrary: "View → Sidebar"
         case .toggleResearchInspector: "View → Research Inspector"
+        case .toggleFocusLayout: "View → Focus Layout"
         case .toggleReviewEdit: "View → Edit / Review"
         case .showSource: "View → Document Mode → Source"
         case .showAttention: "Window → Notifications"
@@ -194,6 +197,8 @@ enum ScholiumHotkeyCommand: String, CaseIterable, Codable, Identifiable, Sendabl
             ScholiumHotkeyBinding(key: "n", modifiers: [.option, .shift, .command])
         case .findWritingReferences:
             ScholiumHotkeyBinding(key: "j", modifiers: [.shift, .command])
+        case .toggleFocusLayout:
+            ScholiumHotkeyBinding(key: "l", modifiers: [.control, .command])
         case .showSource, .showAttention:
             nil
         }

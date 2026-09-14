@@ -4,6 +4,85 @@
 
 ## Current verification snapshot
 
+**2026-09-15 — Unified Search entry and Sidebar simplification:** Shift–Command–F
+and View → Advanced Search route directly to the existing advanced window;
+the layout-dependent fallback and separate View → Search entry are removed.
+Shortcut settings use the Advanced Search name and menu path. Quick Search keeps
+only its native clear button; both field menus offer This Vault and Triptych,
+without This Note. Nineteen Hotkey/Search-controller tests and three scoped
+field/menu-wiring tests pass. Isolated 500-Note QA confirms Sidebar results,
+one native cancel control, clearing back to the retained Library, the two-item
+scope menu, and shortcut-focused advanced search in ordinary and full-screen
+windows. Advanced search returns the fixture's two expected title matches;
+closing it in full screen retains the focused document window. The QA Note
+remains byte-identical. Build, lint, documentation and localization checks pass;
+updated UI drivers pass syntax checking but their full journeys were not rerun.
+Evidence: `.build/advanced-search-shortcut-tests.log`,
+`.build/sidebar-search-simplification-tests.log`,
+`.build/search-simplification-qa-build.log`, `.build/search-simplification-runtime.log`
+and the inspected accessibility states. This is scoped development proof, not
+release or human assistive-technology acceptance. The unused quick-search menu
+callback was then removed without changing the verified paths; the retained
+build is `.build/search-simplification-final-build.log`. The QA process was
+stopped and its bundle, disposable fixtures and isolated state moved to Trash.
+
+**2026-09-15 — Full-screen Focus Layout:** Native full screen now enforces focus
+while retaining the independent windowed toggle. Eighteen scoped tests pass;
+the final ten-test subset additionally covers restoration after a temporary
+Sidebar reveal. Tests cover prior-focus restoration, transition failure,
+command locking and retained pane widths. Disposable 500-Note QA verifies both
+ordinary and manually focused windows through full-screen entry/exit, the
+disabled Focus Layout command, toolbar/pane restoration, retained document
+selection and the same window identity. Search opens the existing auxiliary
+advanced window and returns fixture results without exiting full screen.
+Native edge reveal remains enabled; the researcher's observed hover path was
+not independently reproduced in QA. Search entry now follows the unified policy above.
+The active-state projection is tested; the checkmark was not exposed by the menu
+accessibility snapshot. Full VoiceOver, IME, accessibility-setting and conflict/recovery
+journeys remain open; this is scoped development proof, not human acceptance.
+Evidence: `.build/fullscreen-focus-tests.log`,
+`.build/fullscreen-focus-final-tests.log`, `.build/fullscreen-focus-runtime.log`
+and the inspected QA states. The final source build and validators are recorded
+under `.build/fullscreen-focus-final-*.log`. The QA Note remains byte-identical;
+the QA process was stopped and its bundle, disposable fixtures and isolated state
+moved to system Trash.
+
+**2026-09-15 — Continuous toolbar backgrounds:** The persistent SwiftUI toolbar
+uses an explicit clear background rather than one pane's Paper fill; native
+content hosts again respect their safe areas. Seventeen scoped tests pass,
+including foreground clearance and background coverage with toolbar shown/hidden,
+Focus Layout and toolbar wiring. Light/Dark disposable QA confirms ordinary-window
+Sidebar, Document and Inspector backgrounds each reach their own toolbar region.
+Full-screen entry/exit and focus toggling preserve the same window; Focus Layout
+removes the full-screen toolbar. The earlier ordinary full-screen mode painted a system
+toolbar band: transparent/clear preferences and native full-size geometry did
+not remove it. The approved full-screen-focus policy above supersedes that mode;
+it does not constitute a fix for system toolbar materials.
+Experimental material, WebKit-inset, toolbar-color callbacks and diagnostic code was
+removed. Source comparison for the QA Note is byte-identical. Evidence:
+`.build/continuous-toolbar-tests.log`, `.build/continuous-toolbar-final-build.log`,
+`.build/fullscreen-toolbar-diagnostic-runtime.log` and the inspected QA screenshots.
+No custom materials or rendering hooks were retained; full accessibility and
+human visual acceptance remain open. The QA process was stopped and its bundle,
+disposable fixtures and isolated state moved to system Trash.
+
+**2026-09-15 — Focus Layout:** 23 scoped App tests pass for window-local native
+chrome and pane restoration, widths, retained text/selection/focus, repeated
+transitions, lifecycle replacement, persistence and shortcut wiring. Disposable
+500-Note Triptych QA verifies menu/shortcut entry and exit, pane/search restoration,
+Review selection, long-document reading context, empty content and standalone
+windowed use; the full-screen policy above supersedes the earlier independent
+full-screen behavior. Light/Dark inspection confirms the focus titlebar has no
+separate background band and ordinary toolbar appearance returns on exit. No new
+window, renderer or custom material is introduced. Full VoiceOver, IME,
+accessibility-setting and conflict/recovery journeys remain unverified. This is
+scoped development proof, not release or human acceptance. Evidence:
+`.build/focus-layout-tests-final.log`, `.build/focus-layout-background-build.log`
+and `.build/focus-layout-qa-runtime.log`. The separate ordinary-toolbar material
+experiment was withdrawn at the researcher's request; Focus Layout remains.
+The QA process was stopped and its bundle, fixtures and isolated state moved to
+system Trash. `.build/focus-layout-retained-build.log` verifies the retained build.
+
 **2026-09-14 — Paragraph reuse and academic Note reorganization:** 57 scoped Core,
 33 App and five Contracts tests pass with Xcode 27. Coverage includes footnote
 resource relocation across folders (CRLF, Tab, Unicode and multiline labels),

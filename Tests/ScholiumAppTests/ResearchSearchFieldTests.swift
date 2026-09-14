@@ -16,6 +16,12 @@ struct ResearchSearchFieldTests {
         #expect(quickMenu.items.contains { $0.action == #selector(ResearchSearchField.Coordinator.advancedSearch(_:)) })
         #expect(!advancedMenu.items.contains { $0.action == #selector(ResearchSearchField.Coordinator.advancedSearch(_:)) })
         #expect(advancedMenu.items.filter { $0.submenu != nil }.count == 1)
+        for menu in [quickMenu, advancedMenu] {
+            #expect(
+                menu.items.first?.submenu?.items.map(\.title) == [
+                    ScholiumL10n.string("This Vault"), ScholiumL10n.string("Triptych"),
+                ])
+        }
     }
 
     @Test("Search filter menus expose current scope and preserve the query")
@@ -29,7 +35,7 @@ struct ResearchSearchFieldTests {
             isActive: true, focusRequestID: nil, replacementID: 0, beganEditing: {}, endedEditing: {}, command: { _ in false })
         let coordinator = ResearchSearchField.Coordinator(field)
         let menu = coordinator.makeSearchMenu()
-        let thisVault = try #require(menu.items.first?.submenu?.items[1])
+        let thisVault = try #require(menu.items.first?.submenu?.items[0])
         coordinator.selectScope(thisVault)
         #expect(scope == .currentVault)
         #expect(coordinator.validateMenuItem(thisVault))

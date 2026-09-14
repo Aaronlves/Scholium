@@ -297,6 +297,8 @@ struct WorkspaceToolbarTests {
 
     private var inertWindowActions: WorkspaceWindowActions {
         WorkspaceWindowActions(
+            toggleFocusLayout: {},
+            canToggleFocusLayout: { false },
             setLibraryVisible: { _ in },
             setResearchInspectorVisible: { _ in },
             activateSidebar: { _ in },

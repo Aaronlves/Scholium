@@ -364,13 +364,6 @@ struct ResearchSearchView<Library: View>: View {
                 endedEditing: { searchFocused = false },
                 command: handleSearchCommand
             )
-            if isActive && !isAdvanced {
-                Button(action: context.dismiss) { Image(systemName: "xmark") }
-                    .buttonStyle(.borderless)
-                    .help("Close Search")
-                    .accessibilityLabel("Close Search")
-                    .accessibilityIdentifier("scholium.closeSearchButton")
-            }
         }
         .padding(.horizontal, isAdvanced ? 24 : ScholiumSidebarLayout.edgeInset)
         .padding(.top, isAdvanced ? 20 : ScholiumSidebarLayout.edgeInset)
