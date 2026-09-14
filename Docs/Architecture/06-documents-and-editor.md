@@ -397,12 +397,13 @@ read-only. Edit exposes Markdown formatting and source-owned constructs;
 Source exposes exact text. `ScholiumSystemSymbol` is the icon catalog, and
 `ScholiumWebSymbolAssets` injects its data-URI masks into WebKit surfaces.
 
-Transient surfaces use bounded, nonpersistent context.
+Transient surfaces are nonpersistent.
 `DocumentWebViewContainer` owns viewport geometry and the shared accessibility tree.
 `DocumentFloatingSurfaceController` retains candidate width/edge and selection
 containers; `NSTableView` handles list scrolling.
-`DocumentPreviewPopover` owns premeasured WebKit content and native placement;
-the Web controller retains identity/hover intent and reading context.
+`DocumentPreviewPopover` reuses one renderer until host reset; navigation/generation
+checks guard premeasured presentation. The Web controller owns preview identity
+and hover intent.
 `SelectionActionBar` uses native accessory action buttons with pointer-only
 bezels and a menu. Selection admission revalidates identity;
 `replacePassage` checks source/range and preserves Undo.
@@ -420,10 +421,9 @@ and context exit dismiss through the originating controller. Completion geometry
 uses one keyed CodeMirror measure with an idle fallback when WebKit throttles
 animation frames. Review activity deactivation clears transient selection paint.
 
-`input-suggestions` owns writing decorations/completion. Committed slash dispatches
-`DocumentCommandMenu`/`NSMenu`, without CodeMirror candidates or AX mirroring.
-Acceptance checks document/selection before the existing Undo transaction;
-cancellation preserves source. Candidates retain native lists and editor focus.
+`input-suggestions` owns writing decorations/completion. Slash commands share
+CodeMirror's completion state and retained native list. Typing and deletion stay
+in the editor; acceptance validates current context and cancellation preserves source.
 `EditorWritingSuggestions` projects vocabulary; `EditorLinkCompletionIndex` resolves
 links. `queryText` captures exact context. `RelatedMaterialsSession` owns reference
 discovery/cards. Its insertion receipt binds session, generation and caret;

@@ -232,7 +232,8 @@ struct DocumentFloatingSurfaceTests {
             + String(repeating: "<p>Long synthetic paragraph 中文。</p>", count: 60) + "</div>"
         controller.present(try #require(DocumentFloatingSurface.decode(latest)), in: webView) { _, _, _ in true }
         let current = try #require(controller.previewWebView)
-        #expect(current !== obsolete)
+        #expect(current === obsolete)
+        #expect(current === preview)
         let replacementDeadline = ContinuousClock.now.advanced(by: .seconds(8))
         while !controller.isPreviewShown && ContinuousClock.now < replacementDeadline {
             try await Task.sleep(for: .milliseconds(20))
@@ -241,6 +242,51 @@ struct DocumentFloatingSurfaceTests {
         #expect(try await current.evaluateJavaScript("document.querySelector('h2').textContent") as? String == "Latest target")
         #expect(try await current.evaluateJavaScript("document.body.scrollHeight > window.innerHeight") as? Bool == true)
         #expect(try await current.evaluateJavaScript("getComputedStyle(document.body).fontFamily.includes('system-ui')") as? Bool == true)
+        _ = try await current.evaluateJavaScript("window.scrollTo(0, 160)")
+        let readingOffset = try await current.evaluateJavaScript("window.scrollY") as? Double
+        #expect((readingOffset ?? 0) > 0)
+        latest["id"] = 11
+        controller.present(try #require(DocumentFloatingSurface.decode(latest)), in: webView) { _, _, _ in true }
+        #expect(try await current.evaluateJavaScript("window.scrollY") as? Double == readingOffset)
+        // Closing deactivates the surface; reopening another target reuses only
+        // the renderer, never the previous content, focus eligibility, or scroll.
+        controller.dismiss()
+        #expect(controller.previewWebView == nil)
+        #expect(current.superview == nil)
+        #expect(!current.acceptsFirstResponder)
+        controller.present(try #require(DocumentFloatingSurface.decode(payload(id: 12))), in: webView) { _, _, _ in true }
+        #expect(controller.previewWebView === current)
+        let reopenDeadline = ContinuousClock.now.advanced(by: .seconds(8))
+        while !controller.isPreviewShown && ContinuousClock.now < reopenDeadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(controller.isPreviewShown)
+        #expect(try await current.evaluateJavaScript("document.querySelector('h2').textContent") as? String == "Synthetic preview")
+        #expect(try await current.evaluateJavaScript("window.scrollY") as? Double == 0)
+        #expect(window.firstResponder === firstResponder)
         #expect(webView.frame == originalFrame && webView.bounds == originalBounds)
+        // Cancel pending replacement, then end the host lifetime. Late callbacks
+        // must neither expose the cancelled target nor affect the fresh renderer.
+        latest["id"] = 13
+        controller.present(try #require(DocumentFloatingSurface.decode(latest)), in: webView) { _, _, _ in true }
+        controller.dismiss()
+        try await Task.sleep(for: .milliseconds(150))
+        #expect(!controller.isPreviewShown && controller.previewWebView == nil)
+        controller.reset()
+        controller.present(try #require(DocumentFloatingSurface.decode(payload(id: 14))), in: webView) { _, _, _ in true }
+        #expect(controller.previewWebView !== current)
+        let previousOwnerRenderer = controller.previewWebView
+        let otherOwner = WKWebView()
+        let otherWindow = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 400, height: 320),
+            styleMask: [.titled, .closable], backing: .buffered, defer: false)
+        otherWindow.isReleasedWhenClosed = false
+        otherWindow.contentView = DocumentWebViewContainer(webView: otherOwner)
+        otherWindow.orderFront(nil)
+        defer { otherWindow.close() }
+        // Surface IDs belong to their originating WebView, not a global sequence.
+        controller.present(try #require(DocumentFloatingSurface.decode(payload(id: 1))), in: otherOwner) { _, _, _ in true }
+        #expect(controller.previewWebView != nil)
+        #expect(controller.previewWebView !== previousOwnerRenderer)
     }
 }

@@ -14390,7 +14390,7 @@
         else if (action === "dismiss") callbacks.dismiss();
         else if (action === "choose" && current.surface.kind === "selection" && Number.isInteger(index) && index === 0) {
           return callbacks.choose?.(index) !== false;
-        } else if ((action === "select" || action === "choose") && Number.isInteger(index) && (current.surface.kind === "suggestions" || action === "choose" && current.surface.kind === "commands") && index >= 0 && index < current.surface.items.length) {
+        } else if ((action === "select" || action === "choose") && Number.isInteger(index) && current.surface.kind === "suggestions" && index >= 0 && index < current.surface.items.length) {
           if (action === "select") callbacks.select?.(index);
           else return callbacks.choose?.(index) !== false;
         } else return false;
@@ -21684,7 +21684,7 @@
   }
 
   // protocol.ts
-  var EDITOR_PROTOCOL_VERSION = 35;
+  var EDITOR_PROTOCOL_VERSION = 36;
   var MAX_INBOUND_BYTES = 25e5;
   var MAX_SOURCE_UTF8_BYTES = 8e6;
   var operationTypes = /* @__PURE__ */ new Set([
@@ -30930,8 +30930,15 @@ ${fence}
     if (changes.length !== 1) return false;
     const { fromA, toA, fromB, toB, insert: insert2 } = changes[0];
     marker.lastIndex = 0;
-    if (toA > fromA || insert2.length > 8192 || /[\r\n]/.test(insert2) || marker.test(insert2) || projectionBoundaryTouches(mutationSensitiveRanges, fromA)) {
+    if (insert2.length > 8192 || /[\r\n]/.test(insert2) || marker.test(insert2) || projectionBoundaryTouches(mutationSensitiveRanges, fromA)) {
       return false;
+    }
+    if (toA > fromA) {
+      const line = transaction.startState.doc.lineAt(fromA);
+      const touchesDeletion = (range) => range.from <= toA && range.to >= fromA;
+      if (insert2.length !== 0 || toA - fromA > 8192 || fromA <= line.from || toA > line.to || !/^[\p{L}\p{N}\p{M} ]+$/u.test(transaction.startState.doc.sliceString(fromA, toA)) || mutationSensitiveRanges.some(touchesDeletion) || previousSyntax.inlines.some(touchesDeletion) || previousSyntax.blocks.some((block) => block.markerRanges.some(touchesDeletion))) {
+        return false;
+      }
     }
     const oldNeighborhood = physicalLineNeighborhood(transaction.startState.doc, fromA, toA);
     const newNeighborhood = physicalLineNeighborhood(transaction.state.doc, fromB, toB);
@@ -32941,35 +32948,35 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
   function slashCommandOptions(options, blockContext) {
     const commands = [
       {
-        label: localized("Callout"),
+        label: "Callout",
         type: "scholium-command-callout",
         apply: replaceSlashWithText("> [!", "Insert Callout", options.didApply),
         blockOnly: true
       },
       {
-        label: localized("Date"),
+        label: "Date",
         type: "scholium-command-date",
         apply: replaceSlashWithText(localISODate, "Insert Date", options.didApply)
       },
       {
-        label: localized("Inline Math"),
+        label: "Inline Math",
         type: "scholium-command-math",
         apply: replaceSlashWithSnippet("$${}$", "Insert Inline Math", options.didApply)
       },
       {
-        label: localized("Display Math"),
+        label: "Display Math",
         type: "scholium-command-math",
         apply: replaceSlashWithSnippet("$$\n${}\n$$", "Insert Display Math", options.didApply),
         blockOnly: true
       },
       {
-        label: localized("Mermaid"),
+        label: "Mermaid",
         type: "scholium-command-mermaid",
         apply: replaceSlashWithSnippet("```mermaid\n${}\n```", "Insert Mermaid", options.didApply),
         blockOnly: true
       },
       {
-        label: localized("Table"),
+        label: "Table",
         type: "scholium-command-table",
         apply: replaceSlashWithSnippet(
           "| ${1:Column 1} | ${2:Column 2} |\n| --- | --- |\n| ${3} | ${4} |",
@@ -32979,12 +32986,12 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         blockOnly: true
       },
       {
-        label: localized("Footnote"),
+        label: "Footnote",
         type: "scholium-command-footnote",
         apply: replaceSlashWithFootnote(options)
       },
       {
-        label: localized("Code Block"),
+        label: "Code Block",
         type: "scholium-command-code",
         apply: replaceSlashWithSnippet(
           "```${1:language}\n${2}\n```",
@@ -32994,13 +33001,13 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         blockOnly: true
       },
       {
-        label: localized("Divider"),
+        label: "Divider",
         type: "scholium-command-divider",
         apply: replaceSlashWithText("---", "Insert Divider", options.didApply),
         blockOnly: true
       }
     ];
-    return commands.filter((command2) => blockContext || !command2.blockOnly);
+    return commands.filter((command2) => blockContext || !command2.blockOnly).map((command2) => ({ ...command2, filterText: command2.label, label: localized(command2.label) }));
   }
   function applyWikilinkCandidate(candidate, didApply) {
     return (view, completion, from, to) => {
@@ -33266,7 +33273,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       if (!isLiveSuggestionContext(options, context.state)) return null;
       const line = context.state.doc.lineAt(context.pos);
       const beforeCursor = context.state.doc.sliceString(line.from, context.pos);
-      const match = /\/$/u.exec(beforeCursor);
+      const match = /\/([\p{L}\p{N}-]*)$/u.exec(beforeCursor);
       if (!match) return null;
       const slashFrom = line.from + match.index;
       if (slashFrom > line.from && !/\s/u.test(context.state.doc.sliceString(slashFrom - 1, slashFrom))) return null;
@@ -33275,8 +33282,9 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       const blockContext = /^\s*$/u.test(prefix);
       return {
         from: slashFrom + 1,
-        options: slashCommandOptions(options, blockContext),
-        filter: false
+        options: slashCommandOptions(options, blockContext).filter((command2) => [command2.label, command2.filterText].some((label) => label.toLocaleLowerCase().includes(match[1].toLocaleLowerCase()))),
+        filter: false,
+        update: (_current, _from, _to, context2) => slashCompletionSource(context2)
       };
     };
     const calloutCompletionSource = (context) => {
@@ -33312,86 +33320,6 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         update: (_current, _from, _to, context2) => calloutCompletionSource(context2)
       };
     };
-    const slashCommands = ViewPlugin.fromClass(class {
-      constructor(view) {
-        this.view = view;
-      }
-      view;
-      id = 0;
-      epoch = 0;
-      pending;
-      dismiss() {
-        this.epoch += 1;
-        window.clearTimeout(this.pending);
-        this.pending = void 0;
-        if (this.id) options.nativeFloating.hide(this.id);
-        this.id = 0;
-      }
-      update(update) {
-        if (!isLiveSuggestionContext(options, this.view.state)) {
-          this.dismiss();
-          return;
-        }
-        if (!update.docChanged && !update.selectionSet && !update.focusChanged) return;
-        this.dismiss();
-        if (!update.docChanged || !update.transactions.some((tr) => tr.isUserEvent("input"))) return;
-        const state = this.view.state;
-        const epoch = this.epoch;
-        const result = slashCompletionSource(new CompletionContext(state, state.selection.main.head, false));
-        if (!result) return;
-        const valid = () => epoch === this.epoch && isLiveSuggestionContext(options, this.view.state) && !positionIsProtected(options, this.view.state, result.from - 1) && this.view.state.doc === state.doc && this.view.state.selection.eq(state.selection) && this.view.hasFocus && !this.view.composing && !options.isComposing();
-        const show = (anchor) => {
-          if (this.id || !valid() || !anchor) return;
-          window.clearTimeout(this.pending);
-          this.pending = void 0;
-          this.id = options.nativeFloating.show({
-            kind: "commands",
-            left: anchor.left,
-            top: anchor.top,
-            bottom: anchor.bottom,
-            html: "",
-            css: "",
-            selected: -1,
-            items: result.options.map((item) => ({ label: item.label, detail: "" }))
-          }, {
-            dismiss: () => this.dismiss(),
-            choose: (index) => {
-              if (!valid()) return false;
-              const command2 = result.options[index];
-              if (!command2 || typeof command2.apply !== "function") return false;
-              this.dismiss();
-              command2.apply(this.view, command2, result.from, state.selection.main.head);
-              return true;
-            }
-          });
-        };
-        this.pending = window.setTimeout(() => show(valid() ? this.view.coordsAtPos(state.selection.main.head) : null), 50);
-        this.view.requestMeasure({ key: this, read: () => valid() ? this.view.coordsAtPos(state.selection.main.head) : null, write: show });
-      }
-      dismissOnEscape(event) {
-        if (event.key !== "Escape" || event.isComposing || this.view.composing || !this.id && this.pending === void 0) return false;
-        this.dismiss();
-        return true;
-      }
-      destroy() {
-        this.dismiss();
-      }
-    }, {
-      eventHandlers: {
-        keydown(event) {
-          return this.dismissOnEscape(event);
-        },
-        compositionstart() {
-          this.dismiss();
-        },
-        blur() {
-          this.dismiss();
-        },
-        scroll() {
-          this.dismiss();
-        }
-      }
-    });
     let nativeID = 0;
     const nativePresentation = ViewPlugin.fromClass(class {
       constructor(view) {
@@ -33487,6 +33415,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       writingCompletionSource,
       extension: [autocompletion({
         override: [
+          slashCompletionSource,
           calloutCompletionSource,
           wikilinkCompletionSource,
           analysisReferenceCompletionSource
@@ -33496,7 +33425,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         icons: false,
         tooltipClass: () => "scholium-editor-suggestions",
         addToOptions: [{ render: suggestionSymbol, position: 20 }]
-      }), slashCommands, inlineWriting, Prec.highest(keymap.of([
+      }), inlineWriting, Prec.highest(keymap.of([
         { key: "Tab", run: (view) => view.plugin(inlineWriting)?.accept() ?? false },
         { key: "Escape", run: (view) => {
           const plugin = view.plugin(inlineWriting);

@@ -99,7 +99,7 @@ function applyOption(source: CompletionSource, text: string, label: string) {
 }
 
 describe("Edit input suggestions", () => {
-  it("offers every context-available command only at a newly committed slash", () => {
+  it("offers every context-available slash command and filters while editing", () => {
     const {suggestions} = controller();
     const block = synchronousResult(suggestions.slashCompletionSource, "/")!;
     expect(block.options.map((option) => option.label)).toEqual([
@@ -121,8 +121,9 @@ describe("Edit input suggestions", () => {
       "Footnote",
     ]);
 
-    // Once cancelled, ordinary text after the slash must not reopen a menu.
-    for (const text of ["/tab", "/math", "https://", "word/"]) {
+    expect(synchronousResult(suggestions.slashCompletionSource, "/tab")?.options.map(option => option.label)).toEqual(["Table"]);
+    expect(synchronousResult(suggestions.slashCompletionSource, "/math")?.options.map(option => option.label)).toEqual(["Inline Math", "Display Math"]);
+    for (const text of ["https://", "word/", "/table/"]) {
       expect(synchronousResult(suggestions.slashCompletionSource, text)).toBeNull();
     }
 

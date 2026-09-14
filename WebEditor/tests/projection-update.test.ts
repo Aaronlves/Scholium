@@ -166,6 +166,43 @@ describe("local projection-topology proof", () => {
     return semanticProjectionRanges(state, [{from: 0, to: state.doc.length}], 0);
   }
 
+  it("maps an ordinary deletion only after comparing the resulting local topology", () => {
+    const source = "An ordinary argument 中文 text beside *emphasis*.";
+    const state = parsedState(source);
+    const from = source.indexOf("argument");
+    const transaction = state.update({changes: {from, to: from + 3}});
+    expect(transactionCanMapProjectionTopology(transaction, /[\r\n`~<>%$\[\]!*_|^:#=]/,
+      [], syntaxFor(state))).toBe(true);
+  });
+
+  it.each([
+    {source: "ordinary prose", removed: "o", from: 0},
+    {source: "ordinary\nprose", removed: "\n", from: 8},
+    {source: "before *plain* after", removed: "*", from: 7},
+    {source: "before *plain* after", removed: "plain", from: 8},
+    {source: "1x. Claim", removed: "x", from: 1},
+  ])("rebuilds deletion at syntax or line boundaries: $source / $removed", ({source, removed, from}) => {
+    const state = parsedState(source);
+    expect(source.slice(from, from + removed.length)).toBe(removed);
+    const transaction = state.update({changes: {from, to: from + removed.length}});
+    expect(transactionCanMapProjectionTopology(transaction, /[\r\n`~<>%$\[\]!*_|^:#=]/,
+      [], syntaxFor(state))).toBe(false);
+  });
+
+  it("maps ordinary Backspace at the physical line end without deleting its newline", () => {
+    const state = parsedState("ordinary prose\n\nFollowing paragraph");
+    const transaction = state.update({changes: {from: 13, to: 14}});
+    expect(transactionCanMapProjectionTopology(transaction, /[\r\n`~<>%$\[\]!*_|^:#=]/,
+      [], syntaxFor(state))).toBe(true);
+  });
+
+  it("rejects a deletion whose far boundary reaches a source-caching construct", () => {
+    const state = parsedState("before ordinary after");
+    const transaction = state.update({changes: {from: 7, to: 15}});
+    expect(transactionCanMapProjectionTopology(transaction, /[\r\n`~<>%$\[\]!*_|^:#=]/,
+      [{from: 15, to: 20}], syntaxFor(state))).toBe(false);
+  });
+
   it("maps ordinary prose beside rich inline Markdown without a full catalog rebuild", () => {
     const source = "The shrimp is *Neocaridina davidi* and **Scholium** remains stable.";
     const state = parsedState(source);

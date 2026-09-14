@@ -119,9 +119,9 @@ YAML interaction; §18.6 owns state/action wording. Verify:
   menus preserve the visible target and have Research-menu alternatives. Reorganization
   exposes destination search, exact changed-file previews, cancellation before commit,
   persistent failure, and valid recovery; no drag or secondary click is required.
-- Slash insertion uses the native menu's names, navigation and type selection;
-  Escape preserves the literal slash and returns to the initiating editor.
-  Other candidates expose one listbox selection while retaining editor focus.
+- Slash insertion and other candidates expose one listbox selection while
+  retaining editor focus. Typing and deletion remain editor input; Escape
+  preserves the literal text without moving focus.
   All yield immediately to marked text. Selection actions retain native hover,
   pressed and focus feedback without requiring hover for discovery or activation.
   Find exposes query, options, count,

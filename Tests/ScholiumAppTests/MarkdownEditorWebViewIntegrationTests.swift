@@ -613,9 +613,11 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
         let nativeRow = try #require(list.table.rowView(atRow: 1, makeIfNecessary: true))
         #expect(nativeRow.window === owner.window)
-        // The command-line test host need not own the desktop's key window.
-        // Emphasis follows the originating window, not the table's responder.
-        #expect(nativeRow.isEmphasized == (owner.window?.isKeyWindow == true))
+        // Selection remains active, but the editor's auxiliary list uses the
+        // system secondary treatment even when its window becomes key.
+        nativeRow.isEmphasized = true
+        #expect(!nativeRow.isEmphasized)
+        #expect(nativeRow.isSelected)
         _ = try await harness.callPageJavaScript(
             "document.querySelector('.cm-content').dispatchEvent(new KeyboardEvent('keydown', {key: 'ArrowDown', code: 'ArrowDown', keyCode: 40, bubbles: true}));"
         )
@@ -638,6 +640,91 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect((glass as? NSGlassEffectView)?.contentView === list)
         #expect(glass.frame.width == widthBeforeFiltering)
         #expect(try await harness.session.currentText(for: harness.documentID) == "> [!sta\n")
+        await harness.closeAndDrain()
+    }
+
+    @Test("Slash candidates retain editor focus through filtering, Backspace, acceptance, and Undo")
+    func nativeSlashCandidatesPreserveEditing() async throws {
+        let harness = EditorHarness(source: "\n", laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        try await harness.waitUntilFocused()
+        let owner = try #require(harness.session.webView)
+        owner.window?.makeKeyAndOrderFront(nil)
+        NSApp.activate()
+        try await harness.waitUntilFocused()
+        let focus = owner.window?.firstResponder
+        @MainActor final class MenuTracking { var count = 0 }
+        let menuTracking = MenuTracking()
+        let observer = NotificationCenter.default.addObserver(
+            forName: NSMenu.didBeginTrackingNotification, object: nil, queue: .main
+        ) { _ in MainActor.assumeIsolated { menuTracking.count += 1 } }
+        defer { NotificationCenter.default.removeObserver(observer) }
+        func currentList() -> NativeFloatingChoiceList? {
+            owner.superview?.subviews.compactMap { ($0 as? NSGlassEffectView)?.contentView as? NativeFloatingChoiceList }.first
+        }
+        func waitForList(_ labels: [String]?) async throws {
+            let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+            while true {
+                let actual = currentList()?.items.map(\.label)
+                if labels == nil ? actual == nil : actual == labels { return }
+                if ContinuousClock.now >= deadline {
+                    Issue.record("Slash candidates did not reach \(String(describing: labels)); found \(String(describing: actual)).")
+                    throw MarkdownEditorSession.SessionError.unavailable
+                }
+                try await Task.sleep(for: .milliseconds(20))
+            }
+        }
+        func verifyEditing(_ source: String) async throws {
+            #expect(try await harness.session.currentText(for: harness.documentID) == source)
+            #expect(harness.session.checkedSource == source)
+            #expect(owner.window?.firstResponder === focus)
+            #expect(try await harness.session.testingAccessibilitySnapshot().isFocused)
+            #expect(menuTracking.count == 0)
+        }
+        func key(_ key: String, code: String, keyCode: Int, command: Bool = false) async throws {
+            _ = try await harness.callPageJavaScript(
+                """
+                const content = document.querySelector('.cm-content');
+                for (const type of ['keydown', 'keyup']) content.dispatchEvent(new KeyboardEvent(type,
+                    {key, code, keyCode, which: keyCode, metaKey: command, bubbles: true, cancelable: true}));
+                """, arguments: ["key": key, "code": code, "keyCode": keyCode, "command": command])
+        }
+        _ = try await harness.callPageJavaScript("document.execCommand('insertText', false, '/');")
+        let openingDeadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while currentList() == nil && ContinuousClock.now < openingDeadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        let list = try #require(currentList())
+        let allLabels = list.items.map(\.label)
+        #expect(allLabels.contains("Table") && allLabels.contains("Date"))
+        let initialWidth = list.superview?.frame.width
+        try await verifyEditing("/\n")
+        _ = try await harness.callPageJavaScript("document.execCommand('insertText', false, 'tab');")
+        try await waitForList(["Table"])
+        #expect(currentList() === list)
+        #expect(list.superview?.frame.width == initialWidth)
+        try await verifyEditing("/tab\n")
+        for remaining in ["/ta", "/t", "/", ""] {
+            try await key("Backspace", code: "Backspace", keyCode: 8)
+            try await verifyEditing(remaining + "\n")
+        }
+        try await waitForList(nil)
+        _ = try await harness.callPageJavaScript("document.execCommand('insertText', false, '/date');")
+        try await waitForList(["Date"])
+        // CodeMirror deliberately ignores acceptance within its default 75 ms
+        // interaction guard after opening a fresh completion list.
+        try await Task.sleep(for: .milliseconds(100))
+        try await verifyEditing("/date\n")
+        let date = try #require(
+            try await harness.callPageJavaScript(
+                "const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;")
+                as? String)
+        try await key("Enter", code: "Enter", keyCode: 13)
+        try await waitForList(nil)
+        try await verifyEditing(date + "\n")
+        try await key("z", code: "KeyZ", keyCode: 90, command: true)
+        try await verifyEditing("/date\n")
         await harness.closeAndDrain()
     }
 
@@ -4185,6 +4272,51 @@ struct MarkdownEditorWebViewIntegrationTests {
         _ = try await harness.callPageJavaScript("document.execCommand('insertText', false, ' ')")
         #expect(try await harness.callPageJavaScript("return document.querySelectorAll('.cm-live-syntax-marker').length") as? Int == 0)
         #expect(try await harness.session.currentText(for: harness.documentID) == "*Source-role classification* \n")
+        await harness.closeAndDrain()
+    }
+
+    @Test("Repeated ordinary Backspace preserves the live document and exact native mirror")
+    func ordinaryDeletionProjectionPerformance() async throws {
+        let source = (0..<350).map { index in
+            "## Section \(index)\n\nThe researcher develops an ordinary argument beside *emphasis* and [[Target]]. This synthetic paragraph contains English prose and 中文 for inspection.\n\n"
+        }.joined()
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        try await harness.waitUntilFocused()
+        let prefix = try #require(source.range(of: "inspection."))
+        let position = source[..<prefix.upperBound].utf16.count
+        harness.session.revealSourceRange(fromUTF16: position, toUTF16: position)
+        try await harness.waitUntilSelection(head: position, stage: "ordinary line-end deletion")
+        for action in ["insert", "delete"] {
+            let measurements = try await harness.callPageJavaScript(
+                """
+                const dispatch = [], painted = [];
+                let timerFallbacks = 0;
+                for (let index = 0; index < 12; index++) {
+                    const started = performance.now();
+                    document.execCommand(action === 'insert' ? 'insertText' : 'delete', false, action === 'insert' ? 'x' : null);
+                    dispatch.push(performance.now() - started);
+                    const receivedFrame = await new Promise(resolve => {
+                        const frame = requestAnimationFrame(() => setTimeout(() => { clearTimeout(timeout); resolve(true); }, 0));
+                        const timeout = setTimeout(() => { cancelAnimationFrame(frame); resolve(false); }, 50);
+                    });
+                    if (receivedFrame) painted.push(performance.now() - started); else timerFallbacks++;
+                }
+                dispatch.sort((a, b) => a - b); painted.sort((a, b) => a - b);
+                return {action, samples: dispatch.length, dispatchP50: dispatch[6], dispatchP95: dispatch[11],
+                    paintedSamples: painted.length, timerFallbacks,
+                    paintedP50: painted.length ? painted[Math.floor(painted.length / 2)] : null};
+                """, arguments: ["action": action])
+            print("Ordinary line-end input diagnostic: \(String(describing: measurements))")
+            let expected =
+                action == "insert"
+                ? String(source[..<prefix.upperBound]) + String(repeating: "x", count: 12) + String(source[prefix.upperBound...])
+                : source
+            #expect(try await harness.session.currentText(for: harness.documentID) == expected)
+            #expect(harness.session.checkedSource == expected)
+        }
+        try await harness.waitUntilSelection(head: position, stage: "ordinary deletion restores the caret")
         await harness.closeAndDrain()
     }
 

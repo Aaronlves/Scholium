@@ -256,7 +256,7 @@ function projectionTopologySignature(projection: SemanticProjectionRanges) {
 }
 
 /**
- * Proves that one bounded plain-text insertion preserves the local semantic
+ * Proves that one bounded plain-text edit preserves the local semantic
  * catalog. This replaces marker-proximity guessing: academic prose may sit
  * beside emphasis, links, or citations without forcing a complete-document
  * projection rebuild, while text that actually completes latent Markdown
@@ -282,9 +282,24 @@ export function transactionCanMapProjectionTopology(
   if (changes.length !== 1) return false;
   const {fromA, toA, fromB, toB, insert} = changes[0];
   marker.lastIndex = 0;
-  if (toA > fromA || insert.length > 8_192 || /[\r\n]/.test(insert) || marker.test(insert)
+  if (insert.length > 8_192 || /[\r\n]/.test(insert) || marker.test(insert)
       || projectionBoundaryTouches(mutationSensitiveRanges, fromA)) {
     return false;
+  }
+  if (toA > fromA) {
+    // Only ordinary prose deletion is eligible. Removing syntax, a line break,
+    // or any source-caching construct still rebuilds. The topology comparison
+    // below also rejects deletions that join previously inert Markdown pieces.
+    const line = transaction.startState.doc.lineAt(fromA);
+    const touchesDeletion = (range: ProjectionSourceRange) => range.from <= toA && range.to >= fromA;
+    if (insert.length !== 0 || toA - fromA > 8_192
+        || fromA <= line.from || toA > line.to
+        || !/^[\p{L}\p{N}\p{M} ]+$/u.test(transaction.startState.doc.sliceString(fromA, toA))
+        || mutationSensitiveRanges.some(touchesDeletion)
+        || previousSyntax.inlines.some(touchesDeletion)
+        || previousSyntax.blocks.some(block => block.markerRanges.some(touchesDeletion))) {
+      return false;
+    }
   }
 
   const oldNeighborhood = physicalLineNeighborhood(transaction.startState.doc, fromA, toA);

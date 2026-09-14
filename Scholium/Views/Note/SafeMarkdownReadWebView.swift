@@ -1281,7 +1281,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             replyUpdateTask = nil
             pendingReplyUpdate = nil
             replyNavigationReady = false
-            floatingSurfaces.dismiss()
+            floatingSurfaces.reset()
             loadFinalizationTask?.cancel()
             loadFinalizationTask = nil
             sourceLineNavigationTask?.cancel()

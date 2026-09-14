@@ -31,6 +31,33 @@ const dialect: MarkdownEditingDialect = {
 };
 
 describe("live projection index component", () => {
+  it.each([false, true])("maps repeated mixed-script prose deletion to a fresh parse (line end: %s)", atLineEnd => {
+    let builds = 0;
+    const controller = createLiveProjectionIndexController({editingDialect: () => dialect,
+      recordMetric: name => { if (name === "projection-index") builds++; }});
+    const source = "# Heading\n\nAn ordinary argument 中文 e\u0301"
+      + (atLineEnd ? "\n\nProse beside *emphasis* and [[Target]].\n\n" : " carries prose beside *emphasis* and [[Target]].\n\n")
+      + "> [!state] Claim\n> Source owned content.\n\n"
+      + "| A | B |\n| - | - |\n| x | y |\n\n"
+      + "A reference [^note] and $x$.\n\n[^note]: Definition.\n";
+    let state = EditorState.create({doc: source, extensions: [scholiumNoteLanguage, controller.extension]});
+    const initialIdentity = controller.index(state).topologyIdentity;
+    const from = source.indexOf("argument");
+    const length = "argument 中文 e\u0301".length;
+    builds = 0;
+    for (let remaining = length; remaining > 0; remaining--) {
+      const transaction = state.update({changes: {from: from + remaining - 1, to: from + remaining}});
+      state = transaction.state;
+      const mapped = controller.index(state);
+      expect(mapped.topologyIdentity).toBe(initialIdentity);
+      const oracle = createLiveProjectionIndexController({editingDialect: () => dialect, recordMetric: () => {}});
+      const fresh = EditorState.create({doc: state.doc, extensions: [scholiumNoteLanguage, oracle.extension]});
+      expect(mapped).toEqual(oracle.index(fresh));
+      expect(state.doc.toString()).toBe(source.slice(0, from + remaining - 1) + source.slice(from + length));
+    }
+    expect(builds).toBe(0);
+  });
+
   it("recognizes headings throughout incremental typing and marker deletion", () => {
     for (const level of [1, 2, 6]) {
       const controller = createLiveProjectionIndexController({editingDialect: () => dialect, recordMetric: () => {}});

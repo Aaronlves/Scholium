@@ -1,7 +1,7 @@
 /** Read-only presentation projection. Editing, selection and keyboard state stay in CodeMirror. */
 export interface NativeFloatingPayload {
   id: number;
-  kind: "preview" | "suggestions" | "commands" | "selection" | "hidden";
+  kind: "preview" | "suggestions" | "selection" | "hidden";
   left: number;
   top: number;
   bottom: number;
@@ -44,7 +44,7 @@ export function createNativeFloatingBridge(post: (surface: NativeFloatingPayload
         return callbacks.choose?.(index) !== false;
       }
       else if ((action === "select" || action === "choose") && Number.isInteger(index)
-        && (current.surface.kind === "suggestions" || (action === "choose" && current.surface.kind === "commands"))
+        && current.surface.kind === "suggestions"
         && index >= 0 && index < current.surface.items.length) {
         if (action === "select") callbacks.select?.(index);
         else return callbacks.choose?.(index) !== false;

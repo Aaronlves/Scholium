@@ -393,7 +393,7 @@
         else if (action === "dismiss") callbacks.dismiss();
         else if (action === "choose" && current.surface.kind === "selection" && Number.isInteger(index) && index === 0) {
           return callbacks.choose?.(index) !== false;
-        } else if ((action === "select" || action === "choose") && Number.isInteger(index) && (current.surface.kind === "suggestions" || action === "choose" && current.surface.kind === "commands") && index >= 0 && index < current.surface.items.length) {
+        } else if ((action === "select" || action === "choose") && Number.isInteger(index) && current.surface.kind === "suggestions" && index >= 0 && index < current.surface.items.length) {
           if (action === "select") callbacks.select?.(index);
           else return callbacks.choose?.(index) !== false;
         } else return false;

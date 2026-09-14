@@ -317,7 +317,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     }
 
     func attach(_ webView: WKWebView) {
-        floatingSurfaces.dismiss()
+        floatingSurfaces.reset()
         invalidateRequestQueue(clearingRecoveryReport: false)
         cancelModeTransition()
         self.webView = webView
@@ -336,7 +336,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
 
     func detach(_ webView: WKWebView) {
         guard self.webView === webView else { return }
-        floatingSurfaces.dismiss()
+        floatingSurfaces.reset()
         invalidateRequestQueue(clearingRecoveryReport: false)
         cancelModeTransition()
         startupTask?.cancel()
@@ -364,7 +364,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     /// recovery pin. Closed documents intentionally do not retain undo state.
     func shutdownDetachedSession() {
         precondition(webView == nil)
-        floatingSurfaces.dismiss()
+        floatingSurfaces.reset()
         invalidateRequestQueue(clearingRecoveryReport: false)
         startupTask?.cancel()
         startupTask = nil
@@ -479,7 +479,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         mode: MarkdownEditorMode,
         initialSourceRange: Range<Int>? = nil
     ) {
-        floatingSurfaces.dismiss()
+        floatingSurfaces.reset()
         let isFirstDocumentLoad = self.documentID != documentID
         let publishesLoadingState = isReady
         invalidateRequestQueue()
@@ -1531,7 +1531,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     }
 
     func webContentProcessTerminated() {
-        floatingSurfaces.dismiss()
+        floatingSurfaces.reset()
         invalidateRequestQueue()
         cancelModeTransition()
         cancelScheduledRecoveryCapture()

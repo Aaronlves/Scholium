@@ -6,7 +6,11 @@ import WebKit
 @MainActor
 final class DocumentPreviewPopover: NSObject, WKNavigationDelegate, NSPopoverDelegate {
     var onEvent: ((String) -> Void)?
-    private(set) var webView: WKWebView?
+    // One renderer per document host. Hidden content is never an active preview.
+    private var renderer: PreviewWebView?
+    var webView: WKWebView? { surface == nil ? nil : renderer }
+    private var activeNavigation: WKNavigation?
+    private var generation: UInt64 = 0
     var isShown: Bool { popover?.isShown == true }
     private weak var owner: WKWebView?
     private var surface: DocumentFloatingSurface?
@@ -28,27 +32,36 @@ final class DocumentPreviewPopover: NSObject, WKNavigationDelegate, NSPopoverDel
         dismiss()
         self.owner = owner
         surface = value
-        let configuration = WKWebViewConfiguration()
-        configuration.websiteDataStore = ScholiumWebKitRuntime.nonPersistentDataStore
-        configuration.defaultWebpagePreferences.allowsContentJavaScript = false
-        configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
-        configuration.suppressesIncrementalRendering = true
-        ScholiumWebFontResources.install(in: configuration)
-        let content = PreviewWebView(
-            frame: NSRect(x: 0, y: 0, width: min(368, owner.bounds.width - 24), height: 1),
-            configuration: configuration)
-        content.setValue(false, forKey: "drawsBackground")
-        content.underPageBackgroundColor = .clear
+        let content: PreviewWebView
+        if let renderer {
+            content = renderer
+            content.frame = NSRect(x: 0, y: 0, width: min(368, owner.bounds.width - 24), height: 1)
+        } else {
+            let configuration = WKWebViewConfiguration()
+            configuration.websiteDataStore = ScholiumWebKitRuntime.nonPersistentDataStore
+            configuration.defaultWebpagePreferences.allowsContentJavaScript = false
+            configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
+            configuration.suppressesIncrementalRendering = true
+            ScholiumWebFontResources.install(in: configuration)
+            content = PreviewWebView(
+                frame: NSRect(x: 0, y: 0, width: min(368, owner.bounds.width - 24), height: 1),
+                configuration: configuration)
+            content.setValue(false, forKey: "drawsBackground")
+            content.underPageBackgroundColor = .clear
+            renderer = content
+        }
+        content.allowsFocus = false
         content.appearance = owner.effectiveAppearance
         content.setAccessibilityElement(true)
         content.setAccessibilityIdentifier("scholium.documentPreview.content")
         content.navigationDelegate = self
-        webView = content
         observeContext(owner)
-        content.loadHTMLString(Self.previewHTML(value), baseURL: nil)
+        activeNavigation = content.loadHTMLString(Self.previewHTML(value), baseURL: nil)
     }
 
     func dismiss() {
+        generation &+= 1
+        activeNavigation = nil
         measurement?.cancel()
         measurement = nil
         for observer in observers { NotificationCenter.default.removeObserver(observer) }
@@ -59,29 +72,47 @@ final class DocumentPreviewPopover: NSObject, WKNavigationDelegate, NSPopoverDel
         popover = nil
         closing?.delegate = nil
         closing?.close()
-        webView?.stopLoading()
-        webView?.navigationDelegate = nil
-        webView = nil
+        closing?.contentViewController = nil
+        renderer?.stopLoading()
+        renderer?.removeFromSuperview()
+        renderer?.allowsFocus = false
         surface = nil
         owner = nil
     }
 
+    /// Document departure releases both derived content and the WebKit page.
+    func reset() {
+        dismiss()
+        renderer?.navigationDelegate = nil
+        renderer = nil
+    }
+
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        guard webView === self.webView else { return }
+        guard webView === self.webView, let navigation, navigation === activeNavigation else { return }
+        let generation = generation
+        measurement?.cancel()
         measurement = Task { @MainActor [weak self, weak webView] in
             guard let webView else { return }
             // Finish font layout at the final width before exposing any window.
             let result = try? await webView.callAsyncJavaScript(
                 "await document.fonts.ready; return Math.ceil(document.body.getBoundingClientRect().height);",
                 arguments: [:], in: nil, contentWorld: .page)
-            guard !Task.isCancelled, let self, webView === self.webView else { return }
+            guard !Task.isCancelled, let self, self.generation == generation,
+                webView === self.webView, navigation === self.activeNavigation
+            else { return }
             guard let height = result as? Double, height.isFinite, height > 0,
                 let owner = self.owner, let surface = self.surface,
                 owner.window?.isVisible == true
-            else { self.onEvent?("dismiss"); return }
+            else {
+                self.onEvent?("dismiss")
+                return
+            }
             let size = NSSize(width: webView.frame.width, height: min(352, owner.bounds.height - 24, ceil(height)))
             let container = PreviewTrackingView(frame: NSRect(origin: .zero, size: size))
-            container.onPointerPresence = { [weak self] entered in self?.onEvent?(entered ? "enter" : "leave") }
+            container.onPointerPresence = { [weak self] entered in
+                guard let self, self.generation == generation else { return }
+                self.onEvent?(entered ? "enter" : "leave")
+            }
             container.setAccessibilityIdentifier("scholium.documentPreview")
             container.setAccessibilityElement(true)
             container.setAccessibilityEnabled(true)
@@ -114,22 +145,25 @@ final class DocumentPreviewPopover: NSObject, WKNavigationDelegate, NSPopoverDel
     private func observeContext(_ owner: WKWebView) {
         guard let window = owner.window else { return }
         for name in [NSWindow.willCloseNotification, NSWindow.didResizeNotification] {
-            observers.append(NotificationCenter.default.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
+            observers.append(
+                NotificationCenter.default.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
+                    MainActor.assumeIsolated { self?.onEvent?("dismiss") }
+                })
+        }
+        observers.append(
+            NotificationCenter.default.addObserver(forName: NSApplication.didResignActiveNotification, object: nil, queue: .main) { [weak self] _ in
                 MainActor.assumeIsolated { self?.onEvent?("dismiss") }
             })
-        }
-        observers.append(NotificationCenter.default.addObserver(forName: NSApplication.didResignActiveNotification, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.onEvent?("dismiss") }
-        })
-        observers.append(NotificationCenter.default.addObserver(forName: NSWindow.didBecomeKeyNotification, object: nil, queue: .main) { [weak self] notification in
-            let activated = notification.object as? NSWindow
-            MainActor.assumeIsolated {
-                guard let self, let activated,
-                    activated !== self.owner?.window, activated !== self.webView?.window
-                else { return }
-                self.onEvent?("dismiss")
-            }
-        })
+        observers.append(
+            NotificationCenter.default.addObserver(forName: NSWindow.didBecomeKeyNotification, object: nil, queue: .main) { [weak self] notification in
+                let activated = notification.object as? NSWindow
+                MainActor.assumeIsolated {
+                    guard let self, let activated,
+                        activated !== self.owner?.window, activated !== self.webView?.window
+                    else { return }
+                    self.onEvent?("dismiss")
+                }
+            })
         eventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown, .keyDown]) { [weak self] event in
             let consumed = MainActor.assumeIsolated {
                 guard let self else { return false }
@@ -146,9 +180,10 @@ final class DocumentPreviewPopover: NSObject, WKNavigationDelegate, NSPopoverDel
                     // The document must process its own marker activation first:
                     // a repeated click toggles a pinned annotation closed.
                     let target = event.window?.contentView?.hitTest(event.locationInWindow)
-                    let isDocument = self.owner.map { owner in
-                        target.map { $0 === owner || $0.isDescendant(of: owner) } ?? false
-                    } ?? false
+                    let isDocument =
+                        self.owner.map { owner in
+                            target.map { $0 === owner || $0.isDescendant(of: owner) } ?? false
+                        } ?? false
                     if !isDocument { self.onEvent?("dismiss") }
                 }
                 return false
@@ -157,18 +192,23 @@ final class DocumentPreviewPopover: NSObject, WKNavigationDelegate, NSPopoverDel
         }
     }
 
-    func popoverDidClose(_ notification: Notification) { onEvent?("dismiss") }
+    func popoverDidClose(_ notification: Notification) {
+        guard let closed = notification.object as? NSPopover, closed === popover else { return }
+        onEvent?("dismiss")
+    }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: any Error) {
-        if webView === self.webView { onEvent?("dismiss") }
+        if webView === self.webView, let navigation, navigation === activeNavigation { onEvent?("dismiss") }
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: any Error) {
-        if webView === self.webView { onEvent?("dismiss") }
+        if webView === self.webView, let navigation, navigation === activeNavigation { onEvent?("dismiss") }
     }
 
-    func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
-                 decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void) {
+    func webView(
+        _ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
+        decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void
+    ) {
         decisionHandler(action.navigationType == .other && action.request.url?.absoluteString == "about:blank" ? .allow : .cancel)
     }
 

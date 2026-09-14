@@ -4,7 +4,7 @@ import WebKit
 
 /// A bounded read-only projection, never an editor/source operation.
 struct DocumentFloatingSurface: Codable, Equatable, Sendable {
-    enum Kind: String, Codable, Sendable { case preview, suggestions, commands, selection, hidden }
+    enum Kind: String, Codable, Sendable { case preview, suggestions, selection, hidden }
     struct Item: Codable, Equatable, Sendable {
         let label: String
         let detail: String
@@ -37,7 +37,7 @@ struct DocumentFloatingSurface: Codable, Equatable, Sendable {
         switch result.kind {
         case .preview:
             guard !result.html.isEmpty, result.items.isEmpty, result.selected == -1 else { return nil }
-        case .suggestions, .commands:
+        case .suggestions:
             guard result.html.isEmpty, result.css.isEmpty, !result.items.isEmpty else { return nil }
         case .selection:
             guard result.html.isEmpty, result.css.isEmpty, result.items.isEmpty, result.selected == -1 else { return nil }
@@ -59,7 +59,6 @@ final class DocumentFloatingSurfaceController: NSObject {
     private var suggestions: NativeFloatingChoiceList?
     private var preferredWidth: CGFloat = 368
     private var suggestionsBelow: Bool?
-    private var commandMenu: DocumentCommandMenu?
     var previewWebView: WKWebView? { preview?.webView }
     var isPreviewShown: Bool { preview?.isShown == true }
     private var event: ((Int, String, Int) async -> Bool)?
@@ -81,14 +80,14 @@ final class DocumentFloatingSurfaceController: NSObject {
         guard webView.window != nil, webView.bounds.width > 24, webView.bounds.height > 24,
             let viewport = webView.superview as? DocumentWebViewContainer
         else { return }
-        if let surface, value.id <= surface.id { return }
+        if owner === webView, let surface, value.id <= surface.id { return }
         if value.kind == .selection,
             value.bottom + 52 > webView.bounds.height - 12, value.top < 64
         {
             dismiss()
             return
         }
-        if surface?.kind != value.kind || owner !== webView { dismiss() }
+        if owner !== webView { reset() } else if surface?.kind != value.kind { dismiss() }
         self.event = event
         self.owner = webView
         self.surface = value
@@ -100,14 +99,6 @@ final class DocumentFloatingSurfaceController: NSObject {
                 if action == "dismiss" { self?.dismiss() }
             }
             content.present(value, in: webView)
-            return
-        }
-        if value.kind == .commands {
-            commandMenu?.dismiss()
-            let menu = DocumentCommandMenu(surface: value)
-            commandMenu = menu
-            menu.onEvent = { [weak self] action, index in self?.send(action, index: index) }
-            menu.present(in: webView)
             return
         }
         if glass == nil {
@@ -166,7 +157,7 @@ final class DocumentFloatingSurfaceController: NSObject {
             glass.setAccessibilityIdentifier("scholium.documentSuggestions")
             glass.setAccessibilityChildren([])
             layout(height: content.preferredSize.height)
-        case .preview, .commands: break  // Owned by their native presenters above.
+        case .preview: break  // Owned by DocumentPreviewPopover above.
         case .selection:
             suggestions = nil
             let bar = SelectionActionBar(actions: SelectionActionPreferences.shared.actions)
@@ -208,18 +199,13 @@ final class DocumentFloatingSurfaceController: NSObject {
     }
 
     func dismiss() {
-        let closingMenu = commandMenu
-        commandMenu = nil
-        closingMenu?.dismiss()
         suggestionsBelow = nil
         inquiryTask?.cancel()
         inquiryTask = nil
         resultPopover?.close()
         resultPopover = nil
         selectionBar = nil
-        let dismissedPreview = preview
-        preview = nil
-        dismissedPreview?.dismiss()
+        preview?.dismiss()
         suggestions = nil
         glass?.removeFromSuperview()
         glass = nil
@@ -227,6 +213,14 @@ final class DocumentFloatingSurfaceController: NSObject {
         event = nil
         for observer in observers { NotificationCenter.default.removeObserver(observer) }
         observers.removeAll()
+    }
+
+    /// Ends the document host's lifetime, including its reusable preview renderer.
+    func reset() {
+        dismiss()
+        preview?.reset()
+        preview = nil
+        owner = nil
     }
 
     private func send(_ action: String, index: Int = -1) {

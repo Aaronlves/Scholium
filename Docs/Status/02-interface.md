@@ -103,9 +103,10 @@ already-visible Chat does not toggle the Sidebar closed.
   The top overlay, global priority/expiry stack, and Settings feedback queue are
   removed. Operation failures remain persistent locally; ordinary success is quiet.
 - Editor and reader link, footnote and annotation previews use native popovers
-  with inert local WebKit content measured before display. `/` opens an AppKit
-  command menu; other candidates retain CodeMirror's keyboard and AX listbox
-  with native rows, retained filtering width and opening edge. Pending queries
+  with inert local WebKit content measured before display. Slash commands and
+  other candidates retain CodeMirror's keyboard and AX listbox with native rows,
+  retained filtering width and opening edge. Editor-owned choices use AppKit's
+  quieter secondary selection. Pending queries
   retain the container while stale source/selection callbacks are refused.
   Selection Actions use native accessory buttons with hover borders. A native
   parent separates floating geometry from the document; source and history stay put.

@@ -66,16 +66,15 @@ retains the native fields and never changes source. Query and replacement use na
 field editors. Marked text remains local until committed; incoming results cannot
 overwrite composition or consume its Return/Escape commands.
 
-Immediately after a committed `/` in a supported Edit context, a native menu
-offers every context-available insertion command. System menu navigation and
-type selection apply. Escape leaves the literal slash unchanged; choosing a
-command revalidates the captured document and selection before one Undo transaction.
+After `/` in a supported Edit context, insertion commands filter as text is
+typed. Acceptance replaces the slash and query in one Undo transaction;
+Escape preserves the text. Deletion remains ordinary editor input.
 
-Wikilink, analysis-reference and Callout candidates retain one bounded native
+Slash commands, Wikilink, analysis-reference and Callout candidates retain one bounded native
 list beside the caret, keeping editor focus. Filtering updates the retained
 list with stable width and opening direction; overflow scrolls. Autosave does
 not dismiss it; acceptance, dismissal or invalidated editing context does.
-Pointer and keyboard update one native emphasized selection; click or Return
+Pointer and keyboard update one native secondary selection; click or Return
 accepts. Useful identity/path context fits the viewport without another text
 owner. All editing auxiliaries use system text, colors, controls and elevation
 under §19. During composition, menus, candidates and previews yield immediately

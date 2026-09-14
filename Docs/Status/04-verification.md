@@ -4,16 +4,38 @@
 
 ## Current verification snapshot
 
-**2026-09-14 — Native editor commands and candidates:** Typechecking and 44
-focused Web tests pass; 37 scoped native/protocol/WebView checks pass, including
-retained candidate identity and width during filtering, opening-edge stability
-and viewport containment. Disposable standard-Triptych Debug QA confirms the
-native slash menu, letter navigation, Escape preserving `/`, Date Undo, Callout
-filtering and insertion, stable link-candidate width, no-match dismissal and the
-Selection Actions menu. Native hover rendering is enabled; its perceived strength,
-VoiceOver, full IME and appearance/adaptation acceptance remain unverified.
-Evidence: `.build/candidate-editor-tests.log`, `.build/candidate-native-tests.log`
-and `.build/candidate-qa.md`. This is scoped evidence, not a full gate or human acceptance.
+**2026-09-14 — Preview renderer reuse:** An opt-in native-owner diagnostic uses
+eight disclosures per build (one cold, seven subsequent) on Xcode 27 Debug,
+macOS 27 and synthetic mixed-script content. Subsequent synchronous preparation
+falls from 35.7–47.8 ms to 0.66–1.41 ms; request-to-prepared-presentation median
+falls from 84.3 ms to 29.5 ms. The renderer is reused only within its document
+host; navigation identity/generation guard replacement, and host reset releases
+it. Eight scoped native/Edit/Review checks pass for replacement, cancellation,
+scroll, focus and source preservation. This isolates native preparation, excluding hover delay, bridge transport
+and animation completion; cold initialization and perceived smoothness are not
+accepted by this diagnostic. Logs: `.build/preview-latency-before.log`,
+`.build/preview-latency-after.log`, `.build/preview-perf-tests.log` and
+`.build/preview-perf-reader-tests.log`.
+
+**2026-09-14 — Editor candidates and ordinary deletion:** Slash commands share
+CodeMirror's editing/AX owner and retained native choice list; the separate menu
+and key forwarding are removed. Typechecking and 41 focused candidate/protocol
+Web tests pass. Thirty-five projection tests compare repeated mixed-script
+and line-end deletion against a fresh index. On a 58,340 UTF-16 synthetic Note,
+three runs of 24 ordinary line-end deletions reduce full index rebuilds from
+24 to zero and per-run state-update medians from 4.26–5.29 ms to 0.53–0.68 ms.
+Structural, multiline and unsafe deletions still rebuild. A real WebView
+input/deletion check preserves exact Web text, native mirror and caret; its
+throttled frame callbacks supply no paint-latency evidence. Native protocol
+checks pass. The final slash journey passes filtering, continuous Backspace,
+acceptance/Undo, retained focus and no menu tracking; isolated QA confirms direct
+Backspace after `/` and continued input/deletion. Evidence: `.build/slash-list-web-tests.log`,
+`.build/slash-candidates-journey.log`, `.build/deletion-tests.log`,
+`.build/deletion-native-tests.log` and `.build/deletion-performance-notes.md`.
+The owning WebView check also passes with native secondary selection, preserving
+pointer/keyboard selection and editor focus; `.build/floating-emphasis-tests.log`.
+Hover strength, VoiceOver, full IME and appearance/adaptation acceptance remain
+open. This is scoped development evidence, not a full gate or human acceptance.
 
 **2026-09-14 — Native document previews:** Twelve scoped native/Editor/Review
 checks pass for bounded first measurement, repeated and replaced targets,

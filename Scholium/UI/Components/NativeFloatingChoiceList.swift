@@ -178,11 +178,11 @@ final class FloatingChoiceTable: NSTableView {
 private final class FloatingChoiceRow: NSTableRowView {
     var retainsEditorFocus = false
     var accept: (() -> Void)?
-    // Completion is an active keyboard choice even while its editor keeps the
-    // first responder. AppKit still owns the highlight and contrast rendering.
+    // The editor retains keyboard focus. Use AppKit's secondary selection
+    // treatment for its auxiliary choice; AppKit owns colors and contrast.
     override var isEmphasized: Bool {
-        get { retainsEditorFocus ? window?.isKeyWindow == true : super.isEmphasized }
-        set { super.isEmphasized = retainsEditorFocus ? window?.isKeyWindow == true : newValue }
+        get { retainsEditorFocus ? false : super.isEmphasized }
+        set { super.isEmphasized = retainsEditorFocus ? false : newValue }
     }
     override func accessibilityPerformPress() -> Bool {
         guard let accept else { return false }
