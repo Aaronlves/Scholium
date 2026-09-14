@@ -630,7 +630,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
-    @Test("Edit previews use native glass without changing source, selection, or document geometry")
+    @Test("Edit previews use a native popover without changing source, selection, or document geometry")
     func nativeEditPreviewPreservesDocument() async throws {
         let source = "[[Target]]\n\n" + String(repeating: "Synthetic paragraph.\n\n", count: 24)
         let harness = EditorHarness(
@@ -648,7 +648,8 @@ struct MarkdownEditorWebViewIntegrationTests {
         _ = try await harness.waitUntilPresentation(stage: "native Edit preview") {
             !$0.previewPopoverHidden && $0.previewTitle == "Target note"
         }
-        #expect(owner.superview?.subviews.contains { $0 is NSGlassEffectView } == true)
+        #expect(harness.session.floatingSurfaces.isPreviewShown)
+        #expect(harness.session.floatingSurfaces.previewWebView?.window !== owner.window)
         #expect(owner.frame == frame)
         #expect(harness.session.context?.selections == selection)
         #expect(harness.session.context?.undoLabel == undo)

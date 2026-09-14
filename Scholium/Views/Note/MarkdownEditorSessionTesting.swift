@@ -585,7 +585,7 @@
                 in: nil,
                 contentWorld: .page
             )
-            if let preview = floatingSurfaces.previewWebView,
+            if floatingSurfaces.isPreviewShown, let preview = floatingSurfaces.previewWebView,
                 var snapshot = rawResult as? [String: Any]
             {
                 let values =

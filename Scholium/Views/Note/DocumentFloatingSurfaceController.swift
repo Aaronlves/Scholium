@@ -49,16 +49,17 @@ struct DocumentFloatingSurface: Codable, Equatable, Sendable {
 }
 
 /// Owns only native floating presentation in the originating WebKit viewport.
-/// No window, source mirror, editing history, or independent completion state.
+/// No source mirror, editing history, or independent completion state.
 @MainActor
-final class DocumentFloatingSurfaceController: NSObject, WKNavigationDelegate {
+final class DocumentFloatingSurfaceController: NSObject {
     private weak var owner: WKWebView?
     private var surface: DocumentFloatingSurface?
     private var glass: TrackingGlassView?
-    private var preview: FloatingPreviewWebView?
+    private var preview: DocumentPreviewPopover?
     private var suggestions: NativeFloatingChoiceList?
     private var preferredWidth: CGFloat = 368
-    var previewWebView: WKWebView? { preview }
+    var previewWebView: WKWebView? { preview?.webView }
+    var isPreviewShown: Bool { preview?.isShown == true }
     private var event: ((Int, String, Int) async -> Bool)?
     private var selectionBar: SelectionActionBar?
     private var resultPopover: NSPopover?
@@ -85,12 +86,20 @@ final class DocumentFloatingSurfaceController: NSObject, WKNavigationDelegate {
             dismiss()
             return
         }
-        let isSamePreview =
-            surface?.kind == .preview && value.kind == .preview
-            && surface?.html == value.html && surface?.css == value.css
+        if surface?.kind != value.kind || owner !== webView { dismiss() }
         self.event = event
         self.owner = webView
         self.surface = value
+        if value.kind == .preview {
+            let content = preview ?? DocumentPreviewPopover()
+            preview = content
+            content.onEvent = { [weak self] action in
+                self?.send(action)
+                if action == "dismiss" { self?.dismiss() }
+            }
+            content.present(value, in: webView)
+            return
+        }
         if glass == nil {
             let container = TrackingGlassView()
             container.style = .regular
@@ -130,8 +139,6 @@ final class DocumentFloatingSurfaceController: NSObject, WKNavigationDelegate {
         guard let glass else { return }
         switch value.kind {
         case .suggestions:
-            preview?.stopLoading()
-            preview = nil
             let content = suggestions ?? NativeFloatingChoiceList(acceptsKeyboard: false)
             if suggestions == nil {
                 suggestions = content
@@ -148,42 +155,8 @@ final class DocumentFloatingSurfaceController: NSObject, WKNavigationDelegate {
             glass.setAccessibilityIdentifier("scholium.documentSuggestions")
             glass.setAccessibilityChildren([])
             layout(height: content.preferredSize.height)
-        case .preview:
-            suggestions = nil
-            preferredWidth = 368
-            glass.setAccessibilityElement(true)
-            glass.setAccessibilityRole(.group)
-            glass.setAccessibilityLabel(WebKitInterfaceLocalization.current().string("Preview content"))
-            glass.setAccessibilityIdentifier("scholium.documentPreview")
-            if !isSamePreview || preview == nil {
-                let configuration = WKWebViewConfiguration()
-                configuration.websiteDataStore = ScholiumWebKitRuntime.nonPersistentDataStore
-                configuration.defaultWebpagePreferences.allowsContentJavaScript = false
-                configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
-                ScholiumWebFontResources.install(in: configuration)
-                let content = FloatingPreviewWebView(frame: .zero, configuration: configuration)
-                content.setValue(false, forKey: "drawsBackground")
-                content.underPageBackgroundColor = .clear
-                content.setAccessibilityElement(true)
-                content.setAccessibilityIdentifier("scholium.documentPreview.content")
-                content.navigationDelegate = self
-                content.onDismiss = { [weak self] in
-                    guard let self else { return }
-                    self.send("dismiss")
-                    self.owner?.window?.makeFirstResponder(self.owner)
-                    self.dismiss()
-                }
-                preview = content
-                glass.contentView = content
-                layout(height: 240)
-                content.loadHTMLString(Self.previewHTML(value), baseURL: nil)
-            } else {
-                layout(height: glass.frame.height)
-            }
-            glass.setAccessibilityChildren(glass.contentView.map { [$0] })
+        case .preview: break // Owned by DocumentPreviewPopover above.
         case .selection:
-            preview?.stopLoading()
-            preview = nil
             suggestions = nil
             let bar = SelectionActionBar(actions: SelectionActionPreferences.shared.actions)
             selectionBar = bar
@@ -229,15 +202,9 @@ final class DocumentFloatingSurfaceController: NSObject, WKNavigationDelegate {
         resultPopover?.close()
         resultPopover = nil
         selectionBar = nil
-        preview?.stopLoading()
-        preview?.navigationDelegate = nil
-        if let preview, let owner,
-            let responder = owner.window?.firstResponder as? NSView,
-            responder.isDescendant(of: preview)
-        {
-            owner.window?.makeFirstResponder(owner)
-        }
+        let dismissedPreview = preview
         preview = nil
+        dismissedPreview?.dismiss()
         suggestions = nil
         glass?.removeFromSuperview()
         glass = nil
@@ -270,38 +237,6 @@ final class DocumentFloatingSurfaceController: NSObject, WKNavigationDelegate {
         glass.contentView?.frame = glass.bounds
     }
 
-    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        guard webView === preview else { return }
-        let id = surface?.id
-        webView.evaluateJavaScript("document.body.scrollHeight") { [weak self, weak webView] result, _ in
-            guard let self, webView === self.preview, self.surface?.id == id,
-                let height = result as? Double, height.isFinite
-            else { return }
-            self.layout(height: height)
-        }
-    }
-
-    func webView(
-        _ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
-        decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void
-    ) {
-        decisionHandler(
-            action.navigationType == .other && action.request.url?.absoluteString == "about:blank"
-                ? .allow : .cancel)
-    }
-
-    private static func previewHTML(_ value: DocumentFloatingSurface) -> String {
-        let css = value.css.replacingOccurrences(of: "</style", with: "<\\/style", options: .caseInsensitive)
-        return """
-            <!doctype html><html><head><meta charset="utf-8">
-            <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src scholium-font: data:; connect-src 'none'; base-uri 'none'; form-action 'none'">
-            <style>\(css)</style><style>
-            html, body { margin: 0 !important; min-height: 0 !important; height: auto !important; background: transparent !important; }
-            body { padding: 14px 16px !important; box-sizing: border-box; color: var(--scholium-color-primary-text); overflow-wrap: anywhere; }
-            .scholium-preview-body.scholium-document { padding: 0 !important; margin: 0 !important; min-height: 0 !important; max-width: none !important; }
-            </style></head><body>\(value.html)</body></html>
-            """
-    }
 }
 
 private final class TrackingGlassView: NSGlassEffectView {
@@ -316,13 +251,6 @@ private final class TrackingGlassView: NSGlassEffectView {
     }
     override func mouseEntered(with event: NSEvent) { onPointerPresence?(true) }
     override func mouseExited(with event: NSEvent) { onPointerPresence?(false) }
-}
-
-private final class FloatingPreviewWebView: WKWebView {
-    var onDismiss: (() -> Void)?
-    override func keyDown(with event: NSEvent) {
-        if event.keyCode == 53 { onDismiss?() } else { super.keyDown(with: event) }
-    }
 }
 
 extension DocumentFloatingSurfaceController: NSPopoverDelegate {

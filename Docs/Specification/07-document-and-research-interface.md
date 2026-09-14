@@ -118,29 +118,29 @@ Insert presents Footnote and Inline Footnote as neighboring commands. Their
 default shortcuts are Option-Command-N and Option-Shift-Command-N respectively;
 the existing Keyboard Shortcuts owner may replace or clear either binding.
 
-Internal-link preview preserves each mode's interaction meaning. Review reveals
-the cached destination on ordinary pointer hover or link focus. Edit follows the
-macOS editing convention: holding Command while pointing at an inactive
-projected link reveals the same cached destination, and Command-click opens it;
-pressing Command after the pointer is already over the link works without
-requiring pointer re-entry. The armed link gives visible pointer feedback.
-Unmodified Edit interaction continues to place the caret and reveal exact
-source. Preview never mutates source, moves selection, or takes editor focus.
+Review reveals cached internal-link destinations on ordinary hover or link
+focus. Edit requires Command over an inactive projected link, including Command
+pressed after pointer entry; Command-click opens it. The armed link gives visible
+pointer feedback. Unmodified Edit interaction places the caret and reveals exact
+source.
 
-Review and inactive Edit present an annotated Wikilink through one small
-trailing superscript disclosure marker. Pointer hover or keyboard focus reveals
-its source-owned Markdown in the same bounded anchored surface as a footnote
-preview; primary activation keeps that surface open for reading. Escape,
-outside activation, scrolling, resizing, source activation, or a document
-change dismisses it. Annotation prose never enters document flow or changes
-neighboring line geometry.
+Review and inactive Edit show annotated Wikilinks with a small trailing
+superscript disclosure marker. Hover or keyboard focus reveals its source-owned
+Markdown; primary activation keeps it open. Escape, outside activation,
+document scrolling, resizing, source activation or document change dismisses it.
+Annotation prose never enters document flow or changes neighboring line geometry.
 
-Review and inactive Edit present every named or inline footnote occurrence as
-the same superscript ordinal. Pointer hover or keyboard focus reveals one
-bounded rendered definition without adding prose to document flow. Review
-activation navigates to the generated end note and its return route; Edit
-activation reveals the exact source-owned definition or inline range in the
-same Editor state.
+Review and inactive Edit show named and inline footnote occurrences as
+superscript ordinals. Hover or keyboard focus reveals the rendered definition
+without reflow. Review activation navigates to the generated end note and its
+return route; Edit activation reveals the exact source-owned definition or
+inline range in the same Editor state.
+
+Link, footnote and link-annotation previews share one bounded native popover,
+measured at its available reading width before display. Repeated disclosure
+preserves position and reading context; long content scrolls internally. Moving
+the pointer from trigger into preview permits continued reading. Disclosure
+never mutates source, moves selection or takes document focus.
 
 All modes use one adaptive editorial grid and one Appearance **Line width**
 value. Review/Edit use scholarly type; Source uses exact-source type. The

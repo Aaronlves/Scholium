@@ -102,8 +102,8 @@ already-visible Chat does not toggle the Sidebar closed.
   carries no Note title, path, or source, and click routes validate exact receipts.
   The top overlay, global priority/expiry stack, and Settings feedback queue are
   removed. Operation failures remain persistent locally; ordinary success is quiet.
-- Editor and reader previews now use native glass containers with inert local
-  WebKit content. Completion retains CodeMirror's keyboard and AX listbox while
+- Editor and reader link, footnote and annotation previews use native popovers
+  with inert local WebKit content measured before display. Completion retains CodeMirror's keyboard and AX listbox while
   native rows project the results. A native parent separates their geometry and
   accessibility from the document WebView; no source or history is moved.
 - Document retains Review, Edit, and Source over one exact source buffer.

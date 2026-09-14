@@ -4,6 +4,16 @@
 
 ## Current verification snapshot
 
+**2026-09-14 — Native document previews:** Twelve scoped native/Editor/Review
+checks pass for bounded first measurement, repeated and replaced targets,
+source/selection/Undo preservation, footnotes, annotations, Escape and composition.
+Xcode 27 Debug QA with a disposable standard Triptych copy confirms native short
+and long presentations, annotation toggle, retained editor focus, Escape and
+readable accessibility content after WebKit's lazy AX initialization. Physical
+cross-window scrolling, VoiceOver and the full appearance/input-service matrix
+remain unverified; the automation scroll route targeted the originating window.
+This is scoped development evidence, not release or human acceptance.
+
 **2026-09-14 — Native research sheets:** Twenty-four scoped checks pass across
 native two/three-column layout, both collection scopes, exact comparisons,
 Viewed timing and a real SwiftUI sheet lifecycle. The lifecycle check displays

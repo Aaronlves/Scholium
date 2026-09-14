@@ -171,24 +171,34 @@ struct DocumentFloatingSurfaceTests {
         }
         window.makeFirstResponder(webView)
         let firstResponder = window.firstResponder
+        let wasKey = window.isKeyWindow
         let originalBounds = webView.bounds
         let originalFrame = webView.frame
         let surface = try #require(DocumentFloatingSurface.decode(payload(id: 2)))
         controller.present(surface, in: webView) { _, _, _ in true }
-        let glass = try #require(viewport.subviews.compactMap { $0 as? NSGlassEffectView }.first)
-        #expect(glass.style == .regular)
-        #expect(glass.frame.minX >= 12 && glass.frame.maxX <= webView.bounds.width - 12)
-        #expect(glass.frame.minY >= 12 && glass.frame.maxY <= webView.bounds.height - 12)
+        #expect(!controller.isPreviewShown)
+        let preview = try #require(controller.previewWebView)
+        // A second report for the same pending target must not strand its measurement.
+        controller.present(try #require(DocumentFloatingSurface.decode(payload(id: 3))), in: webView) { _, _, _ in true }
+        #expect(controller.previewWebView === preview)
+        let deadline = ContinuousClock.now.advanced(by: .seconds(8))
+        while !controller.isPreviewShown && ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(controller.isPreviewShown)
+        #expect(preview.window !== window)
+        #expect(viewport.subviews.compactMap { $0 as? NSGlassEffectView }.isEmpty)
+        #expect(preview.bounds.width <= originalBounds.width - 24)
+        #expect(preview.bounds.height <= originalBounds.height - 24)
         #expect(webView.frame == originalFrame && webView.bounds == originalBounds)
         #expect(window.firstResponder === firstResponder)
-        let preview = try #require(controller.previewWebView)
-        let deadline = ContinuousClock.now.advanced(by: .seconds(8))
-        var text = ""
-        while !text.contains("Source stays unchanged") && ContinuousClock.now < deadline {
-            text = (try? await preview.evaluateJavaScript("document.body?.textContent || ''")) as? String ?? ""
-            if !text.contains("Source stays unchanged") { try await Task.sleep(for: .milliseconds(20)) }
-        }
+        #expect(window.isKeyWindow == wasKey)
+        let initialFrame = preview.window?.frame
+        let text = try await preview.evaluateJavaScript("document.body.textContent") as? String ?? ""
         #expect(text.contains("Source stays unchanged"))
+        controller.present(try #require(DocumentFloatingSurface.decode(payload(id: 4))), in: webView) { _, _, _ in true }
+        #expect(controller.previewWebView === preview)
+        #expect(preview.window?.frame == initialFrame)
         #expect(preview.configuration.defaultWebpagePreferences.allowsContentJavaScript == false)
         #expect(try await preview.evaluateJavaScript("getComputedStyle(document.body).backgroundColor") as? String == "rgba(0, 0, 0, 0)")
         controller.present(
@@ -197,11 +207,29 @@ struct DocumentFloatingSurfaceTests {
         ) { _, _, _ in true }
         #expect(controller.previewWebView === preview)
         controller.present(
-            try #require(DocumentFloatingSurface.decode(payload(id: 2, kind: "hidden"))),
+            try #require(DocumentFloatingSurface.decode(payload(id: 4, kind: "hidden"))),
             in: webView
         ) { _, _, _ in true }
         #expect(controller.previewWebView == nil)
         #expect(viewport.subviews.compactMap { $0 as? NSGlassEffectView }.isEmpty)
+        #expect(webView.frame == originalFrame && webView.bounds == originalBounds)
+        // Replacing and cancelling hidden preparation cannot show an obsolete target.
+        controller.present(surface, in: webView) { _, _, _ in true }
+        let obsolete = controller.previewWebView
+        var latest = payload(id: 10)
+        latest["html"] = "<h2 class='scholium-preview-title'>Latest target</h2><div class='scholium-preview-body scholium-document'>"
+            + String(repeating: "<p>Long synthetic paragraph 中文。</p>", count: 60) + "</div>"
+        controller.present(try #require(DocumentFloatingSurface.decode(latest)), in: webView) { _, _, _ in true }
+        let current = try #require(controller.previewWebView)
+        #expect(current !== obsolete)
+        let replacementDeadline = ContinuousClock.now.advanced(by: .seconds(8))
+        while !controller.isPreviewShown && ContinuousClock.now < replacementDeadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(controller.isPreviewShown)
+        #expect(try await current.evaluateJavaScript("document.querySelector('h2').textContent") as? String == "Latest target")
+        #expect(try await current.evaluateJavaScript("document.body.scrollHeight > window.innerHeight") as? Bool == true)
+        #expect(try await current.evaluateJavaScript("getComputedStyle(document.body).fontFamily.includes('system-ui')") as? Bool == true)
         #expect(webView.frame == originalFrame && webView.bounds == originalBounds)
     }
 }

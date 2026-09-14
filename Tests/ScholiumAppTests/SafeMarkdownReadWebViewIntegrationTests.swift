@@ -2197,11 +2197,12 @@ extension MarkdownEditorWebViewIntegrationTests {
         }
 
         func nativePreviewWebView() -> WKWebView? {
-            guard let root = window.contentViewController?.view,
-                let owner = findWebView(in: root)
-            else { return nil }
-            return (owner.superview?.subviews ?? []).compactMap { $0 as? NSGlassEffectView }
-                .compactMap { $0.contentView as? WKWebView }.first
+            func findPreview(in view: NSView) -> WKWebView? {
+                if let web = view as? WKWebView, web.accessibilityIdentifier() == "scholium.documentPreview.content" { return web }
+                return view.subviews.lazy.compactMap { findPreview(in: $0) }.first
+            }
+            return (window.childWindows ?? []).filter(\.isVisible)
+                .compactMap { $0.contentView }.compactMap { findPreview(in: $0) }.first
         }
 
         func waitForNativePreview(title: String? = nil, visible: Bool = true) async throws {
@@ -2228,15 +2229,15 @@ extension MarkdownEditorWebViewIntegrationTests {
         }
 
         func hoverNativePreview(entered: Bool) throws {
-            let root = try #require(window.contentViewController?.view)
-            let owner = try #require(findWebView(in: root))
-            let glass = try #require(owner.superview?.subviews.compactMap { $0 as? NSGlassEffectView }.first)
+            let preview = try #require(nativePreviewWebView())
+            let container = try #require(preview.superview)
+            let previewWindow = try #require(preview.window)
             let event = try #require(
                 NSEvent.mouseEvent(
                     with: .mouseMoved, location: .zero,
-                    modifierFlags: [], timestamp: 0, windowNumber: window.windowNumber,
+                    modifierFlags: [], timestamp: 0, windowNumber: previewWindow.windowNumber,
                     context: nil, eventNumber: 0, clickCount: 0, pressure: 0))
-            if entered { glass.mouseEntered(with: event) } else { glass.mouseExited(with: event) }
+            if entered { container.mouseEntered(with: event) } else { container.mouseExited(with: event) }
         }
 
         func callPageJavaScript(

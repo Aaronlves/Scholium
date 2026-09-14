@@ -398,11 +398,14 @@ Source exposes exact text. `ScholiumSystemSymbol` is the icon catalog, and
 `ScholiumWebSymbolAssets` injects its data-URI masks into WebKit surfaces.
 
 Transient surfaces do no whole-Note work. Selection observation reports bounded
-information for navigation and writing context; it creates no persisted research
-object. `DocumentWebViewContainer` owns viewport geometry and exposes
+navigation/writing context without persisting research objects.
+`DocumentWebViewContainer` owns viewport geometry and exposes
 WebKit and native floating siblings in one accessibility tree.
-`DocumentFloatingSurfaceController` owns Liquid Glass preview, suggestion and selection-action
-containers. `SelectionActionBar` uses native controls and a menu, without another composer. The selection bridge revalidates identity before Chat admission;
+`DocumentFloatingSurfaceController` owns suggestion/selection glass containers;
+`DocumentPreviewPopover` owns premeasured bounded WebKit content and `NSPopover`
+placement/accessibility. The Web controller retains identity/hover intent;
+repeated disclosure preserves content/scroll. `SelectionActionBar` uses native
+controls/menu, without another composer. The selection bridge revalidates identity before Chat admission;
 `replacePassage` checks source and range, preserving editor Undo.
 `MarkdownReviewSourceSelection` maps DOM offsets only when the complete rendered
 block equals its source span, excluding a terminating newline. Unsupported
@@ -412,8 +415,8 @@ Switching documents invalidates them; only matching acknowledgements consume the
 Review validates its revision and bounded DOM candidate before selection. Editor
 uses its exact-source offset map and generation-checked bridge; one request-scoped
 view task applies navigation or reports failure. Unmappable Chat ranges use Source;
-ordinary line arrival keeps its transient marker. Versioned projections preserve source, focus, and viewport geometry;
-preview builders stay detached from the document DOM. Scroll, resize, teardown,
+ordinary line arrival keeps its transient marker. Versioned projections preserve source, focus, and viewport;
+preview builders remain DOM-detached. Scroll, resize, teardown,
 and context exit dismiss through the originating controller. Completion geometry
 uses one keyed CodeMirror measure with an idle fallback when WebKit throttles
 animation frames. Review activity deactivation clears transient selection paint.
@@ -730,8 +733,8 @@ bundled runtime dependency.
 Link previews are revision-bound Edit requests. Review resolves footnote preview
 and navigation against its committed sanitized projection. Swift owns graph
 resolution, committed preview content, containment, and external-URL policy.
-WebKit owns source-range anchors, modifier feedback, geometry, and transient
-presentation. Edit recognizes Command-hover whether modifier or pointer arrives
+WebKit reports source anchors, modifier feedback and viewport geometry; native
+code owns presentation. Edit recognizes Command-hover whether modifier or pointer arrives
 first; source activation and document change dismiss it. One bounded surface
 presents link-annotation templates in Review and inactive Edit without inserting
 prose into document flow.
