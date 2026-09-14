@@ -18,9 +18,6 @@ final class SelectionActionBar: NSStackView {
         let explain = button(.explain, symbol: "questionmark.bubble", action: #selector(explainPassage))
         let polish = button(.polish, symbol: "sparkles", action: #selector(polishPassage))
         let more = NSPopUpButton(frame: .zero, pullsDown: true)
-        more.bezelStyle = .inline
-        more.isBordered = false
-        more.heightAnchor.constraint(greaterThanOrEqualToConstant: 28).isActive = true
         more.addItem(withTitle: ScholiumL10n.string("More Actions"))
         more.setAccessibilityLabel(ScholiumL10n.string("More Actions"))
         more.setAccessibilityIdentifier("scholium.selectionActions.more")
@@ -35,7 +32,10 @@ final class SelectionActionBar: NSStackView {
             more.menu?.addItem(item)
         }
         [explain, polish, more].forEach { control in
-            control.contentTintColor = ScholiumNativeColorRole.label.nsColor
+            control.bezelStyle = .accessoryBarAction
+            control.isBordered = true
+            control.showsBorderOnlyWhileMouseInside = true
+            control.heightAnchor.constraint(greaterThanOrEqualToConstant: 28).isActive = true
             addArrangedSubview(control)
         }
         setAccessibilityElement(true)
@@ -49,9 +49,6 @@ final class SelectionActionBar: NSStackView {
         let button = NSButton(title: inquiry.title, target: self, action: action)
         button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
         button.imagePosition = .imageLeading
-        button.bezelStyle = .inline
-        button.isBordered = false
-        button.heightAnchor.constraint(greaterThanOrEqualToConstant: 28).isActive = true
         button.setAccessibilityLabel(inquiry.title)
         return button
     }

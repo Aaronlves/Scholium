@@ -397,16 +397,15 @@ read-only. Edit exposes Markdown formatting and source-owned constructs;
 Source exposes exact text. `ScholiumSystemSymbol` is the icon catalog, and
 `ScholiumWebSymbolAssets` injects its data-URI masks into WebKit surfaces.
 
-Transient surfaces do no whole-Note work. Selection observation reports bounded
-navigation/writing context without persisting research objects.
-`DocumentWebViewContainer` owns viewport geometry and exposes
-WebKit and native floating siblings in one accessibility tree.
-`DocumentFloatingSurfaceController` owns suggestion/selection glass containers;
-`DocumentPreviewPopover` owns premeasured bounded WebKit content and `NSPopover`
-placement/accessibility. The Web controller retains identity/hover intent;
-repeated disclosure preserves content/scroll. `SelectionActionBar` uses native
-controls/menu, without another composer. The selection bridge revalidates identity before Chat admission;
-`replacePassage` checks source and range, preserving editor Undo.
+Transient surfaces use bounded, nonpersistent context.
+`DocumentWebViewContainer` owns viewport geometry and the shared accessibility tree.
+`DocumentFloatingSurfaceController` retains candidate width/edge and selection
+containers; `NSTableView` handles list scrolling.
+`DocumentPreviewPopover` owns premeasured WebKit content and native placement;
+the Web controller retains identity/hover intent and reading context.
+`SelectionActionBar` uses native accessory action buttons with pointer-only
+bezels and a menu. Selection admission revalidates identity;
+`replacePassage` checks source/range and preserves Undo.
 `MarkdownReviewSourceSelection` maps DOM offsets only when the complete rendered
 block equals its source span, excluding a terminating newline. Unsupported
 rendering remains unmappable; no excerpt search or source reconstruction occurs.
@@ -421,13 +420,15 @@ and context exit dismiss through the originating controller. Completion geometry
 uses one keyed CodeMirror measure with an idle fallback when WebKit throttles
 animation frames. Review activity deactivation clears transient selection paint.
 
-`input-suggestions` owns inline writing decorations and structural/link completion.
+`input-suggestions` owns writing decorations/completion. Committed slash dispatches
+`DocumentCommandMenu`/`NSMenu`, without CodeMirror candidates or AX mirroring.
+Acceptance checks document/selection before the existing Undo transaction;
+cancellation preserves source. Candidates retain native lists and editor focus.
 `EditorWritingSuggestions` projects vocabulary; `EditorLinkCompletionIndex` resolves
-links. Native `queryText` captures exact writing context. `RelatedMaterialsSession`
-owns reference discovery and cards independently of floating surfaces. An insertion
-receipt binds session, generation and caret; `insertReference` checks the generation,
-selection and protected context again in CodeMirror before one Undo transaction.
-No buffer is duplicated.
+links. `queryText` captures exact context. `RelatedMaterialsSession` owns reference
+discovery/cards. Its insertion receipt binds session, generation and caret;
+`insertReference` rechecks generation, selection and protected context before one
+Undo transaction, without duplicating buffers.
 
 The native `DocumentFindPanel` owns Command-F, query/options, replacement disclosure,
 and focus intent. `DocumentFindSearchField` supplies AppKit input/menu behavior;

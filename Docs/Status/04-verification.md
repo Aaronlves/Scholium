@@ -4,6 +4,17 @@
 
 ## Current verification snapshot
 
+**2026-09-14 — Native editor commands and candidates:** Typechecking and 44
+focused Web tests pass; 37 scoped native/protocol/WebView checks pass, including
+retained candidate identity and width during filtering, opening-edge stability
+and viewport containment. Disposable standard-Triptych Debug QA confirms the
+native slash menu, letter navigation, Escape preserving `/`, Date Undo, Callout
+filtering and insertion, stable link-candidate width, no-match dismissal and the
+Selection Actions menu. Native hover rendering is enabled; its perceived strength,
+VoiceOver, full IME and appearance/adaptation acceptance remain unverified.
+Evidence: `.build/candidate-editor-tests.log`, `.build/candidate-native-tests.log`
+and `.build/candidate-qa.md`. This is scoped evidence, not a full gate or human acceptance.
+
 **2026-09-14 — Native document previews:** Twelve scoped native/Editor/Review
 checks pass for bounded first measurement, repeated and replaced targets,
 source/selection/Undo preservation, footnotes, annotations, Escape and composition.

@@ -99,14 +99,19 @@ function applyOption(source: CompletionSource, text: string, label: string) {
 }
 
 describe("Edit input suggestions", () => {
-  it("starts with a bounded featured set and progressively searches the catalog", () => {
+  it("offers every context-available command only at a newly committed slash", () => {
     const {suggestions} = controller();
     const block = synchronousResult(suggestions.slashCompletionSource, "/")!;
     expect(block.options.map((option) => option.label)).toEqual([
       "Callout",
       "Date",
       "Inline Math",
+      "Display Math",
       "Mermaid",
+      "Table",
+      "Footnote",
+      "Code Block",
+      "Divider",
     ]);
 
     const inline = synchronousResult(suggestions.slashCompletionSource, "Claim /")!;
@@ -116,10 +121,11 @@ describe("Edit input suggestions", () => {
       "Footnote",
     ]);
 
-    expect(synchronousResult(suggestions.slashCompletionSource, "/tab")!
-      .options.map((option) => option.label)).toEqual(["Table"]);
-    expect(synchronousResult(suggestions.slashCompletionSource, "/math")!
-      .options.map((option) => option.label)).toEqual(["Inline Math", "Display Math"]);
+    // Once cancelled, ordinary text after the slash must not reopen a menu.
+    for (const text of ["/tab", "/math", "https://", "word/"]) {
+      expect(synchronousResult(suggestions.slashCompletionSource, text)).toBeNull();
+    }
+
   });
 
   it("keeps input suggestions out of Source and protected syntax", () => {
@@ -137,23 +143,35 @@ describe("Edit input suggestions", () => {
     expect(result.options.every((option) => option.detail === undefined)).toBe(true);
   });
 
+  it("updates local Callout results synchronously through filtering and context exit", () => {
+    const {suggestions} = controller();
+    const initial = synchronousResult(suggestions.calloutCompletionSource, "> [!")!;
+    const update = (text: string) => {
+      const state = EditorState.create({doc: text, selection: {anchor: text.length}});
+      return initial.update!(initial, initial.from, text.length, new CompletionContext(state, text.length, false));
+    };
+    expect(update("> [!sta")!.options.map(option => option.label)).toEqual(["State"]);
+    expect(update("> [!")!.options.map(option => option.label)).toEqual(["Orient", "State"]);
+    expect(update("> [!state] text")).toBeNull();
+  });
+
   it("inserts bounded structural templates and chains Callout role choice", () => {
     const {suggestions} = controller();
     expect(applyOption(suggestions.slashCompletionSource, "/", "Date").doc.toString())
       .toBe(inputSuggestionTesting.localISODate());
     expect(applyOption(suggestions.slashCompletionSource, "/", "Inline Math").doc.toString())
       .toBe("$$");
-    expect(applyOption(suggestions.slashCompletionSource, "/math", "Display Math").doc.toString())
+    expect(applyOption(suggestions.slashCompletionSource, "/", "Display Math").doc.toString())
       .toBe("$$\n\n$$");
     expect(applyOption(suggestions.slashCompletionSource, "/", "Mermaid").doc.toString())
       .toBe("```mermaid\n\n```");
-    expect(applyOption(suggestions.slashCompletionSource, "/tab", "Table").doc.toString())
+    expect(applyOption(suggestions.slashCompletionSource, "/", "Table").doc.toString())
       .toBe("| Column 1 | Column 2 |\n| --- | --- |\n|  |  |");
-    expect(applyOption(suggestions.slashCompletionSource, "/foot", "Footnote").doc.toString())
+    expect(applyOption(suggestions.slashCompletionSource, "/", "Footnote").doc.toString())
       .toBe("[^1]\n\n[^1]: \n");
-    expect(applyOption(suggestions.slashCompletionSource, "/code", "Code Block").doc.toString())
+    expect(applyOption(suggestions.slashCompletionSource, "/", "Code Block").doc.toString())
       .toBe("```language\n\n```");
-    expect(applyOption(suggestions.slashCompletionSource, "/div", "Divider").doc.toString())
+    expect(applyOption(suggestions.slashCompletionSource, "/", "Divider").doc.toString())
       .toBe("---");
 
     const calloutStart = applyOption(

@@ -4,7 +4,7 @@ import WebKit
 
 /// A bounded read-only projection, never an editor/source operation.
 struct DocumentFloatingSurface: Codable, Equatable, Sendable {
-    enum Kind: String, Codable, Sendable { case preview, suggestions, selection, hidden }
+    enum Kind: String, Codable, Sendable { case preview, suggestions, commands, selection, hidden }
     struct Item: Codable, Equatable, Sendable {
         let label: String
         let detail: String
@@ -37,7 +37,7 @@ struct DocumentFloatingSurface: Codable, Equatable, Sendable {
         switch result.kind {
         case .preview:
             guard !result.html.isEmpty, result.items.isEmpty, result.selected == -1 else { return nil }
-        case .suggestions:
+        case .suggestions, .commands:
             guard result.html.isEmpty, result.css.isEmpty, !result.items.isEmpty else { return nil }
         case .selection:
             guard result.html.isEmpty, result.css.isEmpty, result.items.isEmpty, result.selected == -1 else { return nil }
@@ -58,6 +58,8 @@ final class DocumentFloatingSurfaceController: NSObject {
     private var preview: DocumentPreviewPopover?
     private var suggestions: NativeFloatingChoiceList?
     private var preferredWidth: CGFloat = 368
+    private var suggestionsBelow: Bool?
+    private var commandMenu: DocumentCommandMenu?
     var previewWebView: WKWebView? { preview?.webView }
     var isPreviewShown: Bool { preview?.isShown == true }
     private var event: ((Int, String, Int) async -> Bool)?
@@ -100,6 +102,14 @@ final class DocumentFloatingSurfaceController: NSObject {
             content.present(value, in: webView)
             return
         }
+        if value.kind == .commands {
+            commandMenu?.dismiss()
+            let menu = DocumentCommandMenu(surface: value)
+            commandMenu = menu
+            menu.onEvent = { [weak self] action, index in self?.send(action, index: index) }
+            menu.present(in: webView)
+            return
+        }
         if glass == nil {
             let container = TrackingGlassView()
             container.style = .regular
@@ -140,14 +150,15 @@ final class DocumentFloatingSurfaceController: NSObject {
         switch value.kind {
         case .suggestions:
             let content = suggestions ?? NativeFloatingChoiceList(acceptsKeyboard: false)
-            if suggestions == nil {
+            let isNewList = suggestions == nil
+            if isNewList {
                 suggestions = content
                 glass.contentView = content
             }
             content.choose = { [weak self] index in self?.send("choose", index: index) }
             content.select = { [weak self] index in self?.send("select", index: index) }
             content.update(items: value.items.map { .init(label: $0.label, detail: $0.detail) }, selected: value.selected)
-            preferredWidth = content.preferredSize.width
+            preferredWidth = isNewList ? content.preferredSize.width : max(preferredWidth, content.preferredSize.width)
             // CodeMirror retains the single AX listbox, active descendant and keyboard path.
             glass.setAccessibilityElement(true)
             glass.setAccessibilityRole(.group)
@@ -155,7 +166,7 @@ final class DocumentFloatingSurfaceController: NSObject {
             glass.setAccessibilityIdentifier("scholium.documentSuggestions")
             glass.setAccessibilityChildren([])
             layout(height: content.preferredSize.height)
-        case .preview: break // Owned by DocumentPreviewPopover above.
+        case .preview, .commands: break  // Owned by their native presenters above.
         case .selection:
             suggestions = nil
             let bar = SelectionActionBar(actions: SelectionActionPreferences.shared.actions)
@@ -197,6 +208,10 @@ final class DocumentFloatingSurfaceController: NSObject {
     }
 
     func dismiss() {
+        let closingMenu = commandMenu
+        commandMenu = nil
+        closingMenu?.dismiss()
+        suggestionsBelow = nil
         inquiryTask?.cancel()
         inquiryTask = nil
         resultPopover?.close()
@@ -223,13 +238,26 @@ final class DocumentFloatingSurfaceController: NSObject {
         guard let owner, let surface, let glass else { return }
         let bounds = owner.bounds
         let width = min(preferredWidth, surface.kind == .selection ? bounds.width - 24 : 368, bounds.width - 24)
-        let height = min(height, 352, bounds.height - 24)
+        var height = min(height, 352, bounds.height - 24)
         let anchorX = surface.kind == .selection ? surface.left - width / 2 : surface.left
         let x = min(max(12, anchorX), bounds.width - width - 12)
         let below = surface.bottom + 8
-        let top =
-            below + height <= bounds.height - 12
-            ? below : max(12, surface.top - height - 8)
+        let top: CGFloat
+        if surface.kind == .suggestions {
+            let belowSpace = max(0, bounds.height - 12 - below)
+            let aboveSpace = max(0, surface.top - 20)
+            if suggestionsBelow == nil {
+                let fullListHeight =
+                    CGFloat(ScholiumMetrics.Completion.maximumVisibleRows)
+                    * ScholiumMetrics.Completion.detailedRowHeight + 12
+                suggestionsBelow = belowSpace >= min(fullListHeight, bounds.height - 24) || belowSpace >= aboveSpace
+            }
+            let opensBelow = suggestionsBelow == true
+            height = min(height, opensBelow ? belowSpace : aboveSpace)
+            top = opensBelow ? below : surface.top - height - 8
+        } else {
+            top = below + height <= bounds.height - 12 ? below : max(12, surface.top - height - 8)
+        }
         let rect = NSRect(
             x: x, y: owner.isFlipped ? top : bounds.height - top - height,
             width: width, height: height)

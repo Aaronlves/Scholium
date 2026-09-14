@@ -4,12 +4,14 @@ import {
   acceptCompletion,
   closeCompletion,
   currentCompletions,
+  completionStatus,
   selectedCompletionIndex,
   setSelectedCompletion,
   autocompletion,
   pickedCompletion,
   snippet,
   type Completion,
+  type CompletionResult,
   type CompletionSource,
 } from "@codemirror/autocomplete";
 import {
@@ -216,55 +218,37 @@ function replaceSlashWithFootnote(
   };
 }
 
-function fuzzyCommandMatch(label: string, query: string) {
-  if (!query) return true;
-  const normalizedLabel = label.toLocaleLowerCase();
-  const normalizedQuery = query.toLocaleLowerCase();
-  let queryIndex = 0;
-  for (const character of normalizedLabel) {
-    if (character === normalizedQuery[queryIndex]) queryIndex += 1;
-    if (queryIndex === normalizedQuery.length) return true;
-  }
-  return false;
-}
-
 function slashCommandOptions(
   options: InputSuggestionOptions,
   blockContext: boolean,
-  query: string,
 ) {
   const commands: Array<Completion & {blockOnly?: boolean}> = [
     {
       label: localized("Callout"),
       type: "scholium-command-callout" satisfies SuggestionType,
       apply: replaceSlashWithText("> [!", "Insert Callout", options.didApply),
-      boost: 20,
       blockOnly: true,
     },
     {
       label: localized("Date"),
       type: "scholium-command-date" satisfies SuggestionType,
       apply: replaceSlashWithText(localISODate, "Insert Date", options.didApply),
-      boost: 18,
     },
     {
       label: localized("Inline Math"),
       type: "scholium-command-math" satisfies SuggestionType,
       apply: replaceSlashWithSnippet("$${}$", "Insert Inline Math", options.didApply),
-      boost: 16,
     },
     {
       label: localized("Display Math"),
       type: "scholium-command-math" satisfies SuggestionType,
       apply: replaceSlashWithSnippet("$$\n${}\n$$", "Insert Display Math", options.didApply),
-      boost: 14,
       blockOnly: true,
     },
     {
       label: localized("Mermaid"),
       type: "scholium-command-mermaid" satisfies SuggestionType,
       apply: replaceSlashWithSnippet("```mermaid\n${}\n```", "Insert Mermaid", options.didApply),
-      boost: 12,
       blockOnly: true,
     },
     {
@@ -275,14 +259,12 @@ function slashCommandOptions(
         "Insert Table",
         options.didApply,
       ),
-      boost: 10,
       blockOnly: true,
     },
     {
       label: localized("Footnote"),
       type: "scholium-command-footnote" satisfies SuggestionType,
       apply: replaceSlashWithFootnote(options),
-      boost: 8,
     },
     {
       label: localized("Code Block"),
@@ -292,29 +274,16 @@ function slashCommandOptions(
         "Insert Code Block",
         options.didApply,
       ),
-      boost: 6,
       blockOnly: true,
     },
     {
       label: localized("Divider"),
       type: "scholium-command-divider" satisfies SuggestionType,
       apply: replaceSlashWithText("---", "Insert Divider", options.didApply),
-      boost: 4,
       blockOnly: true,
     },
   ];
-  const available = commands.filter((command) => blockContext || !command.blockOnly);
-  if (!query) {
-    const featured = blockContext
-      ? new Set([
-        localized("Callout"), localized("Date"), localized("Inline Math"), localized("Mermaid"),
-      ])
-      : new Set([localized("Date"), localized("Inline Math"), localized("Footnote")]);
-    return available.filter((command) => featured.has(command.label));
-  }
-  return available
-    .filter((command) => fuzzyCommandMatch(command.label, query))
-    .slice(0, 7);
+  return commands.filter((command) => blockContext || !command.blockOnly);
 }
 
 function applyWikilinkCandidate(
@@ -595,11 +564,11 @@ export function createEditorInputSuggestions(
     }));
   };
 
-  const slashCompletionSource: CompletionSource = (context: CompletionContext) => {
+  const slashCompletionSource = (context: CompletionContext) => {
     if (!isLiveSuggestionContext(options, context.state)) return null;
     const line = context.state.doc.lineAt(context.pos);
     const beforeCursor = context.state.doc.sliceString(line.from, context.pos);
-    const match = /\/([\p{L}\p{N}_-]*)$/u.exec(beforeCursor);
+    const match = /\/$/u.exec(beforeCursor);
     if (!match) return null;
     const slashFrom = line.from + match.index;
     if (slashFrom > line.from
@@ -609,12 +578,12 @@ export function createEditorInputSuggestions(
     const blockContext = /^\s*$/u.test(prefix);
     return {
       from: slashFrom + 1,
-      options: slashCommandOptions(options, blockContext, match[1]),
+      options: slashCommandOptions(options, blockContext),
       filter: false,
     };
   };
 
-  const calloutCompletionSource: CompletionSource = (context: CompletionContext) => {
+  const calloutCompletionSource = (context: CompletionContext): CompletionResult | null => {
     if (!isLiveSuggestionContext(options, context.state)) return null;
     const line = context.state.doc.lineAt(context.pos);
     if (context.pos - line.from > 512) return null;
@@ -646,8 +615,76 @@ export function createEditorInputSuggestions(
           },
         })),
       filter: false,
+      update: (_current, _from, _to, context) => calloutCompletionSource(context),
     };
   };
+
+  // Slash is a native command menu, not a CodeMirror completion list. The
+  // document retains the captured source/selection and owns the one transaction.
+  const slashCommands = ViewPlugin.fromClass(class {
+    private id = 0;
+    private epoch = 0;
+    private pending: number | undefined;
+    constructor(readonly view: EditorView) {}
+    dismiss() {
+      this.epoch += 1;
+      window.clearTimeout(this.pending);
+      this.pending = undefined;
+      if (this.id) options.nativeFloating.hide(this.id);
+      this.id = 0;
+    }
+    update(update: ViewUpdate) {
+      if (!isLiveSuggestionContext(options, this.view.state)) { this.dismiss(); return; }
+      if (!update.docChanged && !update.selectionSet && !update.focusChanged) return;
+      this.dismiss();
+      if (!update.docChanged || !update.transactions.some(tr => tr.isUserEvent("input"))) return;
+      const state = this.view.state;
+      const epoch = this.epoch;
+      const result = slashCompletionSource(new CompletionContext(state, state.selection.main.head, false));
+      if (!result) return;
+      const valid = () => epoch === this.epoch
+        && isLiveSuggestionContext(options, this.view.state)
+        && !positionIsProtected(options, this.view.state, result.from - 1)
+        && this.view.state.doc === state.doc
+        && this.view.state.selection.eq(state.selection)
+        && this.view.hasFocus && !this.view.composing && !options.isComposing();
+      const show = (anchor: {left: number; top: number; bottom: number} | null) => {
+        if (this.id || !valid() || !anchor) return;
+        window.clearTimeout(this.pending);
+        this.pending = undefined;
+        this.id = options.nativeFloating.show({
+          kind: "commands", left: anchor.left, top: anchor.top, bottom: anchor.bottom,
+          html: "", css: "", selected: -1,
+          items: result.options.map(item => ({label: item.label, detail: ""})),
+        }, {
+          dismiss: () => this.dismiss(),
+          choose: index => {
+            if (!valid()) return false;
+            const command = result.options[index];
+            if (!command || typeof command.apply !== "function") return false;
+            this.dismiss();
+            command.apply(this.view, command, result.from, state.selection.main.head);
+            return true;
+          },
+        });
+      };
+      this.pending = window.setTimeout(() => show(valid() ? this.view.coordsAtPos(state.selection.main.head) : null), 50);
+      this.view.requestMeasure({key: this, read: () => valid() ? this.view.coordsAtPos(state.selection.main.head) : null, write: show});
+    }
+    dismissOnEscape(event: KeyboardEvent) {
+      if (event.key !== "Escape" || event.isComposing || this.view.composing || (!this.id && this.pending === undefined)) return false;
+      this.dismiss();
+      return true;
+    }
+    destroy() { this.dismiss(); }
+  }, {
+    eventHandlers: {
+      keydown(event) { return this.dismissOnEscape(event); },
+      compositionstart() { this.dismiss(); },
+      blur() { this.dismiss(); },
+      scroll() { this.dismiss(); },
+    },
+  });
 
   let nativeID = 0;
   const nativePresentation = ViewPlugin.fromClass(class {
@@ -661,20 +698,32 @@ export function createEditorInputSuggestions(
     }
     private read() {
       return {
+        state: this.view.state, status: completionStatus(this.view.state),
         items: currentCompletions(this.view.state).slice(0, 100)
           .map(item => ({label: item.label.slice(0, 512), detail: (item.detail ?? "").slice(0, 1024)})),
         anchor: this.view.coordsAtPos(this.view.state.selection.main.head),
         selected: selectedCompletionIndex(this.view.state) ?? -1,
       };
     }
-    private write({items, anchor, selected}: {items: Array<{label: string; detail: string}>; anchor: {left: number; top: number; bottom: number} | null; selected: number}) {
+    private write({items, anchor, selected, state, status}: {state: EditorState; status: ReturnType<typeof completionStatus>; items: Array<{label: string; detail: string}>; anchor: {left: number; top: number; bottom: number} | null; selected: number}) {
       window.clearTimeout(this.measureFallback);
       this.measureFallback = undefined;
-      if (!items.length || !anchor || this.view.root.activeElement !== this.view.contentDOM || this.view.composing) {
+      if (!anchor || this.view.root.activeElement !== this.view.contentDOM || this.view.composing) {
         options.nativeFloating.hide(nativeID);
         this.signature = "";
         return;
       }
+      // Retain the native container through an asynchronous query. Its old
+      // callbacks reject changed source/selection until the new result arrives.
+      if (!items.length && status === "pending") return;
+      if (!items.length) {
+        options.nativeFloating.hide(nativeID);
+        this.signature = "";
+        return;
+      }
+      const valid = () => state.doc === this.view.state.doc
+        && state.selection.eq(this.view.state.selection)
+        && !this.view.composing && this.view.root.activeElement === this.view.contentDOM;
       const signature = JSON.stringify({items, anchor, selected, revision: this.revision});
       if (signature === this.signature) return;
       this.signature = signature;
@@ -684,15 +733,15 @@ export function createEditorInputSuggestions(
       }, {
         dismiss: () => { closeCompletion(this.view); },
         select: index => {
-          if (this.view.composing || this.view.root.activeElement !== this.view.contentDOM) return;
+          if (!valid()) return;
           if (selectedCompletionIndex(this.view.state) !== index) {
             this.view.dispatch({effects: setSelectedCompletion(index)});
           }
         },
         choose: index => {
-          if (this.view.composing || this.view.root.activeElement !== this.view.contentDOM) return;
+          if (!valid()) return false;
           this.view.dispatch({effects: setSelectedCompletion(index)});
-          acceptCompletion(this.view);
+          return acceptCompletion(this.view);
         },
       });
     }
@@ -724,14 +773,13 @@ export function createEditorInputSuggestions(
         calloutCompletionSource,
         wikilinkCompletionSource,
         analysisReferenceCompletionSource,
-        slashCompletionSource,
       ],
       activateOnCompletion: (completion) => completion.type === "scholium-command-callout",
       maxRenderedOptions: 7,
       icons: false,
       tooltipClass: () => "scholium-editor-suggestions",
       addToOptions: [{render: suggestionSymbol, position: 20}],
-    }), inlineWriting, Prec.highest(keymap.of([
+    }), slashCommands, inlineWriting, Prec.highest(keymap.of([
       {key: "Tab", run: view => view.plugin(inlineWriting)?.accept() ?? false},
       {key: "Escape", run: view => {
         const plugin = view.plugin(inlineWriting);

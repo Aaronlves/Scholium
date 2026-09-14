@@ -71,12 +71,12 @@ struct DocumentFloatingSurfaceTests {
             window.close()
         }
         var id = 0
-        func show(_ items: [DocumentFloatingSurface.Item], selected: Int = 0) throws -> CGFloat {
+        func show(_ items: [DocumentFloatingSurface.Item], selected: Int = 0, top: Double = 40) throws -> CGFloat {
             id += 1
             controller.present(
                 DocumentFloatingSurface(
                     id: id, kind: .suggestions,
-                    left: 20, top: 40, bottom: 60, html: "", css: "", items: items, selected: selected),
+                    left: 20, top: top, bottom: top + 20, html: "", css: "", items: items, selected: selected),
                 in: webView
             ) { _, _, _ in true }
             let glass = try #require(viewport.subviews.compactMap { $0 as? NSGlassEffectView }.first)
@@ -101,6 +101,16 @@ struct DocumentFloatingSurfaceTests {
             _ = try show(items, selected: index % 2)
             #expect(glass.contentView === content && glass.frame == frame)
         }
+        // Filtering never shrinks the retained native list's horizontal footprint.
+        #expect(try show([items[0]]) == detailed)
+        controller.dismiss()
+        _ = try show([items[0]], top: 240)
+        let above = try #require(viewport.subviews.compactMap { $0 as? NSGlassEffectView }.first)
+        let anchoredBottom = above.frame.maxY
+        _ = try show(Array(repeating: items[1], count: 12), top: 240)
+        #expect(above.frame.maxY == anchoredBottom)
+        #expect(above.frame.minY >= 12)
+        #expect(above.frame.maxY < 240)
         let long = [DocumentFloatingSurface.Item(label: String(repeating: "研究笔记", count: 40), detail: "")]
         let capped = try show(long)
         #expect(capped > detailed && capped < webView.bounds.width)
@@ -217,7 +227,8 @@ struct DocumentFloatingSurfaceTests {
         controller.present(surface, in: webView) { _, _, _ in true }
         let obsolete = controller.previewWebView
         var latest = payload(id: 10)
-        latest["html"] = "<h2 class='scholium-preview-title'>Latest target</h2><div class='scholium-preview-body scholium-document'>"
+        latest["html"] =
+            "<h2 class='scholium-preview-title'>Latest target</h2><div class='scholium-preview-body scholium-document'>"
             + String(repeating: "<p>Long synthetic paragraph 中文。</p>", count: 60) + "</div>"
         controller.present(try #require(DocumentFloatingSurface.decode(latest)), in: webView) { _, _, _ in true }
         let current = try #require(controller.previewWebView)

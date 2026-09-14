@@ -27,7 +27,7 @@ instructions belong to the ordinary Chat composer; this surface has no duplicate
 input field or horizontally expanding action pages. The existing native glass
 container and standard AppKit controls remain the presentation foundation.
 Peer action labels and symbols share the native primary text color; native
-controls retain disabled and menu-selection treatment.
+controls own hover, pressed, disabled, focus and menu-selection feedback.
 Native layout and menu presentation own alignment and transitions; no custom
 refraction, control skin or independent animation engine is introduced. The
 surface retains its selection anchor and never adds document padding. A result
@@ -66,18 +66,20 @@ retains the native fields and never changes source. Query and replacement use na
 field editors. Marked text remains local until committed; incoming results cannot
 overwrite composition or consume its Return/Escape commands.
 
-Structural and link suggestions use one bounded panel attached to the editor caret. Autosave
-does not dismiss it; acceptance, explicit dismissal, loss of the editing context,
-or completion-state invalidation does. Selection changes update the retained
-list without reconstructing its container. Pointer movement and keyboard
-navigation update the same current candidate, shown with native emphasized
-selection; click or Return accepts it. There is no independent hovered choice. They keep
-document focus, show only useful identity/path context, fit the viewport, and
-never introduce another text owner. These editing auxiliaries follow the
-input-method candidate-window pattern: native system text, colors, controls, selection,
-and elevation above the document; they do not inherit the main Document palette. During composition, application suggestions
-and previews yield to the input method immediately; candidate navigation and
-acceptance resume only outside composition. §19 governs the material boundary.
+Immediately after a committed `/` in a supported Edit context, a native menu
+offers every context-available insertion command. System menu navigation and
+type selection apply. Escape leaves the literal slash unchanged; choosing a
+command revalidates the captured document and selection before one Undo transaction.
+
+Wikilink, analysis-reference and Callout candidates retain one bounded native
+list beside the caret, keeping editor focus. Filtering updates the retained
+list with stable width and opening direction; overflow scrolls. Autosave does
+not dismiss it; acceptance, dismissal or invalidated editing context does.
+Pointer and keyboard update one native emphasized selection; click or Return
+accepts. Useful identity/path context fits the viewport without another text
+owner. All editing auxiliaries use system text, colors, controls and elevation
+under §19. During composition, menus, candidates and previews yield immediately
+to the input method; application navigation and acceptance resume afterward.
 
 Writing suggestions in Edit and Source appear as quiet inline secondary text
 following the caret, with a fine dotted underline and small ⇥ key hint; they never

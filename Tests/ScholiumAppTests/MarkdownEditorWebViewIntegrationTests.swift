@@ -573,13 +573,13 @@ struct MarkdownEditorWebViewIntegrationTests {
         let owner = try #require(harness.session.webView)
         owner.window?.makeKeyAndOrderFront(nil)
         NSApp.activate()
-        _ = try await harness.callPageJavaScript("document.execCommand('insertText', false, '/');")
+        _ = try await harness.callPageJavaScript("document.execCommand('insertText', false, '> [!');")
         let deadline = ContinuousClock.now.advanced(by: .seconds(3))
         while owner.superview?.subviews.contains(where: { $0 is NSGlassEffectView }) != true && ContinuousClock.now < deadline {
             try await Task.sleep(for: .milliseconds(25))
         }
         #expect(owner.superview?.subviews.contains { $0 is NSGlassEffectView } == true)
-        let source = "/\n"
+        let source = "> [!\n"
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
         let glass = try #require(owner.superview?.subviews.first { $0 is NSGlassEffectView })
         let content = try #require((glass as? NSGlassEffectView)?.contentView)
@@ -627,6 +627,17 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(list.table.selectedRowIndexes == IndexSet(integer: 2))
         #expect(glass.superview === owner.superview)
         #expect((glass as? NSGlassEffectView)?.contentView === list)
+        let widthBeforeFiltering = glass.frame.width
+        _ = try await harness.callPageJavaScript("document.execCommand('insertText', false, 'sta');")
+        let filterDeadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while list.items.count != 1 && ContinuousClock.now < filterDeadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(list.items.map(\.label) == ["Statement"])
+        #expect(glass.superview === owner.superview)
+        #expect((glass as? NSGlassEffectView)?.contentView === list)
+        #expect(glass.frame.width == widthBeforeFiltering)
+        #expect(try await harness.session.currentText(for: harness.documentID) == "> [!sta\n")
         await harness.closeAndDrain()
     }
 

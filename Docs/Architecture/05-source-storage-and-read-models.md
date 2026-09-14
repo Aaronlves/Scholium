@@ -174,7 +174,7 @@ for those preproduction records.
 ## Note reorganization
 
 `ParagraphAnchorPlanner` derives authored paragraph identities and exact source edits;
-Graph contract 8 projects their current locations. Editor bridge protocol 34 carries
+Graph contract 8 projects their current locations. Editor bridge protocol 35 carries
 the corresponding source-derived presentation without making the projection writable.
 `NoteRestructurePlanner` validates the captured range, destination, link resolution and
 identity consequences. `DocumentOperations` routes prepare/commit through the workspace

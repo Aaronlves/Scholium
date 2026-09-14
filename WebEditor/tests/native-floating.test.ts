@@ -25,6 +25,23 @@ describe("native floating projection", () => {
     expect(choose).toHaveBeenCalledTimes(1);
     expect(dismiss).not.toHaveBeenCalled();
   });
+  it("lets a native command menu choose only its still-current source owner", () => {
+    vi.stubGlobal("window", {});
+    const bridge = createNativeFloatingBridge(() => {});
+    const choose = vi.fn(() => true);
+    const commands = {...suggestions, kind: "commands" as const, selected: -1};
+    const old = bridge.show(commands, {choose, dismiss() {}});
+    const current = bridge.show(commands, {choose, dismiss() {}});
+    expect(bridge.event(old, "choose", 0)).toBe(false);
+    expect(bridge.event(current, "select", 0)).toBe(false);
+    expect(bridge.event(current, "choose", 1)).toBe(false);
+    expect(bridge.event(current, "choose", 0)).toBe(true);
+    choose.mockReturnValue(false);
+    expect(bridge.event(current, "choose", 0)).toBe(false);
+    bridge.hide(current);
+    expect(bridge.event(current, "choose", 0)).toBe(false);
+    expect(choose).toHaveBeenCalledTimes(2);
+  });
   it("accepts only known selection inquiries and checks their current owner", () => {
     vi.stubGlobal("window", {});
     const choose = vi.fn((_index: number) => true);

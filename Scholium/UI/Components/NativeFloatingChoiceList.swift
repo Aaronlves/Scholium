@@ -200,6 +200,7 @@ private final class FloatingChoiceCell: NSTableCellView {
         identifier = .init("choiceCell")
         label.font = .systemFont(ofSize: NSFont.systemFontSize)
         detail.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        detail.textColor = .secondaryLabelColor
         let stack = NSStackView(views: [label, detail])
         stack.orientation = .vertical
         stack.alignment = .leading
