@@ -5,6 +5,7 @@ import SwiftUI
 /// conversation and runtime continue to receive the untouched source bytes.
 struct AgentChatMaterialChip: View {
     let attachment: AgentChatAttachment
+    var isEmbeddedInComposer = false
     let remove: (() -> Void)?
     let open: () -> Void
     @State private var showsPreview = false
@@ -27,7 +28,7 @@ struct AgentChatMaterialChip: View {
     }
 
     var body: some View {
-        GroupBox {
+        AgentChatMaterialContainer(isEmbeddedInComposer: isEmbeddedInComposer) {
             HStack(alignment: .top, spacing: 8) {
                 Button {
                     showsPreview.toggle()
@@ -68,14 +69,7 @@ struct AgentChatMaterialChip: View {
                                 emphasized: .primaryText
                             )
                     }
-                    .buttonStyle(.plain)
-                    .scholiumActivationPointer()
-                    .scholiumContentControlPointerFeedback(
-                        in: RoundedRectangle(
-                            cornerRadius: ScholiumShape.editorialControlCornerRadius,
-                            style: .continuous
-                        )
-                    )
+                    .buttonStyle(ScholiumContentActionButtonStyle())
                     .help("Remove Material").accessibilityLabel(Text("Remove material: \(title)"))
                 }
             }
@@ -92,7 +86,7 @@ struct AgentChatMaterialChip: View {
                     } label: {
                         ScholiumSidebarIcon(systemImage: ScholiumSidebarAction.close.symbol, placement: .action)
                     }
-                    .buttonStyle(.plain).help("Close").accessibilityLabel("Close")
+                    .buttonStyle(ScholiumContentActionButtonStyle()).help("Close").accessibilityLabel("Close")
                 }
                 GroupBox {
                     VStack(alignment: .leading, spacing: 6) {
@@ -120,5 +114,22 @@ struct AgentChatMaterialChip: View {
             AgentChatNoteMenu(url: AgentChatReference.url(noteID: attachment.noteID))
         }
         .accessibilityIdentifier("scholium.chat.material.\(attachment.id)")
+    }
+}
+
+/// Draft materials share the composer's enclosing surface. Sent materials keep
+/// their native grouping; previews retain their own native presentation.
+struct AgentChatMaterialContainer<Content: View>: View {
+    let isEmbeddedInComposer: Bool
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        if isEmbeddedInComposer {
+            content()
+                .padding(.vertical, ScholiumGrid.Spacing.labelAccessoryGap)
+                .accessibilityElement(children: .contain)
+        } else {
+            GroupBox(content: content)
+        }
     }
 }

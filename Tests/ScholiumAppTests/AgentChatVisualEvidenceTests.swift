@@ -737,15 +737,7 @@ struct AgentChatVisualEvidenceTests {
                 Divider()
                 AgentChatContextView(
                     usage: .init(lastTurnTokens: 12480, totalTokens: 45900, capacity: 128000),
-                    quotas: [
-                        .init(
-                            id: "fixture", name: "Research",
-                            primary: .init(
-                                usedPercent: 25,
-                                durationMinutes: 300, resetsAt: Date(timeIntervalSince1970: 1788825600)), secondary: nil)
-                    ],
-                    quotaError: nil, isRefreshing: false, canRefresh: true, canCompact: true,
-                    compact: {}, refresh: {})
+                    canCompact: true, compact: {})
             }
             .padding(20).frame(width: 380)
             .background(Color(nsColor: .windowBackgroundColor))

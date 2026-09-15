@@ -23,6 +23,7 @@ struct AgentChatInputDock<Request: View, Composer: View>: View {
     let isReadingHistory: Bool
     let isEditingDraft: Bool
     @Binding var composerIsFocused: Bool
+    var onRequestExpanded: () -> Void = {}
     @ViewBuilder let request: () -> Request
     @ViewBuilder let composer: () -> Composer
     @State private var presentation = AgentChatInputDockState()
@@ -91,6 +92,7 @@ struct AgentChatInputDock<Request: View, Composer: View>: View {
             }
         }
         .onChange(of: expanded) { _, value in
+            if value { onRequestExpanded() }
             requestHasFocus = value && isActive
         }
         .accessibilityElement(children: .contain)

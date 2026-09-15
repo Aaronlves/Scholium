@@ -68,19 +68,8 @@ struct SelectionActionsSettingsView: View {
                                     beginEditing(action)
                                 } label: {
                                     Text("Edit…")
-                                        .scholiumContentControlInk(
-                                            resting: .secondaryText,
-                                            emphasized: .accent
-                                        )
                                 }
                                 .buttonStyle(.borderless)
-                                .scholiumActivationPointer()
-                                .scholiumContentControlPointerFeedback(
-                                    in: RoundedRectangle(
-                                        cornerRadius: ScholiumShape.editorialControlCornerRadius,
-                                        style: .continuous
-                                    )
-                                )
                                 .accessibilityIdentifier("scholium.selectionActions.edit")
 
                                 Menu {

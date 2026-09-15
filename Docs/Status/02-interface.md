@@ -327,7 +327,7 @@ already-visible Chat does not toggle the Sidebar closed.
   inspected offscreen. Actual provider interpretation and live sheet/IME/Quick
   Look acceptance remain open.
   Conversation-owned model/reasoning and web-search menus are wired to official
-  runtime configuration. Context and Usage opens reported token/quota values,
+  runtime configuration. Separate Context and Account Usage surfaces open reported token/quota values,
   manual compaction and a ledger of staged materials, quoted replies and
   Skills; public plans have native disclosure and retained terminal state.
   These additions have offscreen presentation evidence, not live UI or
@@ -415,10 +415,28 @@ already-visible Chat does not toggle the Sidebar closed.
   Changes retains its original history entry after the pending count reaches zero.
   Delegation and transcript plans use compact disclosures; the active plan step
   stays in its transcript summary. Header options own Outline, Find, Rename,
-  Context and Diagnostics. The composer uses one control row; model/reasoning
-  opens Chat Settings with permission and web-search choices, while Full Access
-  remains visibly identified when enabled. Message More owns edit, branch, retry
-  and quote; header turn pickers and duplicate Changes/plan entries are removed.
+  Account Usage and Diagnostics. Context is a small indicator beside the composer
+  model; unavailable/last-reported occupancy has named Help and accessible text.
+  The header provides Context while requests or archives hide the composer.
+  Its content-sized popover leads with occupancy and has one bounded Details
+  disclosure containing cumulative use and the prepared-context list, without
+  the GroupBox that triggered the automation service crash. Account Usage has
+  an independent native sheet. Composer materials and quotations share the input
+  surface. Compact actions share target geometry and pointer feedback; floating
+  Changes/Agents use native glass buttons. Native settings and recovery actions
+  no longer mix ordinary controls with per-button cursor overrides.
+  Composer catalogs separate commands, Note/material references and Skills under
+  `/`, `@` and `$`. The Add menu has four ordinary named entries; gray native
+  placeholder text and accessible Help explain the prefixes. All candidates stay
+  reachable in a bounded list outside the input's clipping boundary. Selection
+  follows candidate identity through refresh, and command handoff is one native
+  Undo step without replacing surrounding draft prose.
+  Model/reasoning opens Chat Settings with permission and web-search choices,
+  while Full Access remains visibly identified when enabled. Message actions
+  are direct icons revealed by whole-message native pointer observation or
+  descendant focus; assistive technology retains visible controls and AX routes.
+  Header turn pickers and duplicate Changes/plan entries are removed. Multiple
+  queued messages start collapsed to a count and retain expansion during editing.
   Stop stays at the trailing edge during work. A normal Send button owns delivery
   and Command-Return; its adjacent menu offers this message's immediate/queued
   action without altering the configured Return default.
@@ -428,7 +446,7 @@ already-visible Chat does not toggle the Sidebar closed.
   Stored child draft text is inert, with no pending-draft marker. Ordinary Chat
   input, queue delivery and retained target references keep their existing owners.
   Questions, approvals, materials and PDF page selection retain native grouped
-  content; Context/Account Usage keeps grouped tabs. Real-provider, VoiceOver,
+  content; Context and Account Usage remain separate. Real-provider, VoiceOver,
   physical IME and full visual-adaptation acceptance remain open.
   Background Chat completion, failure and pending input now use the shared macOS
   notification service with generic content, per-conversation coalescing and

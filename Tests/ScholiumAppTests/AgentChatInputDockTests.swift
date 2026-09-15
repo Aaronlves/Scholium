@@ -34,6 +34,7 @@ struct AgentChatInputDockTests {
         var focused = false
         var answers: [String: AgentChatQuestionAnswer] = [:]
         var sent = 0
+        var requestExpansions = 0
         let questions: [AgentChatQuestion] = [
             .init(
                 id: "focus", prompt: "先检查哪一部分？",
@@ -50,7 +51,8 @@ struct AgentChatInputDockTests {
                 AgentChatInputDock(
                     requestID: requestID, requestTitle: "回答问题", requestCount: requestID == nil ? 0 : 1,
                     isActive: true, isReadingHistory: false, isEditingDraft: false,
-                    composerIsFocused: Binding(get: { focused }, set: { focused = $0 })
+                    composerIsFocused: Binding(get: { focused }, set: { focused = $0 }),
+                    onRequestExpanded: { requestExpansions += 1 }
                 ) {
                     if requestID == "approval" {
                         AgentChatRuntimeApprovalView(
@@ -115,6 +117,7 @@ struct AgentChatInputDockTests {
                 #expect(editor.editor.string == draft && draft == "尚未发送的草稿，保留选区。")
                 #expect(editor.editor.selectedRange() == range)
                 #expect(sent == 0)
+                if requestID != nil { #expect(requestExpansions > 0) }
                 if ProcessInfo.processInfo.environment["SCHOLIUM_RENDER_CHAT"] == "1" {
                     try await Task.sleep(for: .milliseconds(100))
                     let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()

@@ -1574,6 +1574,9 @@ private struct ScholiumResearchCommandContent: View {
         }
         .scholiumKeyboardShortcut(.addSelectionToChat)
         .disabled(appState?.currentNote == nil)
+        if let controller = appState?.chatController {
+            AgentChatStopCommand(controller: controller)
+        }
         Divider()
         ForEach([DocumentPassageAction.copyLink, .extract, .move, .copy], id: \.rawValue) { action in
             Button(action.title) { appState?.performPassageAction(action) }

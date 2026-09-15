@@ -1,6 +1,102 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+  "/ commands · @ notes · $ skills": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "/ commands · @ notes · $ skills"
+        }
+      },
+      "zh-Hans": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "/ 命令 · @ 笔记 · $ 技能"
+        }
+      }
+    }
+  },
+  "Commands": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Commands"
+        }
+      },
+      "zh-Hans": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "命令"
+        }
+      }
+    }
+  },
+  "%@ left": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "%@ left"
+        }
+      },
+      "zh-Hans": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "剩余 %@"
+        }
+      }
+    }
+  } ,
+  "%@ used": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "%@ used"
+        }
+      },
+      "zh-Hans": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "已用 %@"
+        }
+      }
+    }
+  } ,
+    "%@ used (%@ left)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ used (%@ left)"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已用 %@（剩余 %@）"
+          }
+        }
+      }
+    },
+    "%@ / %@ tokens": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ / %@ tokens"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ / %@ token"
+          }
+        }
+      }
+    },
     "Create a copy at a new location in this vault." : {
       "localizations": {
         "en": {

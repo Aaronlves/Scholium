@@ -73,13 +73,6 @@ struct AgentChatReplyActions: View {
             .help(copied ? String(localized: "Copied") : String(localized: "Copy Reply"))
             .accessibilityLabel(copied ? "Copied" : "Copy Reply")
             .accessibilityIdentifier("scholium.chat.copyReply")
-            .scholiumActivationPointer()
-            .scholiumContentControlPointerFeedback(
-                in: RoundedRectangle(
-                    cornerRadius: ScholiumShape.editorialControlCornerRadius,
-                    style: .continuous
-                )
-            )
             .task(id: copied) {
                 guard copied else { return }
                 do { try await Task.sleep(for: .seconds(2)) } catch { return }
@@ -93,13 +86,6 @@ struct AgentChatReplyActions: View {
                 }
                 .help("Sources").accessibilityLabel("Sources")
                 .accessibilityIdentifier("scholium.chat.sources")
-                .scholiumActivationPointer()
-                .scholiumContentControlPointerFeedback(
-                    in: RoundedRectangle(
-                        cornerRadius: ScholiumShape.editorialControlCornerRadius,
-                        style: .continuous
-                    )
-                )
                 .popover(isPresented: $showsSources, arrowEdge: .leading) {
                     AgentChatSourcesView(sources: sources, context: context, close: { showsSources = false }) { source in
                         showsSources = false
@@ -115,13 +101,6 @@ struct AgentChatReplyActions: View {
                 }
                 .help("Materials").accessibilityLabel("Materials")
                 .accessibilityIdentifier("scholium.chat.materials")
-                .scholiumActivationPointer()
-                .scholiumContentControlPointerFeedback(
-                    in: RoundedRectangle(
-                        cornerRadius: ScholiumShape.editorialControlCornerRadius,
-                        style: .continuous
-                    )
-                )
                 .popover(isPresented: $showsMaterials, arrowEdge: .leading) {
                     AgentChatMaterialsView(
                         context: context, openAttachment: openAttachment,
@@ -129,7 +108,7 @@ struct AgentChatReplyActions: View {
                 }
             }
         }
-        .buttonStyle(.borderless).font(.caption).foregroundStyle(.secondary)
+        .buttonStyle(ScholiumContentActionButtonStyle()).font(.caption)
     }
 }
 

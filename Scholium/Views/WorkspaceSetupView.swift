@@ -753,6 +753,7 @@ private struct BootstrapSetupPathChoice: View {
     let symbol: String
     let isSelected: Bool
     let action: () -> Void
+    @FocusState private var isFocused: Bool
 
     var body: some View {
         Button(action: action) {
@@ -786,32 +787,45 @@ private struct BootstrapSetupPathChoice: View {
             }
             .padding(ScholiumGrid.Spacing.sectionSeparation)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
+            .contentShape(Rectangle())
+        }
+        .scholiumActivationPointer()
+        .buttonStyle(
+            ScholiumContentControlButtonStyle(
+                isFocused: isFocused,
+                in: RoundedRectangle(
+                    cornerRadius: ScholiumShape.editorialPanelCornerRadius,
+                    style: .continuous
+                )
+            )
+        )
+        .focused($isFocused)
+        .background {
+            // Keep the resting fill beneath the shared transient surface so
+            // the opaque card does not cover its hover/press feedback.
+            RoundedRectangle(
+                cornerRadius: ScholiumShape.editorialPanelCornerRadius,
+                style: .continuous
+            )
+            .fill(
                 isSelected
                     ? ScholiumColorRole.raisedSurfaceBackground.color
                     : ScholiumColorRole.surfaceBackground.color
             )
-            .clipShape(
-                RoundedRectangle(
-                    cornerRadius: ScholiumShape.editorialPanelCornerRadius,
-                    style: .continuous
-                )
-            )
-            .overlay {
-                RoundedRectangle(
-                    cornerRadius: ScholiumShape.editorialPanelCornerRadius,
-                    style: .continuous
-                )
-                .stroke(
-                    isSelected
-                        ? ScholiumColorRole.accent.color
-                        : ScholiumColorRole.separator.color,
-                    lineWidth: isSelected ? 2 : 1
-                )
-            }
         }
-        .scholiumActivationPointer()
-        .buttonStyle(.plain)
+        .overlay {
+            RoundedRectangle(
+                cornerRadius: ScholiumShape.editorialPanelCornerRadius,
+                style: .continuous
+            )
+            .stroke(
+                isSelected
+                    ? ScholiumColorRole.accent.color
+                    : ScholiumColorRole.separator.color,
+                lineWidth: isSelected ? 2 : 1
+            )
+            .allowsHitTesting(false)
+        }
         .accessibilityValue(isSelected ? "Selected" : "Not selected")
     }
 }

@@ -74,7 +74,9 @@ struct AgentChatConfigurationMenu: View {
             }
         } label: {
             Text(verbatim: modelLabel).lineLimit(1).truncationMode(.tail)
+                .frame(minHeight: ScholiumGrid.Dimension.preferredCustomTarget)
         }
+        .scholiumContentActionMenu()
         .disabled(!isEnabled)
         .help(Text("Chat Settings", bundle: .module) + Text(verbatim: ": " + modelLabel))
         .accessibilityLabel(Text("Chat Settings", bundle: .module))
@@ -205,129 +207,97 @@ enum AgentChatContextPresentation {
         guard let usage, let capacity = usage.capacity, capacity > 0, usage.lastTurnTokens >= 0 else { return nil }
         return min(1, Double(usage.lastTurnTokens) / Double(capacity))
     }
+
+    static func summary(_ usage: AgentChatContextUsage?) -> String {
+        let title = String(localized: "Last reported context use", bundle: .module)
+        guard let usage, let capacity = usage.capacity, let fraction = fraction(usage) else {
+            return title + "\n" + String(localized: "Context size unavailable", bundle: .module)
+        }
+        let used = fraction.formatted(.percent.precision(.fractionLength(0)))
+        let remaining = (1 - fraction).formatted(.percent.precision(.fractionLength(0)))
+        let tokens = usage.lastTurnTokens.formatted()
+        let limit = capacity.formatted()
+        return title + "\n"
+            + String(localized: "\(used) used (\(remaining) left)", bundle: .module) + "\n"
+            + String(localized: "\(tokens) / \(limit) tokens", bundle: .module)
+    }
 }
 
 struct AgentChatContextView: View {
     let usage: AgentChatContextUsage?
     var ledger: AgentChatContextLedger? = nil
-    let quotas: [AgentChatQuota]
-    let quotaError: String?
-    let isRefreshing: Bool
-    let canRefresh: Bool
     let canCompact: Bool
     let compact: () -> Void
-    let refresh: () -> Void
-
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var selectedTab = 0
 
     var body: some View {
-        TabView(selection: $selectedTab) {
-            VStack(alignment: .leading, spacing: 12) {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 12) {
-                        if let usage {
-                            if let fraction = AgentChatContextPresentation.fraction(usage) {
-                                HStack {
-                                    Text("Last reported context use")
-                                    Spacer()
-                                    Text(fraction.formatted(.percent.precision(.fractionLength(0)))).monospacedDigit()
-                                }
-                                ProgressView(value: fraction)
-                                    .tint(.secondary).accessibilityLabel("Context Usage")
-                                    .accessibilityValue(fraction.formatted(.percent.precision(.fractionLength(0))))
-                            } else {
-                                Text("Context size unavailable").foregroundStyle(.secondary)
-                            }
-                            DisclosureGroup("Token details") {
+        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+            occupancy
+            if usage != nil || ledger?.isEmpty == false {
+                DisclosureGroup("Details") {
+                    AgentChatContentScroll {
+                        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                            if let usage {
                                 LabeledContent {
-                                    Text(usage.lastTurnTokens.formatted()).monospacedDigit()
-                                } label: {
-                                    Text("Latest Turn", bundle: .module)
-                                }
-                                .accessibilityElement(children: .combine)
-                                if let capacity = usage.capacity {
-                                    LabeledContent {
-                                        Text(capacity.formatted()).monospacedDigit()
-                                    } label: {
-                                        Text("Context Window", bundle: .module)
-                                    }
-                                    .accessibilityElement(children: .combine)
-                                }
-                                LabeledContent {
-                                    Text(usage.totalTokens.formatted()).monospacedDigit()
+                                    Text(usage.totalTokens.formatted()).monospacedDigit().textSelection(.enabled)
                                 } label: {
                                     Text("Total Tokens", bundle: .module)
                                 }
                                 .accessibilityElement(children: .combine)
                             }
-                        } else {
-                            Text("Not Available", bundle: .module).foregroundStyle(.secondary)
-                        }
-                        if let ledger, !ledger.isEmpty {
-                            AgentChatContextLedgerView(ledger: ledger)
-                        }
-                    }.frame(maxWidth: .infinity, alignment: .leading)
-                }
-                Button(action: compact) { Text("Compact Context", bundle: .module) }.disabled(!canCompact)
-            }.padding(12)
-                .tabItem { Text("Context", bundle: .module) }.tag(0)
-            VStack(alignment: .leading, spacing: 12) {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 12) {
-                        if let quotaError {
-                            Text(quotaError).foregroundStyle(.secondary)
-                        } else if quotas.isEmpty {
-                            Text("Not Available", bundle: .module).foregroundStyle(.secondary)
-                        }
-                        ForEach(quotas) { quota in
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text(quota.name).font(.subheadline)
-                                if let primary = quota.primary { quotaWindow(primary) }
-                                if let secondary = quota.secondary { quotaWindow(secondary) }
-                                if quota.primary == nil && quota.secondary == nil {
-                                    Text("Not Available", bundle: .module).foregroundStyle(.secondary)
-                                }
+                            if let ledger, !ledger.isEmpty {
+                                AgentChatContextLedgerView(ledger: ledger)
                             }
                         }
-                    }.frame(maxWidth: .infinity, alignment: .leading)
-                }
-                Button(action: refresh) {
-                    Label {
-                        Text("Refresh", bundle: .module)
-                    } icon: {
-                        Image(systemName: ScholiumSidebarAction.retry.symbol)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
+                    .padding(.top, ScholiumGrid.Spacing.labelAccessoryGap)
                 }
-                .disabled(isRefreshing || !canRefresh)
-            }.padding(12)
-                .tabItem { Text("Account Usage", bundle: .module) }.tag(1)
-        }
-        .tabViewStyle(.grouped)
-        .transaction {
-            if reduceMotion {
-                $0.animation = nil
-                $0.disablesAnimations = true
+            }
+            Divider()
+            HStack {
+                Spacer(minLength: 0)
+                Button(action: compact) { Text("Compact Context", bundle: .module) }
+                    .buttonStyle(.bordered)
+                    .disabled(!canCompact)
             }
         }
-        .font(.callout).padding(16).frame(width: 320, height: selectedTab == 0 ? 240 : 300).tint(nil as Color?)
+        .font(.callout).padding(ScholiumGrid.Spacing.sectionSeparation)
+        .frame(width: 320).fixedSize(horizontal: false, vertical: true).tint(nil as Color?)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("scholium.chat.contextDetails")
     }
 
-    private func quotaWindow(_ window: AgentChatQuota.Window) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                if let minutes = window.durationMinutes {
-                    Text("\(minutes) min")
-                }
-                Spacer()
-                Text("\(window.usedPercent)% used")
+    @ViewBuilder private var occupancy: some View {
+        if let usage, let capacity = usage.capacity, let fraction = AgentChatContextPresentation.fraction(usage) {
+            let used = fraction.formatted(.percent.precision(.fractionLength(0)))
+            let remaining = (1 - fraction).formatted(.percent.precision(.fractionLength(0)))
+            HStack(alignment: .firstTextBaseline) {
+                Text("\(used) used", bundle: .module).font(.title2.weight(.semibold))
+                Spacer(minLength: ScholiumGrid.Spacing.inlineControlGap)
+                Text("\(remaining) left", bundle: .module).foregroundStyle(.secondary)
             }
-            ProgressView(value: Double(min(window.usedPercent, 100)), total: 100)
-                .accessibilityLabel("Account Usage")
-                .accessibilityValue(Text("\(window.usedPercent)% used"))
-            if let reset = window.resetsAt {
-                LabeledContent("Resets", value: reset.formatted(date: .abbreviated, time: .shortened))
-                    .foregroundStyle(.secondary)
+            .monospacedDigit()
+            .accessibilityElement(children: .combine)
+            ProgressView(value: fraction)
+                .tint(.secondary)
+                .accessibilityLabel("Last reported context use")
+                .accessibilityValue(used)
+            VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+                Text("\(usage.lastTurnTokens.formatted()) / \(capacity.formatted()) tokens", bundle: .module)
+                    .monospacedDigit().textSelection(.enabled)
+                Text("Last reported context use", bundle: .module)
+            }
+            .font(.caption).foregroundStyle(.secondary)
+        } else {
+            Text("Context size unavailable", bundle: .module).font(.headline)
+            if let usage, usage.lastTurnTokens >= 0 {
+                LabeledContent {
+                    Text(usage.lastTurnTokens.formatted()).monospacedDigit().textSelection(.enabled)
+                } label: {
+                    Text("Latest Turn", bundle: .module)
+                }
+                .font(.caption).foregroundStyle(.secondary)
+                .accessibilityElement(children: .combine)
             }
         }
     }

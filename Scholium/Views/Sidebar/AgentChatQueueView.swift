@@ -13,13 +13,59 @@ struct AgentChatQueueView: View {
     let edit: (AgentChatMessage) -> Void
 
     @State private var inspectedMessage: AgentChatMessage?
+    @State private var isExpanded = false
 
     var body: some View {
+        Group {
+            if messages.count > 1 {
+                DisclosureGroup(
+                    isExpanded: Binding(
+                        get: { isExpanded || inspectedMessage != nil },
+                        set: { if inspectedMessage == nil { isExpanded = $0 } })
+                ) {
+                    queueRows
+                } label: {
+                    Label {
+                        Text("Queued messages: \(messages.count)", bundle: .module)
+                    } icon: {
+                        Image(systemName: "text.badge.plus")
+                    }
+                    .frame(minHeight: ScholiumGrid.Dimension.preferredCustomTarget)
+                }
+                .accessibilityIdentifier("scholium.chat.queueDisclosure")
+            } else {
+                queueRows
+            }
+        }
+        .font(.callout)
+        .buttonStyle(.borderless)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        // The front input surface overlaps only this empty glass margin.
+        .padding(.bottom, 16)
+        .scholiumFloatingSurface(in: RoundedRectangle(cornerRadius: 16))
+        .padding(.horizontal, ScholiumSidebarLayout.edgeInset + 8)
+        .padding(.top, ScholiumSidebarLayout.edgeInset)
+        .tint(nil as Color?)
+        .popover(item: $inspectedMessage) { message in
+            AgentChatContentScroll {
+                AgentChatQueuedMessageContents(message: message).padding(8)
+            }.frame(width: 300).tint(nil as Color?)
+        }
+        .onChange(of: messages.map(\.id)) { _, ids in
+            if let inspectedMessage, !ids.contains(inspectedMessage.id) { self.inspectedMessage = nil }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("scholium.chat.queue")
+    }
+
+    private var queueRows: some View {
         AgentChatContentScroll(maximumHeight: 144) {
             VStack(spacing: 6) {
                 ForEach(messages) { message in
                     HStack(spacing: 8) {
                         Button {
+                            isExpanded = true
                             inspectedMessage = message
                         } label: {
                             HStack(spacing: 8) {
@@ -45,6 +91,7 @@ struct AgentChatQueueView: View {
                         deliveryButton(message)
                         Menu {
                             Button {
+                                isExpanded = true
                                 edit(message)
                             } label: {
                                 Text("Edit Message", bundle: .module)
@@ -52,50 +99,29 @@ struct AgentChatQueueView: View {
                             Button("Remove from Queue", role: .destructive) { remove(message.id) }
                         } label: {
                             ScholiumSidebarIcon(systemImage: ScholiumSidebarAction.more.symbol, placement: .action)
+                                .accessibilityLabel(Text("Queued message actions", bundle: .module))
                         }
-                        .menuStyle(.borderlessButton).menuIndicator(.hidden)
+                        .scholiumContentActionMenu().menuIndicator(.hidden)
                         .help("Queued message actions").accessibilityLabel("Queued message actions")
                     }.frame(minHeight: 24)
                 }
             }
         }
-        .font(.callout)
-        .buttonStyle(.borderless)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
-        // The front input surface overlaps only this empty glass margin.
-        .padding(.bottom, 16)
-        .scholiumFloatingSurface(in: RoundedRectangle(cornerRadius: 16))
-        .padding(.horizontal, ScholiumSidebarLayout.edgeInset + 8)
-        .padding(.top, ScholiumSidebarLayout.edgeInset)
-        .tint(nil as Color?)
-        .popover(item: $inspectedMessage) { message in
-            AgentChatContentScroll {
-                AgentChatQueuedMessageContents(message: message).padding(8)
-            }.frame(width: 300).tint(nil as Color?)
-        }
-        .onChange(of: messages.map(\.id)) { _, ids in
-            if let inspectedMessage, !ids.contains(inspectedMessage.id) { self.inspectedMessage = nil }
-        }
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("scholium.chat.queue")
     }
 
     @ViewBuilder
     private func deliveryButton(_ message: AgentChatMessage) -> some View {
         if canSend(message) {
-            Button("Send Next") { send(message.id) }
-                .fixedSize()
-                .scholiumActivationPointer()
-                .scholiumContentControlPointerFeedback(
-                    in: RoundedRectangle(
-                        cornerRadius: ScholiumShape.editorialControlCornerRadius,
-                        style: .continuous
-                    )
-                )
-                .help(Text("Send Next", bundle: .module))
+            Button("Send Next") {
+                isExpanded = true
+                send(message.id)
+            }
+            .fixedSize()
+            .buttonStyle(ScholiumContentActionButtonStyle())
+            .help(Text("Send Next", bundle: .module))
         } else {
             Button {
+                isExpanded = true
                 steer(message.id)
             } label: {
                 Label {
@@ -105,13 +131,7 @@ struct AgentChatQueueView: View {
                 }
             }
             .fixedSize()
-            .scholiumActivationPointer()
-            .scholiumContentControlPointerFeedback(
-                in: RoundedRectangle(
-                    cornerRadius: ScholiumShape.editorialControlCornerRadius,
-                    style: .continuous
-                )
-            )
+            .buttonStyle(ScholiumContentActionButtonStyle())
             .disabled(!canSteer(message))
             .help(Text("Add to Current Turn", bundle: .module))
             .accessibilityLabel(Text("Add to Current Turn", bundle: .module))

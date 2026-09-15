@@ -25,7 +25,7 @@ struct AgentChatComposerQuery: Equatable {
 
 struct AgentChatComposerCandidate: Identifiable {
     enum Action {
-        case file, notePicker, selection, methods, refreshMethods, manageMethods, context
+        case file, notePicker, selection, methods, refreshMethods, manageMethods, context, usage, find, outline, changes, agents
         case webSearch(AgentChatPreferences.WebSearch)
         case note(WorkspaceCatalogNote)
         case method(AgentChatMethodSelection)
@@ -40,11 +40,16 @@ struct AgentChatComposerCandidate: Identifiable {
 /// The native editor owns the query range and its Undo. Suggestions never replace a draft wholesale.
 @MainActor @Observable final class AgentChatComposerCompletion {
     private(set) var query: AgentChatComposerQuery?
-    var selectedIndex = 0
+    private var selectedCandidateID: String?
+    var selectedIndex: Int {
+        get { selectedCandidateID.flatMap { id in candidates.firstIndex { $0.id == id } } ?? 0 }
+        set { selectedCandidateID = candidates.indices.contains(newValue) ? candidates[newValue].id : nil }
+    }
     @ObservationIgnored weak var editor: AgentChatComposerTextView?
     @ObservationIgnored var conversationID: UUID?
     @ObservationIgnored var candidateQuery: AgentChatComposerQuery?
     @ObservationIgnored var candidates: [AgentChatComposerCandidate] = []
+    @ObservationIgnored var canAccept: ((AgentChatComposerCandidate) -> Bool)?
     @ObservationIgnored var choose: ((AgentChatComposerCandidate) -> Void)?
     @ObservationIgnored private var dismissedQuery: AgentChatComposerQuery?
 
@@ -57,7 +62,7 @@ struct AgentChatComposerCandidate: Identifiable {
         let next = current == dismissedQuery ? nil : current
         if query != next {
             query = next
-            selectedIndex = 0
+            selectedCandidateID = nil
         }
     }
 
@@ -65,9 +70,25 @@ struct AgentChatComposerCandidate: Identifiable {
         guard self.editor === editor else { return }
         self.editor = nil
         choose = nil
+        canAccept = nil
         candidates = []
         candidateQuery = nil
         query = nil
+    }
+
+    /// Enter a picker without replacing selected draft prose or committing IME.
+    func begin(_ trigger: Character) {
+        guard "/@$".contains(trigger), let editor, editor.isEditable, !editor.hasMarkedText() else { return }
+        let source = editor.string as NSString
+        let insertion = NSMaxRange(editor.selectedRange())
+        guard insertion <= source.length else { return }
+        let prefix = source.substring(to: insertion)
+        let separator = prefix.last.map { $0.isWhitespace ? "" : " " } ?? ""
+        editor.window?.makeFirstResponder(editor)
+        editor.breakUndoCoalescing()
+        editor.insertText(separator + String(trigger), replacementRange: NSRange(location: insertion, length: 0))
+        editor.setSelectedRange(NSRange(location: insertion + separator.utf16.count + 1, length: 0))
+        editor.breakUndoCoalescing()
     }
 
     func dismiss() {
@@ -76,11 +97,21 @@ struct AgentChatComposerCandidate: Identifiable {
     }
 
     func accept(_ candidate: AgentChatComposerCandidate) {
-        guard let editor, let query, candidateQuery == query, candidates.contains(where: { $0.id == candidate.id }),
+        guard let editor, editor.isEditable, let query, candidateQuery == query,
+            canAccept?(candidate) == true, candidates.contains(where: { $0.id == candidate.id }),
             conversationID == editor.completionConversationID, !editor.hasMarkedText(),
             AgentChatComposerQuery.read(text: editor.string, selection: editor.selectedRange(), isComposing: false) == query
         else { return }
         let action = choose
+        // Accepting a candidate is one text edit, including a /skills -> $
+        // handoff, and must not coalesce with the command the researcher typed.
+        editor.breakUndoCoalescing()
+        let undo = editor.undoManager
+        undo?.beginUndoGrouping()
+        defer {
+            undo?.endUndoGrouping()
+            editor.breakUndoCoalescing()
+        }
         editor.insertText("", replacementRange: query.range)
         self.query = nil
         editor.window?.makeFirstResponder(editor)
@@ -113,45 +144,48 @@ struct AgentChatComposerCandidates: View {
     let completion: AgentChatComposerCompletion
     let candidates: [AgentChatComposerCandidate]
 
+    static func listHeight(for count: Int) -> CGFloat { CGFloat(min(6, max(1, count))) * 44 }
+    static func presentationHeight(for count: Int) -> CGFloat { listHeight(for: count) + 18 }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             if candidates.isEmpty {
                 Text("No Matches").foregroundStyle(.secondary).padding(8)
             } else {
-                List(selection: Binding<Int?>(get: { completion.selectedIndex }, set: { if let value = $0 { completion.selectedIndex = value } })) {
-                    ForEach(Array(candidates.enumerated()), id: \.element.id) { index, candidate in
-                        Button {
-                            completion.accept(candidate)
-                        } label: {
-                            HStack(spacing: 8) {
-                                ScholiumSidebarIcon(systemImage: candidate.symbol).accessibilityHidden(true)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(candidate.title)
-                                        .scholiumContentControlInk(
-                                            resting: .primaryText,
-                                            emphasized: .accent
-                                        )
-                                        .lineLimit(1)
-                                    if !candidate.detail.isEmpty {
-                                        Text(candidate.detail).font(.caption).lineLimit(1)
+                ScrollViewReader { proxy in
+                    List(selection: Binding<Int?>(get: { completion.selectedIndex }, set: { if let value = $0 { completion.selectedIndex = value } })) {
+                        ForEach(Array(candidates.enumerated()), id: \.element.id) { index, candidate in
+                            Button {
+                                completion.accept(candidate)
+                            } label: {
+                                HStack(spacing: 8) {
+                                    ScholiumSidebarIcon(systemImage: candidate.symbol).accessibilityHidden(true)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(candidate.title).foregroundStyle(.primary).lineLimit(1)
+                                        if !candidate.detail.isEmpty {
+                                            Text(candidate.detail).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                                        }
                                     }
-                                }
-                                Spacer(minLength: 0)
-                            }.frame(height: 34).contentShape(Rectangle())
+                                    Spacer(minLength: 0)
+                                }.frame(height: 34).contentShape(Rectangle())
+                            }
+                            .buttonStyle(.borderless)
+                            .help([candidate.title, candidate.detail].filter { !$0.isEmpty }.joined(separator: "\n"))
+                            .listRowSeparator(.hidden)
+                            .tag(index).id(candidate.id)
                         }
-                        .buttonStyle(.borderless)
-                        .scholiumActivationPointer()
-                        .scholiumContentControlPointerFeedback(
-                            in: RoundedRectangle(
-                                cornerRadius: ScholiumShape.editorialControlCornerRadius,
-                                style: .continuous
-                            )
-                        )
-                        .tag(index)
+                    }
+                    .listStyle(.plain).scrollContentBackground(.hidden)
+                    .frame(height: Self.listHeight(for: candidates.count))
+                    .onChange(of: completion.selectedIndex) { _, index in
+                        if candidates.indices.contains(index) { proxy.scrollTo(candidates[index].id) }
+                    }
+                    .onChange(of: candidates.map(\.id)) { _, _ in
+                        if candidates.indices.contains(completion.selectedIndex) {
+                            proxy.scrollTo(candidates[completion.selectedIndex].id)
+                        }
                     }
                 }
-                .listStyle(.plain).scrollContentBackground(.hidden)
-                .frame(height: CGFloat(candidates.count) * 44)
             }
         }
         .padding(6).font(.callout)

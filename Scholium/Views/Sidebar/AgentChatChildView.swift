@@ -248,8 +248,9 @@ struct AgentChatCoordinationReferenceView: View {
                 if let remove { Button(action: remove) { Text("Remove Agent Target", bundle: .module) } }
             } label: {
                 ScholiumSidebarIcon(systemImage: ScholiumSidebarAction.more.symbol, placement: .action)
+                    .accessibilityLabel(Text("Agent Target Actions", bundle: .module))
             }
-            .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+            .scholiumContentActionMenu().menuIndicator(.hidden).fixedSize()
             .help(Text("Agent Target Actions", bundle: .module))
             .accessibilityLabel(Text("Agent Target Actions", bundle: .module))
         }

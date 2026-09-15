@@ -391,19 +391,8 @@ private struct LinkOccurrenceRow: View {
                     openReference(peer.reference, line)
                 } label: {
                     Text("Open Linked Passage")
-                        .scholiumContentControlInk(
-                            resting: .secondaryText,
-                            emphasized: .accent
-                        )
                 }
-                .buttonStyle(.borderless)
-                .scholiumActivationPointer()
-                .scholiumContentControlPointerFeedback(
-                    in: RoundedRectangle(
-                        cornerRadius: ScholiumShape.editorialControlCornerRadius,
-                        style: .continuous
-                    )
-                )
+                .buttonStyle(ScholiumContentActionButtonStyle())
             }
         }
     }

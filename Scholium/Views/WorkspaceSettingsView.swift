@@ -473,7 +473,6 @@ struct ZoteroSettingsView: View {
         Button("Open Zotero") {
             Task { await settingsModel.openZotero() }
         }
-        .scholiumActivationPointer()
         Button("Check Connection") { refresh() }
             .disabled(isTesting)
         Button("Clear History", role: .destructive) {
@@ -482,7 +481,6 @@ struct ZoteroSettingsView: View {
                 info = await settingsModel.zoteroConnectionInfo()
             }
         }
-        .scholiumActivationPointer()
         .accessibilityLabel("Clear Connection History")
     }
 

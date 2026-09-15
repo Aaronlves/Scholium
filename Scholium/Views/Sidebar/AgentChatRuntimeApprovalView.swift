@@ -69,8 +69,9 @@ struct AgentChatRuntimeApprovalView: View {
                     }
                 } label: {
                     ScholiumSidebarIcon(systemImage: ScholiumSidebarAction.more.symbol, placement: .action)
+                        .accessibilityLabel(Text("More Approval Options", bundle: .module))
                 }
-                .menuStyle(.borderlessButton).menuIndicator(.hidden)
+                .scholiumContentActionMenu().menuIndicator(.hidden)
                 .help("More Approval Options").accessibilityLabel(Text("More Approval Options", bundle: .module))
             }
             if let first = request.grants.first {

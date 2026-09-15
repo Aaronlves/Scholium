@@ -64,6 +64,15 @@ struct AgentChatActivityRefinementTests {
         #expect(AgentChatContextPresentation.fraction(.init(lastTurnTokens: 0, totalTokens: 0, capacity: 100)) == 0)
     }
 
+    @Test("Context help reports occupancy and capacity without substituting cumulative tokens")
+    func contextHelp() {
+        let summary = AgentChatContextPresentation.summary(.init(lastTurnTokens: 131000, totalTokens: 987654, capacity: 353000))
+        #expect(summary.contains(131000.formatted()))
+        #expect(summary.contains(353000.formatted()))
+        #expect(!summary.contains(987654.formatted()))
+        #expect(AgentChatContextPresentation.summary(nil) == AgentChatContextPresentation.summary(.init(lastTurnTokens: 5, totalTokens: 6, capacity: nil)))
+    }
+
     @Test("Context ledger derives staged materials and controls without duplicating runtime usage")
     func contextLedger() {
         var conversation = AgentChatConversation(triptychID: UUID())

@@ -3,12 +3,13 @@ import SwiftUI
 
 struct AgentChatReplyQuoteCard: View {
     let quote: AgentChatReplyQuote
+    var isEmbeddedInComposer = false
     let openOriginal: () -> Void
     var remove: (() -> Void)? = nil
     @State private var showsPreview = false
 
     var body: some View {
-        GroupBox {
+        AgentChatMaterialContainer(isEmbeddedInComposer: isEmbeddedInComposer) {
             HStack(alignment: .top, spacing: 6) {
                 Button {
                     showsPreview = true
@@ -42,14 +43,7 @@ struct AgentChatReplyQuoteCard: View {
                                 emphasized: .primaryText
                             )
                     }
-                    .buttonStyle(.plain)
-                    .scholiumActivationPointer()
-                    .scholiumContentControlPointerFeedback(
-                        in: RoundedRectangle(
-                            cornerRadius: ScholiumShape.editorialControlCornerRadius,
-                            style: .continuous
-                        )
-                    )
+                    .buttonStyle(ScholiumContentActionButtonStyle())
                     .accessibilityLabel("Remove Quote")
                 }
             }

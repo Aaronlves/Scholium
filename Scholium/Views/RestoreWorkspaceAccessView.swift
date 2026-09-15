@@ -51,13 +51,11 @@ struct RestoreWorkspaceAccessView: View {
                 Button("Remove Registration…", role: .destructive) {
                     confirmsRegistrationRemoval = true
                 }
-                .scholiumActivationPointer()
                 .disabled(isBusy)
             }
 
             HStack {
                 Button("Quit Scholium") { quitApplication() }
-                    .scholiumActivationPointer()
                     .keyboardShortcut(.cancelAction)
                 Spacer()
                 Button(primaryTitle) {
@@ -67,7 +65,6 @@ struct RestoreWorkspaceAccessView: View {
                         chooseFolder()
                     }
                 }
-                .scholiumActivationPointer()
                 .buttonStyle(.bordered)
                 .keyboardShortcut(.defaultAction)
                 .disabled(isBusy)
@@ -84,9 +81,7 @@ struct RestoreWorkspaceAccessView: View {
             Button("Remove Registration", role: .destructive) {
                 removeTriptychRegistration()
             }
-            .scholiumActivationPointer()
             Button("Cancel", role: .cancel) {}
-                .scholiumActivationPointer()
         } message: {
             Text(
                 "Scholium will remove only this Triptych’s registration from this Mac, then open setup again. It will not delete or change Analyses, Topics, Works, or the portable .scholium folder."
@@ -100,9 +95,7 @@ struct RestoreWorkspaceAccessView: View {
             Button("Archive and Rebuild", role: .destructive) {
                 rebuildControl()
             }
-            .scholiumActivationPointer()
             Button("Cancel", role: .cancel) {}
-                .scholiumActivationPointer()
         } message: {
             Text(
                 "Scholium will move the entire existing .scholium folder to a uniquely named sibling recovery folder, preserving its exact files without interpreting the old schema. Analyses, Topics, and Works will not be changed. Scholium will then create current portable control state."

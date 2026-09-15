@@ -40,7 +40,9 @@ struct AgentChatView: View {
     @State private var showsConversationList = true
     @State private var showsFiles = false
     @State private var showsAgents = false
-    @State private var showsContext = false
+    private enum ContextAnchor { case composer, conversation }
+    @State private var contextAnchor: ContextAnchor?
+    @State private var showsAccountUsage = false
     @State private var showsDiagnostics = false
     @State private var diagnosticMessageID: String?
     @State private var diagnosticError: String?
@@ -148,7 +150,13 @@ struct AgentChatView: View {
             prepareFiles(urls, to: id)
             return true
         }
-        .onChange(of: showsConversationList) { _, _ in markVisibleConversationRead() }
+        .onChange(of: showsConversationList) { _, showsList in
+            if showsList {
+                contextAnchor = nil
+                completion.dismiss()
+            }
+            markVisibleConversationRead()
+        }
         .onChange(of: isVisible) { _, _ in markVisibleConversationRead() }
         .onChange(of: controller.selectedID) { _, _ in markVisibleConversationRead() }
         .onChange(of: controller.conversations.map(\.id)) { _, ids in readingStore.retain(Set(ids)) }
@@ -161,7 +169,7 @@ struct AgentChatView: View {
             completion.dismiss()
             showsFiles = false
             showsAgents = false
-            showsContext = false
+            contextAnchor = nil
             showsDiagnostics = false
             diagnosticError = nil
             showsTurns = false
@@ -186,10 +194,11 @@ struct AgentChatView: View {
         .onChange(of: isVisible) { _, visible in
             if visible, controller.contextPresentationID != nil { messageIsFocused = true }
             if !visible {
+                completion.dismiss()
                 messageIsFocused = false
                 showsFiles = false
                 showsAgents = false
-                showsContext = false
+                contextAnchor = nil
                 showsDiagnostics = false
                 diagnosticError = nil
             }
@@ -278,7 +287,10 @@ struct AgentChatView: View {
                                 .disabled(!controller.conversations.contains(where: { $0.id == origin.conversationID }))
                         }
                         Divider()
-                        Button("Context and Usage") { showsContext = true }
+                        Button("Account Usage") { openAccountUsage() }
+                        if pendingRequest != nil || controller.pendingAsyncQuestion != nil || controller.selected?.isAvailable == false {
+                            Button("Context Window") { contextAnchor = .conversation }
+                        }
                         Button("Diagnostics…") {
                             diagnosticMessageID = nil
                             showsDiagnostics = true
@@ -289,7 +301,7 @@ struct AgentChatView: View {
                     .scholiumSidebarHeaderControl()
                     .accessibilityLabel("Chat Options")
                     .accessibilityIdentifier("scholium.chat.options")
-                    .popover(isPresented: $showsContext, arrowEdge: .leading) {
+                    .popover(isPresented: contextIsPresented(at: .conversation), arrowEdge: .leading) {
                         contextPanel
                     }
                     .popover(isPresented: $showsTurns, arrowEdge: .leading) {
@@ -303,17 +315,25 @@ struct AgentChatView: View {
                 }
             }
         }
+        .sheet(isPresented: $showsAccountUsage) {
+            AgentChatAccountUsageView(
+                quotas: controller.quotas, error: controller.quotaError,
+                isRefreshing: controller.isRefreshingQuota, canRefresh: controller.account != nil,
+                refresh: controller.refreshQuota, close: { showsAccountUsage = false })
+        }
     }
 
     private var archiveMenu: some View {
         Menu {
             Button("Conversations") { showsArchived = false }
             Button("Archived Chats") { showsArchived = true }
+            Divider()
+            Button("Account Usage") { openAccountUsage() }
         } label: {
-            ScholiumSidebarHeaderIcon(systemImage: ScholiumSidebarAction.archive.symbol)
+            ScholiumSidebarHeaderIcon(systemImage: ScholiumSidebarAction.more.symbol)
         }
         .scholiumSidebarHeaderControl()
-        .help("Organize Chats").accessibilityLabel("Organize Chats")
+        .help("Chat Options").accessibilityLabel("Chat Options")
         .accessibilityIdentifier("scholium.chat.archived")
     }
 
@@ -782,7 +802,7 @@ struct AgentChatView: View {
 
     private func messageView(_ message: AgentChatMessage) -> some View {
         let conversationID = controller.selectedID
-        return VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+        return AgentChatMessageActionVisibility {
             AgentChatMessageSurface(isUser: message.role == .user) {
                 VStack(alignment: .leading, spacing: ScholiumChatAppearance.contentSpacing) {
                     quoteCards(message.replyQuotes ?? [], editable: false)
@@ -813,7 +833,8 @@ struct AgentChatView: View {
                                 }
                                 ForEach(message.localMaterials) { material in
                                     AgentChatLocalMaterialChip(
-                                        material: material, preview: { try await controller.previewLocalMaterial(material) }, remove: nil, replace: nil)
+                                        material: material, isEmbeddedInComposer: true, preview: { try await controller.previewLocalMaterial(material) },
+                                        remove: nil, replace: nil)
                                 }
                             }
                         }
@@ -824,6 +845,7 @@ struct AgentChatView: View {
                     }
                 }
             }
+        } actions: {
             if message.role == .user || (message.role == .assistant && message.phase != .commentary && message.asyncQuestion == nil) {
                 HStack(spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
                     if message.role == .user { Spacer(minLength: 0) }
@@ -834,15 +856,10 @@ struct AgentChatView: View {
                             openAttachment: openAttachment, previewMaterial: { try await controller.previewLocalMaterial($0) })
                     }
                     if hasMessageActions(message) {
-                        Menu {
-                            messageActions(message, in: conversationID)
-                        } label: {
-                            Text("More", bundle: .module)
-                        }
-                        .menuStyle(.borderlessButton).menuIndicator(.hidden)
-                        .help("More Actions").accessibilityLabel("More Actions")
+                        messageActions(message, in: conversationID)
+                            .labelStyle(ScholiumSidebarActionLabelStyle())
                     }
-                }.buttonStyle(.borderless).foregroundStyle(.secondary)
+                }.buttonStyle(ScholiumContentActionButtonStyle())
             }
         }
         .modifier(
@@ -899,7 +916,7 @@ struct AgentChatView: View {
                 HStack(spacing: 8) {
                     ForEach(quotes) { quote in
                         AgentChatReplyQuoteCard(
-                            quote: quote,
+                            quote: quote, isEmbeddedInComposer: editable,
                             openOriginal: {
                                 guard
                                     controller.conversations.contains(where: {
@@ -1084,16 +1101,6 @@ struct AgentChatView: View {
     @ViewBuilder
     private var currentActivity: some View {
         if controller.isBusy {
-            if controller.state == .working && controller.approvals.isEmpty && currentActivityID == nil
-                && controller.currentTurnID.map({ turn in timelineMessages.contains { $0.turnID == turn } }) != true
-            {
-                // No pulse is shown until the runtime supplies a concrete public
-                // activity. This keeps the turn header calm while preserving the
-                // active-row signal for observed work below.
-                Text(ScholiumL10n.string("Considering your question…", locale: locale))
-                    .font(.callout).foregroundStyle(.secondary)
-                    .accessibilityIdentifier("scholium.chat.currentWork")
-            }
             let hasHeader =
                 controller.currentTurnID.map { turn in
                     timelineMessages.contains { $0.turnID == turn }
@@ -1152,8 +1159,7 @@ struct AgentChatView: View {
                 } label: {
                     ScholiumSidebarIcon(systemImage: ScholiumSidebarAction.later.symbol, placement: .action)
                 }
-                .buttonStyle(.borderless).foregroundStyle(.primary)
-                .glassEffect(.clear.interactive(), in: Circle())
+                .scholiumIconControl()
                 .help("Latest Reply").accessibilityLabel("Latest Reply")
             }
         }
@@ -1172,10 +1178,8 @@ struct AgentChatView: View {
                     Label(
                         ScholiumL10n.string("\(agents.count) agents", locale: locale), systemImage: "person.2"
                     )
-                    .padding(.horizontal, 10).padding(.vertical, 7)
                 }
-                .buttonStyle(.borderless).font(.caption).foregroundStyle(.primary)
-                .glassEffect(.clear.interactive(), in: Capsule())
+                .buttonStyle(.glass).buttonBorderShape(.capsule).controlSize(.small)
                 .accessibilityIdentifier("scholium.chat.showAgents")
                 .popover(isPresented: $showsAgents, arrowEdge: .bottom) {
                     AgentChatAgentRosterView(entries: agents) { entry in
@@ -1209,10 +1213,8 @@ struct AgentChatView: View {
                     changes == nil || pendingChanges.isEmpty ? String(localized: "Changes") : String(localized: "Changes: \(pendingChanges.count)"),
                     systemImage: "pencil.line"
                 )
-                .padding(.horizontal, 10).padding(.vertical, 7)
             }
-            .buttonStyle(.borderless).font(.caption).foregroundStyle(.primary)
-            .glassEffect(.clear.interactive(), in: Capsule())
+            .buttonStyle(.glass).buttonBorderShape(.capsule).controlSize(.small)
             .accessibilityIdentifier("scholium.chat.showFiles")
             .popover(isPresented: $showsFiles, arrowEdge: .leading) {
                 VStack(alignment: .leading, spacing: 12) {
@@ -1288,52 +1290,38 @@ struct AgentChatView: View {
 
     private var completionCandidates: [AgentChatComposerCandidate] {
         guard let query = completion.query else { return [] }
-        typealias Candidate = AgentChatComposerCandidate
-        let needle = AgentChatSearch.query(query.text)
-        func matches(_ candidate: Candidate) -> Bool {
-            needle.isEmpty || AgentChatSearch.matches(candidate.title + " " + candidate.id + " " + candidate.detail, query: needle)
-        }
+        let candidates: [AgentChatComposerCandidate]
         switch query.trigger {
         case "$":
-            return Array(
-                controller.capabilities.methods.filter { !$0.isProtected && $0.enabled }.map { method in
-                    Candidate(
-                        id: method.id, title: method.selection.title, detail: "", symbol: "square.stack",
-                        action: .method(method.selection))
-                }.filter(matches).prefix(6))
-        case "@":
-            let notes = noteChoices.filter {
-                $0.reference.stableNoteID.flatMap(UUID.init(uuidString:)) != nil
-            }.sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }.map { note in
-                Candidate(
-                    id: note.id, title: note.title, detail: note.reference.relativePath,
-                    symbol: "doc.text", action: .note(note))
-            }.filter(matches)
-            return Array(notes.prefix(5)) + [
-                Candidate(
-                    id: "choose-file", title: ScholiumL10n.string("Choose File…"),
-                    detail: "", symbol: "folder", action: .file)
-            ]
+            candidates = AgentChatComposerCatalog.skills(
+                methods: controller.capabilities.methods,
+                canRefresh: controller.capabilities.isConnected && !controller.capabilities.isRefreshing)
+        case "@": candidates = AgentChatComposerCatalog.materials(notes: materialTask == nil ? noteChoices : [])
         default:
-            var actions: [Candidate] = [
-                .init(id: "file", title: ScholiumL10n.string("Choose File…"), detail: "@", symbol: "folder", action: .file),
-                .init(id: "note", title: ScholiumL10n.string("Choose Note…"), detail: "@", symbol: "doc.text", action: .notePicker),
-                .init(id: "skills", title: ScholiumL10n.string("Skills"), detail: "$", symbol: "square.stack", action: .methods),
-                .init(id: "context", title: ScholiumL10n.string("Context"), detail: "", symbol: "text.alignleft", action: .context),
-                .init(id: "selection", title: ScholiumL10n.string("Add Selection to Chat"), detail: "", symbol: "text.badge.plus", action: .selection),
-            ]
-            if !controller.isBusy {
-                actions += AgentChatPreferences.WebSearch.allCases.map { mode in
-                    Candidate(
-                        id: "web search " + mode.rawValue, title: ScholiumL10n.string("Web Search"),
-                        detail: AgentChatControlLabels.webSearch(mode), symbol: "globe", action: .webSearch(mode))
-                }
-            }
-            actions += [
-                .init(id: "refresh skills", title: ScholiumL10n.string("Refresh Skills"), detail: "", symbol: "arrow.clockwise", action: .refreshMethods),
-                .init(id: "manage skills", title: ScholiumL10n.string("Manage Skills…"), detail: "", symbol: "gearshape", action: .manageMethods),
-            ]
-            return Array(actions.filter(matches).prefix(6))
+            candidates = AgentChatComposerCatalog.commands(
+                isBusy: controller.isBusy, hasChanges: !conversationChangeIDs.isEmpty,
+                hasAgents: controller.selected.map {
+                    !AgentChatAgentRoster(messages: $0.messages, threadID: $0.threadID).entries.isEmpty
+                } ?? false)
+        }
+        return AgentChatComposerCatalog.matching(candidates, query: query.text)
+            .filter { canChooseCompletion($0, in: controller.selectedID) }
+    }
+
+    private func canChooseCompletion(_ candidate: AgentChatComposerCandidate, in conversationID: UUID?) -> Bool {
+        guard isVisible, !showsConversationList, conversationID == controller.selectedID,
+            controller.selected?.isAvailable == true
+        else { return false }
+        switch candidate.action {
+        case .file, .notePicker, .note: return materialTask == nil
+        case .webSearch: return !controller.isBusy
+        case .refreshMethods: return controller.capabilities.isConnected && !controller.capabilities.isRefreshing
+        case .method(let selected):
+            return controller.capabilities.methods.contains { $0.selection.id == selected.id && $0.enabled && !$0.isProtected }
+        case .changes: return !conversationChangeIDs.isEmpty
+        case .agents:
+            return controller.selected.map { !AgentChatAgentRoster(messages: $0.messages, threadID: $0.threadID).entries.isEmpty } ?? false
+        default: return true
         }
     }
 
@@ -1344,14 +1332,27 @@ struct AgentChatView: View {
         case .notePicker: notePickerTarget = .init(id: conversationID)
         case .selection: addSelection()
         case .methods:
-            completion.editor?.insertText("$", replacementRange: NSRange(location: NSNotFound, length: 0))
+            completion.begin("$")
         case .refreshMethods:
             controller.capabilities.refresh(threadID: controller.selected?.threadID, reloadWorkspace: true)
         case .manageMethods:
             UserDefaults.standard.set("integrations", forKey: "scholium.settings.selectedPane")
             UserDefaults.standard.set(SettingsIntegrationCategory.agents.rawValue, forKey: "scholium.settings.integrationCategory")
             openSettings()
-        case .context: showsContext = true
+        case .context: contextAnchor = .composer
+        case .usage: openAccountUsage()
+        case .find:
+            showsFind = true
+            messageIsFocused = false
+            findFocusRequest = UUID()
+            refreshFind()
+        case .outline: showsTurns = true
+        case .changes:
+            showsAgents = false
+            showsFiles = true
+        case .agents:
+            showsFiles = false
+            showsAgents = true
         case .webSearch(let mode): controller.setWebSearch(mode)
         case .method(let method): controller.toggleMethod(method)
         case .note(let note):
@@ -1363,6 +1364,20 @@ struct AgentChatView: View {
         }
     }
 
+    private func openAccountUsage() {
+        contextAnchor = nil
+        showsTurns = false
+        showsAccountUsage = true
+    }
+
+    private func contextIsPresented(at anchor: ContextAnchor) -> Binding<Bool> {
+        Binding(
+            get: { contextAnchor == anchor },
+            set: { presented in
+                if presented { contextAnchor = anchor } else if contextAnchor == anchor { contextAnchor = nil }
+            })
+    }
+
     private var contextPanel: some View {
         AgentChatContextView(
             usage: controller.selected?.contextUsage,
@@ -1370,14 +1385,11 @@ struct AgentChatView: View {
                 conversation: controller.selected,
                 modelName: controller.selectedModel?.name ?? controller.selected?.preferences.model,
                 effort: controller.selectedEffort),
-            quotas: controller.quotas, quotaError: controller.quotaError,
-            isRefreshing: controller.isRefreshingQuota, canRefresh: controller.account != nil,
             canCompact: controller.canCompact,
             compact: {
-                showsContext = false
+                contextAnchor = nil
                 controller.compactContext()
-            },
-            refresh: controller.refreshQuota)
+            })
     }
 
     private var pendingRequest: AgentChatApproval? {
@@ -1416,7 +1428,11 @@ struct AgentChatView: View {
                 isEditingDraft: messageIsFocused
                     && (controller.selected?.draft.isEmpty == false
                         || (NSApp.keyWindow?.firstResponder as? NSTextView)?.hasMarkedText() == true),
-                composerIsFocused: $messageIsFocused
+                composerIsFocused: $messageIsFocused,
+                onRequestExpanded: {
+                    completion.dismiss()
+                    contextAnchor = nil
+                }
             ) {
                 if let pending {
                     approvalView(pending)
@@ -1436,6 +1452,15 @@ struct AgentChatView: View {
                 composer
             }
             .padding(.top, controller.queuedMessages.isEmpty ? 0 : -28)
+            .onChange(of: pending?.id) { _, _ in contextAnchor = nil }
+            .onChange(of: asyncMessage?.id) { _, _ in contextAnchor = nil }
+        }
+        .overlay(alignment: .top) {
+            if completion.query != nil {
+                AgentChatComposerCandidates(completion: completion, candidates: completionCandidates)
+                    .padding(.horizontal, ScholiumSidebarLayout.edgeInset)
+                    .offset(y: -AgentChatComposerCandidates.presentationHeight(for: completionCandidates.count))
+            }
         }
     }
 
@@ -1451,6 +1476,7 @@ struct AgentChatView: View {
                             } label: {
                                 Label(method.title, systemImage: ScholiumSidebarAction.remove.symbol)
                             }
+                            .buttonStyle(ScholiumContentActionButtonStyle())
                             .help("Remove Skill").accessibilityLabel("Remove Skill: \(method.title)")
                         }
                     }.font(.caption)
@@ -1467,13 +1493,13 @@ struct AgentChatView: View {
                     HStack(spacing: 8) {
                         ForEach(controller.selected?.attachments ?? []) { attachment in
                             AgentChatMaterialChip(
-                                attachment: attachment,
+                                attachment: attachment, isEmbeddedInComposer: true,
                                 remove: { controller.removeAttachment(attachment.id) },
                                 open: { openAttachment(attachment) })
                         }
                         ForEach(controller.selected?.localMaterials ?? []) { material in
                             AgentChatLocalMaterialChip(
-                                material: material, preview: { try await controller.previewLocalMaterial(material) },
+                                material: material, isEmbeddedInComposer: true, preview: { try await controller.previewLocalMaterial(material) },
                                 remove: { if let conversationID { controller.removeLocalMaterial(material.id, from: conversationID) } },
                                 replace: { chooseFiles(replacing: material.id) },
                                 usePages: {
@@ -1514,6 +1540,7 @@ struct AgentChatView: View {
                 isEnabled: controller.isLoaded,
                 submit: { controller.submitDraft(whileWorking: inputBehavior) },
                 completion: completion, candidates: completionCandidates, candidateQuery: completion.query,
+                canChooseCompletion: { canChooseCompletion($0, in: conversationID) },
                 chooseCompletion: { candidate in chooseCompletion(candidate, in: conversationID) },
                 transferMaterials: { materials, origin in
                     guard let conversationID else { return }
@@ -1534,36 +1561,33 @@ struct AgentChatView: View {
             HStack {
                 Menu {
                     Button("Choose File…") { chooseFiles() }.disabled(materialTask != nil)
-                    Button("Choose Note…") {
-                        if let id = controller.selectedID { notePickerTarget = .init(id: id) }
+                    Button {
+                        completion.begin("@")
+                    } label: {
+                        Text("Choose Note…", bundle: .module)
                     }
-                    Button("Add Selection to Chat", action: addSelection)
+                    Button {
+                        completion.begin("$")
+                    } label: {
+                        Text("Skills", bundle: .module)
+                    }
                     Divider()
-                    Menu("Skills") {
-                        ForEach(controller.capabilities.methods.filter { !$0.isProtected }) { method in
-                            Toggle(
-                                method.selection.title,
-                                isOn: Binding(
-                                    get: { controller.selected?.selectedMethods?.contains(where: { $0.id == method.id }) == true },
-                                    set: { _ in controller.toggleMethod(method.selection) })
-                            )
-                            .disabled(!method.enabled)
-                        }
-                        Divider()
-                        Button("Refresh Skills") { controller.capabilities.refresh(threadID: controller.selected?.threadID, reloadWorkspace: true) }
-                            .disabled(!controller.capabilities.isConnected || controller.capabilities.isRefreshing)
-                        Button("Manage Skills…") {
-                            UserDefaults.standard.set("integrations", forKey: "scholium.settings.selectedPane")
-                            UserDefaults.standard.set(SettingsIntegrationCategory.agents.rawValue, forKey: "scholium.settings.integrationCategory")
-                            openSettings()
-                        }
+                    Button {
+                        completion.begin("/")
+                    } label: {
+                        Text("Commands", bundle: .module)
                     }
                 } label: {
-                    Label("Add Material", systemImage: ScholiumSidebarAction.add.symbol).labelStyle(.iconOnly)
-                        .foregroundStyle(.primary)
+                    ScholiumSidebarIcon(systemImage: ScholiumSidebarAction.add.symbol, placement: .action)
+                        .accessibilityLabel("Add to Chat")
                 }
-                .help("Add Material").accessibilityLabel("Add Material")
+                .scholiumContentActionMenu()
+                .help("Add to Chat").accessibilityLabel("Add to Chat")
                 .accessibilityIdentifier("scholium.chat.addMaterial")
+                AgentChatContextMeter(usage: controller.selected?.contextUsage) { contextAnchor = .composer }
+                    .popover(isPresented: contextIsPresented(at: .composer), arrowEdge: .bottom) {
+                        contextPanel
+                    }
                 AgentChatConfigurationMenu(
                     models: controller.models,
                     preferences: controller.selected?.preferences ?? .init(), selectedModel: controller.selectedModel,
@@ -1602,12 +1626,6 @@ struct AgentChatView: View {
             }
         }
         .buttonStyle(.borderless)
-        .overlay(alignment: .top) {
-            if completion.query != nil {
-                AgentChatComposerCandidates(completion: completion, candidates: completionCandidates)
-                    .offset(y: -(CGFloat(max(1, completionCandidates.count)) * 44 + 18))
-            }
-        }
     }
 
     @ViewBuilder

@@ -4,6 +4,62 @@
 
 ## Current verification snapshot
 
+**2026-09-15 — Chat panel closing review:** Nineteen owning composer, catalog
+and input-dock checks pass (`.build/chat-sidebar-audit/final-panel-tests.log`),
+including rejection before query deletion and request expansion notification.
+The Debug build and scoped formatting/localization/documentation checks pass.
+Chinese/Light disposable 500-Note QA at 300pt observed empty input, quiet candidate
+rows, pointer acceptance, grouped Context accessibility, pending questions,
+skip-to-composer recovery, busy command filtering and leaving/returning to Chat
+without a stale candidate layer or lost draft. Native selection replaces the
+candidate rows' second highlight; full labels remain in Help. Icon-menu labels
+now name their actions rather than their SF Symbols. The native Research > Stop Agent command now owns interruption; actual QA
+confirmed Command-Period stops a turn from the expanded question form and
+restores composer focus, and the command disables when idle. Full Keyboard
+Access, human VoiceOver/IME and the complete adaptation matrix remain
+unverified; no full repository gate was run.
+
+**2026-09-15 — Button categories and composer entry points:** Xcode 27 Debug,
+scoped format/localization/documentation validation and 29 owning checks pass;
+the final placeholder change additionally reran 13 overlapping native-input
+checks. Logs are in `.build/chat-sidebar-audit/composer-entry-*` and
+`composer-placeholder-tests.log`; the scoped audit is `button-categories.md`.
+Disposable 500-Note QA at 300pt observed shared message-action feedback, exact
+quote and Note staging, flat composer materials, quiet native menu triggers,
+content-sized known/unknown Context with full Details and disabled Compact,
+independent `/usage`, all nine slash candidates with keyboard scrolling to the
+eighth, `/skills` to `$`, and one Undo restoring `/skills`. The gray empty-input
+hint fits without becoming draft text; menu labels omit syntax hints. Moving
+candidate presentation outside the clipped native-input region fixed an invisible
+but AX-present list. One UI transport interruption recovered by reacquiring the
+same running QA App; this does not establish a fix inside the automation service.
+Whole-app button coverage is source/category audit, not full visual or assistive
+technology acceptance. Human VoiceOver, Full Keyboard Access, physical IME and
+the complete appearance/adaptation matrix remain open. No full gate was run.
+
+**2026-09-15 — Context separation and message controls:** Thirty-two checks
+actually pass: 23 input/context/branch checks in
+`.build/chat-sidebar-audit/context-hover-tests.log`, then nine native-pointer and
+reading checks in `context-hover-pointer-tests.log`; that runner reports 11
+including two explicitly skipped performance cases. Xcode 27 Debug and scoped
+format/localization/documentation validation pass. Disposable 500-Note QA observed
+whole-message pointer entry/exit revealing icon actions without reflow, retained
+AX actions and exact quoting, independent Account Usage with Refresh/Escape,
+Context known/unknown values, full prepared-context expansion, and Context access
+while questions replace the composer. Single and multiple queued messages,
+collapsed count, expansion, exact inspection/edit, focus return and Stop retaining
+the queue were observed at 300pt, with English light and Chinese dark coverage.
+Moving the old Context content to a Button or replacing its tabs alone still
+crashed SkyComputerUseService. Omitting the ledger passed; restoring it without
+extra AX containment still failed. Replacing its GroupBox with a native disclosure
+retains all content and passes both collapsed and expanded observation. This
+bounds the interoperability fix without claiming the tooling crash is repaired
+internally. Native pointer reuse corrects WebKit's failure to propagate ordinary
+SwiftUI hover. Full Keyboard Access, human VoiceOver/Switch Control, physical IME,
+complete visual-adaptation variants and archived Context remain unverified in
+this pass. No full gate or private research vault was used. QA process, App and
+temporary state were cleaned; standard source fixtures and logs remain.
+
 **2026-09-15 — Chat entry contraction:** Twenty-four owning input, branch and
 reading checks pass (`.build/chat-sidebar-audit/entry-tests.log`); after preserving
 offline permission/web-search editing in the merged menu, the final build and two

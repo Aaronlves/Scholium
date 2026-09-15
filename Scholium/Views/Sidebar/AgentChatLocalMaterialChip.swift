@@ -5,6 +5,7 @@ import SwiftUI
 
 struct AgentChatLocalMaterialChip: View {
     let material: AgentChatLocalMaterial
+    var isEmbeddedInComposer = false
     let preview: () async throws -> URL
     let remove: (() -> Void)?
     let replace: (() -> Void)?
@@ -17,7 +18,7 @@ struct AgentChatLocalMaterialChip: View {
     @State private var thumbnail: NSImage?
 
     var body: some View {
-        GroupBox {
+        AgentChatMaterialContainer(isEmbeddedInComposer: isEmbeddedInComposer) {
             HStack(alignment: .top, spacing: 8) {
                 Button {
                     showsDetails = true
@@ -54,14 +55,7 @@ struct AgentChatLocalMaterialChip: View {
                                 emphasized: .primaryText
                             )
                     }
-                    .buttonStyle(.plain)
-                    .scholiumActivationPointer()
-                    .scholiumContentControlPointerFeedback(
-                        in: RoundedRectangle(
-                            cornerRadius: ScholiumShape.editorialControlCornerRadius,
-                            style: .continuous
-                        )
-                    )
+                    .buttonStyle(ScholiumContentActionButtonStyle())
                     .accessibilityLabel(
                         "Remove material: \(AgentChatLocalMaterialLabels.title(material))")
                 }

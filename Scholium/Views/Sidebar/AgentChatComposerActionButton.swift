@@ -59,9 +59,10 @@ struct AgentChatComposerActionButton: View {
                         Button((queuesInput ? AgentChatComposerAction.sendNow : .queue).label, action: submitAlternate)
                     } label: {
                         Image(systemName: "chevron.down")
-                            .frame(minWidth: ScholiumGrid.Dimension.minimumCustomTarget, minHeight: ScholiumGrid.Dimension.preferredCustomTarget)
+                            .accessibilityLabel("Send Options")
+                            .frame(minWidth: ScholiumGrid.Dimension.preferredCustomTarget, minHeight: ScholiumGrid.Dimension.preferredCustomTarget)
                     }
-                    .menuStyle(.borderlessButton).menuIndicator(.hidden)
+                    .scholiumContentActionMenu().menuIndicator(.hidden)
                     .disabled(!canSend)
                     .help("Send Options").accessibilityLabel("Send Options")
                     .accessibilityIdentifier("scholium.chat.sendOptions")
@@ -74,12 +75,23 @@ struct AgentChatComposerActionButton: View {
                         .contentTransition(ScholiumMotion.symbolReplacementContentTransition(reduceMotion: reduceMotion))
                 }
                 .buttonStyle(.borderedProminent).buttonBorderShape(.circle)
-                .keyboardShortcut(".", modifiers: .command)
                 .disabled(state == .stopping)
                 .help(interruption.label).accessibilityLabel(interruption.label)
                 .accessibilityIdentifier("scholium.chat.stop")
             }
         }
         .controlSize(.regular)
+    }
+}
+
+/// The window's native command owns interruption even while a question or
+/// permission form replaces the composer. Both routes call the same controller.
+struct AgentChatStopCommand: View {
+    @ObservedObject var controller: AgentChatController
+
+    var body: some View {
+        Button("Stop Agent", action: controller.stop)
+            .keyboardShortcut(".", modifiers: .command)
+            .disabled(controller.state != .working && controller.state != .compacting)
     }
 }

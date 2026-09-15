@@ -79,11 +79,20 @@ struct AgentChatComposerInputTests {
         completion.refresh(from: host.editor, in: id)
         let candidate = AgentChatComposerCandidate(id: "note", title: "论证", detail: "", symbol: "doc", action: .notePicker)
         var choices = 0
+        completion.canAccept = { _ in true }
         completion.choose = { _ in choices += 1 }
         completion.candidates = [candidate]
         completion.accept(candidate)
         #expect(choices == 0 && host.editor.string == "中文 😀 @论证 后文")
         completion.candidateQuery = completion.query
+        completion.canAccept = { _ in false }
+        completion.accept(candidate)
+        #expect(choices == 0 && host.editor.string == "中文 😀 @论证 后文")
+        completion.canAccept = { _ in true }
+        host.editor.isEditable = false
+        completion.accept(candidate)
+        #expect(choices == 0 && host.editor.string == "中文 😀 @论证 后文")
+        host.editor.isEditable = true
         completion.accept(candidate)
         #expect(host.editor.string == "中文 😀  后文" && choices == 1)
         let undo = try #require(host.editor.undoManager)
@@ -102,6 +111,70 @@ struct AgentChatComposerInputTests {
         #expect(completion.editor === host.editor && completion.choose != nil)
         completion.detach(from: host.editor)
         #expect(completion.editor == nil && completion.choose == nil && completion.candidates.isEmpty)
+    }
+
+    @Test("Refreshing candidates preserves selection by identity beyond the first page")
+    func candidateIdentity() {
+        let completion = AgentChatComposerCompletion()
+        let candidates = (0..<9).map {
+            AgentChatComposerCandidate(id: "item-\($0)", title: "Item \($0)", detail: "", symbol: "doc", action: .notePicker)
+        }
+        completion.candidates = candidates
+        completion.selectedIndex = 7
+        completion.candidates = [candidates[7]] + candidates.filter { $0.id != candidates[7].id }
+        #expect(completion.candidates[completion.selectedIndex].id == "item-7")
+        completion.candidates = candidates.filter { $0.id != "item-7" }
+        #expect(completion.selectedIndex == 0)
+        completion.candidates = []
+        #expect(completion.selectedIndex == 0)
+    }
+
+    @Test("Opening a picker preserves selected draft prose and native Undo")
+    func beginPicker() throws {
+        let host = AgentChatComposerHost()
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 300, height: 80), styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = host
+        defer { window.close() }
+        let completion = AgentChatComposerCompletion()
+        completion.editor = host.editor
+        host.editor.string = "前文 后文"
+        host.editor.setSelectedRange(NSRange(location: 0, length: 2))
+        completion.begin("@")
+        #expect(host.editor.string == "前文 @ 后文")
+        #expect(host.editor.selectedRange() == NSRange(location: 4, length: 0))
+        try #require(host.editor.undoManager).undo()
+        #expect(host.editor.string == "前文 后文")
+    }
+
+    @Test("Accepting a command-to-Skill handoff is one undoable edit after typing")
+    func skillHandoffUndo() throws {
+        let host = AgentChatComposerHost()
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 300, height: 80), styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = host
+        defer { window.close() }
+        let completion = AgentChatComposerCompletion()
+        let id = UUID()
+        host.editor.completionConversationID = id
+        let undo = try #require(host.editor.undoManager)
+        // Model the completed typing event separately from the subsequent
+        // Return event; this synchronous test has no native event-loop boundary.
+        undo.groupsByEvent = false
+        undo.beginUndoGrouping()
+        host.editor.insertText("/skills", replacementRange: NSRange(location: 0, length: 0))
+        undo.endUndoGrouping()
+        host.editor.setSelectedRange(NSRange(location: 7, length: 0))
+        completion.refresh(from: host.editor, in: id)
+        let candidate = AgentChatComposerCandidate(id: "skills", title: "/skills", detail: "", symbol: "doc", action: .methods)
+        completion.candidates = [candidate]
+        completion.candidateQuery = completion.query
+        completion.canAccept = { _ in true }
+        completion.choose = { _ in completion.begin("$") }
+        completion.accept(candidate)
+        #expect(host.editor.string == "$")
+        try #require(host.editor.undoManager).undo()
+        #expect(host.editor.string == "/skills")
     }
 
     private func event(_ modifiers: NSEvent.ModifierFlags = []) throws -> NSEvent {

@@ -142,14 +142,22 @@ promoting a different version or an uncovered cited line to verified reading.
 Runtime web access remains separately named. A compact Materials for This Turn
 disclosure reuses the existing Note/file/image previews and identifies the supplied
 representation; it never presents all materials as citations or adds another reader.
-Sources and conversation file-operation history have distinct scopes. A quiet row
-beneath each eligible message keeps reply Copy, Sources and Materials directly
-reachable. A named More menu groups Edit in New Branch, Branch from This Turn,
-Retry in New Branch and Quote in Reply at that exact message. Inapplicable actions
+Sources and conversation file-operation history have distinct scopes. Eligible
+message actions use familiar icon buttons for Copy, Sources, Materials, Edit in
+New Branch, Branch from This Turn, Retry in New Branch and Quote in Reply. The
+row appears when the pointer enters that message or its controls receive keyboard
+focus. It remains visible with VoiceOver or Switch Control. Visual concealment
+never removes native controls from keyboard traversal or accessibility, changes
+layout, or moves the reading position. Full Help and accessible names identify
+each action; no More menu replaces these direct actions. Inapplicable actions
 stay absent; temporarily unavailable branch actions retain disabled state.
-Context menus remain equivalent routes. Controls retain full Help and accessible
-names; counts and meaningful state text remain visible when an icon would be
-ambiguous. No hover or swipe gesture is required.
+The action row shares one compact content-control treatment with composer
+accessories, attachment removal and queue actions: equal activation targets and
+consistent pointer feedback, while native controls retain focus and disabled
+behavior. Revealing the row and highlighting one action are separate states.
+Floating Changes/Agents controls use native button chrome; menu items, primary
+delivery controls, disclosures and navigation rows retain their own categories.
+Context menus remain equivalent routes. Pointer hover is not the sole route.
 Ratings and export actions are not part of this reply-action surface.
 Reply prose fills the available width between the shared sidebar grid insets,
 using ordinary line wrapping without paragraph-wide line balancing or extra
@@ -263,14 +271,14 @@ Escape to dismiss. The current matching message is revealed and identified
 without relying solely on color. Search and Find state belong to the visible
 view; neither changes stored messages, drafts or execution selection implicitly.
 
-The message More menu offers Branch from This Turn at an ended exchange;
+The message action row offers Branch from This Turn at an ended exchange;
 conversation options do not duplicate turn-selection controls. A branch has a quiet
 Open Original Conversation route. Creating it shows a cancellable pending state;
 failure stays with the source conversation. The branch is opened only if the
 researcher is still viewing its source; otherwise it appears in the list without
 pulling them out of another discussion.
 
-Edit in New Branch is available in the eligible researcher message's More menu.
+Edit in New Branch is available in the eligible researcher message's action row.
 Its placement identifies the exact request. The new discussion opens with that request in the ordinary composer
 and its original materials and Skills visible, ready for editing and explicit
 Send. It reuses branch progress, cancellation and failure presentation; it adds
@@ -284,14 +292,28 @@ text or sends the message on selection. Literal punctuation outside an active
 candidate query remains ordinary prose. Selection replaces only that query and
 preserves surrounding text, native Undo and the captured conversation. A single
 discoverable actions entry offers the same routes without requiring memorized
-syntax. Interaction > Chat chooses whether Return during work adds to the current turn
+syntax: file selection, Note mentions, Skills and commands. Menu labels name
+actions without syntax hints. Gray placeholder text inside the empty composer
+and its accessible Help explain the three prefixes; the placeholder disappears
+during typing or marked input. The `/` catalog uses
+single-token names for Context, Account Usage, Find, Outline, available Changes
+and Agents, Skills and idle Web Search choices. `@` offers named Notes, file
+selection and the current selection; `$` offers enabled optional Skills with
+refresh and management. Candidates remain fully reachable within a bounded
+viewport; arrows scroll to the selected item, and refresh preserves its identity
+or resets to a valid item. Availability is checked again before accepting a
+candidate; an unavailable action preserves the query. Expanding a request or
+leaving Chat dismisses suggestions without editing the retained draft.
+Interaction > Chat chooses whether Return during work adds to the current turn
 or queues the next one. The send button follows the same preference and exposes
 its effective action. Idle Return sends normally; newline and IME behavior remain
 unchanged. The default is immediate input. Queue is not an Add-menu action.
 Queued input appears in a native Liquid Glass surface behind the input surface.
-Each queued message has one visible summary row and a direct Steer action; idle
-input exposes Send Next. Multiple messages expand into rows in a bounded scrolling
-region. Only empty surface margins overlap; text, focus rings and controls remain
+A single queued message has a visible summary row and a direct Steer action; idle
+input exposes Send Next. Multiple messages start collapsed to one named count
+and expand into rows in a bounded scrolling region. Inspection keeps that group
+open; explicit editing and delivery retain its expanded state. Failures remain
+visible through the owning conversation state. Only empty surface margins overlap; text, focus rings and controls remain
 clear of the front input surface. Selecting a summary opens a native popover showing its
 full text once, with retained Note snapshots, file representation labels, quotations
 and requested Skills available in its material disclosure. Add to Current Turn explicitly sends the selected item as
@@ -299,8 +321,20 @@ additional input to its bound running turn; Send Next retains queue order while
 idle. Inspection cannot dispatch or reorder input. Edit Message opens a native editor
 for the queued text without replacing the composer draft or its materials.
 Saving preserves queue identity, position and attached context. If already sent,
-the edit is not applied and remains available to copy. The composer places Add Material, the current model/reasoning selection and
-delivery in one bottom row. Chat Settings at the model label groups named Model,
+the edit is not applied and remains available to copy. The composer places Add to Chat, the current model/reasoning selection and
+delivery in one bottom row, with a small Context indicator beside the model.
+The composer has one enclosing surface. Its quote, Note and file summaries sit
+directly within it; they do not add nested card backgrounds. Secondary controls
+have quiet resting states and shared transient feedback. Send and Stop retain
+their native primary-action prominence. Exact previews and removal remain
+available, and sent materials retain their own transcript grouping.
+Its hover Help and accessible value show last-reported occupancy, remaining
+percentage and used/total tokens. Unknown capacity has an explicit unavailable
+state, never a zero reading. Clicking the indicator opens a content-sized native
+popover anchored to that button. Occupancy leads; remaining capacity and token
+counts are secondary. One Details disclosure contains cumulative token use and
+the complete prepared-context list in a bounded scroll area. Compact Context
+remains in the footer with runtime-owned availability. Chat Settings at the model label groups named Model,
 Reasoning, Permission and Web Search pickers. Selected values remain visible in
 those menus; long model labels truncate with complete Help and accessible values.
 Full Access retains a visible status beside the input when enabled. Add Material
@@ -312,10 +346,12 @@ These summaries never invent plans, progress or token measurements. Short labels
 and direct actions lead, with explanations for unavailable or consequential states.
 An explicit web-search mode is distinguishable from Note Search.
 
-Conversation options own Outline, Find, Rename, Context and Usage, and Diagnostics;
-a branch also offers Open Original Conversation. Changes has its existing entry
-beside Agents and is not repeated in the detail header. Context and Usage remains
-reachable while a request replaces the composer or usage is unavailable. It
+Conversation options own Outline, Find, Rename, Account Usage and Diagnostics; a branch also
+offers Open Original Conversation. Changes has its existing entry beside Agents
+and is not repeated in the detail header. While a request replaces the composer
+or a conversation is archived, conversation options provide the Context and Usage
+entry at that header. Only one Context presentation may be open. Switching
+conversations, leaving the detail, or replacing the input closes it. It
 separates last-reported occupancy from cumulative consumption, with bounded native
 progress, token details and a state-valid Compact Context action. It never shows a
 guessed percentage.
@@ -347,7 +383,9 @@ send menu offering Send Now and Queue for Next Turn for that message. The primar
 send action and Return retain the configured default; choosing the other menu
 action neither changes that default nor stops the turn. Idle composing has one
 circular Send action. Compaction shows Stop; interruption shows disabled Stopping.
-The trailing Stop button owns Command-Period. Command-Return means delivery only.
+The native Research > Stop Agent command owns Command-Period for the current
+window, including when a request replaces the composer. It and the trailing Stop
+button share the same interruption action and availability. Command-Return means delivery only.
 Symbols retain position and accessible names.
 
 Research questions appear one at a time with a position indicator and Previous
@@ -437,9 +475,13 @@ Cards use system content surfaces under §19.1 rather than glass over readable
 prose. Native menus, segmented tabs and floating controls retain their system
 material; a surrounding card never recreates their selection plate or effects.
 
-Context and Account Usage retain native grouped-tab navigation with distinct
-scope and valid actions. Switching tabs cannot read, resume, cancel, send or
-clear a draft. Long tab content scrolls within its card.
+Context stays in the composer and contains only conversation occupancy, prepared
+context and a valid Compact Context action. Prepared context and cumulative token
+details start collapsed and retain complete inspectable information. Account Usage
+has an independent entry in Chat options, available from the conversation list or
+detail, and opens a native account-only sheet with reported quota, reset, Refresh
+and Done. Inspecting or closing either surface never reads Notes, resumes a turn,
+sends input or clears a draft. Long content scrolls within its own surface.
 
 Motion follows native controls and containers under §19. Card disclosure and tab
 selection use system transitions; request-to-confirmation feedback changes in

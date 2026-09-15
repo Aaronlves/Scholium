@@ -83,15 +83,16 @@ struct AgentChatContextLedgerView: View {
     let ledger: AgentChatContextLedger
 
     var body: some View {
-        GroupBox {
+        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+            Text("Prepared context", bundle: .module).font(.subheadline)
             VStack(alignment: .leading, spacing: 8) {
                 if !ledger.materials.isEmpty {
                     ledgerSection("Materials") {
                         ForEach(ledger.materials) { material in
                             Label {
                                 VStack(alignment: .leading, spacing: 1) {
-                                    Text(material.title).lineLimit(2)
-                                    Text(material.detail).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                                    Text(material.title)
+                                    Text(material.detail).font(.caption).foregroundStyle(.secondary)
                                 }
                             } icon: {
                                 Image(systemName: material.symbol).foregroundStyle(.secondary)
@@ -103,8 +104,7 @@ struct AgentChatContextLedgerView: View {
                     ledgerSection("Quoted replies") {
                         ForEach(ledger.quotes) { quote in
                             Label {
-                                Text(verbatim: quote.preview)
-                                    .lineLimit(4)
+                                Text(verbatim: quote.text)
                                     .textSelection(.enabled)
                             } icon: {
                                 Image(systemName: "text.quote").foregroundStyle(.secondary)
@@ -116,26 +116,24 @@ struct AgentChatContextLedgerView: View {
                     ledgerSection("Skills") {
                         ForEach(ledger.methods) { method in
                             Label(method.title, systemImage: "square.stack")
-                                .lineLimit(2).foregroundStyle(.primary)
+                                .foregroundStyle(.primary)
                         }
                     }
                 }
                 if let modelName = ledger.modelName {
-                    LabeledContent("Model", value: modelName).lineLimit(1)
+                    LabeledContent("Model", value: modelName)
                 }
                 if let effort = ledger.effort {
-                    LabeledContent("Reasoning", value: AgentChatControlLabels.effort(effort)).lineLimit(1)
+                    LabeledContent("Reasoning", value: AgentChatControlLabels.effort(effort))
                 }
                 if ledger.webSearch != .runtimeDefault {
-                    LabeledContent("Web Search", value: AgentChatControlLabels.webSearch(ledger.webSearch)).lineLimit(1)
+                    LabeledContent("Web Search", value: AgentChatControlLabels.webSearch(ledger.webSearch))
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-        } label: {
-            Label("Prepared context", systemImage: "text.badge.checkmark")
-                .font(.subheadline)
+            .fixedSize(horizontal: false, vertical: true)
+            .textSelection(.enabled)
         }
-        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("scholium.chat.contextLedger")
     }
 

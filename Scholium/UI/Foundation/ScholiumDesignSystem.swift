@@ -2711,7 +2711,7 @@ private struct ScholiumContentControlPointerFeedbackModifier<S: Shape>: ViewModi
                 isPressed: isPressed,
                 in: shape
             )
-            .opacity(isPressed ? 0.78 : 1)
+            .opacity(isEnabled && isPressed ? 0.78 : 1)
             .overlay {
                 ScholiumPointerInteractionReader(
                     isHovering: $isHovering,

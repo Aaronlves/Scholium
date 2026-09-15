@@ -13,6 +13,7 @@ struct AgentChatComposerInput: NSViewRepresentable {
     var completion: AgentChatComposerCompletion? = nil
     var candidates: [AgentChatComposerCandidate] = []
     var candidateQuery: AgentChatComposerQuery? = nil
+    var canChooseCompletion: ((AgentChatComposerCandidate) -> Bool)? = nil
     var chooseCompletion: ((AgentChatComposerCandidate) -> Void)? = nil
     var transferMaterials: (([AgentChatTransferredMaterial], AgentChatLocalMaterial.CaptureOrigin) -> Void)? = nil
 
@@ -26,6 +27,7 @@ struct AgentChatComposerInput: NSViewRepresentable {
         completion?.editor = host.editor
         completion?.candidates = candidates
         completion?.candidateQuery = candidateQuery
+        completion?.canAccept = canChooseCompletion
         completion?.choose = chooseCompletion
         host.editor.onCompletionKey = { [weak completion] event in completion?.keyDown(event) ?? false }
         if host.conversationID != conversationID {
@@ -114,6 +116,7 @@ struct AgentChatComposerInput: NSViewRepresentable {
         editor.onFocusChange = { [weak self] in self?.onFocus?($0) }
         editor.delegate = self
         editor.setAccessibilityLabel(String(localized: "Message", bundle: .module))
+        editor.setAccessibilityHelp(AgentChatComposerTextView.placeholder)
         editor.setAccessibilityIdentifier("scholium.chat.message")
         documentView = editor
     }
@@ -177,6 +180,8 @@ struct AgentChatComposerInput: NSViewRepresentable {
 }
 
 @MainActor final class AgentChatComposerTextView: NSTextView {
+    static var placeholder: String { String(localized: "/ commands · @ notes · $ skills", bundle: .module) }
+
     // Placeholder visibility follows the native buffer, including uncommitted
     // input-method text, rather than the asynchronously published SwiftUI draft.
     var showsPlaceholder: Bool { string.isEmpty && !hasMarkedText() }
@@ -186,8 +191,11 @@ struct AgentChatComposerInput: NSViewRepresentable {
         guard showsPlaceholder else { return }
         let origin = textContainerOrigin
         let padding = textContainer?.lineFragmentPadding ?? 0
-        (String(localized: "Message", bundle: .module) as NSString).draw(
-            at: NSPoint(x: origin.x + padding, y: origin.y),
+        (Self.placeholder as NSString).draw(
+            in: NSRect(
+                x: origin.x + padding, y: origin.y,
+                width: max(0, bounds.width - 2 * (origin.x + padding)),
+                height: max(0, bounds.height - origin.y)),
             withAttributes: [
                 .font: font ?? NSFont.systemFont(ofSize: NSFont.systemFontSize),
                 .foregroundColor: NSColor.placeholderTextColor,

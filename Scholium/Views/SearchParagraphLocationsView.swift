@@ -18,10 +18,10 @@ struct SearchParagraphLocationsView: View {
                         } label: {
                             Text("Paragraph at line \(range.line)")
                         }
-                        .buttonStyle(.borderless)
+                        .buttonStyle(ScholiumContentActionButtonStyle())
                     }
                     if visibleCount < note.paragraphRanges.count {
-                        Button("Show More Paragraphs") { visibleCount += 10 }.buttonStyle(.borderless)
+                        Button("Show More Paragraphs") { visibleCount += 10 }.buttonStyle(ScholiumContentActionButtonStyle())
                     }
                 }.frame(maxWidth: .infinity, alignment: .leading)
             }.frame(maxHeight: 320)
