@@ -6,68 +6,52 @@ struct HotkeySettingsView: View {
     private var preferencesData = ScholiumHotkeyPreferences.defaultData
     @State private var editingCommand: ScholiumHotkeyCommand?
     @State private var pendingResetAll = false
-    @State private var selectedCommandID: String?
 
     let searchQuery: String
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            ScrollView {
-                VStack(
-                    alignment: .leading,
-                    spacing: ScholiumGrid.Spacing.sectionSeparation
-                ) {
-                    ForEach(visibleCategories) { category in
-                        settingsEditorSection(category.title) {
-                            Table(visibleCommands(in: category), selection: $selectedCommandID) {
-                                TableColumn("Command") { command in
-                                    Text(command.title)
-                                        .help(Text(command.menuPath))
-                                }
-                                TableColumn("Shortcut") { command in
-                                    hotkeyMenu(command)
-                                }
-                                .width(100)
+            Form {
+                ForEach(visibleCategories) { category in
+                    Section {
+                        ForEach(visibleCommands(in: category)) { command in
+                            LabeledContent {
+                                hotkeyMenu(command)
+                            } label: {
+                                Text(command.title).help(Text(command.menuPath))
                             }
-                            .contextMenu(forSelectionType: String.self) { ids in
-                                if let id = ids.first, let command = ScholiumHotkeyCommand(rawValue: id) {
-                                    hotkeyActions(command)
-                                }
-                            } primaryAction: { ids in
-                                if let id = ids.first { editingCommand = ScholiumHotkeyCommand(rawValue: id) }
-                            }
-                            .tableStyle(.inset)
-                            .frame(height: CGFloat(visibleCommands(in: category).count) * 30 + 32)
-
+                            .contextMenu { hotkeyActions(command) }
                         }
-                    }
-
-                    if visibleCategories.isEmpty {
-                        ScholiumContentStateView(
-                            "No Matching Shortcuts",
-                            detail: Text("Try a command name or menu location."),
-                            indicator: .symbol("keyboard")
-                        )
-                    }
-
-                    HStack {
-                        Text("Keyboard shortcuts are stored on this Mac and update menu commands immediately.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                        Spacer()
-                        Button("Restore Default Shortcuts…") {
-                            pendingResetAll = true
-                        }
-                        .disabled(!hasCustomizations)
+                    } header: {
+                        Text(category.title)
                     }
                 }
-                .padding(.horizontal, 24)
-                .padding(.vertical, 16)
-                .frame(maxWidth: 760, alignment: .topLeading)
-                .frame(maxWidth: .infinity, alignment: .top)
+                if visibleCategories.isEmpty {
+                    ScholiumContentStateView(
+                        "No Matching Shortcuts",
+                        detail: Text("Try a command name or menu location."),
+                        indicator: .symbol("keyboard")
+                    )
+                }
             }
-            .scrollContentBackground(.hidden)
+            .formStyle(.grouped)
+
+            Divider()
+            VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                Text("Keyboard shortcuts are stored on this Mac and update menu commands immediately.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack {
+                    Spacer()
+                    Button("Restore Default Shortcuts…") {
+                        pendingResetAll = true
+                    }
+                    .disabled(!hasCustomizations)
+                }
+            }
+            .padding(.horizontal, ScholiumMetrics.Settings.pathHorizontalInset)
+            .padding(.vertical, ScholiumGrid.Spacing.sectionSeparation)
         }
         .scholiumSettingsPaneSurface()
         .accessibilityIdentifier("scholium.hotkeys")

@@ -46,20 +46,22 @@ private enum ScholiumSettingsDestination: String, CaseIterable, Identifiable, Eq
     var searchTerms: [String] {
         switch self {
         case .workspace:
-            ["Workspace", "Triptych", "Triptychs", "folders", "locations", "registration", "portable data"]
+            ["Workspace", "Triptych", "Triptychs", "folders", "locations", "registration", "portable data", "工作区", "三联体", "文件夹", "路径"]
         case .document:
             [
-                "Appearance", "Document", "Document Appearance", "Typography", "Body Typography", "Text Styles", "Heading Typography", "Heading Hierarchy",
+                "Appearance", "Document", "Document Appearance", "外观", "文稿", "阅读", "Typography", "Body Typography", "Text Styles", "Heading Typography",
+                "Heading Hierarchy",
                 "body", "heading", "headings", "bold", "italic", "font", "line width", "line spacing", "paragraph spacing", "first-line indent",
                 "letter spacing", "word spacing", "hyphenation", "kerning", "ligatures", "heading font", "heading style", "heading weight", "heading hierarchy",
                 "heading levels", "heading level", "scale", "space before", "space after", "Advanced CSS", "CSS snippets", "Open CSS Folder", "H1", "H2", "H3",
                 "H4", "H5", "H6", "段间距", "首行缩进", "字距", "词距", "对齐", "断词", "字偶距", "连字", "标题字体", "标题层级", "标题级别", "比例", "前间距", "后间距", "正文字体", "粗体", "斜体", "高级排版",
             ]
         case .notifications:
-            ["Notifications", "activities", "reminders", "dismissed items", "timing", "This Mac", "This Triptych"]
+            ["Notifications", "activities", "reminders", "dismissed items", "timing", "This Mac", "This Triptych", "通知", "提醒", "间隔"]
         case .interaction:
             [
-                "Interaction", "Keyboard Shortcuts", "Selection Actions", "Chat", "queue", "steer", "return", "聊天", "回车", "排队", "shortcuts", "commands",
+                "Interaction", "交互", "快捷键", "Keyboard Shortcuts", "Selection Actions", "Chat", "queue", "steer", "return", "聊天", "回车", "排队", "shortcuts",
+                "commands",
                 "prompt", "instruction", "选段操作",
             ]
                 + ScholiumHotkeyCommand.customizableCommands.flatMap {
@@ -67,7 +69,8 @@ private enum ScholiumSettingsDestination: String, CaseIterable, Identifiable, Eq
                 }
         case .integrations:
             [
-                "Integrations", "Agents & Chat", "Chat", "MCP", "Codex", "Claude", "Core Protocol", "bridge", "skills", "tools", "Zotero", "citation",
+                "Integrations", "集成", "智能体", "连接", "Agents & Chat", "Chat", "MCP", "Codex", "Claude", "Core Protocol", "bridge", "skills", "tools", "Zotero",
+                "citation",
                 "local API",
             ]
         }
@@ -91,40 +94,49 @@ private enum ScholiumSettingsDestination: String, CaseIterable, Identifiable, Eq
 }
 
 struct ScholiumSettingsView: View {
+    @Environment(\.openWindow) private var openWindow
     @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
     @AppStorage("scholium.settings.selectedPane") private var persistedPane = "workspace"
     @State private var destination = ScholiumSettingsDestination.workspace
     @State private var destinationBeforeSearch: ScholiumSettingsDestination?
     @State private var searchQuery = ""
+    @FocusState private var sidebarFocused: Bool
 
     var body: some View {
-        // The scene supplies space; individual panes must not publish new
-        // window size constraints while AppKit interpolates the frame.
-        GeometryReader { _ in
-            settingsContent
-        }
-        .frame(minWidth: 620, minHeight: 180)
-    }
-
-    private var settingsContent: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Spacer()
+        NavigationSplitView {
+            VStack(spacing: 0) {
                 ScholiumSettingsSearchField(text: $searchQuery)
-                    .frame(width: 220)
                     .accessibilityIdentifier("scholium.settings.search")
+                    .padding(ScholiumGrid.Spacing.inlineControlGap)
+                List(selection: sidebarSelection) {
+                    ForEach(filteredDestinations) { item in
+                        Label(item.title, systemImage: item.symbol)
+                            .tag(item)
+                            .accessibilityIdentifier("scholium.settings.category.\(item.rawValue)")
+                    }
+                }
+                .listStyle(.sidebar)
+                .focused($sidebarFocused)
+                .simultaneousGesture(TapGesture().onEnded { sidebarFocused = true })
+                .accessibilityLabel("Settings categories")
             }
-            .padding(.horizontal, 24)
-            .padding(.vertical, 10)
-            if filteredDestinations.isEmpty {
-                ContentUnavailableView.search(text: searchQuery)
-            } else {
-                settingsDetail
+            .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 240)
+        } detail: {
+            ScholiumSettingsPaneHost(selection: filteredDestinations.isEmpty ? nil : destination, identifier: "scholium.settings.root") { item in
+                if let item {
+                    settingsDetail(for: item)
+                } else {
+                    ContentUnavailableView.search(text: searchQuery)
+                }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .clipped()
+            .navigationTitle(Text(destination.title))
         }
-        .frame(minWidth: 620, maxWidth: .infinity, minHeight: 180, maxHeight: .infinity, alignment: .top)
-        .background(Color(nsColor: .windowBackgroundColor))
-        .background(SettingsToolbarAttachment(destination: $destination))
+        .navigationSplitViewStyle(.balanced)
+        .toolbar(removing: .sidebarToggle)
+        .frame(minWidth: 780, minHeight: 560)
+        .background(SettingsWindowAttachment())
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("scholium.settings.root")
         .onAppear {
@@ -171,11 +183,18 @@ struct ScholiumSettingsView: View {
         ScholiumSettingsDestination.allCases.filter { $0.matches(searchQuery) }
     }
 
+    private var sidebarSelection: Binding<ScholiumSettingsDestination?> {
+        Binding(get: { destination }, set: { if let value = $0 { destination = value } })
+    }
+
     @ViewBuilder
-    private var settingsDetail: some View {
+    private func settingsDetail(for destination: ScholiumSettingsDestination) -> some View {
         switch destination {
         case .workspace:
-            WorkspaceSettingsView()
+            WorkspaceSettingsView(
+                openTriptych: { id in openWindow(id: "scholium-main", value: TriptychWindowRoute(triptychID: id)) },
+                newTriptych: { openWindow(id: "scholium-bootstrap", value: BootstrapWindowRoute(purpose: .newTriptych)) }
+            )
         case .document:
             if let store = settingsModel.cssSnippetStore {
                 AppearanceSettingsView(store: store)
@@ -199,13 +218,10 @@ struct ScholiumSettingsView: View {
     }
 }
 
-/// SwiftUI owns the selected destination; AppKit owns toolbar presentation and
-/// window geometry. The coordinator forwards selection events only.
-private struct SettingsToolbarAttachment: NSViewRepresentable {
-    @Binding var destination: ScholiumSettingsDestination
-
-    func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
-
+/// SwiftUI owns navigation and geometry. This adapter configures only the
+/// native preferences window chrome.
+private struct SettingsWindowAttachment: NSViewRepresentable {
+    func makeCoordinator() -> Coordinator { Coordinator() }
     func makeNSView(context: Context) -> WindowAttachmentView {
         let view = WindowAttachmentView()
         view.onWindowAttachment = { [weak coordinator = context.coordinator] window in
@@ -213,215 +229,29 @@ private struct SettingsToolbarAttachment: NSViewRepresentable {
         }
         return view
     }
-
     func updateNSView(_ view: WindowAttachmentView, context: Context) {
-        context.coordinator.parent = self
         if let window = view.window { context.coordinator.attach(window) }
     }
 
     @MainActor
-    final class Coordinator: NSObject, NSToolbarDelegate {
-        var parent: SettingsToolbarAttachment
+    final class Coordinator {
         private weak var window: NSWindow?
-        private var presented: ScholiumSettingsDestination?
-        private let toolbar = NSToolbar(identifier: "scholium.settings.toolbar")
-
-        init(parent: SettingsToolbarAttachment) {
-            self.parent = parent
-            super.init()
-            toolbar.delegate = self
-            toolbar.displayMode = .iconAndLabel
-            toolbar.allowsUserCustomization = false
-        }
 
         func attach(_ window: NSWindow) {
-            if self.window !== window {
-                self.window = window
-                window.tabbingMode = .disallowed
-                window.toolbar = toolbar
-                window.toolbarStyle = .preference
-                window.titleVisibility = .visible
-                window.titlebarAppearsTransparent = false
-                window.titlebarSeparatorStyle = .automatic
-                window.backgroundColor = .windowBackgroundColor
-                window.contentMinSize = NSSize(width: 620, height: 180)
-            }
-            let destination = parent.destination
-            guard presented != destination else { return }
-            let animate =
-                presented != nil && window.isVisible
-                && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-            presented = destination
-            toolbar.selectedItemIdentifier = NSToolbarItem.Identifier(destination.rawValue)
-            window.title = String(localized: destination.title)
-            // Finish the SwiftUI layout transaction before starting native
-            // geometry changes. Otherwise its hosting-window reconciliation
-            // can overwrite an expanding frame animation with the end frame.
+            guard self.window !== window else { return }
+            self.window = window
+            window.tabbingMode = .disallowed
+            window.toolbarStyle = .unified
+            window.toolbar?.displayMode = .iconOnly
+            window.backgroundColor = .windowBackgroundColor
+            // Settings applies its initial nonresizable mask after attachment.
+            // Finish that scene transaction before enabling native edge resizing.
             DispatchQueue.main.async { [weak self, weak window] in
-                guard let self, let window, self.presented == destination else { return }
-                self.resize(window, for: destination, animate: animate)
+                guard let self, let window, self.window === window else { return }
+                window.styleMask.insert(.resizable)
             }
         }
 
-        private func resize(_ window: NSWindow, for destination: ScholiumSettingsDestination, animate: Bool) {
-            let size: NSSize
-            switch destination {
-            // These sizes fit the normal, non-advanced content of each pane.
-            // Long collections own their local scrolling while the preferences
-            // window gives the typography pane a little more working space.
-            case .workspace: size = NSSize(width: 780, height: 600)
-            case .document: size = NSSize(width: 860, height: 640)
-            case .notifications: size = NSSize(width: 640, height: 340)
-            case .interaction: size = NSSize(width: 800, height: 600)
-            case .integrations: size = NSSize(width: 720, height: 440)
-            }
-            var frame = window.frameRect(forContentRect: NSRect(origin: .zero, size: size))
-            frame.origin = NSPoint(
-                x: window.frame.minX,
-                y: window.frame.maxY - frame.height)
-            if let screen = window.screen {
-                let visible = screen.visibleFrame
-                frame.size.width = min(frame.width, visible.width)
-                frame.size.height = min(frame.height, visible.height)
-                frame.origin.x = max(visible.minX, min(frame.minX, visible.maxX - frame.width))
-                frame.origin.y = max(visible.minY, min(frame.minY, visible.maxY - frame.height))
-            }
-            // The animator retargets an in-flight resize without blocking the
-            // SwiftUI update that installs the selected pane. Both frame edges
-            // move together so the current top-left corner stays anchored.
-            NSAnimationContext.runAnimationGroup { context in
-                context.duration = animate ? 0.22 : 0
-                context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-                window.animator().setFrame(frame, display: true)
-            }
-        }
-
-        func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-            [.flexibleSpace]
-                + ScholiumSettingsDestination.allCases.map {
-                    NSToolbarItem.Identifier($0.rawValue)
-                } + [.flexibleSpace]
-        }
-
-        func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-            toolbarDefaultItemIdentifiers(toolbar)
-        }
-
-        func toolbarSelectableItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-            ScholiumSettingsDestination.allCases.map { NSToolbarItem.Identifier($0.rawValue) }
-        }
-
-        func toolbar(
-            _ toolbar: NSToolbar, itemForItemIdentifier identifier: NSToolbarItem.Identifier,
-            willBeInsertedIntoToolbar flag: Bool
-        ) -> NSToolbarItem? {
-            guard let destination = ScholiumSettingsDestination(rawValue: identifier.rawValue) else { return nil }
-            let item = NSToolbarItem(itemIdentifier: identifier)
-            item.label = String(localized: destination.title)
-            item.toolTip = String(localized: destination.title)
-            item.image = NSImage(systemSymbolName: destination.symbol, accessibilityDescription: item.label)
-            item.target = self
-            item.action = #selector(selectPane(_:))
-            return item
-        }
-
-        @objc private func selectPane(_ sender: NSToolbarItem) {
-            guard let destination = ScholiumSettingsDestination(rawValue: sender.itemIdentifier.rawValue) else { return }
-            parent.destination = destination
-        }
-    }
-}
-
-private struct AttentionSettingsView: View {
-    @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
-    @State private var dismissalDays = TriptychSettings().attentionDismissalDays
-    @State private var isSaving = false
-    @State private var errorMessage: String?
-    @AppStorage(AttentionPreferences.dismissalLedgerKey)
-    private var dismissalLedgerData = Data()
-
-    private let durations = [1, 3, 7, 14, 30]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            settingsEditorSection("Reminder Timing") {
-                reminderTimingPicker
-                saveAttentionButton
-                if let errorMessage {
-                    Text(errorMessage)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
-                }
-            }
-            settingsEditorSection("Dismissed Items on This Mac") {
-                Button("Restore All Dismissed Items on This Mac") {
-                    var ledger = AttentionPreferences.decodeLedger(dismissalLedgerData)
-                    ledger.removeAll()
-                    dismissalLedgerData = AttentionPreferences.encodeLedger(ledger)
-                }
-                .disabled(!hasDismissedAttention)
-                Text("Restores dismissed reminders on this Mac without changing Triptych data.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .padding(24)
-        .frame(maxWidth: 760)
-        .frame(maxWidth: .infinity)
-        .scholiumSettingsPaneSurface()
-        .task {
-            await settingsModel.refresh()
-            let stored = settingsModel.triptychSettings.attentionDismissalDays
-            dismissalDays =
-                durations.contains(stored)
-                ? stored
-                : TriptychSettings().attentionDismissalDays
-        }
-
-    }
-
-    private var hasDismissedAttention: Bool {
-        let ledger = AttentionPreferences.decodeLedger(dismissalLedgerData)
-        return !ledger.dismissedUntilByItemID.isEmpty
-    }
-
-    private var reminderTimingPicker: some View {
-        Picker("Return dismissed items after", selection: $dismissalDays) {
-            ForEach(durations, id: \.self) { days in
-                Text(days == 1 ? "1 day" : "\(days) days").tag(days)
-            }
-        }
-        .scholiumActivationPointer()
-        .frame(maxWidth: 300)
-    }
-
-    private var saveAttentionButton: some View {
-        Button("Save Reminder Timing") { save() }
-            .buttonStyle(.bordered)
-            .disabled(
-                isSaving
-                    || dismissalDays
-                        == settingsModel.triptychSettings.attentionDismissalDays
-            )
-    }
-
-    private func save() {
-        errorMessage = nil
-        isSaving = true
-        Task {
-            do {
-                var settings = settingsModel.triptychSettings
-                settings.attentionDismissalDays = AttentionPreferences.normalizedDays(dismissalDays)
-                let result = try await settingsModel.saveTriptychSettings(settings)
-                dismissalDays = settings.attentionDismissalDays
-                errorMessage = result.warning
-
-            } catch {
-                errorMessage = error.localizedDescription
-            }
-            isSaving = false
-        }
     }
 }
 
@@ -432,36 +262,34 @@ struct ZoteroSettingsView: View {
     @State private var errorMessage: String?
 
     var body: some View {
-        settingsFormSection("Zotero") {
-            VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
-                LabeledContent("Local API") {
-                    Label(statusTitle, systemImage: statusSymbol)
-                        .foregroundStyle(.primary)
-                }
-                LabeledContent("Last Connected") {
-                    Text(info.lastSuccessfulConnection?.formatted(date: .abbreviated, time: .shortened) ?? "Never")
-                        .foregroundStyle(.secondary)
-                }
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
-                        zoteroActions
-                    }
-                    VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
-                        zoteroActions
-                    }
-                }
-                Text("Scholium connects only to Zotero Desktop on localhost and never modifies its data. No account or API key is required.")
-                    .font(.body)
+        Section("Zotero") {
+            LabeledContent("Local API") {
+                Label(statusTitle, systemImage: statusSymbol)
+                    .foregroundStyle(.primary)
+            }
+            LabeledContent("Last Connected") {
+                Text(info.lastSuccessfulConnection?.formatted(date: .abbreviated, time: .shortened) ?? "Never")
                     .foregroundStyle(.secondary)
-                if info.status == .apiDisabled {
-                    Text("In Zotero Advanced settings, enable ‘Allow other applications on this computer to communicate with Zotero’, then test again.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+            }
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                    zoteroActions
                 }
-                if let errorMessage {
-                    Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.red)
+                VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+                    zoteroActions
                 }
+            }
+            Text("Scholium connects only to Zotero Desktop on localhost and never modifies its data. No account or API key is required.")
+                .font(.body)
+                .foregroundStyle(.secondary)
+            if info.status == .apiDisabled {
+                Text("In Zotero Advanced settings, enable ‘Allow other applications on this computer to communicate with Zotero’, then test again.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            if let errorMessage {
+                Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.red)
             }
         }
         .task { info = await settingsModel.zoteroConnectionInfo() }
@@ -516,12 +344,13 @@ struct ZoteroSettingsView: View {
 
 struct WorkspaceSettingsView: View {
     @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
-    @Environment(\.openWindow) private var openWindow
     @State private var selectedTriptychID: UUID?
+    let openTriptych: (UUID) -> Void
+    let newTriptych: () -> Void
 
     var body: some View {
         VStack(spacing: 0) {
-            settingsEditorSection("Registered Triptychs") {
+            settingsGroup("Registered Triptychs") {
                 ViewThatFits(in: .horizontal) {
                     HStack(spacing: ScholiumMetrics.Settings.rootSpacing) {
                         triptychPicker.labelsHidden().fixedSize().frame(width: 180, alignment: .leading)
@@ -604,19 +433,13 @@ struct WorkspaceSettingsView: View {
     private var triptychActions: some View {
         Button("Open in New Window") {
             guard let selectedTriptychID else { return }
-            openWindow(
-                id: "scholium-main",
-                value: TriptychWindowRoute(triptychID: selectedTriptychID)
-            )
+            openTriptych(selectedTriptychID)
         }
         .scholiumActivationPointer()
         .disabled(selectedTriptychID == nil)
 
         Button("New Triptych…") {
-            openWindow(
-                id: "scholium-bootstrap",
-                value: BootstrapWindowRoute(purpose: .newTriptych)
-            )
+            newTriptych()
         }
         .scholiumActivationPointer()
     }
@@ -649,7 +472,12 @@ private struct AppearanceSettingsView: View {
     @State private var showDeleteConfirmation = false
     @State private var showRestoreDefaultConfirmation = false
     @State private var showDiscardChangesConfirmation = false
-    @State private var pendingProfileSelection: UUID?
+    private enum ProfileSelection {
+        case existing(UUID)
+        case create
+        case duplicate(UUID)
+    }
+    @State private var pendingProfileSelection: ProfileSelection?
     @State private var nameDraft = ""
 
     @State private var showsCSSSnippets = false
@@ -657,13 +485,6 @@ private struct AppearanceSettingsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            configurationSection
-                .padding(.horizontal, 24)
-                .padding(.top, 16)
-                .padding(.bottom, 8)
-                .frame(maxWidth: 760, alignment: .topLeading)
-                .frame(maxWidth: .infinity, alignment: .top)
-
             if let draftBinding {
                 appearanceSectionContent(profile: draftBinding)
             }
@@ -673,9 +494,21 @@ private struct AppearanceSettingsView: View {
         }
         .scholiumSettingsPaneSurface()
         .accessibilityIdentifier("scholium.appearance.form")
-        .onAppear { loadSelectedDraft() }
+        .onAppear { if draft == nil { loadSelectedDraft() } }
         .onChange(of: store.selectedAppearanceProfileID) { _, _ in loadSelectedDraft() }
-        .onChange(of: store.appearanceProfiles) { _, _ in loadSelectedDraft() }
+        .onChange(of: store.appearanceProfiles) { previous, _ in
+            if let draft, let saved = store.selectedAppearanceProfile,
+                draft.id == saved.id,
+                let baseline = previous.first(where: { $0.id == draft.id }),
+                draft.settings != baseline.settings
+            {
+                // A successful rename or background refresh cannot erase an
+                // unsaved typography draft. Save still belongs to the store.
+                self.draft?.name = saved.name
+            } else {
+                loadSelectedDraft()
+            }
+        }
         .onChange(of: store.appearanceReloadRevision) { _, _ in loadSelectedDraft() }
         .sheet(isPresented: $showsCSSSnippets) {
             VStack(alignment: .leading, spacing: 16) {
@@ -707,7 +540,6 @@ private struct AppearanceSettingsView: View {
             Button("Rename") {
                 guard let id = store.selectedAppearanceProfileID else { return }
                 store.renameAppearance(id, to: nameDraft)
-                draft?.name = nameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
             }
             .disabled(nameDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
@@ -740,7 +572,7 @@ private struct AppearanceSettingsView: View {
             Button("Discard and Switch", role: .destructive) {
                 guard let id = pendingProfileSelection else { return }
                 pendingProfileSelection = nil
-                selectProfile(id)
+                performProfileSelection(id)
             }
             Button("Cancel", role: .cancel) {
                 pendingProfileSelection = nil
@@ -754,32 +586,22 @@ private struct AppearanceSettingsView: View {
     private func appearanceSectionContent(
         profile: Binding<DocumentAppearanceProfile>
     ) -> some View {
-        ScrollView {
-            VStack(
-                alignment: .leading,
-                spacing: ScholiumGrid.Spacing.sectionSeparation
-            ) {
-                settingsSectionTitle("Reading")
-                AppearanceReadingEditor(profile: profile)
-                TypographySettingsView(profile: profile) {
-                    showsCSSSnippets = true
-                }
-                configurationFileSection
-            }
-            .padding(.horizontal, 24)
-            .padding(.vertical, 8)
-            .frame(maxWidth: 760, alignment: .topLeading)
-            .frame(maxWidth: .infinity, alignment: .top)
+        Form {
+            configurationSection
+            AppearanceReadingEditor(profile: profile)
+            TypographySettingsView(profile: profile) { showsCSSSnippets = true }
+            configurationFileSection
         }
-        .scrollContentBackground(.hidden)
+        .formStyle(.grouped)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .accessibilityIdentifier("scholium.settings.appearance")
     }
 
     private var configurationFileSection: some View {
-        settingsEditorSection("Configuration File") {
+        Section("Configuration File") {
             HStack {
                 Button("Show in Finder…") { store.revealAppearanceConfiguration() }
+                Spacer()
                 Button("Reload") {
                     if hasUnsavedChanges { confirmsConfigurationReload = true } else { store.reloadAppearanceConfiguration() }
                 }
@@ -823,25 +645,21 @@ private struct AppearanceSettingsView: View {
             get: { store.selectedAppearanceProfileID },
             set: { id in
                 guard let id else { return }
-                if hasUnsavedChanges {
-                    pendingProfileSelection = id
-                    showDiscardChangesConfirmation = true
-                } else {
-                    selectProfile(id)
-                }
+                requestProfileSelection(.existing(id))
             }
         )
     }
 
     private var configurationSection: some View {
-        settingsEditorSection("Profile") {
-            HStack(spacing: 12) {
-                appearancePicker
-                appearanceManagementMenu
+        Section {
+            LabeledContent("Profile") {
+                HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                    appearancePicker
+                    appearanceManagementMenu
+                }
             }
+        } footer: {
             Text("Saved on this Mac")
-                .font(.callout)
-                .foregroundStyle(.secondary)
         }
     }
 
@@ -931,10 +749,10 @@ private struct AppearanceSettingsView: View {
 
     private var appearanceManagementMenu: some View {
         Menu {
-            Button("New Appearance") { store.createAppearance() }
+            Button("New Appearance") { requestProfileSelection(.create) }
             Button("Duplicate Appearance") {
                 guard let id = store.selectedAppearanceProfileID else { return }
-                store.duplicateAppearance(id)
+                requestProfileSelection(.duplicate(id))
             }
             .disabled(store.selectedAppearanceProfileID == nil)
             Button("Rename Appearance…") { beginRename() }
@@ -972,6 +790,23 @@ private struct AppearanceSettingsView: View {
 
     private func loadSelectedDraft() {
         draft = store.selectedAppearanceProfile
+    }
+
+    private func requestProfileSelection(_ selection: ProfileSelection) {
+        if hasUnsavedChanges {
+            pendingProfileSelection = selection
+            showDiscardChangesConfirmation = true
+        } else {
+            performProfileSelection(selection)
+        }
+    }
+
+    private func performProfileSelection(_ selection: ProfileSelection) {
+        switch selection {
+        case .existing(let id): selectProfile(id)
+        case .create: store.createAppearance()
+        case .duplicate(let id): store.duplicateAppearance(id)
+        }
     }
 
     private func selectProfile(_ id: UUID) {
@@ -1020,63 +855,58 @@ private struct AppearanceSettingsView: View {
 
 private struct AppearanceReadingEditor: View {
     @Binding var profile: DocumentAppearanceProfile
-    private let sourceFontFamilies = NSFontManager.shared.availableFontFamilies.sorted {
+    private let fontFamilies = NSFontManager.shared.availableFontFamilies.sorted {
         $0.localizedStandardCompare($1) == .orderedAscending
     }
 
-    private var installedBodyFontFamilies: [String] {
-        let selected = profile.settings.body.fontFamily
-        let retained = DocumentAppearanceFontFamily.presets.contains(selected) ? [] : [selected.rawValue]
-        return Array(Set(sourceFontFamilies + retained)).sorted {
-            $0.localizedStandardCompare($1) == .orderedAscending
+    var body: some View {
+        Section("Reading") {
+            Picker("Body Font", selection: $profile.settings.body.fontFamily) {
+                ForEach(DocumentAppearanceFontFamily.presets, id: \.self) { Text($0.label).tag($0) }
+                Divider()
+                ForEach(retaining(profile.settings.body.fontFamily.rawValue), id: \.self) { family in
+                    Text(verbatim: family).tag(DocumentAppearanceFontFamily(rawValue: family))
+                }
+            }
+            .accessibilityIdentifier("scholium.appearance.bodyFont")
+            LabeledContent("Body font size") {
+                HStack {
+                    AppearanceNumberControl(value: $profile.settings.body.fontSizePoints, range: 9...24, step: 0.5, title: "Body font size")
+                    Text("pt").foregroundStyle(.secondary)
+                        .frame(width: ScholiumMetrics.Settings.unitLabelWidth, alignment: .leading)
+                }
+            }
+            LabeledContent("Line width") {
+                AppearanceDoubleValueControl(
+                    value: $profile.settings.lineWidthCharacterUnits, range: DocumentAppearanceSettings.lineWidthCharacterUnitsRange,
+                    step: 1, suffix: "ch", precision: 0, title: "Line width", accessibilityUnit: "character-width units")
+            }
+            LabeledContent("Line spacing") {
+                AppearanceDoubleValueControl(
+                    value: $profile.settings.body.lineHeight, range: 1.2...2.4,
+                    step: 0.05, suffix: "×", precision: 2, title: "Line spacing", accessibilityUnit: nil)
+            }
+            Picker("Alignment", selection: $profile.settings.body.alignment) {
+                ForEach(DocumentTextAlignment.allCases, id: \.self) { Text($0.label).tag($0) }
+            }
+        }
+        Section("Source Font") {
+            Picker("Source Font", selection: $profile.settings.source.fontFamily) {
+                ForEach(retaining(profile.settings.source.fontFamily), id: \.self) { Text(verbatim: $0).tag($0) }
+            }
+            .accessibilityIdentifier("scholium.appearance.sourceFont")
+            LabeledContent("Source font size") {
+                HStack {
+                    AppearanceNumberControl(value: $profile.settings.source.fontSizePoints, range: 6...72, step: 0.25, title: "Source font size")
+                    Text("pt").foregroundStyle(.secondary)
+                        .frame(width: ScholiumMetrics.Settings.unitLabelWidth, alignment: .leading)
+                }
+            }
         }
     }
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            settingsEditorSection("Body Font") {
-                HStack(spacing: 8) {
-                    Picker("Body Font", selection: $profile.settings.body.fontFamily) {
-                        ForEach(DocumentAppearanceFontFamily.presets, id: \.self) { Text($0.label).tag($0) }
-                        Divider()
-                        ForEach(installedBodyFontFamilies, id: \.self) { family in
-                            Text(verbatim: family).tag(DocumentAppearanceFontFamily(rawValue: family))
-                        }
-                    }.labelsHidden().frame(width: 210, alignment: .leading)
-                        .accessibilityIdentifier("scholium.appearance.bodyFont")
-                    AppearanceNumberControl(value: $profile.settings.body.fontSizePoints, range: 9...24, step: 0.5, title: "Body font size")
-                    Text("pt")
-                }
-            }
-            settingsAdaptiveGrid {
-                AppearanceDoubleControl(
-                    "Line width", value: $profile.settings.lineWidthCharacterUnits, range: DocumentAppearanceSettings.lineWidthCharacterUnitsRange, step: 1,
-                    suffix: "ch", precision: 0, accessibilityUnit: "character-width units")
-                AppearanceDoubleControl("Line spacing", value: $profile.settings.body.lineHeight, range: 1.2...2.4, step: 0.05, suffix: "×")
-            }
-            settingsEditorSection("Alignment") {
-                Picker("Alignment", selection: $profile.settings.body.alignment) {
-                    ForEach(DocumentTextAlignment.allCases, id: \.self) {
-                        Text($0.label).tag($0)
-                    }
-                }
-                .labelsHidden()
-                .pickerStyle(.menu)
-            }
-
-            settingsEditorSection("Source Font") {
-                HStack(spacing: 8) {
-                    Picker("Source Font", selection: $profile.settings.source.fontFamily) {
-                        ForEach(Array(Set(sourceFontFamilies + [profile.settings.source.fontFamily])).sorted(), id: \.self) {
-                            Text(verbatim: $0).tag($0)
-                        }
-                    }.labelsHidden().frame(width: 210, alignment: .leading)
-                        .accessibilityIdentifier("scholium.appearance.sourceFont")
-                    AppearanceNumberControl(value: $profile.settings.source.fontSizePoints, range: 6...72, step: 0.25, title: "Source font size")
-                    Text("pt")
-                }
-            }
-        }
+    private func retaining(_ selected: String) -> [String] {
+        fontFamilies.contains(selected) ? fontFamilies : fontFamilies + [selected]
     }
 }
 
@@ -1084,509 +914,81 @@ private struct TypographySettingsView: View {
     @Binding var profile: DocumentAppearanceProfile
     let onShowAdvancedCSS: () -> Void
     @State private var showsHeadingLevelDetails = false
-    private let installedFontFamilies = NSFontManager.shared.availableFontFamilies.sorted {
+    private let fontFamilies = NSFontManager.shared.availableFontFamilies.sorted {
         $0.localizedStandardCompare($1) == .orderedAscending
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.sectionSeparation) {
-            pairedContent
-            advancedCSSPrompt
-        }
-        .frame(
-            minWidth: ScholiumMetrics.Settings.typographyPairedMinimumWidth,
-            maxWidth: .infinity,
-            alignment: .topLeading
-        )
-        .accessibilityIdentifier("scholium.settings.appearance.typography")
-        .sheet(isPresented: $showsHeadingLevelDetails) {
-            AppearanceHeadingLevelDetailsView(
-                headings: $profile.settings.headings
-            )
-        }
-    }
-
-    private var pairedContent: some View {
-        settingsPairedGrid(
-            columnMinimumWidth: ScholiumMetrics.Settings.typographyColumnMinimumWidth,
-            columnSpacing: ScholiumMetrics.Settings.typographyColumnSpacing
-        ) {
-            typographySection("Body Typography") {
-                bodyTypographyContent
-            }
-            typographySection("Heading Typography") {
-                headingTypographyContent
-            }
-            typographySection("Text Styles") {
-                textStylesContent
-            }
-            typographySection("Heading Hierarchy") {
-                headingHierarchyContent
-            }
-        }
-    }
-
-    private func typographySection<Content: View>(
-        _ title: LocalizedStringResource,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
-            settingsSectionTitle(title)
-            content()
-        }
-        .frame(maxWidth: .infinity, alignment: .topLeading)
-    }
-
-    @ViewBuilder
-    private var bodyTypographyContent: some View {
-        AppearanceBodyTypographyMatrix(settings: $profile.settings.body)
-    }
-
-    @ViewBuilder
-    private var textStylesContent: some View {
-        AppearanceTextStylesMatrix(
-            bodyBoldSelection: $profile.settings.body.cjkStrongFontFamily,
-            bodyItalicSelection: $profile.settings.body.cjkEmphasisFontFamily,
-            headingBoldSelection: $profile.settings.headings.cjkStrongFontFamily,
-            headingItalicSelection: $profile.settings.headings.cjkEmphasisFontFamily,
-            availableFamilies: installedFontFamilies
-        )
-    }
-
-    @ViewBuilder
-    private var headingTypographyContent: some View {
-        AppearanceHeadingTypographyMatrix(headings: $profile.settings.headings)
-    }
-
-    @ViewBuilder
-    private var headingHierarchyContent: some View {
-        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
-            AppearanceHeadingLevelMatrix(
-                headings: $profile.settings.headings,
-                showsSpacing: false
-            )
-            HStack {
-                Spacer(minLength: 0)
-                Button("Edit Heading Levels…") {
-                    showsHeadingLevelDetails = true
+        Group {
+            Section("Body Typography") {
+                LabeledContent("Paragraph spacing") {
+                    AppearanceDoubleValueControl(
+                        value: $profile.settings.body.paragraphSpacingEm, range: 0...2,
+                        step: 0.05, suffix: "em", precision: 2, title: "Paragraph spacing", accessibilityUnit: nil)
+                }
+                LabeledContent("First-line indent") {
+                    AppearanceDoubleValueControl(
+                        value: $profile.settings.body.firstLineIndentEm, range: 0...4,
+                        step: 0.1, suffix: "em", precision: 2, title: "First-line indent", accessibilityUnit: nil)
                 }
             }
-        }
-    }
-
-    private var advancedCSSPrompt: some View {
-        settingsEditorSection("Advanced CSS") {
-            VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
-                Text("Fine typography and document styling can be extended with CSS snippets.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+            Section("Heading Typography") {
+                Picker("Heading Font", selection: $profile.settings.headings.fontFamily) {
+                    ForEach(DocumentHeadingFontFamily.presets, id: \.self) { Text($0.label).tag($0) }
+                    Divider()
+                    ForEach(headingFamilies, id: \.self) { family in
+                        Text(verbatim: family).tag(DocumentHeadingFontFamily(rawValue: family))
+                    }
+                }
+                .accessibilityIdentifier("scholium.appearance.headingFont")
+                Picker("Heading Style", selection: $profile.settings.headings.style) {
+                    ForEach(DocumentHeadingStyle.allCases, id: \.self) { Text($0.label).tag($0) }
+                }
+                LabeledContent("Heading Weight") {
+                    AppearanceIntegerControl(title: "Heading Weight", value: $profile.settings.headings.weight, range: 400...700, step: 50)
+                }
+                LabeledContent("Heading Line Spacing") {
+                    AppearanceDoubleValueControl(
+                        value: $profile.settings.headings.lineHeight, range: 1...2.4,
+                        step: 0.05, suffix: "×", precision: 2, title: "Heading Line Spacing", accessibilityUnit: nil)
+                }
+            }
+            Section("Text Styles") {
+                roleFont("Body Bold Font", selection: $profile.settings.body.cjkStrongFontFamily)
+                roleFont("Body Italic Font", selection: $profile.settings.body.cjkEmphasisFontFamily)
+                roleFont("Heading Bold Font", selection: $profile.settings.headings.cjkStrongFontFamily)
+                roleFont("Heading Italic Font", selection: $profile.settings.headings.cjkEmphasisFontFamily)
+            }
+            Section("Heading Hierarchy") {
+                AppearanceHeadingLevelMatrix(headings: $profile.settings.headings, showsSpacing: false)
+                HStack {
+                    Spacer()
+                    Button("Edit Heading Levels…") { showsHeadingLevelDetails = true }
+                }
+            }
+            Section {
                 Button("CSS Snippets…", action: onShowAdvancedCSS)
+            } header: {
+                Text("Advanced CSS")
+            } footer: {
+                Text("Fine typography and document styling can be extended with CSS snippets.")
             }
         }
-    }
-}
-
-private struct AppearanceBodyTypographyMatrix: View {
-    @Binding var settings: DocumentBodyAppearance
-
-    var body: some View {
-        ViewThatFits(in: .horizontal) {
-            matrix
-                .frame(minWidth: 600, maxWidth: .infinity, alignment: .leading)
-            compactMatrix
-                .frame(
-                    minWidth: ScholiumMetrics.Settings.typographyColumnMinimumWidth,
-                    maxWidth: .infinity,
-                    alignment: .leading
-                )
-            stackedRows
+        .accessibilityIdentifier("scholium.settings.appearance.typography")
+        .sheet(isPresented: $showsHeadingLevelDetails) {
+            AppearanceHeadingLevelDetailsView(headings: $profile.settings.headings)
         }
     }
 
-    private var matrix: some View {
-        settingsDensePropertyGrid {
-            GridRow {
-                settingsDensePropertyLabel("Paragraph spacing")
-                dimensionValue(
-                    title: "Paragraph spacing",
-                    value: $settings.paragraphSpacingEm,
-                    range: 0...2,
-                    step: 0.05,
-                    suffix: "em"
-                )
-                .frame(width: 150, alignment: .leading)
-                settingsDensePropertyLabel("First-line indent")
-                dimensionValue(
-                    title: "First-line indent",
-                    value: $settings.firstLineIndentEm,
-                    range: 0...4,
-                    step: 0.1,
-                    suffix: "em"
-                )
-                .frame(width: 150, alignment: .leading)
-            }
-        }
+    private var headingFamilies: [String] {
+        let selected = profile.settings.headings.fontFamily.rawValue
+        return fontFamilies.contains(selected) ? fontFamilies : fontFamilies + [selected]
     }
 
-    private var stackedRows: some View {
-        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
-            settingsEditorSection("Paragraph spacing") {
-                dimensionValue(
-                    title: "Paragraph spacing",
-                    value: $settings.paragraphSpacingEm,
-                    range: 0...2,
-                    step: 0.05,
-                    suffix: "em"
-                )
-            }
-            settingsEditorSection("First-line indent") {
-                dimensionValue(
-                    title: "First-line indent",
-                    value: $settings.firstLineIndentEm,
-                    range: 0...4,
-                    step: 0.1,
-                    suffix: "em"
-                )
-            }
-        }
+    private func roleFont(_ title: LocalizedStringResource, selection: Binding<String?>) -> some View {
+        AppearanceRoleFontPicker(title: title, selection: selection, availableFamilies: fontFamilies)
     }
 
-    private var compactMatrix: some View {
-        LazyVGrid(
-            columns: [
-                GridItem(.flexible(), alignment: .leading),
-                GridItem(.flexible(), alignment: .leading),
-            ],
-            alignment: .leading,
-            spacing: ScholiumGrid.Spacing.inlineControlGap
-        ) {
-            compactProperty("Paragraph spacing") {
-                dimensionValue(
-                    title: "Paragraph spacing",
-                    value: $settings.paragraphSpacingEm,
-                    range: 0...2,
-                    step: 0.05,
-                    suffix: "em"
-                )
-            }
-            compactProperty("First-line indent") {
-                dimensionValue(
-                    title: "First-line indent",
-                    value: $settings.firstLineIndentEm,
-                    range: 0...4,
-                    step: 0.1,
-                    suffix: "em"
-                )
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private func compactProperty<Content: View>(
-        _ title: LocalizedStringResource,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            content()
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-    }
-
-    private func dimensionValue(
-        title: LocalizedStringResource,
-        value: Binding<Double>,
-        range: ClosedRange<Double>,
-        step: Double,
-        suffix: String
-    ) -> some View {
-        AppearanceDoubleValueControl(
-            value: value,
-            range: range,
-            step: step,
-            suffix: suffix,
-            precision: 2,
-            title: title,
-            accessibilityUnit: title
-        )
-    }
-}
-
-private struct AppearanceHeadingTypographyMatrix: View {
-    @Binding var headings: DocumentHeadingAppearance
-
-    var body: some View {
-        ViewThatFits(in: .horizontal) {
-            matrix
-                .frame(minWidth: 700, maxWidth: .infinity, alignment: .leading)
-            compactMatrix
-                .frame(
-                    minWidth: ScholiumMetrics.Settings.typographyColumnMinimumWidth,
-                    maxWidth: .infinity,
-                    alignment: .leading
-                )
-            stackedRows
-        }
-    }
-
-    private var matrix: some View {
-        settingsDensePropertyGrid {
-            GridRow {
-                settingsDensePropertyLabel("Heading Font")
-                fontPicker()
-                settingsDensePropertyLabel("Heading Style")
-                stylePicker()
-            }
-            GridRow {
-                settingsDensePropertyLabel("Heading Weight")
-                AppearanceIntegerControl(
-                    title: "Heading Weight",
-                    value: $headings.weight,
-                    range: 400...700,
-                    step: 50
-                )
-                .frame(width: 150, alignment: .leading)
-                settingsDensePropertyLabel("Heading Line Spacing")
-                AppearanceDoubleValueControl(
-                    value: $headings.lineHeight,
-                    range: 1...2.4,
-                    step: 0.05,
-                    suffix: "×",
-                    precision: 2,
-                    title: "Heading Line Spacing",
-                    accessibilityUnit: nil
-                )
-                .frame(width: 150, alignment: .leading)
-            }
-        }
-    }
-
-    private var compactMatrix: some View {
-        LazyVGrid(
-            columns: [
-                GridItem(.flexible(), alignment: .leading),
-                GridItem(.flexible(), alignment: .leading),
-            ],
-            alignment: .leading,
-            spacing: ScholiumGrid.Spacing.inlineControlGap
-        ) {
-            compactProperty("Font") { fontPicker(width: 132) }
-            compactProperty("Style") { stylePicker(width: 132) }
-            compactProperty("Weight") {
-                AppearanceIntegerControl(
-                    title: "Heading Weight",
-                    value: $headings.weight,
-                    range: 400...700,
-                    step: 50
-                )
-            }
-            compactProperty("Line spacing") {
-                AppearanceDoubleValueControl(
-                    value: $headings.lineHeight,
-                    range: 1...2.4,
-                    step: 0.05,
-                    suffix: "×",
-                    precision: 2,
-                    title: "Heading Line Spacing",
-                    accessibilityUnit: nil
-                )
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private func compactProperty<Content: View>(
-        _ title: LocalizedStringResource,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            content()
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-    }
-
-    private var installedHeadingFontFamilies: [String] {
-        let selected = headings.fontFamily
-        let retained = DocumentHeadingFontFamily.presets.contains(selected) ? [] : [selected.rawValue]
-        return Array(Set(NSFontManager.shared.availableFontFamilies + retained)).sorted {
-            $0.localizedStandardCompare($1) == .orderedAscending
-        }
-    }
-
-    private func fontPicker(width: CGFloat = 150) -> some View {
-        Picker("Heading Font", selection: $headings.fontFamily) {
-            ForEach(DocumentHeadingFontFamily.presets, id: \.self) {
-                Text($0.label).tag($0)
-            }
-            Divider()
-            ForEach(installedHeadingFontFamilies, id: \.self) { family in
-                Text(verbatim: family).tag(DocumentHeadingFontFamily(rawValue: family))
-            }
-        }
-        .labelsHidden()
-        .frame(width: width, alignment: .leading)
-        .accessibilityIdentifier("scholium.appearance.headingFont")
-    }
-
-    private func stylePicker(width: CGFloat = 150) -> some View {
-        Picker("Heading Style", selection: $headings.style) {
-            ForEach(DocumentHeadingStyle.allCases, id: \.self) {
-                Text($0.label).tag($0)
-            }
-        }
-        .labelsHidden()
-        .frame(width: width, alignment: .leading)
-    }
-
-    private var stackedRows: some View {
-        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
-            settingsEditorSection("Heading Font") { fontPicker() }
-            settingsEditorSection("Heading Style") { stylePicker() }
-            settingsEditorSection("Heading Weight") {
-                AppearanceIntegerControl(
-                    title: "Heading Weight",
-                    value: $headings.weight,
-                    range: 400...700,
-                    step: 50
-                )
-            }
-            settingsEditorSection("Heading Line Spacing") {
-                AppearanceDoubleValueControl(
-                    value: $headings.lineHeight,
-                    range: 1...2.4,
-                    step: 0.05,
-                    suffix: "×",
-                    precision: 2,
-                    title: "Heading Line Spacing",
-                    accessibilityUnit: nil
-                )
-            }
-        }
-    }
-}
-
-private struct AppearanceTextStylesMatrix: View {
-    @Binding var bodyBoldSelection: String?
-    @Binding var bodyItalicSelection: String?
-    @Binding var headingBoldSelection: String?
-    @Binding var headingItalicSelection: String?
-    let availableFamilies: [String]
-
-    var body: some View {
-        ViewThatFits(in: .horizontal) {
-            matrix
-                .frame(minWidth: 500, maxWidth: .infinity, alignment: .leading)
-            compactMatrix
-                .frame(
-                    minWidth: ScholiumMetrics.Settings.typographyColumnMinimumWidth,
-                    maxWidth: .infinity,
-                    alignment: .leading
-                )
-            stackedRows
-        }
-    }
-
-    private var matrix: some View {
-        Grid(alignment: .leading, horizontalSpacing: 20, verticalSpacing: 12) {
-            GridRow {
-                settingsMatrixHeader("Role")
-                settingsMatrixHeader("Bold Font")
-                settingsMatrixHeader("Italic Font")
-            }
-            GridRow {
-                settingsMatrixRowLabel("Body")
-                fontPicker(title: "Bold Font", selection: $bodyBoldSelection)
-                fontPicker(title: "Italic Font", selection: $bodyItalicSelection)
-            }
-            GridRow {
-                settingsMatrixRowLabel("Headings")
-                fontPicker(title: "Bold Font", selection: $headingBoldSelection)
-                fontPicker(title: "Italic Font", selection: $headingItalicSelection)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityElement(children: .contain)
-    }
-
-    private var compactMatrix: some View {
-        Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 8) {
-            GridRow {
-                settingsMatrixHeader("Role")
-                    .frame(width: 64, alignment: .leading)
-                settingsMatrixHeader("Bold")
-                    .frame(width: 92, alignment: .leading)
-                settingsMatrixHeader("Italic")
-                    .frame(width: 92, alignment: .leading)
-            }
-            GridRow {
-                settingsMatrixRowLabel("Body")
-                    .frame(width: 64, alignment: .leading)
-                fontPicker(title: "Bold Font", selection: $bodyBoldSelection, width: 92)
-                fontPicker(title: "Italic Font", selection: $bodyItalicSelection, width: 92)
-            }
-            GridRow {
-                settingsMatrixRowLabel("Headings")
-                    .frame(width: 64, alignment: .leading)
-                fontPicker(title: "Bold Font", selection: $headingBoldSelection, width: 92)
-                fontPicker(title: "Italic Font", selection: $headingItalicSelection, width: 92)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityElement(children: .contain)
-    }
-
-    private var stackedRows: some View {
-        VStack(alignment: .leading, spacing: ScholiumMetrics.Settings.sectionSpacing) {
-            roleRows(
-                "Body",
-                boldSelection: $bodyBoldSelection,
-                italicSelection: $bodyItalicSelection
-            )
-            roleRows(
-                "Headings",
-                boldSelection: $headingBoldSelection,
-                italicSelection: $headingItalicSelection
-            )
-        }
-    }
-
-    private func roleRows(
-        _ title: LocalizedStringResource,
-        boldSelection: Binding<String?>,
-        italicSelection: Binding<String?>
-    ) -> some View {
-        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
-            Text(title)
-                .font(.subheadline.weight(.semibold))
-            settingsEditorSection("Bold Font") {
-                fontPicker(title: "Bold Font", selection: boldSelection)
-            }
-            settingsEditorSection("Italic Font") {
-                fontPicker(title: "Italic Font", selection: italicSelection)
-            }
-        }
-    }
-
-    private func fontPicker(
-        title: LocalizedStringResource,
-        selection: Binding<String?>,
-        width: CGFloat = ScholiumMetrics.Settings.appearancePickerWidth
-    ) -> some View {
-        AppearanceRoleFontPicker(
-            title: title,
-            selection: selection,
-            availableFamilies: availableFamilies
-        )
-        .frame(width: width, alignment: .leading)
-    }
 }
 
 private enum AppearanceHeadingLevel: String, CaseIterable, Identifiable {
@@ -1923,9 +1325,11 @@ private struct AppearanceNumberControl: View {
     }
 
     var body: some View {
-        HStack(spacing: 2) {
+        HStack(spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
             TextField("", value: boundedValue, format: .number.precision(.fractionLength(0...2)))
-                .frame(width: 58)
+                .textFieldStyle(.roundedBorder)
+                .multilineTextAlignment(.trailing)
+                .frame(width: ScholiumMetrics.Settings.numberFieldWidth)
                 .accessibilityLabel(Text(title))
             Stepper("", value: boundedValue, in: range, step: step)
                 .labelsHidden()
@@ -1950,53 +1354,17 @@ private struct AppearanceIntegerControl: View {
     }
 
     var body: some View {
-        HStack(spacing: 2) {
+        HStack(spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
             TextField("", value: boundedValue, format: .number)
-                .frame(width: 58)
+                .textFieldStyle(.roundedBorder)
+                .multilineTextAlignment(.trailing)
+                .frame(width: ScholiumMetrics.Settings.numberFieldWidth)
                 .accessibilityLabel(Text(title))
             Stepper("", value: boundedValue, in: range, step: step)
                 .labelsHidden()
                 .accessibilityLabel(Text(title))
         }
         .fixedSize()
-    }
-}
-
-private struct AppearanceDoubleControl: View {
-    let title: LocalizedStringResource
-    @Binding var value: Double
-    let range: ClosedRange<Double>
-    let step: Double
-    let suffix: String
-    let precision: Int
-    let accessibilityUnit: LocalizedStringResource?
-
-    init(
-        _ title: LocalizedStringResource, value: Binding<Double>, range: ClosedRange<Double>,
-        step: Double, suffix: String, precision: Int = 2,
-        accessibilityUnit: LocalizedStringResource? = nil
-    ) {
-        self.title = title
-        _value = value
-        self.range = range
-        self.step = step
-        self.suffix = suffix
-        self.precision = precision
-        self.accessibilityUnit = accessibilityUnit
-    }
-
-    var body: some View {
-        settingsEditorSection(title) {
-            AppearanceDoubleValueControl(
-                value: $value,
-                range: range,
-                step: step,
-                suffix: suffix,
-                precision: precision,
-                title: title,
-                accessibilityUnit: accessibilityUnit
-            )
-        }
     }
 }
 
@@ -2026,7 +1394,8 @@ private struct AppearanceDoubleValueControl: View {
                 format: .number.precision(.fractionLength(0...precision))
             )
             .textFieldStyle(.roundedBorder)
-            .frame(width: 64)
+            .multilineTextAlignment(.trailing)
+            .frame(width: ScholiumMetrics.Settings.numberFieldWidth)
             .accessibilityLabel(Text(title))
             Stepper("", value: boundedValue, in: range, step: step)
                 .labelsHidden()
@@ -2034,6 +1403,7 @@ private struct AppearanceDoubleValueControl: View {
                 .accessibilityLabel(Text(title))
             Text(suffix)
                 .foregroundStyle(.secondary)
+                .frame(width: ScholiumMetrics.Settings.unitLabelWidth, alignment: .leading)
         }
         .accessibilityElement(children: .contain)
         .help(Text(accessibilityUnit ?? title))
@@ -2085,10 +1455,7 @@ private struct AppearanceRoleFontPicker: View {
                 Text(verbatim: family).tag(family)
             }
         }
-        .labelsHidden()
         .pickerStyle(.menu)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityLabel(Text(title))
     }
 }
 
@@ -2233,15 +1600,15 @@ private struct WorkspacePathEditor: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 20) {
-                settingsEditorSection("Name") {
+            Form {
+                Section("Name") {
                     TextField("Name", text: $triptychName)
                         .labelsHidden()
                         .accessibilityIdentifier("scholium.triptychName")
 
                 }
 
-                settingsEditorSection("Research Folders") {
+                Section("Research Folders") {
                     WorkspaceFolderRow(
                         title: "Analyses",
                         url: $paperAnalysisURL
@@ -2256,7 +1623,7 @@ private struct WorkspacePathEditor: View {
                     )
                 }
 
-                settingsEditorSection("Portable Triptych Data") {
+                Section("Portable Triptych Data") {
                     PortableControlFolderRow(
                         worksURL: outputURL,
                         containerURL: $portableContainerURL
@@ -2274,7 +1641,7 @@ private struct WorkspacePathEditor: View {
                 }
 
             }
-            .scholiumSettingsForm()
+            .formStyle(.grouped)
 
             if let errorMessage {
                 Label(errorMessage, systemImage: "exclamationmark.triangle.fill")

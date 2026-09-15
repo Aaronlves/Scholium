@@ -151,21 +151,20 @@ already-visible Chat does not toggle the Sidebar closed.
 - Document readiness covers live WebKit until the requested mode and its
   source-located presentation are converged; retained-editor reconstruction
   owns scroll and selection without an opening-position special case.
-- Settings now uses five native preference panes with scope expressed by named
-  groups and adjacent state text rather than page-wide notices, static search
-  routing, and Interaction/Integrations child selectors. Selection Actions use
-  a compact native table, explicit Edit… sheets, and the real selection-toolbar
-  preview. Ordinary groups use headings and whitespace instead of repeated
-  rules. The Agents & Chat pane keeps connection state and primary connection
-  actions visible while custom connection paths, Skills and Tools, and
-  External Agent Hosts use explicit native child sheets. App chrome does not add an accent or
-  appearance picker and follows system-resolved colors; pane changes
-  interpolate from the current top-left corner while native content remains
-  flexible during resizing. Appearance now owns the complete reading and
-  typography surface in one pane; low-frequency letter spacing, word spacing,
-  hyphenation and kerning/ligatures, plus bounded Callout overrides, use the
-  separately managed Advanced CSS surface rather than structured profile
-  fields.
+- Settings uses five sidebar categories, static bilingual search, and native
+  Interaction/Integrations child selectors. The compact toolbar keeps the pane
+  title; category changes retain window dimensions. Previously opened pages
+  retain their draft state in native tabless hosts; only the selected page is
+  attached for layout, input and accessibility. Preferences use native grouped
+  forms, including shortcut rows; Selection Actions retains its native table
+  with adjacent actions and an accessible fixed footer. Notifications drafts bind
+  their original Triptych and revision, with explicit reload after a mismatch.
+  Agents & Chat keeps connection state and primary actions visible; custom
+  connection paths, Skills and Tools, and External Agent Hosts use native child
+  sheets. Appearance holds reading, source fonts, typography and heading levels;
+  low-frequency letter/word spacing, hyphenation, kerning/ligatures and bounded
+  Callout overrides remain in Advanced CSS. Auxiliary chrome follows system
+  appearance and Accent.
 - Review and inactive Edit show a link annotation from one trailing superscript
   marker in the shared bounded preview surface, never as a block inserted into
   prose. Hover or focus reveals it, click keeps it open, and Escape or outside

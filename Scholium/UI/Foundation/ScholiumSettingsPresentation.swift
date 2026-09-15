@@ -31,17 +31,6 @@ func settingsTitle(
 }
 
 @MainActor
-func settingsSectionTitle(
-    _ title: LocalizedStringResource
-) -> some View {
-    Text(title)
-        .font(.headline)
-        .foregroundStyle(.primary)
-        .padding(.top, ScholiumGrid.Spacing.inlineControlGap)
-        .accessibilityAddTraits(.isHeader)
-}
-
-@MainActor
 func settingsMatrixHeader(
     _ title: LocalizedStringResource
 ) -> some View {
@@ -62,90 +51,36 @@ func settingsMatrixRowLabel(
 }
 
 @MainActor
-func settingsDensePropertyGrid<Content: View>(
-    @ViewBuilder content: () -> Content
-) -> some View {
-    Grid(
-        alignment: .leading,
-        horizontalSpacing: ScholiumGrid.Spacing.inlineControlGap,
-        verticalSpacing: ScholiumGrid.Spacing.labelAccessoryGap
-    ) {
-        content()
-    }
-    .frame(maxWidth: .infinity, alignment: .leading)
-}
-
-@MainActor
-func settingsDensePropertyLabel(
-    _ title: LocalizedStringResource
-) -> some View {
-    Text(title)
-        .font(.body.weight(.semibold))
-        .frame(width: 140, alignment: .trailing)
-}
-
-@MainActor
 func settingsEditorSection<Content: View>(
     _ title: LocalizedStringResource,
     @ViewBuilder content: () -> Content
 ) -> some View {
-    let separator = Locale.current.identifier.lowercased().hasPrefix("zh") ? "：" : ":"
-    return HStack(alignment: .top, spacing: 16) {
-        Text(verbatim: String(localized: title) + separator)
-            .font(.body.weight(.semibold))
-            .multilineTextAlignment(.trailing)
-            .frame(width: 160, alignment: .trailing)
-            .padding(.top, 3)
-            .accessibilityAddTraits(.isHeader)
-        VStack(alignment: .leading, spacing: 8) {
+    LabeledContent {
+        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
             content()
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+    } label: {
+        Text(title)
+            .fixedSize(horizontal: false, vertical: true)
     }
     .accessibilityElement(children: .contain)
 }
 
+/// A semantic settings group; macOS owns its surface, corners, and adaptation.
 @MainActor
-func settingsAdaptiveGrid<Content: View>(
+func settingsGroup<Content: View>(
+    _ title: LocalizedStringResource,
     @ViewBuilder content: () -> Content
 ) -> some View {
-    LazyVGrid(
-        columns: [
-            GridItem(
-                .adaptive(minimum: ScholiumMetrics.Settings.adaptiveColumnMinimumWidth),
-                spacing: ScholiumMetrics.Settings.columnSpacing
-            )
-        ],
-        alignment: .leading,
-        spacing: ScholiumMetrics.Settings.sectionSpacing
-    ) {
-        content()
+    GroupBox {
+        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+            content()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(ScholiumGrid.Spacing.inlineControlGap)
+    } label: {
+        Text(title).accessibilityAddTraits(.isHeader)
     }
-}
-
-@MainActor
-func settingsPairedGrid<Content: View>(
-    columnMinimumWidth: CGFloat = ScholiumMetrics.Settings.adaptiveColumnMinimumWidth,
-    columnSpacing: CGFloat = ScholiumMetrics.Settings.columnSpacing,
-    @ViewBuilder content: () -> Content
-) -> some View {
-    LazyVGrid(
-        columns: [
-            GridItem(
-                .flexible(minimum: columnMinimumWidth),
-                spacing: columnSpacing
-            ),
-            GridItem(
-                .flexible(minimum: columnMinimumWidth),
-                spacing: 0
-            ),
-        ],
-        alignment: .leading,
-        spacing: ScholiumMetrics.Settings.sectionSpacing
-    ) {
-        content()
-    }
-    .frame(maxWidth: .infinity, alignment: .leading)
 }
 
 @MainActor
@@ -206,30 +141,8 @@ struct ScholiumSettingsSearchField: NSViewRepresentable {
     }
 }
 
-private struct ScholiumSettingsFormPresentation: ViewModifier {
-    func body(content: Content) -> some View {
-        ScrollView {
-            content
-                .formStyle(.columns)
-                .padding(.horizontal, 24)
-                .padding(.vertical, 16)
-                .frame(
-                    maxWidth: 760,
-                    alignment: .topLeading
-                )
-                .frame(maxWidth: .infinity, alignment: .top)
-        }
-        .scrollContentBackground(.hidden)
-        .scholiumSettingsPaneSurface()
-    }
-}
-
 extension View {
     func scholiumSettingsPaneSurface() -> some View {
         modifier(ScholiumSettingsPaneSurface())
-    }
-
-    func scholiumSettingsForm() -> some View {
-        modifier(ScholiumSettingsFormPresentation())
     }
 }

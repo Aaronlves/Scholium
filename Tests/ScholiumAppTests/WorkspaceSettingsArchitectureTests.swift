@@ -52,13 +52,13 @@ struct WorkspaceSettingsArchitectureTests {
             encoding: .utf8
         )
         let topLevelEnd = try #require(
-            source.range(of: "private struct AttentionSettingsView")
+            source.range(of: "struct ZoteroSettingsView")
         )
         let topLevel = String(source[..<topLevelEnd.lowerBound])
 
-        #expect(topLevel.contains("SettingsToolbarAttachment(destination: $destination)"))
-        #expect(topLevel.contains("window.toolbarStyle = .preference"))
-        #expect(topLevel.contains("accessibilityDisplayShouldReduceMotion"))
+        #expect(topLevel.contains("SettingsWindowAttachment()"))
+        #expect(topLevel.contains("NavigationSplitView"))
+        #expect(topLevel.contains(".listStyle(.sidebar)"))
         #expect(topLevel.contains("ScholiumSettingsDestination.workspace"))
         #expect(!topLevel.contains("SettingsTriptychScopePicker"))
         #expect(topLevel.contains("ScholiumSettingsSearchField(text: $searchQuery)"))
@@ -116,6 +116,13 @@ struct WorkspaceSettingsArchitectureTests {
             ),
             encoding: .utf8
         )
+        let attentionSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/Views/AttentionSettingsView.swift"
+            ),
+            encoding: .utf8
+        )
+        let allSettingsSource = source + attentionSource
 
         #expect(!source.contains("TriptychScopedSettingsView"))
         #expect(!source.contains("SettingsTriptychScopePicker"))
@@ -143,11 +150,11 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(!source.contains("Registration and folder access are local to this Mac"))
         #expect(!source.contains("Document content only"))
         #expect(!source.contains("These profiles change how Markdown is presented"))
-        #expect(source.contains("This Triptych"))
-        #expect(source.contains("This Mac"))
-        #expect(source.contains("Reminder Timing"))
-        #expect(source.contains("Dismissed Items on This Mac"))
-        #expect(source.contains("Restore All Dismissed Items on This Mac"))
+        #expect(allSettingsSource.contains("This Triptych"))
+        #expect(allSettingsSource.contains("This Mac"))
+        #expect(attentionSource.contains("Reminder Timing"))
+        #expect(attentionSource.contains("Dismissed Items on This Mac"))
+        #expect(attentionSource.contains("Restore All Dismissed Items on This Mac"))
         #expect(source.contains("case integrations"))
         #expect(source.contains("settingsTriptychLabel("))
         #expect(
@@ -168,7 +175,6 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(integration.contains("ExternalAgentHostsSettingsView"))
         #expect(!integration.contains("detail: helperURL?.path"))
         #expect(!integration.contains("Not found at $HOME/.local/bin/scholium"))
-        #expect(!integration.contains("ScrollView"))
         #expect(!integration.contains("DisclosureGroup(\"Connect an External Agent\""))
 
         let connection = try String(
@@ -558,19 +564,21 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(appearanceSource.contains("store.renameAppearance"))
         #expect(appearanceSource.contains("store.removeAppearance"))
         #expect(appearanceSource.contains("AppearanceReadingEditor"))
-        #expect(appearanceSource.contains("settingsEditorSection(\"Body Font\")"))
+        #expect(appearanceSource.contains("Picker(\"Body Font\", selection: $profile.settings.body.fontFamily)"))
         #expect(appearanceSource.contains("\"Line width\""))
         #expect(appearanceSource.contains("DocumentAppearanceSettings.lineWidthCharacterUnitsRange"))
         #expect(appearanceSource.contains("accessibilityUnit: \"character-width units\""))
         #expect(!appearanceSource.contains("Full width"))
         #expect(!appearanceSource.contains("Line width preset"))
         #expect(!appearanceSource.contains("Line width mode"))
-        #expect(appearanceSource.contains("settingsEditorSection(\"Source Font\")"))
-        #expect(appearanceSource.contains("settingsEditorSection(\"Heading Font\")"))
-        #expect(appearanceSource.contains("typographySection(\"Text Styles\")"))
-        #expect(appearanceSource.contains("AppearanceTextStylesMatrix"))
-        #expect(appearanceSource.contains("settingsEditorSection(\"Bold Font\")"))
-        #expect(appearanceSource.contains("settingsEditorSection(\"Italic Font\")"))
+        #expect(appearanceSource.contains("Picker(\"Source Font\", selection: $profile.settings.source.fontFamily)"))
+        #expect(appearanceSource.contains("Picker(\"Heading Font\", selection: $profile.settings.headings.fontFamily)"))
+        #expect(appearanceSource.contains("Section(\"Text Styles\")"))
+        #expect(appearanceSource.contains(".formStyle(.grouped)"))
+        #expect(appearanceSource.contains("roleFont(\"Body Bold Font\", selection: $profile.settings.body.cjkStrongFontFamily)"))
+        #expect(appearanceSource.contains("roleFont(\"Body Italic Font\", selection: $profile.settings.body.cjkEmphasisFontFamily)"))
+        #expect(appearanceSource.contains("roleFont(\"Heading Bold Font\", selection: $profile.settings.headings.cjkStrongFontFamily)"))
+        #expect(appearanceSource.contains("roleFont(\"Heading Italic Font\", selection: $profile.settings.headings.cjkEmphasisFontFamily)"))
         #expect(!appearanceSource.contains("Semantic Typefaces"))
         #expect(!appearanceSource.contains("Strong (CJK)"))
         #expect(!appearanceSource.contains("Emphasis (CJK)"))
@@ -580,14 +588,14 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(appearanceSource.contains("store.reloadAppearanceConfiguration()"))
         #expect(appearanceSource.contains("store.revealAppearanceConfiguration()"))
         #expect(!appearanceSource.contains("showsYAMLFrontmatter"))
-        #expect(appearanceSource.contains("typographySection(\"Heading Hierarchy\")"))
+        #expect(appearanceSource.contains("Section(\"Heading Hierarchy\")"))
         #expect(appearanceSource.contains("AppearanceHeadingLevelMatrix"))
         #expect(appearanceSource.contains("Button(\"Edit Heading Levels…\")"))
         #expect(appearanceSource.contains("$headings.level3"))
         #expect(appearanceSource.contains("$headings.level6"))
         #expect(!appearanceSource.contains("H2–H6"))
-        #expect(appearanceSource.contains("settingsEditorSection(\"Heading Style\")"))
-        #expect(appearanceSource.contains("settingsEditorSection(\"Heading Weight\")"))
+        #expect(appearanceSource.contains("Picker(\"Heading Style\", selection: $profile.settings.headings.style)"))
+        #expect(appearanceSource.contains("AppearanceIntegerControl(title: \"Heading Weight\", value: $profile.settings.headings.weight"))
         #expect(appearanceSource.contains("settingsEditorSection(\"Scale\")"))
         #expect(appearanceSource.contains("settingsEditorSection(\"Alignment\")"))
         #expect(appearanceSource.contains("\"Paragraph spacing\""))
@@ -619,7 +627,7 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(!appearanceSource.contains("SafeMarkdownReadWebView"))
     }
 
-    @Test("Settings use whitespace for groups and keep peer details visible")
+    @Test("Settings keep peer details visible without decorative separators")
     func settingsAvoidDecorativeSeparatorsAndNestedPeerDisclosure() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -635,16 +643,16 @@ struct WorkspaceSettingsArchitectureTests {
 
         let settingsSource = try read("Scholium/Views/WorkspaceSettingsView.swift")
         let settingsContentStart = try #require(
-            settingsSource.range(of: "private var settingsContent")
+            settingsSource.range(of: "struct ScholiumSettingsView: View")
         )
-        let toolbarAttachmentStart = try #require(
+        let windowAttachmentStart = try #require(
             settingsSource.range(
-                of: "private struct SettingsToolbarAttachment",
+                of: "private struct SettingsWindowAttachment",
                 range: settingsContentStart.upperBound..<settingsSource.endIndex
             )
         )
         let settingsContent = String(
-            settingsSource[settingsContentStart.lowerBound..<toolbarAttachmentStart.lowerBound]
+            settingsSource[settingsContentStart.lowerBound..<windowAttachmentStart.lowerBound]
         )
         #expect(!settingsContent.contains("Divider()"))
 
@@ -701,7 +709,7 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(!source.contains("DisclosureGroup"))
     }
 
-    @Test("Settings uses native preferences chrome and adaptive window geometry")
+    @Test("Settings uses native sidebar navigation with stable window geometry")
     func settingsPresentationOwnership() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -744,12 +752,12 @@ struct WorkspaceSettingsArchitectureTests {
             .components(separatedBy: "\n        #if DEBUG")
             .first ?? ""
 
-        #expect(componentSource.contains(".formStyle(.columns)"))
+        #expect(settingsSource.contains(".formStyle(.grouped)"))
         #expect(componentSource.contains("Color(nsColor: .windowBackgroundColor)"))
-        #expect(settingsSource.contains("window.toolbarStyle = .preference"))
-        #expect(settingsSource.contains("toolbar.selectedItemIdentifier"))
-        #expect(settingsSource.contains("accessibilityDisplayShouldReduceMotion"))
-        #expect(settingsSource.contains("window.animator().setFrame(frame, display: true)"))
+        #expect(settingsSource.contains("NavigationSplitView"))
+        #expect(settingsSource.contains("SettingsWindowAttachment"))
+        #expect(!settingsSource.contains("SettingsToolbarAttachment"))
+        #expect(!settingsSource.contains("window.animator().setFrame"))
         #expect(!settingsSource.contains("ScholiumWindowTopOverlayHost("))
         #expect(settingsSource.contains("ScholiumSettingsSearchField("))
         #expect(!settingsSceneSource.contains(".frame(width: 700, height: 560"))

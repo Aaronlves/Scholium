@@ -397,12 +397,20 @@ boundaries; architecture adds no compatibility policy.
 Settings search indexes static interface metadata only. It never searches
 research content, reads external Skill files, or supplies Agent permission.
 
-`SettingsToolbarAttachment` projects the five selected destinations to a native
-preference `NSToolbar`. Its coordinator owns only exact-window attachment and
-frame adjustment from the current top-left corner, constrained to the visible
-screen and immediate under Reduce Motion. SwiftUI retains destination and
-child-category state; feature owners retain configuration persistence. Native
-search filters static page/control metadata and restores the browsing context.
+`ScholiumSettingsView` owns the native `NavigationSplitView` sidebar.
+`ScholiumSettingsPaneHost` translates its selected destination into a borderless
+`NSTabView`: it creates hosts on first use, retains their SwiftUI identities,
+and attaches only the selected host. Its native accessibility projection exposes
+only that host's actual children; selection releases only an outgoing responder.
+Each host receives explicit Settings dependencies and public appearance values;
+its own hosting graph resolves native accessibility state. Inactive panes do not
+participate in window layout or input. `SettingsWindowAttachment` configures
+compact native window chrome; category selection never resizes the window.
+Native grouped `Form` sections compose preferences; `settingsGroup` uses native
+`GroupBox` surfaces around collections. Feature owners retain persistence.
+Native search filters static page/control metadata and restores browsing context.
+The Notifications draft captures its target and settings revision, and requires
+an explicit successful reload after a scope or revision mismatch.
 `ScholiumHotkeyCommand` owns fixed and customizable menu bindings.
 `ScholiumHotkeyPreferences` validates recording, writes and persisted overrides
 against that catalog and native reservations. `ScholiumMenuShortcutModifier`
@@ -418,11 +426,12 @@ explicitly. File, Edit, Format, Insert, View, Research and Window retain
 separate command views. Research's Settlement route reuses the window toolbar's
 exact-target availability and popover; it adds no mutation owner.
 
-`SettingsInteractionView` composes Keyboard Shortcuts and Selection Actions
+`SettingsInteractionView` composes Keyboard Shortcuts, Selection Actions and Chat
 with a native segmented child selector. `SettingsIntegrationsView` composes
 Agents & Chat and Zotero in the same way; it does not copy either feature's
-state. Their scope notice is explanatory only and does not grant a broader
-write authority.
+state. Child search routing temporarily reveals matching controls while
+retaining the original browsing category; only explicit browsing selections
+update the saved child category.
 
 The selected Triptych's Chat controller supplies connection settings through
 the [Agent client](02-agent-collaboration.md#native-chat-client), not a second

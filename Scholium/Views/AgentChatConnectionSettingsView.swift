@@ -18,34 +18,36 @@ struct AgentChatConnectionSettingsView: View {
     @State private var showsSkillsAndTools = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            settingsEditorSection("Chat in Scholium") {
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack(alignment: .center, spacing: ScholiumGrid.Spacing.inlineControlGap) {
-                        Text(connectionStatus)
-                            .foregroundStyle(.secondary)
-                        connectionActions
-                    }
-                    if let error = controller.error { Text(error).font(.callout).foregroundStyle(.secondary) }
-                    Text(
-                        "Scholium finds Codex and prepares the connection automatically. Connection settings and saved chat history are managed on this Mac."
-                    )
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+        Group {
+            Section {
+                LabeledContent("Status") {
+                    Text(connectionStatus)
+                        .foregroundStyle(.secondary)
                 }
+                HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                    connectionActions
+                }
+                if let error = controller.error {
+                    Label(error, systemImage: "exclamationmark.triangle")
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
+            } header: {
+                Text("Chat in Scholium")
+            } footer: {
+                Text(
+                    "Scholium finds Codex and prepares the connection automatically. Connection settings and saved chat history are managed on this Mac."
+                )
             }
-            settingsEditorSection("Advanced") {
-                VStack(alignment: .leading, spacing: 8) {
-                    Button("Advanced Connection Settings…") {
-                        showsAdvancedConnectionSettings = true
-                    }
-                    Button("Skills and Tools…") {
-                        showsSkillsAndTools = true
-                    }
-                    if let onShowExternalAgentHosts {
-                        Button("External Agent Hosts…", action: onShowExternalAgentHosts)
-                    }
+            Section("Advanced") {
+                AgentSettingsNavigationButton("Advanced Connection Settings…") {
+                    showsAdvancedConnectionSettings = true
+                }
+                AgentSettingsNavigationButton("Skills and Tools…") {
+                    showsSkillsAndTools = true
+                }
+                if let onShowExternalAgentHosts {
+                    AgentSettingsNavigationButton("External Agent Hosts…", action: onShowExternalAgentHosts)
                 }
             }
         }
@@ -85,6 +87,32 @@ struct AgentChatConnectionSettingsView: View {
             }
             Button("Disconnect") { Task { await controller.disconnectByUser() } }
         }
+    }
+}
+
+/// A secondary Settings workflow opens from a full-width native action row.
+struct AgentSettingsNavigationButton: View {
+    let title: LocalizedStringKey
+    let action: () -> Void
+
+    init(_ title: LocalizedStringKey, action: @escaping () -> Void) {
+        self.title = title
+        self.action = action
+    }
+
+    var body: some View {
+        Button(action: action) {
+            HStack {
+                Text(title)
+                    .foregroundStyle(.primary)
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.borderless)
     }
 }
 

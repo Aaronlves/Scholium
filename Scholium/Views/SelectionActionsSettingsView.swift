@@ -8,149 +8,162 @@ struct SelectionActionsSettingsView: View {
     @State private var isAddingAction = false
     @State private var selectedActionID: UUID?
     @State private var error: String?
+    @State private var hasLoadedDraft = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.sectionSeparation) {
-                Text("Selection Actions")
-                    .font(.headline)
-                    .accessibilityAddTraits(.isHeader)
-
-                Text("Choose which actions are available for selected text. Edit an action to change its label or instruction.")
-                    .font(.body)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                if draft.isEmpty {
-                    Text("No selection actions configured.")
-                        .foregroundStyle(.secondary)
-                        .padding(.vertical, ScholiumGrid.Spacing.inlineControlGap)
-                } else {
-                    Table(draft, selection: $selectedActionID) {
-                        TableColumn("Enabled") { action in
-                            Toggle(
-                                "",
-                                isOn: isEnabledBinding(for: action)
-                            )
-                            .labelsHidden()
-                            .toggleStyle(.checkbox)
-                            .accessibilityLabel(
-                                Text(
-                                    verbatim: String(
-                                        format: ScholiumL10n.string("Enable %@"),
-                                        displayName(for: action)
-                                    ))
-                            )
-                        }
-                        .width(58)
-
-                        TableColumn("Action") { action in
-                            Text(verbatim: displayName(for: action))
-                                .lineLimit(1)
-                        }
-
-                        TableColumn("Instruction") { action in
-                            Group {
-                                if action.prompt.isEmpty {
-                                    Text("No instruction")
-                                } else {
-                                    Text(verbatim: action.prompt)
-                                }
-                            }
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                            .help(Text(verbatim: action.prompt))
-                        }
-
-                        TableColumn("Actions") { action in
-                            HStack(spacing: 8) {
-                                Button {
-                                    beginEditing(action)
-                                } label: {
-                                    Text("Edit…")
-                                }
-                                .buttonStyle(.borderless)
-                                .accessibilityIdentifier("scholium.selectionActions.edit")
-
-                                Menu {
-                                    Button("Move Up") { move(action.id, by: -1) }
-                                        .disabled(draft.first?.id == action.id)
-                                    Button("Move Down") { move(action.id, by: 1) }
-                                        .disabled(draft.last?.id == action.id)
-                                    Button("Remove", role: .destructive) {
-                                        remove(action.id)
-                                    }
-                                } label: {
-                                    Label("More", systemImage: "ellipsis.circle")
-                                        .labelStyle(.iconOnly)
-                                }
-                                .menuStyle(.borderlessButton)
-                                .accessibilityLabel(Text("More"))
-                            }
-                        }
-                        .width(min: 118, ideal: 126)
-                    }
-                    .tableStyle(.inset)
-                    .frame(height: tableHeight)
-                    .accessibilityIdentifier("scholium.selectionActions.table")
-                }
-
-                HStack {
-                    Button("Add Action", systemImage: "plus") {
-                        beginAdding()
-                    }
-                    .disabled(draft.count >= SelectionActionPreferences.maximumCount)
-
-                    Spacer()
-
-                    Button("Restore Defaults") {
-                        draft = SelectionActionPreferences.defaultActions
-                        selectedActionID = nil
-                        error = nil
-                    }
-                    .disabled(draft == SelectionActionPreferences.defaultActions)
-                }
-
-                if let message = error ?? preferences.loadError
-                    ?? SelectionActionPreferences.validationError(draft)
-                {
-                    Text(message)
+            ScrollView {
+                VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.sectionSeparation) {
+                    settingsGroup("Selection Actions") {
+                        Text(
+                            "Choose which actions are available for selected text. Edit an action to change its label or instruction."
+                        )
+                        .font(.body)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
-                        .accessibilityIdentifier("scholium.selectionActions.validation")
-                }
 
-                settingsEditorSection("Preview") {
-                    VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
-                        SelectionActionBarPreview(actions: draft)
-                            .id(previewIdentity)
-                            .frame(maxWidth: .infinity, minHeight: 38, alignment: .leading)
-                        Text("Shown when text is selected. Custom actions appear in More Actions.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
+                        if draft.isEmpty {
+                            Text("No selection actions configured.")
+                                .foregroundStyle(.secondary)
+                                .padding(.vertical, ScholiumGrid.Spacing.inlineControlGap)
+                        } else {
+                            Table(draft, selection: $selectedActionID) {
+                                TableColumn("Enabled") { action in
+                                    Toggle(
+                                        "",
+                                        isOn: isEnabledBinding(for: action)
+                                    )
+                                    .labelsHidden()
+                                    .toggleStyle(.checkbox)
+                                    .accessibilityLabel(
+                                        Text(
+                                            verbatim: String(
+                                                format: ScholiumL10n.string("Enable %@"),
+                                                displayName(for: action)
+                                            ))
+                                    )
+                                }
+                                .width(58)
 
-                HStack {
-                    Spacer()
-                    Button("Save") {
-                        saveDraft()
+                                TableColumn("Action") { action in
+                                    Text(verbatim: displayName(for: action))
+                                        .lineLimit(1)
+                                }
+
+                                TableColumn("Instruction") { action in
+                                    Group {
+                                        if action.prompt.isEmpty {
+                                            Text("No instruction")
+                                        } else {
+                                            Text(verbatim: action.prompt)
+                                        }
+                                    }
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                                    .help(Text(verbatim: action.prompt))
+                                }
+
+                                TableColumn("Actions") { action in
+                                    HStack(spacing: 8) {
+                                        Button {
+                                            beginEditing(action)
+                                        } label: {
+                                            Text("Edit…")
+                                        }
+                                        .buttonStyle(.borderless)
+                                        .accessibilityIdentifier("scholium.selectionActions.edit")
+
+                                        Menu {
+                                            Button("Move Up") { move(action.id, by: -1) }
+                                                .disabled(draft.first?.id == action.id)
+                                            Button("Move Down") { move(action.id, by: 1) }
+                                                .disabled(draft.last?.id == action.id)
+                                            Button("Remove", role: .destructive) {
+                                                remove(action.id)
+                                            }
+                                        } label: {
+                                            Label("More", systemImage: "ellipsis.circle")
+                                                .labelStyle(.iconOnly)
+                                        }
+                                        .menuStyle(.borderlessButton)
+                                        .accessibilityLabel(Text("More"))
+                                    }
+                                }
+                                .width(min: 118, ideal: 126)
+                            }
+                            .tableStyle(.inset)
+                            .frame(height: tableHeight)
+                            .accessibilityIdentifier("scholium.selectionActions.table")
+                        }
+
+                        HStack {
+                            Button("Add Action", systemImage: "plus") {
+                                beginAdding()
+                            }
+                            .disabled(draft.count >= SelectionActionPreferences.maximumCount)
+
+                            Spacer()
+
+                            Button("Restore Defaults") {
+                                draft = SelectionActionPreferences.defaultActions
+                                selectedActionID = nil
+                                error = nil
+                            }
+                            .disabled(draft == SelectionActionPreferences.defaultActions)
+                        }
+
+                        if let message = error ?? preferences.loadError
+                            ?? SelectionActionPreferences.validationError(draft)
+                        {
+                            Text(message)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .accessibilityIdentifier("scholium.selectionActions.validation")
+                        }
+
                     }
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(
-                        SelectionActionPreferences.validationError(draft) != nil
-                            || draft == preferences.actions
-                    )
+
+                    settingsGroup("Preview") {
+                        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+                            SelectionActionBarPreview(actions: draft)
+                                .id(previewIdentity)
+                                .frame(maxWidth: .infinity, minHeight: 38, alignment: .leading)
+                            Text("Shown when text is selected. Custom actions appear in More Actions.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+
                 }
+                .padding(.horizontal, 24)
+                .padding(.vertical, 16)
+                .frame(maxWidth: 760, alignment: .topLeading)
+                .frame(maxWidth: .infinity, alignment: .top)
             }
-            .padding(.horizontal, 24)
-            .padding(.vertical, 16)
-            .frame(maxWidth: 760, alignment: .topLeading)
-            .frame(maxWidth: .infinity, alignment: .top)
+            .scrollContentBackground(.hidden)
+
+            Divider()
+            HStack {
+                Spacer()
+                Button("Save") {
+                    saveDraft()
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(
+                    SelectionActionPreferences.validationError(draft) != nil
+                        || draft == preferences.actions
+                )
+            }
+            .padding(.horizontal, ScholiumMetrics.Settings.pathHorizontalInset)
+            .padding(.vertical, ScholiumGrid.Spacing.sectionSeparation)
         }
         .scholiumSettingsPaneSurface()
-        .onAppear { draft = preferences.actions }
+        .onAppear {
+            guard !hasLoadedDraft else { return }
+            draft = preferences.actions
+            hasLoadedDraft = true
+        }
         .onChange(of: preferences.actions) { _, actions in
             if editingAction == nil {
                 draft = actions

@@ -4,6 +4,126 @@ import CryptoKit
 import notify
 
 extension ScholiumUITests {
+    /// One settings journey covers stable geometry, draft lifetime, search and
+    /// hidden-page input isolation. It writes only the disposable QA profile.
+    @MainActor
+    func testSettingsNavigationRetainsDraftsAndWindowGeometry() throws {
+        waitForCurrentDocumentSurface()
+        app.menuBars.menuBarItems["Scholium QA"].click()
+        app.menuItems["Settings…"].click()
+        let window = app.windows.matching(identifier: "com_apple_SwiftUI_Settings_window").firstMatch
+        XCTAssertTrue(window.waitForExistence(timeout: 5))
+        let originalFrame = window.frame
+        func category(_ key: String) -> XCUIElement {
+            window.descendants(matching: .any)["scholium.settings.category.\(key)"].firstMatch
+        }
+        func select(_ key: String) {
+            let item = category(key)
+            XCTAssertTrue(item.waitForExistence(timeout: 5))
+            item.click()
+            XCTAssertEqual(window.frame.width, originalFrame.width, accuracy: 1)
+            XCTAssertEqual(window.frame.height, originalFrame.height, accuracy: 1)
+        }
+        func capture(_ name: String) {
+            let attachment = XCTAttachment(screenshot: window.screenshot())
+            attachment.name = name
+            attachment.lifetime = .keepAlways
+            add(attachment)
+        }
+
+        select("document")
+        let size = window.textFields["Body font size"]
+        XCTAssertTrue(size.waitForExistence(timeout: 5))
+        typeCommittedText("17", into: size, in: app)
+        app.typeKey(.tab, modifierFlags: [])
+        XCTAssertTrue(window.buttons["Save Appearance"].isEnabled)
+        capture("settings-appearance-draft")
+        window.descendants(matching: .any)["scholium.appearance.manage"].firstMatch.click()
+        app.menuItems["Rename Appearance…"].click()
+        let cancelRename = window.sheets.buttons["Cancel"].firstMatch
+        XCTAssertTrue(cancelRename.waitForExistence(timeout: 5))
+        cancelRename.click()
+        XCTAssertEqual(size.value as? String, "17", "Cancelling a child presentation discarded the draft")
+        window.descendants(matching: .any)["scholium.appearance.manage"].firstMatch.click()
+        app.menuItems["Rename Appearance…"].click()
+        let profileName = window.sheets.textFields.firstMatch
+        XCTAssertTrue(profileName.waitForExistence(timeout: 5))
+        typeCommittedText("QA Settings Profile", into: profileName, in: app)
+        window.sheets.buttons["Rename"].firstMatch.click()
+        let profilePicker = window.popUpButtons.matching(NSPredicate(format: "label BEGINSWITH %@", "Configuration")).firstMatch
+        XCTAssertTrue(waitUntil(timeout: 5) { profilePicker.exists && profilePicker.value as? String == "QA Settings Profile" })
+        XCTAssertEqual(size.value as? String, "17", "Renaming the profile discarded unsaved formatting")
+        select("notifications")
+        XCTAssertFalse(window.buttons["Save Appearance"].exists, "Inactive pane must leave the accessibility tree")
+        capture("settings-notifications")
+        select("interaction")
+        capture("settings-interaction")
+        select("integrations")
+        capture("settings-integrations")
+        select("document")
+        XCTAssertEqual(size.value as? String, "17", "Category navigation discarded an unsaved appearance draft")
+        XCTAssertTrue(window.buttons["Save Appearance"].isEnabled)
+
+        let search = window.searchFields["scholium.settings.search"]
+        typeCommittedText("no-such-setting-qa", into: search, in: app)
+        XCTAssertEqual(search.value as? String, "no-such-setting-qa")
+        XCTAssertFalse(window.buttons["Save Appearance"].exists)
+        capture("settings-empty-search")
+        search.buttons["cancel"].click()
+        XCTAssertTrue(size.waitForExistence(timeout: 5))
+        XCTAssertEqual(size.value as? String, "17")
+        window.buttons["Revert to Saved"].click()
+        XCTAssertFalse(window.buttons["Save Appearance"].isEnabled)
+
+        select("workspace")
+        let name = window.textFields["scholium.triptychName"]
+        XCTAssertTrue(name.waitForExistence(timeout: 5))
+        let savedName = name.value as? String
+        typeCommittedText("Unsaved QA name", into: name, in: app)
+        select("notifications")
+        select("workspace")
+        XCTAssertEqual(name.value as? String, "Unsaved QA name")
+        if let savedName { typeCommittedText(savedName, into: name, in: app) }
+        capture("settings-workspace")
+
+        // Native sidebar selection keeps keyboard focus across successive moves.
+        category("workspace").coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
+        app.typeKey(.downArrow, modifierFlags: [])
+        XCTAssertTrue(size.waitForExistence(timeout: 5))
+        app.typeKey(.downArrow, modifierFlags: [])
+        XCTAssertTrue(window.buttons["Save Reminder Timing"].waitForExistence(timeout: 5))
+        XCTAssertEqual(window.frame.size, originalFrame.size)
+
+        select("document")
+        // Resize from the straight edge; the rounded corner falls outside the
+        // Settings window's pointer region on this macOS version.
+        let rightEdge = window.coordinate(withNormalizedOffset: CGVector(dx: 1, dy: 0.5))
+            .withOffset(CGVector(dx: -1, dy: 0))
+        rightEdge.click(forDuration: 0.15, thenDragTo: rightEdge.withOffset(CGVector(dx: 780 - window.frame.width, dy: 0)))
+        XCTAssertTrue(waitUntil(timeout: 5) { abs(window.frame.width - 780) < 2 })
+        XCTAssertTrue(window.buttons["Save Appearance"].isHittable)
+        XCTAssertTrue(window.popUpButtons["scholium.appearance.bodyFont"].isHittable)
+        capture("settings-appearance-minimum-width")
+
+        app.terminate()
+        app = configuredApplication(sessionID: sessionID, appearance: .light)
+        app.launchArguments += ["-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        app.launch()
+        XCTAssertTrue(app.descendants(matching: .any)["scholium.librarySurface"].waitForExistence(timeout: 20))
+        app.menuBars.menuBarItems["Scholium QA"].click()
+        app.menuItems["设置…"].click()
+        let localizedWindow = app.windows.matching(identifier: "com_apple_SwiftUI_Settings_window").firstMatch
+        XCTAssertTrue(localizedWindow.waitForExistence(timeout: 5))
+        let appearance = localizedWindow.descendants(matching: .any)["scholium.settings.category.document"].firstMatch
+        XCTAssertTrue(appearance.waitForExistence(timeout: 5))
+        appearance.click()
+        XCTAssertTrue(localizedWindow.textFields["正文字号"].waitForExistence(timeout: 5))
+        let localizedAttachment = XCTAttachment(screenshot: localizedWindow.screenshot())
+        localizedAttachment.name = "settings-appearance-chinese-light"
+        localizedAttachment.lifetime = .keepAlways
+        add(localizedAttachment)
+    }
+
     @MainActor
     func testFixtureLaunchWithoutExplicitSessionIDUsesOneWindowSession() throws {
         XCTAssertTrue(

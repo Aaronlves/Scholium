@@ -1532,16 +1532,9 @@ enum ScholiumMetrics {
     }
 
     enum Settings {
+        static let numberFieldWidth: CGFloat = 64
+        static let unitLabelWidth: CGFloat = 24
         static let sectionSpacing = ScholiumGrid.foundationUnit * 3.5
-        static let columnSpacing = ScholiumGrid.foundationUnit * 6
-        // Two-column settings remain readable at the smallest standard window
-        // size; the same adaptive grid collapses to one column before labels or
-        // controls are compressed by enlarged interface text.
-        static let adaptiveColumnMinimumWidth = ScholiumGrid.foundationUnit * 85
-        static let pairedColumnMinimumWidth = adaptiveColumnMinimumWidth * 2 + columnSpacing
-        static let typographyColumnMinimumWidth = ScholiumGrid.foundationUnit * 70
-        static let typographyColumnSpacing = ScholiumGrid.foundationUnit * 2
-        static let typographyPairedMinimumWidth = typographyColumnMinimumWidth * 2 + typographyColumnSpacing
         static let editorContentInset = ScholiumGrid.Spacing.regionContentInset
         static let headerMaximumWidth = ScholiumGrid.foundationUnit * 155
         static let formExplanationMaximumWidth = ScholiumGrid.foundationUnit * 105

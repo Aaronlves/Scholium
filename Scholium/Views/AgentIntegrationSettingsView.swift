@@ -9,7 +9,7 @@ struct AgentIntegrationSettingsView: View {
     @State private var showsExternalAgentHosts = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.sectionSeparation) {
+        Form {
             if let chatController {
                 AgentChatConnectionSettingsView(
                     controller: chatController,
@@ -17,21 +17,19 @@ struct AgentIntegrationSettingsView: View {
                 )
                 .id(chatController.triptychID)
             } else {
-                settingsEditorSection("Chat in Scholium") {
+                Section("Chat in Scholium") {
                     Text("Open a Triptych to manage its Chat connection.")
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                settingsEditorSection("Advanced") {
-                    Button("External Agent Hosts…") {
+                Section("Advanced") {
+                    AgentSettingsNavigationButton("External Agent Hosts…") {
                         showsExternalAgentHosts = true
                     }
                 }
             }
         }
-        .padding(24)
-        .frame(maxWidth: 760, alignment: .topLeading)
-        .frame(maxWidth: .infinity, alignment: .top)
+        .formStyle(.grouped)
         .scholiumSettingsPaneSurface()
         .accessibilityIdentifier("scholium.settings.agents")
         .sheet(isPresented: $showsExternalAgentHosts) {

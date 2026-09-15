@@ -200,10 +200,6 @@ extension ScholiumUITests {
                 "SCHOLIUM_UI_TEST_ENABLE_SYSTEM_WINDOW_RESTORATION"
             ] = "1"
         }
-        application.launchArguments += [
-            "-scholium.settings.selectedPane", "research-guidance",
-            "-scholium.settings.researchGuidanceCategory", "Skills",
-        ]
         if let appearance {
             application.launchArguments += ["-colorScheme", appearance.rawValue]
         }

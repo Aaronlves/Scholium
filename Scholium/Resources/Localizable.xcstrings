@@ -1,6 +1,26 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Open a Triptych with readable portable settings to change reminder timing.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Open a Triptych with readable portable settings to change reminder timing."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "打开便携设置可读取的三联体，以修改提醒间隔。"}}}},
+    "Reload Reminder Timing": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Reload Reminder Timing"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "重新载入提醒间隔"}}}},
+    "Discard Unsaved Reminder Changes?": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Discard Unsaved Reminder Changes?"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "放弃尚未保存的提醒更改？"}}}},
+    "Reload the active Triptych’s saved reminder timing. Your current draft will be replaced only after it loads successfully.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Reload the active Triptych’s saved reminder timing. Your current draft will be replaced only after it loads successfully."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "重新载入当前三联体已保存的提醒间隔。只有成功载入后，才会替换当前草稿。"}}}},
+    "The active Triptych changed. Your reminder draft is still attached to the Triptych shown above.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "The active Triptych changed. Your reminder draft is still attached to the Triptych shown above."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "当前三联体已更改。提醒草稿仍属于上方显示的三联体。"}}}},
+    "Saved settings changed or need to be reread. Your reminder draft is preserved; reload before saving.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Saved settings changed or need to be reread. Your reminder draft is preserved; reload before saving."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "已保存的设置发生了变化，或需要重新读取。提醒草稿已保留；请重新载入后再保存。"}}}},
+    "Saving Reminder Timing": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Saving Reminder Timing"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "正在保存提醒间隔"}}}},
+    "Loading Reminder Timing": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Loading Reminder Timing"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "正在载入提醒间隔"}}}},
+    "Reminder timing could not be loaded. Your draft has been preserved.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Reminder timing could not be loaded. Your draft has been preserved."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "无法载入提醒间隔。草稿已保留。"}}}},
+    "Reminder timing was saved to the Triptych shown above. Reload to view the active Triptych.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Reminder timing was saved to the Triptych shown above. Reload to view the active Triptych."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "提醒间隔已保存到上方显示的三联体。重新载入可查看当前三联体。"}}}},
+    "Body Bold Font": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Body Bold Font"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "正文粗体字体"}}}},
+    "Body Italic Font": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Body Italic Font"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "正文斜体字体"}}}},
+    "Heading Bold Font": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Heading Bold Font"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "标题粗体字体"}}}},
+    "Heading Italic Font": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Heading Italic Font"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "标题斜体字体"}}}},
+    "Settings categories": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Settings categories" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "设置分类" } }
+      }
+    },
   "/ commands · @ notes · $ skills": {
     "localizations": {
       "en": {

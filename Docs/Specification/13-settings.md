@@ -22,14 +22,14 @@ requirements; implementation evidence remains in the Status set.
 ### Navigation, discovery and scope
 
 One native preferences window opens through the App menu and Command-Comma.
-A stable, noncustomizable icon-and-label toolbar
-identifies the selected category; the window title reflects that pane. Reopening
-restores the last category. Switching categories adjusts the window from its
-current top-left corner to the pane's preferred size within screen bounds,
-using native animation and an immediate Reduce Motion result. Routine field
-edits and status updates do not repeatedly resize the window.
+A native icon-and-label sidebar identifies the selected category; the window
+title reflects that pane. Reopening restores the last category. The window
+retains its size while switching categories; the researcher can resize it.
+Category changes do not animate window geometry or discard unsaved drafts,
+selection or scroll position in pages already opened in the settings session.
+Inactive pages have no keyboard, pointer or accessibility interaction.
 
-The native toolbar presents five top-level panes: Workspace, Appearance,
+The sidebar presents five top-level panes: Workspace, Appearance,
 Notifications, Interaction and Integrations. Workspace contains local
 Triptych registration and folder access. Appearance contains the complete
 document-content appearance profile, including reading and typography controls.
@@ -68,16 +68,17 @@ choices before optional detail. Reuse the window's category title instead of
 adding a duplicate large heading. Short panes remain compact; longer forms and
 collections scroll without losing access to their actions.
 
-Forms share one control axis and a trailing-aligned label column.
-Related controls form compact groups with clear
-separation between groups; supporting copy stays beside its owner. Native
+Related preferences use native grouped surfaces, with a heading above each
+group and labels beside their controls. Groups use the available content width;
+a wide, fixed label column must not compress the controls. Supporting copy stays
+beside its owner. Native
 collections hold field/shortcut rows and adjacent actions. Shared relationships
 use consistent alignment and spacing without forcing every pane into identical
 height or containers. Status and validation fit beside the affected control
 without replacing the active form or needlessly shifting its controls.
 
-Ordinary groups use headings and measured whitespace rather than repeated
-horizontal rules. Separators remain for a native collection or menu, or for a
+Native group surfaces distinguish related preferences; individual peer rows
+share that surface rather than each receiving a card. Separators remain for a native collection or menu, or for a
 genuine structural boundary such as a persistent action area. A peer preference
 is not hidden in a nested disclosure merely to shorten a pane. When detail has a
 different scope or workflow, use a child pane or native sheet; reserve a

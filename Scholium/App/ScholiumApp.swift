@@ -139,9 +139,10 @@ struct ScholiumApp: App {
 
         Settings {
             ScholiumSettingsWindowContent()
-                .frame(minWidth: 620, minHeight: 180)
+                .frame(minWidth: 780, minHeight: 560)
         }
-        .windowResizability(.automatic)
+        .defaultSize(width: 920, height: 700)
+        .windowResizability(.contentMinSize)
         .environmentObject(applicationBootstrap)
         .environmentObject(applicationDelegate)
     }

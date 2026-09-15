@@ -4,6 +4,20 @@
 
 ## Current verification snapshot
 
+**2026-09-16 — Settings redesign:** Xcode 27.0 (27A5218g), Swift 6.4
+and macOS 27 SDK Debug compilation pass. The 26 scoped Settings tests and one
+representative disposable 500-Note UI journey pass. The journey covers category
+geometry, retained Appearance and Workspace drafts, rename/cancel, search empty
+state and recovery, inactive-page accessibility, disabled Save state, consecutive
+sidebar keyboard selection, native resizing to 780 points, and Chinese/Light
+alongside English/Dark rendering. It caught and corrected inherited hosting
+accessibility context, sidebar focus, and the Settings scene overwriting the
+native resizable flag. Scoped lint, localization and documentation checks pass.
+Window resizing animation and page reconstruction were removed; no frame-level
+speedup or human smoothness acceptance is claimed. VoiceOver, Full Keyboard
+Access, IME and system contrast/transparency/motion acceptance remain separate.
+QA bundles and temporary state were removed. Evidence: `.build/settings-redesign/`.
+
 **2026-09-16 — Note editing reliability:** Scoped checks cover the final Review
 save boundary, exact newline Undo/Redo and reconstruction, half-open block
 selection, CRLF logical lines, rename autosave admission, inactive-tab external

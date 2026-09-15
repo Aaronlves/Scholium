@@ -1,5 +1,24 @@
 import SwiftUI
 
+/// Search temporarily reveals a child category without replacing the user's
+/// browsing selection. The owning view persists only explicit browsing choices.
+struct SettingsSearchNavigation<Category: Equatable> {
+    var category: Category
+    private(set) var categoryBeforeSearch: Category?
+
+    var isSearching: Bool { categoryBeforeSearch != nil }
+
+    mutating func updateSearch(query: String, matching categoryMatch: Category?) {
+        guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            if let categoryBeforeSearch { category = categoryBeforeSearch }
+            categoryBeforeSearch = nil
+            return
+        }
+        if categoryBeforeSearch == nil { categoryBeforeSearch = category }
+        if let categoryMatch { category = categoryMatch }
+    }
+}
+
 /// Related machine-local interaction settings share one top-level
 /// preference page. Their underlying owners remain separate.
 enum SettingsInteractionCategory: String, CaseIterable, Identifiable {
@@ -18,6 +37,28 @@ enum SettingsInteractionCategory: String, CaseIterable, Identifiable {
         case .selectionActions:
             LocalizedStringResource("Selection Actions", table: "Localizable", bundle: .module)
         }
+    }
+
+    static func matchingSearch(_ searchQuery: String) -> Self? {
+        let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return nil }
+        if ScholiumHotkeyCommand.customizableCommands.contains(where: { command in
+            [String(localized: command.title), String(localized: command.menuPath)]
+                .contains { $0.localizedCaseInsensitiveContains(query) }
+        }) {
+            return .keyboardShortcuts
+        }
+        let normalized = query.localizedLowercase
+        if ["chat", "queue", "steer", "return", "聊天", "回车", "排队"].contains(where: normalized.contains) {
+            return .chat
+        }
+        if ["selection", "action", "prompt", "instruction", "选段", "操作"].contains(where: normalized.contains) {
+            return .selectionActions
+        }
+        if ["keyboard", "hotkey", "shortcut", "command", "menu", "快捷键"].contains(where: normalized.contains) {
+            return .keyboardShortcuts
+        }
+        return nil
     }
 }
 
@@ -45,6 +86,18 @@ enum SettingsIntegrationCategory: String, CaseIterable, Identifiable {
         case .zotero: "books.vertical"
         }
     }
+
+    static func matchingSearch(_ searchQuery: String) -> Self? {
+        let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).localizedLowercase
+        guard !query.isEmpty else { return nil }
+        if ["zotero", "citation", "library", "local api", "引用"].contains(where: query.contains) {
+            return .zotero
+        }
+        if ["agent", "chat", "codex", "claude", "mcp", "skill", "tool", "bridge", "智能体"].contains(where: query.contains) {
+            return .agents
+        }
+        return nil
+    }
 }
 
 struct SettingsInteractionView: View {
@@ -52,11 +105,12 @@ struct SettingsInteractionView: View {
 
     @AppStorage("scholium.settings.interactionCategory")
     private var persistedCategory = SettingsInteractionCategory.keyboardShortcuts.rawValue
-    @State private var category = SettingsInteractionCategory.keyboardShortcuts
+    @State private var navigation = SettingsSearchNavigation<SettingsInteractionCategory>(category: .keyboardShortcuts)
+    @State private var hasRestoredCategory = false
 
     var body: some View {
         VStack(spacing: 0) {
-            Picker("Interaction settings", selection: $category) {
+            Picker("Interaction settings", selection: categoryBinding) {
                 ForEach(SettingsInteractionCategory.allCases) { category in
                     Text(category.localizedTitle).tag(category)
                 }
@@ -67,14 +121,11 @@ struct SettingsInteractionView: View {
             .padding(.top, 16)
             .padding(.bottom, 16)
 
-            Group {
-                switch category {
-                case .keyboardShortcuts:
-                    HotkeySettingsView(searchQuery: searchQuery)
-                case .selectionActions:
-                    SelectionActionsSettingsView()
-                case .chat:
-                    AgentChatInputSettingsView()
+            ScholiumSettingsPaneHost(selection: navigation.category) { item in
+                switch item {
+                case .keyboardShortcuts: HotkeySettingsView(searchQuery: searchQuery)
+                case .selectionActions: SelectionActionsSettingsView()
+                case .chat: AgentChatInputSettingsView()
                 }
             }
             .frame(
@@ -85,38 +136,26 @@ struct SettingsInteractionView: View {
         }
         .scholiumSettingsPaneSurface()
         .accessibilityIdentifier("scholium.settings.interaction")
-        .onAppear { restoreCategory() }
-        .onChange(of: category) { _, value in
-            persistedCategory = value.rawValue
-        }
-        .onChange(of: searchQuery) { _, _ in
-            selectCategoryForSearch()
-        }
+        .onAppear { updateSearchNavigation() }
+        .onChange(of: searchQuery) { _, _ in updateSearchNavigation() }
     }
 
-    private func restoreCategory() {
-        category =
-            SettingsInteractionCategory(rawValue: persistedCategory)
-            ?? .keyboardShortcuts
-        selectCategoryForSearch()
+    private var categoryBinding: Binding<SettingsInteractionCategory> {
+        Binding(
+            get: { navigation.category },
+            set: { value in
+                navigation.category = value
+                if !navigation.isSearching { persistedCategory = value.rawValue }
+            }
+        )
     }
 
-    private func selectCategoryForSearch() {
-        let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
-            .localizedLowercase
-        guard !query.isEmpty else { return }
-
-        if ["chat", "queue", "steer", "return", "聊天", "回车", "排队"].contains(where: query.contains) {
-            category = .chat
-        } else if ["selection", "action", "prompt", "instruction", "选段", "操作"]
-            .contains(where: query.contains)
-        {
-            category = .selectionActions
-        } else if ["keyboard", "hotkey", "shortcut", "command", "menu", "快捷键"]
-            .contains(where: query.contains)
-        {
-            category = .keyboardShortcuts
+    private func updateSearchNavigation() {
+        if !hasRestoredCategory {
+            navigation.category = SettingsInteractionCategory(rawValue: persistedCategory) ?? .keyboardShortcuts
+            hasRestoredCategory = true
         }
+        navigation.updateSearch(query: searchQuery, matching: SettingsInteractionCategory.matchingSearch(searchQuery))
     }
 }
 
@@ -125,11 +164,12 @@ struct SettingsIntegrationsView: View {
 
     @AppStorage("scholium.settings.integrationCategory")
     private var persistedCategory = SettingsIntegrationCategory.agents.rawValue
-    @State private var category = SettingsIntegrationCategory.agents
+    @State private var navigation = SettingsSearchNavigation<SettingsIntegrationCategory>(category: .agents)
+    @State private var hasRestoredCategory = false
 
     var body: some View {
         VStack(spacing: 0) {
-            Picker("Integration settings", selection: $category) {
+            Picker("Integration settings", selection: categoryBinding) {
                 ForEach(SettingsIntegrationCategory.allCases) { category in
                     Text(category.localizedTitle).tag(category)
                 }
@@ -140,12 +180,10 @@ struct SettingsIntegrationsView: View {
             .padding(.top, 16)
             .padding(.bottom, 16)
 
-            Group {
-                switch category {
-                case .agents:
-                    AgentIntegrationSettingsView()
-                case .zotero:
-                    ZoteroSettingsPageView()
+            ScholiumSettingsPaneHost(selection: navigation.category) { item in
+                switch item {
+                case .agents: AgentIntegrationSettingsView()
+                case .zotero: ZoteroSettingsPageView()
                 }
             }
             .frame(
@@ -156,46 +194,35 @@ struct SettingsIntegrationsView: View {
         }
         .scholiumSettingsPaneSurface()
         .accessibilityIdentifier("scholium.settings.integrations")
-        .onAppear { restoreCategory() }
-        .onChange(of: category) { _, value in
-            persistedCategory = value.rawValue
-        }
-        .onChange(of: searchQuery) { _, _ in
-            selectCategoryForSearch()
-        }
+        .onAppear { updateSearchNavigation() }
+        .onChange(of: searchQuery) { _, _ in updateSearchNavigation() }
     }
 
-    private func restoreCategory() {
-        category = SettingsIntegrationCategory(rawValue: persistedCategory) ?? .agents
-        selectCategoryForSearch()
+    private var categoryBinding: Binding<SettingsIntegrationCategory> {
+        Binding(
+            get: { navigation.category },
+            set: { value in
+                navigation.category = value
+                if !navigation.isSearching { persistedCategory = value.rawValue }
+            }
+        )
     }
 
-    private func selectCategoryForSearch() {
-        let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
-            .localizedLowercase
-        guard !query.isEmpty else { return }
-
-        if ["zotero", "citation", "library", "local api", "引用"]
-            .contains(where: query.contains)
-        {
-            category = .zotero
-        } else if ["agent", "chat", "codex", "claude", "mcp", "skill", "tool", "bridge", "智能体"]
-            .contains(where: query.contains)
-        {
-            category = .agents
+    private func updateSearchNavigation() {
+        if !hasRestoredCategory {
+            navigation.category = SettingsIntegrationCategory(rawValue: persistedCategory) ?? .agents
+            hasRestoredCategory = true
         }
+        navigation.updateSearch(query: searchQuery, matching: SettingsIntegrationCategory.matchingSearch(searchQuery))
     }
 }
 
 struct ZoteroSettingsPageView: View {
     var body: some View {
-        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.sectionSeparation) {
+        Form {
             ZoteroSettingsView()
         }
-        .padding(24)
-        .frame(maxWidth: 760, alignment: .topLeading)
-        .frame(maxWidth: .infinity, alignment: .top)
-        .scholiumSettingsPaneSurface()
+        .formStyle(.grouped)
         .accessibilityIdentifier("scholium.settings.zotero")
     }
 }
