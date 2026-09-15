@@ -48,7 +48,6 @@ import {
   defaultKeymap,
   history,
   isolateHistory,
-  historyField,
   historyKeymap,
   indentLess,
   indentMore,
@@ -106,12 +105,11 @@ import {
   type ProjectionSourceRange,
 } from "./projection-update";
 import {
-  ExactSourceMirror,
   frontmatterBoundary,
   normalizedDocumentText,
   replacementChange,
-  type NormalizedSourceChange,
 } from "./state";
+import {captureExactHistory, exactSourceHistory, exactSourceState, restoreExactHistory, setExactSource} from "./exact-source-history";
 import {
   announceEditorMessage,
   editorAccessibilityAttributes,
@@ -181,7 +179,7 @@ interface ScholiumWindow extends Window {
   scholiumPerformanceMetric?: "editor_key_to_paint" | "editor_cached_preview"
     | "editor_visible_projection";
 }
-interface SourceDelta { from: number; to: number; insert: string }
+interface SourceDelta { from: number; to: number; insert: string; exactInsert: string }
 interface ScholiumEditorAPI {
   dispatch(request: unknown): Promise<EditorCommandResult>;
   resolveLinkCompletionQuery(requestID: string, candidates: unknown): void;
@@ -200,7 +198,6 @@ let bridgeSessionID = "";
 let bridgeDocumentID = "";
 let bridgeFingerprint = "";
 let documentVersion = 0;
-const exactSourceMirror = new ExactSourceMirror();
 let linkPreviews: LinkPreview[] = [];
 let linkPreviewIndexByRange = new Map<string, number>();
 let editingDialect: MarkdownEditingDialect | null = null;
@@ -257,11 +254,10 @@ function ensureMermaidRuntime() {
 }
 
 function exactEditorSource() {
-  return exactSourceMirror.text;
+  return editor.state.field(exactSourceState).text;
 }
 
 const modeCompartment = new Compartment();
-const lineSeparatorCompartment = new Compartment();
 const editorModeFacet = Facet.define<EditorMode, EditorMode>({
   // Mode absence must fail closed to exact Source. Live Preview is installed
   // only by the mode compartment and can never be inferred from a missing
@@ -1567,28 +1563,10 @@ const stateReporter = EditorView.updateListener.of((update) => {
     documentVersion += 1;
     /** @type {{from: number, to: number, insert: string}[]} */
     const changes: SourceDelta[] = [];
-    const mirrorChanges: NormalizedSourceChange[] = [];
-    update.changes.iterChanges((fromA, toA, _fromB, _toB, inserted) => {
+    const mirror = update.state.field(exactSourceState);
+    update.changes.iterChanges((fromA, toA, fromB, toB, inserted) => {
       const insert = inserted.toString();
-      changes.push({from: fromA, to: toA, insert});
-      mirrorChanges.push({
-        from: fromA,
-        to: toA,
-        insert,
-        removed: update.startState.doc.sliceString(fromA, toA),
-      });
-    });
-    const exactUpdateStartedAt = performance.now();
-    if (!exactSourceMirror.apply(mirrorChanges)) {
-      post({
-        type: "editorError",
-        message: localized("The editor could not preserve the exact source line endings."),
-      });
-      return;
-    }
-    recordEditorMetric("exact-source-update", exactUpdateStartedAt, {
-      changeCount: mirrorChanges.length,
-      documentLength: update.state.doc.length,
+      changes.push({from: fromA, to: toA, insert, exactInsert: mirror.slice(fromB, toB)});
     });
     // Register the paint endpoint before handing the delta to native
     // reconciliation. Messages remain ordered because documentChanged posts in
@@ -1692,7 +1670,7 @@ function markdownCommandTransformation(
     editorSelections(state),
     command,
     {
-      argument,
+      argument: argument === undefined ? undefined : normalizedDocumentText(argument),
       protectedRanges: commandProtection(command, state),
       taskItems: liveProjectionIndex.index(state).taskItemRanges,
     },
@@ -2025,7 +2003,8 @@ const editorExtensions = [
   editorContextMenu,
   stateReporter,
   linkActivation,
-  lineSeparatorCompartment.of(EditorState.lineSeparator.of("\n")),
+  EditorState.lineSeparator.of("\n"),
+  exactSourceHistory,
   modeCompartment.of(sourceMode),
   EditorView.theme({
     "&": { height: "100%" },
@@ -2306,11 +2285,7 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
     performanceSamples: editorPerformanceSamples(),
   };
   case "captureRecovery": {
-    let stateJSON: string | undefined;
-    try {
-      const candidate = JSON.stringify(editor.state.toJSON({history: historyField}));
-      if (new TextEncoder().encode(candidate).byteLength <= MAX_INBOUND_BYTES) stateJSON = candidate;
-    } catch { stateJSON = undefined; }
+    const stateJSON = captureExactHistory(editor.state);
     const recovery: RecoverySnapshot = {
       documentID: bridgeDocumentID,
       fingerprint: bridgeFingerprint,
@@ -2333,33 +2308,14 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
     }
     const recoveredSelection = EditorSelection.create(snapshot.ranges.map((range) =>
       EditorSelection.range(range.anchor, range.head)));
-    const separator = snapshot.source.includes("\r\n") ? "\r\n" : "\n";
     let restoredHistory = false;
     let recoveredState: EditorState | null = null;
     if (snapshot.stateJSON && new TextEncoder().encode(snapshot.stateJSON).byteLength <= MAX_INBOUND_BYTES) {
       try {
-        const serializedState = JSON.parse(snapshot.stateJSON);
-        if (serializedState && typeof serializedState.doc === "string") {
-          // CodeMirror history offsets are expressed in its normalized LF
-          // coordinate space. The state serializer follows the configured
-          // presentation separator, so normalize only this disposable state
-          // document before reconstruction; the exact-source mirror remains untouched.
-          serializedState.doc = normalizedDocumentText(serializedState.doc);
-        }
-        const restored = EditorState.fromJSON(
-          serializedState,
-          {extensions: editorExtensions},
-          {history: historyField},
-        );
-        if (normalizedDocumentText(restored.doc.toString())
-            === normalizedDocumentText(snapshot.source)) {
-          recoveredState = restored.update({
-            selection: recoveredSelection,
-            effects: lineSeparatorCompartment.reconfigure(EditorState.lineSeparator.of(separator)),
-            annotations: Transaction.addToHistory.of(false),
-          }).state;
-          restoredHistory = true;
-        }
+        const restored = restoreExactHistory(snapshot.stateJSON, snapshot.source, editorExtensions);
+        recoveredState = restored.update({selection: recoveredSelection,
+          annotations: Transaction.addToHistory.of(false)}).state;
+        restoredHistory = true;
       } catch { restoredHistory = false; }
     }
     if (!recoveredState) {
@@ -2367,19 +2323,18 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
         recoveredState = editor.state.update({
         changes: replacementChange(editor.state.doc.toString(), snapshot.source),
         selection: recoveredSelection,
-        effects: lineSeparatorCompartment.reconfigure(EditorState.lineSeparator.of(separator)),
+        effects: setExactSource.of(snapshot.source),
         annotations: [Transaction.addToHistory.of(false), programmaticDocumentChange.of(true)],
         }).state;
       } catch {
         return rejected(request.requestID, documentVersion, "invalid recovery snapshot");
       }
     }
-    // Source, history, line separator, and the latest exact selection become
+    // Source, history, and the latest exact selection become
     // visible together. No partially restored state can escape a failed
     // stateJSON or selection validation path.
     const restoredMode = configuredEditorMode(editor.state);
     editor.setState(recoveredState);
-    exactSourceMirror.replace(snapshot.source);
     lastDocumentFocusTarget = snapshot.focusTarget;
     await editorOperations.setMode(restoredMode);
     dirty = snapshot.dirty;
@@ -2548,7 +2503,7 @@ function pasteTransfer(
     announceEditorMessage(editor.contentDOM, unsupportedFilePasteMessage());
     return true;
   }
-  const text = transfer.getData("text/plain");
+  const text = normalizedDocumentText(transfer.getData("text/plain"));
   if (!text) return false;
   if (dropPosition !== undefined) editor.dispatch({selection: {anchor: dropPosition}});
   const url = editingFrontmatterSelection() ? null : isSingleSafeURL(text);
@@ -2729,11 +2684,9 @@ const editorOperations = {
     documentTitlePresentationRevision += 1;
     lastDocumentFocusTarget = undefined;
     documentVersion = 0;
-    const separator = text.includes("\r\n") ? "\r\n" : "\n";
-    exactSourceMirror.replace(text);
     editor.dispatch({
       changes: replacementChange(editor.state.doc.toString(), text),
-      effects: lineSeparatorCompartment.reconfigure(EditorState.lineSeparator.of(separator)),
+      effects: setExactSource.of(text),
       annotations: [
         Transaction.addToHistory.of(false),
         programmaticDocumentChange.of(true),
@@ -2862,7 +2815,7 @@ const editorOperations = {
   },
 
   acknowledgeCommittedSnapshot(expectedText: string, committedText: string, startingFingerprint: string) {
-    const currentText = exactSourceMirror.text;
+    const currentText = exactEditorSource();
     const normalizedCurrent = normalizedDocumentText(editor.state.doc.toString());
     if (currentText !== expectedText) {
       // Typing is allowed to advance while the immutable snapshot is written.
@@ -2878,16 +2831,14 @@ const editorOperations = {
     if (normalizedCurrent !== normalizedDocumentText(expectedText)) return null;
     bridgeFingerprint = startingFingerprint;
     if (committedText !== currentText) {
-      const separator = committedText.includes("\r\n") ? "\r\n" : "\n";
       editor.dispatch({
         changes: replacementChange(editor.state.doc.toString(), committedText),
-        effects: lineSeparatorCompartment.reconfigure(EditorState.lineSeparator.of(separator)),
+        effects: setExactSource.of(committedText),
         annotations: [
           Transaction.addToHistory.of(false),
           programmaticDocumentChange.of(true),
         ],
       });
-      exactSourceMirror.replace(committedText);
     }
     dirty = false;
     scheduleEditorInteractionReport(true);

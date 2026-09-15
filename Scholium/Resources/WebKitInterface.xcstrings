@@ -1,6 +1,7 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "The replacement would make the document too large.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "The replacement would make the document too large."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "替换后的文档将超出大小限制。"}}}},
     "Tab": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Tab"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "Tab"}}}},
     "Accept suggestion: {text} (Tab)" : {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Accept suggestion: {text} (Tab)"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "接受建议：{text}（Tab）"}}}},
 

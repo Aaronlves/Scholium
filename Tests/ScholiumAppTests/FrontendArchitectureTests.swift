@@ -3183,8 +3183,8 @@ struct FrontendArchitectureTests {
             from: "const stateReporter = EditorView.updateListener.of",
             to: "const linkActivation = EditorView.domEventHandlers"
         )
-        #expect(stateReporting.contains("exactSourceMirror.apply(mirrorChanges)"))
-        #expect(stateReporting.contains("update.startState.doc.sliceString(fromA, toA)"))
+        #expect(stateReporting.contains("update.state.field(exactSourceState)"))
+        #expect(stateReporting.contains("exactInsert: mirror.slice(fromB, toB)"))
         #expect(!stateReporting.contains("doc.toString()"))
         #expect(!stateReporting.contains("normalizedDocumentText("))
 

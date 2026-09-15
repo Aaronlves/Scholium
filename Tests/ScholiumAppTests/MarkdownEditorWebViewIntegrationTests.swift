@@ -10,6 +10,126 @@ import WebKit
 @Suite("Markdown editor WKWebView integration", .serialized)
 @MainActor
 struct MarkdownEditorWebViewIntegrationTests {
+    @Test(
+        "Deleting and undoing a line break restores its exact original bytes",
+        arguments: [
+            "one\r\ntwo", "one\r\ntwo\nthree\rfour",
+        ])
+    func newlineUndoRestoresExactSourceBytes(source: String) async throws {
+        let harness = EditorHarness(source: source, initialMode: .source, initialSourceRange: 3..<5)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        // Source offsets include both CRLF bytes; the editor owns one logical
+        // newline. Delete that newline through its actual keyboard binding.
+        try await harness.waitUntilSelection(head: 4)
+        try await harness.session.testingPressBackspace()
+        let deleted = (source as NSString).replacingCharacters(in: NSRange(location: 3, length: 2), with: "")
+        #expect(Data(try await harness.session.currentText().utf8) == Data(deleted.utf8))
+
+        func historyKey(redo: Bool) async throws {
+            let handled =
+                try await harness.callPageJavaScript(
+                    """
+                    const event = new KeyboardEvent('keydown', {
+                      key: 'z', code: 'KeyZ', keyCode: 90, which: 90,
+                      metaKey: true, shiftKey: redo, bubbles: true, cancelable: true
+                    });
+                    document.querySelector('.cm-content').dispatchEvent(event);
+                    return event.defaultPrevented;
+                    """, arguments: ["redo": redo]) as? Bool
+            #expect(handled == true)
+        }
+
+        try await historyKey(redo: false)
+        #expect(Data(try await harness.session.currentText().utf8) == Data(source.utf8))
+        #expect(harness.session.context?.selections == [MarkdownEditorSelectionRange(anchor: 3, head: 4)])
+        try await historyKey(redo: true)
+        #expect(Data(try await harness.session.currentText().utf8) == Data(deleted.utf8))
+        try await historyKey(redo: false)
+        #expect(Data(try await harness.session.currentText().utf8) == Data(source.utf8))
+        await harness.closeAndDrain()
+    }
+
+    @Test("Return in a CRLF list creates a separate logical line and preserves CRLF bytes")
+    func crlfListReturnCreatesLogicalLine() async throws {
+        let source = "- first\r\n- second"
+        let expected = source + "\r\n- "
+        let harness = EditorHarness(
+            source: source, initialMode: .source,
+            initialSourceRange: source.utf16.count..<source.utf16.count)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        try await harness.waitUntilSelection(head: source.utf16.count - 1)
+        try await harness.session.testingPressEnter()
+        #expect(Data(try await harness.session.currentText().utf8) == Data(expected.utf8))
+        try await harness.waitUntilSelection(head: expected.utf16.count - 2)
+        #expect(harness.session.context?.undoLabel == "Continue List")
+        // Command acknowledgements update the selection before the coalesced
+        // interaction report publishes native logical-line metadata.
+        let lineReportDeadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while harness.session.lineCount != 3 || harness.session.line != 3 {
+            guard ContinuousClock.now < lineReportDeadline else {
+                Issue.record(
+                    "CRLF Return did not report logical line 3 of 3; received \(harness.session.line) of \(harness.session.lineCount).")
+                throw MarkdownEditorSession.SessionError.unavailable
+            }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(harness.session.lineCount == 3)
+        #expect(harness.session.line == 3)
+        try await harness.session.perform(.pastePlain, argument: "third")
+        #expect(Data(try await harness.session.currentText().utf8) == Data((expected + "third").utf8))
+        harness.session.goToLine(2)
+        try await harness.waitUntilSelection(head: 8, stage: "second CRLF logical line")
+        await harness.closeAndDrain()
+    }
+
+    @Test(
+        "A block command excludes the next line at a half-open selection boundary",
+        arguments: [
+            "two\n", "```swift\nlet value = 1\n```\n",
+        ])
+    func blockCommandPreservesNextUnselectedLine(suffix: String) async throws {
+        let source = "one\n" + suffix
+        let harness = EditorHarness(source: source, initialMode: .source, initialSourceRange: 0..<4)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        try await harness.waitUntilSelection(head: 4)
+        try await harness.session.perform(.bulletList)
+        #expect(Data(try await harness.session.currentText().utf8) == Data(("- one\n" + suffix).utf8))
+        #expect(harness.session.generation == 1)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Replace All rejects an oversized result before changing source or editing history")
+    func replaceAllRejectsOversizedResultBeforeMutation() async throws {
+        // The request and initial document are small. The 10 MB candidate
+        // exceeds the 8 MB source limit only after expanding all matches.
+        let source = String(repeating: "x", count: 10_000)
+        let harness = EditorHarness(source: source, initialMode: .source, initialSourceRange: 4..<7)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        try await harness.waitUntilSelection(head: 7)
+        let selection = harness.session.context?.selections
+        let generation = harness.session.generation
+        let undo = harness.session.context?.undoLabel
+        do {
+            _ = try await harness.session.performDocumentFind(
+                .init(
+                    query: "x", replacement: String(repeating: "y", count: 1_000),
+                    caseSensitive: true, wholeWord: false, action: .replaceAll))
+            Issue.record("Replace All accepted a candidate larger than the source limit.")
+        } catch MarkdownEditorSession.SessionError.bridgeRejected(let message) {
+            #expect(!message.isEmpty)
+        }
+        #expect(Data(try await harness.session.currentText().utf8) == Data(source.utf8))
+        #expect(harness.session.generation == generation)
+        #expect(harness.session.context?.selections == selection)
+        #expect(harness.session.context?.undoLabel == undo)
+        #expect(!harness.session.isDirty)
+        await harness.closeAndDrain()
+    }
+
     @Test("System Accent refresh reaches the retained editor without changing source or selection")
     func nativeSystemAccentRefreshPreservesEditor() async throws {
         let source = "# Accent\r\n\r\nA selected passage 😀.\r\n"
@@ -28,9 +148,10 @@ struct MarkdownEditorWebViewIntegrationTests {
             let clock = ContinuousClock()
             let deadline = clock.now.advanced(by: .seconds(3))
             while true {
-                let actual = try await harness.callPageJavaScript(
-                    "return document.documentElement.style.getPropertyValue('--scholium-color-accent');"
-                ) as? String
+                let actual =
+                    try await harness.callPageJavaScript(
+                        "return document.documentElement.style.getPropertyValue('--scholium-color-accent');"
+                    ) as? String
                 if actual == expected { return }
                 if clock.now >= deadline {
                     Issue.record("The editor did not receive AppKit's current system Accent.")
@@ -3301,6 +3422,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         harness.session.goToLine(2)
         try await harness.waitUntilSelection(head: paragraphFrom, stage: "inactive heading")
 
+        _ = try await harness.callPageJavaScript("await document.fonts.ready;")
         let clickPoint = try #require(
             try await harness.callPageJavaScript(
                 """
@@ -3316,56 +3438,74 @@ struct MarkdownEditorWebViewIntegrationTests {
                   range.setStart(node, index);
                   range.setEnd(node, index + title.length);
                   const rect = range.getBoundingClientRect();
-                  return {x: rect.right + 2, y: (rect.top + rect.bottom) / 2};
+                  const lineRect = heading.getBoundingClientRect();
+                  return {horizontal: (rect.right + 2 - lineRect.left) / lineRect.width,
+                    vertical: ((rect.top + rect.bottom) / 2 - lineRect.top) / lineRect.height};
                 }
                 return null;
                 """,
                 arguments: ["title": title]
             ) as? [String: Any])
-        _ = try await harness.callPageJavaScript(
-            """
-            const target = document.elementFromPoint(x, y) || document.querySelector('.cm-line.cm-live-h1');
-            if (!target) return false;
-            const init = {view: window, bubbles: true, cancelable: true,
-              clientX: x, clientY: y, button: 0, buttons: 1};
-            target.dispatchEvent(new MouseEvent('mousedown', init));
-            document.dispatchEvent(new MouseEvent('mouseup', {...init, buttons: 0}));
-            return true;
-            """,
-            arguments: [
-                "x": try #require((clickPoint["x"] as? NSNumber)?.doubleValue),
-                "y": try #require((clickPoint["y"] as? NSNumber)?.doubleValue),
-            ]
+        // Use the same native single-click path as the other heading tests.
+        // The helper completes layout before measuring the requested point;
+        // synthetic MouseEvent defaults do not represent a single click.
+        try await harness.session.testingClickElementBox(
+            ".cm-line.cm-live-h1",
+            horizontalFraction: try #require((clickPoint["horizontal"] as? NSNumber)?.doubleValue),
+            verticalFraction: try #require((clickPoint["vertical"] as? NSNumber)?.doubleValue)
         )
         try await harness.waitUntilSelection(head: titleTo, stage: "expanded heading end")
         try await harness.waitUntilFocused()
-        try await Task.sleep(for: .milliseconds(180))
-
-        let geometry = try #require(
-            try await harness.callPageJavaScript(
-                """
-                const heading = document.querySelector('.cm-line.cm-live-h1');
-                const cursor = document.querySelector('.cm-cursor-primary');
-                const scroller = document.querySelector('.cm-scroller');
-                if (!heading || !cursor || !scroller) return null;
-                const walker = document.createTreeWalker(heading, NodeFilter.SHOW_TEXT);
-                let node;
-                while ((node = walker.nextNode())) {
-                  const index = node.textContent?.indexOf(title) ?? -1;
-                  if (index < 0) continue;
-                  const range = document.createRange();
-                  range.setStart(node, index);
-                  range.setEnd(node, index + title.length);
-                  const textRect = range.getBoundingClientRect();
-                  const scrollerRect = scroller.getBoundingClientRect();
-                  const expectedLeft = textRect.right - scrollerRect.left + scroller.scrollLeft;
-                  return {distance: String(Math.abs(parseFloat(cursor.style.left) - expectedLeft)),
-                    markerVisible: heading.textContent?.startsWith('#') === true};
-                }
-                return null;
-                """,
-                arguments: ["title": title]
-            ) as? [String: Any])
+        // Syntax expansion starts in a measured frame, so a fixed sleep can
+        // sample its first frame in a background WKWebView. Wait for the
+        // actual animation and cursor geometry without finishing it manually.
+        let animationDeadline = ContinuousClock.now.advanced(by: .seconds(5))
+        var geometry: [String: Any] = [:]
+        while true {
+            geometry = try #require(
+                try await harness.callPageJavaScript(
+                    """
+                    const heading = document.querySelector('.cm-line.cm-live-h1');
+                    const cursor = document.querySelector('.cm-cursor-primary');
+                    const scroller = document.querySelector('.cm-scroller');
+                    if (!heading || !cursor || !scroller) return null;
+                    const walker = document.createTreeWalker(heading, NodeFilter.SHOW_TEXT);
+                    let node;
+                    while ((node = walker.nextNode())) {
+                      const index = node.textContent?.indexOf(title) ?? -1;
+                      if (index < 0) continue;
+                      const range = document.createRange();
+                      range.setStart(node, index);
+                      range.setEnd(node, index + title.length);
+                      const textRect = range.getBoundingClientRect();
+                      const scrollerRect = scroller.getBoundingClientRect();
+                      const expectedLeft = textRect.right - scrollerRect.left + scroller.scrollLeft;
+                      const marker = heading.querySelector('.cm-syntax-token[data-syntax-kind="prefix"]');
+                      const animations = heading.getAnimations({subtree: true});
+                      return {distance: String(Math.abs(parseFloat(cursor.style.left) - expectedLeft)),
+                        syntaxAnimating: animations.some(a => a.pending || a.playState === 'running'),
+                        animationStates: animations.map(a => ({state: a.playState, time: a.currentTime})),
+                        markerVisible: marker?.dataset.syntaxOpen === 'true'
+                          && marker.getBoundingClientRect().width > 0
+                          && Number.parseFloat(getComputedStyle(marker).opacity) > 0.95};
+                    }
+                    return null;
+                    """,
+                    arguments: ["title": title]
+                ) as? [String: Any])
+            let distance = Double(geometry["distance"] as? String ?? "")
+            if geometry["syntaxAnimating"] as? Bool == false,
+                geometry["markerVisible"] as? Bool == true,
+                let distance, distance < 4
+            {
+                break
+            }
+            guard ContinuousClock.now < animationDeadline else {
+                Issue.record("Heading syntax and cursor did not settle: \(geometry)")
+                throw MarkdownEditorSession.SessionError.unavailable
+            }
+            try await Task.sleep(for: .milliseconds(20))
+        }
         #expect((geometry["markerVisible"] as? Bool) == true)
         let cursorDistance = try #require(Double(geometry["distance"] as? String ?? ""))
         #expect(cursorDistance < 4)

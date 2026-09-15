@@ -88,7 +88,7 @@ struct MarkdownEditorProtocolTests {
         #expect(try JSONDecoder().decode(MarkdownEditorOperation.self, from: data) == .queryPerformance)
     }
 
-    @Test("Request envelope and operation round trip with protocol version 30")
+    @Test("Request envelope and operation round trip with the current protocol")
     func requestRoundTrip() throws {
         let request = MarkdownEditorRequest(
             requestID: UUID(uuidString: "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE")!,
@@ -184,7 +184,7 @@ struct MarkdownEditorProtocolTests {
             """
             {
               "type": "contextMenuRequested",
-              "protocolVersion": 36,
+              "protocolVersion": 37,
               "sessionID": "11111111-2222-3333-4444-555555555555",
               "documentID": "topics:Scope.md",
               "startingFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -222,7 +222,7 @@ struct MarkdownEditorProtocolTests {
     func documentTitleRenameMessageDecoding() throws {
         let object: [String: Any] = [
             "type": "requestDocumentTitleRename",
-            "protocolVersion": 36,
+            "protocolVersion": 37,
             "sessionID": "11111111-2222-3333-4444-555555555555",
             "documentID": "topics:Scope.md",
             "startingFingerprint": String(repeating: "a", count: 64),
@@ -253,7 +253,7 @@ struct MarkdownEditorProtocolTests {
     @Test("Inbound bridge rejects unknown, stale-version, and extra-field messages")
     func inboundBridgeRejectsUnrecognizedContracts() {
         let envelope: [String: Any] = [
-            "protocolVersion": 36,
+            "protocolVersion": 37,
             "sessionID": "11111111-2222-3333-4444-555555555555",
             "documentID": "session-document",
             "startingFingerprint": String(repeating: "a", count: 64),
@@ -294,7 +294,7 @@ struct MarkdownEditorProtocolTests {
     func interactionFocusTargetDecoding() throws {
         let envelope: [String: Any] = [
             "type": "interactionChanged",
-            "protocolVersion": 36,
+            "protocolVersion": 37,
             "sessionID": "11111111-2222-3333-4444-555555555555",
             "documentID": "session-document",
             "startingFingerprint": String(repeating: "a", count: 64),
@@ -321,14 +321,14 @@ struct MarkdownEditorProtocolTests {
     func inboundDeltaUsesTypedDirectDecoder() throws {
         let object: [String: Any] = [
             "type": "documentChanged",
-            "protocolVersion": 36,
+            "protocolVersion": 37,
             "sessionID": "11111111-2222-3333-4444-555555555555",
             "documentID": "session-document",
             "startingFingerprint": String(repeating: "a", count: 64),
             "documentVersion": 4,
             "baseGeneration": 3,
             "resultingGeneration": 4,
-            "changes": [["from": 1, "to": 2, "insert": "价值"]],
+            "changes": [["from": 1, "to": 2, "insert": "价值", "exactInsert": "价值"]],
         ]
         let decoded = try #require(EditorBridgeMessageDecoder.decode(object))
         guard case .documentChanged(let message) = decoded else {
@@ -337,14 +337,45 @@ struct MarkdownEditorProtocolTests {
         }
         #expect(message.envelope.documentVersion == 4)
         #expect(message.baseGeneration == 3)
-        #expect(message.changes == [EditorBridgeChange(from: 1, to: 2, insert: "价值")])
+        #expect(message.changes == [EditorBridgeChange(from: 1, to: 2, insert: "价值", exactInsert: "价值")])
 
         var malformed = object
         malformed["resultingGeneration"] = 5
         #expect(EditorBridgeMessageDecoder.decode(malformed) == nil)
         malformed = object
-        malformed["changes"] = [["from": 2, "to": 1, "insert": "x"]]
+        malformed["changes"] = [["from": 2, "to": 1, "insert": "x", "exactInsert": "x"]]
         #expect(EditorBridgeMessageDecoder.decode(malformed) == nil)
+        malformed = object
+        malformed["changes"] = [["from": 1, "to": 2, "insert": "x"]]
+        #expect(EditorBridgeMessageDecoder.decode(malformed) == nil)
+        malformed["changes"] = [["from": 1, "to": 2, "insert": "x", "exactInsert": "y"]]
+        #expect(EditorBridgeMessageDecoder.decode(malformed) == nil)
+        malformed = object
+        malformed["protocolVersion"] = 36
+        #expect(EditorBridgeMessageDecoder.decode(malformed) == nil)
+    }
+
+    @MainActor
+    @Test("Native deltas preserve restored newline bytes and reject mismatched source")
+    func exactInsertionPreservesNewlineHistory() {
+        let session = MarkdownEditorSession()
+        session.loadDocument("one\r\ntwo", documentID: "newline-history", mode: .source)
+        #expect(
+            session.acceptEditorChanges(
+                [.init(from: 3, to: 4, insert: "", exactInsert: "")],
+                baseGeneration: 0, resultingGeneration: 1))
+        #expect(session.checkedSource == "onetwo")
+        #expect(
+            session.acceptEditorChanges(
+                [.init(from: 3, to: 3, insert: "\n", exactInsert: "\r\n")],
+                baseGeneration: 1, resultingGeneration: 2))
+        #expect(Data(session.checkedSource.utf8) == Data("one\r\ntwo".utf8))
+        #expect(
+            !session.acceptEditorChanges(
+                [.init(from: 0, to: 0, insert: "é", exactInsert: "e\u{301}")],
+                baseGeneration: 2, resultingGeneration: 3))
+        #expect(session.generation == 2)
+        #expect(Data(session.checkedSource.utf8) == Data("one\r\ntwo".utf8))
     }
 
     @Test("Exact source-range reveal round trips as a nonmutating bridge operation")
@@ -646,7 +677,7 @@ struct MarkdownEditorProtocolTests {
 
         #expect(
             session.acceptEditorChanges(
-                [EditorBridgeChange(from: 0, to: 0, insert: insertion)],
+                [EditorBridgeChange(from: 0, to: 0, insert: insertion, exactInsert: insertion)],
                 baseGeneration: 0,
                 resultingGeneration: 1
             ))
@@ -663,7 +694,7 @@ struct MarkdownEditorProtocolTests {
 
         #expect(
             session.acceptEditorChanges(
-                [EditorBridgeChange(from: 3, to: 3, insert: " value")],
+                [EditorBridgeChange(from: 3, to: 3, insert: " value", exactInsert: " value")],
                 baseGeneration: 0,
                 resultingGeneration: 1
             ))

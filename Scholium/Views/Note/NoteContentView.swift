@@ -707,6 +707,8 @@ struct NoteContentView: View {
                 onPassageAction: { actions.passageAction($0, nil) }
             )
             .id(editorSession.viewReconstructionID)
+            .allowsHitTesting(!returnToReadAfterSave)
+            .accessibilityHidden(returnToReadAfterSave)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .layoutPriority(1))
     }
@@ -1433,21 +1435,44 @@ struct NoteContentView: View {
                 actions.rememberPresentationMode(.read)
                 return
             }
+            guard !returnToReadAfterSave else { return }
+            let handoffID = UUID()
+            documentSession.reviewHandoffID = handoffID
             returnToReadAfterSave = true
             Task {
+                defer {
+                    if documentSession.reviewHandoffID == handoffID {
+                        documentSession.reviewHandoffID = nil
+                        returnToReadAfterSave = false
+                        if controller.selectedDocument?.editingTarget == target {
+                            focusEditorIfPresented()
+                        }
+                    }
+                }
                 do {
-                    try await controller.flushForExternalOperation(
-                        session: documentSession,
-                        target: target
-                    )
-                    guard returnToReadAfterSave else { return }
                     let handoffAnchor = try? await editorSession.currentScrollAnchor()
+                    guard documentSession.reviewHandoffID == handoffID,
+                        controller.selectedDocument?.editingTarget == target, !Task.isCancelled
+                    else { return }
                     documentSession.observeScrollAnchor(handoffAnchor)
                     documentSession.requestScrollRestore(
                         fingerprint: handoffAnchor?.sourceFingerprint
                             ?? DocumentFingerprint(content: editingSource).sha256,
                         reason: .modeHandoff
                     )
+                    await editorSession.resignFocusAndWait()
+                    guard documentSession.reviewHandoffID == handoffID,
+                        controller.selectedDocument?.editingTarget == target, !Task.isCancelled
+                    else { return }
+                    // Capture and save after the editor has relinquished focus:
+                    // input accepted during scroll/focus work belongs in this final save.
+                    try await controller.flushForExternalOperation(
+                        session: documentSession,
+                        target: target
+                    )
+                    guard documentSession.reviewHandoffID == handoffID,
+                        controller.selectedDocument?.editingTarget == target, !Task.isCancelled
+                    else { return }
                     let committedFingerprint = DocumentFingerprint(
                         content: documentSession.originalEditingSource
                     ).sha256
@@ -1459,11 +1484,17 @@ struct NoteContentView: View {
                         // committed Note and its hidden projection catches up.
                         documentSession.renderedReadReadyFingerprint = ""
                     }
-                    guard returnToReadAfterSave else { return }
-                    await editorSession.resignFocusAndWait()
-                    guard returnToReadAfterSave else { return }
-                    finishEditing()
-                } catch { /* Controller published the recoverable error state. */  }
+                    try finishEditing()
+                } catch is CancellationError {
+                    return
+                } catch {
+                    guard documentSession.reviewHandoffID == handoffID else { return }
+                    documentSession.editError = error.localizedDescription
+                    documentSession.canRetrySave = DocumentController.saveFailureAllowsRetry(error)
+                    if controller.selectedDocument?.editingTarget == target {
+                        controller.setSaveError(error.localizedDescription)
+                    }
+                }
             }
             return
         }
@@ -1480,6 +1511,7 @@ struct NoteContentView: View {
             return
         }
         guard let editorMode = mode.editorMode else { return }
+        documentSession.reviewHandoffID = nil
         returnToReadAfterSave = false
         editorSession.authorizeAutomaticFocus()
         if isEditing {
@@ -1609,8 +1641,8 @@ struct NoteContentView: View {
         editorSession.retryUnavailablePresentation()
     }
 
-    private func finishEditing() {
-        controller.finishEditing(session: documentSession, target: target)
+    private func finishEditing() throws {
+        try controller.finishEditing(session: documentSession, target: target)
         actions.rememberPresentationMode(.read)
     }
 

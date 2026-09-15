@@ -8,6 +8,21 @@ function apply(source: string, command: Parameters<typeof transformMarkdown>[2],
 }
 
 describe("exact Markdown transformations", () => {
+  it("leaves the next line outside a half-open block selection", () => {
+    expect(apply("one\ntwo\nthree", "bulletList", 0, 4).source).toBe("- one\ntwo\nthree");
+    expect(apply("\nsecond", "bulletList", 0, 1).source).toBe("- \nsecond");
+    const source = "claim\n```js\nsecret\n```\n";
+    const result = transformMarkdown(source, [{anchor: 0, head: 6}], "bulletList", {
+      protectedRanges: [{from: 6, to: 22}],
+    });
+    expect(applySourceChanges(source, result!.changes)).toBe("- claim\n```js\nsecret\n```\n");
+  });
+
+  it("rejects a block edit whose expanded line includes protected text", () => {
+    expect(transformMarkdown("prose $x$", [{anchor: 0, head: 4}], "bulletList", {
+      protectedRanges: [{from: 6, to: 9}],
+    })).toBeNull();
+  });
   it("inserts a document link into the current selection with one undo transaction", () => {
     const {result, source} = apply("Before selected after", "insertAttachment", 7, 15,
       JSON.stringify({alt: "Paper [draft].pdf", destination: "../Attachments/id/Paper%20%5Bdraft%5D.pdf"}));

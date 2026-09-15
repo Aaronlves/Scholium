@@ -188,8 +188,9 @@ final class DocumentFloatingSurfaceController: NSObject {
                         guard let result = try await inquire?(inquiry, { await event(surface.id, "choose", 0) }),
                             !Task.isCancelled, self.surface?.id == surface.id
                         else { return }
-                        self.showSelectionPopover(AgentSelectionResultView(
-                            result: result, close: { [weak self] in self?.resultPopover?.close() }))
+                        self.showSelectionPopover(
+                            AgentSelectionResultView(
+                                result: result, close: { [weak self] in self?.resultPopover?.close() }))
                     } catch is CancellationError {
                         return
                     } catch {

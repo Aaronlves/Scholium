@@ -18,8 +18,6 @@ struct EditorSourceOffsetMap: Equatable, Sendable {
         sourceUTF16Length - crlfSourceOffsets.count
     }
 
-    var usesCRLF: Bool { !crlfSourceOffsets.isEmpty }
-
     func sourceUTF16Offset(forEditorUTF16Offset requestedOffset: Int) -> Int? {
         guard requestedOffset >= 0, requestedOffset <= editorUTF16Length else {
             return nil

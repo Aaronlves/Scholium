@@ -75,6 +75,7 @@ final class DocumentSessionModel: ObservableObject {
     /// Coordinators consume each monotonically increasing ID at most once.
     @Published private(set) var scrollRestoreRequest: ScrollRestoreRequest?
     @Published var returnToReadAfterSave = false
+    var reviewHandoffID: UUID?
     @Published var suppressAutosave = false
     @Published var renderedReadHTML = ""
     @Published var renderedReadFingerprint = ""
@@ -98,6 +99,7 @@ final class DocumentSessionModel: ObservableObject {
     private var hasBeenActivated = false
 
     var autosaveTask: Task<Void, Never>?
+    var autosaveToken: UUID?
     var autosaveDeadline: ContinuousClock.Instant?
     var activeSaveTask: Task<EditorSaveOutcome, Error>?
     var activeSaveCommitReceipt: EditorSaveCommitReceipt?
@@ -229,6 +231,14 @@ final class DocumentSessionModel: ObservableObject {
         autosaveDeadline = nil
         autosaveTask?.cancel()
         autosaveTask = nil
+        autosaveToken = nil
+    }
+
+    func finishAutosave(token: UUID) {
+        guard autosaveToken == token else { return }
+        autosaveDeadline = nil
+        autosaveTask = nil
+        autosaveToken = nil
     }
 
     /// Releases reconstruction-sensitive state after the owning tab lease and

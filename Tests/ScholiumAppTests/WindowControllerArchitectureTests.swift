@@ -862,7 +862,7 @@ struct WindowControllerArchitectureTests {
     }
 
     @Test("Read presentation retains the initialized editor buffer and mode")
-    func readPresentationRetainsInitializedEditor() {
+    func readPresentationRetainsInitializedEditor() throws {
         let reference = fixtureReference(path: "Topics/Retained Editor.md")
         let descriptor = WindowDocumentDescriptor(
             sessionKey: DocumentSessionKey(vaultID: reference.vaultID, noteID: UUID()),
@@ -881,7 +881,7 @@ struct WindowControllerArchitectureTests {
             revision: revision,
             mode: .source
         )
-        controller.finishEditing(
+        try controller.finishEditing(
             session: session,
             target: .workspace(descriptor.sessionKey)
         )

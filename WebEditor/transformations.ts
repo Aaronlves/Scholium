@@ -41,8 +41,10 @@ function overlaps(left: {from: number; to: number}, right: {from: number; to: nu
   return left.from < right.to && left.to > right.from;
 }
 function lineBounds(source: string, range: {from: number; to: number}) {
-  const from = source.lastIndexOf("\n", Math.max(0, range.from - 1)) + 1;
-  const newline = source.indexOf("\n", range.to);
+  const from = range.from === 0 ? 0 : source.lastIndexOf("\n", range.from - 1) + 1;
+  const lastPosition = range.to > range.from && source[range.to - 1] === "\n"
+    ? range.to - 1 : range.to;
+  const newline = source.indexOf("\n", lastPosition);
   return {from, to: newline < 0 ? source.length : newline};
 }
 function maximumRun(text: string, character: string) {
@@ -333,6 +335,7 @@ export function transformMarkdown(
   if (transformed.some((value) => value === null)) return null;
   const values = transformed as NonNullable<(typeof transformed)[number]>[];
   const changes = values.map((value) => value.change);
+  if (changes.some((change) => options.protectedRanges?.some((range) => overlaps(change, range)))) return null;
   const orderedChanges = [...changes].sort((left, right) => left.from - right.from || left.to - right.to);
   if (orderedChanges.some((change, index) => index > 0 && change.from < orderedChanges[index - 1].to)) return null;
   let shift = 0;

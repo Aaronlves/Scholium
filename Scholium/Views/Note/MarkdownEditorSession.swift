@@ -1403,11 +1403,11 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             baseGeneration == generation,
             resultingGeneration == baseGeneration + 1
         else { return false }
-        let usesCRLF = sourceOffsetMap.usesCRLF
         var changes: [MarkdownEditorDelta] = []
         var resultingEditorUTF16Length = checkedEditorUTF16Length
         for raw in rawChanges {
-            guard raw.from >= 0,
+            guard raw.hasMatchingExactInsertion,
+                raw.from >= 0,
                 raw.to >= raw.from,
                 raw.to <= checkedEditorUTF16Length
             else { return false }
@@ -1426,9 +1426,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                 MarkdownEditorDelta(
                     fromUTF16: from,
                     toUTF16: to,
-                    insertion: usesCRLF
-                        ? raw.insert.replacingOccurrences(of: "\n", with: "\r\n")
-                        : raw.insert
+                    insertion: raw.exactInsert
                 ))
         }
         do {

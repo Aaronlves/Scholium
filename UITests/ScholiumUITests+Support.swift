@@ -914,11 +914,10 @@ extension ScholiumUITests {
     }
 
     func createIsolatedTriptych() throws {
-        // The Xcode 26.6 runner can deny a sandboxed test bundle direct writes
-        // to the literal /tmp root. Its process-specific temporary directory
-        // remains test-owned and is also reachable by the unsandboxed QA app.
-        let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("Scholium-XCUITests", isDirectory: true)
+        let sourceRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let root = sourceRoot.appendingPathComponent(".build/qa-runtime/journeys", isDirectory: true)
             .appendingPathComponent(sessionID.uuidString, isDirectory: true)
         testDirectory = root
         homeDirectory = root.appendingPathComponent("home", isDirectory: true)
@@ -934,9 +933,6 @@ extension ScholiumUITests {
         // available, then fall back to the same repository-local staging path
         // derived from this compiled test source. Neither route can resolve to
         // the researcher's Desktop TestVaults source.
-        let sourceRoot = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
         let stagedFixturePath =
             ProcessInfo.processInfo.environment["SCHOLIUM_QA_FIXTURES"]
             .flatMap { $0.isEmpty ? nil : $0 }

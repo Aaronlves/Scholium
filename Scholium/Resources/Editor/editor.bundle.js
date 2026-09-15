@@ -3480,7 +3480,7 @@
     const column = requestedOffset - normalizedLine.from;
     return exactLine.from + column;
   }
-  var ExactSourceMirror = class {
+  var ExactSourceMirror = class _ExactSourceMirror {
     exact;
     normalized;
     crlfLineBreakCount;
@@ -3495,6 +3495,22 @@
      */
     get text() {
       return this.exact.toString();
+    }
+    get usesCRLF() {
+      return this.crlfLineBreakCount > 0;
+    }
+    copy() {
+      const result = new _ExactSourceMirror();
+      result.exact = this.exact;
+      result.normalized = this.normalized;
+      result.crlfLineBreakCount = this.crlfLineBreakCount;
+      return result;
+    }
+    slice(from, to) {
+      const exactFrom = exactOffset(this.exact, this.normalized, from);
+      const exactTo = exactOffset(this.exact, this.normalized, to);
+      if (exactFrom === null || exactTo === null || exactTo < exactFrom) throw new RangeError("Invalid exact source range");
+      return this.exact.sliceString(exactFrom, exactTo);
     }
     replace(source) {
       this.exact = rope(source);
@@ -3515,7 +3531,8 @@
         const to = exactOffset(this.exact, this.normalized, change.to);
         if (from === null || to === null || to < from) return null;
         if (change.removed !== void 0 && this.normalized.sliceString(change.from, change.to) !== change.removed) return null;
-        const exactInsert = usesCRLF ? change.insert.replaceAll("\n", "\r\n") : change.insert;
+        const exactInsert = change.exactInsert ?? (usesCRLF ? change.insert.replaceAll("\n", "\r\n") : change.insert);
+        if (normalizedDocumentText(exactInsert) !== change.insert) return null;
         return {
           ...change,
           exactFrom: from,
@@ -21684,7 +21701,7 @@
   }
 
   // protocol.ts
-  var EDITOR_PROTOCOL_VERSION = 36;
+  var EDITOR_PROTOCOL_VERSION = 37;
   var MAX_INBOUND_BYTES = 25e5;
   var MAX_SOURCE_UTF8_BYTES = 8e6;
   var operationTypes = /* @__PURE__ */ new Set([
@@ -22091,8 +22108,9 @@ ${blankRow(table.position.columnCount)}`;
     return left.from < right.to && left.to > right.from;
   }
   function lineBounds(source, range) {
-    const from = source.lastIndexOf("\n", Math.max(0, range.from - 1)) + 1;
-    const newline3 = source.indexOf("\n", range.to);
+    const from = range.from === 0 ? 0 : source.lastIndexOf("\n", range.from - 1) + 1;
+    const lastPosition = range.to > range.from && source[range.to - 1] === "\n" ? range.to - 1 : range.to;
+    const newline3 = source.indexOf("\n", lastPosition);
     return { from, to: newline3 < 0 ? source.length : newline3 };
   }
   function maximumRun(text, character) {
@@ -22346,6 +22364,7 @@ ${fence}`;
     if (transformed.some((value) => value === null)) return null;
     const values2 = transformed;
     const changes = values2.map((value) => value.change);
+    if (changes.some((change) => options.protectedRanges?.some((range) => overlaps(change, range)))) return null;
     const orderedChanges = [...changes].sort((left, right) => left.from - right.from || left.to - right.to);
     if (orderedChanges.some((change, index) => index > 0 && change.from < orderedChanges[index - 1].to)) return null;
     let shift2 = 0;
@@ -30956,6 +30975,248 @@ ${fence}
     return projectionTopologySignature(previousLocal) === projectionTopologySignature(nextLocal);
   }
 
+  // performance.ts
+  var samples = [];
+  var sampleCapacity = 256;
+  var sampleStart = 0;
+  var sampleCount = 0;
+  function appendSample(sample) {
+    if (sampleCount < sampleCapacity) {
+      samples[(sampleStart + sampleCount) % sampleCapacity] = sample;
+      sampleCount += 1;
+      return;
+    }
+    samples[sampleStart] = sample;
+    sampleStart = (sampleStart + 1) % sampleCapacity;
+  }
+  function recordEditorMetric(name2, startedAt, observed = {}) {
+    const durationMilliseconds = Math.max(0, performance.now() - startedAt);
+    const safeObserved = Object.fromEntries(Object.entries(observed).filter(([, value]) => Number.isFinite(value) && value >= 0));
+    appendSample({ name: name2, durationMilliseconds, observed: safeObserved });
+    const measureName = `scholium-editor:${name2}`;
+    try {
+      performance.measure(measureName, { start: startedAt, duration: durationMilliseconds });
+    } catch {
+    } finally {
+      try {
+        performance.clearMeasures(measureName);
+      } catch {
+      }
+    }
+  }
+  function scheduleAfterNextPaint(callback, requestFrame = window.requestAnimationFrame.bind(window), scheduleTask = (task) => window.setTimeout(task, 0)) {
+    requestFrame(() => {
+      scheduleTask(callback);
+    });
+  }
+  function sampleEditorMemory(documentLength) {
+    const memory = performance.memory;
+    const usedBytes = memory?.usedJSHeapSize;
+    recordEditorMetric("memory-sample", performance.now(), {
+      documentLength,
+      ...typeof usedBytes === "number" ? { usedJSHeapBytes: usedBytes } : {}
+    });
+  }
+  function editorPerformanceSamples() {
+    return Array.from({ length: sampleCount }, (_, index) => {
+      const sample = samples[(sampleStart + index) % sampleCapacity];
+      return { ...sample, observed: { ...sample.observed } };
+    });
+  }
+
+  // exact-source-history.ts
+  var setExactSource = StateEffect.define();
+  var eventInverses = /* @__PURE__ */ new WeakMap();
+  var detachedHistoryDepth = 0;
+  function detachedHistory(operation) {
+    detachedHistoryDepth++;
+    try {
+      return operation();
+    } finally {
+      detachedHistoryDepth--;
+    }
+  }
+  var restoreLineEnding = StateEffect.define({
+    map(value, mapping) {
+      if (mapping instanceof ChangeSet) return { ...value, at: mapping.mapPos(value.at, 1) };
+      const inverse = eventInverses.get(value);
+      if (!inverse) throw new Error("Exact history mapping is unavailable");
+      const outputMapping = mapping.mapDesc(inverse, true);
+      const result = { ...value, at: outputMapping.mapPos(value.at, 1) };
+      eventInverses.set(result, inverse.mapDesc(mapping));
+      return result;
+    }
+  });
+  function transactionChanges(transaction, mirror) {
+    const endings = new Map(transaction.effects.filter((effect) => effect.is(restoreLineEnding)).map((effect) => [effect.value.at, effect.value.ending]));
+    const changes = [];
+    transaction.changes.iterChanges((from, to, fromB, _toB, inserted) => {
+      const insert2 = inserted.toString();
+      const exactInsert = insert2.replace(/\n/g, (_newline, offset) => endings.get(fromB + offset) ?? (mirror.usesCRLF ? "\r\n" : "\n"));
+      changes.push({ from, to, insert: insert2, exactInsert, removed: transaction.startState.doc.sliceString(from, to) });
+    });
+    return changes;
+  }
+  var exactSourceState = StateField.define({
+    create: (state) => new ExactSourceMirror(state.doc.toString()),
+    update(mirror, transaction) {
+      const replacement = transaction.effects.find((effect) => effect.is(setExactSource));
+      if (replacement) {
+        if (normalizedDocumentText(replacement.value) !== transaction.newDoc.toString()) {
+          throw new Error("Exact source does not match the editor document");
+        }
+        return new ExactSourceMirror(replacement.value);
+      }
+      if (!transaction.docChanged) return mirror;
+      const startedAt = performance.now();
+      const changes = transactionChanges(transaction, mirror);
+      const next = mirror.copy();
+      if (!next.apply(changes)) throw new Error("Exact source change is invalid");
+      if (detachedHistoryDepth === 0) recordEditorMetric("exact-source-update", startedAt, {
+        changeCount: changes.length,
+        documentLength: transaction.newDoc.length
+      });
+      return next;
+    }
+  });
+  var exactSourceHistory = [
+    exactSourceState,
+    EditorState.transactionExtender.of((transaction) => {
+      if (transaction.docChanged && transaction.annotation(Transaction.addToHistory) === false) {
+        for (const command2 of [undo, redo]) {
+          let detached = transaction.startState;
+          while (detachedHistory(() => command2({ state: detached, dispatch: (historical) => {
+            for (const effect of historical.effects) {
+              if (effect.is(restoreLineEnding)) eventInverses.set(effect.value, historical.changes.desc);
+            }
+            detached = historical.state;
+          } }))) {
+          }
+        }
+      }
+      return null;
+    }),
+    invertedEffects.of((transaction) => {
+      if (!transaction.docChanged) return [];
+      const mirror = transaction.startState.field(exactSourceState);
+      const effects = [];
+      transaction.changes.iterChanges((from, to) => {
+        const removed = mirror.slice(from, to);
+        let normalizedOffset = from;
+        for (let offset = 0; offset < removed.length; offset++, normalizedOffset++) {
+          const crlf = removed[offset] === "\r" && removed[offset + 1] === "\n";
+          if (crlf || removed[offset] === "\n") {
+            effects.push(restoreLineEnding.of({ at: normalizedOffset, ending: crlf ? "\r\n" : "\n" }));
+            if (crlf) offset++;
+          }
+        }
+      });
+      return effects;
+    })
+  ];
+  function exactSourceFitsChanges(state, changes) {
+    const source = state.field(exactSourceState);
+    const encoder = new TextEncoder();
+    let previous = 0, bytes = 0;
+    for (const change of [...changes].sort((left, right) => left.from - right.from || left.to - right.to)) {
+      if (!Number.isSafeInteger(change.from) || !Number.isSafeInteger(change.to) || change.from < previous || change.to < change.from || change.to > state.doc.length) return false;
+      const normalized2 = normalizedDocumentText(change.insert);
+      const insertion = change.exactInsert ?? (source.usesCRLF ? normalized2.replaceAll("\n", "\r\n") : normalized2);
+      if (normalizedDocumentText(insertion) !== normalized2) return false;
+      bytes += encoder.encode(source.slice(previous, change.from)).byteLength + encoder.encode(insertion).byteLength;
+      if (bytes > MAX_SOURCE_UTF8_BYTES) return false;
+      previous = change.to;
+    }
+    return bytes + encoder.encode(source.slice(previous, state.doc.length)).byteLength <= MAX_SOURCE_UTF8_BYTES;
+  }
+  function lineEndings(source) {
+    return Array.from(source.matchAll(/\r?\n/g), (match) => match[0] === "\r\n" ? "c" : "l").join("");
+  }
+  function sourceWithEndings(source, endings) {
+    let index = 0;
+    const exact = source.replace(/\n/g, () => {
+      const ending = endings[index++];
+      if (ending !== "c" && ending !== "l") throw new Error("Invalid history line endings");
+      return ending === "c" ? "\r\n" : "\n";
+    });
+    if (index !== endings.length) throw new Error("Invalid history line ending count");
+    return exact;
+  }
+  var maximumRecoveryEvents = 512;
+  function captureExactHistory(state) {
+    let remainingBytes = MAX_INBOUND_BYTES - new TextEncoder().encode(state.doc.toString()).byteLength;
+    const capture = (command2) => {
+      let detached = state;
+      const endings = [];
+      for (let index = 0; ; index++) {
+        let changed = false;
+        if (!detachedHistory(() => command2({ state: detached, dispatch: (transaction) => {
+          changed = transaction.docChanged;
+          transaction.changes.iterChanges((_from, _to, _fromB, _toB, inserted) => {
+            remainingBytes -= new TextEncoder().encode(inserted.toString()).byteLength;
+          });
+          if (remainingBytes < 0) throw new Error("History is too large");
+          detached = transaction.state;
+        } }))) break;
+        if (index >= maximumRecoveryEvents) throw new Error("History is too large");
+        const value = changed ? lineEndings(detached.field(exactSourceState).text) : null;
+        remainingBytes -= value?.length ?? 0;
+        if (remainingBytes < 0) throw new Error("History is too large");
+        endings.push(value);
+      }
+      return endings;
+    };
+    try {
+      if (remainingBytes < 0) return void 0;
+      const undoLineEndings = capture(undoSelection);
+      const redoLineEndings = capture(redoSelection);
+      const serialized = JSON.stringify({
+        state: state.toJSON({ history: historyField }),
+        undoLineEndings,
+        redoLineEndings
+      });
+      return new TextEncoder().encode(serialized).byteLength <= MAX_INBOUND_BYTES ? serialized : void 0;
+    } catch {
+      return void 0;
+    }
+  }
+  function restoreExactHistory(serialized, source, extensions) {
+    if (new TextEncoder().encode(serialized).byteLength > MAX_INBOUND_BYTES) throw new Error("History is too large");
+    const payload = JSON.parse(serialized);
+    const validEndings = (value) => Array.isArray(value) && value.length <= maximumRecoveryEvents && value.every((item) => item === null || typeof item === "string" && /^[cl]*$/.test(item));
+    if (!validEndings(payload.undoLineEndings) || !validEndings(payload.redoLineEndings)) {
+      throw new Error("Invalid history line endings");
+    }
+    let state = EditorState.fromJSON(payload.state, { extensions }, { history: historyField });
+    if (state.doc.toString() !== normalizedDocumentText(source) || undoDepth(state) !== payload.undoLineEndings.filter((value) => value !== null).length || redoDepth(state) !== payload.redoLineEndings.filter((value) => value !== null).length) {
+      throw new Error("History does not match the recovered source");
+    }
+    const recovery = new Compartment();
+    let targetEndings;
+    state = state.update({ effects: [setExactSource.of(source), StateEffect.appendConfig.of(recovery.of(
+      EditorState.transactionExtender.of((transaction) => targetEndings === void 0 ? null : {
+        effects: setExactSource.of(sourceWithEndings(transaction.newDoc.toString(), targetEndings))
+      })
+    ))], annotations: Transaction.addToHistory.of(false) }).state;
+    function replay(command2, endings) {
+      targetEndings = endings ?? void 0;
+      try {
+        if (!detachedHistory(() => command2({ state, dispatch: (transaction) => {
+          state = transaction.state;
+        } }))) throw new Error("History could not be restored");
+      } finally {
+        targetEndings = void 0;
+      }
+    }
+    for (const endings of payload.redoLineEndings) replay(redoSelection, endings);
+    for (const _ of payload.redoLineEndings) replay(undoSelection);
+    for (const endings of payload.undoLineEndings) replay(undoSelection, endings);
+    for (const _ of payload.undoLineEndings) replay(redoSelection);
+    state = state.update({ effects: recovery.reconfigure([]), annotations: Transaction.addToHistory.of(false) }).state;
+    if (state.field(exactSourceState).text !== source) throw new Error("History source did not restore exactly");
+    return state;
+  }
+
   // localization.ts
   var webInterfaceLocalizationKeys = [
     "Tab",
@@ -30999,6 +31260,7 @@ ${fence}
     "Edit mode unavailable",
     "Close the YAML frontmatter in Source mode to restore the visual projection.",
     "The editor could not preserve the exact source line endings.",
+    "The replacement would make the document too large.",
     "The Markdown editor could not start.",
     "The Review renderer stopped unexpectedly.",
     "No preview is available at the insertion point.",
@@ -31200,55 +31462,6 @@ ${fence}
   // bootstrap.ts
   function createMarkdownEditor(parent, extensions) {
     return new EditorView({ parent, state: EditorState.create({ doc: "", extensions }) });
-  }
-
-  // performance.ts
-  var samples = [];
-  var sampleCapacity = 256;
-  var sampleStart = 0;
-  var sampleCount = 0;
-  function appendSample(sample) {
-    if (sampleCount < sampleCapacity) {
-      samples[(sampleStart + sampleCount) % sampleCapacity] = sample;
-      sampleCount += 1;
-      return;
-    }
-    samples[sampleStart] = sample;
-    sampleStart = (sampleStart + 1) % sampleCapacity;
-  }
-  function recordEditorMetric(name2, startedAt, observed = {}) {
-    const durationMilliseconds = Math.max(0, performance.now() - startedAt);
-    const safeObserved = Object.fromEntries(Object.entries(observed).filter(([, value]) => Number.isFinite(value) && value >= 0));
-    appendSample({ name: name2, durationMilliseconds, observed: safeObserved });
-    const measureName = `scholium-editor:${name2}`;
-    try {
-      performance.measure(measureName, { start: startedAt, duration: durationMilliseconds });
-    } catch {
-    } finally {
-      try {
-        performance.clearMeasures(measureName);
-      } catch {
-      }
-    }
-  }
-  function scheduleAfterNextPaint(callback, requestFrame = window.requestAnimationFrame.bind(window), scheduleTask = (task) => window.setTimeout(task, 0)) {
-    requestFrame(() => {
-      scheduleTask(callback);
-    });
-  }
-  function sampleEditorMemory(documentLength) {
-    const memory = performance.memory;
-    const usedBytes = memory?.usedJSHeapSize;
-    recordEditorMetric("memory-sample", performance.now(), {
-      documentLength,
-      ...typeof usedBytes === "number" ? { usedJSHeapBytes: usedBytes } : {}
-    });
-  }
-  function editorPerformanceSamples() {
-    return Array.from({ length: sampleCount }, (_, index) => {
-      const sample = samples[(sampleStart + index) % sampleCapacity];
-      return { ...sample, observed: { ...sample.observed } };
-    });
   }
 
   // preview-popover.ts
@@ -36898,22 +37111,25 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       case "replaceCurrent": {
         const match = currentMatch(view, query) ?? forwardMatch(view, query, view.state.selection.main.from);
         if (match) {
+          const changes = [{ from: match.from, to: match.to, insert: normalizedDocumentText(request.replacement) }];
+          if (!exactSourceFitsChanges(view.state, changes)) throw new Error(localized("The replacement would make the document too large."));
           view.dispatch({
-            changes: { from: match.from, to: match.to, insert: request.replacement },
+            changes,
             annotations: Transaction.userEvent.of("input.replace")
           });
           sourceChanged = true;
           undoLabel = "Replace";
-          selectMatch(view, forwardMatch(view, query, match.from + request.replacement.length));
+          selectMatch(view, forwardMatch(view, query, match.from + changes[0].insert.length));
         }
         break;
       }
       case "replaceAll": {
         const changes = matchingRanges(view.state, query).map((match) => ({
           ...match,
-          insert: request.replacement
+          insert: normalizedDocumentText(request.replacement)
         }));
         if (changes.length > 0) {
+          if (!exactSourceFitsChanges(view.state, changes)) throw new Error(localized("The replacement would make the document too large."));
           view.dispatch({
             changes,
             annotations: Transaction.userEvent.of("input.replace.all")
@@ -36939,7 +37155,6 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
   var bridgeDocumentID = "";
   var bridgeFingerprint = "";
   var documentVersion = 0;
-  var exactSourceMirror = new ExactSourceMirror();
   var linkPreviews = [];
   var linkPreviewIndexByRange = /* @__PURE__ */ new Map();
   var editingDialect = null;
@@ -36987,10 +37202,9 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     return mermaidRuntimePromise;
   }
   function exactEditorSource() {
-    return exactSourceMirror.text;
+    return editor.state.field(exactSourceState).text;
   }
   var modeCompartment = new Compartment();
-  var lineSeparatorCompartment = new Compartment();
   var editorModeFacet = Facet.define({
     // Mode absence must fail closed to exact Source. Live Preview is installed
     // only by the mode compartment and can never be inferred from a missing
@@ -38036,28 +38250,10 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       const baseGeneration = documentVersion;
       documentVersion += 1;
       const changes = [];
-      const mirrorChanges = [];
-      update.changes.iterChanges((fromA, toA, _fromB, _toB, inserted) => {
+      const mirror = update.state.field(exactSourceState);
+      update.changes.iterChanges((fromA, toA, fromB, toB, inserted) => {
         const insert2 = inserted.toString();
-        changes.push({ from: fromA, to: toA, insert: insert2 });
-        mirrorChanges.push({
-          from: fromA,
-          to: toA,
-          insert: insert2,
-          removed: update.startState.doc.sliceString(fromA, toA)
-        });
-      });
-      const exactUpdateStartedAt = performance.now();
-      if (!exactSourceMirror.apply(mirrorChanges)) {
-        post({
-          type: "editorError",
-          message: localized("The editor could not preserve the exact source line endings.")
-        });
-        return;
-      }
-      recordEditorMetric("exact-source-update", exactUpdateStartedAt, {
-        changeCount: mirrorChanges.length,
-        documentLength: update.state.doc.length
+        changes.push({ from: fromA, to: toA, insert: insert2, exactInsert: mirror.slice(fromB, toB) });
       });
       if (input !== null || keyStartedAt !== null) {
         const paintedSessionID = bridgeSessionID;
@@ -38126,7 +38322,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       editorSelections(state),
       command2,
       {
-        argument,
+        argument: argument === void 0 ? void 0 : normalizedDocumentText(argument),
         protectedRanges: commandProtection(command2, state),
         taskItems: liveProjectionIndex.index(state).taskItemRanges
       }
@@ -38410,7 +38606,8 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     editorContextMenu,
     stateReporter,
     linkActivation,
-    lineSeparatorCompartment.of(EditorState.lineSeparator.of("\n")),
+    EditorState.lineSeparator.of("\n"),
+    exactSourceHistory,
     modeCompartment.of(sourceMode),
     EditorView.theme({
       "&": { height: "100%" },
@@ -38740,13 +38937,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
           performanceSamples: editorPerformanceSamples()
         };
       case "captureRecovery": {
-        let stateJSON;
-        try {
-          const candidate = JSON.stringify(editor.state.toJSON({ history: historyField }));
-          if (new TextEncoder().encode(candidate).byteLength <= MAX_INBOUND_BYTES) stateJSON = candidate;
-        } catch {
-          stateJSON = void 0;
-        }
+        const stateJSON = captureExactHistory(editor.state);
         const recovery = {
           documentID: bridgeDocumentID,
           fingerprint: bridgeFingerprint,
@@ -38766,28 +38957,16 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
           return rejected(request.requestID, documentVersion, "stale recovery snapshot");
         }
         const recoveredSelection = EditorSelection.create(snapshot.ranges.map((range) => EditorSelection.range(range.anchor, range.head)));
-        const separator = snapshot.source.includes("\r\n") ? "\r\n" : "\n";
         let restoredHistory = false;
         let recoveredState = null;
         if (snapshot.stateJSON && new TextEncoder().encode(snapshot.stateJSON).byteLength <= MAX_INBOUND_BYTES) {
           try {
-            const serializedState = JSON.parse(snapshot.stateJSON);
-            if (serializedState && typeof serializedState.doc === "string") {
-              serializedState.doc = normalizedDocumentText(serializedState.doc);
-            }
-            const restored = EditorState.fromJSON(
-              serializedState,
-              { extensions: editorExtensions },
-              { history: historyField }
-            );
-            if (normalizedDocumentText(restored.doc.toString()) === normalizedDocumentText(snapshot.source)) {
-              recoveredState = restored.update({
-                selection: recoveredSelection,
-                effects: lineSeparatorCompartment.reconfigure(EditorState.lineSeparator.of(separator)),
-                annotations: Transaction.addToHistory.of(false)
-              }).state;
-              restoredHistory = true;
-            }
+            const restored = restoreExactHistory(snapshot.stateJSON, snapshot.source, editorExtensions);
+            recoveredState = restored.update({
+              selection: recoveredSelection,
+              annotations: Transaction.addToHistory.of(false)
+            }).state;
+            restoredHistory = true;
           } catch {
             restoredHistory = false;
           }
@@ -38797,7 +38976,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
             recoveredState = editor.state.update({
               changes: replacementChange(editor.state.doc.toString(), snapshot.source),
               selection: recoveredSelection,
-              effects: lineSeparatorCompartment.reconfigure(EditorState.lineSeparator.of(separator)),
+              effects: setExactSource.of(snapshot.source),
               annotations: [Transaction.addToHistory.of(false), programmaticDocumentChange.of(true)]
             }).state;
           } catch {
@@ -38806,7 +38985,6 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         }
         const restoredMode = configuredEditorMode(editor.state);
         editor.setState(recoveredState);
-        exactSourceMirror.replace(snapshot.source);
         lastDocumentFocusTarget = snapshot.focusTarget;
         await editorOperations.setMode(restoredMode);
         dirty = snapshot.dirty;
@@ -38987,7 +39165,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       announceEditorMessage(editor.contentDOM, unsupportedFilePasteMessage());
       return true;
     }
-    const text = transfer.getData("text/plain");
+    const text = normalizedDocumentText(transfer.getData("text/plain"));
     if (!text) return false;
     if (dropPosition !== void 0) editor.dispatch({ selection: { anchor: dropPosition } });
     const url = editingFrontmatterSelection() ? null : isSingleSafeURL(text);
@@ -39136,11 +39314,9 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       documentTitlePresentationRevision += 1;
       lastDocumentFocusTarget = void 0;
       documentVersion = 0;
-      const separator = text.includes("\r\n") ? "\r\n" : "\n";
-      exactSourceMirror.replace(text);
       editor.dispatch({
         changes: replacementChange(editor.state.doc.toString(), text),
-        effects: lineSeparatorCompartment.reconfigure(EditorState.lineSeparator.of(separator)),
+        effects: setExactSource.of(text),
         annotations: [
           Transaction.addToHistory.of(false),
           programmaticDocumentChange.of(true)
@@ -39247,7 +39423,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       scrollCoordinator.setAnchor(anchor);
     },
     acknowledgeCommittedSnapshot(expectedText, committedText, startingFingerprint) {
-      const currentText = exactSourceMirror.text;
+      const currentText = exactEditorSource();
       const normalizedCurrent = normalizedDocumentText(editor.state.doc.toString());
       if (currentText !== expectedText) {
         if (committedText !== expectedText || normalizedCurrent !== normalizedDocumentText(currentText)) return null;
@@ -39259,16 +39435,14 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       if (normalizedCurrent !== normalizedDocumentText(expectedText)) return null;
       bridgeFingerprint = startingFingerprint;
       if (committedText !== currentText) {
-        const separator = committedText.includes("\r\n") ? "\r\n" : "\n";
         editor.dispatch({
           changes: replacementChange(editor.state.doc.toString(), committedText),
-          effects: lineSeparatorCompartment.reconfigure(EditorState.lineSeparator.of(separator)),
+          effects: setExactSource.of(committedText),
           annotations: [
             Transaction.addToHistory.of(false),
             programmaticDocumentChange.of(true)
           ]
         });
-        exactSourceMirror.replace(committedText);
       }
       dirty = false;
       scheduleEditorInteractionReport(true);

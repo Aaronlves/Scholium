@@ -103,29 +103,22 @@ acceptance concern rather than permission to weaken this lifecycle contract.
 
 ### Editor boundary contract
 
-The editor is an app-private typed boundary, not a generic event bus. One exact
-Markdown source is the only writable authority. Edit and Source share one
-persistent CodeMirror `EditorState`; Review renders a fingerprint-bound
-committed revision. CodeMirror owns active editing state, selection,
-composition, and undo history. Because CodeMirror normalizes line separators,
-the Web boundary keeps one checked `ExactSourceMirror` beside that state. Its
-normalized editor text and exact line-ending-preserving text use CodeMirror's
-persistent `Text` rope rather than immutable JavaScript String concatenation.
-Its text preserves the loaded BOM, CRLF/LF form, Unicode, and final newline; a
-sorted derived CRLF-offset index maps CodeMirror UTF-16 positions without
-rescanning the Note. Each ordinary input transaction validates only its exact
-deleted span and applies all accepted deltas atomically. Complete-document
-reconciliation remains a save, synchronization, command, or recovery boundary,
-not a per-keystroke path. The mirror cannot initiate edits or create a second
-selection, composition, or Undo owner. Swift independently maintains its
-checked boundary mirror in mutable UTF-16 storage from accepted
-generation-ordered deltas, including a cached UTF-8 byte count and the derived
-CRLF index. Ordinary input therefore neither copies the complete source nor
-publishes it through SwiftUI. The document model receives only dirty/activity
-state for autosave scheduling; complete immutable source snapshots are
-materialized only for persistence, conflict, recovery, reconstruction,
-explicit commands, or diagnostics. The mirror reconciles against complete
-editor text before persistence.
+The editor is an app-private typed boundary. Exact Markdown is the writable
+authority; Review projects a committed revision. Edit and Source share one
+CodeMirror `EditorState`, selection, composition and Undo owner, using LF
+internally. `exact-source-history` keeps `ExactSourceMirror` in an immutable
+StateField; CodeMirror inverted effects restore original newline bytes.
+Persistent `Text` ropes retain normalized and exact source, including BOM,
+CRLF/LF, Unicode and final newlines. Derived offsets map their coordinates.
+Transactions validate deleted spans and apply deltas atomically without a
+whole-document scan or a second editing owner.
+
+Swift maintains a checked mutable UTF-16 mirror, cached UTF-8 count and derived
+CRLF offsets. Generation-ordered deltas carry normalized text and required exact
+insertions; the receiver validates agreement before applying their exact bytes.
+Only dirty/activity state reaches the document model during input. Complete
+snapshots are reserved for persistence, conflict, recovery, reconstruction,
+commands and diagnostics. Persistence reconciles the live complete source first.
 
 `MarkdownEditorSession` alone owns the retained
 WebView lifecycle, checked source mirror, generation, recovery, and pending
@@ -265,9 +258,11 @@ avoid `Codable` re-encoding. It carries exact selection and coordinates but
 includes command availability only when changed. Swift keeps coordinates as
 non-Observable session state and publishes semantic or lifecycle changes only.
 The incremental native exact-source mirror is the live recovery authority.
-Complete CodeMirror history is captured only at an explicit view-reconstruction
-boundary, never on an idle timer during ordinary input. Every awaited request
-binds a session epoch and revalidates WebView,
+Bounded history capture at explicit reconstruction boundaries uses public
+Undo/Redo on detached states to retain newline metadata omitted by CodeMirror
+JSON. Recovery rebuilds both history branches through public transactions;
+invalid or oversized history retains the existing explicit history-loss outcome.
+Every awaited request binds a session epoch and revalidates WebView,
 document, fingerprint, and nondecreasing generation. Selection snapshots are
 valid only for that identity and generation; a committed fingerprint rebases
 fallback recovery before scheduling bounded history capture.
@@ -282,8 +277,9 @@ Process attribution uses the originator's launchd service map and verifies each
 executable; PPID or process-name matching is insufficient for WebKit workers.
 
 Ordinary input does not materialize the complete CodeMirror document. The
-update listener supplies only transaction deltas and their deleted start-state
-spans to `ExactSourceMirror`; Enter, Tab, Backtab, and direct link activation
+exact-source StateField applies transaction deltas and their deleted spans;
+the update listener projects exact insertions from the resulting state.
+Enter, Tab, Backtab, and direct link activation
 query CodeMirror `Text` lines around the active ranges. One immutable sorted
 mutation-sensitive interval set is cached with `LiveProjectionIndex` and reused
 by every projection field. Plain edits outside raw HTML map its existing ranges;
@@ -353,8 +349,10 @@ At autosave and explicit source-snapshot or document-departure boundaries,
 Swift requests complete CodeMirror text and reconciles it with the checked
 mirror. A clean external revision may replace the buffer through a
 generation-checked non-history transaction; a dirty buffer stays exact and
-enters Conflict. Mode changes and structural commands wait for marked-text
-composition and are discarded if document identity or generation changes.
+enters Conflict. Review handoff captures position and relinquishes editor focus
+before its final flush, then synchronously requires a clean, noncomposing,
+conflict-free session. Dirty Review sessions cannot pass close/quit flushing as clean.
+Structural commands wait for composition and reject changed identity or generation.
 Outbound bridge requests cross WebKit as encoded JSON text and are parsed in
 JavaScript. They do not pass source strings through Foundation's
 `JSONSerialization.jsonObject`, because that conversion removes a leading

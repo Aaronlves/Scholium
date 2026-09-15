@@ -4,6 +4,24 @@
 
 ## Current verification snapshot
 
+**2026-09-16 — Note editing reliability:** Scoped checks cover the final Review
+save boundary, exact newline Undo/Redo and reconstruction, half-open block
+selection, CRLF logical lines, rename autosave admission, inactive-tab external
+publication, and replacement-size rejection. Conflict Reload also preserves newer
+revisions and byte-distinct input received during its awaited work. The Editor
+suite passes 289 tests across 44 files; Core 405 plus three performance tests,
+Contracts 92, and Application 165 plus one architecture measurement pass.
+The 946-test App run had one invalid synthetic-pointer/animation-timing test;
+after replacing it with the existing native click route and waiting for natural
+animation completion, that test passed separately with its original caret and
+pixel requirements. Static checks, resource reproduction, public-symbol boundary,
+Release compilation and bundled-helper checks pass. This is staged verification,
+not an uninterrupted green gate. Two disposable 500-Note UI journeys pass: dirty
+Review handoff and continued autosave after external rename. QA app/state were
+removed; installed-release, IME and human accessibility acceptance remain separate.
+Evidence: `.build/note-editing-fix/` and
+`.build/editor-history-review/heading-animation-settle.log`.
+
 **2026-09-15 — Beta preparation repository gate:** With Xcode 27.0
 (27A5218g), Swift 6.4 and the macOS 27.0 SDK, the complete `verify.sh` run
 finished successfully on the versioned pre-tag tree. Documentation authority,

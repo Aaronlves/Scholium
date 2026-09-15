@@ -306,11 +306,16 @@ extension ScholiumUITests {
         }
 
         XCTAssertTrue(mode.waitForExistence(timeout: 10))
+        let handoffToken = " MODE-HANDOFF-\(UUID().uuidString)"
+        try enterLivePreviewAndAppend(handoffToken)
         selectMode("Source")
         XCTAssertTrue(sourceEditor.waitForExistence(timeout: 8))
         selectMode("Review")
         XCTAssertTrue(rendered.waitForExistence(timeout: 8))
         XCTAssertFalse(sourceEditor.exists)
+        XCTAssertTrue(
+            try source(at: firstURL).contains(handoffToken),
+            "Review must show the committed revision containing the pending edit.")
 
         let reviewToEditStart = DispatchTime.now().uptimeNanoseconds
         selectMode("Edit")
@@ -370,7 +375,9 @@ extension ScholiumUITests {
                 DispatchTime.now().uptimeNanoseconds - secondToFirstStart
             ) / 1_000_000
 
-        XCTAssertEqual(try Data(contentsOf: firstURL), firstSource)
+        let savedFirst = try source(at: firstURL)
+        XCTAssertEqual(savedFirst.components(separatedBy: handoffToken).count, 2)
+        XCTAssertEqual(Data(savedFirst.replacingOccurrences(of: handoffToken, with: "").utf8), firstSource)
         XCTAssertEqual(try Data(contentsOf: secondURL), secondSource)
         let evidence = XCTAttachment(
             string: """
@@ -458,6 +465,15 @@ extension ScholiumUITests {
             originalSource,
             "Identity rebinding may change the insertion position chosen by Live Preview, but no pre-existing Markdown byte may change."
         )
+        let subsequentToken = " AFTER-RENAME-\(UUID().uuidString)"
+        try enterLivePreviewAndAppend(subsequentToken)
+        XCTAssertTrue(
+            waitUntil(timeout: 15) {
+                (try? self.source(at: renamedURL).contains(subsequentToken)) == true
+            }, "Completing the rename retry must allow the next ordinary edit to autosave.")
+        XCTAssertEqual(
+            try source(at: renamedURL).replacingOccurrences(of: subsequentToken, with: ""),
+            savedSource)
     }
 
     @MainActor

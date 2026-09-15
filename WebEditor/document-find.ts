@@ -8,6 +8,9 @@ import {
   setSearchQuery,
 } from "@codemirror/search";
 import {EditorView} from "@codemirror/view";
+import {exactSourceFitsChanges} from "./exact-source-history";
+import {normalizedDocumentText} from "./state";
+import {localized} from "./localization";
 
 export type DocumentFindAction =
   | "present" | "update" | "next" | "previous" | "replaceCurrent" | "replaceAll";
@@ -140,22 +143,25 @@ export function performDocumentFind(
     const match = currentMatch(view, query)
       ?? forwardMatch(view, query, view.state.selection.main.from);
     if (match) {
+      const changes = [{from: match.from, to: match.to, insert: normalizedDocumentText(request.replacement)}];
+      if (!exactSourceFitsChanges(view.state, changes)) throw new Error(localized("The replacement would make the document too large."));
       view.dispatch({
-        changes: {from: match.from, to: match.to, insert: request.replacement},
+        changes,
         annotations: Transaction.userEvent.of("input.replace"),
       });
       sourceChanged = true;
       undoLabel = "Replace";
-      selectMatch(view, forwardMatch(view, query, match.from + request.replacement.length));
+      selectMatch(view, forwardMatch(view, query, match.from + changes[0].insert.length));
     }
     break;
   }
   case "replaceAll": {
     const changes = matchingRanges(view.state, query).map((match) => ({
       ...match,
-      insert: request.replacement,
+      insert: normalizedDocumentText(request.replacement),
     }));
     if (changes.length > 0) {
+      if (!exactSourceFitsChanges(view.state, changes)) throw new Error(localized("The replacement would make the document too large."));
       view.dispatch({
         changes,
         annotations: Transaction.userEvent.of("input.replace.all"),

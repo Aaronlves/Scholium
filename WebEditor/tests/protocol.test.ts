@@ -30,8 +30,8 @@ const dialect = {
 };
 
 describe("editor protocol", () => {
-  it("uses the coalesced interaction bridge protocol", () => {
-    expect(EDITOR_PROTOCOL_VERSION).toBe(36);
+  it("uses the exact-insertion byte bridge protocol", () => {
+    expect(EDITOR_PROTOCOL_VERSION).toBe(37);
   });
   it("accepts a complete versioned request", () => expect(isEditorRequest(request)).toBe(true));
   it("rejects retired title positioning while retaining blur", () => {

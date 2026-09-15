@@ -65,9 +65,14 @@ struct DocumentFloatingSurfaceTests {
         window.makeKeyAndOrderFront(nil)
         window.makeFirstResponder(webView)
         let controller = DocumentFloatingSurfaceController()
-        defer { controller.dismiss(); webView.stopLoading(); window.close() }
+        defer {
+            controller.dismiss()
+            webView.stopLoading()
+            window.close()
+        }
         controller.present(
-            DocumentFloatingSurface(id: 1, kind: .selection, left: 300, top: 180, bottom: 200,
+            DocumentFloatingSurface(
+                id: 1, kind: .selection, left: 300, top: 180, bottom: 200,
                 html: "", css: "", items: [], selected: -1),
             in: webView,
             inquire: { _, _ in throw AgentChatNoteMaterialError.selectionUnavailable }
@@ -129,7 +134,8 @@ struct DocumentFloatingSurfaceTests {
         }
         func start(_ id: Int) throws {
             controller.present(
-                DocumentFloatingSurface(id: id, kind: .selection, left: 300, top: 180, bottom: 200,
+                DocumentFloatingSurface(
+                    id: id, kind: .selection, left: 300, top: 180, bottom: 200,
                     html: "", css: "", items: [], selected: -1),
                 in: webView,
                 inquire: { _, _ in

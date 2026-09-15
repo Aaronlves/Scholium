@@ -881,8 +881,11 @@ final class DocumentController: ObservableObject {
         // file-missing alert over the still-valid editor session.
         guard session.isEditing, session.hasUnsavedChanges else { return }
         session.cancelAutosave()
+        let autosaveToken = UUID()
+        session.autosaveToken = autosaveToken
         session.autosaveTask = Task { @MainActor [weak self, weak session] in
             guard let self, let session else { return }
+            defer { session.finishAutosave(token: autosaveToken) }
             if let activeSaveTask = session.activeSaveTask {
                 let supersededToken = session.activeSaveToken
                 _ = try? await activeSaveTask.value
@@ -907,6 +910,7 @@ final class DocumentController: ObservableObject {
             session.editError = nil
             session.canRetrySave = false
             self.setSaveError(nil)
+            session.finishAutosave(token: autosaveToken)
             await self.persistEditingSource(
                 session: session,
                 target: .workspace(descriptor.sessionKey)
@@ -1245,7 +1249,12 @@ final class DocumentController: ObservableObject {
                     !session.isSavingEdit,
                     session.activeSaveTask == nil
                 else { return }
-                finishEditing(session: session, target: target)
+                do {
+                    try finishEditing(session: session, target: target)
+                } catch {
+                    session.editError = error.localizedDescription
+                    setSaveError(session.editError)
+                }
             } else {
                 session.preparePresentationMode(.read)
             }
@@ -1349,10 +1358,16 @@ final class DocumentController: ObservableObject {
     func finishEditing(
         session: DocumentSessionModel,
         target: DocumentEditingTarget
-    ) {
+    ) throws {
+        guard !session.editorSession.isComposing else { throw DocumentControllerError.editorUnavailable }
+        if let conflict = repositoryConflict(for: session) { throw conflict }
+        guard !session.hasUnsavedChanges, !session.isSavingEdit, session.activeSaveTask == nil else {
+            throw DocumentControllerError.changedDuringSave
+        }
         session.cancelScheduledWork()
         session.finishEditing()
         session.returnToReadAfterSave = false
+        session.reviewHandoffID = nil
         session.suppressAutosave = false
         session.dismissConflictComparison()
         session.conflict = nil
@@ -1389,8 +1404,11 @@ final class DocumentController: ObservableObject {
             by: .milliseconds(Self.autosaveDelayMilliseconds)
         )
         guard session.autosaveTask == nil else { return }
+        let autosaveToken = UUID()
+        session.autosaveToken = autosaveToken
         session.autosaveTask = Task { @MainActor [weak self, weak session] in
             guard let self, let session else { return }
+            defer { session.finishAutosave(token: autosaveToken) }
             while let deadline = session.autosaveDeadline {
                 do {
                     try await clock.sleep(until: deadline)
@@ -1399,12 +1417,10 @@ final class DocumentController: ObservableObject {
                 }
                 guard !Task.isCancelled else { return }
                 guard session.autosaveDeadline == deadline else { continue }
-                session.autosaveDeadline = nil
-                session.autosaveTask = nil
+                session.finishAutosave(token: autosaveToken)
                 await self.persistEditingSource(session: session, target: target)
                 return
             }
-            session.autosaveTask = nil
         }
     }
 
@@ -1515,6 +1531,8 @@ final class DocumentController: ObservableObject {
     ) async throws {
         guard let conflict = session.conflict else { return }
         let comparedConflict = session.conflictComparison ?? conflict
+        let attemptedPath = relativePath(for: target)
+        let sourceBeforeReload = session.editorSession.isLoaded ? session.editorSession.checkedSource : session.editingSource
         do {
             let document = try await loadDocument(for: target)
             guard document.fingerprint == comparedConflict.diskRevision else {
@@ -1524,6 +1542,16 @@ final class DocumentController: ObservableObject {
                 )
             }
             await documentDidCommit(SaveResult(document: document))
+            let currentSource = session.editorSession.isLoaded ? session.editorSession.checkedSource : session.editingSource
+            guard session.conflict == conflict,
+                conflict.diskRevision == comparedConflict.diskRevision,
+                currentSource.utf8.elementsEqual(sourceBeforeReload.utf8),
+                relativePath(for: target) == attemptedPath,
+                !session.editorSession.isComposing, !session.isSavingEdit, session.activeSaveTask == nil
+            else {
+                if let currentConflict = repositoryConflict(for: session) { throw currentConflict }
+                throw DocumentControllerError.changedDuringSave
+            }
             session.suppressAutosave = true
             session.editingSource = document.rawContent
             session.originalEditingSource = document.rawContent
@@ -1534,13 +1562,26 @@ final class DocumentController: ObservableObject {
                 mode: session.retainedEditorMode
             )
             session.suppressAutosave = false
+            // The exact conflict accepted by this reload has been resolved.
+            // No suspension separates the validation, replacement and completion.
+            session.conflict = nil
             session.dismissConflictComparison()
             session.editError = nil
             setSaveError(nil)
-            finishEditing(session: session, target: target)
+            try finishEditing(session: session, target: target)
         } catch {
             session.dismissConflictComparison()
-            await presentSaveFailure(error, session: session, target: target)
+            if let latestConflict = session.conflict, latestConflict != conflict {
+                // A publication during reload already installed a newer conflict;
+                // an older callback must neither clear nor reconstruct that state.
+                session.editError =
+                    VaultRepositoryError.conflict(
+                        expected: latestConflict.baseRevision, current: latestConflict.diskRevision
+                    ).localizedDescription
+                if selectedDocument?.editingTarget == target { setSaveError(session.editError) }
+            } else {
+                await presentSaveFailure(error, session: session, target: target)
+            }
             throw error
         }
     }
@@ -1627,7 +1668,13 @@ final class DocumentController: ObservableObject {
         target: DocumentEditingTarget,
         receipt: EditorSaveCommitReceipt
     ) async throws -> EditorSaveOutcome {
-        guard session.isEditing else { return .clean }
+        guard session.isEditing else {
+            guard !session.hasUnsavedChanges, !session.editorSession.isComposing else {
+                throw DocumentControllerError.changedDuringSave
+            }
+            if let conflict = repositoryConflict(for: session) { throw conflict }
+            return .clean
+        }
         let path = relativePath(for: target)
         guard !path.isEmpty else { throw DocumentControllerError.documentUnavailable }
         if !session.editorSession.isReady || !session.editorSession.isLoaded {
@@ -1919,14 +1966,15 @@ final class DocumentController: ObservableObject {
                 stableNoteID: key.noteID.uuidString
             )
         )
-        retainedReferences[key] = updated.reference
-        guard selectedDocument?.editingTarget == document.editingTarget else {
-            return
+        let isSelected = selectedDocument?.editingTarget == document.editingTarget
+        if isSelected {
+            updateDocumentProjection(updated)
+        } else {
+            retainedReferences[key] = updated.reference
         }
-        updateDocumentProjection(updated)
-        let selectedSession = session(for: key)
-        reconcile(session: selectedSession, with: note)
-        if selectedSession.editError == nil { setSaveError(nil) }
+        guard let retainedSession = retainedSession(for: key) else { return }
+        reconcile(session: retainedSession, with: note)
+        if isSelected, retainedSession.editError == nil { setSaveError(nil) }
     }
 
     private func retainDeletedDocumentForRecovery(
@@ -2022,7 +2070,7 @@ final class DocumentController: ObservableObject {
                     expected: baseRevision,
                     current: snapshot.fingerprint
                 ).localizedDescription
-            setSaveError(session.editError)
+            if selectedDocument?.sessionKey == session.key { setSaveError(session.editError) }
             return
         }
 

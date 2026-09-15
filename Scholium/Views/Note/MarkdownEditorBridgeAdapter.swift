@@ -23,6 +23,12 @@ struct EditorBridgeChange: Codable, Equatable, Sendable {
     let from: Int
     let to: Int
     let insert: String
+    let exactInsert: String
+
+    var hasMatchingExactInsertion: Bool {
+        exactInsert.replacingOccurrences(of: "\r\n", with: "\n")
+            .utf8.elementsEqual(insert.utf8)
+    }
 }
 
 struct EditorBridgeEnvelope: Equatable, Sendable {
@@ -437,17 +443,20 @@ enum EditorBridgeMessageDecoder {
         result.reserveCapacity(rawChanges.count)
         for raw in rawChanges {
             guard let change = raw as? [String: Any],
-                hasExactKeys(change, ["from", "to", "insert"]),
+                hasExactKeys(change, ["from", "to", "insert", "exactInsert"]),
                 let from = nonnegativeInteger(change["from"]),
                 let to = nonnegativeInteger(change["to"]),
                 to >= from,
-                let insert = change["insert"] as? String
+                let insert = change["insert"] as? String,
+                let exactInsert = change["exactInsert"] as? String
             else { return nil }
-            insertedUTF8Bytes += insert.utf8.count
+            insertedUTF8Bytes += exactInsert.utf8.count
             guard insertedUTF8Bytes <= MarkdownEditorDeltaApplier.maximumResultUTF8Bytes else {
                 return nil
             }
-            result.append(EditorBridgeChange(from: from, to: to, insert: insert))
+            let delta = EditorBridgeChange(from: from, to: to, insert: insert, exactInsert: exactInsert)
+            guard delta.hasMatchingExactInsertion else { return nil }
+            result.append(delta)
         }
         return result
     }

@@ -24,6 +24,7 @@ export interface NormalizedSourceChange {
   to: number;
   insert: string;
   removed?: string;
+  exactInsert?: string;
 }
 
 function rope(source: string) {
@@ -89,6 +90,23 @@ export class ExactSourceMirror {
    */
   get text() { return this.exact.toString(); }
 
+  get usesCRLF() { return this.crlfLineBreakCount > 0; }
+
+  copy() {
+    const result = new ExactSourceMirror();
+    result.exact = this.exact;
+    result.normalized = this.normalized;
+    result.crlfLineBreakCount = this.crlfLineBreakCount;
+    return result;
+  }
+
+  slice(from: number, to: number) {
+    const exactFrom = exactOffset(this.exact, this.normalized, from);
+    const exactTo = exactOffset(this.exact, this.normalized, to);
+    if (exactFrom === null || exactTo === null || exactTo < exactFrom) throw new RangeError("Invalid exact source range");
+    return this.exact.sliceString(exactFrom, exactTo);
+  }
+
   replace(source: string) {
     this.exact = rope(source);
     this.normalized = rope(normalizedDocumentText(source));
@@ -113,7 +131,9 @@ export class ExactSourceMirror {
       if (from === null || to === null || to < from) return null;
       if (change.removed !== undefined
           && this.normalized.sliceString(change.from, change.to) !== change.removed) return null;
-      const exactInsert = usesCRLF ? change.insert.replaceAll("\n", "\r\n") : change.insert;
+      const exactInsert = change.exactInsert
+        ?? (usesCRLF ? change.insert.replaceAll("\n", "\r\n") : change.insert);
+      if (normalizedDocumentText(exactInsert) !== change.insert) return null;
       return {
         ...change,
         exactFrom: from,

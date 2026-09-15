@@ -8,6 +8,231 @@ import Testing
 @Suite("Document controller convergence")
 @MainActor
 struct DocumentControllerConvergenceTests {
+    enum ReloadInterleaving: CaseIterable { case unchanged, newerConflict, sourceNormalization }
+
+    @Test("Reload completes only the accepted conflict and preserves concurrent changes", arguments: ReloadInterleaving.allCases)
+    func conflictReloadCompletion(interleaving: ReloadInterleaving) async throws {
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent(".build/conflict-reload-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let vaults = ["Analyses", "Topics", "Works"].map { root.appendingPathComponent("Triptych/" + $0) }
+        for vault in vaults { try FileManager.default.createDirectory(at: vault, withIntermediateDirectories: true) }
+        let base = "Original\n"
+        let draft = "Researcher's unsaved café\n"
+        let normalizedDraft = draft.replacingOccurrences(of: "é", with: "e\u{301}")
+        let accepted = "Accepted disk revision\n"
+        let later = "Newer external revision\n"
+        let file = vaults[1].appendingPathComponent("Source.md")
+        try Data(accepted.utf8).write(to: file)
+        let store = try WorkspaceStore(applicationSupportURL: root.appendingPathComponent("ApplicationSupport"))
+        do {
+            let capabilities = try await store.configureTriptychCapabilities(
+                paperAnalysisURL: vaults[0], topicKnowledgeURL: vaults[1], outputURL: vaults[2],
+                portableContainerURL: root.appendingPathComponent("Triptych"), triptychName: "Conflict reload fixture")
+            let vault = try #require(try await capabilities.documents.snapshot().first { $0.vault.role == .topicKnowledge })
+            let snapshot = try #require(vault.documents.first { $0.id.relativePath == "Source.md" })
+            let controller = DocumentController()
+            controller.installOpenedDocument(snapshot, vaultName: "Topics", vaultRole: .topicKnowledge)
+            let descriptor = try #require(controller.activeDocument)
+            let target = DocumentEditingTarget.workspace(descriptor.sessionKey)
+            let session = controller.session(for: descriptor)
+            defer { session.cancelScheduledWork() }
+            controller.beginEditing(
+                session: session, target: target, source: base,
+                revision: DocumentFingerprint(content: base), mode: .source)
+            session.editingSource = draft
+            session.conflict = .init(
+                relativePath: "Source.md", editorSource: draft,
+                diskSource: accepted, baseRevision: DocumentFingerprint(content: base))
+            session.presentConflictComparison()
+            let newerConflict = DocumentConflictSnapshot(
+                relativePath: "Source.md", editorSource: draft,
+                diskSource: later, baseRevision: DocumentFingerprint(content: base))
+            controller.bind(
+                to: capabilities.documents,
+                documentDidCommit: { _ in
+                    if interleaving == .newerConflict {
+                        // This existing publication callback runs after load and before
+                        // the reload continuation can replace the editor's source.
+                        do { try Data(later.utf8).write(to: file) } catch { Issue.record(error) }
+                        session.conflict = newerConflict
+                    } else if interleaving == .sourceNormalization {
+                        session.editingSource = normalizedDraft
+                    }
+                })
+            if interleaving == .newerConflict {
+                await #expect(throws: VaultRepositoryError.self) {
+                    try await controller.reloadFromDisk(session: session, target: target)
+                }
+                #expect(session.conflict == newerConflict)
+                #expect(session.editingSource == draft && session.isEditing)
+                #expect(try Data(contentsOf: file) == Data(later.utf8))
+            } else if interleaving == .sourceNormalization {
+                await #expect(throws: VaultRepositoryError.self) {
+                    try await controller.reloadFromDisk(session: session, target: target)
+                }
+                #expect(session.isEditing && session.conflict != nil)
+                #expect(session.editingSource.utf8.elementsEqual(normalizedDraft.utf8))
+                #expect(!session.editingSource.utf8.elementsEqual(draft.utf8))
+                #expect(try Data(contentsOf: file) == Data(accepted.utf8))
+            } else {
+                try await controller.reloadFromDisk(session: session, target: target)
+                #expect(session.conflict == nil && session.editError == nil)
+                #expect(!session.isEditing && !session.hasUnsavedChanges)
+                #expect(session.editingSource == accepted && session.editorSession.checkedSource == accepted)
+                #expect(try Data(contentsOf: file) == Data(accepted.utf8))
+            }
+            await store.shutdownApplicationRuntime()
+        } catch {
+            await store.shutdownApplicationRuntime()
+            throw error
+        }
+    }
+
+    @Test("Review completion rejects input accepted after the saved snapshot", arguments: [false, true])
+    func reviewCompletionChecksLatestBuffer(lateInput: Bool) async throws {
+        let vault = UUID()
+        let id = UUID()
+        let original = note(vaultID: vault, noteID: id, path: "Draft.md", source: "Saved source\n")
+        let controller = DocumentController()
+        controller.installOpenedDocument(original, vaultName: "Works", vaultRole: .draftProject)
+        let target = DocumentEditingTarget.workspace(.init(vaultID: vault, noteID: id))
+        let session = controller.session(for: target)
+        controller.beginEditing(
+            session: session, target: target, source: original.document.rawContent,
+            revision: original.fingerprint, mode: .source)
+        let captured = AsyncStream<Void>.makeStream()
+        let acknowledgement = AsyncStream<Void>.makeStream()
+        defer {
+            captured.continuation.finish()
+            acknowledgement.continuation.finish()
+            session.cancelScheduledWork()
+        }
+        // Existing save-task admission supplies the deterministic suspension:
+        // source capture is complete, but the caller has not yet received its receipt.
+        session.activeSaveTask = Task { @MainActor in
+            captured.continuation.yield(())
+            for await _ in acknowledgement.stream { break }
+            return .clean
+        }
+        let handoff = Task { @MainActor in
+            try await controller.flushForExternalOperation(session: session, target: target)
+            session.activeSaveTask = nil
+            try controller.finishEditing(session: session, target: target)
+        }
+        for await _ in captured.stream { break }
+        if lateInput { session.editingSource = "Late researcher input\n" }
+        acknowledgement.continuation.yield(())
+        if lateInput {
+            await #expect(throws: DocumentControllerError.changedDuringSave) { try await handoff.value }
+            #expect(session.isEditing && session.hasUnsavedChanges)
+            #expect(session.editingSource == "Late researcher input\n")
+            #expect(session.editingRevision == original.fingerprint)
+        } else {
+            try await handoff.value
+            #expect(!session.isEditing && !session.hasUnsavedChanges)
+        }
+    }
+
+    @Test("A dirty Review buffer cannot receive a successful close or quit flush")
+    func dirtyReviewCannotFlushAsClean() async throws {
+        let controller = DocumentController()
+        let target = DocumentEditingTarget.workspace(.init(vaultID: UUID(), noteID: UUID()))
+        let session = controller.session(for: target)
+        session.originalEditingSource = "Saved\n"
+        session.editingSource = "Unsaved retained input\n"
+        #expect(!session.isEditing)
+        await #expect(throws: DocumentControllerError.changedDuringSave) {
+            try await controller.flushForExternalOperation(session: session, target: target)
+        }
+        #expect(session.hasUnsavedChanges)
+        #expect(session.editingSource == "Unsaved retained input\n")
+    }
+
+    @Test("A finished rename retry releases admission for later autosaves")
+    func renameRetryReleasesAutosave() async throws {
+        let vault = UUID()
+        let id = UUID()
+        let original = note(vaultID: vault, noteID: id, path: "Draft.md", source: "Saved\n")
+        let controller = DocumentController()
+        controller.installOpenedDocument(original, vaultName: "Works", vaultRole: .draftProject)
+        let key = DocumentSessionKey(vaultID: vault, noteID: id)
+        let target = DocumentEditingTarget.workspace(key)
+        let session = controller.session(for: target)
+        controller.beginEditing(
+            session: session, target: target, source: original.document.rawContent,
+            revision: original.fingerprint, mode: .source)
+        defer { session.cancelScheduledWork() }
+        session.editingSource = "Pending edit\n"
+        session.activeSaveToken = UUID()
+        session.isSavingEdit = true
+        session.activeSaveTask = Task { @MainActor in
+            // The joined save completes before the retry, so no further write is necessary.
+            session.editingSource = session.originalEditingSource
+            return .clean
+        }
+        controller.updateDocumentProjection(
+            .init(
+                sessionKey: key,
+                reference: .init(
+                    vaultID: vault, vaultName: "Works", vaultRole: .draftProject,
+                    relativePath: "Renamed.md", stableNoteID: id.uuidString)))
+        let retry = try #require(session.autosaveTask)
+        let retryToken = try #require(session.autosaveToken)
+        await retry.value
+        #expect(session.autosaveTask == nil && session.autosaveToken == nil)
+        session.suppressAutosave = false
+        session.editingSource = "Next edit\n"
+        controller.scheduleAutosave(session: session, target: target)
+        let nextToken = try #require(session.autosaveToken)
+        #expect(nextToken != retryToken && session.autosaveTask != nil)
+        // A cancelled/late predecessor cannot clear the newly scheduled task.
+        session.finishAutosave(token: retryToken)
+        #expect(session.autosaveToken == nextToken && session.autosaveTask != nil)
+    }
+
+    @Test("External publication reconciles inactive retained editors without changing selection", arguments: [false, true])
+    func inactiveExternalPublication(dirty: Bool) throws {
+        let vault = UUID()
+        let id = UUID()
+        let original = note(vaultID: vault, noteID: id, path: "First.md", source: "Original\n")
+        let other = note(vaultID: vault, noteID: UUID(), path: "Other.md", source: "Other\n")
+        let external = note(vaultID: vault, noteID: id, path: "First.md", source: "External revision\n")
+        let controller = DocumentController()
+        controller.installOpenedDocument(original, vaultName: "Works", vaultRole: .draftProject)
+        let firstDocument = try #require(controller.selectedDocument)
+        let session = controller.session(for: firstDocument.editingTarget)
+        controller.beginEditing(
+            session: session, target: firstDocument.editingTarget, source: original.document.rawContent,
+            revision: original.fingerprint, mode: .source)
+        if dirty { session.editingSource = "Researcher's draft\n" }
+        controller.installOpenedDocument(other, vaultName: "Works", vaultRole: .draftProject)
+        let selected = try #require(controller.selectedDocument)
+        let selectedSession = controller.session(for: selected.editingTarget)
+        let publication = workspace(vaultID: vault, notes: [external, other])
+        controller.receive(publication, openDocuments: [firstDocument, selected])
+        let current = try #require(controller.selectedDocument)
+        #expect(current.editingTarget == selected.editingTarget)
+        #expect(current.relativePath == selected.relativePath)
+        #expect(controller.session(for: current.editingTarget) === selectedSession)
+        let publishedVault = try #require(publication.vault(id: vault)?.vault)
+        #expect(current.workspaceDescriptor?.reference.vaultName == publishedVault.name)
+        #expect(current.workspaceDescriptor?.reference.vaultRole == publishedVault.role)
+        #expect(controller.lastSaveError == nil)
+        if dirty {
+            #expect(session.editingSource == "Researcher's draft\n")
+            #expect(session.conflict?.diskSource == external.document.rawContent)
+            #expect(session.editingRevision == original.fingerprint)
+        } else {
+            #expect(session.editingSource == external.document.rawContent)
+            #expect(session.editorSession.checkedSource == external.document.rawContent)
+            #expect(session.editingRevision == external.fingerprint)
+            #expect(!session.hasUnsavedChanges)
+        }
+        #expect(controller.selectRetainedDocument(firstDocument))
+        #expect((session.conflict != nil) == dirty)
+    }
+
     @Test("Accepted workspace updates invalidate attachment listings without replacing an unsaved document")
     func attachmentRefreshKeepsDraft() throws {
         let vault = UUID()

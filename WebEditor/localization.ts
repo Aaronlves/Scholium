@@ -41,6 +41,7 @@ export const webInterfaceLocalizationKeys = [
   "Edit mode unavailable",
   "Close the YAML frontmatter in Source mode to restore the visual projection.",
   "The editor could not preserve the exact source line endings.",
+  "The replacement would make the document too large.",
   "The Markdown editor could not start.",
   "The Review renderer stopped unexpectedly.",
   "No preview is available at the insertion point.",
