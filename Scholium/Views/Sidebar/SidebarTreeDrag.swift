@@ -157,6 +157,28 @@ func sidebarValidatedNoteDropDestination(
     return destination
 }
 
+/// Validate the complete group, including collisions created by two source
+/// folders containing the same filename. No subset is silently accepted.
+func sidebarValidatedNotesDropDestinations(
+    items: [SidebarNoteDragItem],
+    folderRelativePath: String?,
+    inventory: SidebarTreeDropInventory
+) -> [String]? {
+    guard !items.isEmpty, Set(items.map(\.id)).count == items.count,
+        let policy = inventory.pathComparisonPolicy
+    else { return nil }
+    let destinations = items.compactMap {
+        sidebarValidatedNoteDropDestination(item: $0, folderRelativePath: folderRelativePath, inventory: inventory)
+    }
+    guard destinations.count == items.count else { return nil }
+    let keys = destinations.compactMap { destination -> VaultPathComparisonKey? in
+        guard let path = try? MarkdownRelativePath(destination) else { return nil }
+        return policy.comparisonKey(for: path)
+    }
+    guard Set(keys).count == items.count else { return nil }
+    return destinations
+}
+
 func sidebarValidatedFolderDropDestination(
     item: SidebarFolderDragItem,
     folderRelativePath: String?,

@@ -9,6 +9,7 @@ let sidebarNativeDraggingTypes = [
 
 enum SidebarNativeDragPayload {
     case note(SidebarNoteDragItem)
+    case notes([SidebarNoteDragItem])
     case folder(SidebarFolderDragItem)
 }
 
@@ -20,27 +21,29 @@ func sidebarNativeDragPayload(
     // keeps forged external pasteboard data from advertising a Move. Exact
     // revision and occupancy facts are checked against the current inventory.
     guard info.draggingSource != nil else { return nil }
-    let pasteboard = info.draggingPasteboard
-    let noteData = pasteboard.data(forType: sidebarNativeDraggingTypes[0])
-    let folderData = pasteboard.data(forType: sidebarNativeDraggingTypes[1])
-    guard (noteData != nil) != (folderData != nil) else { return nil }
-    if let noteData,
-        let item = try? JSONDecoder().decode(
-            SidebarNoteDragItem.self,
-            from: noteData
-        )
-    {
-        return .note(item)
+    return sidebarNativeDragPayload(from: info.draggingPasteboard)
+}
+
+func sidebarNativeDragPayload(from pasteboard: NSPasteboard) -> SidebarNativeDragPayload? {
+    guard let entries = pasteboard.pasteboardItems, !entries.isEmpty else { return nil }
+    var notes: [SidebarNoteDragItem] = []
+    for entry in entries {
+        let noteData = entry.data(forType: sidebarNativeDraggingTypes[0])
+        let folderData = entry.data(forType: sidebarNativeDraggingTypes[1])
+        guard (noteData != nil) != (folderData != nil) else { return nil }
+        if let noteData {
+            guard let item = try? JSONDecoder().decode(SidebarNoteDragItem.self, from: noteData) else { return nil }
+            notes.append(item)
+        } else if let folderData {
+            guard entries.count == 1,
+                let item = try? JSONDecoder().decode(SidebarFolderDragItem.self, from: folderData)
+            else { return nil }
+            return .folder(item)
+        }
     }
-    if let folderData,
-        let item = try? JSONDecoder().decode(
-            SidebarFolderDragItem.self,
-            from: folderData
-        )
-    {
-        return .folder(item)
-    }
-    return nil
+    guard Set(notes.map(\.id)).count == notes.count else { return nil }
+    if notes.count == 1, let item = notes.first { return .note(item) }
+    return notes.isEmpty ? nil : .notes(notes)
 }
 
 func sidebarNativeDropIsValid(
@@ -55,6 +58,8 @@ func sidebarNativeDropIsValid(
             folderRelativePath: folderRelativePath,
             inventory: inventory
         ) != nil
+    case .notes(let items):
+        sidebarValidatedNotesDropDestinations(items: items, folderRelativePath: folderRelativePath, inventory: inventory) != nil
     case .folder(let item):
         sidebarValidatedFolderDropDestination(
             item: item,
@@ -69,10 +74,12 @@ func commitSidebarNativeDrop(
     _ payload: SidebarNativeDragPayload,
     folderRelativePath: String?,
     onMoveNote: (SidebarNoteDragItem, String?) -> Void,
-    onMoveFolder: (SidebarFolderDragItem, String?) -> Void
+    onMoveFolder: (SidebarFolderDragItem, String?) -> Void,
+    onMoveNotes: ([SidebarNoteDragItem], String?) -> Void
 ) {
     switch payload {
     case .note(let item): onMoveNote(item, folderRelativePath)
+    case .notes(let items): onMoveNotes(items, folderRelativePath)
     case .folder(let item): onMoveFolder(item, folderRelativePath)
     }
 }
@@ -84,6 +91,7 @@ struct SidebarLibraryHeaderDropDestination: NSViewRepresentable {
     let dropInventory: SidebarTreeDropInventory
     let onMoveNoteDrop: (SidebarNoteDragItem, String?) -> Void
     let onMoveFolderDrop: (SidebarFolderDragItem, String?) -> Void
+    let onMoveNotesDrop: ([SidebarNoteDragItem], String?) -> Void
 
     func makeNSView(context: Context) -> NSView {
         let view = SidebarLibraryHeaderDropView()
@@ -91,7 +99,8 @@ struct SidebarLibraryHeaderDropDestination: NSViewRepresentable {
         view.update(
             dropInventory: dropInventory,
             onMoveNoteDrop: onMoveNoteDrop,
-            onMoveFolderDrop: onMoveFolderDrop
+            onMoveFolderDrop: onMoveFolderDrop,
+            onMoveNotesDrop: onMoveNotesDrop
         )
         return view
     }
@@ -101,7 +110,8 @@ struct SidebarLibraryHeaderDropDestination: NSViewRepresentable {
         view.update(
             dropInventory: dropInventory,
             onMoveNoteDrop: onMoveNoteDrop,
-            onMoveFolderDrop: onMoveFolderDrop
+            onMoveFolderDrop: onMoveFolderDrop,
+            onMoveNotesDrop: onMoveNotesDrop
         )
     }
 
@@ -115,6 +125,7 @@ private final class SidebarLibraryHeaderDropView: NSView {
     private var dropInventory: SidebarTreeDropInventory?
     private var onMoveNoteDrop: ((SidebarNoteDragItem, String?) -> Void)?
     private var onMoveFolderDrop: ((SidebarFolderDragItem, String?) -> Void)?
+    private var onMoveNotesDrop: (([SidebarNoteDragItem], String?) -> Void)?
     private var isDropTargeted = false
 
     override var isOpaque: Bool { false }
@@ -122,11 +133,13 @@ private final class SidebarLibraryHeaderDropView: NSView {
     func update(
         dropInventory: SidebarTreeDropInventory,
         onMoveNoteDrop: @escaping (SidebarNoteDragItem, String?) -> Void,
-        onMoveFolderDrop: @escaping (SidebarFolderDragItem, String?) -> Void
+        onMoveFolderDrop: @escaping (SidebarFolderDragItem, String?) -> Void,
+        onMoveNotesDrop: @escaping ([SidebarNoteDragItem], String?) -> Void
     ) {
         self.dropInventory = dropInventory
         self.onMoveNoteDrop = onMoveNoteDrop
         self.onMoveFolderDrop = onMoveFolderDrop
+        self.onMoveNotesDrop = onMoveNotesDrop
         if dropInventory.sourceScope != .library || !dropInventory.canMutate {
             setDropTargeted(false)
         }
@@ -151,7 +164,8 @@ private final class SidebarLibraryHeaderDropView: NSView {
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
         guard let payload = validatedPayload(from: sender),
             let onMoveNoteDrop,
-            let onMoveFolderDrop
+            let onMoveFolderDrop,
+            let onMoveNotesDrop
         else {
             setDropTargeted(false)
             return false
@@ -161,7 +175,8 @@ private final class SidebarLibraryHeaderDropView: NSView {
             payload,
             folderRelativePath: nil,
             onMoveNote: onMoveNoteDrop,
-            onMoveFolder: onMoveFolderDrop
+            onMoveFolder: onMoveFolderDrop,
+            onMoveNotes: onMoveNotesDrop
         )
         return true
     }

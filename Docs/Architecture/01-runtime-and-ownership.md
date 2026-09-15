@@ -293,6 +293,18 @@ and restoration. It calls `WorkspaceStore` for configuration, activation
 snapshots, registration, folder access, and Vault configuration, then a
 typed installer lets the root bind that accepted generation into feature
 owners without selecting or mutating the session.
+`DiscoveryController` owns scoped Library row selection independently of document
+tabs. `NSOutlineView` owns native selection input; its coordinator translates row
+identities and group commands without opening each selected Note.
+`LibraryNoteBatchExecution` sequences existing move operations and advances captured
+revisions only from exact commit rewrites. Batch Trash combines existing previews
+under the established Core receipt/recovery owner. The window mutation controller
+retains results and cancellation; the batch sheet only presents them.
+Committed incoming-link rewrites synchronously advance their existing portable
+identity with an expected-fingerprint comparison, so the next batch item does
+not depend on a background catalog refresh. `FileOperationSheet` owns shared
+native layout only; each operation retains its own state and authority.
+
 `WindowLibraryMutationController` owns Note/Folder preparation and mutation
 through `LibraryMutationUseCases`; `DocumentController` forwards no Library
 writes. `WindowZoteroCoordinator` owns cancellable search/binding and committed

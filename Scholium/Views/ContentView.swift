@@ -479,7 +479,8 @@ struct ContentView: View {
             requestedWorkspaceSlot: appState.requestedWorkspaceSelection,
             canMutateLibrary: appState.currentRegisteredVault != nil
                 && !appState.libraryMutationController.isCreatingNote
-                && !appState.libraryMutationController.isMutatingFolder,
+                && !appState.libraryMutationController.isMutatingFolder
+                && !appState.libraryMutationController.isBatchWorking,
             sourceMutationGeneration: appState.sourceMutationGeneration,
             filterOptions: SidebarLibraryFilterOptions(
                 catalogIsAvailable: appState.workspaceCatalog != nil,
@@ -510,6 +511,11 @@ struct ContentView: View {
             moveFolder: { target, destination in
                 try await appState.libraryMutationController.moveFolder(target, to: destination)
             },
+            requestNoteBatchMove: appState.requestLibraryBatchMove,
+            requestNoteBatchTrash: appState.requestLibraryBatchTrash,
+            moveNotesDrop: appState.moveLibraryBatchByDrop,
+            hasBatchOutcome: libraryMutationController.lastBatchOutcome != nil,
+            showBatchOutcome: appState.showLastLibraryBatchOutcome,
             requestFolderFileOperation: {
                 appState.folderFileRequest = $0
             },
@@ -567,6 +573,26 @@ struct ContentView: View {
     @ViewBuilder
     private func sheetContent(for route: WindowSheetRoute) -> some View {
         switch route {
+        case .libraryNoteBatch(let request):
+            LibraryNoteBatchView(
+                request: request,
+                folderRelativePaths: request.vaultID == appState.currentRegisteredVault?.id
+                    ? [""] + appState.currentLibraryFolders.filter(WorkspaceLibraryVisibility.includes) : [],
+                outcome: libraryMutationController.lastBatchOutcome.flatMap { $0.id == request.id ? $0 : nil },
+                isWorking: libraryMutationController.isBatchWorking,
+                move: { appState.executeLibraryBatchMove(request, toFolder: $0) },
+                cancel: { libraryMutationController.cancelNoteBatch() },
+                retry: { appState.retryLastLibraryBatch() },
+                close: { presentationRouter.dismissSheet() },
+                openRecovery: { presentationRouter.present(.transactionRecovery) })
+        case .libraryBatchTrash(let preview):
+            SystemTrashConfirmationView(
+                preview: preview,
+                confirm: { preview in
+                    let outcome = await libraryMutationController.executeNotesSystemTrash(preview)
+                    appState.presentLibraryBatchOutcome(outcome)
+                },
+                cancel: { presentationRouter.dismissSheet() })
         case .noteRestructure(let request):
             NoteRestructureView(request: request, prepare: appState.prepareNoteRestructure, commit: appState.commitNoteRestructure)
         case .noteFileOperation(let request):

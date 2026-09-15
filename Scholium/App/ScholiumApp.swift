@@ -1101,29 +1101,26 @@ private struct ScholiumFileDocumentCommandContent: View {
             .disabled(appState?.workspaceAssignment == nil || appState?.isDetachedDocumentWindow == true)
         Divider()
         Button("Duplicate Note…") {
-            guard let note = appState?.currentNote,
-                let target = NoteMutationTarget(note)
-            else { return }
+            guard let target = appState?.fileCommandSingleNoteTarget else { return }
             appState?.noteFileRequest = .duplicate(target)
         }
         .scholiumActivationPointer()
-        .disabled(appState?.currentDocumentCapabilities.allows(.duplicate) != true)
+        .disabled(appState?.fileCommandSingleNoteTarget == nil)
         Button("Rename Note…") {
-            guard let note = appState?.currentNote,
-                let target = NoteMutationTarget(note)
-            else { return }
+            guard let target = appState?.fileCommandSingleNoteTarget else { return }
             appState?.noteFileRequest = .rename(target)
         }
         .scholiumActivationPointer()
-        .disabled(appState?.currentDocumentCapabilities.allows(.move) != true)
+        .disabled(appState?.fileCommandSingleNoteTarget == nil)
         Button("Move Note…") {
-            guard let note = appState?.currentNote,
-                let target = NoteMutationTarget(note)
-            else { return }
-            appState?.noteFileRequest = .move(target)
+            if let targets = appState?.focusedLibraryMutationTargets {
+                appState?.requestLibraryBatchMove(targets)
+            } else if let target = appState?.fileCommandSingleNoteTarget {
+                appState?.noteFileRequest = .move(target)
+            }
         }
         .scholiumActivationPointer()
-        .disabled(appState?.currentDocumentCapabilities.allows(.move) != true)
+        .disabled(appState?.canPerformFileSelectionMutation != true)
         Divider()
         Button("Attach a Copy…") { editorActions?.attachDocumentCopy() }
             .scholiumActivationPointer()
@@ -1139,14 +1136,15 @@ private struct ScholiumFileDocumentCommandContent: View {
             .disabled(appState?.vaultConfig == nil)
         Divider()
         Button("Move to Trash…") {
-            appState?.requestCurrentNoteSystemTrash()
+            if let targets = appState?.focusedLibraryMutationTargets {
+                appState?.requestLibraryBatchTrash(targets)
+            } else {
+                appState?.requestCurrentNoteSystemTrash()
+            }
         }
         .scholiumActivationPointer()
         .scholiumKeyboardShortcut(.moveToTrash)
-        .disabled(
-            appState?.currentDocumentCapabilities.allows(.moveToSystemTrash)
-                != true
-        )
+        .disabled(appState?.canPerformFileSelectionMutation != true)
     }
 }
 
@@ -1989,6 +1987,17 @@ final class WindowModel: ObservableObject {
             expectedRevision: { [weak self] target in
                 guard let self else { throw CancellationError() }
                 return try self.mutationExpectedRevision(for: target)
+            },
+            captureBatchTargets: { [weak self] targets in
+                guard let self else { throw CancellationError() }
+                return try targets.map { target in
+                    guard
+                        let snapshot = self.workspaceProjectionController.vaultSnapshot(id: target.documentID.vaultID)?
+                            .documents.first(where: { $0.id == target.documentID && $0.stableIdentity.resolvedID == target.stableNoteID }),
+                        snapshot.capabilities.canEditSource
+                    else { throw LibraryNoteBatchError.selectionChanged }
+                    return NoteMutationTarget(documentID: snapshot.id, stableNoteID: target.stableNoteID, revision: snapshot.fingerprint)
+                }
             },
             committedNoteCreated: { [weak self] outcome, isCurrent in
                 await self?.publishCommittedNoteCreation(outcome, isCurrent: isCurrent)
@@ -4993,6 +5002,7 @@ final class WindowModel: ObservableObject {
             )
             return
         }
+        let preservesDocument = libraryMutationController.isBatchWorking
         let commit = outcome.committedValue
         let destination = commit.destination.relativePath
         migrateAppOwnedState(
@@ -5016,23 +5026,25 @@ final class WindowModel: ObservableObject {
                 vaultName: projection.vault.name,
                 vaultRole: projection.vault.role
             )
-            do {
-                try await activateWorkspaceReference(
-                    VaultNoteReference(
-                        vaultID: projection.note.id.vaultID,
-                        vaultName: projection.vault.name,
-                        vaultRole: projection.vault.role,
-                        relativePath: projection.note.id.relativePath,
-                        stableNoteID: target.stableNoteID.uuidString.lowercased()
-                    ),
-                    tabActivation: .place(.replaceSelected)
-                )
-                revealCreatedNoteInLibrary(
-                    projection.note.id.relativePath,
-                    vaultID: projection.note.id.vaultID
-                )
-            } catch {
-                presentationWarning = error.localizedDescription
+            if !preservesDocument {
+                do {
+                    try await activateWorkspaceReference(
+                        VaultNoteReference(
+                            vaultID: projection.note.id.vaultID,
+                            vaultName: projection.vault.name,
+                            vaultRole: projection.vault.role,
+                            relativePath: projection.note.id.relativePath,
+                            stableNoteID: target.stableNoteID.uuidString.lowercased()
+                        ),
+                        tabActivation: .place(.replaceSelected)
+                    )
+                    revealCreatedNoteInLibrary(
+                        projection.note.id.relativePath,
+                        vaultID: projection.note.id.vaultID
+                    )
+                } catch {
+                    presentationWarning = error.localizedDescription
+                }
             }
         } else {
             do {
@@ -5040,7 +5052,7 @@ final class WindowModel: ObservableObject {
                     vaultID: target.documentID.vaultID
                 )
                 try await browseRegisteredVault(vault)
-                openNote(destination)
+                if !preservesDocument { openNote(destination) }
             } catch {
                 presentationWarning = error.localizedDescription
             }

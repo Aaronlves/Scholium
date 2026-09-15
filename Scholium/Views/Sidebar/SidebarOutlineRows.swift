@@ -113,9 +113,14 @@ final class SidebarOutlineHostingCell: NSTableCellView {
     /// from the start of a drag without a second gesture recognizer.
     override func hitTest(_ point: NSPoint) -> NSView? {
         let nativeHit = super.hitTest(point)
-        guard NSApp.currentEvent?.type == .leftMouseDown else {
-            return nativeHit
+        if NSApp.currentEvent?.type == .rightMouseDown,
+            let outlineView = enclosingOutlineView as? SidebarOutlineView,
+            outlineView.selectedRowIndexes.count > 1,
+            outlineView.selectedRowIndexes.contains(outlineView.row(for: self))
+        {
+            return self
         }
+        guard NSApp.currentEvent?.type == .leftMouseDown else { return nativeHit }
         return self
     }
 
@@ -125,6 +130,15 @@ final class SidebarOutlineHostingCell: NSTableCellView {
             return
         }
         super.mouseDown(with: event)
+    }
+
+    override func menu(for event: NSEvent) -> NSMenu? {
+        if let outlineView = enclosingOutlineView as? SidebarOutlineView,
+            let menu = outlineView.selectionMenuProvider?(outlineView.row(for: self))
+        {
+            return menu
+        }
+        return super.menu(for: event)
     }
 
     private var enclosingOutlineView: NSOutlineView? {
@@ -170,16 +184,39 @@ final class SidebarOutlineRowView: NSTableRowView {
 @MainActor
 final class SidebarOutlineView: NSOutlineView {
     var chatAccessibilityAction: (() -> NSAccessibilityCustomAction?)?
+    var selectionAccessibilityActions: (() -> [NSAccessibilityCustomAction])?
+    var selectionMenuProvider: ((Int) -> NSMenu?)?
+    var trashSelection: (() -> Bool)?
+    var openSelection: (() -> Bool)?
+    var dragSelectionIsValid: ((IndexSet) -> Bool)?
 
     override func accessibilityCustomActions() -> [NSAccessibilityCustomAction]? {
         let native = super.accessibilityCustomActions() ?? []
-        guard let action = chatAccessibilityAction?() else { return native }
-        return native + [action]
+        let selectionActions = selectionAccessibilityActions?() ?? []
+        let chatActions = chatAccessibilityAction?().map { [$0] } ?? []
+        return native + selectionActions + chatActions
+    }
+
+    override func menu(for event: NSEvent) -> NSMenu? {
+        let row = row(at: convert(event.locationInWindow, from: nil))
+        return selectionMenuProvider?(row) ?? super.menu(for: event)
     }
 
     func requestKeyboardFocus() {
         guard window != nil, !isHiddenOrHasHiddenAncestor else { return }
         window?.makeFirstResponder(self)
+    }
+
+    override func insertNewline(_ sender: Any?) {
+        if openSelection?() != true { super.insertNewline(sender) }
+    }
+
+    override func deleteBackward(_ sender: Any?) {
+        if trashSelection?() != true { super.deleteBackward(sender) }
+    }
+
+    override func deleteForward(_ sender: Any?) {
+        if trashSelection?() != true { super.deleteForward(sender) }
     }
 
     override func canDragRows(
@@ -190,7 +227,7 @@ final class SidebarOutlineView: NSOutlineView {
         // surfaces. Let NSTableView keep drag recognition for the containing
         // native row; the data source's process-private pasteboard writer
         // remains the per-item authorization boundary.
-        return rowIndexes.count == 1
+        return dragSelectionIsValid?(rowIndexes) ?? false
     }
 }
 

@@ -234,6 +234,28 @@ controls and rows retain their macOS cursor behavior; link cursors are reserved
 to document links and genuinely link-equivalent targets where native controls
 do not already own cursor behavior.
 
+Library selection is window-owned and distinct from the active Document. Native
+Command-click, Shift-click, Shift-arrow and Select All select rows without opening
+each Note. Ordinary single selection keeps its existing opening behavior. A modified
+selection that reduces to one item does not unexpectedly replace the Document.
+Reprojection retains only current visible selections; another vault cannot inherit them.
+
+A group of same-vault Notes offers Move Notes and Move to Trash through its contextual
+menu, Library Organize menu, keyboard and accessibility routes. Dragging that group
+uses the same move operation. Mixed groups disable Note batch actions. File commands
+address Library selection while the outline has focus; document Note Actions remain
+bound to their captured document. A destination sheet names the selected Notes and
+one existing folder or Vault Root. Trash confirms the complete selected group once.
+Successful batches update the list and close their sheet. Partial results retain
+per-item reasons, Cancel Remaining when applicable, Retry Remaining and Recovery.
+Last Batch Result in Organize reopens the retained result without repeating a mutation.
+§5.5 owns execution and recovery consequences.
+File-operation sheets share a compact native presentation: action heading,
+source paths, editable destination or name, and trailing Cancel/commit actions.
+Short forms fit their content; long file lists scroll within a bounded region
+while actions remain visible. Progress occupies the action row; errors and
+per-file outcomes remain readable and selectable without covering the inputs.
+
 Menus and accessibility actions provide creation, Rename, Move, Copy Relative
 Path, Reveal, disclosure, and Trash. Notes offer native left-swipe Move to Trash
 with confirmation; right swipe has no action. AppKit owns feedback. Drag carries Note identity/revision or Folder vault/path,

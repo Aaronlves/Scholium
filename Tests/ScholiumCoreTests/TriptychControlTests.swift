@@ -7,6 +7,38 @@ import Testing
 @Suite("Portable Triptych control directory")
 struct TriptychControlTests {
 
+    @Test("A committed identity revision cannot replace an unrelated revision or create a missing identity")
+    func guardedCommittedIdentityRevision() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let store = TriptychControlStore(worksVaultURL: fixture.works)
+        let vaultIDs = Dictionary(uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map { ($0, UUID()) })
+        _ = try await store.bootstrap(vaultIDs: vaultIDs)
+        let vaultID = try #require(vaultIDs[.output])
+        let before = DocumentFingerprint(data: Data("before".utf8))
+        let after = DocumentFingerprint(data: Data("committed".utf8))
+        let external = DocumentFingerprint(data: Data("external".utf8))
+        let original = try #require(try await store.identity(forVaultID: vaultID, relativePath: "A.md", fingerprint: before))
+        let committed = try #require(
+            try await store.identity(
+                forVaultID: vaultID, relativePath: "A.md", fingerprint: after, createIfMissing: false,
+                preferredID: original.id, expectedFingerprint: before))
+        #expect(committed.id == original.id)
+        _ = try await store.identity(forVaultID: vaultID, relativePath: "A.md", fingerprint: external)
+        await #expect(throws: TriptychControlError.self) {
+            try await store.identity(
+                forVaultID: vaultID, relativePath: "A.md", fingerprint: after,
+                createIfMissing: false, preferredID: original.id, expectedFingerprint: before)
+        }
+        #expect(try await store.identityRecord(id: original.id)?.fingerprint == external)
+        await #expect(throws: TriptychControlError.self) {
+            try await store.identity(
+                forVaultID: vaultID, relativePath: "Missing.md", fingerprint: after,
+                expectedFingerprint: before)
+        }
+        #expect(try await store.identityRecord(vaultID: vaultID, relativePath: "Missing.md") == nil)
+    }
+
     @Test("Portable attachment records retain only stable identity and typed location")
     func attachmentCatalogRegistrationAndRemoval() async throws {
         let fixture = try Fixture()

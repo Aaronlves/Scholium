@@ -4,6 +4,11 @@
 
 ## Workspace and source authority
 
+- Library Note batches freeze identity/revision after editor flush, preserve filenames
+  and incoming links, stop remaining moves after failure, and reuse multi-source
+  system-Trash receipts. Completed items are excluded from newly prepared retries;
+  uncertain effects remain in Recovery.
+
 - Registered Triptychs retain distinct Analyses, Topics, and Works vaults.
   Exact Markdown bytes and stable Note identities are authoritative; portable
   `.scholium` control state and machine-local Application Support state remain

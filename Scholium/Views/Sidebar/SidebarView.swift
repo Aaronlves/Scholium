@@ -43,6 +43,11 @@ struct SidebarContext {
     let createUntitledFolder: (String?) -> Void
     let moveNote: (NoteMutationTarget, String) async throws -> Void
     let moveFolder: (FolderMutationTarget, String) async throws -> Void
+    let requestNoteBatchMove: ([NoteMutationTarget]) -> Void
+    let requestNoteBatchTrash: ([NoteMutationTarget]) -> Void
+    let moveNotesDrop: ([NoteMutationTarget], String?) -> Void
+    let hasBatchOutcome: Bool
+    let showBatchOutcome: () -> Void
     let requestFolderFileOperation: (FolderFileRequest) -> Void
     let requestFolderSystemTrash: (FolderMutationTarget) async throws -> Void
     let copyRelativePath: (String) -> Void
@@ -80,6 +85,29 @@ struct SidebarView: View {
         )
     }
 
+    private var selectedRowIDs: Set<String> {
+        controller.librarySelection(in: context.disclosureScope)
+    }
+
+    private var selectedBatchTargets: [NoteMutationTarget] {
+        let targets = context.allNotes.filter { selectedRowIDs.contains($0.relativePath) }.compactMap(NoteMutationTarget.init)
+        return targets.count == selectedRowIDs.count ? targets : []
+    }
+
+    private var visibleRowIDs: Set<String> {
+        func ids(_ nodes: [TreeNode]) -> Set<String> {
+            nodes.reduce(into: Set<String>()) { result, node in
+                result.insert(node.id)
+                if expandedFolders.wrappedValue.contains(node.id) { result.formUnion(ids(node.children)) }
+            }
+        }
+        return ids(folderTree)
+    }
+
+    private func reconcileLibrarySelection() {
+        controller.setLibrarySelection(selectedRowIDs.intersection(visibleRowIDs), in: context.disclosureScope)
+    }
+
     private var folderTree: [TreeNode] {
         treeProjection.value.roots
     }
@@ -102,6 +130,13 @@ struct SidebarView: View {
             sourceRegion
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .onChange(of: treeProjection.revision) { _, _ in reconcileLibrarySelection() }
+        .onChange(of: context.disclosureScope) { _, _ in reconcileLibrarySelection() }
+        .onChange(of: expandedFolders.wrappedValue) { _, _ in reconcileLibrarySelection() }
+        .onChange(of: context.selectedDocumentPath) { _, path in
+            guard selectedRowIDs.count <= 1 else { return }
+            controller.setLibrarySelection(Set(path.map { [$0] } ?? []).intersection(visibleRowIDs), in: context.disclosureScope)
+        }
         .overlay(alignment: .topLeading) {
             if PerformanceProbe.shared.measuresWarmLibraryLaunch,
                 sourceListUsesOutlineView,
@@ -154,7 +189,12 @@ struct SidebarView: View {
                     },
                     onMoveFolderDrop: { item, targetFolder in
                         performFolderDrop([item], into: targetFolder)
-                    }
+                    },
+                    selectedRowIDs: selectedRowIDs,
+                    onSelectionChange: { controller.setLibrarySelection($0, in: context.disclosureScope) },
+                    onBatchMove: context.requestNoteBatchMove,
+                    onBatchTrash: context.requestNoteBatchTrash,
+                    onMoveNotesDrop: { performNoteDrop($0, into: $1) }
                 )
                 .accessibilityIdentifier("scholium.noteList")
             }
@@ -218,7 +258,8 @@ struct SidebarView: View {
                 },
                 onMoveFolderDrop: { item, targetFolder in
                     performFolderDrop([item], into: targetFolder)
-                }
+                },
+                onMoveNotesDrop: { performNoteDrop($0, into: $1) }
             )
         }
         .accessibilityElement(children: .contain)
@@ -337,6 +378,10 @@ struct SidebarView: View {
         SidebarTreeContext(
             currentVaultID: context.disclosureScope?.vaultID,
             currentVaultRole: context.currentVaultRole,
+            selectedRowIDs: selectedRowIDs,
+            selectedBatchTargets: selectedBatchTargets,
+            requestNoteBatchMove: context.requestNoteBatchMove,
+            requestNoteBatchTrash: context.requestNoteBatchTrash,
             openNote: context.openNote,
             canAddNoteToChat: context.canAddNoteToChat,
             addNoteToChat: context.addNoteToChat,
@@ -371,10 +416,11 @@ struct SidebarView: View {
         _ items: [SidebarNoteDragItem],
         into folderRelativePath: String?
     ) {
-        guard items.count == 1, let item = items.first else {
-            context.showError("Move one note at a time.")
+        if items.count > 1 {
+            context.moveNotesDrop(items.map(\.mutationTarget), folderRelativePath)
             return
         }
+        guard let item = items.first else { return }
         guard
             let destination = sidebarValidatedNoteDropDestination(
                 item: item,
@@ -439,7 +485,11 @@ struct SidebarView: View {
             },
             replaceFilters: controller.replaceFilters,
             selectSortOrder: context.selectSortOrder,
-            clearFilters: clearAllFilters
+            clearFilters: clearAllFilters,
+            canMutateSelection: context.canMutateLibrary && !selectedBatchTargets.isEmpty,
+            moveSelection: { context.requestNoteBatchMove(selectedBatchTargets) },
+            trashSelection: { context.requestNoteBatchTrash(selectedBatchTargets) },
+            showBatchOutcome: context.hasBatchOutcome ? context.showBatchOutcome : nil
         )
     }
 

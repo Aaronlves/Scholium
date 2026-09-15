@@ -185,6 +185,119 @@ struct SidebarTreeTests {
         #expect(added == ["First.md"])
     }
 
+    @MainActor
+    @Test("Native multiple selection survives document changes and blocks mixed-item mutations")
+    func nativeMultipleSelection() throws {
+        let vaultID = UUID()
+        let notes = ["First.md", "Second.md"].map {
+            workspaceNote(vaultID: vaultID, stableID: UUID(), path: $0, source: "# Material\n")
+        }
+        let projection = LibraryTreeProjection(preorderedNotes: notes, folderRelativePaths: ["Folder"])
+        var selectionEvents: [Set<String>] = []
+        var opened: [String] = []
+        var moved: [[NoteMutationTarget]] = []
+        var trashed: [[NoteMutationTarget]] = []
+        let configuration = makeSidebarCoordinatorConfiguration(
+            roots: projection.roots, notes: notes,
+            scope: .init(vaultID: vaultID, sourceScope: .library), expandedFolderIDs: [],
+            selectedDocumentPath: "First.md", revealRequest: nil, requestedFocusPath: nil,
+            onConsumeRevealRequest: { _ in }, onFocusRequestHandled: {},
+            selectedRowIDs: ["First.md", "Second.md"], canMutate: true,
+            onSelectionChange: { selectionEvents.append($0) }, onSelect: { opened.append($0.relativePath) },
+            onBatchMove: { moved.append($0) }, onBatchTrash: { trashed.append($0) })
+        let coordinator = SidebarOutlineSourceList.Coordinator(configuration: configuration)
+        let fixture = makeSidebarCoordinatorOutline(coordinator)
+        defer { coordinator.detach(from: fixture.scrollView) }
+        let outline = fixture.outlineView
+        coordinator.apply(configuration: configuration)
+        #expect(outline.selectedRowIndexes.count == 2)
+        #expect(selectionEvents.isEmpty)
+        #expect(opened.isEmpty)
+        #expect(outline.openSelection?() == false)
+        #expect(outline.chatAccessibilityAction?() == nil)
+        let moveAction = try #require(outline.selectionAccessibilityActions?().first)
+        #expect(moveAction.handler?() == true)
+        #expect(moved.first?.count == 2)
+        #expect(outline.trashSelection?() == true)
+        #expect(trashed.first?.count == 2)
+        coordinator.apply(configuration: configuration)
+        #expect(outline.selectedRowIndexes.count == 2)
+        #expect(opened.isEmpty)
+        let folderRow = try #require(
+            (0..<outline.numberOfRows).first {
+                (outline.item(atRow: $0) as? SidebarOutlineItem)?.node.isFolder == true
+            })
+        outline.selectRowIndexes(IndexSet(integer: folderRow), byExtendingSelection: true)
+        #expect(selectionEvents.last?.count == 3)
+        #expect(opened.isEmpty)
+        #expect(outline.trashSelection?() == false)
+        #expect(outline.selectionAccessibilityActions?().isEmpty == true)
+        #expect(moveAction.handler?() == false)
+        #expect(outline.canDragRows(with: outline.selectedRowIndexes, at: .zero) == false)
+        let menu = try #require(outline.selectionMenuProvider?(folderRow))
+        #expect(menu.items.allSatisfy { !$0.isEnabled })
+    }
+
+    @MainActor
+    @Test("Native multi-item pasteboard retains every Note and rejects mixed or duplicate payloads")
+    func nativeMultipleNoteDragPayload() throws {
+        let vaultID = UUID()
+        let notes = ["First.md", "Second.md"].map {
+            workspaceNote(vaultID: vaultID, stableID: UUID(), path: $0, source: "# Material\n")
+        }
+        let payloads = try notes.map { SidebarNoteDragItem(try #require(NoteMutationTarget($0))) }
+        func item(_ payload: SidebarNoteDragItem) throws -> NSPasteboardItem {
+            let item = NSPasteboardItem()
+            item.setData(try JSONEncoder().encode(payload), forType: sidebarNativeDraggingTypes[0])
+            return item
+        }
+        let pasteboard = NSPasteboard.withUniqueName()
+        defer { pasteboard.releaseGlobally() }
+        pasteboard.writeObjects(try payloads.map(item))
+        guard case .notes(let decoded) = sidebarNativeDragPayload(from: pasteboard) else {
+            Issue.record("Expected the complete note group")
+            return
+        }
+        #expect(decoded.map(\.mutationTarget) == payloads.map(\.mutationTarget))
+        var committed: [SidebarNoteDragItem] = []
+        commitSidebarNativeDrop(
+            .notes(decoded), folderRelativePath: "Target",
+            onMoveNote: { _, _ in
+                Issue.record("Must not split the batch into single-note operations")
+            }, onMoveFolder: { _, _ in }, onMoveNotes: { items, _ in committed = items })
+        #expect(committed.count == 2)
+        pasteboard.clearContents()
+        pasteboard.writeObjects([try item(payloads[0]), try item(payloads[0])])
+        #expect(sidebarNativeDragPayload(from: pasteboard) == nil)
+        let folderItem = NSPasteboardItem()
+        folderItem.setData(
+            try JSONEncoder().encode(SidebarFolderDragItem(.init(vaultID: vaultID, relativePath: "Folder"))),
+            forType: sidebarNativeDraggingTypes[1])
+        pasteboard.clearContents()
+        pasteboard.writeObjects([try item(payloads[0]), folderItem])
+        #expect(sidebarNativeDragPayload(from: pasteboard) == nil)
+    }
+
+    @Test("Group drop validation rejects filename collisions across source folders")
+    func nativeMultipleNoteDropCollision() throws {
+        let vaultID = UUID()
+        let notes = ["One/Note.md", "Two/note.md", "Two/Other.md"].map {
+            workspaceNote(vaultID: vaultID, stableID: UUID(), path: $0, source: "# Material\n")
+        }
+        let payloads = try notes.map { SidebarNoteDragItem(try #require(NoteMutationTarget($0))) }
+        let inventory = SidebarTreeDropInventory(
+            currentVaultID: vaultID, sourceScope: .library, currentVaultRole: .sourceCorpus,
+            canMutate: true, notes: notes, folderRelativePaths: ["One", "Two", "Target"],
+            pathComparisonPolicy: .init(caseSensitive: false, normalizationSensitive: true),
+            pendingNoteMoves: [], pendingFolderMoves: [])
+        #expect(sidebarValidatedNotesDropDestinations(items: [payloads[0], payloads[1]], folderRelativePath: "Target", inventory: inventory) == nil)
+        #expect(
+            sidebarValidatedNotesDropDestinations(items: [payloads[0], payloads[2]], folderRelativePath: "Target", inventory: inventory) == [
+                "Target/Note.md", "Target/Other.md",
+            ])
+        #expect(sidebarValidatedNotesDropDestinations(items: [payloads[0], payloads[0]], folderRelativePath: "Target", inventory: inventory) == nil)
+    }
+
     @Test("Library filter presentation counts only complete property filters")
     func libraryFilterPresentationProjection() {
         var filters = DiscoveryFilterState()
@@ -1150,7 +1263,13 @@ private func makeSidebarCoordinatorConfiguration(
     onConsumeRevealRequest: @escaping (DiscoveryLibraryRevealRequest) -> Void,
     onFocusRequestHandled: @escaping () -> Void,
     canAddNoteToChat: @escaping (WindowDocumentLocation) -> Bool = { _ in false },
-    addNoteToChat: @escaping (WindowDocumentLocation) -> Void = { _ in }
+    addNoteToChat: @escaping (WindowDocumentLocation) -> Void = { _ in },
+    selectedRowIDs: Set<String>? = nil,
+    canMutate: Bool = false,
+    onSelectionChange: @escaping (Set<String>) -> Void = { _ in },
+    onSelect: @escaping (WindowDocumentLocation) -> Void = { _ in },
+    onBatchMove: @escaping ([NoteMutationTarget]) -> Void = { _ in },
+    onBatchTrash: @escaping ([NoteMutationTarget]) -> Void = { _ in }
 ) -> SidebarOutlineSourceList {
     let context = SidebarTreeContext(
         currentVaultID: scope.vaultID,
@@ -1159,7 +1278,7 @@ private func makeSidebarCoordinatorConfiguration(
         canAddNoteToChat: canAddNoteToChat,
         addNoteToChat: addNoteToChat,
         requestFileOperation: { _ in },
-        canMutateLibrary: false,
+        canMutateLibrary: canMutate,
         createUntitledNote: { _ in },
         createUntitledFolder: { _ in },
         requestFolderFileOperation: { _ in },
@@ -1173,7 +1292,7 @@ private func makeSidebarCoordinatorConfiguration(
         currentVaultID: scope.vaultID,
         sourceScope: .library,
         currentVaultRole: .other,
-        canMutate: false,
+        canMutate: canMutate,
         notes: notes,
         folderRelativePaths: [],
         pathComparisonPolicy: nil,
@@ -1196,9 +1315,14 @@ private func makeSidebarCoordinatorConfiguration(
         requestedFocusPath: requestedFocusPath,
         onConsumeRevealRequest: onConsumeRevealRequest,
         onFocusRequestHandled: onFocusRequestHandled,
-        onSelect: { _ in },
+        onSelect: onSelect,
         onMoveNoteDrop: { _, _ in },
-        onMoveFolderDrop: { _, _ in }
+        onMoveFolderDrop: { _, _ in },
+        selectedRowIDs: selectedRowIDs ?? Set(selectedDocumentPath.map { [$0] } ?? []),
+        onSelectionChange: onSelectionChange,
+        onBatchMove: onBatchMove,
+        onBatchTrash: onBatchTrash,
+        onMoveNotesDrop: { _, _ in }
     )
 }
 
@@ -1216,6 +1340,7 @@ private func makeSidebarCoordinatorOutline(
     outlineView.delegate = coordinator
     outlineView.style = .sourceList
     outlineView.floatsGroupRows = false
+    outlineView.allowsMultipleSelection = true
     outlineView.usesAutomaticRowHeights = false
     outlineView.rowSizeStyle = .default
     outlineView.intercellSpacing = .zero

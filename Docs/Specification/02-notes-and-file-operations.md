@@ -211,6 +211,28 @@ written revisions; external changes are retained for recovery. Source Trash rema
 Finder-owned. No research snapshot, redirect-note shell or second content authority
 is created. Existing Note moves retain their own contracts.
 
+### 5.5 Multiple-Note Library operations
+
+A same-vault selection of Notes can move to one existing folder or the vault root,
+preserving filenames and stable identities, or move to system Trash after one
+confirmation of the complete selected set. Folder operations retain their existing
+single-folder routes; mixed Note/Folder groups do not authorize a Note batch.
+
+Preparation flushes editors and freezes each Note's identity, path and revision.
+Execution rechecks that authority. A prior completed move may advance a later
+selected Note's revision only through its exact confirmed incoming-link rewrite;
+unrelated filesystem changes never rebase the batch silently. Existing destination
+files are never overwritten or automatically renamed. A failed or cancelled Move
+stops remaining items and retains already completed effects. System Trash retains
+its durable per-source receipts and recovery contract in §6.
+
+Results distinguish completed, failed, unattempted and uncertain effects. Retrying
+unfinished items prepares and confirms a new operation; completed items are excluded.
+Uncertain outcomes require existing Recovery before another attempt. Closing a
+result does not discard the last result or recovery evidence. Batch organization
+preserves the current document and dirty-source safeguards; only an actually removed
+document may close through the existing deletion path.
+
 ## 6. System Trash deletion and recovery
 
 Scholium has no application Trash, erase command, or source restore command.

@@ -1503,6 +1503,12 @@ enum ScholiumMetrics {
         static let statusVerticalInset = ScholiumGrid.ResearchSheet.statusVerticalInset
         static let fieldSpacing = ScholiumGrid.foundationUnit * 1.5
 
+        enum FileOperation {
+            static let minimumWidth: CGFloat = 320
+            static let idealWidth: CGFloat = 520
+            static let listMaximumHeight: CGFloat = 300
+        }
+
         enum NoteRestructure {
             static let folderColumnWidth: CGFloat = 240
             static let minimumWidth: CGFloat = 560
@@ -1527,14 +1533,6 @@ enum ScholiumMetrics {
             static let idealHeight: CGFloat = 720
             static let documentStateMinimumHeight = ScholiumGrid.foundationUnit * 40
         }
-
-        enum SystemTrash {
-            static let minimumWidth: CGFloat = 560
-            static let idealWidth: CGFloat = 620
-            static let minimumHeight: CGFloat = 440
-            static let consequenceScrollMaximumHeight: CGFloat = 320
-        }
-
     }
 
     enum Settings {

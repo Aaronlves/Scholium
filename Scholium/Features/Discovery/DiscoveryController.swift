@@ -19,6 +19,8 @@ struct DiscoveryLibraryState: Equatable {
     var sourceScope: LibrarySourceScope = .library
     var filters = DiscoveryFilterState()
     var sortOrder: NoteSortOrder = .modifiedNewest
+    var selectionScope: LibraryDisclosureScope?
+    var selectedRowIDs: Set<String> = []
     var sourceIsLoading = false
     var sourceError: String?
 }
@@ -165,6 +167,20 @@ final class DiscoveryController: ObservableObject {
 
     func libraryState(for workspace: WorkspaceVaultSlot) -> DiscoveryLibraryState {
         librariesByWorkspace[workspace] ?? DiscoveryLibraryState(workspaceSlot: workspace)
+    }
+
+    func librarySelection(in scope: LibraryDisclosureScope?) -> Set<String> {
+        guard let scope, library.selectionScope == scope else { return [] }
+        return library.selectedRowIDs
+    }
+
+    func setLibrarySelection(_ ids: Set<String>, in scope: LibraryDisclosureScope?) {
+        guard let scope else { return }
+        guard library.selectionScope != scope || library.selectedRowIDs != ids else { return }
+        updateLibraryState(for: shellState.selectedWorkspace) {
+            $0.selectionScope = scope
+            $0.selectedRowIDs = ids
+        }
     }
 
     func bind(to operations: any DiscoveryUseCases) {

@@ -4,6 +4,26 @@
 
 ## Current verification snapshot
 
+**2026-09-15 — Native Library batches and file sheets:** Thirty-eight scoped App
+and twenty-eight Core tests pass (`.build/library-file-operation-final-tests.log`).
+Final presentation checks pass in `.build/file-operation-final-layout-tests.log`,
+including compact forms, bounded lists, partial/unavailable/recovery states and
+220/300-point Sidebar geometry. Reintroducing the misplaced header buttons makes
+the native layout regression fail; the correct source is restored. Twenty-two
+native component renders cover normal/narrow widths, Light/high-contrast Dark and
+mixed-script paths. They are not full-app or Chinese-interface acceptance.
+Disposable 500-Note QA verifies range selection, menu/accessibility Move, cancel,
+two successful linked-note moves followed by a collision, remaining-only retry
+preparation, retained active document and window resizing. Computer Use then lost
+its native connection; full-app verification of the final sheet polish, Trash and
+physical input routes remains open. The test process, bundle and state are removed.
+Details and adaptation limits: `.build/file-operation-review/verification.md`.
+Documentation, localization and Swift lint pass. The complete gate stops at its
+Contracts purity regex matching the English word `Combine` inside existing Search
+strings (`.build/library-file-operation-integration-gate.log`); those files are
+unchanged in this task. No complete repository, Release or human acceptance pass
+is claimed.
+
 **2026-09-15 — Search contract 20:** Boolean Search now includes existential
 `paragraph:(...)` predicates over complete top-level body paragraphs, successful
 paragraph ranges, and literal term-group insertion. The index uses schema 18 and

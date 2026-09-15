@@ -10,88 +10,42 @@ struct SystemTrashConfirmationView: View {
     @State private var errorMessage: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.sectionSeparation) {
-            Label("Move to macOS Trash?", systemImage: "trash")
-                .font(ScholiumTypography.interface(.primaryTitle, emphasis: .strong))
-                .accessibilityAddTraits(.isHeader)
-
-            Text("Finder owns file restoration. Scholium moves only the listed source items to system Trash and retains their portable identities.")
-                .font(ScholiumTypography.interface(.body))
-                .fixedSize(horizontal: false, vertical: true)
-
-            ScrollView {
-                VStack(
-                    alignment: .leading,
-                    spacing: ScholiumGrid.Spacing.sectionSeparation
-                ) {
-                    GroupBox("Files and Folders") {
-                        VStack(
-                            alignment: .leading,
-                            spacing: ScholiumGrid.Spacing.inlineControlGap
-                        ) {
-                            ForEach(preview.sources) { source in
-                                Label(
-                                    source.relativePath,
-                                    systemImage: source.kind == .folder ? "folder" : "doc.text"
-                                )
-                                .lineLimit(2)
-                                .truncationMode(.middle)
-                            }
+        FileOperationSheet(
+            title: Text("Move to macOS Trash?"),
+            message: Text("These items will move to the macOS Trash. You can restore them in Finder.")
+        ) {
+            GroupBox("Files and Folders") {
+                FileOperationList {
+                    VStack(alignment: .leading, spacing: ScholiumMetrics.ResearchSheet.fieldSpacing) {
+                        ForEach(preview.sources) { source in
+                            FileOperationPath(path: source.relativePath, symbol: source.kind == .folder ? "folder" : "doc.text")
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
-
-                    Text(
-                        "If portable cleanup fails after Finder accepts the items, Scholium keeps a recovery plan. External file deletion only refreshes the workspace."
-                    )
-                    .font(ScholiumTypography.interface(.small))
-                    .scholiumForeground(.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .frame(
-                maxHeight: ScholiumMetrics.ResearchSheet.SystemTrash
-                    .consequenceScrollMaximumHeight
-            )
-
+            Text("If the operation cannot finish, Scholium keeps the result and provides recovery.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
             if let errorMessage {
                 Label(errorMessage, systemImage: "exclamationmark.triangle")
-                    .scholiumForeground(.destructive)
+                    .font(.callout)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .textSelection(.enabled)
                     .accessibilityIdentifier("scholium.systemTrashError")
             }
-
-            HStack {
-                Spacer()
-                Button("Cancel", action: cancel)
-                    .scholiumActivationPointer()
-                    .keyboardShortcut(.cancelAction)
-                    .disabled(isWorking)
-                Button("Move to Trash", role: .destructive) {
-                    perform()
-                }
-                .scholiumActivationPointer()
+        } actions: {
+            if isWorking {
+                ProgressView().controlSize(.small)
+                    .accessibilityLabel("Moving items to Trash…")
+            }
+            Spacer()
+            Button("Cancel", action: cancel)
+                .keyboardShortcut(.cancelAction)
+                .disabled(isWorking)
+            Button("Move to Trash", role: .destructive) { perform() }
                 .keyboardShortcut(.defaultAction)
                 .disabled(isWorking)
-            }
-        }
-        .padding(ScholiumGrid.Spacing.regionContentInset)
-        .frame(
-            minWidth: ScholiumMetrics.ResearchSheet.SystemTrash.minimumWidth,
-            idealWidth: ScholiumMetrics.ResearchSheet.SystemTrash.idealWidth,
-            minHeight: ScholiumMetrics.ResearchSheet.SystemTrash.minimumHeight
-        )
-        .overlay {
-            if isWorking {
-                ProgressView()
-                    .accessibilityLabel("Moving items to Trash…")
-                    .padding()
-                    .scholiumFloatingSurface(
-                        in: RoundedRectangle(
-                            cornerRadius: ScholiumShape.loadingSurfaceCornerRadius
-                        )
-                    )
-            }
         }
         .interactiveDismissDisabled(isWorking)
         .accessibilityIdentifier("scholium.systemTrashConfirmation")

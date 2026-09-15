@@ -49,6 +49,11 @@ struct SidebarOutlineSourceList: NSViewRepresentable {
     let onSelect: (WindowDocumentLocation) -> Void
     let onMoveNoteDrop: (SidebarNoteDragItem, String?) -> Void
     let onMoveFolderDrop: (SidebarFolderDragItem, String?) -> Void
+    let selectedRowIDs: Set<String>
+    let onSelectionChange: (Set<String>) -> Void
+    let onBatchMove: ([NoteMutationTarget]) -> Void
+    let onBatchTrash: ([NoteMutationTarget]) -> Void
+    let onMoveNotesDrop: ([SidebarNoteDragItem], String?) -> Void
 
     var nativeStrings: SidebarNativeStrings {
         SidebarNativeStrings(locale: locale)
@@ -84,7 +89,7 @@ struct SidebarOutlineSourceList: NSViewRepresentable {
         outlineView.intercellSpacing = .zero
         outlineView.draggingDestinationFeedbackStyle = .sourceList
         outlineView.allowsEmptySelection = true
-        outlineView.allowsMultipleSelection = false
+        outlineView.allowsMultipleSelection = true
         outlineView.allowsColumnSelection = false
         outlineView.allowsColumnReordering = false
         outlineView.allowsColumnResizing = false

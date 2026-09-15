@@ -725,12 +725,15 @@ public actor TriptychControlStore {
 
     /// Replaces one existing relationship atomically. Files are never removed.
 
+    /// Supplying `expectedFingerprint` advances an existing identity only from
+    /// that exact revision, checked within the same portable-file CAS.
     public func identity(
         forVaultID vaultID: UUID,
         relativePath: String,
         fingerprint: DocumentFingerprint,
         createIfMissing: Bool = true,
-        preferredID: UUID? = nil
+        preferredID: UUID? = nil,
+        expectedFingerprint: DocumentFingerprint? = nil
     ) throws -> NoteIdentityRecord? {
         var snapshot = try identitySnapshot()
         var payload = snapshot.payload
@@ -741,6 +744,9 @@ public actor TriptychControlStore {
             guard preferredID == nil || payload.records[index].id == preferredID else {
                 throw TriptychControlError.invalidIdentities
             }
+            guard expectedFingerprint == nil || payload.records[index].fingerprint == expectedFingerprint else {
+                throw TriptychControlError.identitiesRevisionConflict
+            }
             guard payload.records[index].fingerprint != fingerprint else {
                 return payload.records[index]
             }
@@ -748,6 +754,7 @@ public actor TriptychControlStore {
             payload.records[index].updatedAt = Date()
             expectedRecordID = payload.records[index].id
         } else {
+            guard expectedFingerprint == nil else { throw TriptychControlError.identitiesRevisionConflict }
             guard createIfMissing else { return nil }
             let record = NoteIdentityRecord(
                 id: preferredID ?? UUID(),

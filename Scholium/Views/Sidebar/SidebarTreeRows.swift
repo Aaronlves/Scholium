@@ -92,6 +92,10 @@ func sidebarNoteCommandGroups() -> [SidebarNoteCommandGroup] {
 struct SidebarTreeContext {
     let currentVaultID: UUID?
     let currentVaultRole: VaultRole
+    var selectedRowIDs: Set<String> = []
+    var selectedBatchTargets: [NoteMutationTarget] = []
+    var requestNoteBatchMove: ([NoteMutationTarget]) -> Void = { _ in }
+    var requestNoteBatchTrash: ([NoteMutationTarget]) -> Void = { _ in }
     let openNote: (WindowDocumentLocation, WindowOpenDisposition) -> Void
     let canAddNoteToChat: (WindowDocumentLocation) -> Bool
     let addNoteToChat: (WindowDocumentLocation) -> Void
@@ -212,24 +216,27 @@ struct SidebarTreeNodeRow: View {
 
     @ViewBuilder
     private var folderAccessibilityActions: some View {
-        if let path = node.folderRelativePath {
-            if canMutateFolder(path) {
-                Button("New Note") { context.createUntitledNote(path) }
-                Button("New Folder") { context.createUntitledFolder(path) }
-                if let target = folderTarget(path) {
-                    Button("Rename Folder") { context.requestFolderFileOperation(.rename(target)) }
-                    Button("Move Folder") { context.requestFolderFileOperation(.move(target)) }
-                    Button("Move Folder and Notes to Trash") {
-                        performFolderTrash(target)
+        if context.selectedRowIDs.count <= 1 || !context.selectedRowIDs.contains(node.id) {
+            if let path = node.folderRelativePath {
+                if canMutateFolder(path) {
+                    Button("New Note") { context.createUntitledNote(path) }
+                    Button("New Folder") { context.createUntitledFolder(path) }
+                    if let target = folderTarget(path) {
+                        Button("Rename Folder") { context.requestFolderFileOperation(.rename(target)) }
+                        Button("Move Folder") { context.requestFolderFileOperation(.move(target)) }
+                        Button("Move Folder and Notes to Trash") {
+                            performFolderTrash(target)
+                        }
                     }
                 }
+                Button("Reveal in Finder") { context.revealNote(path) }
+                Button("Copy Relative Path") { context.copyRelativePath(path) }
             }
-            Button("Reveal in Finder") { context.revealNote(path) }
-            Button("Copy Relative Path") { context.copyRelativePath(path) }
+            if !node.children.isEmpty {
+                Button(subtreeIsExpanded ? "Collapse All" : "Expand All", action: toggleEntireSubtree)
+            }
         }
-        if !node.children.isEmpty {
-            Button(subtreeIsExpanded ? "Collapse All" : "Expand All", action: toggleEntireSubtree)
-        }
+
     }
 
     @ViewBuilder
@@ -245,12 +252,20 @@ struct SidebarTreeNodeRow: View {
 
     @ViewBuilder
     private func noteAccessibilityActions(_ note: WindowDocumentLocation) -> some View {
-        let groups = sidebarNoteCommandGroups()
-        ForEach(groups) { group in
-            ForEach(group.commands) { command in
-                noteCommandButton(command, note: note, surface: .accessibility)
+        if context.selectedRowIDs.count > 1, context.selectedRowIDs.contains(node.id) {
+            Button("Move Selected Notes…") { context.requestNoteBatchMove(context.selectedBatchTargets) }
+                .disabled(!context.canMutateLibrary || context.selectedBatchTargets.isEmpty)
+            Button("Move Selected Notes to Trash…", role: .destructive) { context.requestNoteBatchTrash(context.selectedBatchTargets) }
+                .disabled(!context.canMutateLibrary || context.selectedBatchTargets.isEmpty)
+        } else {
+            let groups = sidebarNoteCommandGroups()
+            ForEach(groups) { group in
+                ForEach(group.commands) { command in
+                    noteCommandButton(command, note: note, surface: .accessibility)
+                }
             }
         }
+
     }
 
     @ViewBuilder
@@ -271,8 +286,7 @@ struct SidebarTreeNodeRow: View {
         .disabled(
             command == .addToChat
                 ? !context.canAddNoteToChat(note)
-                : (command.requiresMutationTarget && NoteMutationTarget(note) == nil)
-                    || (command == .moveToSystemTrash && !context.canMutateLibrary)
+                : (command.requiresMutationTarget && (NoteMutationTarget(note) == nil || !context.canMutateLibrary))
         )
     }
 

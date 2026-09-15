@@ -63,6 +63,13 @@ already-visible Chat does not toggle the Sidebar closed.
 
 ## Library, Document, and Inspector
 
+- Native Library multiselection has group Move/Trash menus, keyboard/accessibility
+  routes and same-vault dragging. Selection is separate from the active Document;
+  a native folder picker and retained per-item results provide retry and Recovery.
+  Mixed Folder/Note selections do not expose Note batch mutations. File, Folder,
+  batch and Trash sheets share native content-fitting forms, bounded file lists
+  and trailing actions; the Library header retains only its menu controls.
+
 - A window-wide native content-tab collection retains documents across Library
   role changes. AppKit renders tabs; guarded selection and close retain source
   safety. File exposes Close Tab and View exposes tab navigation and overflow.

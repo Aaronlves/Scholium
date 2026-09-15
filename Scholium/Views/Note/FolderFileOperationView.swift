@@ -18,53 +18,41 @@ struct FolderFileOperationView: View {
     @State private var errorMessage: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: ScholiumMetrics.DocumentWorkflow.sectionSpacing) {
-            Label(title, systemImage: symbol)
-                .font(ScholiumTypography.interface(.primaryTitle))
-
-            switch request {
-            case .rename:
-                LabeledContent("Name") {
-                    TextField("Folder name", text: $proposedName)
-                        .frame(minWidth: 300)
-                        .accessibilityIdentifier("scholium.folderName")
-                }
-            case .move:
-                LabeledContent("Destination") {
-                    Picker("Destination", selection: $selectedParent) {
-                        Text("Vault Root").tag(String?.none)
-                        ForEach(availableParents, id: \.self) { path in
-                            Text(path).tag(String?.some(path))
+        FileOperationSheet(title: Text(title), message: Text(helpText)) {
+            VStack(alignment: .leading, spacing: ScholiumMetrics.ResearchSheet.bodySectionSpacing) {
+                FileOperationPath(path: target.relativePath, symbol: "folder")
+                VStack(alignment: .leading, spacing: ScholiumMetrics.ResearchSheet.fieldSpacing) {
+                    switch request {
+                    case .rename:
+                        Text("Name").font(.callout)
+                        TextField("Folder name", text: $proposedName)
+                            .textFieldStyle(.roundedBorder)
+                            .accessibilityIdentifier("scholium.folderName")
+                    case .move:
+                        Picker("Destination", selection: $selectedParent) {
+                            Text("Vault Root").tag(String?.none)
+                            ForEach(availableParents, id: \.self) { path in
+                                Text(verbatim: path).tag(String?.some(path))
+                            }
                         }
+                        .pickerStyle(.menu)
+                        .accessibilityIdentifier("scholium.folderDestination")
                     }
-                    .scholiumActivationPointer()
-                    .labelsHidden()
-                    .frame(minWidth: 300)
-                    .accessibilityIdentifier("scholium.folderDestination")
                 }
+                .disabled(isWorking)
             }
-
-            Text(helpText)
-                .font(ScholiumTypography.interface(.body))
-                .scholiumForeground(.secondaryText)
-                .fixedSize(horizontal: false, vertical: true)
-
-            Divider()
-
-            HStack {
-                Button("Cancel") { dismiss() }
-                    .scholiumActivationPointer()
-                    .keyboardShortcut(.cancelAction)
-                Spacer()
-                Button(actionTitle) { perform() }
-                    .scholiumActivationPointer()
-                    .buttonStyle(.bordered)
-                    .disabled(destinationRelativePath == nil || isWorking)
-                    .keyboardShortcut(.defaultAction)
-            }
+        } actions: {
+            if isWorking { ProgressView().controlSize(.small).accessibilityLabel(Text(actionTitle)) }
+            Spacer()
+            Button("Cancel") { dismiss() }
+                .keyboardShortcut(.cancelAction)
+                .disabled(isWorking)
+            Button(actionTitle) { perform() }
+                .disabled(destinationRelativePath == nil || isWorking)
+                .keyboardShortcut(.defaultAction)
         }
-        .padding(ScholiumMetrics.DocumentWorkflow.sheetContentInset)
-        .frame(minWidth: 0, idealWidth: 520, minHeight: 0, idealHeight: 260)
+        .interactiveDismissDisabled(isWorking)
+        .accessibilityIdentifier("scholium.folderFileOperation")
         .onAppear { configureDefaults() }
         .alert(
             alertTitle,
@@ -74,7 +62,6 @@ struct FolderFileOperationView: View {
             )
         ) {
             Button("Dismiss", role: .cancel) { errorMessage = nil }
-                .scholiumActivationPointer()
         } message: {
             Text(errorMessage ?? "")
         }
@@ -108,17 +95,10 @@ struct FolderFileOperationView: View {
         }
     }
 
-    private var symbol: String {
-        switch request {
-        case .rename: "pencil"
-        case .move: "folder"
-        }
-    }
-
     private var helpText: String {
         String(
             localized:
-                "The folder is only a path-based classification. Scholium preserves each descendant note’s stable identity and moves non-Markdown contents without changing their bytes.",
+                "The folder and all its contents stay together.",
             table: "Localizable",
             bundle: .module
         )
@@ -127,7 +107,8 @@ struct FolderFileOperationView: View {
     private var availableParents: [String] {
         let sourcePrefix = target.relativePath + "/"
         return folderRelativePaths.filter { path in
-            path != target.relativePath
+            WorkspaceLibraryVisibility.includes(path)
+                && path != target.relativePath
                 && !path.hasPrefix(sourcePrefix)
         }.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
     }

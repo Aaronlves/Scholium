@@ -36,6 +36,10 @@ struct SidebarLibraryFilterMenu: View {
     let replaceFilters: (DiscoveryFilterState) -> Void
     let selectSortOrder: (NoteSortOrder) -> Void
     let clearFilters: () -> Void
+    var canMutateSelection = false
+    var moveSelection: (() -> Void)?
+    var trashSelection: (() -> Void)?
+    var showBatchOutcome: (() -> Void)?
 
     private var activeFilterCount: Int {
         sidebarActiveLibraryFilterCount(filters)
@@ -43,6 +47,16 @@ struct SidebarLibraryFilterMenu: View {
 
     var body: some View {
         Menu {
+            if let moveSelection, let trashSelection {
+                Button("Move Selected Notes…", action: moveSelection)
+                    .disabled(!canMutateSelection)
+                Button("Move Selected Notes to Trash…", role: .destructive, action: trashSelection)
+                    .disabled(!canMutateSelection)
+                if let showBatchOutcome {
+                    Button("Last Batch Result…", action: showBatchOutcome)
+                }
+                Divider()
+            }
             Section("Integrity") {
                 Toggle("Needs Attention", isOn: filterBinding(\.needsAttention))
                     .disabled(!options.catalogIsAvailable)

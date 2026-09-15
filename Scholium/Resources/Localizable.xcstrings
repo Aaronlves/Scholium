@@ -1,6 +1,502 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Create a copy at a new location in this vault." : {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Create a copy at a new location in this vault."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在当前库的新位置创建一份副本。"
+          }
+        }
+      }
+    },
+    "Choose a new filename. The note stays in its current folder." : {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose a new filename. The note stays in its current folder."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "设置新的文件名。笔记仍保留在当前文件夹中。"
+          }
+        }
+      }
+    },
+    "Enter the destination path within this vault." : {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enter the destination path within this vault."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "输入当前库中的目标路径。"
+          }
+        }
+      }
+    },
+    "The folder and all its contents stay together." : {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The folder and all its contents stay together."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "文件夹及其全部内容会一同保留。"
+          }
+        }
+      }
+    },
+    "These items will move to the macOS Trash. You can restore them in Finder." : {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "These items will move to the macOS Trash. You can restore them in Finder."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这些项目将移至 macOS 废纸篓。你可以在访达中恢复它们。"
+          }
+        }
+      }
+    },
+    "If the operation cannot finish, Scholium keeps the result and provides recovery." : {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "If the operation cannot finish, Scholium keeps the result and provides recovery."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "如果操作无法完成，Scholium 会保留结果并提供恢复入口。"
+          }
+        }
+      }
+    },
+    "Move Notes…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Move Notes…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "移动笔记…"
+          }
+        }
+      }
+    },
+    "Move Selected Notes…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Move Selected Notes…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "移动所选笔记…"
+          }
+        }
+      }
+    },
+    "Move Selected Notes to Trash…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Move Selected Notes to Trash…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "将所选笔记移至废纸篓…"
+          }
+        }
+      }
+    },
+    "Last Batch Result…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last Batch Result…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "上次批量操作结果…"
+          }
+        }
+      }
+    },
+    "Move Notes": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Move Notes"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "移动笔记"
+          }
+        }
+      }
+    },
+    "File Operation Results": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "File Operation Results"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "文件操作结果"
+          }
+        }
+      }
+    },
+    "Completed: %lld of %lld": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Completed: %lld of %lld"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已完成：%lld，共 %lld 项"
+          }
+        }
+      }
+    },
+    "Selected notes: %lld": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Selected notes: %lld"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "所选笔记：%lld"
+          }
+        }
+      }
+    },
+    "Move the selected notes into one folder in this vault. Their filenames stay the same.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Move the selected notes into one folder in this vault. Their filenames stay the same."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "将所选笔记移至此知识库中的一个文件夹，保留各自的文件名。"
+          }
+        }
+      }
+    },
+    "Destination folder": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Destination folder"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "目标文件夹"
+          }
+        }
+      }
+    },
+    "No destination folders are available. Close this sheet and refresh the Library.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No destination folders are available. Close this sheet and refresh the Library."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "暂无可用的目标文件夹。请关闭此窗口并刷新资源库。"
+          }
+        }
+      }
+    },
+    "Current location": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Current location"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前位置"
+          }
+        }
+      }
+    },
+    "Review recovery before attempting more file operations.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Review recovery before attempting more file operations."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请先检查恢复记录，再尝试其他文件操作。"
+          }
+        }
+      }
+    },
+    "Moved to macOS Trash": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Moved to macOS Trash"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已移至 macOS 废纸篓"
+          }
+        }
+      }
+    },
+    "Not completed: %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not completed: %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未完成：%@"
+          }
+        }
+      }
+    },
+    "Not attempted": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not attempted"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未尝试"
+          }
+        }
+      }
+    },
+    "Cancelled before moving": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cancelled before moving"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "移动前已取消"
+          }
+        }
+      }
+    },
+    "Outcome unknown: %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Outcome unknown: %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "结果尚未确认：%@"
+          }
+        }
+      }
+    },
+    "Moving notes…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Moving notes…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在移动笔记…"
+          }
+        }
+      }
+    },
+    "Cancel Remaining": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cancel Remaining"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "取消剩余操作"
+          }
+        }
+      }
+    },
+    "Review Recovery…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Review Recovery…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "检查恢复记录…"
+          }
+        }
+      }
+    },
+    "Retry Remaining…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Retry Remaining…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重试剩余项目…"
+          }
+        }
+      }
+    },
+    "Another Library operation is already in progress.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Another Library operation is already in progress."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "另一项资源库操作正在进行。"
+          }
+        }
+      }
+    },
+    "The selected notes changed. Select them again before continuing.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The selected notes changed. Select them again before continuing."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "所选笔记已变化。请重新选择后继续。"
+          }
+        }
+      }
+    },
+    "A selected note changed outside this batch. Review it before continuing.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A selected note changed outside this batch. Review it before continuing."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "所选笔记在此次批量操作之外发生了变化。请检查后继续。"
+          }
+        }
+      }
+    },
     "Matching Paragraphs": {
       "extractionState": "manual",
       "localizations": {

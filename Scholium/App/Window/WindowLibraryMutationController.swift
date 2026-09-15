@@ -54,6 +54,7 @@ struct WindowLibraryMutationDependencies {
     let flushEditors: @MainActor (UUID) async throws -> Void
     let flushActiveTarget: @MainActor (NoteMutationTarget) async throws -> Void
     let expectedRevision: @MainActor (NoteMutationTarget) throws -> DocumentFingerprint
+    let captureBatchTargets: @MainActor ([NoteMutationTarget]) throws -> [NoteMutationTarget]
     let committedNoteCreated:
         @MainActor (
             WorkspaceMutationOutcome<WorkspaceManagedNoteCommit>,
@@ -93,12 +94,20 @@ struct WindowLibraryMutationDependencies {
 final class WindowLibraryMutationController: ObservableObject {
     @Published private(set) var isCreatingNote = false
     @Published private(set) var isMutatingFolder = false
+    @Published var isBatchWorking = false
+    @Published var lastBatchOutcome: LibraryNoteBatchOutcome?
 
-    private let dependencies: WindowLibraryMutationDependencies
+    let dependencies: WindowLibraryMutationDependencies
     private var operations: (any LibraryMutationUseCases)?
     private var markdownImportTask: Task<Void, Never>?
     private var folderMutationTask: Task<Void, Never>?
     private var mutationTaskCancellations: [UUID: @MainActor () -> Void] = [:]
+    var batchCancellation: (@MainActor () -> Void)?
+
+    var hasActiveLibraryMutation: Bool {
+        isCreatingNote || isMutatingFolder || markdownImportTask != nil
+            || !mutationTaskCancellations.isEmpty
+    }
 
     init(dependencies: WindowLibraryMutationDependencies) {
         self.dependencies = dependencies
@@ -120,6 +129,7 @@ final class WindowLibraryMutationController: ObservableObject {
     }
 
     func cancelAll() {
+        batchCancellation?()
         markdownImportTask?.cancel()
         markdownImportTask = nil
         folderMutationTask?.cancel()
@@ -129,7 +139,7 @@ final class WindowLibraryMutationController: ObservableObject {
     }
 
     func requestUntitledNoteCreation(in folderRelativePath: String?) {
-        guard !isCreatingNote else { return }
+        guard !isCreatingNote, !isBatchWorking else { return }
         isCreatingNote = true
         dependencies.enqueueDocumentTransition(
             { [weak self] isCurrent in
@@ -160,7 +170,7 @@ final class WindowLibraryMutationController: ObservableObject {
     }
 
     func requestUntitledFolderCreation(in parentRelativePath: String?) {
-        guard !isMutatingFolder else { return }
+        guard !isMutatingFolder, !isBatchWorking else { return }
         guard let context = dependencies.context(),
             context.sourceScope == .library
         else {
@@ -360,7 +370,7 @@ final class WindowLibraryMutationController: ObservableObject {
     }
 
     func requestMarkdownImport(_ urls: [URL]) {
-        guard markdownImportTask == nil else {
+        guard markdownImportTask == nil, !isBatchWorking else {
             dependencies.reportInformation(
                 String(
                     localized: "A Markdown import is already in progress.",
@@ -454,7 +464,7 @@ final class WindowLibraryMutationController: ObservableObject {
         )
     }
 
-    private func requireOperations() throws -> any LibraryMutationUseCases {
+    func requireOperations() throws -> any LibraryMutationUseCases {
         guard let operations else {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
@@ -469,6 +479,7 @@ final class WindowLibraryMutationController: ObservableObject {
     private func withOwnedMutation<T: Sendable>(
         _ operation: @escaping @MainActor () async throws -> T
     ) async throws -> T {
+        guard !isBatchWorking else { throw LibraryNoteBatchError.operationInProgress }
         let operationID = UUID()
         let task = Task { try await operation() }
         mutationTaskCancellations[operationID] = { task.cancel() }

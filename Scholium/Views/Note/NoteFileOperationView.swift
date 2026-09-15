@@ -17,49 +17,30 @@ struct NoteFileOperationView: View {
     @State private var errorMessage: String?
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: ScholiumMetrics.DocumentWorkflow.sectionSpacing) {
-                HStack(alignment: .firstTextBaseline) {
-                    Label(sheetTitle, systemImage: symbol)
-                        .font(ScholiumTypography.interface(.primaryTitle))
-                    Spacer()
-                }
-
-                adaptiveField(
-                    fieldTitle,
-                    wide: {
-                        TextField(fieldPlaceholder, text: $destination)
-                            .font(ScholiumTypography.exact(.body))
-                            .frame(minWidth: 300)
-                    },
-                    compact: {
-                        TextField(fieldPlaceholder, text: $destination)
-                            .font(ScholiumTypography.exact(.body))
-                    }
-                )
-
-                Text(helpText)
-                    .font(ScholiumTypography.interface(.body))
-                    .scholiumForeground(.secondaryText)
-
-                Divider()
-
-                HStack {
-                    Button("Cancel") { dismiss() }
-                        .scholiumActivationPointer()
-                        .keyboardShortcut(.cancelAction)
-                    Spacer()
-                    Button(actionTitle) { perform() }
-                        .scholiumActivationPointer()
-                        .buttonStyle(.bordered)
-                        .disabled(requestedDestinationPath == nil || isWorking)
-                        .keyboardShortcut(.defaultAction)
+        FileOperationSheet(title: Text(sheetTitle), message: Text(helpText)) {
+            VStack(alignment: .leading, spacing: ScholiumMetrics.ResearchSheet.bodySectionSpacing) {
+                FileOperationPath(path: target.relativePath)
+                VStack(alignment: .leading, spacing: ScholiumMetrics.ResearchSheet.fieldSpacing) {
+                    Text(fieldTitle).font(.callout)
+                    TextField(fieldPlaceholder, text: $destination)
+                        .textFieldStyle(.roundedBorder)
+                        .accessibilityLabel(Text(fieldTitle))
+                        .accessibilityIdentifier("scholium.noteFile.destination")
+                        .disabled(isWorking)
                 }
             }
-            .padding(ScholiumMetrics.DocumentWorkflow.sheetContentInset)
-            .frame(maxWidth: .infinity, alignment: .leading)
+        } actions: {
+            if isWorking { ProgressView().controlSize(.small).accessibilityLabel(Text(actionTitle)) }
+            Spacer()
+            Button("Cancel") { dismiss() }
+                .keyboardShortcut(.cancelAction)
+                .disabled(isWorking)
+            Button(actionTitle) { perform() }
+                .disabled(requestedDestinationPath == nil || isWorking)
+                .keyboardShortcut(.defaultAction)
         }
-        .frame(minWidth: 0, idealWidth: 540, minHeight: 0, idealHeight: 460)
+        .interactiveDismissDisabled(isWorking)
+        .accessibilityIdentifier("scholium.noteFileOperation")
         .onAppear { configureDefaults() }
         .alert(
             alertTitle,
@@ -69,29 +50,14 @@ struct NoteFileOperationView: View {
             )
         ) {
             Button("Dismiss", role: .cancel) { errorMessage = nil }
-                .scholiumActivationPointer()
         } message: {
             Text(errorMessage ?? "")
         }
     }
 
-    @ViewBuilder
-    private func adaptiveField<WideContent: View, CompactContent: View>(
-        _ title: LocalizedStringResource,
-        @ViewBuilder wide: () -> WideContent,
-        @ViewBuilder compact: () -> CompactContent
-    ) -> some View {
-        ViewThatFits(in: .horizontal) {
-            LabeledContent(title) {
-                wide()
-            }
-
-            VStack(alignment: .leading, spacing: ScholiumMetrics.DocumentWorkflow.compactFieldSpacing) {
-                Text(title)
-                    .font(ScholiumTypography.interface(.rowTitle))
-                compact()
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
+    private var target: NoteMutationTarget {
+        switch request {
+        case .duplicate(let target), .rename(let target), .move(let target): target
         }
     }
 
@@ -119,22 +85,14 @@ struct NoteFileOperationView: View {
         )
     }
 
-    private var symbol: String {
-        switch request {
-        case .duplicate: "plus.square.on.square"
-        case .rename: "pencil"
-        case .move: "folder"
-        }
-    }
-
     private var helpText: LocalizedStringResource {
         switch request {
         case .duplicate:
-            "The duplicate preserves the exact source bytes and receives a new stable note identity."
+            "Create a copy at a new location in this vault."
         case .rename:
-            "Renaming preserves the note's folder, stable identity, and Metadata."
+            "Choose a new filename. The note stays in its current folder."
         case .move:
-            "Moving preserves the note's stable identity and Metadata."
+            "Enter the destination path within this vault."
         }
     }
 

@@ -14,6 +14,8 @@ enum AgentChangesScope {
 
 enum WindowSheetRoute: Identifiable {
     case noteFileOperation(NoteFileRequest)
+    case libraryNoteBatch(LibraryNoteBatchRequest)
+    case libraryBatchTrash(SystemTrashDeletionPreview)
     case noteRestructure(WindowNoteRestructureRequest)
     case folderFileOperation(FolderFileRequest)
     case systemTrash(SystemTrashDeletionPreview)
@@ -23,6 +25,8 @@ enum WindowSheetRoute: Identifiable {
 
     var id: String {
         switch self {
+        case .libraryNoteBatch(let request): "library-batch:\(request.id)"
+        case .libraryBatchTrash(let preview): "library-batch-trash:\(preview.id)"
         case .noteRestructure(let request): "note-restructure:\(request.id)"
         case .noteFileOperation(let request): "note-file-operation:\(request.id)"
         case .folderFileOperation(let request): "folder-file-operation:\(request.id)"

@@ -20,14 +20,11 @@ extension SidebarOutlineSourceList {
         private weak var scrollView: NSScrollView?
         private var roots: [SidebarOutlineItem] = []
         private var itemsByID: [String: SidebarOutlineItem] = [:]
-        private var noteItemsByPath: [String: SidebarOutlineItem] = [:]
         private var structure: [SidebarOutlineStructureEntry] = []
         private var lastProjectionRevision: UInt64?
         private var lastSynchronizedExpandedFolderIDs: Set<String>?
         private var isSynchronizingExpansion = false
         private var isSynchronizingSelection = false
-        private var hasSynchronizedActiveDocument = false
-        private var lastActiveDocumentPath: String?
         private var lastRevealGeneration: UInt64?
         private var lastFocusRequestGeneration: UInt64
         private var lastRequestedFocusPath: String?
@@ -41,7 +38,7 @@ extension SidebarOutlineSourceList {
             self.outlineView = outlineView
             self.scrollView = scrollView
             (outlineView as? SidebarOutlineView)?.chatAccessibilityAction = { [weak self, weak outlineView] in
-                guard let self, let outlineView, self.outlineView === outlineView, outlineView.selectedRow >= 0,
+                guard let self, let outlineView, self.outlineView === outlineView, outlineView.selectedRowIndexes.count == 1,
                     let item = outlineView.item(atRow: outlineView.selectedRow) as? SidebarOutlineItem,
                     let note = item.node.note, self.configuration.context.canAddNoteToChat(note)
                 else { return nil }
@@ -49,12 +46,20 @@ extension SidebarOutlineSourceList {
                 return NSAccessibilityCustomAction(name: ScholiumL10n.string("Add to Chat", locale: self.configuration.locale)) {
                     [weak self, weak outlineView] in
                     guard let self, let outlineView, self.outlineView === outlineView,
+                        outlineView.selectedRowIndexes.count == 1,
                         self.selectedItemID(in: outlineView) == selectedID,
                         self.configuration.context.canAddNoteToChat(note)
                     else { return false }
                     self.configuration.context.addNoteToChat(note)
                     return true
                 }
+            }
+            if let nativeOutline = outlineView as? SidebarOutlineView {
+                nativeOutline.selectionMenuProvider = { [weak self] row in self?.makeSelectionMenu(for: row) }
+                nativeOutline.selectionAccessibilityActions = { [weak self] in self?.selectionAccessibilityActions() ?? [] }
+                nativeOutline.trashSelection = { [weak self] in self?.trashSelection() ?? false }
+                nativeOutline.openSelection = { [weak self] in self?.openSelection() ?? false }
+                nativeOutline.dragSelectionIsValid = { [weak self] rows in self?.dragSelectionIsValid(rows) ?? false }
             }
             (scrollView as? SidebarOutlineScrollView)?.rootMenuProvider = { [weak self] in
                 self?.makeRootMenu()
@@ -63,7 +68,14 @@ extension SidebarOutlineSourceList {
 
         func detach(from scrollView: NSScrollView) {
             (scrollView as? SidebarOutlineScrollView)?.rootMenuProvider = nil
-            (outlineView as? SidebarOutlineView)?.chatAccessibilityAction = nil
+            if let nativeOutline = outlineView as? SidebarOutlineView {
+                nativeOutline.chatAccessibilityAction = nil
+                nativeOutline.selectionMenuProvider = nil
+                nativeOutline.selectionAccessibilityActions = nil
+                nativeOutline.trashSelection = nil
+                nativeOutline.openSelection = nil
+                nativeOutline.dragSelectionIsValid = nil
+            }
             self.outlineView = nil
             self.scrollView = nil
         }
@@ -75,10 +87,8 @@ extension SidebarOutlineSourceList {
                 configuration.accessibilityLocationName
             )
 
-            let previousNativeSelectionID = selectedItemID(in: outlineView)
-            let activeDocumentChanged =
-                !hasSynchronizedActiveDocument
-                || lastActiveDocumentPath != configuration.selectedDocumentPath
+            isSynchronizingSelection = true
+            defer { isSynchronizingSelection = false }
             var structureChanged = false
             let desiredRowSizeStyle: NSTableView.RowSizeStyle =
                 configuration.usesAccessibilitySize ? .large : .default
@@ -107,11 +117,7 @@ extension SidebarOutlineSourceList {
                 synchronizeExpansion(in: outlineView)
                 lastSynchronizedExpandedFolderIDs = configuration.expandedFolderIDs
             }
-            synchronizeSelection(
-                in: outlineView,
-                previousNativeSelectionID: previousNativeSelectionID,
-                activeDocumentChanged: activeDocumentChanged
-            )
+            synchronizeSelection(in: outlineView)
             refreshAvailableRows(in: outlineView)
             handleRevealRequest(in: outlineView)
             handleFocusRequest(in: outlineView)
@@ -138,11 +144,7 @@ extension SidebarOutlineSourceList {
 
             roots = nodes.map { reconciledItem(for: $0, parent: nil) }
             itemsByID = itemsByID.filter { retainedIDs.contains($0.key) }
-            noteItemsByPath = Dictionary(
-                uniqueKeysWithValues: itemsByID.values.compactMap {
-                    guard let path = $0.node.note?.relativePath else { return nil }
-                    return (path, $0)
-                })
+
         }
 
         private func selectedItemID(in outlineView: NSOutlineView) -> String? {
@@ -150,50 +152,116 @@ extension SidebarOutlineSourceList {
             return (outlineView.item(atRow: outlineView.selectedRow) as? SidebarOutlineItem)?.id
         }
 
-        private func synchronizeSelection(
-            in outlineView: NSOutlineView,
-            previousNativeSelectionID: String?,
-            activeDocumentChanged: Bool
-        ) {
-            defer {
-                hasSynchronizedActiveDocument = true
-                lastActiveDocumentPath = configuration.selectedDocumentPath
-            }
+        private func synchronizeSelection(in outlineView: NSOutlineView) {
+            let rows = IndexSet(
+                configuration.selectedRowIDs.compactMap { id in
+                    guard let item = itemsByID[id] else { return nil }
+                    let row = outlineView.row(forItem: item)
+                    return row >= 0 ? row : nil
+                })
+            guard rows != outlineView.selectedRowIndexes else { return }
+            outlineView.selectRowIndexes(rows, byExtendingSelection: false)
+        }
 
-            let desiredItem: SidebarOutlineItem?
-            if activeDocumentChanged {
-                desiredItem = configuration.selectedDocumentPath.flatMap {
-                    noteItemsByPath[$0]
-                }
-            } else if let previousNativeSelectionID,
-                let previous = itemsByID[previousNativeSelectionID],
-                outlineView.row(forItem: previous) >= 0
-            {
-                desiredItem = previous
+        private func selectedItems(in outlineView: NSOutlineView) -> [SidebarOutlineItem] {
+            outlineView.selectedRowIndexes.compactMap { outlineView.item(atRow: $0) as? SidebarOutlineItem }
+        }
+
+        private func selectedNoteTargets() -> [NoteMutationTarget]? {
+            guard let outlineView, !outlineView.isHiddenOrHasHiddenAncestor,
+                configuration.context.canMutateLibrary
+            else { return nil }
+            let items = selectedItems(in: outlineView)
+            guard !items.isEmpty else { return nil }
+            let targets = items.compactMap { $0.node.note.flatMap(NoteMutationTarget.init) }
+            guard targets.count == items.count,
+                targets.allSatisfy({ $0.documentID.vaultID == configuration.context.currentVaultID })
+            else { return nil }
+            return targets
+        }
+
+        private func makeSelectionMenu(for row: Int) -> NSMenu? {
+            guard let outlineView, outlineView.selectedRowIndexes.count > 1,
+                outlineView.selectedRowIndexes.contains(row)
+            else { return nil }
+            let menu = NSMenu()
+            menu.autoenablesItems = false
+            let targets = selectedNoteTargets()
+            let enabled = targets != nil
+            let move = NSMenuItem(
+                title: ScholiumL10n.string("Move Notes…", locale: configuration.locale),
+                action: #selector(moveSelectedNotes), keyEquivalent: "")
+            move.target = self
+            move.representedObject = targets
+            move.isEnabled = enabled
+            menu.addItem(move)
+            let trash = NSMenuItem(
+                title: ScholiumL10n.string("Move to Trash…", locale: configuration.locale),
+                action: #selector(trashSelectedNotes), keyEquivalent: "")
+            trash.target = self
+            trash.representedObject = targets
+            trash.isEnabled = enabled
+            menu.addItem(trash)
+            return menu
+        }
+
+        private func selectionAccessibilityActions() -> [NSAccessibilityCustomAction] {
+            guard let outlineView, outlineView.selectedRowIndexes.count > 1,
+                let targets = selectedNoteTargets()
+            else { return [] }
+            return [
+                NSAccessibilityCustomAction(name: ScholiumL10n.string("Move Notes…", locale: configuration.locale)) { [weak self] in
+                    guard let self, self.selectedNoteTargets() == targets else { return false }
+                    self.configuration.onBatchMove(targets)
+                    return true
+                },
+                NSAccessibilityCustomAction(name: ScholiumL10n.string("Move to Trash…", locale: configuration.locale)) { [weak self] in
+                    guard let self, self.selectedNoteTargets() == targets else { return false }
+                    self.configuration.onBatchTrash(targets)
+                    return true
+                },
+            ]
+        }
+
+        @objc private func moveSelectedNotes(_ sender: NSMenuItem) {
+            guard let targets = sender.representedObject as? [NoteMutationTarget],
+                selectedNoteTargets() == targets
+            else { return }
+            configuration.onBatchMove(targets)
+        }
+
+        @objc private func trashSelectedNotes(_ sender: NSMenuItem) {
+            guard let targets = sender.representedObject as? [NoteMutationTarget],
+                selectedNoteTargets() == targets
+            else { return }
+            configuration.onBatchTrash(targets)
+        }
+
+        private func trashSelection() -> Bool {
+            guard let targets = selectedNoteTargets() else { return false }
+            if targets.count == 1, let target = targets.first {
+                configuration.context.requestNoteTrash(target)
             } else {
-                desiredItem = configuration.selectedDocumentPath.flatMap {
-                    noteItemsByPath[$0]
-                }
+                configuration.onBatchTrash(targets)
             }
+            return true
+        }
 
-            isSynchronizingSelection = true
-            defer { isSynchronizingSelection = false }
-            guard let desiredItem else {
-                if activeDocumentChanged {
-                    outlineView.deselectAll(nil)
-                }
-                return
-            }
-            let row = outlineView.row(forItem: desiredItem)
-            guard row >= 0 else {
-                if activeDocumentChanged {
-                    outlineView.deselectAll(nil)
-                }
-                return
-            }
-            if outlineView.selectedRow != row {
-                outlineView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
-            }
+        private func openSelection() -> Bool {
+            guard let outlineView, !outlineView.isHiddenOrHasHiddenAncestor,
+                outlineView.selectedRowIndexes.count == 1,
+                let note = selectedItems(in: outlineView).first?.node.note
+            else { return false }
+            configuration.onSelect(note)
+            return true
+        }
+
+        private func dragSelectionIsValid(_ rows: IndexSet) -> Bool {
+            guard let outlineView, !rows.isEmpty else { return false }
+            let items = rows.compactMap { outlineView.item(atRow: $0) as? SidebarOutlineItem }
+            guard items.count == rows.count else { return false }
+            if items.count > 1, !items.allSatisfy({ $0.node.note != nil }) { return false }
+            return items.allSatisfy { self.outlineView(outlineView, pasteboardWriterForItem: $0) != nil }
         }
 
         private func synchronizeExpansion(in outlineView: NSOutlineView) {
@@ -291,7 +359,9 @@ extension SidebarOutlineSourceList {
             DispatchQueue.main.async { [weak self, weak outlineView] in
                 guard let self,
                     let outlineView,
-                    self.outlineView === outlineView
+                    self.outlineView === outlineView,
+                    self.configuration.disclosureScope == request.scope,
+                    self.configuration.revealRequest == request
                 else { return }
                 let row = outlineView.row(forItem: item)
                 guard row >= 0 else {
@@ -302,6 +372,7 @@ extension SidebarOutlineSourceList {
                     self.isSynchronizingSelection = true
                     outlineView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
                     self.isSynchronizingSelection = false
+                    self.configuration.onSelectionChange([item.id])
                 }
                 switch request.alignment {
                 case .nearest:
@@ -334,12 +405,18 @@ extension SidebarOutlineSourceList {
             isSynchronizingSelection = false
             outlineView.scrollRowToVisible(row)
             (outlineView as? SidebarOutlineView)?.requestKeyboardFocus()
+            let scope = configuration.disclosureScope
+            let generation = configuration.focusRequestGeneration
             DispatchQueue.main.async { [weak self, weak outlineView] in
                 guard let self,
                     let outlineView,
-                    self.outlineView === outlineView
+                    self.outlineView === outlineView,
+                    self.configuration.disclosureScope == scope,
+                    self.configuration.focusRequestGeneration == generation,
+                    self.configuration.requestedFocusPath == path
                 else { return }
                 self.refreshAvailableRows(in: outlineView)
+                self.configuration.onSelectionChange([item.id])
                 self.configuration.onFocusRequestHandled()
             }
         }
@@ -576,7 +653,8 @@ extension SidebarOutlineSourceList {
                 payload,
                 folderRelativePath: targetFolder,
                 onMoveNote: configuration.onMoveNoteDrop,
-                onMoveFolder: configuration.onMoveFolderDrop
+                onMoveFolder: configuration.onMoveFolderDrop,
+                onMoveNotes: configuration.onMoveNotesDrop
             )
             return true
         }
@@ -597,6 +675,7 @@ extension SidebarOutlineSourceList {
             guard edge == .trailing,
                 let outlineView = tableView as? NSOutlineView,
                 self.outlineView === outlineView,
+                !(outlineView.selectedRowIndexes.count > 1 && outlineView.selectedRowIndexes.contains(row)),
                 configuration.context.canMutateLibrary,
                 let item = outlineView.item(atRow: row) as? SidebarOutlineItem,
                 let note = item.node.note,
@@ -612,7 +691,9 @@ extension SidebarOutlineSourceList {
                     self.outlineView === outlineView,
                     !outlineView.isHiddenOrHasHiddenAncestor,
                     self.configuration.context.canMutateLibrary,
-                    let currentNote = self.itemsByID[itemID]?.node.note,
+                    let currentItem = self.itemsByID[itemID],
+                    !(outlineView.selectedRowIndexes.count > 1 && outlineView.selectedRowIndexes.contains(outlineView.row(forItem: currentItem))),
+                    let currentNote = currentItem.node.note,
                     NoteMutationTarget(currentNote) == target
                 else { return }
                 // Capture identity, not a row index that sorting/filtering can reuse.
@@ -632,14 +713,11 @@ extension SidebarOutlineSourceList {
                 let outlineView = notification.object as? NSOutlineView
             else { return }
             refreshAvailableRows(in: outlineView)
-            guard outlineView.selectedRow >= 0,
-                let item = outlineView.item(
-                    atRow: outlineView.selectedRow
-                ) as? SidebarOutlineItem
-            else { return }
-            if let note = item.node.note {
-                configuration.onSelect(note)
-            }
+            let items = selectedItems(in: outlineView)
+            configuration.onSelectionChange(Set(items.map(\.id)))
+            let extendsSelection = NSApp.currentEvent?.modifierFlags.intersection([.command, .shift]).isEmpty == false
+            guard items.count == 1, !extendsSelection, let note = items.first?.node.note else { return }
+            configuration.onSelect(note)
         }
 
         func outlineView(

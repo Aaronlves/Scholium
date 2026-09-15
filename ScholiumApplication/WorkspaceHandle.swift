@@ -3633,6 +3633,15 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             repositories: repositories,
             recoveryStore: services.transactionRecoveryStore
         )
+        var incomingIdentities: [VaultQualifiedNoteID: NoteIdentityRecord] = [:]
+        for rewrite in plan.rewrites where rewrite.source != source {
+            if let record = try await services.controlStore.identityRecord(
+                vaultID: rewrite.source.vaultID, relativePath: rewrite.source.relativePath),
+                record.fingerprint == rewrite.expectedRevision
+            {
+                incomingIdentities[rewrite.source] = record
+            }
+        }
         if let agentMove {
             try await coordinator.validate(plan, expectedRevision: expectedRevision)
             try await prepareAgentMoveEvidence(
@@ -3673,6 +3682,29 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             sourceAheadIdentityRecords[destination] = movedIdentityRecord
         } else {
             sourceAheadIdentityRecords[destination] = nil
+        }
+        // An incoming-link edit is also an exact source commit. Publish its
+        // unchanged identity with that receipt now, so the next operation does
+        // not depend on the timing of the disposable background refresh.
+        do {
+            for rewrite in commit.rewrites where rewrite.note != destination {
+                guard let before = incomingIdentities[rewrite.note], before.fingerprint == rewrite.previousRevision else {
+                    throw NoteIdentityRecoveryError.identityUnresolved(rewrite.note.relativePath)
+                }
+                let current = try await repository(vaultID: rewrite.note.vaultID).load(relativePath: rewrite.note.relativePath)
+                guard current.fingerprint == rewrite.committedRevision else {
+                    throw VaultRepositoryError.conflict(expected: rewrite.committedRevision, current: current.fingerprint)
+                }
+                guard
+                    let record = try await services.controlStore.identity(
+                        forVaultID: rewrite.note.vaultID, relativePath: rewrite.note.relativePath,
+                        fingerprint: rewrite.committedRevision, createIfMissing: false, preferredID: before.id,
+                        expectedFingerprint: rewrite.previousRevision)
+                else { throw NoteIdentityRecoveryError.identityUnresolved(rewrite.note.relativePath) }
+                sourceAheadIdentityRecords[rewrite.note] = record
+            }
+        } catch {
+            identityFailure = identityFailure ?? error
         }
 
         let refreshPayload = WorkspaceRefreshPayload(
