@@ -1948,7 +1948,10 @@ final class WindowModel: ObservableObject {
             },
             reportCatalogFailure: { [weak self] message in
                 self?.workspaceProjectionController.reportCatalogError(message)
-            }
+            },
+            loadTermGroups: { [workspaceStore] in try await workspaceStore.searchTermGroups() },
+            saveTermGroup: { [workspaceStore] group, expected in try await workspaceStore.saveSearchTermGroup(group, replacing: expected) },
+            deleteTermGroup: { [workspaceStore] group in try await workspaceStore.deleteSearchTermGroup(group) }
         )
     )
     lazy var documentController = DocumentController { [weak self] intent in

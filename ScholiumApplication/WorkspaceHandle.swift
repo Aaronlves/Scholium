@@ -3301,36 +3301,17 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 throw ScholiumApplicationError.workspaceStillLoading(id)
             }
         }
-        if case .currentNote = request.executionScope,
-            ast.clauses.contains(where: { clause in
-                switch clause {
-                case .structured, .property, .link: true
-                case .lexical: false
-                }
-            })
-        {
+        if let diagnostic = ast.scopeDiagnostic(scope: request.presentationScope, queryUTF16Count: request.query.utf16.count) {
             return await searchDiagnosticResponse(
                 request: request,
-                parsed: SearchQueryParseResult(
-                    provider: .note,
-                    providerWasExplicit: ast.providerWasExplicit,
-                    ast: ast,
-                    diagnostics: [
-                        SearchQueryDiagnostic(
-                            code: .notApplicable,
-                            message: "Structured fields, Metadata, and direct link clauses are not applicable to This Note occurrence Search.",
-                            utf16LowerBound: 0,
-                            utf16UpperBound: request.query.utf16.count
-                        )
-                    ]
-                )
-            )
+                parsed: SearchQueryParseResult(provider: .note, providerWasExplicit: ast.providerWasExplicit, ast: ast, diagnostics: [diagnostic]))
         }
         let link = NoteLinkSearchResolver.resolve(
             ast: ast,
             scope: request.executionScope,
             catalog: currentSnapshot.discovery.catalog,
-            searchGeneration: currentSnapshot.discovery.searchGeneration
+            searchGeneration: currentSnapshot.discovery.searchGeneration,
+            includedVaultIDs: request.includedVaultIDs
         )
         if let diagnostic = link.diagnostic {
             return await searchDiagnosticResponse(
@@ -3505,6 +3486,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             results: response.results,
             hasMore: response.hasMore,
             totalResultCount: response.totalResultCount,
+            indeterminateDocumentCount: response.indeterminateDocumentCount,
             diagnostics: response.diagnostics
         )
     }

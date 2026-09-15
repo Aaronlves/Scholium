@@ -91,6 +91,7 @@ public actor WorkspaceRuntime {
     private let membership: Membership
     private let vaultPool: WorkspaceVaultPool
     private let savedSearchStore: SavedSearchStore
+    private let searchTermGroupStore: SearchTermGroupStore
     private let windowSessionStore: WindowSessionSnapshotStore
     public nonisolated let zotero: ZoteroOperations
     public nonisolated let styles: StyleOperations
@@ -111,6 +112,7 @@ public actor WorkspaceRuntime {
             let registry = WorkspaceRegistry(
                 storageURL: configuration.workspaceRegistryStorageURL
             )
+            searchTermGroupStore = SearchTermGroupStore(workspaceStorageURL: configuration.workspaceRegistryStorageURL)
             savedSearchStore = SavedSearchStore(
                 workspaceStorageURL: configuration.workspaceRegistryStorageURL
             )
@@ -128,6 +130,7 @@ public actor WorkspaceRuntime {
                 applicationSupportURL: configuration.applicationSupportURL
             )
         case .snapshot(let configuration):
+            searchTermGroupStore = SearchTermGroupStore(workspaceStorageURL: configuration.workspaceRegistryStorageURL)
             savedSearchStore = SavedSearchStore(
                 workspaceStorageURL: configuration.workspaceRegistryStorageURL
             )
@@ -357,6 +360,21 @@ public actor WorkspaceRuntime {
             detachedVaults: detachedVaults
         )
         return updated
+    }
+
+    public func searchTermGroups() async throws -> [SearchTermGroup] {
+        try requireActive()
+        return try await searchTermGroupStore.load()
+    }
+    public func saveSearchTermGroup(_ group: SearchTermGroup, replacing expected: SearchTermGroup?) async throws -> [SearchTermGroup] {
+        try requireActive()
+        guard case .live = membership else { throw ScholiumApplicationError.runtimeConfigurationUnavailable }
+        return try await searchTermGroupStore.save(group, replacing: expected)
+    }
+    public func deleteSearchTermGroup(_ group: SearchTermGroup) async throws -> [SearchTermGroup] {
+        try requireActive()
+        guard case .live = membership else { throw ScholiumApplicationError.runtimeConfigurationUnavailable }
+        return try await searchTermGroupStore.delete(group)
     }
 
     public func savedSearches() async throws -> [SavedSearch] {

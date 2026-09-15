@@ -593,7 +593,7 @@ struct TriptychSearchIndexTests {
 
         let response = try await index.testSearch(
             SearchRequest(
-                query: "autonomy callout:state",
+                query: "autonomy",
                 presentationScope: .triptych,
                 executionScope: .triptych,
                 limit: 1
@@ -655,7 +655,7 @@ struct TriptychSearchIndexTests {
             editorRevision: 7
         )
         let request = SearchRequest(
-            query: "autonomy callout:state",
+            query: "autonomy",
             presentationScope: .thisNote,
             executionScope: .currentNote(snapshot),
             limit: 100
@@ -669,14 +669,14 @@ struct TriptychSearchIndexTests {
 
         let firstPage = try await index.testSearch(
             SearchRequest(
-                query: "autonomy callout:state",
+                query: "autonomy",
                 presentationScope: .thisNote,
                 executionScope: .currentNote(snapshot),
                 limit: 1
             ))
         let secondPage = try await index.testSearch(
             SearchRequest(
-                query: "autonomy callout:state",
+                query: "autonomy",
                 presentationScope: .thisNote,
                 executionScope: .currentNote(snapshot),
                 limit: 1,
@@ -696,7 +696,8 @@ struct TriptychSearchIndexTests {
                 executionScope: .currentNote(snapshot),
                 limit: 100
             ))
-        #expect(filterOnly.noteResults.count == 1)
+        #expect(filterOnly.noteResults.isEmpty)
+        #expect(filterOnly.diagnostics.first?.code == .notApplicable)
     }
 
     @Test("This Note reports only portable stable identity and ignores forged YAML identity")

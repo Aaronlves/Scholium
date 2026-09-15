@@ -14,7 +14,9 @@ enum ScholiumPreviewStyles {
                     ("raised-surface-background", .controlBackground),
                 ] {
                     guard let color = role.nsColor.usingColorSpace(.sRGB) else { continue }
-                    declarations += "--scholium-color-\(variable): rgba(\(color.redComponent * 255), \(color.greenComponent * 255), \(color.blueComponent * 255), \(color.alphaComponent)) !important;"
+                    declarations +=
+                        "--scholium-color-\(variable): rgba(\(color.redComponent * 255), \(color.greenComponent * 255), "
+                        + "\(color.blueComponent * 255), \(color.alphaComponent)) !important;"
                 }
             }
             return declarations

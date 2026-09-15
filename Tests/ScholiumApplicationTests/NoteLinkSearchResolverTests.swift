@@ -6,6 +6,29 @@ import Testing
 
 @Suite("Application direct-link Search resolution")
 struct NoteLinkSearchResolverTests {
+    @Test("Each Boolean link predicate binds independently and unresolved edges cannot prove absence")
+    func booleanLinks() throws {
+        let fixture = Fixture(includeUnresolvedLink: true)
+        let query = "from-note:Anchor OR to-note:Anchor"
+        let ast = try #require(SearchQueryParser.parse(query).ast)
+        let result = try fixture.resolve(query, catalog: fixture.catalog())
+        #expect(result.diagnostic == nil)
+        #expect(result.matches.count == 2)
+        let outgoing = try #require(result.matches[ast.linkQueries[0]])
+        let incoming = try #require(result.matches[ast.linkQueries[1]])
+        #expect(Set(outgoing.matches.keys) == [fixture.targetID])
+        #expect(Set(incoming.matches.keys) == [fixture.rivalID])
+        #expect(outgoing.indeterminateNotes.contains(fixture.rivalID))
+        #expect(!incoming.indeterminateNotes.contains(fixture.targetID))
+        #expect(!outgoing.indeterminateNotes.contains(fixture.anchorID))
+        let excludedScope = NoteLinkSearchResolver.resolve(
+            ast: ast, scope: .triptych, catalog: fixture.catalog(),
+            searchGeneration: .init(triptychID: UUID(), sequence: 1, sourceManifestHash: fixture.manifest), includedVaultIDs: [])
+        #expect(excludedScope.matches.isEmpty && excludedScope.diagnostic?.code == .notApplicable)
+        let invalidAlternative = try fixture.resolve("title:Target OR from-note:Missing", catalog: fixture.catalog())
+        #expect(invalidAlternative.matches.isEmpty && invalidAlternative.diagnostic != nil)
+    }
+
     @Test("Directed link queries preserve authored direction and occurrence provenance")
     func directedLinksPreserveDirection() throws {
         let fixture = Fixture()
@@ -15,14 +38,14 @@ struct NoteLinkSearchResolverTests {
         let toTarget = try fixture.resolve("to-note:Target", catalog: catalog)
         let toAnchor = try fixture.resolve("to-note:Anchor", catalog: catalog)
 
-        #expect(Set(fromAnchor.matches.keys) == [fixture.targetID])
-        #expect(Set(toTarget.matches.keys) == [fixture.anchorID])
-        #expect(Set(toAnchor.matches.keys) == [fixture.rivalID])
-        #expect(fromAnchor.matches[fixture.targetID]?.direction == .fromNote)
-        #expect(toTarget.matches[fixture.anchorID]?.direction == .toNote)
-        #expect(fromAnchor.matches[fixture.targetID]?.occurrences.first?.sourceNote == fixture.anchorID)
-        #expect(toAnchor.matches[fixture.rivalID]?.occurrences.first?.sourceNote == fixture.rivalID)
-        #expect(fromAnchor.matches[fixture.targetID]?.occurrences.first?.annotationSpan != nil)
+        #expect(Set(fromAnchor.matches.values.flatMap { $0.matches.keys }) == [fixture.targetID])
+        #expect(Set(toTarget.matches.values.flatMap { $0.matches.keys }) == [fixture.anchorID])
+        #expect(Set(toAnchor.matches.values.flatMap { $0.matches.keys }) == [fixture.rivalID])
+        #expect(fromAnchor.matches.values.first?.matches[fixture.targetID]?.direction == .fromNote)
+        #expect(toTarget.matches.values.first?.matches[fixture.anchorID]?.direction == .toNote)
+        #expect(fromAnchor.matches.values.first?.matches[fixture.targetID]?.occurrences.first?.sourceNote == fixture.anchorID)
+        #expect(toAnchor.matches.values.first?.matches[fixture.rivalID]?.occurrences.first?.sourceNote == fixture.rivalID)
+        #expect(fromAnchor.matches.values.first?.matches[fixture.targetID]?.occurrences.first?.annotationSpan != nil)
     }
 
     @Test("Exact aliases obey authorized scope while missing and ambiguous identities fail closed")
@@ -35,7 +58,7 @@ struct NoteLinkSearchResolverTests {
             scope: .currentVault(fixture.primaryVault.id),
             catalog: catalog
         )
-        #expect(Set(scopedAlias.matches.keys) == [fixture.targetID])
+        #expect(Set(scopedAlias.matches.values.flatMap { $0.matches.keys }) == [fixture.targetID])
 
         let ambiguous = try fixture.resolve("from-note:Anchor", catalog: catalog)
         #expect(ambiguous.matches.isEmpty)
@@ -97,6 +120,7 @@ private extension NoteLinkSearchResolverTests {
         )
         let manifest = "complete-search-graph-manifest"
         let includeDuplicateAnchor: Bool
+        let includeUnresolvedLink: Bool
         let anchorStableID = UUID(uuidString: "d5f95945-59fb-4f95-a286-95633c44ad64")!
 
         var anchorID: VaultQualifiedNoteID {
@@ -109,8 +133,9 @@ private extension NoteLinkSearchResolverTests {
             VaultQualifiedNoteID(vaultID: primaryVault.id, relativePath: "Rival.md")
         }
 
-        init(includeDuplicateAnchor: Bool = false) {
+        init(includeDuplicateAnchor: Bool = false, includeUnresolvedLink: Bool = false) {
             self.includeDuplicateAnchor = includeDuplicateAnchor
+            self.includeUnresolvedLink = includeUnresolvedLink
         }
 
         func catalog(graphManifest: String? = nil) -> WorkspaceCatalogSnapshot {
@@ -118,6 +143,7 @@ private extension NoteLinkSearchResolverTests {
                 NoteDocument(
                     relativePath: anchorID.relativePath,
                     rawContent: "---\naliases: [Anchor Alias]\n---\n# Anchor\n\n[[Target]]{{A **multiline** reason.\n\n- Evidence}}\n"
+                        + (includeUnresolvedLink ? "[[Unresolved]]\n" : "")
                 ),
                 NoteDocument(relativePath: targetID.relativePath, rawContent: "# Target\n"),
                 NoteDocument(

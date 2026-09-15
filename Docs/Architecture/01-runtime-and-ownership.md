@@ -190,12 +190,26 @@ Every `identities.json` mutation carries the exact read preimage through one
 coordinated swap and decoded readback proof, so a stale move, reconciliation,
 or creation writer cannot erase a newer portable Note identity.
 Direct-link queries are publishable only when the Graph and Note Search
-manifest hashes agree. A `from-note:` or `to-note:` clause is part of one structured AND query;
-Graph absence, staleness, or mismatch fails that complete query closed rather
+manifest hashes agree. Each `from-note:` or `to-note:` predicate resolves independently
+inside the shared Boolean expression. Application returns authorized matches and
+indeterminate candidates per predicate; Core applies the same three-valued evaluator
+as property Search. Graph absence, staleness, or mismatch fails the complete query closed rather
 than returning its lexical clauses as a broadened substitute. An ordinary
 lexical query remains independently available from its last complete compatible
 Note generation. There is no parallel direct-connection Search presentation;
 explicit direct-link clauses are the only Search consumer of Graph neighborhoods.
+`SearchQueryParser` owns the bounded expression tree used by App, MCP, completion
+and Explain Query. Core uses FTS only for conservative candidate admission and shared
+corpus lexical scores, then exact predicates for truth and successful-branch witnesses.
+Eligibility precedes counting; global ranking precedes pagination. Paragraph predicates
+use an existential boundary that outer negation cannot cross. Only successful local
+witnesses supply lexical contributions; inner failures and unrelated paragraphs do not.
+Complete matched ranges stay with the fingerprinted Note result; a native locations popover
+batches their presentation and MCP independently bounds each Note's locator page. Current-note Search
+uses exact unsaved source and all proven positive occurrences. No DNF expansion or
+parallel query-language adapter is retained. The MCP bridge preserves successful
+match reasons as an array and reports indeterminate eligible Notes separately from
+the confirmed total; role restrictions also constrain link-anchor resolution.
 `DiscoveryOperations` owns vault-qualified link occurrences and bounded Graph
 queries; delivery surfaces only present results.
 Privacy-safe measurements record enumerate/read/parse/source-

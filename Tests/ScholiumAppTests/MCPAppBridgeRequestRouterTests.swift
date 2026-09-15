@@ -660,6 +660,71 @@ struct MCPAppBridgeRequestRouterTests {
         await controller.disconnect()
     }
 
+    @Test("Paragraph Search pages exact locators independently from Note results")
+    func paragraphSearchPagination() async throws {
+        let source = (0..<23).map { "alpha beta paragraph \($0)" }.joined(separator: "\n\n")
+        let fixture = try await Fixture.make(exactAnalysis: source)
+        defer { fixture.dispose() }
+        let router = MCPAppBridgeRequestRouter(runtime: fixture.runtime, flushEditors: { _ in }, openTriptychs: { [fixture.assignment] })
+        var lines: [Int] = []
+        for offset in stride(from: 0, to: 23, by: 7) {
+            let response = try result(
+                await router.handle(
+                    .init(
+                        tool: .search,
+                        arguments: [
+                            "triptych_id": .string(fixture.assignment.id.uuidString), "query": .string("paragraph:(alpha AND beta)"),
+                            "roles": .array([.string("analyses")]), "limit": .integer(1),
+                            "paragraph_limit": .integer(7), "paragraph_offset": .integer(offset),
+                        ])))
+            let notes = try object(response["notes"])
+            let hits = try array(notes["results"])
+            #expect(hits.count == 1)
+            let hit = try object(hits[0])
+            #expect(try object(hit["fingerprint"])["sha256"]?.stringValue == fixture.analysisFingerprint.sha256)
+            let page = try object(hit["paragraphs"])
+            #expect(page["total"]?.intValue == 23)
+            #expect(page["has_more"]?.boolValue == (offset + 7 < 23))
+            let locators = try array(page["locators"])
+            lines += try locators.compactMap { try object($0)["line"]?.intValue }
+        }
+        #expect(lines == Array(stride(from: 1, through: 45, by: 2)))
+    }
+
+    @Test("Boolean MCP Search preserves indeterminate counts, exclusions and independent link reasons")
+    func booleanSearchParity() async throws {
+        let fixture = try await Fixture.make(exactAnalysis: "---\nstatus: [\n---\n# Alpha\n\n[[Topic]]\n")
+        defer { fixture.dispose() }
+        let router = MCPAppBridgeRequestRouter(runtime: fixture.runtime, flushEditors: { _ in }, openTriptychs: { [fixture.assignment] })
+        func search(_ query: String) async throws -> [String: MCPJSONValue] {
+            let response = try result(
+                await router.handle(
+                    .init(
+                        tool: .search,
+                        arguments: [
+                            "triptych_id": .string(fixture.assignment.id.uuidString), "query": .string(query),
+                        ])))
+            return try object(response["notes"])
+        }
+        let excluded = try await search("NOT property:status")
+        #expect(excluded["indeterminate_notes"]?.intValue == 1)
+        let results = try array(excluded["results"])
+        #expect(results.count == 2)
+        for result in results {
+            let hit = try object(result)
+            #expect(try array(hit["match_reasons"]).map(\.stringValue) == ["NOT (property:\"status\")"])
+            #expect(hit["source_locator"] == .null)
+        }
+        let alternatives = try await search("title:Alpha OR NOT property:status")
+        #expect(alternatives["indeterminate_notes"]?.intValue == 0)
+        #expect(try array(alternatives["results"]).count == 3)
+        let links = try await search("from-note:Alpha OR to-note:Topic")
+        let linkHits = try array(links["results"])
+        #expect(linkHits.count == 2)
+        let reasons = try linkHits.flatMap { try array(object($0)["match_reasons"]).compactMap(\.stringValue) }
+        #expect(Set(reasons) == ["from-note:\"alpha\"", "to-note:\"topic\""])
+    }
+
     @Test("Status, scoped Search, exact paging, and authored links share one current generation")
     func readOnlyToolsUseCurrentAppOwners() async throws {
         let fixture = try await Fixture.make()

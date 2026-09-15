@@ -310,8 +310,19 @@ Shared Search follows §13: an inline quick-search surface and one explicitly
 opened advanced window per originating Workspace, with visible scope and bounded
 provider-specific results, typed completion, Explain Query, exact freshness,
 and distinct invalid, ambiguous, unavailable, partial, stale, and empty states.
-Completion edits visible query text only and shares
-one keyboard selection with results.
+Completion edits the token at the native caret, preserves following query text,
+respects inherited fields and grouping, and leaves the caret after the replacement.
+It shares one keyboard selection with results and yields to native marked text.
+Advanced Search provides Insert Term Group and a scoped native management sheet with
+name, one-term-per-line editing, New, Save, Delete, Cancel and reload after failure.
+Unsaved group edits are retained until Save or explicit cancellation; changing selection
+cannot silently discard them. Successful paragraph results open a native paragraph-locations popover from the
+result row or the advanced window's Matching Paragraphs control. The popover has
+independent line-based navigation buttons, Show More Paragraphs and Done. Opening a paragraph uses the same
+freshness and source-fingerprint checks as opening its Note result.
+Explain Query preserves actual AND/OR/NOT nesting. A persistent localized count
+identifies indeterminate Notes alongside confirmed results; zero confirmed results
+with indeterminate Notes is distinct from an ordinary empty result.
 
 Quick Search keeps its native editable field in place and shows concise results
 below it. The field's native magnifying-glass menu holds scope,

@@ -53,19 +53,6 @@ public struct SavedSearch: Codable, Hashable, Identifiable, Sendable {
         self.createdAt = createdAt
     }
 
-    public var needsEditingDiagnostic: SearchQueryDiagnostic? {
-        if !SearchContract.isSavedSearchContractCompatible(definition.contractVersion) {
-            return SearchQueryDiagnostic(
-                code: .needsEditing,
-                message:
-                    "This Saved Search uses Search contract \(definition.contractVersion), which is not declared compatible with contract \(SearchContract.currentVersion); review it before running.",
-                utf16LowerBound: 0,
-                utf16UpperBound: definition.query.utf16.count,
-                needsEditing: true
-            )
-        }
-        return SearchQueryParser.parse(definition.query).diagnostics.first { $0.needsEditing }
-    }
 }
 
 public enum SavedSearchStoreError: LocalizedError, Sendable {

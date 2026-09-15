@@ -66,6 +66,11 @@ public struct SearchPropertyProjection: Hashable, Sendable {
         document: NoteDocument,
         profile: SchemaProfileID = .genericMarkdown
     ) {
+        guard document.hasProvableBodyBoundary else {
+            entries = []
+            issues = [.invalidYAML]
+            return
+        }
         guard let frontmatter = document.rawFrontmatter else {
             entries = []
             issues = document.rawFrontmatter == nil ? [] : [.invalidYAML]

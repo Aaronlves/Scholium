@@ -507,7 +507,7 @@ public actor TriptychSearchIndex {
     public func search(
         _ request: SearchRequest,
         ast: SearchQueryAST,
-        linkMatches: [VaultQualifiedNoteID: SearchLinkMatch] = [:],
+        linkMatches: [SearchLinkQuery: SearchLinkResolution] = [:],
         eligibleDocuments: [VaultQualifiedNoteID: SearchIndexDocumentEligibility]? = nil
     ) throws -> SearchResponse {
         try database.readTransaction {
@@ -541,6 +541,11 @@ public actor TriptychSearchIndex {
                         )
                     ]
                 )
+            }
+            if let diagnostic = ast.scopeDiagnostic(scope: request.presentationScope, queryUTF16Count: request.query.utf16.count) {
+                return SearchResponse(
+                    requestID: request.id, scope: request.presentationScope, explanation: ast.explanation(scope: request.presentationScope),
+                    freshnessToken: freshness, availability: availability, results: [], hasMore: false, diagnostics: [diagnostic])
             }
             guard request.limit > 0 else {
                 return SearchResponse(
@@ -747,7 +752,7 @@ public actor TriptychSearchIndex {
         freshness: SearchFreshnessToken,
         generation: SearchGenerationID?,
         availability: SearchAvailability,
-        linkMatches: [VaultQualifiedNoteID: SearchLinkMatch],
+        linkMatches: [SearchLinkQuery: SearchLinkResolution],
         eligibleDocuments: [VaultQualifiedNoteID: SearchIndexDocumentEligibility]?
     ) throws -> SearchResponse {
         guard let generation, generation.sequence > 0 else {
@@ -761,118 +766,63 @@ public actor TriptychSearchIndex {
                 hasMore: false
             )
         }
-        let resultOffset = request.resultOffset
-        let requiredAcceptedCount = Self.requiredResultCount(
-            offset: resultOffset,
-            limit: limit
-        )
-        var accepted: [SearchCandidate] = []
-        var seen = Set<Int>()
-
-        if let identity = ast.identityNeedle {
-            var exactOffset = 0
-            let exactPageSize = min(256, max(32, requiredAcceptedCount))
-            while accepted.count < requiredAcceptedCount {
-                let exact = try exactCandidates(
-                    ast: ast,
-                    identityKey: identity,
-                    vaultID: vaultID,
-                    limit: exactPageSize,
-                    offset: exactOffset
-                )
-                guard !exact.isEmpty else { break }
-                exactOffset += exact.count
-                for candidate in exact {
-                    try Task.checkCancellation()
-                    guard
-                        Self.isIncluded(
-                            candidate.document,
-                            in: request.includedVaultIDs
-                        ),
-                        Self.isEligible(candidate.document, in: eligibleDocuments),
-                        seen.insert(candidate.document.rowID).inserted,
-                        SearchMatcher.satisfies(
-                            ast,
-                            document: candidate.document,
-                            linkMatches: linkMatches
-                        )
-                    else { continue }
-                    accepted.append(candidate)
-                    if accepted.count >= requiredAcceptedCount { break }
-                }
-                if exact.count < exactPageSize { break }
+        let required = Self.requiredResultCount(offset: request.resultOffset, limit: limit)
+        let ranks = try lexicalRanks(for: ast)
+        let admission = Self.candidateAdmission(ast.expression)
+        var sql = "SELECT d.id FROM search_documents d WHERE " + admission.sql
+        var bindings = admission.bindings
+        if let vaultID {
+            sql += " AND d.vault_id = ?"
+            bindings.append(.text(vaultID.uuidString.lowercased()))
+        }
+        if let included = request.includedVaultIDs {
+            guard !included.isEmpty else {
+                return SearchResponse(
+                    requestID: request.id, scope: request.presentationScope, explanation: ast.explanation(scope: request.presentationScope),
+                    freshnessToken: freshness, availability: availability, results: [], hasMore: false)
+            }
+            sql += " AND d.vault_id IN (" + Array(repeating: "?", count: included.count).joined(separator: ",") + ")"
+            bindings.append(contentsOf: included.sorted { $0.uuidString < $1.uuidString }.map { .text($0.uuidString.lowercased()) })
+        }
+        var rowIDs: [Int] = []
+        try database.query(sql, bindings: bindings) { rowIDs.append($0.int(at: 0)) }
+        var accepted: [(candidate: SearchCandidate, ast: SearchQueryAST)] = []
+        var total = 0
+        var indeterminate = 0
+        for rowID in rowIDs {
+            try Task.checkCancellation()
+            guard
+                let document = try loadDocument(
+                    rowID: rowID, includingProperties: ast.hasPropertyClause,
+                    includingParagraphs: ast.clauses.contains { if case .paragraph = $0 { true } else { false } }),
+                Self.isEligible(document, in: eligibleDocuments)
+            else { continue }
+            let evaluation = SearchMatcher.evaluate(ast, document: document, linkMatches: linkMatches)
+            if evaluation.truth == .unknown { indeterminate += 1 }
+            guard evaluation.truth == .yes else { continue }
+            total += 1
+            let matched = ast.matched(by: evaluation)
+            let keys = Set(
+                (matched.positiveLexicalClauses + SearchMatcher.paragraphWitnesses(matched, document: document).flatMap { $0.ast.positiveLexicalClauses }).map(
+                    Self.rankingKey))
+            let rank = keys.reduce(0.0) { $0 + (ranks[$1]?[rowID] ?? 0) }
+            let candidate = SearchCandidate(
+                document: document,
+                identityPriority: SearchMatcher.identityPriority(identityNeedle: ast.identityNeedle, document: document), lexicalRank: rank)
+            let position = accepted.firstIndex { SearchCandidate.precedes(candidate, $0.candidate) } ?? accepted.count
+            if position < required {
+                accepted.insert((candidate, matched), at: position)
+                if accepted.count > required { accepted.removeLast() }
             }
         }
-
-        if accepted.count < requiredAcceptedCount {
-            var offset = 0
-            // Candidate materialization loads exact aliases and source
-            // segments. Bound the first page to the number a response can
-            // actually consume; structured filters can request further pages
-            // without paying for 256 full documents on every ordinary query.
-            let pageSize = min(256, max(32, requiredAcceptedCount))
-            while accepted.count < requiredAcceptedCount {
-                try Task.checkCancellation()
-                let page: [SearchCandidate]
-                if ast.positiveLexicalClauses.isEmpty {
-                    page = try documentCandidates(
-                        ast: ast,
-                        vaultID: vaultID,
-                        limit: pageSize,
-                        offset: offset
-                    )
-                } else {
-                    page = try lexicalCandidates(
-                        ast: ast,
-                        vaultID: vaultID,
-                        limit: pageSize,
-                        offset: offset
-                    )
-                }
-                guard !page.isEmpty else { break }
-                offset += page.count
-                for candidate in page {
-                    try Task.checkCancellation()
-                    guard
-                        Self.isIncluded(
-                            candidate.document,
-                            in: request.includedVaultIDs
-                        ),
-                        Self.isEligible(candidate.document, in: eligibleDocuments),
-                        seen.insert(candidate.document.rowID).inserted,
-                        SearchMatcher.satisfies(
-                            ast,
-                            document: candidate.document,
-                            linkMatches: linkMatches
-                        )
-                    else { continue }
-                    accepted.append(candidate)
-                    if accepted.count >= requiredAcceptedCount { break }
-                }
-                if page.count < pageSize { break }
-            }
-        }
-
-        accepted.sort(by: SearchCandidate.precedes)
-        let page = accepted.dropFirst(min(resultOffset, accepted.count))
-        let hasMore = page.count > limit
-        let hits = page.prefix(limit).map {
-            NoteSearchResultBuilder.hit(
-                candidate: $0,
-                ast: ast,
-                freshness: freshness,
-                linkMatch: linkMatches[$0.document.noteID]
-            )
+        let hits = accepted.dropFirst(min(request.resultOffset, accepted.count)).prefix(limit).map {
+            NoteSearchResultBuilder.hit(candidate: $0.candidate, ast: $0.ast, freshness: freshness, linkMatches: linkMatches)
         }
         return SearchResponse(
-            requestID: request.id,
-            scope: request.presentationScope,
-            explanation: ast.explanation(scope: request.presentationScope),
-            freshnessToken: freshness,
-            availability: availability,
-            results: hits.map(SearchResult.note),
-            hasMore: hasMore
-        )
+            requestID: request.id, scope: request.presentationScope, explanation: ast.explanation(scope: request.presentationScope),
+            freshnessToken: freshness, availability: availability, results: hits.map(SearchResult.note),
+            hasMore: request.resultOffset < total && hits.count < total - request.resultOffset, totalResultCount: total,
+            indeterminateDocumentCount: indeterminate)
     }
 
     private nonisolated static func isEligible(
@@ -1015,7 +965,7 @@ public actor TriptychSearchIndex {
         limit: Int,
         freshness: SearchFreshnessToken,
         availability: SearchAvailability,
-        linkMatches: [VaultQualifiedNoteID: SearchLinkMatch]
+        linkMatches: [SearchLinkQuery: SearchLinkResolution]
     ) throws -> SearchResponse {
         let descriptor = try vaultDescriptor(source.noteID.vaultID)
         let indexed = try indexedDocumentMetadata(source.noteID)
@@ -1054,18 +1004,16 @@ public actor TriptychSearchIndex {
             roleOrder: Self.roleOrder(role),
             sourceLineStarts: projection.sourceLineStartsUTF16,
             segments: projection.segments,
+            paragraphs: projection.paragraphs,
+            paragraphsAreComplete: note.hasProvableBodyBoundary,
             properties: SearchPropertyProjection(
                 document: note,
                 profile: profile
-            ).entries
+            ).entries,
+            propertyIssues: SearchPropertyProjection(document: note, profile: profile).issues
         )
-        guard
-            SearchMatcher.satisfies(
-                ast,
-                document: document,
-                linkMatches: linkMatches
-            )
-        else {
+        let evaluation = SearchMatcher.evaluate(ast, document: document, linkMatches: linkMatches)
+        guard evaluation.truth == .yes else {
             return SearchResponse(
                 requestID: request.id,
                 scope: request.presentationScope,
@@ -1077,6 +1025,7 @@ public actor TriptychSearchIndex {
             )
         }
 
+        let matchedAST = ast.matched(by: evaluation)
         let candidate = SearchCandidate(
             document: document,
             identityPriority: SearchMatcher.identityPriority(
@@ -1091,22 +1040,21 @@ public actor TriptychSearchIndex {
             limit: limit
         )
         let candidates: [NoteSearchResult]
-        if let lead = ast.firstPositiveLexicalClause {
+        if !matchedAST.isFilterOnly {
             candidates = NoteSearchResultBuilder.occurrenceHits(
                 candidate: candidate,
-                ast: ast,
-                lead: lead,
+                ast: matchedAST,
                 freshness: freshness,
                 limit: requiredHitCount,
-                linkMatch: linkMatches[document.noteID]
+                linkMatches: linkMatches
             )
         } else {
             candidates = [
                 NoteSearchResultBuilder.hit(
                     candidate: candidate,
-                    ast: ast,
+                    ast: matchedAST,
                     freshness: freshness,
-                    linkMatch: linkMatches[document.noteID]
+                    linkMatches: linkMatches
                 )
             ]
         }
@@ -1137,197 +1085,55 @@ public actor TriptychSearchIndex {
         return currentAvailability
     }
 
-    private func exactCandidates(
-        ast: SearchQueryAST,
-        identityKey: String,
-        vaultID: UUID?,
-        limit: Int,
-        offset: Int
-    ) throws -> [SearchCandidate] {
-        let lexicalExpression =
-            ast.positiveLexicalClauses.isEmpty
-            ? nil
-            : SearchMatcher.ftsExpression(for: ast.positiveLexicalClauses)
-        var sql = """
-            SELECT d.id,
-                   CASE
-                     WHEN d.title_key = ? THEN 0
-                     WHEN EXISTS(SELECT 1 FROM search_aliases a WHERE a.document_id = d.id AND a.exact_key = ?) THEN 1
-                     WHEN d.filename_key = ? THEN 2
-                     WHEN d.path_key = ? THEN 3
-                     ELSE 10
-                   END AS identity_priority,
-            """
-        if lexicalExpression != nil {
-            sql += "\n"
-            sql += """
-                   bm25(search_fts, 0.0, 3.0, 8.0, 7.0, 6.0, 5.0, 6.0, 4.0, 5.0, 2.0, 2.0, 3.0, 1.0) AS lexical_rank
-                FROM search_fts
-                JOIN search_documents d ON d.id = search_fts.document_id
-                """
-        } else {
-            sql += "\n"
-            sql += """
-                   0.0 AS lexical_rank
-                FROM search_documents d
-                """
-        }
-        sql += "\n"
-        sql += """
-            WHERE (d.title_key = ?
-               OR EXISTS(SELECT 1 FROM search_aliases a WHERE a.document_id = d.id AND a.exact_key = ?)
-               OR d.filename_key = ? OR d.path_key = ?)
-            """
-        var bindings = Array(repeating: SearchSQLiteBinding.text(identityKey), count: 8)
-        if let lexicalExpression {
-            sql += " AND search_fts MATCH ?"
-            bindings.append(.text(lexicalExpression))
-        }
-        let filters = Self.candidateFilters(for: ast)
-        sql += filters.sql
-        bindings.append(contentsOf: filters.bindings)
-        if let vaultID {
-            sql += " AND d.vault_id = ?"
-            bindings.append(.text(vaultID.uuidString.lowercased()))
-        }
-        sql += " ORDER BY identity_priority, lexical_rank, d.normalized_title, d.role_order, d.path_key, d.relative_path LIMIT ? OFFSET ?;"
-        bindings.append(.int(limit))
-        bindings.append(.int(offset))
-        var result: [SearchCandidate] = []
-        try database.query(sql, bindings: bindings) { row in
-            guard
-                let document = try self.loadDocument(
-                    rowID: row.int(at: 0),
-                    includingProperties: ast.hasPropertyClause
-                )
-            else { return }
-            result.append(
-                SearchCandidate(
-                    document: document,
-                    identityPriority: row.int(at: 1),
-                    lexicalRank: row.double(at: 2)
-                ))
-        }
-        return result
+    private static func rankingKey(_ clause: SearchLexicalClause) -> SearchLexicalClause {
+        SearchLexicalClause(field: clause.field, value: clause.value, sourceRange: 0..<0)
     }
 
-    private func lexicalCandidates(
-        ast: SearchQueryAST,
-        vaultID: UUID?,
-        limit: Int,
-        offset: Int
-    ) throws -> [SearchCandidate] {
-        let expression = SearchMatcher.ftsExpression(for: ast.positiveLexicalClauses)
-        var sql = """
-            SELECT d.id,
-                   bm25(search_fts, 0.0, 3.0, 8.0, 7.0, 6.0, 5.0, 6.0, 4.0, 5.0, 2.0, 2.0, 3.0, 1.0) AS lexical_rank
-            FROM search_fts
-            JOIN search_documents d ON d.id = search_fts.document_id
-            WHERE search_fts MATCH ?
-            """
-        var bindings: [SearchSQLiteBinding] = [.text(expression)]
-        let filters = Self.candidateFilters(for: ast)
-        sql += filters.sql
-        bindings.append(contentsOf: filters.bindings)
-        if let vaultID {
-            sql += " AND d.vault_id = ?"
-            bindings.append(.text(vaultID.uuidString.lowercased()))
-        }
-        sql += " ORDER BY lexical_rank, d.normalized_title, d.role_order, d.path_key, d.relative_path LIMIT ? OFFSET ?;"
-        bindings.append(.int(limit))
-        bindings.append(.int(offset))
-        var result: [SearchCandidate] = []
-        try database.query(sql, bindings: bindings) { row in
-            guard
-                let document = try self.loadDocument(
-                    rowID: row.int(at: 0),
-                    includingProperties: ast.hasPropertyClause
-                )
-            else { return }
-            result.append(
-                SearchCandidate(
-                    document: document,
-                    identityPriority: 10,
-                    lexicalRank: row.double(at: 1)
-                ))
-        }
-        return result
-    }
-
-    private func documentCandidates(
-        ast: SearchQueryAST,
-        vaultID: UUID?,
-        limit: Int,
-        offset: Int
-    ) throws -> [SearchCandidate] {
-        var sql = "SELECT d.id FROM search_documents d WHERE 1 = 1"
-        let filters = Self.candidateFilters(for: ast)
-        sql += filters.sql
-        var bindings = filters.bindings
-        if let vaultID {
-            sql += " AND d.vault_id = ?"
-            bindings.append(.text(vaultID.uuidString.lowercased()))
-        }
-        sql += " ORDER BY d.normalized_title, d.role_order, d.path_key, d.relative_path LIMIT ? OFFSET ?;"
-        bindings.append(.int(limit))
-        bindings.append(.int(offset))
-        var result: [SearchCandidate] = []
-        try database.query(sql, bindings: bindings) { row in
-            guard
-                let document = try self.loadDocument(
-                    rowID: row.int(at: 0),
-                    includingProperties: ast.hasPropertyClause
-                )
-            else { return }
-            result.append(
-                SearchCandidate(
-                    document: document,
-                    identityPriority: 10,
-                    lexicalRank: 0
-                ))
-        }
-        return result
-    }
-
-    private static func candidateFilters(
-        for ast: SearchQueryAST
-    ) -> (sql: String, bindings: [SearchSQLiteBinding]) {
-        var sql = ""
-        var bindings: [SearchSQLiteBinding] = []
-        for clause in ast.clauses {
-            switch clause {
-            case .property(let property):
-                sql += " AND EXISTS(SELECT 1 FROM search_properties p WHERE p.document_id = d.id AND p.property_key = ?"
-                bindings.append(.text(property.key))
-                if let value = property.value {
-                    sql += " AND p.normalized_value = ?"
-                    bindings.append(.text(value))
-                }
-                sql += ")"
-            case .structured(let structured):
-                let condition: String
-                switch structured.field {
-                case .callout:
-                    condition = "instr(d.callout_roles, ?) > 0"
-                    bindings.append(.text(" \(structured.value) "))
-                case .has:
-                    guard structured.value == "broken-link" else { continue }
-                    condition = "d.has_broken_link = 1"
-                }
-                sql +=
-                    structured.excluded
-                    ? " AND NOT (\(condition))"
-                    : " AND \(condition)"
-            case .lexical, .link:
-                break
+    private func lexicalRanks(for ast: SearchQueryAST) throws -> [SearchLexicalClause: [Int: Double]] {
+        var ranks: [SearchLexicalClause: [Int: Double]] = [:]
+        for clause in ast.rankingLexicalClauses {
+            try Task.checkCancellation()
+            let key = Self.rankingKey(clause)
+            guard ranks[key] == nil else { continue }
+            var values: [Int: Double] = [:]
+            try database.query(
+                "SELECT document_id, bm25(search_fts, 0.0, 3.0, 8.0, 7.0, 6.0, 5.0, 6.0, 4.0, 5.0, 2.0, 2.0, 3.0, 1.0) FROM search_fts WHERE search_fts MATCH ?;",
+                bindings: [.text(SearchMatcher.ftsExpression(for: [clause]))]
+            ) { row in
+                try Task.checkCancellation()
+                values[row.int(at: 0)] = row.double(at: 1)
             }
+            ranks[key] = values
         }
-        return (sql, bindings)
+        return ranks
+    }
+
+    /// FTS is a candidate superset, not proof of a phrase or exclusion. Negated predicates
+    /// and property/link uncertainty must not be discarded before exact evaluation.
+    private static func candidateAdmission(_ expression: SearchExpression, negated: Bool = false) -> (sql: String, bindings: [SearchSQLiteBinding]) {
+        switch expression {
+        case .clause(let clause):
+            if !negated, case .paragraph(let query) = clause {
+                let inner = candidateAdmission(query.expression)
+                return ("(d.paragraphs_complete = 0 OR " + inner.sql + ")", inner.bindings)
+            }
+            if !negated, case .lexical(let value) = clause {
+                return ("d.id IN (SELECT document_id FROM search_fts WHERE search_fts MATCH ?)", [.text(SearchMatcher.ftsExpression(for: [value]))])
+            }
+            return ("1 = 1", [])
+        case .not(let child): return candidateAdmission(child, negated: !negated)
+        case .and(let children), .or(let children):
+            let conjunction: Bool
+            if case .and = expression { conjunction = !negated } else { conjunction = negated }
+            guard !children.isEmpty else { return (conjunction ? "1 = 1" : "0 = 1", []) }
+            let pieces = children.map { candidateAdmission($0, negated: negated) }
+            return ("(" + pieces.map(\.sql).joined(separator: conjunction ? " AND " : " OR ") + ")", pieces.flatMap(\.bindings))
+        }
     }
 
     private func loadDocument(
         rowID: Int,
-        includingProperties: Bool = false
+        includingProperties: Bool = false, includingParagraphs: Bool = false
     ) throws -> StoredSearchDocument? {
         var document: StoredSearchDocument?
         try database.query(
@@ -1335,7 +1141,7 @@ public actor TriptychSearchIndex {
             SELECT vault_id, vault_name, role, relative_path, stable_note_id, title,
                    normalized_title, title_key, filename_key, path_key, callout_roles,
                    has_broken_link, fingerprint_sha256, fingerprint_byte_count,
-                   evidential_layer, role_order, line_starts, source_utf16_count
+                   evidential_layer, role_order, line_starts, source_utf16_count, property_issues, paragraphs, paragraphs_complete
             FROM search_documents WHERE id = ?;
             """,
             bindings: [.int(rowID)]
@@ -1394,7 +1200,10 @@ public actor TriptychSearchIndex {
                 roleOrder: row.int(at: 15),
                 sourceLineStarts: lineStarts,
                 segments: segments,
-                properties: properties
+                paragraphs: includingParagraphs ? try Self.decodeParagraphs(row.text(at: 19), sourceUTF16Count: sourceUTF16Count) : [],
+                paragraphsAreComplete: row.int(at: 20) == 1,
+                properties: properties,
+                propertyIssues: includingProperties ? try Self.decodeGeneratedJSON([SearchPropertyProjection.Issue].self, from: row.text(at: 18)) : []
             )
         }
         return document
@@ -1616,6 +1425,8 @@ public actor TriptychSearchIndex {
         var material = Data(document.projection.projectionHash.utf8)
         material.append(0)
         material.append(propertyData)
+        material.append(try JSONEncoder.searchIndex.encode(document.propertyProjection.issues))
+        material.append(try JSONEncoder.searchIndex.encode(document.projection.paragraphs))
         return SHA256.hash(data: material)
             .map { String(format: "%02x", $0) }
             .joined()
@@ -1694,8 +1505,8 @@ public actor TriptychSearchIndex {
                 stable_note_id, title, normalized_title, title_key, filename_key, path_key,
                 fingerprint_sha256, fingerprint_byte_count, evidential_layer,
                 callout_roles, has_broken_link, projection_hash, line_starts,
-                source_utf16_count
-            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                source_utf16_count, property_issues, paragraphs, paragraphs_complete
+            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
             """,
             bindings: [
                 .text(documentKey(vaultID: item.vaultID, path: item.relativePath)),
@@ -1716,6 +1527,9 @@ public actor TriptychSearchIndex {
                 .text(try indexedProjectionHash(item)),
                 .text(lineStarts),
                 .int(item.document.rawContent.utf16.count),
+                .text(String(decoding: try JSONEncoder.searchIndex.encode(item.propertyProjection.issues), as: UTF8.self)),
+                .text(String(decoding: try JSONEncoder.searchIndex.encode(projection.paragraphs), as: UTF8.self)),
+                .int(item.document.hasProvableBodyBoundary ? 1 : 0),
             ]
         )
         let documentID = database.lastInsertRowID
@@ -1899,7 +1713,10 @@ public actor TriptychSearchIndex {
                 has_broken_link INTEGER NOT NULL,
                 projection_hash TEXT NOT NULL,
                 line_starts TEXT NOT NULL,
-                source_utf16_count INTEGER NOT NULL
+                source_utf16_count INTEGER NOT NULL,
+                property_issues TEXT NOT NULL,
+                paragraphs TEXT NOT NULL,
+                paragraphs_complete INTEGER NOT NULL
             );
             CREATE INDEX search_documents_vault ON search_documents(vault_id);
             CREATE INDEX search_documents_title_key ON search_documents(title_key);
@@ -2022,12 +1839,32 @@ public actor TriptychSearchIndex {
         }
     }
 
+    private static func decodeParagraphs(_ json: String?, sourceUTF16Count: Int) throws -> [SearchParagraphProjection] {
+        let paragraphs = try decodeGeneratedJSON([SearchParagraphProjection].self, from: json)
+        for paragraph in paragraphs {
+            let range = paragraph.range
+            guard range.utf16LowerBound >= 0, range.utf16UpperBound <= sourceUTF16Count,
+                range.utf16LowerBound < range.utf16UpperBound, range.line > 0, range.endLine >= range.line,
+                range.column > 0, range.endColumn > 0
+            else { throw SearchIndexError.corruptDatabase }
+            for segment in paragraph.segments {
+                guard
+                    valid(
+                        offsets: segment.offsetMap, normalizedUTF16Count: segment.normalizedText.utf16.count,
+                        sourceUTF16Bounds: segment.sourceRange.map { (lower: $0.utf16LowerBound, upper: $0.utf16UpperBound) },
+                        sourceUTF16Count: sourceUTF16Count)
+                else { throw SearchIndexError.corruptDatabase }
+            }
+        }
+        return paragraphs
+    }
+
     private static func validateGeneratedJSON(
         in database: SearchSQLiteDatabase
     ) throws {
         try Task.checkCancellation()
         try database.query(
-            "SELECT line_starts, source_utf16_count FROM search_documents;"
+            "SELECT line_starts, source_utf16_count, paragraphs, paragraphs_complete FROM search_documents;"
         ) { row in
             try Task.checkCancellation()
             let lineStarts = try decodeGeneratedJSON(
@@ -2035,6 +1872,8 @@ public actor TriptychSearchIndex {
                 from: row.text(at: 0)
             )
             let sourceUTF16Count = row.int(at: 1)
+            _ = try decodeParagraphs(row.text(at: 2), sourceUTF16Count: sourceUTF16Count)
+            guard [0, 1].contains(row.int(at: 3)) else { throw SearchIndexError.corruptDatabase }
             guard sourceUTF16Count >= 0,
                 lineStarts.first == 0,
                 lineStarts.last.map({ $0 <= sourceUTF16Count }) == true,
@@ -2246,8 +2085,11 @@ private struct StoredSearchDocument {
     let evidentialLayer: EvidentialLayer
     let roleOrder: Int
     let sourceLineStarts: [Int]
-    let segments: [SearchTextSegment]
+    var segments: [SearchTextSegment]
+    let paragraphs: [SearchParagraphProjection]
+    let paragraphsAreComplete: Bool
     let properties: [SearchPropertyProjection.Entry]
+    let propertyIssues: [SearchPropertyProjection.Issue]
 
     var noteID: VaultQualifiedNoteID {
         VaultQualifiedNoteID(vaultID: vaultID, relativePath: relativePath)
@@ -2599,30 +2441,61 @@ private enum RelatedContentSeedTermExtractor {
 }
 
 private enum SearchMatcher {
-    static func satisfies(
-        _ ast: SearchQueryAST,
-        document: StoredSearchDocument,
-        linkMatches: [VaultQualifiedNoteID: SearchLinkMatch]
-    ) -> Bool {
-        ast.clauses.allSatisfy { clause in
+    static func evaluate(
+        _ ast: SearchQueryAST, document: StoredSearchDocument,
+        linkMatches: [SearchLinkQuery: SearchLinkResolution]
+    ) -> SearchEvaluation {
+        ast.expression.evaluate { clause in
             switch clause {
             case .lexical(let lexical):
-                let matched = matchingSegments(for: lexical, in: document).contains {
-                    !occurrences(of: lexical.value, in: $0.normalizedText).isEmpty
-                }
-                return lexical.excluded ? !matched : matched
+                return matchingSegments(for: lexical, in: document).contains { !occurrences(of: lexical.value, in: $0.normalizedText).isEmpty } ? .yes : .no
             case .structured(let structured):
-                let matched: Bool =
-                    switch structured.field {
-                    case .callout: document.calloutRoles.contains(structured.value)
-                    case .has: structured.value == "broken-link" && document.hasBrokenLink
-                    }
-                return structured.excluded ? !matched : matched
+                switch structured.field {
+                case .callout: return document.calloutRoles.contains(structured.value) ? .yes : .no
+                case .has: return structured.value == "broken-link" && document.hasBrokenLink ? .yes : .no
+                }
             case .property(let property):
-                return propertyMatch(property, in: document) != nil
-            case .link:
-                return linkMatches[document.noteID] != nil
+                let ambiguous = document.propertyIssues.contains { issue in
+                    switch issue {
+                    case .invalidYAML, .nonMappingRoot, .unboundedKey: true
+                    case .duplicateKey(let key): key == property.key
+                    case .unboundedScalarValue: false
+                    }
+                }
+                if ambiguous { return .unknown }
+                if propertyMatch(property, in: document) != nil { return .yes }
+                if property.value != nil, document.propertyIssues.contains(.unboundedScalarValue(property.key)) { return .unknown }
+                return .no
+            case .paragraph(let query):
+                if !paragraphWitnesses(query, document: document).isEmpty { return .yes }
+                return document.paragraphsAreComplete ? .no : .unknown
+            case .link(let query):
+                guard let resolved = linkMatches[query] else { return .unknown }
+                if resolved.matches[document.noteID] != nil { return .yes }
+                return resolved.indeterminateNotes.contains(document.noteID) ? .unknown : .no
             }
+        }
+    }
+
+    struct ParagraphWitness {
+        let range: SearchSourceRange
+        let document: StoredSearchDocument
+        let ast: SearchQueryAST
+    }
+    static func paragraphWitnesses(_ ast: SearchQueryAST, document: StoredSearchDocument) -> [ParagraphWitness] {
+        ast.positiveParagraphQueries.flatMap { paragraphWitnesses($0, document: document) }
+    }
+    static func paragraphWitnesses(_ query: SearchParagraphQuery, document: StoredSearchDocument) -> [ParagraphWitness] {
+        document.paragraphs.compactMap { paragraph in
+            let evaluation = query.expression.evaluate { clause in
+                guard case .lexical(let value) = clause else { return .unknown }
+                return paragraph.segments.contains { !occurrences(of: value.value, in: $0.normalizedText).isEmpty } ? .yes : .no
+            }
+            guard evaluation.truth == .yes else { return nil }
+            var local = document
+            local.segments = paragraph.segments
+            let ast = SearchQueryAST(provider: .note, providerWasExplicit: false, expression: query.expression, identityNeedle: nil).matched(by: evaluation)
+            return ParagraphWitness(range: paragraph.range, document: local, ast: ast)
         }
     }
 
@@ -2692,6 +2565,11 @@ private enum SearchMatcher {
                 if !fields.contains(segment.field) { fields.append(segment.field) }
             }
         }
+        for paragraph in paragraphWitnesses(ast, document: document) {
+            for field in matchedFields(ast: paragraph.ast, document: paragraph.document) where !fields.contains(field) {
+                fields.append(field)
+            }
+        }
         if fields.isEmpty, ast.isFilterOnly {
             for clause in ast.clauses {
                 let field: SearchMatchedField?
@@ -2703,6 +2581,8 @@ private enum SearchMatcher {
                         case .has: .brokenLink
                         }
                 case .property, .link:
+                    field = .title
+                case .paragraph:
                     field = .title
                 case .lexical:
                     field = nil
@@ -2832,16 +2712,20 @@ private enum NoteSearchResultBuilder {
         candidate: SearchCandidate,
         ast: SearchQueryAST,
         freshness: SearchFreshnessToken,
-        linkMatch: SearchLinkMatch?
+        linkMatches: [SearchLinkQuery: SearchLinkResolution]
     ) -> NoteSearchResult {
         let document = candidate.document
         let matchedFields = SearchMatcher.matchedFields(ast: ast, document: document)
         let primary = matchedFields.first ?? .title
-        let matched = firstMatch(ast: ast, document: document, preferredField: primary)
+        let paragraphs = SearchMatcher.paragraphWitnesses(ast, document: document)
+        let paragraphLead = paragraphs.first
+        let snippetAST = ast.positiveLexicalClauses.isEmpty ? (paragraphLead?.ast ?? ast) : ast
+        let snippetDocument = ast.positiveLexicalClauses.isEmpty ? (paragraphLead?.document ?? document) : document
+        let matched = firstMatch(ast: snippetAST, document: snippetDocument, preferredField: primary)
         let reasons = matchReasons(
             ast: ast,
             document: document,
-            linkMatch: linkMatch
+            linkMatches: linkMatches
         )
         let property = reasons.compactMap { reason -> SearchPropertyMatch? in
             guard case .property(let value) = reason else { return nil }
@@ -2852,7 +2736,7 @@ private enum NoteSearchResultBuilder {
             presentation = snippet(
                 segment: matched.segment,
                 normalizedRange: matched.range,
-                positiveClauses: ast.positiveLexicalClauses
+                positiveClauses: snippetAST.positiveLexicalClauses
             )
         } else if let property,
             let entry = document.properties.first(where: {
@@ -2895,6 +2779,7 @@ private enum NoteSearchResultBuilder {
             rankReason: reason,
             primaryMatchReason: reasons.first ?? .lexical,
             additionalMatchReasons: Array(reasons.dropFirst()),
+            paragraphRanges: Array(Set(paragraphs.map(\.range))).sorted { $0.utf16LowerBound < $1.utf16LowerBound },
             sourceRange: sourceRange,
             freshnessToken: freshness,
             fingerprint: document.fingerprint,
@@ -2906,84 +2791,105 @@ private enum NoteSearchResultBuilder {
     static func occurrenceHits(
         candidate: SearchCandidate,
         ast: SearchQueryAST,
-        lead: SearchLexicalClause,
         freshness: SearchFreshnessToken,
         limit: Int,
-        linkMatch: SearchLinkMatch?
+        linkMatches: [SearchLinkQuery: SearchLinkResolution]
     ) -> [NoteSearchResult] {
         let document = candidate.document
         let matchedFields = SearchMatcher.matchedFields(ast: ast, document: document)
         let reasons = matchReasons(
             ast: ast,
             document: document,
-            linkMatch: linkMatch
+            linkMatches: linkMatches
         )
         var hits: [NoteSearchResult] = []
-        for segment in SearchMatcher.matchingSegments(for: lead, in: document) {
-            for range in SearchMatcher.occurrences(of: lead.value, in: segment.normalizedText) {
-                guard hits.count < limit else { return hits }
-                let sourceRange = sourceRange(
-                    for: range,
-                    segment: segment,
-                    lineStarts: document.sourceLineStarts
-                )
-                let presentation = snippet(
-                    segment: segment,
-                    normalizedRange: range,
-                    positiveClauses: ast.positiveLexicalClauses
-                )
-                hits.append(
-                    NoteSearchResult(
-                        resultID: "\(document.vaultID.uuidString.lowercased()):\(document.relativePath):\(sourceRange?.utf16LowerBound ?? segment.ordinal)",
-                        vaultID: document.vaultID,
-                        vaultName: document.vaultName,
-                        vaultRole: document.vaultRole,
-                        relativePath: document.relativePath,
-                        stableNoteID: document.stableNoteID,
-                        title: document.title,
-                        matchedField: segment.field,
-                        context: context(for: segment.field),
-                        sourceLine: sourceRange?.line ?? 1,
-                        snippet: presentation.text,
-                        highlights: presentation.highlights,
-                        matchedFields: matchedFields,
-                        rankReason: rankReason(candidate.identityPriority, filterOnly: ast.isFilterOnly),
-                        primaryMatchReason: reasons.first ?? .lexical,
-                        additionalMatchReasons: Array(reasons.dropFirst()),
-                        sourceRange: sourceRange,
-                        freshnessToken: freshness,
-                        fingerprint: document.fingerprint,
-                        evidentialLayer: document.evidentialLayer,
-                        classification: .retrievalLead
-                    ))
+        for lead in ast.positiveLexicalClauses {
+            for segment in SearchMatcher.matchingSegments(for: lead, in: document) {
+                for range in SearchMatcher.occurrences(of: lead.value, in: segment.normalizedText) {
+                    let sourceRange = sourceRange(
+                        for: range,
+                        segment: segment,
+                        lineStarts: document.sourceLineStarts
+                    )
+                    let presentation = snippet(
+                        segment: segment,
+                        normalizedRange: range,
+                        positiveClauses: ast.positiveLexicalClauses
+                    )
+                    hits.append(
+                        NoteSearchResult(
+                            resultID:
+                                "\(document.vaultID.uuidString.lowercased()):\(document.relativePath):\(sourceRange?.utf16LowerBound ?? segment.ordinal):\(sourceRange?.utf16UpperBound ?? segment.ordinal)",
+                            vaultID: document.vaultID,
+                            vaultName: document.vaultName,
+                            vaultRole: document.vaultRole,
+                            relativePath: document.relativePath,
+                            stableNoteID: document.stableNoteID,
+                            title: document.title,
+                            matchedField: segment.field,
+                            context: context(for: segment.field),
+                            sourceLine: sourceRange?.line ?? 1,
+                            snippet: presentation.text,
+                            highlights: presentation.highlights,
+                            matchedFields: matchedFields,
+                            rankReason: rankReason(candidate.identityPriority, filterOnly: ast.isFilterOnly),
+                            primaryMatchReason: reasons.first ?? .lexical,
+                            additionalMatchReasons: Array(reasons.dropFirst()),
+                            sourceRange: sourceRange,
+                            freshnessToken: freshness,
+                            fingerprint: document.fingerprint,
+                            evidentialLayer: document.evidentialLayer,
+                            classification: .retrievalLead
+                        ))
+                }
             }
         }
-        return hits
+        for paragraph in SearchMatcher.paragraphWitnesses(ast, document: document) {
+            let local = SearchCandidate(document: paragraph.document, identityPriority: 0, lexicalRank: candidate.lexicalRank)
+            hits.append(contentsOf: occurrenceHits(candidate: local, ast: paragraph.ast, freshness: freshness, limit: limit, linkMatches: linkMatches))
+        }
+        var seen: Set<String> = []
+        return Array(
+            hits.sorted {
+                ($0.sourceRange?.utf16LowerBound ?? 0, $0.sourceRange?.utf16UpperBound ?? 0) < (
+                    $1.sourceRange?.utf16LowerBound ?? 0, $1.sourceRange?.utf16UpperBound ?? 0
+                )
+            }.filter { seen.insert($0.resultID).inserted }.prefix(limit))
     }
 
     private static func matchReasons(
         ast: SearchQueryAST,
         document: StoredSearchDocument,
-        linkMatch: SearchLinkMatch?
+        linkMatches: [SearchLinkQuery: SearchLinkResolution]
     ) -> [NoteSearchMatchReason] {
         var reasons: [NoteSearchMatchReason] = []
         if !ast.positiveLexicalClauses.isEmpty { reasons.append(.lexical) }
-        for clause in ast.clauses {
+        for predicate in ast.expression.predicates {
+            let clause = predicate.clause
+            if predicate.excluded {
+                if case .structured(let value) = clause {
+                    reasons.append(.structured(SearchStructuredMatch(field: value.field, value: value.value, excluded: true)))
+                } else {
+                    reasons.append(.excluded(clause))
+                }
+                continue
+            }
             switch clause {
+            case .paragraph(let value): reasons.append(.paragraph(value))
             case .structured(let value):
                 reasons.append(
                     .structured(
                         SearchStructuredMatch(
                             field: value.field,
                             value: value.value,
-                            excluded: value.excluded
+                            excluded: false
                         )))
             case .property(let value):
                 if let match = SearchMatcher.propertyMatch(value, in: document) {
                     reasons.append(.property(match))
                 }
-            case .link:
-                if let linkMatch {
+            case .link(let query):
+                if let linkMatch = linkMatches[query]?.matches[document.noteID] {
                     reasons.append(.link(linkMatch))
                 }
             case .lexical:

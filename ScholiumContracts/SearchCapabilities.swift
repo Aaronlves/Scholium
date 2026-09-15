@@ -73,7 +73,7 @@ public struct SearchCapabilities: Codable, Hashable, Sendable {
         else { return [] }
         guard scope == .thisNote else { return capability.fields }
         return capability.fields.filter {
-            $0.name == "kind" || SearchLexicalField(rawValue: $0.name) != nil
+            $0.name == "kind" || $0.name == "paragraph" || SearchLexicalField(rawValue: $0.name) != nil
         }
     }
 
@@ -85,7 +85,10 @@ public struct SearchCapabilities: Codable, Hashable, Sendable {
                 fields: noteFields,
                 scopes: SearchPresentationScope.visibleModes,
                 examples: [
-                    #"title:"reflective equilibrium" autonomy"#,
+                    #"title:(emotion OR fittingness) AND body:reason*"#,
+                    #"paragraph:((emotion OR feeling) AND reason*)"#,
+                    #"(property:status=draft OR property:status=revised) NOT has:broken-link"#,
+                    #"from-note:"Groundwork" AND NOT to-note:"Agency""#,
                     #"property:language="Greek""#,
                     #"property:keywords="practical reason""#,
                     #"property:"研究问题"="行动理由""#,
@@ -94,6 +97,14 @@ public struct SearchCapabilities: Codable, Hashable, Sendable {
             )
         ]
     )
+
+    public var booleanQueryHelp: String {
+        "Use uppercase AND, OR and unary NOT (or -), with parentheses; whitespace means AND. "
+            + "Precedence is NOT, AND, OR. Text and canonical fields accept inherited groups such as title:(emotion OR fittingness). "
+            + "paragraph:(emotion AND reason*) requires both conditions within one top-level ordinary body paragraph; only unfielded text is allowed inside, with a positive condition in every alternative. "
+            + "Combine complete property and direct-link conditions with Boolean operators. "
+            + "Invalid syntax or unresolved link identities fail the whole query; indeterminate source data never proves an exclusion."
+    }
 
     /// Shared operator semantics for Search completion and the MCP query parameter.
     public var propertyQueryHelp: String {
@@ -107,13 +118,16 @@ public struct SearchCapabilities: Codable, Hashable, Sendable {
     private static let noteFields: [SearchFieldCapability] =
         [
             SearchFieldCapability(
+                name: "paragraph", valueKind: .lexical, allowsPhrase: true, allowsPrefix: true, allowsExclusion: true
+            ),
+            SearchFieldCapability(
                 name: "kind",
                 valueKind: .canonical,
                 allowedValues: SearchProvider.allCases.map(\.rawValue),
                 allowsPhrase: false,
                 allowsPrefix: false,
                 allowsExclusion: false
-            )
+            ),
         ]
         + SearchLexicalField.allCases.map {
             SearchFieldCapability(
@@ -145,21 +159,21 @@ public struct SearchCapabilities: Codable, Hashable, Sendable {
                 valueKind: .property,
                 allowsPhrase: true,
                 allowsPrefix: false,
-                allowsExclusion: false
+                allowsExclusion: true
             ),
             SearchFieldCapability(
                 name: SearchLinkDirection.fromNote.rawValue,
                 valueKind: .noteIdentity,
                 allowsPhrase: true,
                 allowsPrefix: false,
-                allowsExclusion: false
+                allowsExclusion: true
             ),
             SearchFieldCapability(
                 name: SearchLinkDirection.toNote.rawValue,
                 valueKind: .noteIdentity,
                 allowsPhrase: true,
                 allowsPrefix: false,
-                allowsExclusion: false
+                allowsExclusion: true
             ),
         ]
 

@@ -35,6 +35,7 @@ struct DiscoverySearchState: Equatable, Sendable {
     var availability: SearchAvailability = .unavailable
     var diagnostics: [SearchQueryDiagnostic] = []
     var hasMore = false
+    var indeterminateDocumentCount = 0
     var executionIssue: SearchExecutionIssue?
     var isRunning = false
 }
@@ -416,6 +417,7 @@ final class DiscoveryController: ObservableObject {
         search.results = []
         search.diagnostics = []
         search.hasMore = false
+        search.indeterminateDocumentCount = 0
         search.executionIssue = nil
         search.isRunning = false
         switch invocation {
@@ -425,31 +427,6 @@ final class DiscoveryController: ObservableObject {
             search.ordinaryScope = previousScope
             search.criteria.scope = .thisNote
         }
-    }
-
-    /// Installs a stale Saved Search as visible, editable plain text without
-    /// executing it under a newer contract. Editing the query clears this
-    /// diagnostic through the ordinary invalidation path.
-    func presentSavedSearchForEditing(
-        _ definition: SearchDefinition,
-        diagnostic: SearchQueryDiagnostic
-    ) {
-        activeSearchRequestID = nil
-        search.invocation = .general
-        search.criteria = SearchWorkspaceState(
-            query: definition.query,
-            scope: definition.presentationScope
-        )
-        search.ordinaryScope = definition.presentationScope
-        search.explanation = nil
-        search.results = []
-        search.selectedResultID = nil
-        search.responseRequestID = nil
-        search.freshnessToken = nil
-        search.diagnostics = [diagnostic]
-        search.hasMore = false
-        search.executionIssue = nil
-        search.isRunning = false
     }
 
     /// Dismissal retains only the ordinary scope. Query, selection, results,
@@ -513,6 +490,7 @@ final class DiscoveryController: ObservableObject {
         search.results = []
         search.diagnostics = []
         search.hasMore = false
+        search.indeterminateDocumentCount = 0
         search.executionIssue = nil
         search.isRunning = !search.criteria.query
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -535,6 +513,7 @@ final class DiscoveryController: ObservableObject {
             search.explanation = nil
             search.diagnostics = []
             search.hasMore = false
+            search.indeterminateDocumentCount = 0
             search.isRunning = !canonicalCriteria.query
                 .trimmingCharacters(in: .whitespacesAndNewlines)
                 .isEmpty
@@ -559,6 +538,7 @@ final class DiscoveryController: ObservableObject {
             search.availability = response.availability
             search.diagnostics = response.diagnostics
             search.hasMore = response.hasMore
+            search.indeterminateDocumentCount = response.indeterminateDocumentCount
             search.executionIssue = nil
             search.isRunning = false
         }
@@ -593,6 +573,7 @@ final class DiscoveryController: ObservableObject {
             search.explanation = nil
             search.diagnostics = []
             search.hasMore = false
+            search.indeterminateDocumentCount = 0
             search.executionIssue = issue
             search.isRunning = false
         }

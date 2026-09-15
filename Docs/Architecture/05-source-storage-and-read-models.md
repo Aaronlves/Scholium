@@ -136,10 +136,20 @@ proves source ranges, refusing ambiguous keys or unbounded scalar tokens.
 aliases, author text and publication date. These are discovery projections,
 not bibliographic validation or writable source.
 
-Search contract 18 and disposable schema 16 use the existing `property:`
+Search contract 20 and disposable schema 18 use the existing `property:`
 grammar with quoted literal keys and normalized scalar/direct-list equality.
-All property rows come from source; no source-kind discriminator or managed
-record refresh path remains. Rebuild and incremental publication consume the
+All property rows and persisted projection-completeness issues come from source.
+`SearchDocumentProjection` also derives top-level paragraph text, exact offset maps and
+ranges. The index stores the complete paragraph projections and body-completeness flag;
+negation never evaluates a cropped passage. Generated paragraph bounds are validated
+against the indexed source size. `SearchTermGroupStore` owns the app-local versioned
+`search-term-groups.json` beside Saved Searches, using bounded reads, group-level
+preimage comparison and atomic persistence through WorkspaceRuntime. It stores literal
+input alternatives, not ASTs or hidden query expansion.
+No source-kind discriminator or managed record refresh path remains. Incompatible
+indexes rebuild; Saved Search decoding accepts only the current contract. Unsupported
+definitions use the existing unreadable-store protection without migration or a
+version-specific execution path. Rebuild and incremental publication consume the
 same exact-source manifests. User YAML cannot assign stable identity or Settle.
 
 Managed creation takes complete authored Markdown and preserves its bytes.

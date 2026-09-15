@@ -1,11 +1,11 @@
 import Foundation
 import ScholiumContracts
 
-/// Resolves one direct authored-link clause against the current graph
+/// Resolves each direct authored-link predicate against the current graph
 /// without copying edges into the lexical index.
 enum NoteLinkSearchResolver {
     struct Resolution: Sendable {
-        let matches: [VaultQualifiedNoteID: SearchLinkMatch]
+        let matches: [SearchLinkQuery: SearchLinkResolution]
         let diagnostic: SearchQueryDiagnostic?
 
         static let notRequested = Resolution(matches: [:], diagnostic: nil)
@@ -15,33 +15,40 @@ enum NoteLinkSearchResolver {
         ast: SearchQueryAST,
         scope: SearchExecutionScope,
         catalog: WorkspaceCatalogSnapshot,
-        searchGeneration: SearchGenerationID?
+        searchGeneration: SearchGenerationID?,
+        includedVaultIDs: [UUID]? = nil
     ) -> Resolution {
-        guard let query = ast.linkQuery else { return .notRequested }
-        guard case .currentNote = scope else {
-            return resolveAuthorized(
-                query: query,
-                scope: scope,
-                catalog: catalog,
-                searchGeneration: searchGeneration
-            )
+        guard !ast.linkQueries.isEmpty else { return .notRequested }
+        if case .currentNote = scope {
+            return Resolution(
+                matches: [:],
+                diagnostic: diagnostic(
+                    .notApplicable,
+                    "Direct link clauses are not applicable to This Note occurrence Search.", range: ast.linkQueries[0].sourceRange))
         }
-        return Resolution(
-            matches: [:],
-            diagnostic: diagnostic(
-                .notApplicable,
-                "Direct link clauses are not applicable to This Note occurrence Search.",
-                range: query.sourceRange
-            ))
+        var resolutions: [SearchLinkQuery: SearchLinkResolution] = [:]
+        for query in ast.linkQueries {
+            let result = resolveAuthorized(query: query, scope: scope, catalog: catalog, searchGeneration: searchGeneration, includedVaultIDs: includedVaultIDs)
+            if let issue = result.diagnostic { return Resolution(matches: [:], diagnostic: issue) }
+            resolutions[query] = SearchLinkResolution(matches: result.matches, indeterminateNotes: result.indeterminateNotes)
+        }
+        return Resolution(matches: resolutions, diagnostic: nil)
+    }
+
+    private struct AnchorResolution {
+        let matches: [VaultQualifiedNoteID: SearchLinkMatch]
+        let diagnostic: SearchQueryDiagnostic?
+        var indeterminateNotes: Set<VaultQualifiedNoteID> = []
     }
 
     private static func resolveAuthorized(
         query: SearchLinkQuery,
         scope: SearchExecutionScope,
         catalog: WorkspaceCatalogSnapshot,
-        searchGeneration: SearchGenerationID?
-    ) -> Resolution {
-        let authorizedNotes = notes(in: scope, catalog: catalog)
+        searchGeneration: SearchGenerationID?,
+        includedVaultIDs: [UUID]?
+    ) -> AnchorResolution {
+        let authorizedNotes = notes(in: scope, catalog: catalog).filter { includedVaultIDs?.contains($0.reference.vaultID) ?? true }
         let normalizedIdentity = SearchTextNormalization.normalize(query.noteIdentity)
         let anchors = authorizedNotes.filter { note in
             identities(of: note).contains {
@@ -50,7 +57,7 @@ enum NoteLinkSearchResolver {
         }
         guard anchors.count == 1, let anchor = anchors.first else {
             if anchors.isEmpty {
-                return Resolution(
+                return AnchorResolution(
                     matches: [:],
                     diagnostic: diagnostic(
                         .notApplicable,
@@ -61,7 +68,7 @@ enum NoteLinkSearchResolver {
             let candidates = anchors.map {
                 "\($0.reference.vaultName)/\($0.reference.relativePath)"
             }.sorted().joined(separator: ", ")
-            return Resolution(
+            return AnchorResolution(
                 matches: [:],
                 diagnostic: diagnostic(
                     .ambiguousIdentity,
@@ -73,7 +80,7 @@ enum NoteLinkSearchResolver {
             let searchGeneration,
             graph.sourceManifestHash == searchGeneration.sourceManifestHash
         else {
-            return Resolution(
+            return AnchorResolution(
                 matches: [:],
                 diagnostic: diagnostic(
                     .notApplicable,
@@ -118,7 +125,15 @@ enum NoteLinkSearchResolver {
                 occurrences: occurrences
             )
         }
-        return Resolution(matches: matches, diagnostic: nil)
+        func hasUnresolvedLinks(_ note: VaultQualifiedNoteID) -> Bool {
+            (graph.outgoing[note] ?? []).contains { !$0.occurrence.isExternal && $0.destination == nil }
+        }
+        let indeterminate: Set<VaultQualifiedNoteID>
+        switch query.direction {
+        case .fromNote: indeterminate = hasUnresolvedLinks(anchorID) ? authorizedIDs.subtracting([anchorID]) : []
+        case .toNote: indeterminate = Set(authorizedIDs.filter { $0 != anchorID && hasUnresolvedLinks($0) })
+        }
+        return AnchorResolution(matches: matches, diagnostic: nil, indeterminateNotes: indeterminate)
     }
 
     private static func notes(

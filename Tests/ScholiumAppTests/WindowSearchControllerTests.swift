@@ -42,9 +42,11 @@ struct WindowSearchControllerTests {
                 freshnessToken: .triptych(generation),
                 availability: .current(generation),
                 results: [],
-                hasMore: false
+                hasMore: false,
+                indeterminateDocumentCount: 2
             ), for: request)
 
+        #expect(discovery.search.indeterminateDocumentCount == 2)
         #expect(invalidations == 1)
         #expect(!discovery.search.isRunning)
         observation.cancel()
@@ -286,70 +288,41 @@ struct WindowSearchControllerTests {
         #expect(discovery.search.executionIssue != nil)
     }
 
-    @Test("Saved Searches from another Search contract require editing")
-    func savedSearchContractMismatch() {
+    @Test("Current Saved Search runs through ordinary Search without a review step")
+    func currentSavedSearchRuns() async {
         let saved = SavedSearch(
-            name: "Old semantics",
+            name: "Emotion and reasons",
             definition: SearchDefinition(
-                contractVersion: SearchContract.currentVersion - 1,
-                query: "kind:unsupported participant:researcher",
-                presentationScope: .triptych
-            )
-        )
-
-        let diagnostic = saved.needsEditingDiagnostic
-        #expect(diagnostic?.code == .needsEditing)
-        #expect(diagnostic?.needsEditing == true)
-        #expect(diagnostic?.utf16UpperBound == saved.definition.query.utf16.count)
-    }
-
-    @Test("A stale Saved Search opens for editing without executing")
-    func staleSavedSearchOpensForEditing() async {
-        let rawQuery = "kind:unsupported participant:researcher"
-        let saved = SavedSearch(
-            name: "Old contract",
-            definition: SearchDefinition(
-                contractVersion: SearchContract.currentVersion - 1,
-                query: rawQuery,
+                query: "paragraph:((情绪 OR emotion) AND reason)",
                 presentationScope: .currentVault
             )
         )
         let discovery = DiscoveryController()
         let probe = WindowSearchPresentationProbe()
-        var executionContextCallCount = 0
+        var requestedStates: [SearchWorkspaceState] = []
         let controller = WindowSearchController(
             discoveryController: discovery,
             dependencies: dependencies(
-                executionContext: { _ in
-                    executionContextCallCount += 1
+                executionContext: { state in
+                    requestedStates.append(state)
                     return DiscoverySearchExecutionContext(
-                        workspaceIsAvailable: true,
+                        workspaceIsAvailable: false,
                         currentNoteSnapshot: nil,
-                        currentVaultID: UUID()
+                        currentVaultID: nil
                     )
                 },
                 reportInformation: { probe.informationMessages.append($0) }
             )
         )
-
         controller.run(saved)
-        await controller.waitForPendingWorkForTesting()
-
+        await controller.refresh()
         #expect(controller.presentation != .inactive)
-        #expect(controller.criteria.query == rawQuery)
+        #expect(controller.criteria.query == saved.definition.query)
         #expect(controller.criteria.scope == .currentVault)
-        #expect(discovery.search.diagnostics.first?.code == .needsEditing)
-        #expect(discovery.search.diagnostics.first?.needsEditing == true)
-        #expect(probe.informationMessages.count == 1)
-        #expect(executionContextCallCount == 0)
-        #expect(!discovery.search.isRunning)
-        #expect(discovery.search.results.isEmpty)
-
-        discovery.updateSearchQuery("kind:note title:agency")
-
-        #expect(discovery.search.diagnostics.isEmpty)
-        #expect(discovery.search.isRunning)
-        #expect(executionContextCallCount == 0)
+        #expect(!requestedStates.isEmpty)
+        #expect(requestedStates.allSatisfy { $0 == controller.criteria })
+        #expect(probe.informationMessages.isEmpty)
+        controller.dismiss()
     }
 
     @Test("Search completion replaces only plain query text and follows Note capabilities")
@@ -428,7 +401,7 @@ struct WindowSearchControllerTests {
             provider: provider,
             providerWasExplicit: explicit,
             scope: scope,
-            clauses: []
+            expression: .and([])
         )
     }
 }

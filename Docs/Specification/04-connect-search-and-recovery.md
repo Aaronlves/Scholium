@@ -64,7 +64,7 @@ Previous/Next, and standard keyboard routes. Edit and Source add Replace
 Current/All as single Undo transactions. Find creates no Search provider,
 index, saved query, or navigation history.
 
-Search operates on Notes. Optional `kind:note` makes that target explicit;
+Search operates on Notes. Optional leading `kind:note` makes that target explicit;
 unsupported kinds are invalid and never broaden retrieval. Query text never
 changes visible scope. App and Scholium MCP share one parser.
 
@@ -72,12 +72,51 @@ The Note provider uses one deterministic present-source corpus. It returns each
 occurrence for This Note and one row per Note for broader scopes. Its finite
 grammar supports:
 
-- space-as-AND, exact phrases, a trailing prefix `*`, and clause exclusion;
+- uppercase `AND`, `OR`, unary `NOT` or `-`, and parentheses, with precedence
+  NOT > AND > OR; whitespace between conditions means AND;
+- exact phrases and a trailing prefix `*`; quoted operators are literal text,
+  while lowercase operator words remain ordinary search terms;
 - lexical fields `title`, `alias`, `heading`, `summary`, `body`, `author`,
   `publication_date`, `keyword`, `footnote`, `link_annotation`, and `path`;
 - `callout` and `has:broken-link`;
 - `property:<key>` presence or exact scalar/list-member text equality; and
-- exactly one direct `from-note` or `to-note` anchor.
+- independently resolved direct `from-note` and `to-note` predicates.
+
+Lexical and canonical fields accept groups, such as `title:(意向性 OR intentionality)`
+and `callout:(cite OR flag)`. Every leaf inherits that field; an inner field override
+is invalid. Property and link alternatives combine complete predicates, for example
+`(property:status=draft OR property:status=revised) AND NOT to-note:Objection`.
+`kind:note` is a single global prefix, never a Boolean operand or scope override.
+
+Broad scopes allow pure exclusion. This Note admits lexical predicates and paragraph groups only and
+requires a positive lexical condition in every alternative after resolving negation.
+It returns all distinct positive occurrences from successful alternatives, ordered by
+exact source position; exclusions supply no invented occurrence.
+
+`paragraph:(E)` requires at least one ordinary top-level body paragraph satisfying E.
+The canonical Markdown parser supplies paragraph boundaries; visual wrapping and fixed
+text windows do not. Headings, lists, quotations, code, HTML, display mathematics,
+YAML, footnotes and embedded Note contents are outside this paragraph corpus. A link's
+own annotation text participates in its owning paragraph using the existing source
+projection. Inside a paragraph group, only unfielded text and Boolean composition are
+allowed, and every alternative must contain a positive text condition. Nested paragraph
+groups and Note-level fields are invalid. `paragraph:(A NOT B)` and
+`NOT paragraph:(A AND B)` retain their distinct existential meanings. Every predicate
+is checked against the complete paragraph, including its tail; excerpts never prove
+absence. Unprovable body boundaries yield unknown. This Note can return positive
+occurrences inside successful paragraph groups. Broader scopes retain one Note row
+with all distinct successful paragraph ranges and reveal locations in bounded batches.
+MCP pages those locators per returned Note independently of Note pagination.
+
+Term groups are researcher-owned input helpers stored locally with Search preferences,
+not inside research vaults. A named group contains 1–24 single-line literal alternatives;
+Insert Term Group writes an explicit quoted OR expression at a valid query caret.
+The entire insertion must parse before replacing the draft. Changing or deleting a
+group never changes existing query text or Saved Searches. The app neither infers
+synonymy from aliases nor translates or expands terms automatically. Names and terms
+are bounded to 80 and 512 UTF-16 units respectively; the collection holds at most 128
+groups. Edits compare the stored group with the version opened for editing; a changed
+or unreadable collection preserves its bytes and offers reload rather than overwrite.
 
 Property Search reads user-authored top-level YAML fields without requiring a
 field catalog, schema profile, or reserved research meaning. It never migrates
@@ -90,14 +129,25 @@ matching, including direct scalar members of mixed lists. Numeric and Boolean
 scalars match their decoded text spelling, not arithmetic or inferred dates.
 Nulls and containers support presence; mappings, aliases, nested members and
 unbounded scalars do not acquire invented equality values. Repeated decoded
-YAML keys are ambiguous and excluded. Invalid YAML creates no authored-property hits.
+YAML keys are ambiguous. Invalid or unclosed YAML, unbounded keys, and ambiguous
+requested keys yield unknown, not absence. Unbounded values yield unknown equality
+unless a known list member already proves a match.
 Authored YAML matches retain exact key/value source ranges. Query, indexing,
 completion and source navigation share that read-only projection.
 
-Unknown fields or values, malformed syntax, unsupported
-grouping/OR/regex/fuzzy/range syntax, CJK prefix use, and unsafe structured
-exclusion produce an inline diagnostic and never broaden retrieval. Queries
-are bounded before execution.
+Predicates evaluate to true, false or unknown. NOT preserves unknown; AND is false
+when any operand is false, otherwise unknown when any is unknown; OR is true when
+any operand is true, otherwise unknown when any is unknown. Only true Notes enter
+results. The response separately counts indeterminate authorized, eligible Notes;
+this is distinct from incomplete index availability. Unresolved authored links cannot
+prove the absence of a direct relation. Missing or ambiguous query anchor identities,
+or a Graph/Search manifest mismatch, reject the complete query, including OR branches.
+
+Unknown fields or canonical values, malformed syntax, regex/fuzzy/range syntax and
+CJK prefixes produce an inline diagnostic and never broaden retrieval. Queries are
+bounded to 16,384 UTF-16 units, 64 lexer tokens, and eight nested groups. A field/value
+clause is one token; operators and each parenthesis are separate tokens. Conditions
+require whitespace or explicit operators between them; quoted delimiters stay literal.
 
 Every Note result identifies its provider object, stable identity, exact source
 fingerprint, matched field/reason, and available locator/range.
@@ -106,10 +156,14 @@ Search indexes visible semantic text, valid link-annotation content, and canonic
 fields, not raw delimiters or link destinations. Annotation hits use the distinct
 `link_annotation` field, identify the owning occurrence and source range, and remain
 discovery candidates only: annotation prose never creates a predicate or a second edge.
-Exact filename Note title, alias, and path identity outrank lexical matches. An Analysis
-academic title remains a weighted `title` lexical match, not Note identity; normalized
-Note title, role order, and path provide stable ties. Results explain matched field and
-rank reason without exposing internal scores. CJK uses deterministic projection and
+For conjunctive queries, exact filename Note title, alias, and path identity outrank
+lexical matches. An OR expression does not concatenate alternatives into a fake identity.
+An Analysis academic title remains a weighted `title` lexical match, not Note identity.
+Only predicates from successful alternatives contribute match reasons, highlights and
+lexical rank; duplicate normalized predicates add no boost. Lexical contributions use
+one corpus and are summed before global limiting and pagination. Normalized Note title,
+role order, and path provide stable ties. Results explain matched field and rank reason
+without exposing internal scores. Exclusion-only results have no invented source range. CJK uses deterministic projection and
 substring verification.
 
 The versioned **Related-Content Retrieval** contract is an internal,
@@ -157,9 +211,10 @@ generation. Derived indexes remain disposable and never writable authority.
 The parser exposes one typed capability description used by completion, **Explain
 Query** and the MCP tool schema. Completion edits only visible query text.
 Saved Searches store only raw query, visible scope, and contract version; they store no
-AST, resolved identity, result, or generation. Changed semantics require **Needs
-Editing** rather than silent rewrite or execution. Invalid saved bytes remain unchanged
-and nonexecuting; a damaged Saved Search store has a confirmed archive-and-reset route
+AST, resolved identity, result, or generation. Only the current definition format is
+accepted; there is no compatibility, migration, or version-review workflow. Saved
+queries use the ordinary current parser and execution path. Unsupported or invalid
+saved bytes remain unchanged and nonexecuting; a damaged Saved Search store has a confirmed archive-and-reset route
 that never changes vault content.
 
 App and Scholium MCP consume the same result identity,

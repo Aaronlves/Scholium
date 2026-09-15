@@ -402,6 +402,12 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
         return updated
     }
 
+    func searchTermGroups() async throws -> [SearchTermGroup] { try await applicationRuntime.searchTermGroups() }
+    func saveSearchTermGroup(_ group: SearchTermGroup, replacing expected: SearchTermGroup?) async throws -> [SearchTermGroup] {
+        try await applicationRuntime.saveSearchTermGroup(group, replacing: expected)
+    }
+    func deleteSearchTermGroup(_ group: SearchTermGroup) async throws -> [SearchTermGroup] { try await applicationRuntime.deleteSearchTermGroup(group) }
+
     func savedSearches() async throws -> [SavedSearch] {
         try await applicationRuntime.savedSearches()
     }

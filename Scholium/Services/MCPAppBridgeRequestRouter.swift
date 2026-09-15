@@ -575,7 +575,7 @@ final class MCPAppBridgeRequestRouter {
         try requireOnly(
             arguments,
             keys: [
-                "triptych_id", "query", "roles", "limit", "offset",
+                "triptych_id", "query", "roles", "limit", "offset", "paragraph_limit", "paragraph_offset",
             ]
         )
         let triptychID = try requiredUUID(arguments["triptych_id"], name: "triptych_id")
@@ -598,6 +598,8 @@ final class MCPAppBridgeRequestRouter {
             default: 0,
             range: 0...Int.max
         )
+        let paragraphLimit = try boundedInteger(arguments["paragraph_limit"], name: "paragraph_limit", default: 10, range: 1...50)
+        let paragraphOffset = try boundedInteger(arguments["paragraph_offset"], name: "paragraph_offset", default: 0, range: 0...Int.max)
         let snapshot = try await currentSnapshot(triptychID: triptychID)
         let includedVaultIDs = try roleVaultIDs(
             arguments["roles"],
@@ -626,9 +628,20 @@ final class MCPAppBridgeRequestRouter {
                     "relative_path": .string(note.relativePath),
                     "title": .string(note.title),
                     "fingerprint": fingerprintValue(note.fingerprint),
-                    "match_reason": .string(note.matchedField.rawValue),
+                    "match_reasons": .array(Self.searchMatchReasons(note).map(MCPJSONValue.string)),
                     "rank_reason": .string(note.rankReason.rawValue),
                     "snippet": .string(note.snippet),
+                    "paragraphs": .object([
+                        "total": .integer(note.paragraphRanges.count), "offset": .integer(paragraphOffset), "limit": .integer(paragraphLimit),
+                        "has_more": .bool(paragraphOffset < note.paragraphRanges.count && paragraphLimit < note.paragraphRanges.count - paragraphOffset),
+                        "locators": .array(
+                            note.paragraphRanges.dropFirst(min(paragraphOffset, note.paragraphRanges.count)).prefix(paragraphLimit).map { range in
+                                .object([
+                                    "line": .integer(range.line), "column": .integer(range.column),
+                                    "end_line": .integer(range.endLine), "end_column": .integer(range.endColumn),
+                                ])
+                            }),
+                    ]),
                 ]
                 if let range = note.sourceRange {
                     value["source_locator"] = .object([
@@ -647,6 +660,7 @@ final class MCPAppBridgeRequestRouter {
                 "offset": .integer(noteOffset),
                 "limit": .integer(noteLimit),
                 "total": noteResponse.totalResultCount.map(MCPJSONValue.integer) ?? .null,
+                "indeterminate_notes": .integer(noteResponse.indeterminateDocumentCount),
                 "has_more": .bool(noteResponse.hasMore),
                 "results": .array(results),
             ])
@@ -656,6 +670,34 @@ final class MCPAppBridgeRequestRouter {
             "query": .string(query),
             "notes": noteGroup,
         ])
+    }
+
+    private static func searchMatchReasons(_ note: NoteSearchResult) -> [String] {
+        note.matchReasons.flatMap { reason -> [String] in
+            switch reason {
+            case .lexical: return note.matchedFields.map { "lexical:" + $0.rawValue }
+            case .paragraph(let query): return [SearchClause.paragraph(query).queryDescription]
+            case .excluded(let clause): return ["NOT (" + clause.queryDescription + ")"]
+            case .structured(let value):
+                return [(value.excluded ? "NOT " : "") + value.field.rawValue + ":" + value.value]
+            case .property(let value):
+                return [
+                    SearchClause.property(
+                        SearchPropertyClause(
+                            key: value.key, value: value.normalizedValue,
+                            valueWasQuoted: true, sourceRange: 0..<0)
+                    ).queryDescription
+                ]
+            case .link(let value):
+                return [
+                    SearchClause.link(
+                        SearchLinkQuery(
+                            direction: value.direction, noteIdentity: value.anchorIdentity,
+                            sourceRange: 0..<0)
+                    ).queryDescription
+                ]
+            }
+        }
     }
 
     private func readNote(

@@ -62,18 +62,15 @@ public enum SearchLexicalMatchKind: String, Codable, Hashable, Sendable {
 public struct SearchLexicalClause: Codable, Hashable, Sendable {
     public let field: SearchLexicalField?
     public let value: SearchLexicalValue
-    public let excluded: Bool
     public let sourceRange: Range<Int>
 
     public init(
         field: SearchLexicalField?,
         value: SearchLexicalValue,
-        excluded: Bool,
         sourceRange: Range<Int>
     ) {
         self.field = field
         self.value = value
-        self.excluded = excluded
         self.sourceRange = sourceRange
     }
 }
@@ -81,18 +78,15 @@ public struct SearchLexicalClause: Codable, Hashable, Sendable {
 public struct SearchStructuredClause: Codable, Hashable, Sendable {
     public let field: SearchStructuredField
     public let value: String
-    public let excluded: Bool
     public let sourceRange: Range<Int>
 
     public init(
         field: SearchStructuredField,
         value: String,
-        excluded: Bool,
         sourceRange: Range<Int>
     ) {
         self.field = field
         self.value = value
-        self.excluded = excluded
         self.sourceRange = sourceRange
     }
 }
@@ -134,15 +128,21 @@ public struct SearchLinkQuery: Codable, Hashable, Sendable {
     }
 }
 
-public enum SearchClause: Codable, Hashable, Sendable {
+public indirect enum SearchClause: Codable, Hashable, Sendable {
     case lexical(SearchLexicalClause)
     case structured(SearchStructuredClause)
     case property(SearchPropertyClause)
     case link(SearchLinkQuery)
+    case paragraph(SearchParagraphQuery)
 }
 
-public enum SearchExplanationOperator: String, Codable, Hashable, Sendable {
-    case and
+public struct SearchParagraphQuery: Codable, Hashable, Sendable {
+    public let expression: SearchExpression
+    public let sourceRange: Range<Int>
+    public init(expression: SearchExpression, sourceRange: Range<Int>) {
+        self.expression = expression
+        self.sourceRange = sourceRange
+    }
 }
 
 public enum SearchExplanationNormalization: String, Codable, Hashable, Sendable {
@@ -167,6 +167,7 @@ public enum SearchExplanationClauseKind: Codable, Hashable, Sendable {
     case structured(SearchStructuredField, String, Bool)
     case property(String, String?)
     case link(SearchLinkDirection, String)
+    case paragraph(SearchExpression)
 }
 
 public struct SearchExplanationClause: Codable, Hashable, Sendable {
@@ -183,8 +184,8 @@ public struct SearchExplanation: Codable, Hashable, Sendable {
     public let provider: SearchProvider
     public let providerWasExplicit: Bool
     public let scope: SearchPresentationScope
-    public let `operator`: SearchExplanationOperator
-    public let clauses: [SearchExplanationClause]
+    public let expression: SearchExpression
+    public var clauses: [SearchExplanationClause] { expression.predicates.map(\.explanation) }
     public let normalization: [SearchExplanationNormalization]
     public let ordering: SearchExplanationOrdering
     public let limitations: [SearchExplanationLimitation]
@@ -193,14 +194,12 @@ public struct SearchExplanation: Codable, Hashable, Sendable {
         provider: SearchProvider,
         providerWasExplicit: Bool,
         scope: SearchPresentationScope,
-        operator: SearchExplanationOperator = .and,
-        clauses: [SearchExplanationClause]
+        expression: SearchExpression
     ) {
         self.provider = provider
         self.providerWasExplicit = providerWasExplicit
         self.scope = scope
-        self.operator = `operator`
-        self.clauses = clauses
+        self.expression = expression
         self.normalization = Self.normalization(for: provider)
         self.ordering = .noteExactIdentityThenBM25ThenTitleRolePath
         self.limitations = [.authorizedScopeOnly, .retrievalLeadNotEvidence, .noteLinksDirectOnly]
@@ -221,91 +220,69 @@ public struct SearchExplanation: Codable, Hashable, Sendable {
 public struct SearchQueryAST: Codable, Hashable, Sendable {
     public let provider: SearchProvider
     public let providerWasExplicit: Bool
-    public let clauses: [SearchClause]
+    public let expression: SearchExpression
     public let identityNeedle: String?
 
-    public init(
-        provider: SearchProvider,
-        providerWasExplicit: Bool,
-        clauses: [SearchClause],
-        identityNeedle: String?
-    ) {
+    public init(provider: SearchProvider, providerWasExplicit: Bool, expression: SearchExpression, identityNeedle: String?) {
         self.provider = provider
         self.providerWasExplicit = providerWasExplicit
-        self.clauses = clauses
+        self.expression = expression
         self.identityNeedle = identityNeedle
     }
 
+    public var clauses: [SearchClause] { expression.predicates.map(\.clause) }
     public var positiveLexicalClauses: [SearchLexicalClause] {
-        clauses.compactMap {
-            guard case .lexical(let clause) = $0, !clause.excluded else { return nil }
+        expression.predicates.compactMap {
+            guard !$0.excluded, case .lexical(let clause) = $0.clause else { return nil }
             return clause
         }
     }
-
-    public var firstPositiveLexicalClause: SearchLexicalClause? {
-        positiveLexicalClauses.first
+    public var linkQueries: [SearchLinkQuery] {
+        clauses.compactMap { if case .link(let query) = $0 { query } else { nil } }
     }
-
-    public var linkQuery: SearchLinkQuery? {
-        clauses.compactMap {
-            guard case .link(let query) = $0 else { return nil }
-            return query
-        }.first
+    public var hasPropertyClause: Bool { clauses.contains { if case .property = $0 { true } else { false } } }
+    public var positiveParagraphQueries: [SearchParagraphQuery] {
+        expression.predicates.compactMap { if !$0.excluded, case .paragraph(let value) = $0.clause { value } else { nil } }
     }
-
-    public var hasPropertyClause: Bool {
-        clauses.contains {
-            if case .property = $0 { return true }
-            return false
-        }
+    public var rankingLexicalClauses: [SearchLexicalClause] {
+        positiveLexicalClauses
+            + positiveParagraphQueries.flatMap {
+                $0.expression.predicates.compactMap {
+                    if !$0.excluded, case .lexical(let clause) = $0.clause { clause } else { nil }
+                }
+            }
     }
+    public var isFilterOnly: Bool { positiveLexicalClauses.isEmpty && positiveParagraphQueries.isEmpty }
 
-    public var isFilterOnly: Bool {
-        guard !clauses.isEmpty else { return providerWasExplicit }
-        return clauses.allSatisfy { clause in
-            switch clause {
-            case .structured, .property, .link: true
-            case .lexical: false
+    public func scopeDiagnostic(scope: SearchPresentationScope, queryUTF16Count: Int) -> SearchQueryDiagnostic? {
+        guard scope == .thisNote else { return nil }
+        let hasNonLexical = clauses.contains {
+            switch $0 {
+            case .lexical, .paragraph: false
+            default: true
             }
         }
+        guard !hasNonLexical, expression.guaranteesPositiveLexicalMatch else {
+            return SearchQueryDiagnostic(
+                code: .notApplicable,
+                message: "This Note requires a positive text condition in every alternative and does not use property, structural, or link filters.",
+                utf16LowerBound: 0, utf16UpperBound: queryUTF16Count)
+        }
+        return nil
     }
 
     public func explanation(scope: SearchPresentationScope) -> SearchExplanation {
         SearchExplanation(
-            provider: provider,
-            providerWasExplicit: providerWasExplicit,
-            scope: scope,
-            clauses: clauses.map { clause in
-                switch clause {
-                case .lexical(let value):
-                    SearchExplanationClause(
-                        kind: .lexical(
-                            value.field,
-                            value.value.text,
-                            value.value.matchKind,
-                            value.excluded
-                        ),
-                        sourceRange: value.sourceRange
-                    )
-                case .structured(let value):
-                    SearchExplanationClause(
-                        kind: .structured(value.field, value.value, value.excluded),
-                        sourceRange: value.sourceRange
-                    )
-                case .property(let value):
-                    SearchExplanationClause(
-                        kind: .property(value.key, value.value),
-                        sourceRange: value.sourceRange
-                    )
-                case .link(let value):
-                    SearchExplanationClause(
-                        kind: .link(value.direction, value.noteIdentity),
-                        sourceRange: value.sourceRange
-                    )
-                }
-            }
-        )
+            provider: provider, providerWasExplicit: providerWasExplicit, scope: scope,
+            expression: expression)
+    }
+
+    /// A result projection contains only conditions that actually establish this match.
+    public func matched(by evaluation: SearchEvaluation) -> Self {
+        Self(
+            provider: provider, providerWasExplicit: providerWasExplicit,
+            expression: .and(evaluation.matches.map { $0.excluded ? .not(.clause($0.clause)) : .clause($0.clause) }),
+            identityNeedle: identityNeedle)
     }
 }
 
@@ -338,7 +315,7 @@ public struct SearchQueryParseResult: Codable, Hashable, Sendable {
                 provider: provider,
                 providerWasExplicit: providerWasExplicit,
                 scope: scope,
-                clauses: []
+                expression: .and([])
             )
     }
 }
@@ -382,7 +359,7 @@ public enum SearchQueryParser {
                 ast: SearchQueryAST(
                     provider: .note,
                     providerWasExplicit: false,
-                    clauses: [],
+                    expression: .and([]),
                     identityNeedle: nil
                 ),
                 diagnostics: []
@@ -413,81 +390,119 @@ public enum SearchQueryParser {
             )
         }
 
-        var clauses: [SearchClause] = []
-        var diagnostics: [SearchQueryDiagnostic] = []
-        var linkAnchors: [LinkAnchor] = []
-        for token in tokenized.tokens where !isKindToken(token) {
-            switch parseNote(token) {
-            case .clause(let clause): clauses.append(clause)
-            case .anchor(let anchor): linkAnchors.append(anchor)
-            case .diagnostic(let diagnostic): diagnostics.append(diagnostic)
-            }
+        if let misplaced = tokenized.tokens.dropFirst().first(where: isKindToken) {
+            return SearchQueryParseResult(ast: nil, diagnostics: [diagnostic(.unsupportedSyntax, "Put kind:note once at the start of the query.", misplaced)])
         }
-
-        diagnostics.append(contentsOf: linkDiagnostics(anchors: linkAnchors))
-        if diagnostics.isEmpty, let anchor = linkAnchors.first {
-            clauses.append(
-                .link(
-                    SearchLinkQuery(
-                        direction: anchor.direction,
-                        noteIdentity: anchor.identity,
-                        sourceRange: anchor.sourceRange
-                    )))
-        }
-        guard diagnostics.isEmpty else {
+        let tokens = tokenized.tokens.first.map(isKindToken) == true ? Array(tokenized.tokens.dropFirst()) : tokenized.tokens
+        do {
+            var reader = ExpressionReader(tokens: tokens)
+            let expression = try reader.read()
+            let clauses = expression.predicates.filter { !$0.excluded }.map(\.clause)
             return SearchQueryParseResult(
-                provider: providerResolution.provider,
-                providerWasExplicit: providerResolution.explicit,
-                ast: nil,
-                diagnostics: diagnostics
-            )
+                ast: SearchQueryAST(
+                    provider: providerResolution.provider, providerWasExplicit: providerResolution.explicit,
+                    expression: expression, identityNeedle: expression.containsDisjunction ? nil : identityNeedle(for: clauses)), diagnostics: [])
+        } catch {
+            return SearchQueryParseResult(
+                provider: providerResolution.provider, providerWasExplicit: providerResolution.explicit,
+                ast: nil, diagnostics: [error])
         }
+    }
 
-        let hasPositiveUnfielded = clauses.contains { clause in
-            switch clause {
-            case .lexical(let value): !value.excluded
-            case .structured, .property, .link: false
-            }
+    private struct ExpressionReader {
+        let tokens: [Token]
+        var index = 0
+        mutating func read() throws(SearchQueryDiagnostic) -> SearchExpression {
+            guard !tokens.isEmpty else { return .and([]) }
+            let result = try disjunction(field: nil, depth: 0)
+            guard index == tokens.count else { throw error("Unexpected closing parenthesis or operator.") }
+            return result
         }
-        let hasFilter = clauses.contains { clause in
-            switch clause {
-            case .structured, .property, .link: true
-            case .lexical: false
-            }
+        func error(_ message: String) -> SearchQueryDiagnostic {
+            let token = index < tokens.count ? tokens[index] : tokens.last ?? Token(raw: "", range: 0..<0)
+            return diagnostic(.unsupportedSyntax, message, token)
         }
-        if !clauses.isEmpty, !hasPositiveUnfielded, !hasFilter,
-            clauses.allSatisfy({ clause in
-                switch clause {
-                case .lexical(let value): value.excluded
-                case .structured, .property, .link: false
+        mutating func disjunction(field: String?, depth: Int) throws(SearchQueryDiagnostic) -> SearchExpression {
+            var values = [try conjunction(field: field, depth: depth)]
+            while index < tokens.count, tokens[index].raw == "OR" {
+                index += 1
+                values.append(try conjunction(field: field, depth: depth))
+            }
+            return values.count == 1 ? values[0] : .or(values)
+        }
+        mutating func conjunction(field: String?, depth: Int) throws(SearchQueryDiagnostic) -> SearchExpression {
+            var values = [try unary(field: field, depth: depth)]
+            while index < tokens.count, tokens[index].raw != ")", tokens[index].raw != "OR" {
+                if tokens[index].raw == "AND" {
+                    index += 1
+                } else if tokens[index - 1].range.upperBound == tokens[index].range.lowerBound {
+                    throw error("Separate conditions with whitespace or an operator.")
                 }
-            })
-        {
-            let range = tokenized.tokens.first?.range ?? 0..<max(0, raw.utf16.count)
-            return SearchQueryParseResult(
-                provider: providerResolution.provider,
-                providerWasExplicit: providerResolution.explicit,
-                ast: nil,
-                diagnostics: [
-                    SearchQueryDiagnostic(
-                        code: .onlyExcludedFreeText,
-                        message: "Add a positive term or a provider filter.",
-                        utf16LowerBound: range.lowerBound,
-                        utf16UpperBound: range.upperBound
-                    )
-                ]
-            )
+                values.append(try unary(field: field, depth: depth))
+            }
+            return values.count == 1 ? values[0] : .and(values)
         }
-
-        return SearchQueryParseResult(
-            ast: SearchQueryAST(
-                provider: providerResolution.provider,
-                providerWasExplicit: providerResolution.explicit,
-                clauses: clauses,
-                identityNeedle: identityNeedle(for: clauses)
-            ),
-            diagnostics: []
-        )
+        mutating func unary(field: String?, depth: Int) throws(SearchQueryDiagnostic) -> SearchExpression {
+            var negated = false
+            while index < tokens.count, ["NOT", "-"].contains(tokens[index].raw) {
+                negated.toggle()
+                index += 1
+            }
+            guard index < tokens.count, !["AND", "OR", ")"].contains(tokens[index].raw) else {
+                throw error("An operator or group requires a condition.")
+            }
+            let token = tokens[index]
+            index += 1
+            let result: SearchExpression
+            if token.raw == "(" {
+                result = try group(field: field, depth: depth, opening: token)
+            } else if token.raw.hasSuffix(":"), index < tokens.count, tokens[index].raw == "(" {
+                let name = String(token.raw.dropLast()).lowercased()
+                if name == "paragraph", field == nil {
+                    index += 1
+                    let inner = try group(field: nil, depth: depth, opening: tokens[index - 1])
+                    guard inner.predicates.allSatisfy({ if case .lexical(let clause) = $0.clause { clause.field == nil } else { false } }),
+                        inner.guaranteesPositiveLexicalMatch
+                    else {
+                        throw diagnostic(.unsupportedSyntax, "Paragraph groups require unfielded text and a positive condition in every alternative.", token)
+                    }
+                    let paragraph = SearchExpression.clause(
+                        .paragraph(
+                            .init(
+                                expression: inner,
+                                sourceRange: token.range.lowerBound..<tokens[index - 1].range.upperBound)))
+                    return negated ? .not(paragraph) : paragraph
+                }
+                guard field == nil, SearchLexicalField(rawValue: name) != nil || SearchStructuredField(rawValue: name) != nil else {
+                    throw diagnostic(.unsupportedSyntax, "This field cannot contain a field group. Combine complete conditions instead.", token)
+                }
+                index += 1
+                result = try group(field: name, depth: depth, opening: tokens[index - 1])
+            } else {
+                if field != nil, splitField(token.raw).field != nil {
+                    throw diagnostic(.unsupportedSyntax, "A field group cannot override its inherited field.", token)
+                }
+                let inherited = Token(raw: field.map { $0 + ":" + token.raw } ?? token.raw, range: token.range)
+                switch parseNote(inherited) {
+                case .clause(let clause): result = .clause(clause)
+                case .anchor(let anchor):
+                    result = .clause(.link(SearchLinkQuery(direction: anchor.direction, noteIdentity: anchor.identity, sourceRange: anchor.sourceRange)))
+                case .diagnostic(let issue): throw issue
+                }
+            }
+            return negated ? .not(result) : result
+        }
+        mutating func group(field: String?, depth: Int, opening: Token) throws(SearchQueryDiagnostic) -> SearchExpression {
+            guard depth < SearchContract.maximumQueryGroupDepth else {
+                throw diagnostic(.unsupportedSyntax, "Search groups are limited to 8 levels.", opening)
+            }
+            let value = try disjunction(field: field, depth: depth + 1)
+            guard index < tokens.count, tokens[index].raw == ")" else {
+                throw diagnostic(.unsupportedSyntax, "The group is not closed.", opening)
+            }
+            index += 1
+            return value
+        }
     }
 
     private static func resolveProvider(
@@ -507,22 +522,8 @@ public enum SearchQueryParser {
             )
         }
         guard let token = kindTokens.first else { return (.note, false, []) }
-        var raw = token.raw
-        let excluded = raw.hasPrefix("-")
-        if excluded { raw.removeFirst() }
+        let raw = token.raw
         let split = splitField(raw)
-        guard !excluded else {
-            return (
-                .note, true,
-                [
-                    diagnostic(
-                        .unsupportedSyntax,
-                        "kind: cannot be excluded.",
-                        token
-                    )
-                ]
-            )
-        }
         guard !split.value.isEmpty else {
             return (
                 .note, true,
@@ -564,15 +565,13 @@ public enum SearchQueryParser {
     }
 
     private static func parseNote(_ token: Token) -> NoteParseResult {
-        var raw = token.raw
-        let excluded = raw.hasPrefix("-")
-        if excluded { raw.removeFirst() }
+        let raw = token.raw
         if let syntaxDiagnostic = unsupportedSyntaxDiagnostic(raw: raw, token: token) {
             return .diagnostic(syntaxDiagnostic)
         }
         let split = splitField(raw)
         guard let fieldName = split.field else {
-            switch lexicalClause(field: nil, rawValue: raw, excluded: excluded, token: token) {
+            switch lexicalClause(field: nil, rawValue: raw, token: token) {
             case .success(let value): return .clause(.lexical(value))
             case .failure(let error): return .diagnostic(error)
             }
@@ -601,7 +600,6 @@ public enum SearchQueryParser {
             switch lexicalClause(
                 field: lexicalField,
                 rawValue: split.value,
-                excluded: excluded,
                 token: token
             ) {
             case .success(let value): return .clause(.lexical(value))
@@ -612,7 +610,6 @@ public enum SearchQueryParser {
             switch structuredClause(
                 field: structuredField,
                 rawValue: split.value,
-                excluded: excluded,
                 token: token
             ) {
             case .success(let value): return .clause(.structured(value))
@@ -621,7 +618,7 @@ public enum SearchQueryParser {
         }
         switch field {
         case "property":
-            switch propertyClause(rawValue: split.value, excluded: excluded, token: token) {
+            switch propertyClause(rawValue: split.value, token: token) {
             case .success(let value): return .clause(.property(value))
             case .failure(let error): return .diagnostic(error)
             }
@@ -629,7 +626,6 @@ public enum SearchQueryParser {
             switch linkAnchor(
                 direction: SearchLinkDirection(rawValue: field)!,
                 rawValue: split.value,
-                excluded: excluded,
                 token: token
             ) {
             case .success(let value): return .anchor(value)
@@ -643,14 +639,12 @@ public enum SearchQueryParser {
     private static func lexicalClause(
         field: SearchLexicalField?,
         rawValue: String,
-        excluded: Bool,
         token: Token
     ) -> Result<SearchLexicalClause, SearchQueryDiagnostic> {
         lexicalValue(rawValue, token: token, permitsPrefix: true).map {
             SearchLexicalClause(
                 field: field,
                 value: $0,
-                excluded: excluded,
                 sourceRange: token.range
             )
         }
@@ -706,7 +700,6 @@ public enum SearchQueryParser {
     private static func structuredClause(
         field: SearchStructuredField,
         rawValue: String,
-        excluded: Bool,
         token: Token
     ) -> Result<SearchStructuredClause, SearchQueryDiagnostic> {
         let value: DecodedValue
@@ -740,7 +733,6 @@ public enum SearchQueryParser {
             SearchStructuredClause(
                 field: field,
                 value: normalized,
-                excluded: excluded,
                 sourceRange: token.range
             ))
     }
@@ -768,17 +760,9 @@ public enum SearchQueryParser {
 
     private static func propertyClause(
         rawValue: String,
-        excluded: Bool,
         token: Token
     ) -> Result<SearchPropertyClause, SearchQueryDiagnostic> {
-        guard !excluded else {
-            return .failure(
-                diagnostic(
-                    .unsupportedSyntax,
-                    "Structured Property clauses cannot be excluded.",
-                    token
-                ))
-        }
+
         let equality = propertyEqualityIndex(in: rawValue)
         let rawKey = equality.map { String(rawValue[..<$0]) } ?? rawValue
         let decodedKey: DecodedValue
@@ -845,17 +829,9 @@ public enum SearchQueryParser {
     private static func linkAnchor(
         direction: SearchLinkDirection,
         rawValue: String,
-        excluded: Bool,
         token: Token
     ) -> Result<LinkAnchor, SearchQueryDiagnostic> {
-        guard !excluded else {
-            return .failure(
-                diagnostic(
-                    .unsupportedSyntax,
-                    "Link anchors cannot be excluded.",
-                    token
-                ))
-        }
+
         let value: DecodedValue
         switch decodeValue(rawValue, token: token) {
         case .success(let decoded): value = decoded
@@ -879,22 +855,6 @@ public enum SearchQueryParser {
                 identity: identity,
                 sourceRange: token.range
             ))
-    }
-
-    private static func linkDiagnostics(
-        anchors: [LinkAnchor]
-    ) -> [SearchQueryDiagnostic] {
-        if anchors.count > 1 {
-            return [
-                SearchQueryDiagnostic(
-                    code: .duplicateClause,
-                    message: "Use exactly one from-note: or to-note: anchor.",
-                    utf16LowerBound: anchors[1].sourceRange.lowerBound,
-                    utf16UpperBound: anchors[1].sourceRange.upperBound
-                )
-            ]
-        }
-        return []
     }
 
     private struct DecodedValue {
@@ -985,13 +945,12 @@ public enum SearchQueryParser {
         token: Token
     ) -> SearchQueryDiagnostic? {
         let syntax = syntaxOutsideQuotedValue(raw)
-        if syntax.caseInsensitiveCompare("OR") == .orderedSame
-            || syntax.caseInsensitiveCompare("NEAR") == .orderedSame
+        if ["AND", "OR", "NOT", "NEAR"].contains(syntax)
             || syntax.contains("(") || syntax.contains(")") || syntax.contains("|")
         {
             return diagnostic(
                 .unsupportedSyntax,
-                "OR, NEAR, grouping, and alternate-expression syntax are not supported.",
+                "Quote operator words to search them as text. NEAR and alternate-expression syntax are not supported.",
                 token
             )
         }
@@ -1062,7 +1021,6 @@ public enum SearchQueryParser {
         var fieldedIdentityValues: [String] = []
         for clause in clauses {
             guard case .lexical(let lexical) = clause,
-                !lexical.excluded,
                 !lexical.value.isPrefix
             else { continue }
             switch lexical.field {
@@ -1102,7 +1060,11 @@ public enum SearchQueryParser {
         )
     }
 
-    private static func tokenize(_ raw: String) -> (
+    static func completionTokens(_ raw: String) -> [(raw: String, range: Range<Int>)] {
+        tokenize(raw, allowsIncompletePhrase: true).tokens.map { ($0.raw, $0.range) }
+    }
+
+    private static func tokenize(_ raw: String, allowsIncompletePhrase: Bool = false) -> (
         tokens: [Token],
         diagnostics: [SearchQueryDiagnostic]
     ) {
@@ -1114,6 +1076,11 @@ public enum SearchQueryParser {
             }
             guard index < raw.endIndex else { break }
             let start = index
+            if ["(", ")", "-"].contains(raw[index]) {
+                index = raw.index(after: index)
+                tokens.append(Token(raw: String(raw[start..<index]), range: start.utf16Offset(in: raw)..<index.utf16Offset(in: raw)))
+                continue
+            }
             var quoted = false
             var escaped = false
             while index < raw.endIndex {
@@ -1128,14 +1095,14 @@ public enum SearchQueryParser {
                     }
                 } else if character == "\"" {
                     quoted = true
-                } else if character.isWhitespace {
+                } else if character.isWhitespace || character == "(" || character == ")" {
                     break
                 }
                 index = raw.index(after: index)
             }
             let end = index
             let range = start.utf16Offset(in: raw)..<end.utf16Offset(in: raw)
-            if quoted {
+            if quoted && !allowsIncompletePhrase {
                 return (
                     [],
                     [

@@ -66,6 +66,11 @@ public struct SearchTextSegment: Codable, Hashable, Sendable {
 
 /// Disposable semantic text derived from exact Markdown. It deliberately has
 /// no raw-source field and is never a writable representation of a note.
+public struct SearchParagraphProjection: Codable, Hashable, Sendable {
+    public let range: SearchSourceRange
+    public let segments: [SearchTextSegment]
+}
+
 public struct SearchDocumentProjection: Codable, Hashable, Sendable {
     public private(set) var title: String
     public private(set) var aliases: [String]
@@ -83,6 +88,7 @@ public struct SearchDocumentProjection: Codable, Hashable, Sendable {
     public private(set) var hasBrokenLink: Bool
     public let sourceLineStartsUTF16: [Int]
     public private(set) var segments: [SearchTextSegment]
+    public let paragraphs: [SearchParagraphProjection]
     public private(set) var projectionHash: String
 
     public init(
@@ -276,7 +282,8 @@ public struct SearchDocumentProjection: Codable, Hashable, Sendable {
             anchorFullSourceRanges: anchorRanges,
             links: semantic.links
         )
-        collector.visit(Document(parsing: document.body))
+        let parsedBody = Document(parsing: document.body, options: [.parseBlockDirectives])
+        collector.visit(parsedBody)
         if !collector.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             builtSegments.append(
                 SearchProjectionBuilder.segment(
@@ -313,6 +320,39 @@ public struct SearchDocumentProjection: Codable, Hashable, Sendable {
         publicationDate = propertyProjection.textValues(forExactKey: "publication_date").first
         builtSegments = builtSegments.map { $0.attributingRelatedContent(in: semantic) }
         segments = builtSegments
+        let bodyMapper = SearchMarkdownSourceMapper(document.body)
+        let protected =
+            semantic.footnoteDefinitions.map(\.span.utf16Range)
+            + semantic.mathExpressions.filter { $0.kind == .display }.map(\.span.utf16Range)
+        paragraphs =
+            document.hasProvableBodyBoundary
+            ? parsedBody.children.compactMap { child -> SearchParagraphProjection? in
+                guard child is Paragraph, let rawRange = child.range.flatMap(bodyMapper.utf16Range),
+                    let block = semantic.blocks.first(where: { $0.kind == .paragraph && $0.span.utf16LowerBound == bodyStart + rawRange.lowerBound })
+                else { return nil }
+                let range = block.span.utf16Range
+                guard !protected.contains(where: { $0.overlaps(range) }),
+                    !semantic.links.compactMap(\.annotation).contains(where: { $0.span.utf16Range.contains(range.lowerBound) })
+                else { return nil }
+                var local = SearchVisibleTextCollector(
+                    source: document.body, fullSourceUTF16Offset: bodyStart,
+                    excludedFullSourceRanges: excluded, mapper: bodyMapper, anchorFullSourceRanges: anchorRanges, links: semantic.links)
+                local.visit(child)
+                var localSegments = [
+                    SearchProjectionBuilder.segment(
+                        field: .body, ordinal: 0, text: local.text,
+                        sourceRange: range, source: document.rawContent, sourceLocator: sourceLocator, explicitMap: local.fragments)
+                ]
+                let annotations = semantic.links.filter { range.contains($0.linkSpan.utf16LowerBound) }.compactMap(\.annotation)
+                for annotation in annotations {
+                    localSegments.append(
+                        contentsOf: builtSegments.filter {
+                            $0.field == .linkAnnotation && $0.sourceRange?.utf16LowerBound == annotation.contentSpan.utf16LowerBound
+                        })
+                }
+                let upper = max(range.upperBound, annotations.map(\.span.utf16UpperBound).max() ?? range.upperBound)
+                return SearchParagraphProjection(range: sourceLocator.sourceRange(range.lowerBound..<upper), segments: localSegments)
+            } : []
         body = builtSegments.filter { $0.field == .body }.map(\.text).joined(separator: "\n")
         callouts = builtSegments.filter { $0.field == .callout }.map(\.text).joined(separator: "\n")
         footnotes = builtSegments.filter { $0.field == .footnote }.map(\.text).joined(separator: "\n")
@@ -624,11 +664,12 @@ private struct SearchVisibleTextCollector: MarkupWalker {
         source: String,
         fullSourceUTF16Offset: Int,
         excludedFullSourceRanges: [Range<Int>],
+        mapper suppliedMapper: SearchMarkdownSourceMapper? = nil,
         anchorFullSourceRanges: [Range<Int>],
         links: [LinkOccurrence]
     ) {
         self.source = source
-        mapper = SearchMarkdownSourceMapper(source)
+        mapper = suppliedMapper ?? SearchMarkdownSourceMapper(source)
         self.fullSourceUTF16Offset = fullSourceUTF16Offset
         self.excludedFullSourceRanges = excludedFullSourceRanges
         self.anchorFullSourceRanges = anchorFullSourceRanges

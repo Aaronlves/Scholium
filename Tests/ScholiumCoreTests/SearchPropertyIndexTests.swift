@@ -254,7 +254,9 @@ struct SearchPropertyIndexTests {
 
         let response = try await index.testSearch(
             fixture.request("autonomy from-note:Anchor"),
-            linkMatches: [target: match]
+            linkMatches: [
+                try #require(SearchQueryParser.parse("autonomy from-note:Anchor").ast?.linkQueries.first): SearchLinkResolution(matches: [target: match])
+            ]
         )
         #expect(response.noteResults.map(\.relativePath) == ["Matched.md"])
         let hit = try #require(response.noteResults.first)

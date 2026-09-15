@@ -43,6 +43,9 @@ final class WindowSearchController: ObservableObject {
         let reportSaveFailure: @MainActor (String) -> Void
         let setAvailabilityStatus: @MainActor (String?) -> Void
         let reportCatalogFailure: @MainActor (String) -> Void
+        var loadTermGroups: @MainActor () async throws -> [SearchTermGroup] = { [] }
+        var saveTermGroup: @MainActor (SearchTermGroup, SearchTermGroup?) async throws -> [SearchTermGroup] = { _, _ in throw SearchTermGroupError.unreadable }
+        var deleteTermGroup: @MainActor (SearchTermGroup) async throws -> [SearchTermGroup] = { _ in throw SearchTermGroupError.unreadable }
     }
 
     @Published private(set) var presentation: SearchPresentation = .inactive
@@ -50,6 +53,23 @@ final class WindowSearchController: ObservableObject {
     @Published private(set) var inputReplacementID: UInt64 = 0
     @Published private(set) var savedSearches: [SavedSearch] = []
     @Published private(set) var savedSearchLoadFailure: String?
+    @Published private(set) var termGroups: [SearchTermGroup] = []
+    @Published private(set) var termGroupError: String?
+
+    func loadTermGroups() async {
+        do {
+            termGroups = try await dependencies.loadTermGroups()
+            termGroupError = nil
+        } catch { termGroupError = error.localizedDescription }
+    }
+    func saveTermGroup(_ group: SearchTermGroup, replacing expected: SearchTermGroup?) async throws {
+        termGroups = try await dependencies.saveTermGroup(group, expected)
+        termGroupError = nil
+    }
+    func deleteTermGroup(_ group: SearchTermGroup) async throws {
+        termGroups = try await dependencies.deleteTermGroup(group)
+        termGroupError = nil
+    }
 
     private let discoveryController: DiscoveryController
     private let dependencies: Dependencies
@@ -238,17 +258,6 @@ final class WindowSearchController: ObservableObject {
     }
 
     func run(_ search: SavedSearch) {
-        if let diagnostic = search.needsEditingDiagnostic {
-            cancelExecution()
-            discoveryController.presentSavedSearchForEditing(
-                search.definition,
-                diagnostic: diagnostic
-            )
-            inputReplacementID &+= 1
-            present(.advanced)
-            dependencies.reportInformation(diagnostic.message)
-            return
-        }
         criteria = SearchWorkspaceState(
             query: search.definition.query,
             scope: search.definition.presentationScope

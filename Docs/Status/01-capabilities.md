@@ -13,9 +13,17 @@
   native system Trash, and recoverable uncertainty.
 - Note creation accepts exact complete Markdown; GUI New Note starts empty.
   Source, stable identity, Settlement and recovery retain their existing owners.
-- Search contract 18/schema 16 indexes user-authored YAML through `property:`
+- Search contract 20/schema 18 indexes user-authored YAML through `property:`
   without a managed catalog. Quoted keys, scalar/direct-list values and block
   summaries retain source locations. Filename owns Note display identity.
+  AND/OR/NOT, parentheses, field groups and multiple direct-link predicates share
+  one App/MCP parser and three-valued evaluator. Results retain successful-branch
+  provenance; unknown properties/links do not prove absence. Native completion
+  preserves the caret and following conditions. Saved Searches accept only the current
+  format and use ordinary query validation; unsupported stored bytes remain protected. `paragraph:(...)` applies
+  text predicates to complete top-level body paragraphs, preserving successful
+  ranges and source annotation fields. A local term-group collection inserts
+  literal OR expressions without macros or inferred synonymy.
 - The source-authority cutover removes managed Metadata and Zotero Note binding
   APIs. Integration checks completed through the full run and targeted rechecks;
   the Verification chapter records the remaining native acceptance boundary.

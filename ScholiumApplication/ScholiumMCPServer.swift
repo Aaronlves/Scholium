@@ -296,6 +296,7 @@ public actor ScholiumMCPServer {
                 "triptych_id": uuidSchema("Open Triptych UUID."),
                 "query": stringSchema(
                     "Scholium Search contract \(SearchCapabilities.current.contractVersion). "
+                        + SearchCapabilities.current.booleanQueryHelp + " "
                         + SearchCapabilities.current.propertyQueryHelp
                         + " Examples: "
                         + (SearchCapabilities.current.capability(for: .note)?.examples.joined(separator: "; ") ?? "")
@@ -312,6 +313,8 @@ public actor ScholiumMCPServer {
                 ]),
                 "limit": integerSchema(minimum: 1, maximum: 100, default: 20),
                 "offset": integerSchema(minimum: 0, maximum: nil, default: 0),
+                "paragraph_limit": integerSchema(minimum: 1, maximum: 50, default: 10),
+                "paragraph_offset": integerSchema(minimum: 0, maximum: nil, default: 0),
             ],
             required: ["triptych_id", "query"],
             readOnly: true,
@@ -692,6 +695,7 @@ public actor ScholiumMCPServer {
             "offset": nonnegativeIntegerSchema,
             "limit": nonnegativeIntegerSchema,
             "total": nullable(nonnegativeIntegerSchema),
+            "indeterminate_notes": nonnegativeIntegerSchema,
             "has_more": booleanSchema,
             "results": arraySchema(
                 closedObject(
@@ -701,20 +705,25 @@ public actor ScholiumMCPServer {
                         "relative_path": simpleSchema("string"),
                         "title": simpleSchema("string"),
                         "fingerprint": fingerprintSchema,
-                        "match_reason": simpleSchema("string"),
+                        "match_reasons": arraySchema(simpleSchema("string")),
                         "rank_reason": simpleSchema("string"),
                         "snippet": simpleSchema("string"),
+                        "paragraphs": closedObject(
+                            properties: [
+                                "total": nonnegativeIntegerSchema, "offset": nonnegativeIntegerSchema, "limit": nonnegativeIntegerSchema,
+                                "has_more": booleanSchema, "locators": arraySchema(locatorSchema),
+                            ], required: ["total", "offset", "limit", "has_more", "locators"]),
                         "source_locator": nullable(locatorSchema),
                     ],
                     required: [
                         "note_id", "role", "relative_path", "title",
-                        "fingerprint", "match_reason", "rank_reason",
-                        "snippet", "source_locator",
+                        "fingerprint", "match_reasons", "rank_reason",
+                        "snippet", "paragraphs", "source_locator",
                     ]
                 )),
         ],
         required: [
-            "freshness", "offset", "limit", "total", "has_more", "results",
+            "freshness", "offset", "limit", "total", "indeterminate_notes", "has_more", "results",
         ]
     )
 

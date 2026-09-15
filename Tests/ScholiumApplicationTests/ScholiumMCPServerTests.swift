@@ -16,6 +16,7 @@ struct ScholiumMCPServerTests {
         let query = try object(object(schema["properties"])["query"])
         let description = try #require(query["description"] as? String)
         #expect(description.contains(SearchCapabilities.current.propertyQueryHelp))
+        #expect(description.contains(SearchCapabilities.current.booleanQueryHelp))
         for example in SearchCapabilities.current.capability(for: .note)?.examples ?? [] {
             #expect(description.contains(example))
             #expect(SearchQueryParser.parse(example).isValid)

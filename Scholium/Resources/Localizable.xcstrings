@@ -1,6 +1,649 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Matching Paragraphs": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Matching Paragraphs"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "匹配段落"
+          }
+        }
+      }
+    },
+    "Show %lld Matching Paragraphs": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show %lld Matching Paragraphs"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "展开 %lld 个匹配段落"
+          }
+        }
+      }
+    },
+    "OK": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "OK"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "好"
+          }
+        }
+      }
+    },
+    "Term Groups": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Term Groups"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "术语组"
+          }
+        }
+      }
+    },
+    "Group Name": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Group Name"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "组名"
+          }
+        }
+      }
+    },
+    "New Group": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "New Group"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新建术语组"
+          }
+        }
+      }
+    },
+    "Delete Group": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete Group"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除术语组"
+          }
+        }
+      }
+    },
+    "Insert Term Group": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Insert Term Group"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "插入术语组"
+          }
+        }
+      }
+    },
+    "Manage Term Groups…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Manage Term Groups…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "管理术语组…"
+          }
+        }
+      }
+    },
+    "Cannot Insert Term Group": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cannot Insert Term Group"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法插入术语组"
+          }
+        }
+      }
+    },
+    "Terms, one per line": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Terms, one per line"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "备选词语，每行一项"
+          }
+        }
+      }
+    },
+    "1–24 terms; each is inserted as literal text.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1–24 terms; each is inserted as literal text."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "可包含 1–24 项，均按字面文本插入。"
+          }
+        }
+      }
+    },
+    "Insert alternatives as visible query text. Groups do not declare terms synonymous.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Insert alternatives as visible query text. Groups do not declare terms synonymous."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "将备选词语插入为可见查询文本。术语组不声明词语同义。"
+          }
+        }
+      }
+    },
+    "Paragraph at line %lld": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Paragraph at line %lld"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "第 %lld 行的段落"
+          }
+        }
+      }
+    },
+    "%lld Matching Paragraphs": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld Matching Paragraphs"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 个匹配段落"
+          }
+        }
+      }
+    },
+    "Show More Paragraphs": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show More Paragraphs"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "显示更多段落"
+          }
+        }
+      }
+    },
+    "Literal alternatives": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Literal alternatives"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "字面备选词语"
+          }
+        }
+      }
+    },
+    "Paragraph groups require unfielded text and a positive condition in every alternative.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Paragraph groups require unfielded text and a positive condition in every alternative."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "段落分组内只能使用无字段文本条件，且每个备选分支都需要正向条件。"
+          }
+        }
+      }
+    },
+    "Use a name of up to 80 characters and 1–24 terms, each on one line and up to 512 characters.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Use a name of up to 80 characters and 1–24 terms, each on one line and up to 512 characters."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "组名最多 80 个字符，包含 1–24 项备选词语，每行一项，每项最多 512 个字符。"
+          }
+        }
+      }
+    },
+    "Term groups could not be read. Their stored data has been preserved.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Term groups could not be read. Their stored data has been preserved."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法读取术语组。已保留存储的数据。"
+          }
+        }
+      }
+    },
+    "This term group changed elsewhere. Reload before editing it.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This term group changed elsewhere. Reload before editing it."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此术语组已在其他位置修改。请重新载入后编辑。"
+          }
+        }
+      }
+    },
+    "Place the caret between complete conditions or inside an empty text group before inserting terms.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Place the caret between complete conditions or inside an empty text group before inserting terms."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请将光标放在完整条件之间或空文本分组内，再插入术语组。"
+          }
+        }
+      }
+    },
+    "Boolean operator": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Boolean operator"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "布尔运算符"
+          }
+        }
+      }
+    },
+    "Close the current group": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Close the current group"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关闭当前分组"
+          }
+        }
+      }
+    },
+    "This Note requires a positive text condition in every alternative and does not use property, structural, or link filters.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This Note requires a positive text condition in every alternative and does not use property, structural, or link filters."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“当前笔记”的每个备选分支都需要正向文本条件，且不支持属性、结构或链接筛选。"
+          }
+        }
+      }
+    },
+    "Put kind:note once at the start of the query.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Put kind:note once at the start of the query."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请将 kind:note 放在查询开头，且仅使用一次。"
+          }
+        }
+      }
+    },
+    "Unexpected closing parenthesis or operator.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unexpected closing parenthesis or operator."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此处不应出现右括号或运算符。"
+          }
+        }
+      }
+    },
+    "Separate conditions with whitespace or an operator.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Separate conditions with whitespace or an operator."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请用空格或运算符分隔条件。"
+          }
+        }
+      }
+    },
+    "An operator or group requires a condition.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "An operator or group requires a condition."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "运算符或分组需要一个条件。"
+          }
+        }
+      }
+    },
+    "This field cannot contain a field group. Combine complete conditions instead.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This field cannot contain a field group. Combine complete conditions instead."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此字段不支持字段分组。请组合完整条件。"
+          }
+        }
+      }
+    },
+    "A field group cannot override its inherited field.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A field group cannot override its inherited field."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "字段分组内不能指定其他字段。"
+          }
+        }
+      }
+    },
+    "Search groups are limited to 8 levels.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Search groups are limited to 8 levels."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "检索分组最多嵌套 8 层。"
+          }
+        }
+      }
+    },
+    "The group is not closed.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The group is not closed."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "分组缺少右括号。"
+          }
+        }
+      }
+    },
+    "Search queries are limited to 16384 UTF-16 code units.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Search queries are limited to 16384 UTF-16 code units."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "检索查询最多包含 16384 个 UTF-16 代码单元。"
+          }
+        }
+      }
+    },
+    "Search queries are limited to 64 tokens.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Search queries are limited to 64 tokens."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "检索查询最多包含 64 个语法词元。"
+          }
+        }
+      }
+    },
+    "Undetermined notes: %lld" : {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Undetermined notes: %lld"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法判定的笔记：%lld"
+          }
+        }
+      }
+    },
+    "Some source conditions could not be evaluated. Exclusion does not treat them as absent." : {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Some source conditions could not be evaluated. Exclusion does not treat them as absent."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "部分源文条件无法判定。排除查询不会将它们视为不存在。"
+          }
+        }
+      }
+    },
+    "No confirmed matches. Some notes could not be evaluated." : {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No confirmed matches. Some notes could not be evaluated."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有确定匹配的结果。部分笔记无法判定。"
+          }
+        }
+      }
+    },
     "Choose which authored entry to keep for each property. Other properties are retained in the merge preview.": {
       "localizations": {
         "en": {

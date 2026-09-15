@@ -77,7 +77,7 @@ struct SearchProtocolContractsTests {
             Issue.record("Expected an excluded lexical field")
             return
         }
-        #expect(excluded.excluded)
+        #expect(ast.expression.predicates[3].excluded)
         #expect(excluded.field == .tag)
     }
 
@@ -98,7 +98,7 @@ struct SearchProtocolContractsTests {
         #expect(try #require(positive.ast).isFilterOnly)
         let negative = SearchQueryParser.parse("-has:broken-link")
         #expect(try #require(negative.ast).isFilterOnly)
-        #expect(SearchQueryParser.parse("-autonomy").diagnostics.first?.code == .onlyExcludedFreeText)
+        #expect(SearchQueryParser.parse("-autonomy").isValid)
     }
 
     @Test("Unknown fields and query-level scope selectors fail closed without legacy semantics")
@@ -139,7 +139,7 @@ struct SearchProtocolContractsTests {
         #expect(formula.key == "formula")
         #expect(formula.value == "p=q")
 
-        #expect(SearchQueryParser.parse("-property:author").diagnostics.first?.code == .unsupportedSyntax)
+        #expect(SearchQueryParser.parse("-property:author").isValid)
         #expect(SearchQueryParser.parse("property:a:b").diagnostics.first?.code == .unsupportedSyntax)
         #expect(SearchQueryParser.parse("property:key=").diagnostics.first?.code == .missingFieldValue)
     }
@@ -173,20 +173,19 @@ struct SearchProtocolContractsTests {
         #expect(quoted.first?.replacementText == #"property:"研究 问题""#)
     }
 
-    @Test("Direct-link queries require exactly one direction anchor")
+    @Test("Direct-link queries preserve independent direction anchors")
     func noteLinks() throws {
         let result = SearchQueryParser.parse(#"from-note:"Groundwork" duty"#)
         let ast = try #require(result.ast)
         #expect(ast.provider == .note)
-        #expect(ast.linkQuery?.direction == .fromNote)
-        #expect(ast.linkQuery?.noteIdentity == "groundwork")
+        #expect(ast.linkQueries.first?.direction == .fromNote)
+        #expect(ast.linkQueries.first?.noteIdentity == "groundwork")
 
         #expect(SearchQueryParser.parse("from-note:A").diagnostics.isEmpty)
         #expect(
-            SearchQueryParser.parse("from-note:A to-note:B")
-                .diagnostics.first?.code == .duplicateClause
+            SearchQueryParser.parse("from-note:A to-note:B").ast?.linkQueries.count == 2
         )
-        #expect(SearchQueryParser.parse("-from-note:A").diagnostics.first?.code == .unsupportedSyntax)
+        #expect(SearchQueryParser.parse("-from-note:A").isValid)
     }
 
     @Test("Explanation and capabilities are deterministic products of the current contract")
@@ -198,7 +197,7 @@ struct SearchProtocolContractsTests {
         let explanation = ast.explanation(scope: .currentVault)
         #expect(explanation.provider == .note)
         #expect(explanation.scope == .currentVault)
-        #expect(explanation.operator == .and)
+        #expect(explanation.expression == ast.expression)
         #expect(explanation.clauses.count == ast.clauses.count)
         #expect(
             explanation.normalization == [
@@ -278,12 +277,8 @@ struct SearchProtocolContractsTests {
         )
     }
 
-    @Test("Saved Searches persist definitions and apply declared contract compatibility")
+    @Test("Saved Searches persist current definitions without compatibility states")
     func savedSearchCurrentDefinitionOnly() throws {
-        #expect(SearchContract.isSavedSearchContractCompatible(SearchContract.currentVersion))
-        #expect(!SearchContract.isSavedSearchContractCompatible(SearchContract.currentVersion - 1))
-        #expect(!SearchContract.isSavedSearchContractCompatible(SearchContract.currentVersion + 1))
-
         let saved = SavedSearch(
             name: "Unsupported saved query",
             definition: SearchDefinition(
@@ -305,26 +300,8 @@ struct SearchProtocolContractsTests {
                 presentationScope: .triptych
             )
         )
-        #expect(summarySearch.needsEditingDiagnostic == nil)
         #expect(SearchQueryParser.parse(summarySearch.definition.query).ast != nil)
 
-        let old = SavedSearch(
-            name: "Old",
-            definition: SearchDefinition(
-                contractVersion: SearchContract.currentVersion - 1,
-                query: "autonomy",
-                presentationScope: .triptych
-            )
-        )
-        #expect(old.needsEditingDiagnostic?.code == .needsEditing)
-        #expect(old.needsEditingDiagnostic?.needsEditing == true)
-
-        let legacy = """
-            {"id":"00000000-0000-0000-0000-000000000001","name":"Legacy","state":{"query":"autonomy","scope":"triptych"},"createdAt":0}
-            """.data(using: .utf8)!
-        #expect(throws: DecodingError.self) {
-            _ = try JSONDecoder().decode(SavedSearch.self, from: legacy)
-        }
     }
 
     @Test("Case pack: dynamic candidates require authorized scope context")
@@ -387,13 +364,11 @@ struct SearchProtocolContractsTests {
     @Test("Unsupported and malformed syntax returns stable diagnostics")
     func diagnosticCoverage() {
         let cases: [(String, SearchQueryDiagnosticCode)] = [
-            ("-", .emptyClause),
+            ("-", .unsupportedSyntax),
             (#""unterminated"#, .unclosedPhrase),
             (#""bad\q""#, .invalidEscape),
             (#""phrase"*"#, .invalidPrefix),
             ("a*", .invalidPrefix),
-            ("autonomy OR agency", .unsupportedSyntax),
-            ("(autonomy)", .unsupportedSyntax),
             ("autonomy NEAR agency", .unsupportedSyntax),
             ("/autonomy/", .unsupportedSyntax),
             ("autonomy~", .unsupportedSyntax),
@@ -401,7 +376,6 @@ struct SearchProtocolContractsTests {
             ("year:1998", .unknownField),
             ("title:", .missingFieldValue),
             ("callout:not-canonical", .unknownStructuredValue),
-            ("-autonomy", .onlyExcludedFreeText),
         ]
         for (query, expected) in cases {
             #expect(

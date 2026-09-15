@@ -72,6 +72,31 @@ struct WorkbenchModelsTests {
         #expect(try Data(contentsOf: file) == corrupt)
     }
 
+    @Test("Unsupported Saved Search formats remain untouched and block replacement")
+    func unsupportedSavedSearchFormat() async throws {
+        let base = testDirectory("saved-search-unsupported-format")
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: base) }
+        try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+        let file = base.appendingPathComponent("saved-searches.json")
+        let saved = SavedSearch(
+            name: "Unsupported format",
+            definition: SearchDefinition(query: "emotion OR reason", presentationScope: .triptych)
+        )
+        var document = try #require(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode([saved])) as? [[String: Any]]
+        )
+        var definition = try #require(document[0]["definition"] as? [String: Any])
+        definition["contractVersion"] = -1
+        document[0]["definition"] = definition
+        let bytes = try JSONSerialization.data(withJSONObject: document)
+        try bytes.write(to: file)
+        let store = SavedSearchStore(workspaceStorageURL: base)
+        await #expect(throws: SavedSearchStoreError.self) { _ = try await store.load() }
+        await #expect(throws: SavedSearchStoreError.self) { try await store.save([saved]) }
+        #expect(try Data(contentsOf: file) == bytes)
+    }
+
     @Test("Unreadable Saved Searches are archived exactly before reset")
     func corruptSavedSearchesCanBePreserved() async throws {
         let base = testDirectory("saved-search-recovery")

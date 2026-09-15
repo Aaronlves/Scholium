@@ -5,22 +5,15 @@ import Foundation
 /// saved query or derived database from silently acquiring new semantics.
 public enum SearchContract {
     public static let maximumNoteResults = 500
-    public static let currentVersion = 18
-    public static let schemaVersion = 16
+    public static let currentVersion = 20
+    public static let schemaVersion = 18
     public static let tokenizerPolicyVersion = 2
-    public static let rankingPolicyVersion = 2
+    public static let rankingPolicyVersion = 4
     public static let maximumInterfaceResults = 100
     public static let maximumQueryUTF16Count = 16_384
     public static let maximumQueryTokenCount = 64
+    public static let maximumQueryGroupDepth = 8
 
-    /// A prior version may be listed only after the current contract declares
-    /// grammar, interpretation, explanation, ordering, response compatibility,
-    /// and security boundaries unchanged for existing Saved Search definitions.
-    public static let savedSearchCompatibleVersions: Set<Int> = [currentVersion]
-
-    public static func isSavedSearchContractCompatible(_ version: Int) -> Bool {
-        savedSearchCompatibleVersions.contains(version)
-    }
 }
 
 public struct SearchSourceManifestEntry: Codable, Hashable, Sendable {
@@ -55,16 +48,14 @@ public enum SearchSourceManifest {
 
 /// The sole durable declaration stored by a Saved Search.
 public struct SearchDefinition: Codable, Hashable, Sendable {
-    public let contractVersion: Int
+    public let contractVersion = SearchContract.currentVersion
     public var query: String
     public var presentationScope: SearchPresentationScope
 
     public init(
-        contractVersion: Int = SearchContract.currentVersion,
         query: String,
         presentationScope: SearchPresentationScope
     ) {
-        self.contractVersion = contractVersion
         self.query = query
         self.presentationScope = presentationScope
     }
@@ -77,7 +68,12 @@ public struct SearchDefinition: Codable, Hashable, Sendable {
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        contractVersion = try container.decode(Int.self, forKey: .contractVersion)
+        guard try container.decode(Int.self, forKey: .contractVersion) == SearchContract.currentVersion else {
+            throw DecodingError.dataCorruptedError(
+                forKey: .contractVersion, in: container,
+                debugDescription: "Unsupported Saved Search format."
+            )
+        }
         query = try container.decode(String.self, forKey: .query)
         presentationScope = try container.decode(
             SearchPresentationScope.self,
@@ -288,8 +284,6 @@ public enum SearchQueryDiagnosticCode: String, Codable, Hashable, Sendable {
     case missingFieldValue
     case unknownStructuredValue
     case unsupportedSyntax
-    case onlyExcludedFreeText
-    case needsEditing
 }
 
 public struct SearchQueryDiagnostic: Error, Codable, Hashable, Sendable {
@@ -297,20 +291,17 @@ public struct SearchQueryDiagnostic: Error, Codable, Hashable, Sendable {
     public let message: String
     public let utf16LowerBound: Int
     public let utf16UpperBound: Int
-    public let needsEditing: Bool
 
     public init(
         code: SearchQueryDiagnosticCode,
         message: String,
         utf16LowerBound: Int,
-        utf16UpperBound: Int,
-        needsEditing: Bool = false
+        utf16UpperBound: Int
     ) {
         self.code = code
         self.message = message
         self.utf16LowerBound = utf16LowerBound
         self.utf16UpperBound = utf16UpperBound
-        self.needsEditing = needsEditing
     }
 }
 
@@ -358,6 +349,7 @@ public struct SearchResponse: Codable, Hashable, Sendable {
     public let results: [SearchResult]
     public let hasMore: Bool
     public let totalResultCount: Int?
+    public let indeterminateDocumentCount: Int
     public let diagnostics: [SearchQueryDiagnostic]
 
     public init(
@@ -370,6 +362,7 @@ public struct SearchResponse: Codable, Hashable, Sendable {
         results: [SearchResult],
         hasMore: Bool,
         totalResultCount: Int? = nil,
+        indeterminateDocumentCount: Int = 0,
         diagnostics: [SearchQueryDiagnostic] = []
     ) {
         self.contractVersion = contractVersion
@@ -381,6 +374,7 @@ public struct SearchResponse: Codable, Hashable, Sendable {
         self.results = results
         self.hasMore = hasMore
         self.totalResultCount = totalResultCount
+        self.indeterminateDocumentCount = indeterminateDocumentCount
         self.diagnostics = diagnostics
     }
 

@@ -99,6 +99,8 @@ public enum NoteSearchMatchReason: Codable, Hashable, Sendable {
     case structured(SearchStructuredMatch)
     case property(SearchPropertyMatch)
     case link(SearchLinkMatch)
+    case excluded(SearchClause)
+    case paragraph(SearchParagraphQuery)
 }
 
 public struct SearchHighlight: Codable, Hashable, Sendable {
@@ -127,6 +129,7 @@ public struct NoteSearchResult: Codable, Hashable, Sendable {
     public let matchedFields: [SearchMatchedField]
     public let rankReason: SearchRankReason
     public let primaryMatchReason: NoteSearchMatchReason
+    public let paragraphRanges: [SearchSourceRange]
     public let additionalMatchReasons: [NoteSearchMatchReason]
     public let sourceRange: SearchSourceRange?
     public let freshnessToken: SearchFreshnessToken
@@ -151,6 +154,7 @@ public struct NoteSearchResult: Codable, Hashable, Sendable {
         rankReason: SearchRankReason = .lexicalRelevance,
         primaryMatchReason: NoteSearchMatchReason = .lexical,
         additionalMatchReasons: [NoteSearchMatchReason] = [],
+        paragraphRanges: [SearchSourceRange] = [],
         sourceRange: SearchSourceRange? = nil,
         freshnessToken: SearchFreshnessToken,
         fingerprint: DocumentFingerprint,
@@ -175,6 +179,7 @@ public struct NoteSearchResult: Codable, Hashable, Sendable {
         self.rankReason = rankReason
         self.primaryMatchReason = primaryMatchReason
         self.additionalMatchReasons = additionalMatchReasons
+        self.paragraphRanges = paragraphRanges
         self.sourceRange = sourceRange
         self.freshnessToken = freshnessToken
         self.fingerprint = fingerprint
@@ -182,12 +187,23 @@ public struct NoteSearchResult: Codable, Hashable, Sendable {
         self.classification = classification
     }
 
+    public func selectingParagraph(_ range: SearchSourceRange) -> NoteSearchResult? {
+        guard paragraphRanges.contains(range) else { return nil }
+        return NoteSearchResult(
+            resultID: resultID + ":paragraph:\(range.utf16LowerBound)", vaultID: vaultID, vaultName: vaultName,
+            vaultRole: vaultRole, relativePath: relativePath, stableNoteID: stableNoteID, title: title,
+            matchedField: .body, context: "paragraph", sourceLine: range.line, snippet: "", highlights: [],
+            matchedFields: [.body], rankReason: rankReason, primaryMatchReason: primaryMatchReason,
+            additionalMatchReasons: additionalMatchReasons, paragraphRanges: [range], sourceRange: range,
+            freshnessToken: freshnessToken, fingerprint: fingerprint, evidentialLayer: evidentialLayer, classification: classification)
+    }
+
     public var noteReference: VaultQualifiedNoteID {
         VaultQualifiedNoteID(vaultID: vaultID, relativePath: relativePath)
     }
 
     /// A nonempty, deterministic sequence. The primary ranking reason comes
-    /// first; further satisfied structured AND clauses follow query order.
+    /// first; further proven conditions follow their order in successful branches.
     public var matchReasons: [NoteSearchMatchReason] {
         [primaryMatchReason] + additionalMatchReasons
     }

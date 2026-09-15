@@ -4,6 +4,44 @@
 
 ## Current verification snapshot
 
+**2026-09-15 — Search contract 20:** Boolean Search now includes existential
+`paragraph:(...)` predicates over complete top-level body paragraphs, successful
+paragraph ranges, and literal term-group insertion. The index uses schema 18 and
+ranking policy 4. Saved Search version-review behavior from this run was subsequently
+removed by the clean cutover recorded below. The scoped run passes 128 Core,
+Contracts, Application and App tests
+(`.build/search-phase2-final-tests.log`). Follow-up checks in
+`.build/search-phase2-final-boundaries.log` cover paragraph annotation field ownership,
+MCP locator paging, Unicode insertion boundaries and term-group persistence. The
+production recovery entry also stages malformed paragraph JSON and rebuilds from the
+unchanged source corpus (`.build/search-phase2-recovery-tests.log`). AppKit
+field tests retain marked-text and caret guarantees. Invalid input, unknown body/YAML
+state, per-predicate links, duplicate ranking, authorization, pagination, exact ranges
+and incremental/rebuild equivalence are exercised with nonprivate sources.
+A selected-Xcode Debug QA journey uses the standard 500-Note fixture copy plus two
+Search fixtures. It verifies term creation, save, restart persistence, explicit OR
+insertion and later group edits leaving existing queries unchanged. The independently
+accessible paragraph-locations popover expands beyond its first ten locations and opens
+line 26 at the exact selected source paragraph. Invalid paragraph syntax and an external
+fixture edit producing one indeterminate Note are visible; the opened Note's source hash
+is unchanged. Details and cleanup are recorded in `.build/search-phase2-qa-report.md`.
+The QA process, generated app and runtime state are removed. Dark appearance at the
+480-pixel advanced-window width was observed; this is not the full adaptation matrix,
+human VoiceOver/FKA/installed-IME acceptance, or a release-artifact journey. The full
+repository gate stopped at a Preview Styles LineLength violation
+(`.build/search-phase2-integration-gate.log`). That line is now fixed and scoped lint
+passes, but the complete gate has not been rerun;
+no full product-suite or Release pass is inferred from scoped proof.
+
+**2026-09-15 — Saved Search clean cutover:** Current definitions run through ordinary
+Search without a compatibility list, version-review diagnostic, or editing-only path.
+Decoding accepts only the current format; unsupported bytes retain the existing
+unreadable-store and replacement protection. Forty-four scoped Contracts, Core and
+App tests pass (`.build/search-clean-cutover-tests.log`), covering current definition
+round trips, persistence, unsupported-format preservation and ordinary controller
+execution. Swift lint and documentation validation pass. This bounded cutover does
+not establish a new full integration, Release, or human accessibility pass.
+
 **2026-09-15 — Unified Search entry and Sidebar simplification:** Shift–Command–F
 and View → Advanced Search route directly to the existing advanced window;
 the layout-dependent fallback and separate View → Search entry are removed.

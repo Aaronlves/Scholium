@@ -210,6 +210,12 @@ struct ResearchSearchView<Library: View>: View {
     @State private var suppressedCompletionQuery: String?
     @State private var confirmsSavedSearchRecovery = false
     @State private var showsQueryExplanation = false
+    @State private var showsTermGroups = false
+    @State private var paragraphNote: NoteSearchResult?
+    @State private var termInsertionFailure: String?
+    @State private var queryCaretUTF16: Int?
+    @State private var completionCaretUTF16: Int?
+    @State private var completionReplacementID: UInt64?
 
     init(
         controller: DiscoveryController,
@@ -255,14 +261,29 @@ struct ResearchSearchView<Library: View>: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .accessibilityElement(children: .contain)
+        .popover(isPresented: Binding(get: { paragraphNote != nil }, set: { if !$0 { paragraphNote = nil } })) {
+            if let paragraphNote { SearchParagraphLocationsView(note: paragraphNote, open: { open($0) }) }
+        }
+        .sheet(isPresented: $showsTermGroups) { SearchTermGroupManager(controller: searchController) }
+        .alert("Cannot Insert Term Group", isPresented: Binding(get: { termInsertionFailure != nil }, set: { if !$0 { termInsertionFailure = nil } })) {
+            Button("OK") { termInsertionFailure = nil }
+        } message: {
+            Text(ScholiumL10n.dynamicString(termInsertionFailure ?? ""))
+        }
+        .task { await searchController.loadTermGroups() }
         .onAppear {
             normalizeSelection()
             if isActive, !queryDraft.isEmpty { scheduleSearch() }
         }
         .onChange(of: controller.search.criteria.query) { _, _ in
+            paragraphNote = nil
             completionSelection = nil
         }
+        .onChange(of: searchController.inputReplacementID) { _, replacementID in
+            if replacementID != completionReplacementID { queryCaretUTF16 = nil }
+        }
         .onChange(of: controller.search.results) { _, _ in
+            paragraphNote = nil
             normalizeSelection()
         }
         .background {
@@ -362,7 +383,9 @@ struct ResearchSearchView<Library: View>: View {
                     searchFocused = true
                 },
                 endedEditing: { searchFocused = false },
-                command: handleSearchCommand
+                command: handleSearchCommand,
+                replacementCaretUTF16: completionReplacementID == searchController.inputReplacementID ? completionCaretUTF16 : nil,
+                selectionChanged: { queryCaretUTF16 = $0 }
             )
         }
         .padding(.horizontal, isAdvanced ? 24 : ScholiumSidebarLayout.edgeInset)
@@ -401,9 +424,23 @@ struct ResearchSearchView<Library: View>: View {
             Text(localizedScopeTitle(controller.search.criteria.scope))
                 .lineLimit(1)
             searchSummary
+            if controller.search.indeterminateDocumentCount > 0 {
+                Text("Undetermined notes: \(controller.search.indeterminateDocumentCount)")
+                    .help("Some source conditions could not be evaluated. Exclusion does not treat them as absent.")
+            }
             Spacer(minLength: 0)
             if isAdvanced {
                 savedSearchesMenu
+                termGroupsMenu
+                Button {
+                    paragraphNote = selectedParagraphResult
+                } label: {
+                    Image(systemName: "paragraphsign")
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel("Matching Paragraphs")
+                .help("Matching Paragraphs")
+                .disabled(selectedParagraphResult == nil)
                 Button {
                     showsQueryExplanation = true
                 } label: {
@@ -447,7 +484,7 @@ struct ResearchSearchView<Library: View>: View {
             for: queryDraft,
             scope: controller.search.criteria.scope,
             provider: .note,
-            context: context.completionContext
+            context: context.completionContext, caretUTF16: queryCaretUTF16
         )
     }
 
@@ -465,7 +502,7 @@ struct ResearchSearchView<Library: View>: View {
                                 resting: .primaryText,
                                 emphasized: .accent
                             )
-                        Text(completion.detail)
+                        Text(ScholiumL10n.dynamicString(completion.detail))
                             .font(ScholiumTypography.interface(.small))
                             .scholiumForeground(.secondaryText)
                         Spacer(minLength: 0)
@@ -523,6 +560,9 @@ struct ResearchSearchView<Library: View>: View {
 
     private func apply(_ completion: SearchCompletion) {
         searchController.replaceQuery(completion.replacementText)
+        completionCaretUTF16 = completion.caretUTF16
+        queryCaretUTF16 = completion.caretUTF16
+        completionReplacementID = searchController.inputReplacementID
         scheduleSearch()
         completionSelection = nil
         suppressedCompletionQuery = completion.replacementText
@@ -636,7 +676,10 @@ struct ResearchSearchView<Library: View>: View {
         } else if controller.search.results.isEmpty {
             ContentUnavailableView(
                 "No Search Results", systemImage: "magnifyingglass",
-                description: Text("No results match the current query and scope.")
+                description: Text(
+                    controller.search.indeterminateDocumentCount > 0
+                        ? String(localized: "No confirmed matches. Some notes could not be evaluated.")
+                        : String(localized: "No results match the current query and scope."))
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
@@ -663,7 +706,11 @@ struct ResearchSearchView<Library: View>: View {
             .accessibilityIdentifier("scholium.searchUnavailable")
         } else if controller.search.results.isEmpty {
             ScholiumSidebarState(
-                Text("No Search Results"), detail: Text("No results match the current query and scope."), indicator: .symbol("magnifyingglass")
+                Text("No Search Results"),
+                detail: Text(
+                    controller.search.indeterminateDocumentCount > 0
+                        ? String(localized: "No confirmed matches. Some notes could not be evaluated.")
+                        : String(localized: "No results match the current query and scope.")), indicator: .symbol("magnifyingglass")
             )
             .accessibilityIdentifier("scholium.searchEmpty")
         }
@@ -680,6 +727,31 @@ struct ResearchSearchView<Library: View>: View {
         return SearchStatePresentation.suppressesNoMatchContent(
             for: controller.search.availability, scope: controller.search.criteria.scope,
             hasExecutionIssue: controller.search.executionIssue != nil)
+    }
+
+    private var selectedParagraphResult: NoteSearchResult? {
+        let result =
+            controller.search.results.first { SearchResultIdentity.result($0) == controller.search.selectedResultID }
+            ?? (controller.search.results.count == 1 ? controller.search.results.first : nil)
+        guard case .note(let note) = result, !note.paragraphRanges.isEmpty else { return nil }
+        return note
+    }
+
+    private var termGroupsMenu: some View {
+        Menu {
+            ForEach(searchController.termGroups) { group in
+                Button(group.name) {
+                    do { apply(try group.insertion(in: queryDraft, caretUTF16: queryCaretUTF16 ?? queryDraft.utf16.count)) } catch {
+                        termInsertionFailure = error.localizedDescription
+                    }
+                }
+            }
+            if !searchController.termGroups.isEmpty { Divider() }
+            Button("Manage Term Groups…") { showsTermGroups = true }
+        } label: {
+            Text("Insert Term Group")
+        }
+        .menuStyle(.borderlessButton)
     }
 
     private var savedSearchesMenu: some View {
@@ -714,11 +786,7 @@ struct ResearchSearchView<Library: View>: View {
                         }
                         .scholiumActivationPointer()
                     } label: {
-                        if search.needsEditingDiagnostic != nil {
-                            Label(search.name, systemImage: "exclamationmark.triangle")
-                        } else {
-                            Text(search.name)
-                        }
+                        Text(search.name)
                     }
                     .scholiumActivationPointer()
                 }
@@ -785,7 +853,7 @@ struct ResearchSearchView<Library: View>: View {
         }
     }
 
-    private func searchResultButton(_ result: SearchResult) -> some View {
+    @ViewBuilder private func searchResultButton(_ result: SearchResult) -> some View {
         let resultID = SearchResultIdentity.result(result)
         let accessibilityLabel: String =
             switch result {
@@ -794,11 +862,10 @@ struct ResearchSearchView<Library: View>: View {
                     + String(localized: "Line \(note.sourceLine)")
                     + (note.searchStructuredReasonDescription.map { ", \($0)" } ?? "")
             }
-        return WorkspaceSearchResultRow(
+        let card = WorkspaceSearchResultRow(
             result: result,
             compact: !isAdvanced
         )
-        .tag(resultID)
         .onTapGesture {
             controller.selectSearchResult(resultID)
             open(.result(result))
@@ -820,6 +887,17 @@ struct ResearchSearchView<Library: View>: View {
         .accessibilityLabel(accessibilityLabel)
         .accessibilityHint("Opens the selected Search result")
         .accessibilityIdentifier("scholium.searchResult." + result.id)
+        if case .note(let note) = result, !note.paragraphRanges.isEmpty {
+            VStack(alignment: .leading) {
+                card
+                Button("Show \(note.paragraphRanges.count) Matching Paragraphs") {
+                    controller.selectSearchResult(resultID)
+                    paragraphNote = note
+                }.buttonStyle(.borderless)
+            }.tag(resultID)
+        } else {
+            card.tag(resultID)
+        }
     }
 
     private var searchResultSummary: String {
@@ -838,8 +916,8 @@ struct ResearchSearchView<Library: View>: View {
         else { return nil }
         let scope = localizedScopeTitle(explanation.scope)
         let heading = scope
-        let clauses = explanation.clauses.map(explanationClause)
-        return ([heading] + clauses).joined(separator: "\n")
+        let expression = explanation.expression.rendered { explanationClause(SearchPredicate(clause: $0).explanation) }
+        return heading + "\n" + expression
     }
 
     private func explanationClause(_ clause: SearchExplanationClause) -> String {
@@ -853,6 +931,8 @@ struct ResearchSearchView<Library: View>: View {
         case .property(let key, let value):
             return value.map { "Property \(key) equals ‘\($0)’" }
                 ?? "Property \(key) is present"
+        case .paragraph(let expression):
+            return "paragraph:" + expression.rendered(\.queryDescription)
         case .link(let direction, let identity):
             return direction == .fromNote
                 ? "is a direct destination of a link authored in ‘\(identity)’"
@@ -957,17 +1037,13 @@ struct ResearchSearchView<Library: View>: View {
         case .ambiguousIdentity:
             diagnostic.message
         case .notApplicable:
-            diagnostic.message
+            ScholiumL10n.dynamicString(diagnostic.message)
         case .missingFieldValue:
             String(localized: "This Search field requires a value.")
         case .unknownStructuredValue:
             String(localized: "This structured value is not a canonical Scholium value.")
         case .unsupportedSyntax:
-            String(localized: "This syntax is outside Scholium’s finite Search grammar.")
-        case .onlyExcludedFreeText:
-            String(localized: "Add a positive term or a structured callout or broken-link condition.")
-        case .needsEditing:
-            diagnostic.message
+            ScholiumL10n.dynamicString(diagnostic.message)
         }
     }
 
@@ -1005,6 +1081,10 @@ private extension NoteSearchResult {
             switch reason {
             case .lexical:
                 continue
+            case .paragraph(let query):
+                return SearchClause.paragraph(query).queryDescription
+            case .excluded(let clause):
+                return "NOT (" + clause.queryDescription + ")"
             case .structured(let structured):
                 let exclusion = structured.excluded ? "-" : ""
                 return "\(exclusion)\(structured.field.rawValue):\(structured.value)"

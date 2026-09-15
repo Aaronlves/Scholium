@@ -221,7 +221,10 @@ already-visible Chat does not toggle the Sidebar closed.
   The advanced window retains query/results when opening a Note, keeps Saved
   Searches in a compact action line, and exposes concise query conditions in a
   transient information popover. Native Search-field composition owns input;
-  there is no second query draft or centered overlay.
+  there is no second query draft or centered overlay. Insert Term Group opens the
+  local collection or its native management sheet. Matching Paragraphs opens a
+  native popover with independently accessible location buttons and bounded
+  expansion; both result rows and the advanced toolbar provide an entry.
   Results now use the native inset List's selection, with interface typography,
   document symbols, a bounded snippet, and compact location/reason text.
   Native content-state views distinguish the initial query prompt, empty results,

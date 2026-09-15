@@ -16,6 +16,8 @@ struct ResearchSearchField: NSViewRepresentable {
     let beganEditing: () -> Void
     let endedEditing: () -> Void
     let command: (Command) -> Bool
+    var replacementCaretUTF16: Int? = nil
+    var selectionChanged: (Int) -> Void = { _ in }
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
     func makeNSView(context: Context) -> Field {
@@ -23,6 +25,7 @@ struct ResearchSearchField: NSViewRepresentable {
         field.sendsSearchStringImmediately = true
         field.maximumRecents = 0
         field.delegate = context.coordinator
+        context.coordinator.field = field
         field.target = context.coordinator
         field.action = #selector(Coordinator.changed(_:))
         field.searchMenuTemplate = context.coordinator.makeSearchMenu()
@@ -39,8 +42,15 @@ struct ResearchSearchField: NSViewRepresentable {
         // between AppKit edits; assigning stringValue then can discard keystrokes.
         // Only explicit model replacements may change an active field editor.
         if !field.isComposing {
+            field.isApplyingModel = true
+            defer { field.isApplyingModel = false }
             if field.currentEditor() == nil || field.appliedReplacementID != replacementID {
                 if field.stringValue != text { field.stringValue = text }
+                if field.appliedReplacementID != replacementID, let caret = replacementCaretUTF16,
+                    caret >= 0, caret <= text.utf16.count, let editor = field.currentEditor() as? NSTextView
+                {
+                    editor.setSelectedRange(NSRange(location: caret, length: 0))
+                }
             }
             field.appliedReplacementID = replacementID
         }
@@ -52,6 +62,7 @@ struct ResearchSearchField: NSViewRepresentable {
     }
 
     final class Field: NSSearchField {
+        var isApplyingModel = false
         var appliedReplacementID: UInt64?
         var focusRequestID: UInt64? { didSet { applyFocusRequest() } }
         var isSearchActive = false {
@@ -96,7 +107,18 @@ struct ResearchSearchField: NSViewRepresentable {
             (.currentVault, "This Vault"), (.triptych, "Triptych"),
         ]
         var parent: ResearchSearchField
-        init(_ parent: ResearchSearchField) { self.parent = parent }
+        weak var field: Field?
+        init(_ parent: ResearchSearchField) {
+            self.parent = parent
+            super.init()
+            NotificationCenter.default.addObserver(
+                self, selector: #selector(selectionDidChange(_:)), name: NSTextView.didChangeSelectionNotification, object: nil)
+        }
+        @objc private func selectionDidChange(_ notification: Notification) {
+            guard let editor = notification.object as? NSTextView, field?.currentEditor() === editor, field?.isApplyingModel == false, !editor.hasMarkedText()
+            else { return }
+            parent.selectionChanged(editor.selectedRange().length == 0 ? editor.selectedRange().location : -1)
+        }
         func makeSearchMenu() -> NSMenu {
             let menu = NSMenu(title: ScholiumL10n.string("Search"))
             let scopeMenu = NSMenu(title: ScholiumL10n.string("Search scope"))

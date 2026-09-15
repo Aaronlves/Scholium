@@ -4,13 +4,15 @@ public struct SearchCompletion: Codable, Hashable, Identifiable, Sendable {
     public let replacementText: String
     public let displayText: String
     public let detail: String
+    public let caretUTF16: Int?
 
     public var id: String { replacementText }
 
-    public init(replacementText: String, displayText: String, detail: String) {
+    public init(replacementText: String, displayText: String, detail: String, caretUTF16: Int? = nil) {
         self.replacementText = replacementText
         self.displayText = displayText
         self.detail = detail
+        self.caretUTF16 = caretUTF16
     }
 }
 
@@ -36,9 +38,77 @@ public struct SearchCompletionContext: Codable, Hashable, Sendable {
 }
 
 public extension SearchCapabilities {
+    /// Completion shares the parser's lexer and replaces only the active token (or field/key),
+    /// preserving all following query source and returning the resulting native caret position.
+    func completions(
+        for rawQuery: String, scope: SearchPresentationScope, provider: SearchProvider = .note,
+        context: SearchCompletionContext = .empty, limit: Int = 8, caretUTF16: Int? = nil
+    ) -> [SearchCompletion] {
+        let caret = caretUTF16 ?? rawQuery.utf16.count
+        guard !rawQuery.isEmpty, limit > 0, caret >= 0, caret <= rawQuery.utf16.count,
+            let prefixRange = Range(NSRange(location: 0, length: caret), in: rawQuery)
+        else { return [] }
+        let beforeCaret = String(rawQuery[prefixRange])
+        let tokens = SearchQueryParser.completionTokens(rawQuery)
+        let active = tokens.first { $0.range.lowerBound < caret && $0.range.upperBound >= caret && !["(", ")", "-"].contains($0.raw) }
+        let start = active?.range.lowerBound ?? caret
+        var end = active?.range.upperBound ?? caret
+        if let active, let colon = active.raw.firstIndex(of: ":"), start + colon.utf16Offset(in: active.raw) >= caret {
+            end = start + colon.utf16Offset(in: active.raw) + 1
+        } else if let active, active.raw.hasPrefix("property:"), let equal = SearchQueryParser.propertyEqualityIndex(in: active.raw),
+            start + equal.utf16Offset(in: active.raw) >= caret
+        {
+            end = start + equal.utf16Offset(in: active.raw)
+        }
+        guard let tokenPrefixRange = Range(NSRange(location: start, length: caret - start), in: rawQuery),
+            let replacementRange = Range(NSRange(location: start, length: end - start), in: rawQuery)
+        else { return [] }
+        let token = String(rawQuery[tokenPrefixRange])
+        var groups: [String?] = []
+        let previous = tokens.filter { $0.range.upperBound <= start }
+        for (index, item) in previous.enumerated() {
+            if item.raw == "(" {
+                let field = index > 0 && previous[index - 1].raw.hasSuffix(":") ? String(previous[index - 1].raw.dropLast()).lowercased() : nil
+                groups.append(field ?? groups.last.flatMap { $0 })
+            } else if item.raw == ")", !groups.isEmpty {
+                groups.removeLast()
+            }
+        }
+        let inParagraph = groups.contains { $0 == "paragraph" }
+        let inherited = inParagraph ? nil : groups.last.flatMap { $0 }
+        if let inherited {
+            guard let field = fields(for: provider, scope: scope).first(where: { $0.name == inherited }),
+                field.name != "kind", field.valueKind == .lexical || field.valueKind == .canonical
+            else { return [] }
+        }
+        let synthetic = inherited.map { $0 + ":" + token } ?? token
+        let atomics = inParagraph ? [] : atomicCompletions(for: synthetic, scope: scope, provider: provider, context: context, limit: limit)
+        var replacements = atomics.map { item -> (String, String) in
+            let replacement = inherited.map { String(item.replacementText.dropFirst($0.count + 1)) } ?? item.replacementText
+            return (replacement, item.detail)
+        }
+        if !token.contains(":"), !token.hasPrefix("\"") {
+            for operation in ["AND", "OR", "NOT"] where operation.hasPrefix(token) && (inherited == nil || token == token.uppercased()) {
+                let trial = String(rawQuery[..<replacementRange.lowerBound]) + operation + " placeholder"
+                if SearchQueryParser.parse(trial + String(repeating: ")", count: groups.count)).isValid {
+                    replacements.append((operation + " ", "Boolean operator"))
+                }
+            }
+        }
+        if token.isEmpty, !groups.isEmpty, SearchQueryParser.parse(beforeCaret + String(repeating: ")", count: groups.count)).isValid {
+            replacements.append((")", "Close the current group"))
+        }
+        return replacements.prefix(limit).map { replacement, detail in
+            let prefix = String(rawQuery[..<replacementRange.lowerBound])
+            return SearchCompletion(
+                replacementText: prefix + replacement + rawQuery[replacementRange.upperBound...],
+                displayText: replacement, detail: detail, caretUTF16: prefix.utf16.count + replacement.utf16.count)
+        }
+    }
+
     /// Bounded completion derived only from the current static capability
     /// table. It edits plain query text and never creates hidden query state.
-    func completions(
+    private func atomicCompletions(
         for rawQuery: String,
         scope: SearchPresentationScope,
         provider: SearchProvider = .note,
@@ -60,7 +130,7 @@ public extension SearchCapabilities {
         if let colon = token.firstIndex(of: ":") {
             let rawField = String(token[..<colon]).lowercased()
             let rawPartialValue = String(token[token.index(after: colon)...])
-            let partialValue = rawPartialValue.lowercased()
+            let partialValue = rawPartialValue.trimmingCharacters(in: CharacterSet(charactersIn: "\"")).lowercased()
             guard
                 let field = fields.first(where: {
                     $0.name == rawField
@@ -74,7 +144,8 @@ public extension SearchCapabilities {
                     ast.clauses.count == 1, case .property(let clause) = ast.clauses[0]
                 else { return [] }
                 let key = clause.key
-                let valuePrefix = String(rawPartialValue[rawPartialValue.index(after: separator)...]).lowercased()
+                let valuePrefix = String(rawPartialValue[rawPartialValue.index(after: separator)...]).trimmingCharacters(in: CharacterSet(charactersIn: "\""))
+                    .lowercased()
                 let matches = Self.uniqueSorted(context.propertyValues[key] ?? [])
                     .filter { $0.lowercased().hasPrefix(valuePrefix) }
                 return matches.prefix(limit).map { value in
@@ -110,7 +181,7 @@ public extension SearchCapabilities {
             candidates = fields.filter {
                 $0.name.hasPrefix(partial)
             }.map {
-                ("\($0.name):", "\($0.name):", Self.detail(for: $0))
+                ("\($0.name):" + ($0.name == "paragraph" ? "(" : ""), "\($0.name):", Self.detail(for: $0))
             }
         }
         return candidates.prefix(limit).map { candidate in
@@ -154,17 +225,13 @@ public extension SearchCapabilities {
     }
 
     private static func queryValue(_ value: String) -> String {
-        guard value.contains(where: { $0.isWhitespace || $0 == "\"" || $0 == "\\" })
+        guard ["AND", "OR", "NOT", "NEAR"].contains(value) || value.hasPrefix("-") || value.contains(where: { $0.isWhitespace || "\"\\():".contains($0) })
         else { return value }
         let escaped =
             value
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "\"", with: "\\\"")
         return "\"\(escaped)\""
-    }
-
-    private static func completedTokens(in value: String) -> [String] {
-        value.split(whereSeparator: \.isWhitespace).map(String.init)
     }
 
     private static func trailingTokenRange(in value: String) -> Range<String.Index>? {

@@ -171,12 +171,14 @@ compositing artifacts; inspect the actual native window before judging them.
 
 ## Current integration boundary
 
-The latest knowledge-reuse change has scoped Core/App and isolated Debug QA
-evidence. Its complete gate stops at the unchanged WebEditor localization guard:
-the command catalog's keys are matched as direct UI labels before their existing
-localization mapping. No full gate pass is claimed. Verification retains the earlier
-2026-09-14 product-test, performance and Release evidence with its original
-boundary; package and human acceptance remain separate.
+Search contract 20 has scoped parser/index, native field and MCP bridge proof,
+plus a live journey using a disposable copy of the 500-Note fixture and two Search
+cases. Complete the remaining visual-adaptation matrix and human input/accessibility
+acceptance. The latest complete-gate attempt stopped at a Preview Styles LineLength
+failure before full product tests and Release build. That formatting failure is now
+fixed and its scoped lint passes; the complete gate has not been rerun. Verification retains earlier product-test,
+performance and Release evidence with its original boundary; package and human
+acceptance remain separate.
 
 ## External-host and release acceptance
 

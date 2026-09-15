@@ -2219,7 +2219,7 @@ struct FrontendArchitectureTests {
                     provider: .note,
                     providerWasExplicit: false,
                     scope: .triptych,
-                    clauses: []
+                    expression: .and([])
                 ),
                 freshnessToken: .triptych(generation),
                 availability: .current(generation),
@@ -2272,7 +2272,7 @@ struct FrontendArchitectureTests {
                     provider: .note,
                     providerWasExplicit: false,
                     scope: .triptych,
-                    clauses: []
+                    expression: .and([])
                 ),
                 freshnessToken: freshness,
                 availability: .current(generation),
@@ -2301,7 +2301,7 @@ struct FrontendArchitectureTests {
                     provider: .note,
                     providerWasExplicit: false,
                     scope: .thisNote,
-                    clauses: []
+                    expression: .and([])
                 ),
                 freshnessToken: freshness,
                 availability: .current(generation),
@@ -2323,7 +2323,7 @@ struct FrontendArchitectureTests {
                     provider: .note,
                     providerWasExplicit: false,
                     scope: .thisNote,
-                    clauses: []
+                    expression: .and([])
                 ),
                 freshnessToken: freshness,
                 availability: .current(generation),
