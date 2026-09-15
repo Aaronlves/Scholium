@@ -5,7 +5,7 @@
 ## 5. Common note capabilities
 
 Analysis, Topic, and ordinary Work Notes support Review, Edit, and Source over
-one exact Markdown buffer; autosave; create, duplicate, import, rename, move,
+one exact Markdown buffer; autosave; create, duplicate, import, move,
 Reveal in Finder, and system-Trash deletion; Search, Find/Replace, Connect,
 source properties, Agent Changes, conflicts, and recovery.
 
@@ -126,7 +126,7 @@ source-property contract. YAML and body share one exact Markdown authority;
 source fingerprint, revision checks, Undo and recovery as the body; there is no
 separate managed Metadata record or form.
 
-### 5.3 Create, duplicate, rename, and identity
+### 5.3 Create, duplicate, move, and identity
 
 **New Note** and **New Folder** are immediate nonmodal actions at the selected
 vault root or exact selected folder. New paths are atomically claimed as
@@ -146,12 +146,13 @@ authority after the reserved identity exists.
 
 A successful source-and-identity commit appears immediately in Library; derived
 indexes refresh afterward without blocking writing. Presentation failure must
-not invite duplicate creation.
+not invite duplicate creation. A Note's filename is changed only through the
+inline title control in Edit; there is no separate Note Rename command or sheet.
 
 Paths are locations; Notes have stable app-owned identities. Duplicate creates
 a new identity and copies exact source, but not
-Settlement. Rename and Move preserve identity and exact resolved incoming-link
-updates. Ambiguous external rename keeps source readable
+Settlement. An inline filename change and Move preserve identity and exact
+resolved incoming-link updates. Ambiguous external rename keeps source readable
 but blocks identity-dependent mutation until resolved.
 
 Folders are vault-relative filesystem locations with no UUID, Metadata, Record,
@@ -323,9 +324,9 @@ and limits. There is no YAML-specific query namespace.
 
 Every Analysis, Topic and Work uses its filename without `.md` as its Note
 title. YAML titles, aliases and body headings never replace this identity.
-Rename does not synchronize authored property values or headings. Duplicate
-and standalone Markdown copy carry the same authored properties in their exact
-source; no separate metadata export is required.
+Changing the filename does not synchronize authored property values or headings.
+Duplicate and standalone Markdown copy carry the same authored properties in
+their exact source; no separate metadata export is required.
 
 Creating a Note accepts complete authored Markdown, with optional YAML, and
 preserves its bytes. GUI New Note starts empty. No scaffold is injected.

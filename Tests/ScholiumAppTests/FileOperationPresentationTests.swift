@@ -58,7 +58,6 @@ struct FileOperationPresentationTests {
                     notes: [.init(noteID: $0.stableNoteID, relativePath: $0.relativePath, expectedRevision: $0.revision)])
             })
         let examples: [(String, AnyView)] = [
-            ("rename", AnyView(NoteFileOperationView(request: .rename(targets[0]), actions: noteActions))),
             ("move", AnyView(NoteFileOperationView(request: .move(targets[0]), actions: noteActions))),
             ("duplicate", AnyView(NoteFileOperationView(request: .duplicate(targets[0]), actions: noteActions))),
             (
@@ -99,7 +98,7 @@ struct FileOperationPresentationTests {
                 host.layoutSubtreeIfNeeded()
                 #expect(abs(host.bounds.width - width) < 0.5)
                 #expect(host.bounds.height > 120 && host.bounds.height < 700)
-                if !narrow && ["rename", "move", "duplicate", "folder"].contains(name) {
+                if !narrow && ["move", "duplicate", "folder"].contains(name) {
                     #expect(host.bounds.height < 320)
                 }
                 for button in descendants(host).compactMap({ $0 as? NSButton }) where !button.isHiddenOrHasHiddenAncestor {

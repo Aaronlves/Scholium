@@ -1106,12 +1106,6 @@ private struct ScholiumFileDocumentCommandContent: View {
         }
         .scholiumActivationPointer()
         .disabled(appState?.fileCommandSingleNoteTarget == nil)
-        Button("Rename Note…") {
-            guard let target = appState?.fileCommandSingleNoteTarget else { return }
-            appState?.noteFileRequest = .rename(target)
-        }
-        .scholiumActivationPointer()
-        .disabled(appState?.fileCommandSingleNoteTarget == nil)
         Button("Move Note…") {
             if let targets = appState?.focusedLibraryMutationTargets {
                 appState?.requestLibraryBatchMove(targets)

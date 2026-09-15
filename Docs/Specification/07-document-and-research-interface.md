@@ -221,9 +221,9 @@ place it at the top of the shared document plane, inside the document's
 scrolling reading and writing context but outside authoritative Markdown.
 Review presents it as a read-only identity projection. Edit presents the same
 title as a borderless inline filename control: Return or leaving the field
-requests the existing revision-aware Rename file operation, while Escape
-cancels. Its visible trailing space belongs to the control and focuses it when
-clicked; it is never an unresponsive surface. A rejected rename preserves the
+requests the existing revision-aware Note move, while Escape cancels. Its
+visible trailing space belongs to the control and focuses it when clicked; it
+is never an unresponsive surface. A rejected filename change preserves the
 draft and explains the failure beside the title. Native window title continues
 to identify the window without becoming the visual title. Authored Markdown
 headings belong to the body: H1 through H6 are presented as six relative
@@ -268,7 +268,7 @@ adds no attachment sidebar, global attachment manager or persistent file reader.
 Ordinary Edit entry restores retained, fingerprint-valid title/body focus and
 selection when available. Otherwise it uses an exactly mapped Review selection,
 or places a collapsed insertion point at the first authored body position after
-YAML. Direct title activation and Rename remain explicit title-focus routes.
+YAML. Direct title activation remains an explicit title-focus route.
 An explicit source locator and Managed New Note's body-start insertion take
 precedence. Window restoration retains this state only for still-open tabs;
 closing a tab ends it, without permanent vault-wide cursor history.

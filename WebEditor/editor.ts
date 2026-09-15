@@ -420,6 +420,13 @@ class DocumentTitleWidget extends WidgetType {
       }
       commit();
     });
+    // The filename title is a native text control outside authoritative
+    // Markdown. Keep its pointer stream out of CodeMirror's editor-level
+    // selection and selection-action tracking so native forward and backward
+    // drags remain owned by the textarea.
+    const stopEditorPointerHandling = (event: Event) => event.stopPropagation();
+    input.addEventListener("pointerdown", stopEditorPointerHandling);
+    input.addEventListener("mousedown", stopEditorPointerHandling);
     wrapper.addEventListener("pointerdown", (event) => {
       if (event.target === input || input.disabled) return;
       event.preventDefault();
@@ -593,16 +600,51 @@ function projectedWidgetSourceOffset(event: MouseEvent) {
   return projectedWidgets.sourceOffset(event);
 }
 
-function projectedHeadingSourceOffset(view: EditorView, event: MouseEvent) {
+function headingAtPointer(view: EditorView, event: MouseEvent) {
   const target = event.target instanceof Element ? event.target : null;
-  const heading = target?.closest<HTMLElement>(".cm-live-heading")
+  return target?.closest<HTMLElement>(".cm-live-heading")
     ?? [...view.contentDOM.querySelectorAll<HTMLElement>(".cm-live-heading")]
       .find((candidate) => {
         const box = candidate.getBoundingClientRect();
         return event.clientX >= box.left && event.clientX <= box.right
           && event.clientY >= box.top && event.clientY <= box.bottom;
       });
+}
+
+function headingContentBounds(heading: HTMLElement) {
+  const rect = heading.getBoundingClientRect();
+  const style = getComputedStyle(heading);
+  const paddingTop = Number.parseFloat(style.paddingTop) || 0;
+  const paddingBottom = Number.parseFloat(style.paddingBottom) || 0;
+  const contentTop = Math.min(rect.bottom, rect.top + paddingTop);
+  return {
+    rect,
+    contentTop,
+    contentBottom: Math.max(contentTop, rect.bottom - paddingBottom),
+  };
+}
+
+function headingPointerIsContent(view: EditorView, event: MouseEvent) {
+  const heading = headingAtPointer(view, event);
+  if (!heading) return false;
+  const {contentTop, contentBottom} = headingContentBounds(heading);
+  return contentBottom > contentTop
+    && event.clientY >= contentTop
+    && event.clientY <= contentBottom;
+}
+
+function projectedHeadingSourceOffset(view: EditorView, event: MouseEvent) {
+  const heading = headingAtPointer(view, event);
   if (!heading) return null;
+
+  // An authored heading is CodeMirror source text, not a projected widget.
+  // Let CodeMirror own pointer selection on its content row so both drag
+  // directions retain the native anchor/head semantics. Only the visual
+  // padding needs a source-local fallback because it has no text geometry.
+  const {rect, contentTop, contentBottom} = headingContentBounds(heading);
+  if (contentBottom > contentTop
+      && event.clientY >= contentTop
+      && event.clientY <= contentBottom) return null;
 
   // CodeMirror maps a point in a line's vertical padding to an adjacent block
   // boundary. Live Preview deliberately gives headings generous semantic
@@ -610,12 +652,6 @@ function projectedHeadingSourceOffset(view: EditorView, event: MouseEvent) {
   // resolving the visible character back to its authoritative source line.
   // This is especially important when title, attachment, and authored blank
   // line widgets share a nearby source boundary.
-  const rect = heading.getBoundingClientRect();
-  const style = getComputedStyle(heading);
-  const paddingTop = Number.parseFloat(style.paddingTop) || 0;
-  const paddingBottom = Number.parseFloat(style.paddingBottom) || 0;
-  const contentTop = Math.min(rect.bottom, rect.top + paddingTop);
-  const contentBottom = Math.max(contentTop, rect.bottom - paddingBottom);
   const contentY = contentBottom > contentTop
     ? Math.max(contentTop + 0.5, Math.min(event.clientY, contentBottom - 0.5))
     : (rect.top + rect.bottom) / 2;
@@ -676,6 +712,11 @@ function projectedHeadingSourceOffset(view: EditorView, event: MouseEvent) {
 }
 
 function projectedWidgetPointerStart(view: EditorView, event: MouseEvent) {
+  // Heading text, including projected inline marks inside it, remains native
+  // CodeMirror content. Do not let the generic projected-link route turn a
+  // heading drag into a one-point caret placement.
+  if (headingPointerIsContent(view, event)) return false;
+
   const sourceOffset = projectedWidgets.sourceOffset(event)
     ?? projectedHeadingSourceOffset(view, event)
     ?? projectedWidgetSourceOffset(event);

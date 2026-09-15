@@ -15,7 +15,6 @@ enum SidebarNoteCommand: String, Hashable, Identifiable {
     case openInSeparateWindow
     case addToChat
     case duplicate
-    case rename
     case move
     case moveToSystemTrash
     case copyRelativePath
@@ -27,7 +26,7 @@ enum SidebarNoteCommand: String, Hashable, Identifiable {
         switch self {
         case .openInNewTab, .openInSeparateWindow, .addToChat, .copyRelativePath, .revealInFinder:
             false
-        case .duplicate, .rename, .move, .moveToSystemTrash:
+        case .duplicate, .move, .moveToSystemTrash:
             true
         }
     }
@@ -38,7 +37,6 @@ enum SidebarNoteCommand: String, Hashable, Identifiable {
         case .openInSeparateWindow: "Open in Separate Window"
         case .addToChat: "Add to Chat"
         case .duplicate: "Duplicate…"
-        case .rename: "Rename…"
         case .move: "Move Note…"
         case .moveToSystemTrash: "Move to Trash…"
         case .copyRelativePath: "Copy Relative Path"
@@ -52,7 +50,6 @@ enum SidebarNoteCommand: String, Hashable, Identifiable {
         case .openInSeparateWindow: "Open in Separate Window"
         case .addToChat: "Add to Chat"
         case .duplicate: "Duplicate Note"
-        case .rename: "Rename Note"
         case .move: "Move Note"
         case .moveToSystemTrash: "Move to Trash"
         case .copyRelativePath: "Copy Relative Path"
@@ -82,7 +79,7 @@ struct SidebarNoteCommandGroup: Hashable, Identifiable {
 func sidebarNoteCommandGroups() -> [SidebarNoteCommandGroup] {
     let groups = [
         SidebarNoteCommandGroup(kind: .opening, commands: [.openInNewTab, .openInSeparateWindow, .addToChat]),
-        SidebarNoteCommandGroup(kind: .editing, commands: [.rename, .duplicate, .move]),
+        SidebarNoteCommandGroup(kind: .editing, commands: [.duplicate, .move]),
         SidebarNoteCommandGroup(kind: .location, commands: [.revealInFinder, .copyRelativePath]),
         SidebarNoteCommandGroup(kind: .fileActions, commands: [.moveToSystemTrash]),
     ]
@@ -301,7 +298,7 @@ struct SidebarTreeNodeRow: View {
             context.openNote(note, .separateWindow)
         case .addToChat:
             context.addNoteToChat(note)
-        case .duplicate, .rename, .move:
+        case .duplicate, .move:
             guard let target = NoteMutationTarget(note) else {
                 context.showError(
                     "This note cannot be changed until its identity is resolved."
@@ -310,7 +307,6 @@ struct SidebarTreeNodeRow: View {
             }
             switch command {
             case .duplicate: context.requestFileOperation(.duplicate(target))
-            case .rename: context.requestFileOperation(.rename(target))
             case .move: context.requestFileOperation(.move(target))
             default: break
             }

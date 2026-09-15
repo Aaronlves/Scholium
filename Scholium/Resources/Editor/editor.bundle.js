@@ -33791,11 +33791,44 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       addWindowListeners() {
         window.addEventListener("mouseup", this.finish, true);
         window.addEventListener("blur", this.finish, true);
+        this.view.contentDOM.ownerDocument.addEventListener(
+          "mousemove",
+          this.forwardMissingMouseButton,
+          true
+        );
       }
       removeWindowListeners() {
         window.removeEventListener("mouseup", this.finish, true);
         window.removeEventListener("blur", this.finish, true);
+        this.view.contentDOM.ownerDocument.removeEventListener(
+          "mousemove",
+          this.forwardMissingMouseButton,
+          true
+        );
       }
+      forwardMissingMouseButton = (event) => {
+        if (!this.gestureActive || event.buttons !== 0 || event.button !== 0) return;
+        if (!(event.target instanceof Node)) return;
+        const forwarded = new MouseEvent("mousemove", {
+          bubbles: true,
+          cancelable: true,
+          view: event.view,
+          detail: event.detail,
+          screenX: event.screenX,
+          screenY: event.screenY,
+          clientX: event.clientX,
+          clientY: event.clientY,
+          ctrlKey: event.ctrlKey,
+          altKey: event.altKey,
+          shiftKey: event.shiftKey,
+          metaKey: event.metaKey,
+          button: 0,
+          buttons: 1,
+          relatedTarget: event.relatedTarget
+        });
+        event.target.dispatchEvent(forwarded);
+        event.stopImmediatePropagation();
+      };
       mousedown(event) {
         if (event.button !== 0 || this.view.composing) return false;
         if (options.handleModifiedLink(this.view, event)) return true;
@@ -37109,6 +37142,9 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         }
         commit();
       });
+      const stopEditorPointerHandling = (event) => event.stopPropagation();
+      input.addEventListener("pointerdown", stopEditorPointerHandling);
+      input.addEventListener("mousedown", stopEditorPointerHandling);
       wrapper.addEventListener("pointerdown", (event) => {
         if (event.target === input || input.disabled) return;
         event.preventDefault();
@@ -37243,19 +37279,36 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     }
     return projectedWidgets.sourceOffset(event);
   }
-  function projectedHeadingSourceOffset(view, event) {
+  function headingAtPointer(view, event) {
     const target = event.target instanceof Element ? event.target : null;
-    const heading2 = target?.closest(".cm-live-heading") ?? [...view.contentDOM.querySelectorAll(".cm-live-heading")].find((candidate) => {
+    return target?.closest(".cm-live-heading") ?? [...view.contentDOM.querySelectorAll(".cm-live-heading")].find((candidate) => {
       const box = candidate.getBoundingClientRect();
       return event.clientX >= box.left && event.clientX <= box.right && event.clientY >= box.top && event.clientY <= box.bottom;
     });
-    if (!heading2) return null;
+  }
+  function headingContentBounds(heading2) {
     const rect = heading2.getBoundingClientRect();
     const style = getComputedStyle(heading2);
     const paddingTop = Number.parseFloat(style.paddingTop) || 0;
     const paddingBottom = Number.parseFloat(style.paddingBottom) || 0;
     const contentTop = Math.min(rect.bottom, rect.top + paddingTop);
-    const contentBottom = Math.max(contentTop, rect.bottom - paddingBottom);
+    return {
+      rect,
+      contentTop,
+      contentBottom: Math.max(contentTop, rect.bottom - paddingBottom)
+    };
+  }
+  function headingPointerIsContent(view, event) {
+    const heading2 = headingAtPointer(view, event);
+    if (!heading2) return false;
+    const { contentTop, contentBottom } = headingContentBounds(heading2);
+    return contentBottom > contentTop && event.clientY >= contentTop && event.clientY <= contentBottom;
+  }
+  function projectedHeadingSourceOffset(view, event) {
+    const heading2 = headingAtPointer(view, event);
+    if (!heading2) return null;
+    const { rect, contentTop, contentBottom } = headingContentBounds(heading2);
+    if (contentBottom > contentTop && event.clientY >= contentTop && event.clientY <= contentBottom) return null;
     const contentY = contentBottom > contentTop ? Math.max(contentTop + 0.5, Math.min(event.clientY, contentBottom - 0.5)) : (rect.top + rect.bottom) / 2;
     const caret = document.caretRangeFromPoint?.(event.clientX, contentY) ?? null;
     const caretNode = caret && heading2.contains(caret.startContainer) ? caret.startContainer : null;
@@ -37297,6 +37350,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     return event.clientX <= rect.left + rect.width / 2 ? view.posAtDOM(heading2, 0) : view.posAtDOM(heading2, heading2.childNodes.length);
   }
   function projectedWidgetPointerStart(view, event) {
+    if (headingPointerIsContent(view, event)) return false;
     const sourceOffset = projectedWidgets.sourceOffset(event) ?? projectedHeadingSourceOffset(view, event) ?? projectedWidgetSourceOffset(event);
     if (sourceOffset === null) return false;
     event.preventDefault();

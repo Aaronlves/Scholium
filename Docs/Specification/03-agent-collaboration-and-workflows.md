@@ -11,7 +11,8 @@ optional in-app Chat (§8.7). External hosts retain their conversation ownership
 Scholium provides a native client for supported runtimes; authentication and
 the Agent execution loop remain runtime-owned. The researcher's
 current instruction supplies the task, scope, and any permission to create,
-modify, rename, move, undo a named change, or move a Note to system Trash.
+modify, move (including a filename change), undo a named change, or move a Note
+to system Trash.
 
 Scholium separates three instruction owners:
 
@@ -186,8 +187,9 @@ Removing a source link preserves file bytes. Agent Changes compare exact
 Markdown preimages/readbacks and use the existing source Undo boundary.
 
 Knowledge-base construction also provides bounded, paginated role/directory/Note
-browsing through the current Library inventory; identity-preserving Note move
-and rename through §5.3; and Note-related attachment listing and scoped reads.
+browsing through the current Library inventory; identity-preserving Note move,
+including filename changes, through §5.3; and Note-related attachment listing
+and scoped reads.
 Browse defaults to 20 entries, at most 100, and exposes role roots when no role
 is supplied. A role selects its root or exact relative directory, including
 empty directories. It lists immediate children only, using the Library's

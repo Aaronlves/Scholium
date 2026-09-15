@@ -123,11 +123,51 @@ export function createLiveSelectionController(options: {
     private addWindowListeners() {
       window.addEventListener("mouseup", this.finish, true);
       window.addEventListener("blur", this.finish, true);
+      // WKWebView can translate an AppKit leftMouseDragged event into a
+      // mousemove whose buttons bitmask is zero. CodeMirror's native
+      // MouseSelection treats that as mouse-up and destroys the selection.
+      // Forward only those events while this editor gesture is active, with
+      // the left button restored, so CodeMirror remains the sole selection
+      // owner and ordinary browser events pass through unchanged.
+      this.view.contentDOM.ownerDocument.addEventListener(
+        "mousemove",
+        this.forwardMissingMouseButton,
+        true,
+      );
     }
 
     private removeWindowListeners() {
       window.removeEventListener("mouseup", this.finish, true);
       window.removeEventListener("blur", this.finish, true);
+      this.view.contentDOM.ownerDocument.removeEventListener(
+        "mousemove",
+        this.forwardMissingMouseButton,
+        true,
+      );
+    }
+
+    private readonly forwardMissingMouseButton = (event: MouseEvent) => {
+      if (!this.gestureActive || event.buttons !== 0 || event.button !== 0) return;
+      if (!(event.target instanceof Node)) return;
+      const forwarded = new MouseEvent("mousemove", {
+        bubbles: true,
+        cancelable: true,
+        view: event.view,
+        detail: event.detail,
+        screenX: event.screenX,
+        screenY: event.screenY,
+        clientX: event.clientX,
+        clientY: event.clientY,
+        ctrlKey: event.ctrlKey,
+        altKey: event.altKey,
+        shiftKey: event.shiftKey,
+        metaKey: event.metaKey,
+        button: 0,
+        buttons: 1,
+        relatedTarget: event.relatedTarget,
+      });
+      event.target.dispatchEvent(forwarded);
+      event.stopImmediatePropagation();
     }
 
     mousedown(event: MouseEvent) {

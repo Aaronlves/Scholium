@@ -331,7 +331,7 @@ struct TransactionRecoveryView: View {
         case .noteRestructure: ScholiumL10n.string("Reorganize Notes")
         case .noteSave: "Save Note"
         case .noteCreation: "Create Note"
-        case .noteMove: "Move or Rename Note"
+        case .noteMove: "Move Note"
         case .folderMove:
             String(
                 localized: "Move or Rename Folder",

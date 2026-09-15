@@ -55,16 +55,38 @@ extension NoteMutationTarget {
 
 enum NoteFileRequest: Identifiable, Equatable, Sendable {
     case duplicate(NoteMutationTarget)
-    case rename(NoteMutationTarget)
     case move(NoteMutationTarget)
 
     var id: String {
         switch self {
         case .duplicate(let target): "duplicate:\(target.id)"
-        case .rename(let target): "rename:\(target.id)"
         case .move(let target): "move:\(target.id)"
         }
     }
+}
+
+/// Builds the same-vault destination used by the document's inline filename
+/// title. The title changes the file location while preserving the note's
+/// parent folder, extension, identity and source bytes.
+func noteRenameDestination(
+    sourceRelativePath: String,
+    requestedName: String
+) -> String? {
+    let name = requestedName.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !name.isEmpty,
+        name != ".",
+        name != "..",
+        !name.contains("/"),
+        !name.contains(":")
+    else { return nil }
+    let fileName =
+        URL(fileURLWithPath: name).pathExtension
+            .caseInsensitiveCompare("md") == .orderedSame
+        ? name
+        : name + ".md"
+    let parent = (sourceRelativePath as NSString).deletingLastPathComponent
+    guard parent != ".", !parent.isEmpty else { return fileName }
+    return (parent as NSString).appendingPathComponent(fileName)
 }
 
 /// A folder is addressed only by its current vault-relative path. Unlike a

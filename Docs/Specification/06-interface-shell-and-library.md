@@ -96,10 +96,12 @@ window-session restoration retains the pre-focus pane visibility.
 
 One native **Note Actions** menu sits immediately after Review/Edit in both
 window types; the separate window reuses its existing More button. It groups
-Note-link copying and Add to Chat; Rename, Move, Duplicate and Merge; Find and
+Note-link copying and Add to Chat; Move, Duplicate and Merge; Find and
 current-Note Agent Changes; Finder and window actions; then system Trash.
-Settle and Document Mode retain their direct controls. Menu execution remains
-bound to its captured Note even when Library selection or the active tab changes.
+The filename title is changed in place by editing the inline title control in
+the document. Settle and Document Mode retain their direct controls. Menu
+execution remains bound to its captured Note even when Library selection or the
+active tab changes.
 Separate-window Add to Chat opens the same Triptych's main Chat without moving
 the Note. Copied links must resolve unambiguously across the current Triptych.
 

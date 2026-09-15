@@ -136,7 +136,6 @@ struct SidebarTreeTests {
                 .openInNewTab,
                 .openInSeparateWindow,
                 .addToChat,
-                .rename,
                 .duplicate,
                 .move,
                 .revealInFinder,
@@ -1069,7 +1068,7 @@ struct SidebarTreeTests {
             ) == nil)
     }
 
-    @Test("Rename changes only the file name inside the current folder")
+    @Test("Inline title changes only the file name inside the current folder")
     func renamedNoteDestination() {
         #expect(
             noteRenameDestination(

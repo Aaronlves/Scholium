@@ -57,14 +57,13 @@ struct NoteFileOperationView: View {
 
     private var target: NoteMutationTarget {
         switch request {
-        case .duplicate(let target), .rename(let target), .move(let target): target
+        case .duplicate(let target), .move(let target): target
         }
     }
 
     private var sheetTitle: LocalizedStringResource {
         switch request {
         case .duplicate: "Duplicate Note"
-        case .rename: "Rename Note"
         case .move: "Move Note"
         }
     }
@@ -72,7 +71,6 @@ struct NoteFileOperationView: View {
     private var actionTitle: LocalizedStringResource {
         switch request {
         case .duplicate: "Duplicate"
-        case .rename: "Rename"
         case .move: "Move"
         }
     }
@@ -89,31 +87,21 @@ struct NoteFileOperationView: View {
         switch request {
         case .duplicate:
             "Create a copy at a new location in this vault."
-        case .rename:
-            "Choose a new filename. The note stays in its current folder."
         case .move:
             "Enter the destination path within this vault."
         }
     }
 
     private var fieldTitle: LocalizedStringResource {
-        if case .rename = request { "Name" } else { "Location" }
+        "Location"
     }
 
     private var fieldPlaceholder: LocalizedStringResource {
-        if case .rename = request { "Note Name" } else { "Folder/Note.md" }
+        "Folder/Note.md"
     }
 
     private var requestedDestinationPath: String? {
         switch request {
-        case .rename(let target):
-            guard
-                let renamed = noteRenameDestination(
-                    sourceRelativePath: target.relativePath,
-                    requestedName: destination
-                ), renamed != target.relativePath
-            else { return nil }
-            return renamed
         case .duplicate, .move:
             let trimmed = destination.trimmingCharacters(in: .whitespacesAndNewlines)
             return trimmed.isEmpty ? nil : trimmed
@@ -125,11 +113,6 @@ struct NoteFileOperationView: View {
         case .duplicate(let target):
             let base = (target.relativePath as NSString).deletingPathExtension
             destination = base + " Copy.md"
-        case .rename(let target):
-            destination =
-                URL(fileURLWithPath: target.relativePath)
-                .deletingPathExtension()
-                .lastPathComponent
         case .move(let target):
             destination = target.relativePath
         }
@@ -143,8 +126,6 @@ struct NoteFileOperationView: View {
                 switch request {
                 case .duplicate(let source):
                     try await actions.duplicate(source, requestedDestinationPath)
-                case .rename(let source):
-                    try await actions.move(source, requestedDestinationPath)
                 case .move(let source):
                     try await actions.move(source, requestedDestinationPath)
                 }
@@ -156,25 +137,4 @@ struct NoteFileOperationView: View {
         }
     }
 
-}
-
-func noteRenameDestination(
-    sourceRelativePath: String,
-    requestedName: String
-) -> String? {
-    let name = requestedName.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !name.isEmpty,
-        name != ".",
-        name != "..",
-        !name.contains("/"),
-        !name.contains(":")
-    else { return nil }
-    let fileName =
-        URL(fileURLWithPath: name).pathExtension
-            .caseInsensitiveCompare("md") == .orderedSame
-        ? name
-        : name + ".md"
-    let parent = (sourceRelativePath as NSString).deletingLastPathComponent
-    guard parent != ".", !parent.isEmpty else { return fileName }
-    return (parent as NSString).appendingPathComponent(fileName)
 }

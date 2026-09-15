@@ -333,6 +333,163 @@
             )
         }
 
+        func testingDragSelectionNative(
+            from startText: String,
+            to endText: String,
+            lineContaining lineText: String
+        ) async throws -> TestingPointerProjectionResult {
+            guard let webView else { throw SessionError.unavailable }
+            let rawPosition = try await webView.callAsyncJavaScript(
+                """
+                const locate = requested => {
+                    for (const root of document.querySelectorAll('.cm-line')) {
+                        const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+                        let node;
+                        while ((node = walker.nextNode())) {
+                            const index = node.textContent?.indexOf(requested) ?? -1;
+                            if (index < 0) continue;
+                            const range = document.createRange();
+                            range.setStart(node, index);
+                            range.setEnd(node, Math.min(node.length, index + Math.max(1, requested.length)));
+                            const rect = range.getBoundingClientRect();
+                            return {
+                                x: (rect.left + rect.right) / 2,
+                                y: (rect.top + rect.bottom) / 2
+                            };
+                        }
+                    }
+                    return null;
+                };
+                const line = [...document.querySelectorAll('.cm-line')]
+                    .find(candidate => candidate.textContent?.includes(lineText));
+                if (!(line instanceof HTMLElement)) return null;
+                line.scrollIntoView({block: 'center', behavior: 'auto'});
+                const start = locate(startText);
+                const end = locate(endText);
+                if (!start || !end) return null;
+                return {startX: start.x, startY: start.y, endX: end.x, endY: end.y};
+                """,
+                arguments: [
+                    "startText": startText,
+                    "endText": endText,
+                    "lineText": lineText,
+                ],
+                in: nil,
+                contentWorld: .page
+            )
+            guard let position = rawPosition as? [String: Any],
+                let startX = (position["startX"] as? NSNumber)?.doubleValue,
+                let startY = (position["startY"] as? NSNumber)?.doubleValue,
+                let endX = (position["endX"] as? NSNumber)?.doubleValue,
+                let endY = (position["endY"] as? NSNumber)?.doubleValue
+            else {
+                throw SessionError.invalidResult
+            }
+            try await Task.sleep(for: .milliseconds(100))
+            try await testingDragPagePoints(
+                from: (startX, startY),
+                to: (endX, endY),
+                in: webView
+            )
+            try await Task.sleep(for: .milliseconds(50))
+            let rawLines = try await webView.callAsyncJavaScript(
+                """
+                const value = [...document.querySelectorAll('.cm-line')]
+                    .find(candidate => candidate.textContent?.includes(lineText))?.textContent || '';
+                return {duringDragLineText: value, afterMouseUpLineText: value};
+                """,
+                arguments: ["lineText": lineText],
+                in: nil,
+                contentWorld: .page
+            )
+            guard let lines = rawLines as? [String: Any],
+                let during = lines["duringDragLineText"] as? String,
+                let after = lines["afterMouseUpLineText"] as? String
+            else {
+                throw SessionError.invalidResult
+            }
+            return TestingPointerProjectionResult(
+                duringDragLineText: during,
+                afterMouseUpLineText: after
+            )
+        }
+
+        func testingDragDocumentTitle(
+            from startFraction: Double,
+            to endFraction: Double
+        ) async throws -> TestingNativeTextSelection {
+            guard let webView,
+                (0...1).contains(startFraction),
+                (0...1).contains(endFraction),
+                startFraction != endFraction
+            else {
+                throw SessionError.invalidResult
+            }
+            let rawPosition = try await webView.callAsyncJavaScript(
+                """
+                const input = document.querySelector('.scholium-note-title-input');
+                if (!(input instanceof HTMLTextAreaElement)) return null;
+                input.scrollIntoView({block: 'center', behavior: 'auto'});
+                const rect = input.getBoundingClientRect();
+                if (rect.width <= 0 || rect.height <= 0) return null;
+                return {
+                  startX: rect.left + rect.width * startFraction,
+                  endX: rect.left + rect.width * endFraction,
+                  y: (rect.top + rect.bottom) / 2
+                };
+                """,
+                arguments: [
+                    "startFraction": startFraction,
+                    "endFraction": endFraction,
+                ],
+                in: nil,
+                contentWorld: .page
+            )
+            guard let position = rawPosition as? [String: Any],
+                let startX = (position["startX"] as? NSNumber)?.doubleValue,
+                let endX = (position["endX"] as? NSNumber)?.doubleValue,
+                let y = (position["y"] as? NSNumber)?.doubleValue
+            else {
+                throw SessionError.invalidResult
+            }
+            try await Task.sleep(for: .milliseconds(100))
+            try await testingDragPagePoints(
+                from: (startX, y),
+                to: (endX, y),
+                in: webView
+            )
+            try await Task.sleep(for: .milliseconds(50))
+            let rawSelection = try await webView.callAsyncJavaScript(
+                """
+                const input = document.querySelector('.scholium-note-title-input');
+                if (!(input instanceof HTMLTextAreaElement)) return null;
+                return {
+                  start: input.selectionStart,
+                  end: input.selectionEnd,
+                  direction: input.selectionDirection || 'none',
+                  selectedText: input.value.slice(input.selectionStart, input.selectionEnd)
+                };
+                """,
+                arguments: [:],
+                in: nil,
+                contentWorld: .page
+            )
+            guard let selection = rawSelection as? [String: Any],
+                let start = (selection["start"] as? NSNumber)?.intValue,
+                let end = (selection["end"] as? NSNumber)?.intValue,
+                let direction = selection["direction"] as? String,
+                let selectedText = selection["selectedText"] as? String
+            else {
+                throw SessionError.invalidResult
+            }
+            return TestingNativeTextSelection(
+                start: start,
+                end: end,
+                direction: direction,
+                selectedText: selectedText
+            )
+        }
+
         func testingClickBlankLine(between precedingText: String, and followingText: String) async throws {
             guard let webView else { throw SessionError.unavailable }
             let scrolled = try await webView.callAsyncJavaScript(
@@ -525,6 +682,65 @@
                 throw SessionError.invalidResult
             }
             webView.mouseDown(with: mouseDown)
+            webView.mouseUp(with: mouseUp)
+        }
+
+        private func testingDragPagePoints(
+            from start: (x: Double, y: Double),
+            to end: (x: Double, y: Double),
+            in webView: WKWebView
+        ) async throws {
+            guard let window = webView.window else { throw SessionError.invalidResult }
+            let startPoint = NSPoint(
+                x: start.x,
+                y: webView.isFlipped ? start.y : webView.bounds.height - start.y
+            )
+            let endPoint = NSPoint(
+                x: end.x,
+                y: webView.isFlipped ? end.y : webView.bounds.height - end.y
+            )
+            let windowStart = webView.convert(startPoint, to: nil)
+            let windowEnd = webView.convert(endPoint, to: nil)
+            let timestamp = ProcessInfo.processInfo.systemUptime
+            guard
+                let mouseDown = NSEvent.mouseEvent(
+                    with: .leftMouseDown,
+                    location: windowStart,
+                    modifierFlags: [],
+                    timestamp: timestamp,
+                    windowNumber: window.windowNumber,
+                    context: nil,
+                    eventNumber: 0,
+                    clickCount: 1,
+                    pressure: 1
+                ),
+                let mouseDragged = NSEvent.mouseEvent(
+                    with: .leftMouseDragged,
+                    location: windowEnd,
+                    modifierFlags: [],
+                    timestamp: timestamp + 0.01,
+                    windowNumber: window.windowNumber,
+                    context: nil,
+                    eventNumber: 0,
+                    clickCount: 1,
+                    pressure: 1
+                ),
+                let mouseUp = NSEvent.mouseEvent(
+                    with: .leftMouseUp,
+                    location: windowEnd,
+                    modifierFlags: [],
+                    timestamp: timestamp + 0.02,
+                    windowNumber: window.windowNumber,
+                    context: nil,
+                    eventNumber: 0,
+                    clickCount: 1,
+                    pressure: 0
+                )
+            else {
+                throw SessionError.invalidResult
+            }
+            webView.mouseDown(with: mouseDown)
+            webView.mouseDragged(with: mouseDragged)
             webView.mouseUp(with: mouseUp)
         }
 

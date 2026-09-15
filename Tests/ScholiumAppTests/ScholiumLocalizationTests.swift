@@ -69,7 +69,6 @@ struct ScholiumLocalizationTests {
             ("Source", "源文本"),
             ("Settle", "暂定"),
             ("Move to Trash…", "移至纸篓…"),
-            ("Rename Note", "重命名笔记"),
             ("Move Note", "移动笔记"),
             ("No Document Selected", "未选择文档"),
             ("Expand All Folders", "展开所有文件夹"),

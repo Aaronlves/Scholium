@@ -113,22 +113,6 @@
         }
       }
     },
-    "Choose a new filename. The note stays in its current folder." : {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Choose a new filename. The note stays in its current folder."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "设置新的文件名。笔记仍保留在当前文件夹中。"
-          }
-        }
-      }
-    },
     "Enter the destination path within this vault." : {
       "localizations": {
         "en": {
@@ -23208,38 +23192,6 @@
         }
       }
     },
-    "Rename Note" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Rename Note"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "重命名笔记"
-          }
-        }
-      }
-    },
-    "Rename Note…" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Rename Note…"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "重命名笔记…"
-          }
-        }
-      }
-    },
     "Rename Saved Search" : {
       "localizations" : {
         "en" : {
@@ -23268,22 +23220,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "重命名…"
-          }
-        }
-      }
-    },
-    "Renaming preserves the note's folder, stable identity, and Metadata." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Renaming preserves the note's folder, stable identity, and Metadata."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "重命名会保留笔记的文件夹、稳定身份与元数据。"
           }
         }
       }
@@ -33498,22 +33434,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "副本会保留源文件的精确字节内容，并获得新的稳定笔记身份。"
-          }
-        }
-      }
-    },
-    "Note Name" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Note Name"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "笔记名称"
           }
         }
       }

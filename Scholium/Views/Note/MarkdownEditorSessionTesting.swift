@@ -207,6 +207,13 @@
             let afterMouseUpLineText: String
         }
 
+        struct TestingNativeTextSelection: Sendable {
+            let start: Int
+            let end: Int
+            let direction: String
+            let selectedText: String
+        }
+
         struct TestingEditorSelectionPresentationSnapshot: Decodable, Sendable {
             let selectedTexts: [String]
             let selectedRunCount: Int

@@ -2982,6 +2982,43 @@ struct MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
+    @Test("Document title preserves native forward and backward pointer selection")
+    func editDocumentTitleSupportsBidirectionalPointerSelection() async throws {
+        let source = "Argument."
+        var renameRequests = 0
+        let harness = EditorHarness(
+            documentTitle: "Reasons & Emotion",
+            source: source,
+            laysOutForPointerTesting: true,
+            onTitleRename: { _, _ in
+                renameRequests += 1
+                return "Reasons & Emotion"
+            }
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        let forward = try await harness.session.testingDragDocumentTitle(
+            from: 0.15,
+            to: 0.85
+        )
+        #expect(forward.start < forward.end)
+        #expect(!forward.selectedText.isEmpty)
+
+        let backward = try await harness.session.testingDragDocumentTitle(
+            from: 0.85,
+            to: 0.15
+        )
+        #expect(backward.start < backward.end)
+        #expect(backward.start == forward.start)
+        #expect(backward.end == forward.end)
+        #expect(backward.selectedText == forward.selectedText)
+        #expect(renameRequests == 0)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        #expect(!harness.session.isDirty)
+        await harness.closeAndDrain()
+    }
+
     @Test("Programmatic title focus collapses at the end and recovery records the active surface")
     func titleFocusAndBodyFocusAreRecoverable() async throws {
         let title = "Emotion and Reasons"
@@ -3283,6 +3320,56 @@ struct MarkdownEditorWebViewIntegrationTests {
         let cursorDistance = try #require(Double(geometry["distance"] as? String ?? ""))
         #expect(cursorDistance < 4)
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Edit heading text supports forward and backward pointer selection")
+    func editHeadingTextSupportsBidirectionalPointerSelection() async throws {
+        let source = "# First heading\nFollowing paragraph.\n\n## Second heading\nFinal paragraph.\n"
+        let heading = try #require(source.range(of: "First heading"))
+        let headingFrom = heading.lowerBound.utf16Offset(in: source)
+        let headingTo = heading.upperBound.utf16Offset(in: source)
+        let finalParagraphFrom = try #require(
+            source.range(of: "Final paragraph.")?.lowerBound.utf16Offset(in: source)
+        )
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        harness.session.goToLine(5)
+        try await harness.waitUntilSelection(
+            head: finalParagraphFrom,
+            stage: "fixture tail selection"
+        )
+
+        _ = try await harness.session.testingDragSelectionNative(
+            from: "First",
+            to: "heading",
+            lineContaining: "First heading"
+        )
+        _ = try await harness.waitUntilSelection(in: headingFrom..<headingTo)
+        let forward = try #require(harness.session.context?.selections.first)
+        #expect(forward.anchor < forward.head)
+        #expect(min(forward.anchor, forward.head) >= headingFrom)
+        #expect(max(forward.anchor, forward.head) <= headingTo)
+
+        harness.session.goToLine(5)
+        try await harness.waitUntilSelection(
+            head: finalParagraphFrom,
+            stage: "fixture tail selection before reverse drag"
+        )
+        _ = try await harness.session.testingDragSelectionNative(
+            from: "heading",
+            to: "First",
+            lineContaining: "First heading"
+        )
+        _ = try await harness.waitUntilSelection(in: headingFrom..<headingTo)
+        let backward = try #require(harness.session.context?.selections.first)
+        #expect(backward.anchor > backward.head)
+        #expect(min(backward.anchor, backward.head) >= headingFrom)
+        #expect(max(backward.anchor, backward.head) <= headingTo)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        #expect(!harness.session.isDirty)
         await harness.closeAndDrain()
     }
 
