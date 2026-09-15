@@ -516,7 +516,7 @@ struct SearchIndexTests {
             "UPDATE search_segments SET offset_map = X'534F4D3101000000' WHERE ordinal = 0;",
             "UPDATE search_segments SET offset_map = X'534F4D310100000000000000000000003F420F000000000000000000000000000100000000000000' WHERE ordinal = 0;",
             "UPDATE search_segments SET offset_map = X'534F4D3101000000000000000000000001000000000000003F420F000000000040420F0000000000' WHERE ordinal = 0;",
-            "UPDATE search_segments SET source_upper = 999999 WHERE source_lower IS NOT NULL;",
+            "UPDATE search_segments SET source_upper = 999999 WHERE field = 'body' AND source_lower IS NOT NULL;",
         ]
 
         for mutation in mutations {
@@ -559,13 +559,19 @@ struct SearchIndexTests {
         )
         _ = try await index.synchronize([source])
         try execute(
-            "UPDATE search_segments SET source_upper = 999999 WHERE source_lower IS NOT NULL;",
+            "UPDATE search_segments SET source_upper = 999999 WHERE field = 'body' AND source_lower IS NOT NULL;",
             in: fixture.databaseURL
         )
 
         await #expect(throws: SearchIndexError.self) {
             _ = try await index.testSearch(fixture.request("searchable"))
         }
+        // A failed page hydration must release its active and pooled cursors.
+        try execute(
+            "UPDATE search_segments SET source_upper = \(source.document.rawContent.utf16.count) WHERE field = 'body' AND source_lower IS NOT NULL;",
+            in: fixture.databaseURL)
+        let repaired = try await index.testSearch(fixture.request("searchable"))
+        #expect(repaired.noteResults.map(\.relativePath) == ["Preserved.md"])
     }
 
     @Test("Cancelled opening preserves the last-good generated database")

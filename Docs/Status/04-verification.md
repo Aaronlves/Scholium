@@ -4,6 +4,32 @@
 
 ## Current verification snapshot
 
+**2026-09-15 — Verification blockers and Search budgets:** Contracts purity now
+uses the selected compiler's SwiftParser tokens. Six guard regressions cover prose,
+comments, raw strings, executable interpolation, real imports/calls and invalid
+input; all 88 Contracts files pass. Explain Query and system-Trash checks now
+follow the current expression renderer and approved recovery wording.
+The full gate reaches 405 Core, 3 performance, 92 Contracts, 165 Application and
+1 architecture-measurement tests, all passing. Its 895-test App run has one failure:
+the retired Trash wording assertion. After that test-only correction, all 77
+Frontend Architecture tests pass; the other App results are retained rather than
+rerunning the six-minute suite. Symbol-boundary checks, Release compilation and
+helper protocol isolation then pass. This is staged gate completion, not a claim
+that one uninterrupted `verify.sh` invocation exited successfully.
+Search's unchanged 2,056-Note benchmark improves warm-query p95 from 383 to 97 ms,
+first five pages from 2,251 to 466 ms, and incremental publication p95 from 365 to
+27 ms, without relaxing the 100/500/250 ms limits. A query profile identifies
+repeated decoding, normalization, ranking scans and SQL preparation. Same-read
+page hydration and read-local statement reuse retain exact counts and provenance;
+projection-hash reuse includes the exact source fingerprint. A byte-distinct,
+canonically equivalent Unicode edit fails the new regression before that guard
+and passes afterward; an errored hydration can be followed by a repaired query.
+Evidence: `.build/check-blocker-final-integration-gate.log`,
+`.build/check-blocker-final-frontend-tests.log`, `.build/search-query-sample.txt`,
+`.build/search-performance-final-correctness.log`,
+`.build/verification-release/release-build.log` and `.build/check-blocker-helper.log`.
+These checks do not close the previous full-app polish or human acceptance limits.
+
 **2026-09-15 — Native Library batches and file sheets:** Thirty-eight scoped App
 and twenty-eight Core tests pass (`.build/library-file-operation-final-tests.log`).
 Final presentation checks pass in `.build/file-operation-final-layout-tests.log`,
@@ -18,11 +44,10 @@ preparation, retained active document and window resizing. Computer Use then los
 its native connection; full-app verification of the final sheet polish, Trash and
 physical input routes remains open. The test process, bundle and state are removed.
 Details and adaptation limits: `.build/file-operation-review/verification.md`.
-Documentation, localization and Swift lint pass. The complete gate stops at its
-Contracts purity regex matching the English word `Combine` inside existing Search
-strings (`.build/library-file-operation-integration-gate.log`); those files are
-unchanged in this task. No complete repository, Release or human acceptance pass
-is claimed.
+Documentation, localization and Swift lint pass. The initial complete gate stopped at its
+Contracts purity regex matching `Combine` inside existing Search strings
+(`.build/library-file-operation-integration-gate.log`). The subsequent guard and
+performance closure is recorded above; human acceptance remains open.
 
 **2026-09-15 — Search contract 20:** Boolean Search now includes existential
 `paragraph:(...)` predicates over complete top-level body paragraphs, successful

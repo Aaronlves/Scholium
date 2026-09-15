@@ -118,12 +118,8 @@ fi
 # Delivery targets compile only against Contracts plus Application composition.
 # Core is internal and cannot be imported by App, helper, or their boundary tests.
 DELIVERY_ROOTS=("${ROOT}/Scholium" "${ROOT}/ScholiumAgentHelper")
-if rg -n --glob '*.swift' \
-  '\b(FileManager|URLSession|SQLite|FSEvent|AppKit|SwiftUI|Combine|UserDefaults|NSWorkspace|NSOpenPanel)\b' \
-  "${ROOT}/ScholiumContracts"; then
-  echo "Contracts purity guard failed: ScholiumContracts contains I/O, UI, or mutable delivery state." >&2
-  exit 1
-fi
+python3 "${ROOT}/Tools/Tests/test-contracts-purity.py"
+"${ROOT}/Tools/Scripts/validate-contracts-purity.sh"
 
 if rg -n --glob '*.swift' '^import ScholiumCore$' \
   "${DELIVERY_ROOTS[@]}" \

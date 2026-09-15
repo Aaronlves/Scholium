@@ -498,6 +498,25 @@ struct TriptychSearchIndexTests {
         #expect(response.noteResults.first?.evidentialLayer == .topicNote)
     }
 
+    @Test("Canonically equivalent source edits do not reuse a byte-distinct projection hash")
+    func canonicalUnicodeHashMemo() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let index = try TriptychSearchIndex(databaseURL: fixture.databaseURL, triptychID: fixture.triptychID)
+        let firstSource = "---\nkeywords: [a\u{0301}\u{0327}]\n---\nBody"
+        let editedSource = "---\nkeywords: [a\u{0327}\u{0301}]\n---\nBody"
+        #expect(firstSource == editedSource)
+        #expect(Data(firstSource.utf8) != Data(editedSource.utf8))
+        let first = fixture.item(vault: fixture.topics, path: "Unicode.md", source: firstSource)
+        let edited = fixture.item(vault: fixture.topics, path: "Unicode.md", source: editedSource)
+        _ = try await index.synchronize([first])
+        let changed = try await index.synchronize([edited])
+        #expect(changed.disposition == .incrementallyUpdated)
+        let repeated = try await index.synchronize([edited])
+        #expect(repeated.disposition == .unchanged)
+        #expect(repeated.generation == changed.generation)
+    }
+
     @Test("A stale workspace generation cannot replace the last complete index")
     func staleWorkspaceGenerationIsRejected() async throws {
         let fixture = try Fixture()

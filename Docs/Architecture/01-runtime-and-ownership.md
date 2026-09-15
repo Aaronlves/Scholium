@@ -232,6 +232,10 @@ provider's disposable SQLite schema, staging/validation/recovery, read
 transactions, cancellation, deterministic ranking, and in-memory **This Note**
 matcher. Application authorizes visible scope and exposes Note Search to the GUI
 and App bridge. Adapters do not own another parser, corpus, or ranking rule.
+Candidate evaluation and result-page source hydration share one fixed read transaction.
+Query normalization and reset/cleared statement reuse are read-local. Core's bounded
+projection-hash memo compares exact source fingerprints plus immutable hash inputs;
+it grants no publication or source authority.
 
 Saved Searches persist only raw query, visible presentation scope, and Search contract
 version. `WindowSearchController` owns execution cancellation, freshness, serialized

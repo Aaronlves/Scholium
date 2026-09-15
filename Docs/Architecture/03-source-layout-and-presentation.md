@@ -504,7 +504,9 @@ document and presentation responsibilities. Design checks cover semantic input
 ownership, native/WebKit transport, contrast and actual shared consumers; they
 must not freeze local implementation defaults or require obsolete custom skins.
 `Tools/Scripts/verify.sh` also checks package dependencies, imports, I/O and
-public symbols so delivery targets cannot acquire Core authority.
+public symbols so delivery targets cannot acquire Core authority. Contracts
+purity uses the selected toolchain's SwiftParser identifier tokens, excluding
+comment and literal text while retaining executable interpolation expressions.
 
 Debug presentation proofs consume production components and values; they are
 not a second design system. [Verification Evidence](../Status/04-verification.md)

@@ -1891,7 +1891,7 @@ struct FrontendArchitectureTests {
             ),
             encoding: .utf8
         )
-        #expect(confirmation.contains("Finder owns file restoration"))
+        #expect(confirmation.contains("You can restore them in Finder"))
         #expect(!confirmation.contains("preview.records"))
         #expect(!confirmation.contains("unaffectedParticipants"))
         #expect(sidebar.contains("requestSystemTrash"))
@@ -2423,7 +2423,10 @@ struct FrontendArchitectureTests {
         #expect(source.contains("case .structured("))
         #expect(source.contains("case .property("))
         #expect(source.contains("case .link("))
-        #expect(source.contains("let clauses = explanation.clauses.map(explanationClause)"))
+        #expect(source.contains("case .paragraph("))
+        #expect(source.contains("explanation.expression.rendered"))
+        #expect(source.contains("SearchPredicate(clause: $0).explanation"))
+        #expect(!source.contains("explanation.clauses.map"))
         #expect(source.contains(".popover(isPresented: $showsQueryExplanation)"))
         #expect(!source.contains("Normalization:"))
         #expect(source.contains("scholium.searchExplanation"))
