@@ -16,6 +16,17 @@ This is repository evidence for the Beta candidate; exact-tag packaging,
 artifact checks, clean-account smoke, and human accessibility/interaction
 acceptance remain separate evidence classes.
 
+**2026-09-15 — `v0.2.1-beta.1` packaged artifact:** The clean tagged commit
+`c251d2122a890e8ec477a074b96821d4dd7bbf24` produced the arm64 DMG
+`Scholium-v0.2.1-beta.1-macos-arm64.dmg` with marketing version `0.2.1`, build
+`2`, minimum macOS `26.0`, and the version-matched bundled helper and Core
+Protocol resources. App/helper signatures, entitlements, architecture,
+provenance, package contents, read-only DMG mount/copy, and SHA-256 checksum
+passed. The exact packaged first-launch Bootstrap smoke passed with production
+machine state unchanged. This Beta is ad-hoc signed and not Developer ID
+signed or notarized; human accessibility and interaction acceptance remain
+separate open boundaries.
+
 **2026-09-15 — In-app Chat presentation and runtime controls:** Focused slices
 report 19 final-panel checks, 29 composer-entry checks, 32 context/message
 checks, and 31 Agent-roster checks, with overlapping coverage rather than an

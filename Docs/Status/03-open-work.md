@@ -69,15 +69,17 @@
 
 ## Gate and release boundary
 
-- Complete the current repository gate as one reproducible integration or record
-  the exact remaining failure. The staged test and Release evidence in
-  [Verification](04-verification.md) is not a single uninterrupted green run.
+- The complete repository gate and the exact-tag Beta package for
+  `v0.2.1-beta.1` passed on 2026-09-15; the dated evidence and artifact
+  provenance are recorded in [Verification](04-verification.md). Repeat this
+  gate for the next release candidate rather than treating this result as
+  reusable proof.
 - Run the affected packaged performance series when the §21.3 change-trigger
   rule requires it; do not promote focused measurements to G7.
-- Complete profile-appropriate artifact, checksum, signing, source/license,
-  privacy and clean-account checks before claiming a distributable release.
-  Developer ID signing and notarization remain a future channel, outside the
-  current ad-hoc source-first Beta profile.
+- The `v0.2.1-beta.1` artifact, checksum, ad-hoc signature, source/license,
+  package-content/private-path, and clean-account checks passed. Developer ID
+  signing and notarization remain a future channel, outside the current
+  ad-hoc source-first Beta profile.
 
 ## Current boundary
 
