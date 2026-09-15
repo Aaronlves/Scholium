@@ -1471,6 +1471,7 @@ extension MarkdownEditorWebViewIntegrationTests {
                 const link = document.querySelector('.scholium-document a:not(.wiki-link)');
                 const quotation = document.querySelector('.scholium-document blockquote');
                 const result = {
+                    nativeAccent: document.documentElement.style.getPropertyValue('--scholium-color-accent'),
                     rawColor: getComputedStyle(rawProbe).color,
                     documentColor: getComputedStyle(documentProbe).color,
                     linkColor: link ? getComputedStyle(link).color : '',
@@ -1482,6 +1483,7 @@ extension MarkdownEditorWebViewIntegrationTests {
                 """
             ) as? [String: String])
         #expect(!result["documentColor", default: ""].isEmpty)
+        #expect(result["nativeAccent", default: ""].hasPrefix("#"))
         #expect(result["documentColor"] != result["rawColor"])
         #expect(result["linkColor"] == result["documentColor"])
         #expect(result["quotationBorder"] == result["documentColor"])

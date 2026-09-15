@@ -38,20 +38,22 @@ extension WindowModel {
     }
 
     @MainActor
-    func runSelectionInquiry(_ inquiry: AgentChatSelectionInquiry, validate: AgentSelectionValidation, continueInChat: @escaping () -> Void) async
+    func runSelectionInquiry(_ inquiry: AgentChatSelectionInquiry, validate: AgentSelectionValidation, continueInChat: @escaping () -> Void) async throws
         -> AgentSelectionResult?
     {
-        guard let chat = chatController, let descriptor = currentDocumentDescriptor else { return nil }
+        guard !Task.isCancelled else { return nil }
+        guard let chat = chatController, let descriptor = currentDocumentDescriptor else { throw AgentChatNoteMaterialError.unavailable }
         do {
             let attachment = try await currentSelectionAttachment()
             guard chatController === chat, currentDocumentDescriptor?.sessionKey == descriptor.sessionKey,
                 await validate(), !Task.isCancelled
             else { return nil }
             if inquiry.question == nil {
-                if chat.attachContext([attachment]) { continueInChat() }
+                guard chat.attachContext([attachment]) else { throw AgentChatNoteMaterialError.unavailable }
+                continueInChat()
                 return nil
             }
-            guard let id = chat.beginSelectionInquiry(inquiry, attachment: attachment) else { return nil }
+            guard let id = chat.beginSelectionInquiry(inquiry, attachment: attachment) else { throw AgentChatNoteMaterialError.unavailable }
             let adopt: ((String) async throws -> Void)?
             if inquiry.resultKind == .replacement, presentedDocumentMode != .read {
                 adopt = { [weak self, weak chat] replacement in
@@ -91,9 +93,11 @@ extension WindowModel {
                     chat.presentContext(in: id)
                     continueInChat()
                 })
-        } catch {
-            reportOperationIssue(error.localizedDescription, kind: .information)
+        } catch is CancellationError {
             return nil
+        } catch {
+            guard chatController === chat, currentDocumentDescriptor?.sessionKey == descriptor.sessionKey, !Task.isCancelled else { return nil }
+            throw error
         }
     }
 

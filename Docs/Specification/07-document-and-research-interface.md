@@ -24,23 +24,20 @@ keep scrolling content below them. Selection, focus, Undo, composition, and
 restoration are unchanged.
 
 Edit keeps text selection unobscured, without a floating formatting toolbar.
-A nonempty body selection offers one compact native selection surface beside the
-passage in Review, Edit and Source: Explain, Polish and More Actions. The native
-More Actions menu contains Ask Agent and enabled custom operations. Freeform
-instructions belong to the ordinary Chat composer; this surface has no duplicate
-input field or horizontally expanding action pages. The existing native glass
-container and standard AppKit controls remain the presentation foundation.
-Peer action labels and symbols share the native primary text color; native
-controls own hover, pressed, disabled, focus and menu-selection feedback.
-Native layout and menu presentation own alignment and transitions; no custom
-refraction, control skin or independent animation engine is introduced. The
-surface retains its selection anchor and never adds document padding. A result
-opens in a bounded native popover under §8.7, without dimming content.
+A nonempty body selection offers a compact native surface beside the passage
+in Review, Edit and Source: Explain, Polish and More Actions. The native
+More Actions menu contains Ask Agent and enabled custom operations. Instructions stay in Chat, without duplicate input or expanding action pages.
+The native glass container and AppKit controls own layout, transitions, hover,
+pressed, disabled, focus and menu feedback. Peer labels and symbols use native
+primary text. Hover uses system Accent with minimal gaps between action targets
+and the containing surface. No custom skin or animation engine is added.
+The surface retains its selection anchor without adding document padding.
+Results and unavailable-action explanations use a bounded native popover under
+§8.7 immediately beside the surface, with dismissal and no dimming.
 Selection changes, scrolling, Escape, composition, mode changes and document
-departure dismiss the surface. Settings supplies the ordered custom operations
-and visible validation. Ask Agent, its Research-menu action and shortcut retain the
-draft-only handoff to Chat under §8.7. A source range that cannot be verified
-remains unavailable.
+departure dismiss the surface. Settings owns ordered custom operations and
+validation. Ask Agent, its Research-menu action and shortcut retain the draft-only
+Chat handoff under §8.7. Unverifiable source ranges remain unavailable.
 
 Body context menus and Research commands expose §5.4. Review mutations require
 verified source and Edit. Reorganization sheets use native search and a striped

@@ -358,14 +358,6 @@ struct AgentChatMessageStyleTests {
             #expect(css.contains("--scholium-content-keyboard-focus-surface:"))
             #expect(css.contains("--scholium-document-accent:"))
             for (role, key) in [(ScholiumColorRole.primaryText, "primary-text"), (.accent, "accent")] {
-                if role == .accent {
-                    #expect(
-                        css.contains(
-                            "--scholium-color-\(key): \(ScholiumWebDesignTokens.systemAccentCSSValue);"
-                        )
-                    )
-                    continue
-                }
                 let declaration = String(
                     format: "--scholium-color-%@: #%06x;", key,
                     role.resolvedRGBValue(isDark: dark, increasedContrast: increasedContrast))

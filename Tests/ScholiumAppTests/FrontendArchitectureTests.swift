@@ -3540,14 +3540,6 @@ struct FrontendArchitectureTests {
             ),
         ] {
             for (role, value) in palette {
-                if role == .accent {
-                    #expect(
-                        declarations.contains(
-                            "\(role.cssVariableName): \(ScholiumWebDesignTokens.systemAccentCSSValue);"
-                        )
-                    )
-                    continue
-                }
                 let declaration = "\(role.cssVariableName): \(String(format: "#%06x", value));"
                 #expect(declarations.contains(declaration))
             }

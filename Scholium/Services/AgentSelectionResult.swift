@@ -2,7 +2,7 @@ import Foundation
 import ScholiumContracts
 
 typealias AgentSelectionValidation = @MainActor () async -> Bool
-typealias AgentSelectionInquiryHandler = @MainActor (AgentChatSelectionInquiry, AgentSelectionValidation) async -> AgentSelectionResult?
+typealias AgentSelectionInquiryHandler = @MainActor (AgentChatSelectionInquiry, AgentSelectionValidation) async throws -> AgentSelectionResult?
 
 /// A disposable reference to a Chat-owned execution, never a second transcript or task.
 @MainActor

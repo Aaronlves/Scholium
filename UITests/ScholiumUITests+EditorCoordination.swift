@@ -6,6 +6,37 @@ import notify
 
 extension ScholiumUITests {
     @MainActor
+    func testSelectionActionFailureStaysBesideBarAndPreservesPassage() throws {
+        try enterLivePreviewAndAppend("\n\nSelection action fixture")
+        let editor = app.descendants(matching: .any)["Markdown editor, Edit mode"].firstMatch
+        let before = editor.value as? String
+        // Select only the final synthetic paragraph, leaving the native editor focused.
+        editor.typeKey(.leftArrow, modifierFlags: [.command, .shift])
+        let polish = app.buttons["Polish"].firstMatch
+        XCTAssertTrue(polish.waitForExistence(timeout: 8))
+        let barFrame = polish.frame
+        polish.hover()
+        let hover = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+        hover.name = "Selection actions — system accent hover"
+        hover.lifetime = .keepAlways
+        add(hover)
+        polish.click()
+        let result = app.descendants(matching: .any)["scholium.selectionResult"].firstMatch
+        XCTAssertTrue(result.waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["Connect in Chat to send this instruction."].firstMatch.exists)
+        let resultFrame = result.frame
+        XCTAssertLessThan(min(abs(resultFrame.minY - barFrame.maxY), abs(barFrame.minY - resultFrame.maxY)), 45)
+        XCTAssertEqual(editor.value as? String, before)
+        let failure = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+        failure.name = "Selection actions — anchored unavailable connection"
+        failure.lifetime = .keepAlways
+        add(failure)
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(waitUntil(timeout: 5) { !result.exists })
+        XCTAssertEqual(editor.value as? String, before)
+    }
+
+    @MainActor
     func testCalloutModesPreserveSemanticOrderAndExactSource() throws {
         func attachWindowScreenshot(_ label: String) {
             let screenshot = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())

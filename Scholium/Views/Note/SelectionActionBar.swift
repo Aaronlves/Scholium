@@ -5,6 +5,7 @@ import AppKit
 final class SelectionActionBar: NSStackView {
     var onInquiry: ((AgentChatSelectionInquiry) -> Void)?
     var onDismiss: (() -> Void)?
+    private var actionTrackingAreas: [NSTrackingArea] = []
     private let actions: [SelectionActionDefinition]
     var preferredSize: NSSize { fittingSize }
 
@@ -13,8 +14,8 @@ final class SelectionActionBar: NSStackView {
         super.init(frame: .zero)
         orientation = .horizontal
         alignment = .centerY
-        spacing = 8
-        edgeInsets = NSEdgeInsets(top: 5, left: 10, bottom: 5, right: 10)
+        spacing = 0
+        edgeInsets = NSEdgeInsets(top: 2, left: 2, bottom: 2, right: 2)
         let explain = button(.explain, symbol: "questionmark.bubble", action: #selector(explainPassage))
         let polish = button(.polish, symbol: "sparkles", action: #selector(polishPassage))
         let more = NSPopUpButton(frame: .zero, pullsDown: true)
@@ -34,6 +35,7 @@ final class SelectionActionBar: NSStackView {
         [explain, polish, more].forEach { control in
             control.bezelStyle = .accessoryBarAction
             control.isBordered = true
+            control.borderShape = .capsule
             control.showsBorderOnlyWhileMouseInside = true
             control.heightAnchor.constraint(greaterThanOrEqualToConstant: 28).isActive = true
             addArrangedSubview(control)
@@ -44,6 +46,39 @@ final class SelectionActionBar: NSStackView {
     }
     required init?(coder: NSCoder) { nil }
     override func cancelOperation(_ sender: Any?) { onDismiss?() }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        actionTrackingAreas.forEach(removeTrackingArea)
+        actionTrackingAreas = arrangedSubviews.enumerated().map { index, control in
+            let area = NSTrackingArea(
+                rect: convert(control.bounds, from: control),
+                options: [.mouseEnteredAndExited, .activeInKeyWindow],
+                owner: self, userInfo: ["action": index])
+            addTrackingArea(area)
+            return area
+        }
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        guard let index = event.trackingArea?.userInfo?["action"] as? Int,
+            arrangedSubviews.indices.contains(index),
+            let button = arrangedSubviews[index] as? NSButton, button.isEnabled
+        else { return }
+        // AppKit draws the bezel, contrast, pressed state and focus ring.
+        // Only the hovered action receives the system accent; no selected state is invented.
+        button.bezelColor = .controlAccentColor
+        button.tintProminence = .primary
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        guard let index = event.trackingArea?.userInfo?["action"] as? Int,
+            arrangedSubviews.indices.contains(index),
+            let button = arrangedSubviews[index] as? NSButton
+        else { return }
+        button.bezelColor = nil
+        button.tintProminence = .automatic
+    }
 
     private func button(_ inquiry: AgentChatSelectionInquiry, symbol: String, action: Selector) -> NSButton {
         let button = NSButton(title: inquiry.title, target: self, action: action)

@@ -562,9 +562,6 @@ enum ScholiumWebDesignTokens {
         --scholium-mark-highlight-background: color-mix(in srgb, var(--scholium-color-attention) 20%, transparent);
         --scholium-mark-highlight-edge: color-mix(in srgb, var(--scholium-color-attention) 52%, transparent);
         """
-    /// WebKit's macOS system color keeps raw Accent consumers live with the
-    /// user's current System Settings choice.
-    static let systemAccentCSSValue = "-apple-system-control-accent"
     static let resolvedColorRoleCSSVariableNames = Set(
         ScholiumColorRole.allCases.map(\.cssVariableName)
     )
@@ -675,9 +672,8 @@ enum ScholiumWebDesignTokens {
             increasedContrast: increasedContrast
         )
         let colors = ScholiumColorRole.allCases.map { role in
-            if role == .accent {
-                return "\(role.cssVariableName): \(systemAccentCSSValue);"
-            }
+            // The initial page gets AppKit's resolved Accent too. The native
+            // container refreshes its projection when the system changes.
             let value = String(format: "#%06x", palette[role])
             return "\(role.cssVariableName): \(value);"
         }.joined(separator: "\n")

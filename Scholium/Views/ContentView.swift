@@ -365,7 +365,7 @@ struct ContentView: View {
             },
             askAgent: { inquiry, validate in
                 guard appState.currentDocumentDescriptor?.sessionKey == documentKey else { return nil }
-                return await appState.runSelectionInquiry(inquiry, validate: validate) {
+                return try await appState.runSelectionInquiry(inquiry, validate: validate) {
                     windowCoordinator.actions.activateSidebar(.chat)
                 }
             },

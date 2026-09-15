@@ -52,6 +52,124 @@ struct DocumentFloatingSurfaceTests {
         #expect(chosen == .ask)
     }
 
+    @Test("Unavailable selection actions stay anchored to their native bar")
+    func selectionFailureAnchor() async throws {
+        _ = NSApplication.shared
+        let webView = WKWebView()
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
+            styleMask: [.titled, .closable], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        let viewport = DocumentWebViewContainer(webView: webView)
+        window.contentView = viewport
+        window.makeKeyAndOrderFront(nil)
+        window.makeFirstResponder(webView)
+        let controller = DocumentFloatingSurfaceController()
+        defer { controller.dismiss(); webView.stopLoading(); window.close() }
+        controller.present(
+            DocumentFloatingSurface(id: 1, kind: .selection, left: 300, top: 180, bottom: 200,
+                html: "", css: "", items: [], selected: -1),
+            in: webView,
+            inquire: { _, _ in throw AgentChatNoteMaterialError.selectionUnavailable }
+        ) { _, action, _ in
+            #expect(action == "choose")
+            return true
+        }
+        let glass = try #require(viewport.subviews.compactMap { $0 as? NSGlassEffectView }.first)
+        let bar = try #require(glass.contentView as? SelectionActionBar)
+        bar.onInquiry?(.polish)
+        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while controller.selectionResultPopover?.isShown != true && ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        let popover = try #require(controller.selectionResultPopover)
+        #expect(popover.isShown)
+        #expect(popover.positioningRect == glass.bounds)
+        #expect(glass.superview === viewport)
+        #expect(glass.contentView === bar)
+        popover.close()
+        let closeDeadline = ContinuousClock.now.advanced(by: .seconds(2))
+        while controller.selectionResultPopover != nil && ContinuousClock.now < closeDeadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(controller.selectionResultPopover == nil)
+    }
+
+    @Test("Late cancelled inquiry cleanup preserves the replacement inquiry's cancellation")
+    func replacementInquiryCancellation() async throws {
+        _ = NSApplication.shared
+        let webView = WKWebView()
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
+            styleMask: [.titled, .closable], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        let viewport = DocumentWebViewContainer(webView: webView)
+        window.contentView = viewport
+        window.makeKeyAndOrderFront(nil)
+        window.makeFirstResponder(webView)
+        let controller = DocumentFloatingSurfaceController()
+        var first: CheckedContinuation<Void, Never>?
+        var second: CheckedContinuation<Void, Never>?
+        var firstReturned = false
+        var secondReturned = false
+        var replacementWasCancelled = false
+        defer {
+            controller.dismiss()
+            first?.resume()
+            second?.resume()
+            webView.stopLoading()
+            window.close()
+        }
+        func waitFor(_ condition: () -> Bool) async throws {
+            let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+            while !condition() && ContinuousClock.now < deadline {
+                try await Task.sleep(for: .milliseconds(10))
+            }
+            try #require(condition())
+        }
+        func start(_ id: Int) throws {
+            controller.present(
+                DocumentFloatingSurface(id: id, kind: .selection, left: 300, top: 180, bottom: 200,
+                    html: "", css: "", items: [], selected: -1),
+                in: webView,
+                inquire: { _, _ in
+                    Issue.record("Cancelled validation must not admit the inquiry")
+                    return nil
+                }
+            ) { id, action, _ in
+                guard action == "choose" else { return true }
+                await withCheckedContinuation { continuation in
+                    if id == 1 { first = continuation } else { second = continuation }
+                }
+                if id == 1 {
+                    firstReturned = true
+                } else {
+                    replacementWasCancelled = Task.isCancelled
+                    secondReturned = true
+                }
+                return true
+            }
+            let glass = try #require(viewport.subviews.compactMap { $0 as? NSGlassEffectView }.first)
+            let bar = try #require(glass.contentView as? SelectionActionBar)
+            bar.onInquiry?(.polish)
+        }
+        try start(1)
+        try await waitFor { first != nil }
+        controller.dismiss()
+        try start(2)
+        try await waitFor { second != nil }
+        // A finishes after B owns the controller's pending inquiry slot.
+        first?.resume()
+        first = nil
+        try await waitFor { firstReturned }
+        controller.dismiss()
+        second?.resume()
+        second = nil
+        try await waitFor { secondReturned }
+        #expect(replacementWasCancelled)
+        #expect(controller.selectionResultPopover == nil)
+    }
+
     @Test("Completion fits candidate content, remains stable on selection, and respects the viewport")
     func completionWidth() throws {
         _ = NSApplication.shared

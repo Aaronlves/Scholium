@@ -7,6 +7,34 @@ import Testing
 
 @Suite("Passage research handoff", .serialized)
 @MainActor struct AgentChatSelectionInquiryTests {
+    @Test("Unavailable selection actions return their error to the invoking surface")
+    func unavailableSelectionInquiry() async throws {
+        let window = WindowModel(workspaceStore: makeTestWorkspaceStore())
+        var didContinue = false
+        do {
+            _ = try await window.runSelectionInquiry(.polish, validate: { true }) { didContinue = true }
+            Issue.record("An unavailable selection action must report its failure")
+        } catch AgentChatNoteMaterialError.unavailable {
+            // The floating presenter owns this error; it must not become a window issue.
+        }
+        #expect(!didContinue)
+        #expect(window.shellState.operationIssues.isEmpty)
+    }
+
+    @Test("Cancelled selection actions leave both the result and window presentation quiet")
+    func cancelledSelectionInquiry() async throws {
+        let window = WindowModel(workspaceStore: makeTestWorkspaceStore())
+        let task = Task { @MainActor in
+            withUnsafeCurrentTask { $0?.cancel() }
+            return try await window.runSelectionInquiry(.polish, validate: { true }) {
+                Issue.record("A cancelled selection action must not open Chat")
+            }
+        }
+        let result = try await task.value
+        #expect(result == nil)
+        #expect(window.shellState.operationIssues.isEmpty)
+    }
+
     @Test("Inquiry questions preserve exact material, existing drafts and conversation ownership")
     func stage() async throws {
         let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()

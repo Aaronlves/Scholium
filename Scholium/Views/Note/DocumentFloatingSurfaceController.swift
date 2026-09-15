@@ -63,8 +63,10 @@ final class DocumentFloatingSurfaceController: NSObject {
     var isPreviewShown: Bool { preview?.isShown == true }
     private var event: ((Int, String, Int) async -> Bool)?
     private var selectionBar: SelectionActionBar?
+    var selectionResultPopover: NSPopover? { resultPopover }
     private var resultPopover: NSPopover?
     private var inquiryTask: Task<Void, Never>?
+    private var inquiryID: UUID?
     private var observers: [NSObjectProtocol] = []
 
     func present(
@@ -170,21 +172,42 @@ final class DocumentFloatingSurfaceController: NSObject {
                 guard let self, self.inquiryTask == nil, self.resultPopover == nil,
                     let surface = self.surface, let event = self.event
                 else { return }
+                let inquiryID = UUID()
+                self.inquiryID = inquiryID
                 self.inquiryTask = Task { @MainActor [weak self] in
-                    defer { self?.inquiryTask = nil }
+                    defer {
+                        if self?.inquiryID == inquiryID {
+                            self?.inquiryTask = nil
+                            self?.inquiryID = nil
+                        }
+                    }
                     guard await event(surface.id, "choose", 0), !Task.isCancelled,
                         let self, self.surface?.id == surface.id
                     else { return }
-                    guard let result = await inquire?(inquiry, { await event(surface.id, "choose", 0) }), !Task.isCancelled,
-                        self.surface?.id == surface.id
-                    else { return }
-                    let popover = NSPopover()
-                    popover.behavior = .transient
-                    popover.contentViewController = NSHostingController(
-                        rootView: AgentSelectionResultView(result: result, close: { [weak self] in self?.resultPopover?.close() }))
-                    self.resultPopover = popover
-                    popover.delegate = self
-                    popover.show(relativeTo: bar.bounds, of: bar, preferredEdge: .maxY)
+                    do {
+                        guard let result = try await inquire?(inquiry, { await event(surface.id, "choose", 0) }),
+                            !Task.isCancelled, self.surface?.id == surface.id
+                        else { return }
+                        self.showSelectionPopover(AgentSelectionResultView(
+                            result: result, close: { [weak self] in self?.resultPopover?.close() }))
+                    } catch is CancellationError {
+                        return
+                    } catch {
+                        guard !Task.isCancelled, self.surface?.id == surface.id else { return }
+                        self.showSelectionPopover(
+                            VStack(alignment: .leading, spacing: 12) {
+                                Text(inquiry.title).font(.headline)
+                                Text(error.localizedDescription).textSelection(.enabled)
+                                HStack {
+                                    Spacer()
+                                    Button("Dismiss") { [weak self] in self?.resultPopover?.close() }
+                                }
+                            }
+                            .padding(16)
+                            .frame(width: 300)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityIdentifier("scholium.selectionResult.error"))
+                    }
                 }
             }
             glass.contentView = bar
@@ -198,10 +221,27 @@ final class DocumentFloatingSurfaceController: NSObject {
         }
     }
 
+    private func showSelectionPopover<Content: View>(_ content: Content) {
+        guard let glass, let selectionBar, selectionBar.window != nil else { return }
+        glass.layoutSubtreeIfNeeded()
+        let popover = NSPopover()
+        popover.behavior = .transient
+        popover.animates = !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        let hosting = NSHostingController(rootView: content)
+        popover.contentViewController = hosting
+        popover.contentSize = hosting.view.fittingSize
+        resultPopover = popover
+        popover.delegate = self
+        // Anchor to the visible native surface, after layout, for both results and
+        // unavailable actions. The stack's fitting geometry is not its outer edge.
+        popover.show(relativeTo: glass.bounds, of: glass, preferredEdge: glass.isFlipped ? .maxY : .minY)
+    }
+
     func dismiss() {
         suggestionsBelow = nil
         inquiryTask?.cancel()
         inquiryTask = nil
+        inquiryID = nil
         resultPopover?.close()
         resultPopover = nil
         selectionBar = nil
@@ -276,5 +316,8 @@ private final class TrackingGlassView: NSGlassEffectView {
 }
 
 extension DocumentFloatingSurfaceController: NSPopoverDelegate {
-    func popoverDidClose(_ notification: Notification) { resultPopover = nil }
+    func popoverDidClose(_ notification: Notification) {
+        guard notification.object as? NSPopover === resultPopover else { return }
+        resultPopover = nil
+    }
 }

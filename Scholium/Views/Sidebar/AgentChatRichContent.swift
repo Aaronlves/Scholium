@@ -130,9 +130,6 @@ struct AgentChatDiagram: View {
             ("separator", .separator), ("accent", .accent), ("attention", .attention),
         ]
         let declarations = colors.map { key, role in
-            if role == .accent {
-                return "--scholium-color-\(key): \(ScholiumWebDesignTokens.systemAccentCSSValue);"
-            }
             return String(
                 format: "--scholium-color-%@: #%06x;", key,
                 role.resolvedRGBValue(isDark: dark, increasedContrast: increasedContrast))

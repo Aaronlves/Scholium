@@ -10,6 +10,56 @@ import WebKit
 @Suite("Markdown editor WKWebView integration", .serialized)
 @MainActor
 struct MarkdownEditorWebViewIntegrationTests {
+    @Test("System Accent refresh reaches the retained editor without changing source or selection")
+    func nativeSystemAccentRefreshPreservesEditor() async throws {
+        let source = "# Accent\r\n\r\nA selected passage 😀.\r\n"
+        let harness = EditorHarness(source: source, initialSourceRange: 15..<23)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        let webView = try #require(harness.session.webView)
+        let container = try #require(webView.superview as? DocumentWebViewContainer)
+        let selection = harness.session.context?.selections
+
+        func waitForNativeAccent() async throws {
+            let expected = String(
+                format: "#%06x",
+                ScholiumColorRole.systemAccentRGBValue(for: webView.effectiveAppearance)
+            )
+            let clock = ContinuousClock()
+            let deadline = clock.now.advanced(by: .seconds(3))
+            while true {
+                let actual = try await harness.callPageJavaScript(
+                    "return document.documentElement.style.getPropertyValue('--scholium-color-accent');"
+                ) as? String
+                if actual == expected { return }
+                if clock.now >= deadline {
+                    Issue.record("The editor did not receive AppKit's current system Accent.")
+                    throw MarkdownEditorSession.SessionError.unavailable
+                }
+                try await Task.sleep(for: .milliseconds(20))
+            }
+        }
+
+        // An explicit native projection is required even on a machine whose
+        // current Accent happens to match WebKit's default blue.
+        try await waitForNativeAccent()
+        _ = try await harness.callPageJavaScript(
+            "document.documentElement.style.removeProperty('--scholium-color-accent');"
+        )
+        NotificationCenter.default.post(name: NSColor.systemColorsDidChangeNotification, object: nil)
+        try await waitForNativeAccent()
+
+        container.appearance = NSAppearance(named: .darkAqua)
+        try await waitForNativeAccent()
+        harness.session.setMode(.source)
+        try await harness.waitUntilPresentedMode(.source)
+        try await waitForNativeAccent()
+        #expect(harness.session.webView === webView)
+        #expect(harness.session.context?.selections == selection)
+        #expect(try await harness.session.currentText() == source)
+        await harness.closeAndDrain()
+    }
+
     @Test("Adding a paragraph anchor preserves selection and has its own Undo action")
     func paragraphAnchorPreservesSelection() async throws {
         let source = "A paragraph 😀.\r\n\r\nFollowing."
