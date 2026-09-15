@@ -297,7 +297,7 @@ already-visible Chat does not toggle the Sidebar closed.
   captured through the document/editor owner and attached to the original
   conversation without sending. Chips and previews distinguish whole Notes from
   passages, saved source from editor snapshots, and known vault roles. Current
-  history uses schema 7; unsupported archives remain preserved and nonauthorizing.
+  history uses schema 12; unsupported archives remain preserved and nonauthorizing.
   Saved-source capture and fixture sending preserve BOM, line endings and text;
   a dirty unavailable editor rejects capture without substituting saved content.
   Populated and empty picker renders were inspected in light/dark mode. Actual

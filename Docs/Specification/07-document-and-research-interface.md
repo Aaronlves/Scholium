@@ -466,7 +466,7 @@ rows retain their independent actions and final grid. Reduce Motion presents the
 completed state immediately, including when enabled during playback. Links uses
 the same static header and highlight treatment without the search entrance. Failed or
 incomplete retrieval retains existing cards and exposes one recovery state.
-Retrieval-lead guidance belongs in Help rather than a standing footer. Authored link annotations remain readable
+Guidance belongs in Help rather than a standing footer. Authored link annotations remain readable
 in the excerpt when they supply the match; they retain their containing Note as
 source. Excerpts open the checked source paragraph. Excerpts use a shared restrained highlight with Links: a faint system-accent
 background and medium word weight. Related Material highlights at most three

@@ -366,8 +366,8 @@ resizable native window. Its own search menu has no Advanced Search entry. It us
 query field, one quiet summary/action line, and an independently scrolling native result
 list. The system owns row selection, focus feedback, and keyboard traversal. Note rows
 use a small document symbol, title, available bounded snippet, and one secondary
-location/reason line in interface typography. Repeated workspace labels, ranking
-decoration, and permanent “Retrieval lead” labels do not occupy each row. Before a
+location/reason line in interface typography. Repeated workspace labels and ranking
+decoration do not occupy each row. Before a
 query, the window shows a neutral Search prompt; an initial or cleared projection does
 not claim an index failure. Empty and genuinely unavailable states use native
 content-state views, preserving the actual reason and any valid retry. Saved Searches

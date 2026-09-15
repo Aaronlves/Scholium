@@ -29,9 +29,9 @@
   text predicates to complete top-level body paragraphs, preserving successful
   ranges and source annotation fields. A local term-group collection inserts
   literal OR expressions without macros or inferred synonymy.
-- The source-authority cutover removes managed Metadata and Zotero Note binding
-  APIs. Integration checks completed through the full run and targeted rechecks;
-  the Verification chapter records the remaining native acceptance boundary.
+- Managed Metadata and Zotero Note-binding APIs are absent from the reachable
+  surface. Integration checks and targeted rechecks have bounded evidence; the
+  Verification chapter records the remaining native acceptance boundary.
 - Review, Edit and Source retain one document session and exact-source authority.
   [Reachable Interface](02-interface.md) owns title, syntax, geometry and input
   presentation evidence; these are not separate product capabilities.
@@ -135,10 +135,11 @@
 ## Distribution
 
 Scholium.app includes the MCP/Zotero connection helper. External-host setup uses
-its verified bundle path. The standalone executable product, command catalog,
-installer, self-updater and archive packaging have been removed. Existing
-published artifacts are not changed by this source-tree cutover; current
-verification and package acceptance remain in their respective Status chapters.
+its verified bundle path. The current App distribution has no standalone
+executable product, command catalog, installer, self-updater or archive
+packaging. Existing published artifacts are not changed by this source tree;
+current verification and package acceptance remain in their respective Status
+chapters.
 
 ## Deliberately unavailable
 

@@ -89,7 +89,7 @@ in §8.5 instead of becoming a second philosophical instruction source.
 ### 8.3 Tool contract
 
 The external local tool surface supports bounded knowledge-base operations. Tool
-availability never expands the current researcher request. The following 18
+availability never expands the current researcher request. The following 16
 research contracts are shared by external hosts and in-app Chat:
 
 | Tool | Input | Result |

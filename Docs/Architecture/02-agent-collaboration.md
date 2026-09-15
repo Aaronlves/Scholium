@@ -451,7 +451,7 @@ completion; runtime events and Stop own its terminal state. Account quotas are
 connection observations, fetched through the transport and cleared on disconnect.
 `AgentChatRuntimeControls` renders these values with native controls and has no
 transport, persistence or source authority. The current machine-local archive
-version is 11; unsupported archives remain byte-unchanged and block overwrite.
+version is 12; unsupported archives remain byte-unchanged and block overwrite.
 Runtime turn status/timing is retained by exact turn ID through the shared transcript
 decoder and controller. The view projects elapsed wall time without owning execution.
 

@@ -4,464 +4,126 @@
 
 ## Current verification snapshot
 
-**2026-09-15 — Chat panel closing review:** Nineteen owning composer, catalog
-and input-dock checks pass (`.build/chat-sidebar-audit/final-panel-tests.log`),
-including rejection before query deletion and request expansion notification.
-The Debug build and scoped formatting/localization/documentation checks pass.
-Chinese/Light disposable 500-Note QA at 300pt observed empty input, quiet candidate
-rows, pointer acceptance, grouped Context accessibility, pending questions,
-skip-to-composer recovery, busy command filtering and leaving/returning to Chat
-without a stale candidate layer or lost draft. Native selection replaces the
-candidate rows' second highlight; full labels remain in Help. Icon-menu labels
-now name their actions rather than their SF Symbols. The native Research > Stop Agent command now owns interruption; actual QA
-confirmed Command-Period stops a turn from the expanded question form and
-restores composer focus, and the command disables when idle. Full Keyboard
-Access, human VoiceOver/IME and the complete adaptation matrix remain
-unverified; no full repository gate was run.
+**2026-09-15 — Beta preparation repository gate:** With Xcode 27.0
+(27A5218g), Swift 6.4 and the macOS 27.0 SDK, the complete `verify.sh` run
+finished successfully on the versioned pre-tag tree. Documentation authority,
+localization, lint, Contracts purity, entitlement and performance self-tests,
+Editor typecheck and 43-file/273-test Editor suite, deterministic RDF-1
+fixture, 405 Core tests plus three Core performance tests, 92 Contracts tests,
+165 Application tests plus one architecture measurement, 929 App tests, the
+symbol graph boundary, Release build and bundled-helper checks all passed.
+This is repository evidence for the Beta candidate; exact-tag packaging,
+artifact checks, clean-account smoke, and human accessibility/interaction
+acceptance remain separate evidence classes.
 
-**2026-09-15 — Button categories and composer entry points:** Xcode 27 Debug,
-scoped format/localization/documentation validation and 29 owning checks pass;
-the final placeholder change additionally reran 13 overlapping native-input
-checks. Logs are in `.build/chat-sidebar-audit/composer-entry-*` and
-`composer-placeholder-tests.log`; the scoped audit is `button-categories.md`.
-Disposable 500-Note QA at 300pt observed shared message-action feedback, exact
-quote and Note staging, flat composer materials, quiet native menu triggers,
-content-sized known/unknown Context with full Details and disabled Compact,
-independent `/usage`, all nine slash candidates with keyboard scrolling to the
-eighth, `/skills` to `$`, and one Undo restoring `/skills`. The gray empty-input
-hint fits without becoming draft text; menu labels omit syntax hints. Moving
-candidate presentation outside the clipped native-input region fixed an invisible
-but AX-present list. One UI transport interruption recovered by reacquiring the
-same running QA App; this does not establish a fix inside the automation service.
-Whole-app button coverage is source/category audit, not full visual or assistive
-technology acceptance. Human VoiceOver, Full Keyboard Access, physical IME and
-the complete appearance/adaptation matrix remain open. No full gate was run.
+**2026-09-15 — In-app Chat presentation and runtime controls:** Focused slices
+report 19 final-panel checks, 29 composer-entry checks, 32 context/message
+checks, and 31 Agent-roster checks, with overlapping coverage rather than an
+additive total. Xcode 27 Debug builds plus scoped formatting, localization and
+documentation validation pass. Disposable 500-Note QA covered English/Light and
+Chinese/Dark states, composer focus and draft retention, candidate lists, pending
+questions, queued input, Stop, Context, Changes, Agent monitoring and recovery
+routes. Some Context inspection attempts closed `SkyComputerUseService`; the
+native-disclosure correction was verified, but this remains a tooling boundary,
+not a claim that the service is repaired internally. Full Keyboard Access,
+VoiceOver, Switch Control, installed IME, complete adaptation and real-provider
+acceptance remain open. Evidence is under `.build/chat-sidebar-audit/` and
+`.build/agent-roster/`.
 
-**2026-09-15 — Context separation and message controls:** Thirty-two checks
-actually pass: 23 input/context/branch checks in
-`.build/chat-sidebar-audit/context-hover-tests.log`, then nine native-pointer and
-reading checks in `context-hover-pointer-tests.log`; that runner reports 11
-including two explicitly skipped performance cases. Xcode 27 Debug and scoped
-format/localization/documentation validation pass. Disposable 500-Note QA observed
-whole-message pointer entry/exit revealing icon actions without reflow, retained
-AX actions and exact quoting, independent Account Usage with Refresh/Escape,
-Context known/unknown values, full prepared-context expansion, and Context access
-while questions replace the composer. Single and multiple queued messages,
-collapsed count, expansion, exact inspection/edit, focus return and Stop retaining
-the queue were observed at 300pt, with English light and Chinese dark coverage.
-Moving the old Context content to a Button or replacing its tabs alone still
-crashed SkyComputerUseService. Omitting the ledger passed; restoring it without
-extra AX containment still failed. Replacing its GroupBox with a native disclosure
-retains all content and passes both collapsed and expanded observation. This
-bounds the interoperability fix without claiming the tooling crash is repaired
-internally. Native pointer reuse corrects WebKit's failure to propagate ordinary
-SwiftUI hover. Full Keyboard Access, human VoiceOver/Switch Control, physical IME,
-complete visual-adaptation variants and archived Context remain unverified in
-this pass. No full gate or private research vault was used. QA process, App and
-temporary state were cleaned; standard source fixtures and logs remain.
+**2026-09-15 — Search and staged gate evidence:** Contracts purity, current
+Search rendering and system-Trash wording checks pass. A staged gate recorded
+405 Core, 3 performance, 92 Contracts, 165 Application and one
+architecture-measurement test pass. The 895-test App phase had one retired Trash
+wording assertion; after its test-only correction, the 77 Frontend Architecture
+tests passed, but the six-minute App phase was not rerun. Release compilation,
+symbol-boundary checks and helper protocol isolation passed. This is staged
+evidence, not one uninterrupted green `verify.sh` run.
 
-**2026-09-15 — Chat entry contraction:** Twenty-four owning input, branch and
-reading checks pass (`.build/chat-sidebar-audit/entry-tests.log`); after preserving
-offline permission/web-search editing in the merged menu, the final build and two
-input-dock checks pass (`entry-final-build.log`, `entry-final-tests.log`, overlapping
-coverage). English light and Chinese dark QA at 300pt observed one composer row,
-Full Access visibility and offline reversion to Ask, actual model labels, disabled
-settings during work, Cmd-Return delivery, Cmd-Period interruption retaining the
-draft, transcript-only plan summary, message More and exact reply quoting with
-focus return. The Context menu click returned, but subsequent AX/screenshot reads
-closed the UI transport; `/context` also did so while the App process remained
-running. Corresponding macOS crash reports at 19:48 and 19:51 identify
-SkyComputerUseService terminating with SIGTRAP in Swift Array.remove(at:),
-confirming a tooling crash; the triggering internal frames are unsymbolicated.
-Context presentation, including pending/archived states, is not verified.
-Format, localization and documentation checks pass. Full visual-adaptation,
-VoiceOver and physical IME acceptance remain open. No full gate or real research
-vault was used. QA state was cleaned; source fixtures and logs remain.
-
-**2026-09-15 — Chat sidebar remediation:** Thirty-eight owning checks pass in
-`.build/chat-sidebar-audit/remediation-tests.log`; after the observed roster
-regrouping correction, twenty-six reading/input/roster checks pass in
-`remediation-final-tests.log` in the same directory (overlapping coverage).
-Xcode 27 Debug builds, scoped formatting, localization and documentation checks pass.
-Disposable 500-Note QA at 300pt verifies English/Light and Chinese/Dark, compact
-delegation/plan disclosures, visible model/permission, stable Stop, explicit queue
-selection, Command-Return delivery and preserved parent queue after child Stop.
-Roster first-open names, metadata groups, manual refresh, failed-read retention
-and recovery pass; the stale row reproduced with nested lazy groups is absent
-after a flat stable-identity list. A synthetic retained receipt with no pending
-mutation verifies Changes, its empty state, All Changes and return focus; it
-does not prove a new Note mutation. Prior navigation checks cover header Outline,
-context placement, reported 4% and Escape preserving a Chinese draft.
-The UI transport again closed while inspecting header Context during a pending
-question, so that popup's completed presentation and arrival while a footer popup
-is open remain unverified. Physical IME, VoiceOver and full adaptation remain open.
-An isolated Menu shortcut test produced no test-completion evidence and was
-discarded; ordinary Button delivery with an adjacent options menu was verified
-in QA. No full-suite, performance or human-acceptance claim is made. The QA process
-and disposable runtime are cleaned up; retained logs also include
-`remediation-final-build.log` and `remediation-label-build.log`.
-
-**2026-09-15 — Conversation Agent roster and monitor:** Thirty-one scoped App
-checks pass (`.build/agent-roster/redesign-tests.log`): cumulative deduplication,
-report provenance, metadata-only name reads, cancellation, exact-turn interruption,
-ordinary input/queue/async recovery, inert retained child drafts and branch scope.
-Xcode 27 Debug builds, scoped lint, localization and documentation checks pass.
-The child window now has a continuous activity area, compact tool disclosures,
-Refresh/Stop, technical Details and parent navigation, with no Ask Parent input.
-Disposable 500-Note QA verifies the count, restored history, runtime names,
-list-to-detail navigation, loaded public prose, stop confirmation/Refresh and
-Escape returning focus to the parent composer. English/Light list and Chinese/Dark
-monitor were inspected. Eight light/dark offscreen images cover chrome, Markdown
-loading, unavailable and interruption/disconnection states; their placeholder
-captures do not establish loaded-prose layout. Full adaptation, physical IME,
-VoiceOver and real-provider acceptance remain open. QA process, app and temporary
-state are removed after the journey.
-
-**2026-09-15 — Verification blockers and Search budgets:** Contracts purity now
-uses the selected compiler's SwiftParser tokens. Six guard regressions cover prose,
-comments, raw strings, executable interpolation, real imports/calls and invalid
-input; all 88 Contracts files pass. Explain Query and system-Trash checks now
-follow the current expression renderer and approved recovery wording.
-The full gate reaches 405 Core, 3 performance, 92 Contracts, 165 Application and
-1 architecture-measurement tests, all passing. Its 895-test App run has one failure:
-the retired Trash wording assertion. After that test-only correction, all 77
-Frontend Architecture tests pass; the other App results are retained rather than
-rerunning the six-minute suite. Symbol-boundary checks, Release compilation and
-helper protocol isolation then pass. This is staged gate completion, not a claim
-that one uninterrupted `verify.sh` invocation exited successfully.
-Search's unchanged 2,056-Note benchmark improves warm-query p95 from 383 to 97 ms,
-first five pages from 2,251 to 466 ms, and incremental publication p95 from 365 to
-27 ms, without relaxing the 100/500/250 ms limits. A query profile identifies
-repeated decoding, normalization, ranking scans and SQL preparation. Same-read
-page hydration and read-local statement reuse retain exact counts and provenance;
-projection-hash reuse includes the exact source fingerprint. A byte-distinct,
-canonically equivalent Unicode edit fails the new regression before that guard
-and passes afterward; an errored hydration can be followed by a repaired query.
-Evidence: `.build/check-blocker-final-integration-gate.log`,
-`.build/check-blocker-final-frontend-tests.log`, `.build/search-query-sample.txt`,
+Search contract 20 uses schema 18 and ranking policy 4. The unchanged 2,056-Note
+benchmark reports warm-query p95 of 97 ms, first-five-page p95 of 466 ms, and
+incremental-publication p95 of 27 ms against the unchanged 100/500/250 ms
+budgets. Current Saved Searches use the ordinary parser only; unsupported stored
+definitions remain protected and nonexecuting. Paragraph predicates, term-group
+insertion, exact ranges, Unicode source preservation, hydration recovery and
+App/MCP provenance have scoped evidence. A separate Search integration attempt
+hit a Preview Styles `LineLength` failure; the line is fixed and scoped lint
+passes, but the complete gate has not been rerun. Evidence includes
+`.build/check-blocker-final-integration-gate.log`,
 `.build/search-performance-final-correctness.log`,
-`.build/verification-release/release-build.log` and `.build/check-blocker-helper.log`.
-These checks do not close the previous full-app polish or human acceptance limits.
+`.build/search-clean-cutover-tests.log` and
+`.build/verification-release/release-build.log`.
 
-**2026-09-15 — Native Library batches and file sheets:** Thirty-eight scoped App
-and twenty-eight Core tests pass (`.build/library-file-operation-final-tests.log`).
-Final presentation checks pass in `.build/file-operation-final-layout-tests.log`,
-including compact forms, bounded lists, partial/unavailable/recovery states and
-220/300-point Sidebar geometry. Reintroducing the misplaced header buttons makes
-the native layout regression fail; the correct source is restored. Twenty-two
-native component renders cover normal/narrow widths, Light/high-contrast Dark and
-mixed-script paths. They are not full-app or Chinese-interface acceptance.
-Disposable 500-Note QA verifies range selection, menu/accessibility Move, cancel,
-two successful linked-note moves followed by a collision, remaining-only retry
-preparation, retained active document and window resizing. Computer Use then lost
-its native connection; full-app verification of the final sheet polish, Trash and
-physical input routes remains open. The test process, bundle and state are removed.
-Details and adaptation limits: `.build/file-operation-review/verification.md`.
-Documentation, localization and Swift lint pass. The initial complete gate stopped at its
-Contracts purity regex matching `Combine` inside existing Search strings
-(`.build/library-file-operation-integration-gate.log`). The subsequent guard and
-performance closure is recorded above; human acceptance remains open.
+**2026-09-15 — Workspace shell and Search presentation:** Focus Layout and the
+unified Search entry have bounded scoped checks (18 Focus Layout tests, plus 19
+Search-controller and three field/menu-wiring tests, with overlap). Disposable
+500-Note QA confirms ordinary/full-screen entry and exit, pane restoration,
+retained Document state and the existing advanced Search window. The earlier
+layout-dependent Search route is not part of the current surface. Hover-specific
+behavior, VoiceOver, IME, conflict/recovery and the complete adaptation matrix
+remain open. Evidence includes `.build/fullscreen-focus-final-tests.log`,
+`.build/advanced-search-shortcut-tests.log` and
+`.build/sidebar-search-simplification-tests.log`.
 
-**2026-09-15 — Search contract 20:** Boolean Search now includes existential
-`paragraph:(...)` predicates over complete top-level body paragraphs, successful
-paragraph ranges, and literal term-group insertion. The index uses schema 18 and
-ranking policy 4. Saved Search version-review behavior from this run was subsequently
-removed by the clean cutover recorded below. The scoped run passes 128 Core,
-Contracts, Application and App tests
-(`.build/search-phase2-final-tests.log`). Follow-up checks in
-`.build/search-phase2-final-boundaries.log` cover paragraph annotation field ownership,
-MCP locator paging, Unicode insertion boundaries and term-group persistence. The
-production recovery entry also stages malformed paragraph JSON and rebuilds from the
-unchanged source corpus (`.build/search-phase2-recovery-tests.log`). AppKit
-field tests retain marked-text and caret guarantees. Invalid input, unknown body/YAML
-state, per-predicate links, duplicate ranking, authorization, pagination, exact ranges
-and incremental/rebuild equivalence are exercised with nonprivate sources.
-A selected-Xcode Debug QA journey uses the standard 500-Note fixture copy plus two
-Search fixtures. It verifies term creation, save, restart persistence, explicit OR
-insertion and later group edits leaving existing queries unchanged. The independently
-accessible paragraph-locations popover expands beyond its first ten locations and opens
-line 26 at the exact selected source paragraph. Invalid paragraph syntax and an external
-fixture edit producing one indeterminate Note are visible; the opened Note's source hash
-is unchanged. Details and cleanup are recorded in `.build/search-phase2-qa-report.md`.
-The QA process, generated app and runtime state are removed. Dark appearance at the
-480-pixel advanced-window width was observed; this is not the full adaptation matrix,
-human VoiceOver/FKA/installed-IME acceptance, or a release-artifact journey. The full
-repository gate stopped at a Preview Styles LineLength violation
-(`.build/search-phase2-integration-gate.log`). That line is now fixed and scoped lint
-passes, but the complete gate has not been rerun;
-no full product-suite or Release pass is inferred from scoped proof.
+**2026-09-15 — Library batches and file sheets:** Thirty-eight scoped App and
+28 Core tests pass, together with presentation checks for compact, narrow,
+partial, unavailable and recovery states. Twenty-two native renders cover
+normal/narrow widths, Light/high-contrast Dark and mixed-script paths. Disposable
+500-Note QA verified selection, menu/accessibility Move, cancellation,
+collision handling, remaining-only retry preparation, retained documents and
+window resizing. The native Computer Use connection was then lost, so final
+full-app sheet polish, Trash and physical-input routes remain open. Evidence is
+under `.build/library-file-operation-final-tests.log`,
+`.build/file-operation-final-layout-tests.log` and
+`.build/file-operation-review/`.
 
-**2026-09-15 — Saved Search clean cutover:** Current definitions run through ordinary
-Search without a compatibility list, version-review diagnostic, or editing-only path.
-Decoding accepts only the current format; unsupported bytes retain the existing
-unreadable-store and replacement protection. Forty-four scoped Contracts, Core and
-App tests pass (`.build/search-clean-cutover-tests.log`), covering current definition
-round trips, persistence, unsupported-format preservation and ordinary controller
-execution. Swift lint and documentation validation pass. This bounded cutover does
-not establish a new full integration, Release, or human accessibility pass.
+**2026-09-14 — Note reorganization and editor boundaries:** Scoped Core, App and
+Contracts checks cover paragraph anchors, footnote dependencies, exact YAML
+choices, reference-scope isolation, resource relocation, dirty conflicts,
+source readback and detached WebView save receipts. Disposable-fixture QA
+verified paragraph insertion, destination Undo/Redo, preview cancellation,
+Merge, incoming-reference following and system-Trash routing. Complete
+background-tab insertion, full visual/assistive-technology acceptance and
+post-Trash cleanup remain open. Editor candidate/deletion, native document
+previews, research sheets and preview-renderer reuse also have bounded focused
+evidence; their physical input, IME, VoiceOver and complete adaptation claims
+remain open. Evidence includes `.build/knowledge-reuse-fixes-tests.log`,
+`.build/preview-perf-tests.log`, `.build/slash-candidates-journey.log`,
+`.build/native-research-sheet-tests.log`.
 
-**2026-09-15 — Unified Search entry and Sidebar simplification:** Shift–Command–F
-and View → Advanced Search route directly to the existing advanced window;
-the layout-dependent fallback and separate View → Search entry are removed.
-Shortcut settings use the Advanced Search name and menu path. Quick Search keeps
-only its native clear button; both field menus offer This Vault and Triptych,
-without This Note. Nineteen Hotkey/Search-controller tests and three scoped
-field/menu-wiring tests pass. Isolated 500-Note QA confirms Sidebar results,
-one native cancel control, clearing back to the retained Library, the two-item
-scope menu, and shortcut-focused advanced search in ordinary and full-screen
-windows. Advanced search returns the fixture's two expected title matches;
-closing it in full screen retains the focused document window. The QA Note
-remains byte-identical. Build, lint, documentation and localization checks pass;
-updated UI drivers pass syntax checking but their full journeys were not rerun.
-Evidence: `.build/advanced-search-shortcut-tests.log`,
-`.build/sidebar-search-simplification-tests.log`,
-`.build/search-simplification-qa-build.log`, `.build/search-simplification-runtime.log`
-and the inspected accessibility states. This is scoped development proof, not
-release or human assistive-technology acceptance. The unused quick-search menu
-callback was then removed without changing the verified paths; the retained
-build is `.build/search-simplification-final-build.log`. The QA process was
-stopped and its bundle, disposable fixtures and isolated state moved to Trash.
+**2026-09-13 — Source safety and App-only delivery:** Late-writer
+reproductions preserve exact external bytes and return Recovery Required; 111
+selected Core, Application and App-MCP-router tests cover interruption, failed
+retention, deferred cleanup, revision-checked restoration and move/Agent Undo.
+The App-only cutover also passed its bounded owning tests, helper smoke,
+public-symbol checks and a Release build. These are source/fixture and delivery
+proof only; installed-release, live sync-provider, packaged external-host and
+human Recovery acceptance remain open. Evidence is under
+`.build/note-safety-fix/`, `.build/cli-removal-*/` and
+`.build/source-cutover/`.
 
-**2026-09-15 — Full-screen Focus Layout:** Native full screen now enforces focus
-while retaining the independent windowed toggle. Eighteen scoped tests pass;
-the final ten-test subset additionally covers restoration after a temporary
-Sidebar reveal. Tests cover prior-focus restoration, transition failure,
-command locking and retained pane widths. Disposable 500-Note QA verifies both
-ordinary and manually focused windows through full-screen entry/exit, the
-disabled Focus Layout command, toolbar/pane restoration, retained document
-selection and the same window identity. Search opens the existing auxiliary
-advanced window and returns fixture results without exiting full screen.
-Native edge reveal remains enabled; the researcher's observed hover path was
-not independently reproduced in QA. Search entry now follows the unified policy above.
-The active-state projection is tested; the checkmark was not exposed by the menu
-accessibility snapshot. Full VoiceOver, IME, accessibility-setting and conflict/recovery
-journeys remain open; this is scoped development proof, not human acceptance.
-Evidence: `.build/fullscreen-focus-tests.log`,
-`.build/fullscreen-focus-final-tests.log`, `.build/fullscreen-focus-runtime.log`
-and the inspected QA states. The final source build and validators are recorded
-under `.build/fullscreen-focus-final-*.log`. The QA Note remains byte-identical;
-the QA process was stopped and its bundle, disposable fixtures and isolated state
-moved to system Trash.
-
-**2026-09-15 — Continuous toolbar backgrounds:** The persistent SwiftUI toolbar
-uses an explicit clear background rather than one pane's Paper fill; native
-content hosts again respect their safe areas. Seventeen scoped tests pass,
-including foreground clearance and background coverage with toolbar shown/hidden,
-Focus Layout and toolbar wiring. Light/Dark disposable QA confirms ordinary-window
-Sidebar, Document and Inspector backgrounds each reach their own toolbar region.
-Full-screen entry/exit and focus toggling preserve the same window; Focus Layout
-removes the full-screen toolbar. The earlier ordinary full-screen mode painted a system
-toolbar band: transparent/clear preferences and native full-size geometry did
-not remove it. The approved full-screen-focus policy above supersedes that mode;
-it does not constitute a fix for system toolbar materials.
-Experimental material, WebKit-inset, toolbar-color callbacks and diagnostic code was
-removed. Source comparison for the QA Note is byte-identical. Evidence:
-`.build/continuous-toolbar-tests.log`, `.build/continuous-toolbar-final-build.log`,
-`.build/fullscreen-toolbar-diagnostic-runtime.log` and the inspected QA screenshots.
-No custom materials or rendering hooks were retained; full accessibility and
-human visual acceptance remain open. The QA process was stopped and its bundle,
-disposable fixtures and isolated state moved to system Trash.
-
-**2026-09-15 — Focus Layout:** 23 scoped App tests pass for window-local native
-chrome and pane restoration, widths, retained text/selection/focus, repeated
-transitions, lifecycle replacement, persistence and shortcut wiring. Disposable
-500-Note Triptych QA verifies menu/shortcut entry and exit, pane/search restoration,
-Review selection, long-document reading context, empty content and standalone
-windowed use; the full-screen policy above supersedes the earlier independent
-full-screen behavior. Light/Dark inspection confirms the focus titlebar has no
-separate background band and ordinary toolbar appearance returns on exit. No new
-window, renderer or custom material is introduced. Full VoiceOver, IME,
-accessibility-setting and conflict/recovery journeys remain unverified. This is
-scoped development proof, not release or human acceptance. Evidence:
-`.build/focus-layout-tests-final.log`, `.build/focus-layout-background-build.log`
-and `.build/focus-layout-qa-runtime.log`. The separate ordinary-toolbar material
-experiment was withdrawn at the researcher's request; Focus Layout remains.
-The QA process was stopped and its bundle, fixtures and isolated state moved to
-system Trash. `.build/focus-layout-retained-build.log` verifies the retained build.
-
-**2026-09-14 — Paragraph reuse and academic Note reorganization:** 57 scoped Core,
-33 App and five Contracts tests pass with Xcode 27. Coverage includes footnote
-resource relocation across folders (CRLF, Tab, Unicode and multiline labels),
-reference-scope isolation and literal escaping, independent YAML comments and
-scalar values, clean background-session convergence and dirty conflicts. A real
-WKWebView test confirms the exact disk commit and receipt survive detachment before
-save acknowledgement. Existing identity, cancellation and destination-table checks
-also pass. The complete background-tab insertion GUI journey remains unverified.
-Evidence: `.build/knowledge-reuse-fixes-tests.log`,
-`.build/knowledge-reuse-fixes-dialect.log` and `.build/knowledge-reuse-fixes-research.md`.
-Earlier standard 500-Note disposable Triptych QA plus three synthetic Notes verified Related Material
-paragraph insertion, destination Undo/Redo, initially unselected YAML choices,
-three-file preview, Escape cancellation with unchanged bytes, and native Merge.
-Exact readback confirms selected properties, retained target content, renamed
-footnotes and incoming references following the same anchor; the original leaves
-the vault through native Trash. Dark-window screenshots were inspected. Full human
-input/accessibility and adaptation acceptance remain open. QA app, fixtures,
-state were removed. macOS denied access to `QA Reuse Source.md` in Trash, so its
-post-Trash bytes and cleanup were not verified and that item remains. Evidence:
-`.build/knowledge-reuse-tests.log`, `.build/knowledge-reuse-qa.md` and
-`.build/knowledge-reuse-qa-build.log`. Documentation and scoped Swift lint pass.
-The full repository gate stops at the unchanged `input-suggestions.ts`
-localization false positive; `.build/knowledge-reuse-fixes-gate.log` records
-that failure, not an integration pass.
-
-**2026-09-14 — Preview renderer reuse:** An opt-in native-owner diagnostic uses
-eight disclosures per build (one cold, seven subsequent) on Xcode 27 Debug,
-macOS 27 and synthetic mixed-script content. Subsequent synchronous preparation
-falls from 35.7–47.8 ms to 0.66–1.41 ms; request-to-prepared-presentation median
-falls from 84.3 ms to 29.5 ms. The renderer is reused only within its document
-host; navigation identity/generation guard replacement, and host reset releases
-it. Eight scoped native/Edit/Review checks pass for replacement, cancellation,
-scroll, focus and source preservation. This isolates native preparation, excluding hover delay, bridge transport
-and animation completion; cold initialization and perceived smoothness are not
-accepted by this diagnostic. Logs: `.build/preview-latency-before.log`,
-`.build/preview-latency-after.log`, `.build/preview-perf-tests.log` and
-`.build/preview-perf-reader-tests.log`.
-
-**2026-09-14 — Editor candidates and ordinary deletion:** Slash commands share
-CodeMirror's editing/AX owner and retained native choice list; the separate menu
-and key forwarding are removed. Typechecking and 41 focused candidate/protocol
-Web tests pass. Thirty-five projection tests compare repeated mixed-script
-and line-end deletion against a fresh index. On a 58,340 UTF-16 synthetic Note,
-three runs of 24 ordinary line-end deletions reduce full index rebuilds from
-24 to zero and per-run state-update medians from 4.26–5.29 ms to 0.53–0.68 ms.
-Structural, multiline and unsafe deletions still rebuild. A real WebView
-input/deletion check preserves exact Web text, native mirror and caret; its
-throttled frame callbacks supply no paint-latency evidence. Native protocol
-checks pass. The final slash journey passes filtering, continuous Backspace,
-acceptance/Undo, retained focus and no menu tracking; isolated QA confirms direct
-Backspace after `/` and continued input/deletion. Evidence: `.build/slash-list-web-tests.log`,
-`.build/slash-candidates-journey.log`, `.build/deletion-tests.log`,
-`.build/deletion-native-tests.log` and `.build/deletion-performance-notes.md`.
-The owning WebView check also passes with native secondary selection, preserving
-pointer/keyboard selection and editor focus; `.build/floating-emphasis-tests.log`.
-Hover strength, VoiceOver, full IME and appearance/adaptation acceptance remain
-open. This is scoped development evidence, not a full gate or human acceptance.
-
-**2026-09-14 — Native document previews:** Twelve scoped native/Editor/Review
-checks pass for bounded first measurement, repeated and replaced targets,
-source/selection/Undo preservation, footnotes, annotations, Escape and composition.
-Xcode 27 Debug QA with a disposable standard Triptych copy confirms native short
-and long presentations, annotation toggle, retained editor focus, Escape and
-readable accessibility content after WebKit's lazy AX initialization. Physical
-cross-window scrolling, VoiceOver and the full appearance/input-service matrix
-remain unverified; the automation scroll route targeted the originating window.
-This is scoped development evidence, not release or human acceptance.
-
-**2026-09-14 — Native research sheets:** Twenty-four scoped checks pass across
-native two/three-column layout, both collection scopes, exact comparisons,
-Viewed timing and a real SwiftUI sheet lifecycle. The lifecycle check displays
-an actual parent window and verifies its frame through loading, detail and full
-dismissal. Two adaptation checks also pass after aligning their host with the
-sheet minimum height. Debug build, localization, scoped formatting and
-documentation validation pass. Final disposable-fixture QA confirms automatic
-Viewed after opening detail, absent technical/manual-viewing controls, stable
-list/detail navigation, and destination search → keyboard selection → preview
-→ cancellation with unchanged source. AppKit owns native column allocation;
-header dragging and imperative sheet resizing are removed. Light/Dark and
-narrow/high-contrast component renders were inspected. Full assistive-technology,
-IME and release acceptance remain open. No full repository gate was run.
-Evidence: `.build/native-research-sheet-tests.log`,
-`.build/native-research-sheets-qa.md`, `.build/agent-changes-review/` and
-`.build/note-picker-review/`. The isolated QA bundle and state were removed.
-
-**2026-09-14 — Note actions and paragraph reorganization:** The integration
-execution passes Core 367 plus 3 performance tests, Contracts 81, and Application
-164 plus 1 architecture measurement. The App run executes 854 tests with one
-failure: its old toolbar-order expectation omitted More. Updating that assertion
-passes all 77 owning architecture tests; the full App product was not repeated
-after this test-only correction. A matching-fingerprint malformed semantic cache
-initially exposed an anchor-parser bounds exception; source-coordinate validation
-and fresh parsing resolve it before the complete Core rerun. Nine focused App
-checks also pass for exact paragraph selection, hidden identities and the real
-WebView selection/Undo bridge. Typechecking, 262 editor tests, reproducible bundles,
-localization, Swift formatting, documentation, public-symbol boundaries, Release
-build (166.67 seconds) and the bundled-helper checks pass. Gate phases were
-completed in stages; this is not a claim of a single uninterrupted green run.
-
-Disposable-fixture AX QA confirms main More after Review/Edit, one separate More
-with correct window commands, separate Find-field focus, native Copy Note Link
-visibility and exact clipboard delivery. Cold-start paragraph-link creation saves
-its anchor before copying and preserves neighboring source. Extract retains its
-ID and redirects incoming links; Review Copy assigns a new ID and retains the
-original. Partial selection is refused and cancellation works. Native first-item
-hiding and invalid/nested anchor projections have regression tests. Screenshot
-capture was unavailable; visual adaptations, native Trash-merge and human
-acceptance remain open. QA bundle and temporary state were removed. Evidence:
-`.build/note-actions-qa.md`, `.build/note-actions-integration.log`,
-`.build/note-actions-integration-resumed.log`, `.build/note-actions-integration-final.log`,
-`.build/note-actions-final-boundaries.log` and `.build/paragraph-anchor-semantic-safety-tests.log`.
-
-**2026-09-14 — Triptych Chat workspace:** Eight integration checks pass for
-control-store routing, isolated workspaces and Skills with shared login,
-discovery, renewal, cancellation, failure/retry, containment and Settings
-renders. Installed Codex confirms Skill discovery and the Chat working directory
-without model inference. Selection and active-turn configuration, Light/Dark,
-localization, documentation, Release build, helper smoke and public-symbol
-checks pass. AGENTS.md model consumption, Finder interaction and human
-accessibility acceptance remain open. The associated gate reported Core 353+3,
-Contracts 73, Application 164+1 and 840 App tests with eight issues in two
-tests. Four focused Find checks pass after a measurement-control correction;
-the complete gate was not rerun and is not green. Logs: `.build/chat-workspace/`
-and `.build/verification/`.
-
-**2026-09-13 — Late concurrent source preservation:** Two independent
-late-writer reproductions return Recovery Required and retain exact external
-bytes. One hundred eleven selected tests pass across Core, Application and the
-App MCP router, covering process interruption, failed retention, deferred
-cleanup, revision-checked restoration and move/Agent Undo. Formatting and
-documentation authority also pass. This is scoped source/fixture proof;
-installed-release, live sync-provider and human Recovery acceptance remain open.
-Logs: `.build/note-safety-fix/`.
-
-**2026-09-13 — Reader arrival and formatting:** Review waits for its destination
-before capturing the anchor and receipt. The original four assertions pass;
-135 native WebKit tests, 255 editor tests, resource reproducibility and
-repository-wide Swift formatting pass. This is not a complete repository-gate,
-packaged or human-acceptance result. Logs: `.build/repair-webkit.log`,
-`.build/repair-editor-verification.log` and `.build/repair-format-after.log`.
-
-**2026-09-13 — App-only delivery:** The App-only cutover passed 110 owning
-tests, Debug/Release helper smoke, public-symbol checks and a Release build.
-Core, Contracts and Application integration checks passed in the reported
-scopes. The original full gate remains a failed historical run; no new artifact
-or clean-account acceptance was established. Logs: `.build/cli-removal-*.log`
-and `.build/verification/`.
-
-**2026-09-13 — Source-authority cutover:** Core, Contracts and Application
-checks passed, with affected App behavior checks, resource, formatting,
-documentation and localization checks. Native QA covered Links navigation,
-YAML Search and source-linked attachments. No final one-shot repository rerun
-was claimed; provider and complete accessibility/adaptation acceptance remain
-open. Logs: `.build/source-cutover/verification.md`.
-
-**2026-09-10 — Chat foundation:** The focused checks and Debug QA covered
-scrolling, quotes, previews and shared message typography. Packaging,
-large-history and accessibility/adaptation acceptance remain open. Logs:
-`.build/agent-foundation-acceptance.md`.
-
-**2026-09-08 — Signed-in research loop:** Disposable 500-Note QA with the
-official Codex runtime completed a bounded multi-turn read, native approval,
-one exact Note update, comparison, Undo, restart restoration and Stop. The
-changed Note returned to its starting bytes. This closes CHAT-LIVE-01 and
-CHAT-LIVE-02 only for that path. Provider breadth, concurrency and human
-accessibility acceptance remain separate. Evidence:
+**2026-09-08 — Bounded signed-in Chat loop:** Disposable 500-Note QA with the
+official Codex runtime completed one bounded multi-turn read, native approval,
+exact Note update, comparison, eligible Undo, restart restoration and Stop; the
+Note returned to its starting bytes. This closes CHAT-LIVE-01 and CHAT-LIVE-02
+only for that route. Provider breadth, concurrency, packaging and human
+accessibility remain separate acceptance boundaries. Evidence:
 `.build/agent-chat-evolution/real-loop-retest-*.json`.
 
-**2026-09-07 — Editor syntax continuity:** 228 editor tests, TypeScript and
-resource reproduction, Debug App/test compilation and 16 Swift/WebKit checks
-passed. Fixture QA covered Callout placement, Chinese paste/Undo, disclosure,
-Light/Dark, doubled text and mode switching; Undo restored identical bytes.
-Minimum-width, system-adaptation, IME, conflict/recovery and human perceptual
-acceptance remain open. Evidence: `.build/editor-presentation-*.log`.
+**2026-09-07 — Editor syntax continuity:** Editor tests, TypeScript and
+resource-reproduction checks, Debug compilation and focused Swift/WebKit checks
+pass. Disposable fixture QA covered Callouts, Chinese paste/Undo, disclosure,
+Light/Dark and mode switching with byte-identical Undo. Minimum width, system
+adaptation, IME, conflict/recovery and human perceptual acceptance remain open.
+Evidence: `.build/editor-presentation-*.log`.
 
 ## Evidence boundary
 
-These entries retain one current representative result for each active proof
-boundary, not a per-change transcript. Test counts from separate runs are not
-additive. Focused tests, offscreen renders, Debug QA and deterministic fixtures
-prove only their named scope; they do not establish packaged behavior, G7/G9,
+These entries retain one representative result for each active proof boundary,
+not a per-change transcript. Test counts from separate runs are not additive.
+Focused tests, offscreen renders, Debug QA and deterministic fixtures prove only
+their named scope; they do not establish packaged behavior, G7/G9,
 VoiceOver, Full Keyboard Access, installed Simplified Chinese IME, physical
-input, or full visual adaptation unless explicitly stated.
+input or full visual adaptation unless explicitly stated.
 
 Current capabilities belong to [Reachable Capabilities](01-capabilities.md),
 user-facing reachability to [Reachable Interface](02-interface.md), and open
