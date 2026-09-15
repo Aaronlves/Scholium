@@ -61,7 +61,7 @@ struct AgentChatSearchTests {
         #expect(AgentChatListFilter.hasDraft(conversation))
         conversation.attachments = []
         conversation.childDrafts = ["child": "Unsent adjustment"]
-        #expect(AgentChatListFilter.hasDraft(conversation))
+        #expect(!AgentChatListFilter.hasDraft(conversation))
         conversation.childDrafts = [:]
         conversation.draft = "Unsent question"
         let before = conversation

@@ -3,44 +3,22 @@ import Foundation
 import ScholiumApplication
 import ScholiumContracts
 
-enum AgentChatParentReceipt: Equatable {
-    case received, unconfirmed, unavailable
-    func label(locale: Locale) -> String {
-        switch self {
-        case .received: ScholiumL10n.string("Received by Parent", locale: locale)
-        case .unconfirmed: ScholiumL10n.string("Parent Receipt Not Confirmed", locale: locale)
-        case .unavailable: ScholiumL10n.string("Parent Unavailable", locale: locale)
-        }
-    }
-}
-
-/// A view port into the originating conversation's draft and ordinary send owner.
-@MainActor struct AgentChatParentCoordination {
-    let changes: AnyPublisher<Void, Never>
-    let draft: () -> String
-    let edit: (String) -> Void
-    let canEdit: () -> Bool
-    let canSend: () -> Bool
-    let send: (String?, @escaping @MainActor (AgentChatParentReceipt) -> Void) -> Void
-    let open: () -> Void
-}
-
 /// One inspection's transient requests and snapshots. No child execution or Note owner.
 @MainActor final class AgentChatChildController: ObservableObject, Identifiable {
+    enum Work { case refresh, loadEarlier, stop }
+
     let id = UUID()
     let childID: String
     let parentID: String
     let parentTitle: String
     @Published private(set) var snapshot: AgentChatChildHistory.Snapshot?
-    @Published private(set) var isWorking = false
+    @Published private(set) var work: Work?
+    @Published private(set) var observedAt: Date?
     @Published private(set) var isDisconnected = false
     @Published private(set) var pendingStop: String?
     @Published private(set) var error: AgentChatChildFailure?
-    @Published private(set) var isSending = false
-    @Published private(set) var receipt: AgentChatParentReceipt?
-    private let coordination: AgentChatParentCoordination?
+    private let navigateToParent: (() -> Void)?
     private let inspect: ((String) -> AgentChatChildController?)?
-    private var parentObservation: AnyCancellable?
     private let request: CodexChatChildReader.Request
     private var operation: Task<Void, Never>?
     private var connectionObservation: AnyCancellable?
@@ -49,7 +27,7 @@ enum AgentChatParentReceipt: Equatable {
 
     init(
         childID: String, parentID: String, parentTitle: String,
-        connection: AnyPublisher<Bool, Never>, coordination: AgentChatParentCoordination? = nil,
+        connection: AnyPublisher<Bool, Never>, openParent: (() -> Void)? = nil,
         inspect: ((String) -> AgentChatChildController?)? = nil,
         request: @escaping CodexChatChildReader.Request
     ) {
@@ -57,39 +35,27 @@ enum AgentChatParentReceipt: Equatable {
         self.parentID = parentID
         self.parentTitle = parentTitle
         self.request = request
-        self.coordination = coordination
+        navigateToParent = openParent
         self.inspect = inspect
-        parentObservation = coordination?.changes.sink { [weak self] in self?.objectWillChange.send() }
         connectionObservation = connection.removeDuplicates().sink { [weak self] connected in
             guard !connected else { return }
             self?.isDisconnected = true
             self?.operation?.cancel()
-            self?.isWorking = false
+            self?.work = nil
         }
     }
 
-    var canStop: Bool { !isClosed && !isWorking && !isDisconnected && error == nil && pendingStop == nil && snapshot?.activeTurnID != nil }
-    var hasParent: Bool { coordination != nil }
-    var draft: String { coordination?.draft() ?? "" }
-    var canEdit: Bool { !isClosed && coordination?.canEdit() == true }
-    var canSend: Bool {
-        !isClosed && !isDisconnected && !isSending && snapshot != nil && coordination?.canSend() == true
+    var isWorking: Bool { work != nil }
+    var canRefresh: Bool { !isClosed && !isWorking && !isDisconnected }
+    var canLoadEarlier: Bool {
+        canRefresh && snapshot?.page.nextCursor.map { !cursors.contains($0) } == true
     }
-    func editDraft(_ value: String) {
-        guard canEdit else { return }
-        receipt = nil
-        coordination?.edit(value)
+    var canStop: Bool { canRefresh && error == nil && pendingStop == nil && snapshot?.activeTurnID != nil }
+    var hasParent: Bool { !isClosed && navigateToParent != nil }
+    func openParent() {
+        guard hasParent else { return }
+        navigateToParent?()
     }
-    func askParent() {
-        guard canSend else { return }
-        isSending = true
-        receipt = nil
-        coordination?.send(snapshot?.metadata.name) { [weak self] result in
-            self?.isSending = false
-            self?.receipt = result
-        }
-    }
-    func openParent() { coordination?.open() }
 
     var canInspectReports: Bool { !isClosed && !isDisconnected && snapshot != nil && inspect != nil }
 
@@ -101,17 +67,27 @@ enum AgentChatParentReceipt: Equatable {
         return inspect?(targetID)
     }
 
+    /// Resolve a reported name without loading history or enabling child actions.
+    func readMetadata() async throws -> AgentChatChildHistory.Metadata {
+        try Task.checkCancellation()
+        guard !isClosed else { throw CancellationError() }
+        guard !isDisconnected else { throw CodexConnectionError.disconnected }
+        let metadata = try await CodexChatChildReader.verify(childID: childID, parentID: parentID, request: request)
+        try Task.checkCancellation()
+        guard !isClosed else { throw CancellationError() }
+        guard !isDisconnected else { throw CodexConnectionError.disconnected }
+        return metadata
+    }
+
     func refresh() {
-        run { [self] in
-            snapshot = try await load()
-            cursors.removeAll()
-            confirmStop()
+        run(.refresh) { [self] in
+            replaceSnapshot(try await load())
         }
     }
 
     func loadEarlier() {
-        guard let cursor = snapshot?.page.nextCursor, !cursors.contains(cursor) else { return }
-        run { [self] in
+        guard canLoadEarlier, let cursor = snapshot?.page.nextCursor else { return }
+        run(.loadEarlier) { [self] in
             let page = try await CodexChatChildReader.older(childID: childID, cursor: cursor, request: request)
             try Task.checkCancellation()
             guard page.nextCursor != cursor, page.nextCursor.map({ !cursors.contains($0) }) ?? true else {
@@ -125,9 +101,9 @@ enum AgentChatParentReceipt: Equatable {
 
     func stop() {
         guard canStop, let turn = snapshot?.activeTurnID else { return }
-        run { [self] in
+        run(.stop) { [self] in
             let current = try await load()
-            snapshot = current
+            replaceSnapshot(current)
             guard current.activeTurnID == turn else {
                 error = .changedTurn
                 return
@@ -141,9 +117,7 @@ enum AgentChatParentReceipt: Equatable {
             }
             for delay in [0, 250, 500, 1_000] {
                 if delay > 0 { try await Task.sleep(for: .milliseconds(delay)) }
-                snapshot = try await load()
-                cursors.removeAll()
-                confirmStop()
+                replaceSnapshot(try await load())
                 if pendingStop == nil { break }
             }
         }
@@ -155,9 +129,14 @@ enum AgentChatParentReceipt: Equatable {
         operation = nil
         connectionObservation?.cancel()
         connectionObservation = nil
-        parentObservation?.cancel()
-        parentObservation = nil
-        isWorking = false
+        work = nil
+    }
+
+    private func replaceSnapshot(_ value: AgentChatChildHistory.Snapshot) {
+        snapshot = value
+        observedAt = Date()
+        cursors.removeAll()
+        confirmStop()
     }
 
     private func confirmStop() {
@@ -168,13 +147,13 @@ enum AgentChatParentReceipt: Equatable {
         try Task.checkCancellation()
         return value
     }
-    private func run(_ work: @escaping @MainActor () async throws -> Void) {
-        guard !isClosed, !isWorking, !isDisconnected else { return }
-        isWorking = true
+    private func run(_ kind: Work, _ action: @escaping @MainActor () async throws -> Void) {
+        guard canRefresh else { return }
+        work = kind
         error = nil
         operation = Task { [weak self] in
-            defer { self?.isWorking = false }
-            do { try await work() } catch is CancellationError {} catch CodexConnectionError.invalidMessage {
+            defer { self?.work = nil }
+            do { try await action() } catch is CancellationError {} catch CodexConnectionError.invalidMessage {
                 if !Task.isCancelled { self?.error = .unverified }
             } catch CodexConnectionError.disconnected { self?.isDisconnected = true } catch CodexConnectionError.timedOut {
                 if !Task.isCancelled { self?.error = .timedOut }

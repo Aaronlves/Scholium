@@ -4,6 +4,63 @@
 
 ## Current verification snapshot
 
+**2026-09-15 — Chat entry contraction:** Twenty-four owning input, branch and
+reading checks pass (`.build/chat-sidebar-audit/entry-tests.log`); after preserving
+offline permission/web-search editing in the merged menu, the final build and two
+input-dock checks pass (`entry-final-build.log`, `entry-final-tests.log`, overlapping
+coverage). English light and Chinese dark QA at 300pt observed one composer row,
+Full Access visibility and offline reversion to Ask, actual model labels, disabled
+settings during work, Cmd-Return delivery, Cmd-Period interruption retaining the
+draft, transcript-only plan summary, message More and exact reply quoting with
+focus return. The Context menu click returned, but subsequent AX/screenshot reads
+closed the UI transport; `/context` also did so while the App process remained
+running. Corresponding macOS crash reports at 19:48 and 19:51 identify
+SkyComputerUseService terminating with SIGTRAP in Swift Array.remove(at:),
+confirming a tooling crash; the triggering internal frames are unsymbolicated.
+Context presentation, including pending/archived states, is not verified.
+Format, localization and documentation checks pass. Full visual-adaptation,
+VoiceOver and physical IME acceptance remain open. No full gate or real research
+vault was used. QA state was cleaned; source fixtures and logs remain.
+
+**2026-09-15 — Chat sidebar remediation:** Thirty-eight owning checks pass in
+`.build/chat-sidebar-audit/remediation-tests.log`; after the observed roster
+regrouping correction, twenty-six reading/input/roster checks pass in
+`remediation-final-tests.log` in the same directory (overlapping coverage).
+Xcode 27 Debug builds, scoped formatting, localization and documentation checks pass.
+Disposable 500-Note QA at 300pt verifies English/Light and Chinese/Dark, compact
+delegation/plan disclosures, visible model/permission, stable Stop, explicit queue
+selection, Command-Return delivery and preserved parent queue after child Stop.
+Roster first-open names, metadata groups, manual refresh, failed-read retention
+and recovery pass; the stale row reproduced with nested lazy groups is absent
+after a flat stable-identity list. A synthetic retained receipt with no pending
+mutation verifies Changes, its empty state, All Changes and return focus; it
+does not prove a new Note mutation. Prior navigation checks cover header Outline,
+context placement, reported 4% and Escape preserving a Chinese draft.
+The UI transport again closed while inspecting header Context during a pending
+question, so that popup's completed presentation and arrival while a footer popup
+is open remain unverified. Physical IME, VoiceOver and full adaptation remain open.
+An isolated Menu shortcut test produced no test-completion evidence and was
+discarded; ordinary Button delivery with an adjacent options menu was verified
+in QA. No full-suite, performance or human-acceptance claim is made. The QA process
+and disposable runtime are cleaned up; retained logs also include
+`remediation-final-build.log` and `remediation-label-build.log`.
+
+**2026-09-15 — Conversation Agent roster and monitor:** Thirty-one scoped App
+checks pass (`.build/agent-roster/redesign-tests.log`): cumulative deduplication,
+report provenance, metadata-only name reads, cancellation, exact-turn interruption,
+ordinary input/queue/async recovery, inert retained child drafts and branch scope.
+Xcode 27 Debug builds, scoped lint, localization and documentation checks pass.
+The child window now has a continuous activity area, compact tool disclosures,
+Refresh/Stop, technical Details and parent navigation, with no Ask Parent input.
+Disposable 500-Note QA verifies the count, restored history, runtime names,
+list-to-detail navigation, loaded public prose, stop confirmation/Refresh and
+Escape returning focus to the parent composer. English/Light list and Chinese/Dark
+monitor were inspected. Eight light/dark offscreen images cover chrome, Markdown
+loading, unavailable and interruption/disconnection states; their placeholder
+captures do not establish loaded-prose layout. Full adaptation, physical IME,
+VoiceOver and real-provider acceptance remain open. QA process, app and temporary
+state are removed after the journey.
+
 **2026-09-15 — Verification blockers and Search budgets:** Contracts purity now
 uses the selected compiler's SwiftParser tokens. Six guard regressions cover prose,
 comments, raw strings, executable interpolation, real imports/calls and invalid

@@ -1187,8 +1187,7 @@
           }
         }
       }
-    }
-,
+    },
     "Insert Paragraph Link": {
       "localizations": {
         "en": {
@@ -6165,26 +6164,6 @@
         }
       }
     },
-    "Ask Parent" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "请父 Agent 协调"
-          }
-        }
-      }
-    },
-    "Ask Parent: %@" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "请父 Agent 协调：%@"
-          }
-        }
-      }
-    },
     "Ask for Approval" : {
       "localizations" : {
         "en" : {
@@ -7585,6 +7564,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "聊天选项"
+          }
+        }
+      }
+    },
+    "Chat Settings" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chat Settings"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "聊天设置"
           }
         }
       }
@@ -20619,26 +20614,6 @@
         }
       }
     },
-    "Parent Receipt Not Confirmed" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "尚未确认父 Agent 收到"
-          }
-        }
-      }
-    },
-    "Parent Unavailable" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "父 Agent 暂不可用"
-          }
-        }
-      }
-    },
     "Passage location requested." : {
       "localizations" : {
         "en" : {
@@ -21856,16 +21831,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "重新关联并填充"
-          }
-        }
-      }
-    },
-    "Received by Parent" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "父 Agent 已收到"
           }
         }
       }
@@ -26085,16 +26050,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "发送终端输入"
-          }
-        }
-      }
-    },
-    "Sending to Parent" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在发送给父 Agent"
           }
         }
       }
@@ -33703,6 +33658,186 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@ 设置命令复制失败。"
+          }
+        }
+      }
+    },
+    "%lld agents" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld agents"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 个 Agent"
+          }
+        }
+      }
+    },
+    "Agent: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agent: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agent：%@"
+          }
+        }
+      }
+    },
+    "Checking Active Turn…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Checking Active Turn…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在核对当前轮次…"
+          }
+        }
+      }
+    },
+    "Confirming Interruption…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Confirming Interruption…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在确认中断…"
+          }
+        }
+      }
+    },
+    "Last Observed" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Last Observed"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "上次观察时间"
+          }
+        }
+      }
+    },
+    "Last Reported: %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "上次报告：%@"
+          }
+        }
+      }
+    },
+    "Loading Earlier Activity…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Loading Earlier Activity…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在加载更早的活动…"
+          }
+        }
+      }
+    },
+    "Not Loaded" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未加载"
+          }
+        }
+      }
+    },
+    "Open Agent: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open Agent: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开 Agent：%@"
+          }
+        }
+      }
+    },
+    "Reading Agent State…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reading Agent State…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在读取 Agent 状态…"
+          }
+        }
+      }
+    },
+    "Send Options" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Send Options"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "发送选项"
+          }
+        }
+      }
+    },
+    "Active Agents" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Active Agents"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "运行中"
           }
         }
       }

@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Owns inspection navigation only; conversations retain every adjustment draft.
+/// Owns inspection navigation only; conversation input stays with its original owner.
 struct AgentChatChildInspector: View {
     let child: AgentChatChildController
     let openReference: (URL) -> Bool

@@ -413,17 +413,11 @@ struct AgentChatVisualEvidenceTests {
             let record = try #require(parent.selected?.messages.first { $0.activity?.delegation?.operation == .spawnAgent })
             let target = try #require(record.activity?.delegation?.targets.first?.id)
             let owner = try #require(parent.selectedID)
-            for state in ["ready", "pending", "received", "unavailable", "disconnected"] {
+            for state in ["ready", "pending", "unavailable", "disconnected"] {
                 let child = try #require(parent.childController(targetID: state == "unavailable" ? "unrelated" : target, messageID: record.id, in: owner))
                 child.refresh()
                 try await wait { !child.isWorking && (child.snapshot != nil || child.error != nil) }
-                child.editDraft("请保留页码，并检查第二处引文。")
-                if state == "received" {
-                    parent.stop(in: owner)
-                    try await wait { parent.state(for: owner) == .ready }
-                    child.askParent()
-                    try await wait { child.receipt != nil }
-                } else if state == "pending" {
+                if state == "pending" {
                     try Data().write(to: parent.runtimeHome.appendingPathComponent("hold-child-stop"))
                     child.stop()
                     try await wait { !child.isWorking }
@@ -451,40 +445,6 @@ struct AgentChatVisualEvidenceTests {
                 host.cacheDisplay(in: host.bounds, to: bitmap)
                 try #require(bitmap.representation(using: .png, properties: [:]))
                     .write(to: output.appendingPathComponent("child-\(state)-\(scheme == .light ? "light" : "dark").png"))
-                if state == "received" {
-                    let request = try #require(parent.selected?.messages.last { $0.role == .user })
-                    try await wait { parent.canBranch }
-                    parent.editInNewBranch(request.id)
-                    try await wait { parent.selectedID != owner && !parent.isBusy }
-                    let branch = try #require(parent.selectedID)
-                    #expect(await parent.selectNotification(.init(triptychID: parent.triptychID, conversationID: branch, event: .completed)))
-                    try await wait { !parent.isRefreshingHistory }
-                    let branchContent = AgentChatView(
-                        controller: parent, isVisible: false, addSelection: {},
-                        noteChoices: [], addNote: { _, _ in }, openReference: { _ in false }, openAttachment: { _ in }, showInLibrary: { _ in },
-                        showChanges: { _ in }, showConversationChanges: { _ in }
-                    )
-                    .frame(width: 340, height: 700).background(Color(nsColor: .windowBackgroundColor))
-                    .environment(\.colorScheme, scheme).environment(\.locale, Locale(identifier: "zh-Hans"))
-                    let branchHost = NSHostingView(rootView: branchContent)
-                    branchHost.appearance = host.appearance
-                    branchHost.frame = NSRect(origin: .zero, size: branchHost.fittingSize)
-                    let branchWindow = NSWindow(contentRect: branchHost.frame, styleMask: [.titled], backing: .buffered, defer: false)
-                    branchWindow.isReleasedWhenClosed = false
-                    branchWindow.appearance = host.appearance
-                    defer {
-                        branchWindow.contentView = nil
-                        branchWindow.close()
-                    }
-                    branchWindow.contentView = branchHost
-                    branchWindow.layoutIfNeeded()
-                    await Task.yield()
-                    branchHost.layoutSubtreeIfNeeded()
-                    let branchBitmap = try #require(branchHost.bitmapImageRepForCachingDisplay(in: branchHost.bounds))
-                    branchHost.cacheDisplay(in: branchHost.bounds, to: branchBitmap)
-                    try #require(branchBitmap.representation(using: .png, properties: [:]))
-                        .write(to: output.appendingPathComponent("child-branch-\(scheme == .light ? "light" : "dark").png"))
-                }
                 child.cancel()
             }
             await parent.disconnect()
@@ -759,9 +719,10 @@ struct AgentChatVisualEvidenceTests {
             ])
         for scheme in [ColorScheme.light, .dark] {
             let content = VStack(alignment: .leading, spacing: 16) {
-                AgentChatModelMenu(
+                AgentChatConfigurationMenu(
                     models: [model], preferences: .init(model: "fixture", effort: "high"),
-                    selectedModel: model, isEnabled: true, selectModel: { _ in }, selectEffort: { _ in })
+                    selectedModel: model, permission: .ask, isEnabled: true, canSelectModel: true,
+                    selectModel: { _ in }, selectEffort: { _ in }, selectPermission: { _ in }, selectWebSearch: { _ in })
                 AgentChatPlanView(plan: plan)
                 AgentChatActivityText(text: "已读取笔记 · 行动理由.md", isCurrent: false)
                 AgentChatActivityText(text: "正在检索知识库 · 实践理性与行动理由之间的关系", isCurrent: true)

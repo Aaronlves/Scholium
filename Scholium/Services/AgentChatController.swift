@@ -180,7 +180,12 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
             childID: targetID, parentID: parentID,
             parentTitle: originID.flatMap { conversation($0)?.title } ?? "",
             connection: $connectionState.map { $0 == .ready }.eraseToAnyPublisher(),
-            coordination: originID.map { coordination(target: target, originID: $0, connection: connection) },
+            openParent: originID.map { origin in
+                { [weak self] in
+                    guard self?.conversation(origin)?.threadID == parentID else { return }
+                    self?.openParent(for: target)
+                }
+            },
             inspect: { [weak self] targetID in
                 guard let self, let connection, self.connectionID == connection,
                     self.connectionState == .ready, let originID,
@@ -204,41 +209,6 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
             try Task.checkCancellation()
             return value
         }
-    }
-
-    private func coordination(target: AgentChatCoordinationTarget, originID: UUID, connection: UUID?) -> AgentChatParentCoordination {
-        let current: @MainActor () -> AgentChatConversation? = { [weak self] in
-            guard let value = self?.conversation(originID), value.threadID == target.parentThreadID else { return nil }
-            return value
-        }
-        let proposal: @MainActor (String?) -> AgentChatMessage = { name in
-            var message = AgentChatMessage(role: .user, text: current()?.childDrafts[target.childThreadID] ?? "")
-            message.coordinationTarget = .init(parentThreadID: target.parentThreadID, childThreadID: target.childThreadID, name: name)
-            return message
-        }
-        return .init(
-            changes: objectWillChange.eraseToAnyPublisher(),
-            draft: { current()?.childDrafts[target.childThreadID] ?? "" },
-            edit: { [weak self] value in
-                guard current()?.isAvailable == true, current() != nil else { return }
-                self?.update(in: originID) {
-                    if value.isEmpty { $0.childDrafts.removeValue(forKey: target.childThreadID) } else { $0.childDrafts[target.childThreadID] = value }
-                }
-                self?.persist()
-            },
-            canEdit: { current() != nil && current()?.isAvailable == true },
-            canSend: { [weak self] in
-                guard let self, self.connectionID == connection, let value = current() else { return false }
-                return self.canSend(message: proposal(nil), in: value)
-            },
-            send: { [weak self] name, completion in
-                guard let self, self.connectionID == connection, let value = current() else {
-                    completion(.unavailable)
-                    return
-                }
-                self.send(proposal(name), in: value, consumesDraft: false, completion: completion)
-            },
-            open: { [weak self] in self?.openParent(for: target) })
     }
 
     private func notify(_ event: AgentChatNotificationRoute.Event, in id: UUID, turnID: String) {
@@ -1289,7 +1259,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
 
     private func send(
         _ proposed: AgentChatMessage, in selected: AgentChatConversation, consumesDraft: Bool,
-        completion: @escaping @MainActor (AgentChatParentReceipt) -> Void = { _ in }
+        completion: @escaping @MainActor (AgentChatDeliveryReceipt) -> Void = { _ in }
     ) {
         guard canSend(message: proposed, in: selected), let runtime else {
             completion(.unavailable)
@@ -1307,7 +1277,7 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
                 completion(.unavailable)
                 return
             }
-            var receipt = AgentChatParentReceipt.unavailable
+            var receipt = AgentChatDeliveryReceipt.unavailable
             defer {
                 if self.connectionID == connectionID, self.executions[conversationID]?.sendingMessageID == message.id {
                     self.executions[conversationID]?.sendingMessageID = nil
@@ -1370,8 +1340,6 @@ final class AgentChatController: ObservableObject, AgentChatContextReceiving {
                     $0.pendingMessageID = message.id
                     if consumesDraft {
                         self.consumeDraft(message, from: &$0)
-                    } else if let target = message.coordinationTarget, $0.childDrafts[target.childThreadID] == message.text {
-                        $0.childDrafts.removeValue(forKey: target.childThreadID)
                     }
                 }
                 receipt = .unconfirmed

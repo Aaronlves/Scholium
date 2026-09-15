@@ -387,19 +387,20 @@ report before using a connection-bound factory from the conversation owner.
 That factory retains the original local conversation scope at every depth.
 Navigation holds transient inspection identities only; popping cancels removed
 inspections and dismissing cancels the whole path. The detail view does not
-cancel itself merely because another destination covers it. Existing draft,
-runtime and source owners remain unchanged.
+cancel itself merely because another destination covers it. Conversation input, runtime and source owners remain unchanged.
 
-Child adjustment drafts are keyed by runtime child identity in the original
-`AgentChatConversation`. The inspector observes that owner through a narrow
-`AgentChatParentCoordination` port; it keeps no writable draft copy or send task.
-Ask Parent supplies an immutable message to the same admission and delivery
-worker as the ordinary composer, with ancestry checked before local admission.
-It consumes only the matching child draft. An `AgentChatCoordinationTarget`
-retains public routing context separately from exact user text, including in
-search, branch history and editable branch drafts. Receiving parent identity
-must match; target removal is explicit. Parent acknowledgment never becomes
-child-delivery evidence. Closing the inspector cancels reads, not admitted sends.
+`AgentChatAgentRoster` deduplicates retained creation/child-activity reports for
+the count beside Changes. `AgentChatAgentRosterObservation` owns transient,
+generation-scoped metadata reads through the existing child reader, without
+loading turn history. Its row projection separates observed state, historical
+reports and refresh failure; popover closure cancels reads. Row activation opens the existing
+inspector. The inspector owns reads and exact-turn interruption, with a separate
+parent-navigation closure and no input facade. `AgentChatDeliveryReceipt` belongs
+to ordinary conversation sending, queue recovery and asynchronous answers.
+`AgentChatCoordinationTarget` retains routing context separately from exact user
+text in history, search and editable branches. Receiving parent identity must
+match; removing a target is explicit. Stored child draft text remains inert and
+does not contribute a Draft marker or send admission.
 
 Live turn completion and pending interaction admission produce generic Chat
 notification events through the registry's injected sink. Their validity stays

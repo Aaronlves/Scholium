@@ -82,7 +82,7 @@ struct AgentChatChildTests {
         let nested = try #require(child.reportedAgent(targetID: target, messageID: report.id))
         #expect(nested.snapshot == nil && nested.parentID == child.parentID && nested.parentTitle == child.parentTitle)
         #expect(!nested.canInspectReports)
-        child.editDraft("Keep the first Agent draft")
+        parent.editDraft("Keep the ordinary conversation draft")
         parent.newConversation()
         let visible = parent.selectedID
         nested.refresh()
@@ -91,24 +91,21 @@ struct AgentChatChildTests {
         #expect(nested.canInspectReports)
         #expect(nested.messages.contains { $0.value.text.contains("第二页第三段") })
         #expect(parent.selectedID == visible && parent.conversations.count == 2 && parent.owns(token: token))
-        nested.editDraft("hold: Recheck this exact paragraph")
-        nested.askParent()
-        try await wait { nested.receipt != nil }
-        #expect(nested.receipt == .received && nested.draft.isEmpty && child.draft == "Keep the first Agent draft")
-        let sent = try #require(parent.conversations.first { $0.id == owner }?.messages.last { $0.role == .user })
-        #expect(sent.coordinationTarget?.childThreadID == target && sent.coordinationTarget?.parentThreadID == child.parentID)
-        #expect(parent.selectedID == visible && parent.owns(token: token))
+        #expect(parent.conversations.first { $0.id == owner }?.draft == "Keep the ordinary conversation draft")
         let returningReport = try #require(nested.messages.first { $0.value.activity?.delegation != nil })
         let returning = try #require(nested.reportedAgent(targetID: child.childID, messageID: returningReport.id))
-        #expect(returning.parentID == child.parentID && returning.draft == child.draft)
+        #expect(returning.parentID == child.parentID && returning.hasParent)
+        returning.openParent()
+        #expect(parent.selectedID == owner && parent.owns(token: token))
+        parent.select(try #require(visible))
         returning.cancel()
         let unrelated = try #require(child.reportedAgent(targetID: "unrelated-report-target", messageID: report.id))
         unrelated.refresh()
         try await wait { !unrelated.isWorking }
-        #expect(unrelated.snapshot == nil && unrelated.error != nil && !unrelated.canSend && !unrelated.canStop)
+        #expect(unrelated.snapshot == nil && unrelated.error != nil && !unrelated.canStop)
         #expect(parent.approvals.isEmpty && parent.conversations.count == 2)
         nested.cancel()
-        #expect(!nested.canInspectReports)
+        #expect(!nested.canInspectReports && !nested.hasParent)
         #expect(nested.reportedAgent(targetID: child.childID, messageID: returningReport.id) == nil)
         await parent.disconnect()
         #expect(!child.canInspectReports)
@@ -146,6 +143,32 @@ struct AgentChatChildTests {
         child.cancel()
     }
 
+    @Test("A turn ending before Stop preserves access to earlier paginated history")
+    func paginationAfterChangedTurn() async throws {
+        let root = repository.appendingPathComponent(".build/agent-chat-tests/child-stop-pagination-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let (parent, child) = try await make(root, prompt: "hold delegation paginated-child")
+        let turn = try #require(child.snapshot?.activeTurnID)
+        let cursor = try #require(child.snapshot?.page.nextCursor)
+        child.loadEarlier()
+        try await wait { !child.isWorking }
+        #expect(child.snapshot?.page.turns.count == 27 && child.snapshot?.page.nextCursor == nil)
+
+        try Data().write(to: parent.runtimeHome.appendingPathComponent("confirm-child-stop"))
+        child.stop()
+        try await wait { !child.isWorking }
+        #expect(child.error == .changedTurn && child.snapshot?.confirmsEnd(of: turn) == true)
+        #expect(child.snapshot?.page.turns.count == 25 && child.snapshot?.page.nextCursor == cursor)
+        #expect(!FileManager.default.fileExists(atPath: parent.runtimeHome.appendingPathComponent("child-interrupt.json").path))
+
+        child.loadEarlier()
+        try await wait { !child.isWorking }
+        #expect(child.error == nil)
+        #expect(child.snapshot?.page.turns.count == 27 && child.snapshot?.page.nextCursor == nil)
+        child.cancel()
+        await parent.disconnect()
+    }
+
     @Test("A stale turn or closed inspection cannot issue an interruption")
     func staleAndCancelled() async throws {
         let root = repository.appendingPathComponent(".build/agent-chat-tests/child-stale-\(UUID())")
@@ -166,14 +189,13 @@ struct AgentChatChildTests {
         await parent.disconnect()
     }
 
-    @Test("Ask Parent preserves ordinary materials and selection, and branches retain the exact target")
-    func coordination() async throws {
-        let root = repository.appendingPathComponent(".build/agent-chat-tests/child-coordination-\(UUID())")
+    @Test("Inspecting and closing a child preserves the ordinary draft, materials and selected conversation")
+    func inspectionPreservesInput() async throws {
+        let root = repository.appendingPathComponent(".build/agent-chat-tests/child-input-preservation-\(UUID())")
         defer { try? FileManager.default.removeItem(at: root) }
         let (parent, child) = try await make(root)
         let owner = try #require(parent.selectedID)
         let token = try #require(parent.token)
-        let parentThread = try #require(parent.selected?.threadID)
         parent.editDraft("Unsent ordinary draft")
         let material = AgentChatAttachment(
             noteID: UUID(), vaultID: UUID(), relativePath: "Unsent.md",
@@ -186,66 +208,36 @@ struct AgentChatChildTests {
         parent.newConversation()
         parent.editDraft("Visible unrelated draft")
         let visible = parent.selectedID
-        child.editDraft("hold\n请核对第二处引文，保留原文。")
-        #expect(child.canSend)
-        child.askParent()
-        try await wait { child.receipt != nil }
-        #expect(child.receipt == .received && child.draft.isEmpty && parent.selectedID == visible)
-        #expect(parent.selected?.draft == "Visible unrelated draft" && parent.owns(token: token))
+        child.refresh()
+        try await wait { !child.isWorking }
+        child.cancel()
         let updated = try #require(parent.conversations.first { $0.id == owner })
         #expect(updated.draft == ordinary.draft && updated.attachments == ordinary.attachments && updated.selectedMethods == ordinary.selectedMethods)
-        let adjustment = try #require(updated.messages.last { $0.role == .user })
-        #expect(adjustment.text == "hold\n请核对第二处引文，保留原文。" && adjustment.attachments.isEmpty && adjustment.methods == nil)
-        #expect(adjustment.coordinationTarget?.childThreadID == child.childID && adjustment.coordinationTarget?.parentThreadID == parentThread)
-        let input = try JSONDecoder().decode(MCPJSONValue.self, from: Data(contentsOf: parent.runtimeHome.appendingPathComponent("last-turn.json"))).objectValue
-        #expect(input?["threadId"]?.stringValue == parentThread && input?["expectedTurnId"]?.stringValue == adjustment.turnID)
-        let text = try #require(input?["input"]?.arrayValue?.first?.objectValue?["text"]?.stringValue)
-        #expect(text.hasPrefix(adjustment.text) && text.contains(child.childID) && !text.contains("Unsubmitted material"))
-        #expect(AgentChatSearch.passage(in: adjustment, query: child.childID) != nil)
-        parent.stop(in: owner)
-        try await wait { parent.state(for: owner) == .ready }
-        child.editDraft("再核对一次页码。")
-        child.askParent()
-        try await wait { child.receipt == .received && parent.state(for: owner) == .ready }
-        let request = try #require(parent.conversations.first { $0.id == owner }?.messages.last { $0.role == .user })
-        child.openParent()
-        try await wait { parent.canBranch }
-        parent.editInNewBranch(request.id)
-        try await wait { parent.selectedID != owner && !parent.hasActiveExecutions }
-        #expect(parent.selected?.draft == request.text && parent.selected?.draftCoordinationTarget == request.coordinationTarget)
-        #expect(parent.selected?.childDrafts.isEmpty == true && !parent.canSend)
-        let lastInput = try Data(contentsOf: parent.runtimeHome.appendingPathComponent("last-turn.json"))
-        parent.send()
-        #expect(try Data(contentsOf: parent.runtimeHome.appendingPathComponent("last-turn.json")) == lastInput)
-        parent.removeDraftCoordinationTarget()
-        #expect(parent.canSend && parent.selected?.draft == request.text)
-        child.editDraft("Retained child draft")
-        child.cancel()
+        #expect(updated.messages == ordinary.messages && updated.pendingMessageID == ordinary.pendingMessageID)
+        #expect(parent.selectedID == visible && parent.selected?.draft == "Visible unrelated draft" && parent.owns(token: token))
+        #expect(!FileManager.default.fileExists(atPath: parent.runtimeHome.appendingPathComponent("unexpected-child-resume").path))
         await parent.disconnect()
-        let stored = try await AgentChatStorage(root: root.appendingPathComponent(parent.triptychID.uuidString)).load()
-        #expect(stored.first { $0.id == owner }?.childDrafts[child.childID] == "Retained child draft")
-        #expect(stored.first { $0.id == owner }?.messages.contains { $0.coordinationTarget == request.coordinationTarget } == true)
     }
 
-    @Test("Closing a child does not cancel admitted parent input, and unknown delivery is retained without replay")
-    func coordinationUncertainty() async throws {
-        let root = repository.appendingPathComponent(".build/agent-chat-tests/child-receipt-\(UUID())")
+    @Test("Closing a child leaves admitted ordinary input and uncertain delivery with the conversation")
+    func closingPreservesOrdinaryInput() async throws {
+        let root = repository.appendingPathComponent(".build/agent-chat-tests/child-ordinary-input-\(UUID())")
         defer { try? FileManager.default.removeItem(at: root) }
         let (parent, child) = try await make(root)
         let owner = try #require(parent.selectedID)
+        try await wait { parent.selected?.pendingMessageID == nil }
         try Data().write(to: parent.runtimeHome.appendingPathComponent("hold-parent-input"))
-        child.editDraft("Exact adjustment")
-        child.askParent()
-        try await wait { parent.selected?.pendingMessageID != nil && child.draft.isEmpty }
-        child.editDraft("Next unsent adjustment")
+        parent.editDraft("Exact ordinary request")
+        parent.send()
+        try await wait { parent.selected?.pendingMessageID != nil && parent.selected?.draft.isEmpty == true }
+        parent.editDraft("Next unsent ordinary draft")
         child.cancel()
-        #expect(parent.selected?.pendingMessageID != nil && !child.canSend)
+        #expect(parent.selected?.pendingMessageID != nil && !child.canStop)
         await parent.disconnect()
-        try await wait { child.receipt == .unconfirmed }
         let stored = try await AgentChatStorage(root: root.appendingPathComponent(parent.triptychID.uuidString)).load()
         let conversation = try #require(stored.first { $0.id == owner })
-        #expect(conversation.pendingMessageID != nil && conversation.childDrafts[child.childID] == "Next unsent adjustment")
-        #expect(conversation.messages.filter { $0.text == "Exact adjustment" }.count == 1)
+        #expect(conversation.pendingMessageID != nil && conversation.draft == "Next unsent ordinary draft")
+        #expect(conversation.messages.filter { $0.text == "Exact ordinary request" }.count == 1)
         let reopened = fixtureChatController(triptychID: parent.triptychID, root: root) { request in
             try! .init(requestID: request.requestID, result: .object([:]))
         }
@@ -255,49 +247,51 @@ struct AgentChatChildTests {
         await reopened.disconnect()
     }
 
-    @Test("A turn ending during input preparation cannot silently start a new execution")
-    func completedTargetDuringPreparation() async throws {
-        let root = repository.appendingPathComponent(".build/agent-chat-tests/input-completed-target-\(UUID())")
-        defer { try? FileManager.default.removeItem(at: root) }
-        let (parent, child) = try await make(root)
-        try await wait { parent.selected?.pendingMessageID == nil }
-        let original = try #require(parent.selected)
-        let lastInput = try Data(contentsOf: parent.runtimeHome.appendingPathComponent("last-turn.json"))
-        try Data().write(to: parent.runtimeHome.appendingPathComponent("complete-parent-before-input"))
-        child.editDraft("Keep this additional request")
-        child.askParent()
-        try await wait { parent.state == .ready }
-        parent.refreshQuota()  // Release the pending verification only after completion reached the client.
-        try await wait { !parent.isBusy }
-        #expect(child.draft == "Keep this additional request")
-        #expect(parent.selected?.messages == original.messages)
-        #expect(parent.selected?.pendingMessageID == nil)
-        #expect(try Data(contentsOf: parent.runtimeHome.appendingPathComponent("last-turn.json")) == lastInput)
-        child.cancel()
-        await parent.disconnect()
-    }
-
-    @Test("A changed ancestry or archived parent cannot consume an adjustment draft")
-    func coordinationAdmission() async throws {
-        let root = repository.appendingPathComponent(".build/agent-chat-tests/child-admission-\(UUID())")
+    @Test("Retained child data stays inert while historical target references keep their branch boundary")
+    func retainedChildData() async throws {
+        let root = repository.appendingPathComponent(".build/agent-chat-tests/retained-child-data-\(UUID())")
         defer { try? FileManager.default.removeItem(at: root) }
         let (parent, child) = try await make(root)
         let owner = try #require(parent.selectedID)
-        let count = parent.selected?.messages.count
-        child.editDraft("Do not lose this request")
-        try Data().write(to: parent.runtimeHome.appendingPathComponent("unrelated-child-parent"))
-        child.askParent()
-        try await wait { child.receipt != nil }
-        #expect(child.receipt == .unavailable && child.draft == "Do not lose this request")
-        #expect(parent.selected?.messages.count == count && parent.selected?.pendingMessageID == nil)
         parent.stop()
-        try await wait { parent.state == .ready }
-        parent.setArchived(owner, archived: true)
-        #expect(!child.canSend && !child.canEdit)
-        child.askParent()
-        child.editDraft("Must not replace archived draft")
-        #expect(child.draft == "Do not lose this request")
+        try await wait { parent.state == .ready && parent.canBranch }
         child.cancel()
         await parent.disconnect()
+
+        let storage = AgentChatStorage(root: root.appendingPathComponent(parent.triptychID.uuidString))
+        var stored = try await storage.load()
+        let index = try #require(stored.firstIndex { $0.id == owner })
+        let requestIndex = try #require(stored[index].messages.firstIndex { $0.role == .user })
+        stored[index].childDrafts = [child.childID: "Retained unsent text"]
+        stored[index].messages[requestIndex].coordinationTarget = .init(
+            parentThreadID: child.parentID, childThreadID: child.childID, name: "Original child")
+        let request = stored[index].messages[requestIndex]
+        try await storage.save(stored)
+
+        let reopened = fixtureChatController(triptychID: parent.triptychID, root: root) { request in
+            try! .init(requestID: request.requestID, result: .object([:]))
+        }
+        try await wait { reopened.isLoaded }
+        reopened.select(owner)
+        let retained = try #require(reopened.selected)
+        #expect(retained.childDrafts == stored[index].childDrafts && retained.messages == stored[index].messages)
+        #expect(!AgentChatListFilter.hasDraft(retained))
+        #expect(AgentChatSearch.passage(in: request, query: child.childID) != nil)
+        let fixture = repository.appendingPathComponent("Tests/Fixtures/agent-chat-runtime.py")
+        reopened.connect(executable: fixture, home: reopened.runtimeHome, helper: fixture)
+        try await wait { reopened.account != nil && reopened.state == .ready && reopened.canBranch }
+        reopened.editInNewBranch(request.id)
+        try await wait { reopened.selectedID != owner && !reopened.hasActiveExecutions }
+        #expect(reopened.selected?.draft == request.text && reopened.selected?.draftCoordinationTarget == request.coordinationTarget)
+        #expect(!reopened.canSend && reopened.selected?.childDrafts.isEmpty == true)
+        let lastInput = try Data(contentsOf: reopened.runtimeHome.appendingPathComponent("last-turn.json"))
+        reopened.send()
+        #expect(try Data(contentsOf: reopened.runtimeHome.appendingPathComponent("last-turn.json")) == lastInput)
+        reopened.removeDraftCoordinationTarget()
+        #expect(reopened.canSend && reopened.selected?.draft == request.text)
+        await reopened.disconnect()
+        let persisted = try await storage.load()
+        #expect(persisted.first { $0.id == owner }?.childDrafts == stored[index].childDrafts)
+        #expect(persisted.first { $0.id == owner }?.messages.contains { $0.id == request.id && $0.coordinationTarget == request.coordinationTarget } == true)
     }
 }

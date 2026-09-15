@@ -396,32 +396,40 @@ already-visible Chat does not toggle the Sidebar closed.
   parents. Public history supports explicit older pages and excludes private
   reasoning; nontext material is separately disclosed. Stop rereads the exact
   active turn, requests interruption and checks for its end without stopping the
-  parent or siblings. Disconnected snapshots are labelled prior observations.
+  parent or siblings. Snapshots are labelled prior observations, with their
+  observation time in Details. Reading state, loading history and checking
+  interruption have distinct text. Replacing a snapshot resets its paging cursors.
   Reports inside the detail open verified destinations within one native
-  navigation stack. Back retains the earlier inspection and its separate draft;
+  navigation stack. Back retains the earlier inspection;
   Done closes all inspections without stopping execution. Revisited targets
   return to their existing position, and the original parent opens its local
   conversation. Closed or disconnected inspections cannot open more targets.
   Scope, pagination, cancellation and stale-turn tests cover this slice; direct
   messaging, child approvals and live-provider/native interaction acceptance
   remain open.
-  Child detail now provides Ask Parent and Open Parent, with a separate retained
-  adjustment draft. Parent receipt, unavailable and unknown delivery have distinct
-  native labels. Ordinary parent drafts/materials/Skill selections and visible
-  conversations remain independent. Public adjustment targets remain inspectable
-  in history and editable branches; a branch cannot send to an original target
-  unless it is explicitly removed or the researcher returns to the parent.
-  Offscreen light/dark detail and narrow branch images cover this presentation;
-  live keyboard/IME, accessibility and provider delivery remain unaccepted.
-  Questions, operation approvals, material provenance/content, PDF page selection
-  and child adjustment input now use native grouped content cards. Agent detail
-  and Context/Account Usage use macOS grouped tabs, with a stable composer and
-  persistent state outside the tab content. System surfaces own the material;
-  no extra glass or custom selection plate wraps research text. A disposable
-  live QA journey verified tab switching, retained Chinese pasted draft/focus,
-  parent receipt, question selection/Skip, and light/dark native presentation.
-  This is synthetic-runtime Computer Use evidence, not provider or human motion,
-  IME, VoiceOver or full visual-adaptation acceptance.
+  A compact Agent-count button beside Changes deduplicates retained child work,
+  including ended Agents. Its popover reads ancestry-verified metadata, grouping
+  observed active, idle and unavailable work with timestamps and explicit refresh
+  failure; historical states remain distinct. Each row opens the existing detail.
+  A flat stable-identity list retains current row content when metadata moves groups.
+  Changes retains its original history entry after the pending count reaches zero.
+  Delegation and transcript plans use compact disclosures; the active plan step
+  stays in its transcript summary. Header options own Outline, Find, Rename,
+  Context and Diagnostics. The composer uses one control row; model/reasoning
+  opens Chat Settings with permission and web-search choices, while Full Access
+  remains visibly identified when enabled. Message More owns edit, branch, retry
+  and quote; header turn pickers and duplicate Changes/plan entries are removed.
+  Stop stays at the trailing edge during work. A normal Send button owns delivery
+  and Command-Return; its adjacent menu offers this message's immediate/queued
+  action without altering the configured Return default.
+  Child detail centers on public requests, progress and output, with Refresh and
+  Stop above the reading area and technical facts in one Details disclosure.
+  Open Parent and Done provide navigation; there are no message controls or tabs.
+  Stored child draft text is inert, with no pending-draft marker. Ordinary Chat
+  input, queue delivery and retained target references keep their existing owners.
+  Questions, approvals, materials and PDF page selection retain native grouped
+  content; Context/Account Usage keeps grouped tabs. Real-provider, VoiceOver,
+  physical IME and full visual-adaptation acceptance remain open.
   Background Chat completion, failure and pending input now use the shared macOS
   notification service with generic content, per-conversation coalescing and
   validity checks before delivery. Answered/stopped/superseded requests become

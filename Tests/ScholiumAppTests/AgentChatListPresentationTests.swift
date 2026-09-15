@@ -43,7 +43,8 @@ struct AgentChatListPresentationTests {
         #expect(AgentChatListFilter.hasDraft(conversation))
         conversation.draft = ""
         conversation.childDrafts = ["child": "An unsent instruction"]
-        #expect(AgentChatListPresentation.preview(conversation, query: "") != "初步分析 理由与价值不同。")
+        #expect(AgentChatListPresentation.preview(conversation, query: "") == "初步分析 理由与价值不同。")
+        #expect(!AgentChatListFilter.hasDraft(conversation))
         let before = conversation
         #expect(AgentChatListPresentation.preview(conversation, query: "理由").contains("理由"))
         #expect(

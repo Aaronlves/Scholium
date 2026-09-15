@@ -39,25 +39,47 @@ struct AgentChatComposerActionButton: View {
     let canSend: Bool
     let queuesInput: Bool
     let submit: () -> Void
+    let submitAlternate: () -> Void
     let stop: () -> Void
 
     var body: some View {
         let action = AgentChatComposerAction(state: state, canSend: canSend, queuesInput: queuesInput)
-        Button {
-            if action == .stop { stop() } else if !action.isInterruption { submit() }
-        } label: {
-            Image(systemName: action.symbol)
-                .contentTransition(ScholiumMotion.symbolReplacementContentTransition(reduceMotion: reduceMotion))
+        HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
+            if !action.isInterruption {
+                Button(action: submit) { Image(systemName: action.symbol) }
+                    .buttonStyle(.borderedProminent).buttonBorderShape(.circle)
+                    .keyboardShortcut(.return, modifiers: .command)
+                    .disabled(!canSend)
+                    .help(state == .disconnected ? String(localized: "Connect an agent before sending.", bundle: .module) : action.label)
+                    .accessibilityLabel(action.label)
+                    .accessibilityIdentifier("scholium.chat.primaryAction")
+                if state == .working {
+                    Menu {
+                        Button(action.label, action: submit)
+                        Button((queuesInput ? AgentChatComposerAction.sendNow : .queue).label, action: submitAlternate)
+                    } label: {
+                        Image(systemName: "chevron.down")
+                            .frame(minWidth: ScholiumGrid.Dimension.minimumCustomTarget, minHeight: ScholiumGrid.Dimension.preferredCustomTarget)
+                    }
+                    .menuStyle(.borderlessButton).menuIndicator(.hidden)
+                    .disabled(!canSend)
+                    .help("Send Options").accessibilityLabel("Send Options")
+                    .accessibilityIdentifier("scholium.chat.sendOptions")
+                }
+            }
+            if state == .working || action.isInterruption {
+                let interruption: AgentChatComposerAction = state == .stopping ? .stopping : .stop
+                Button(action: stop) {
+                    Image(systemName: interruption.symbol)
+                        .contentTransition(ScholiumMotion.symbolReplacementContentTransition(reduceMotion: reduceMotion))
+                }
+                .buttonStyle(.borderedProminent).buttonBorderShape(.circle)
+                .keyboardShortcut(".", modifiers: .command)
+                .disabled(state == .stopping)
+                .help(interruption.label).accessibilityLabel(interruption.label)
+                .accessibilityIdentifier("scholium.chat.stop")
+            }
         }
-        .animation(ScholiumMotion.symbolReplacement(reduceMotion: reduceMotion), value: action)
-        .buttonStyle(.borderedProminent)
-        .buttonBorderShape(.circle)
         .controlSize(.regular)
-        // Command-Return always means delivery, never interruption.
-        .keyboardShortcut(action.isInterruption ? nil : KeyboardShortcut(.return, modifiers: .command))
-        .disabled(action == .stopping || (!action.isInterruption && !canSend))
-        .help(state == .disconnected ? String(localized: "Connect an agent before sending.", bundle: .module) : action.label)
-        .accessibilityLabel(action.label)
-        .accessibilityIdentifier("scholium.chat.primaryAction")
     }
 }

@@ -47,7 +47,8 @@ A disconnected-state Connect Codex action starts initial setup or retries a real
 unresolved failure; restored connections require no repeated setup. Sign-in appears
 only when needed. Connection editing belongs in
 Settings, with manual paths editable only in its explicitly advanced connection group. Composer secondary controls
-are borderless; permissions expose their current value in the actions menu.
+are borderless; current model/reasoning remains visible beside the input. Full Access
+retains an explicit visible status when enabled; selected permissions remain named in Chat Settings.
 The circular Send button uses native control styling; availability, keyboard sending and
 native state feedback remain authoritative. The whole message input rectangle, including
 whitespace, is editable; text clicks position the native caret. Return sends when
@@ -84,6 +85,10 @@ operation inventory. Disclosure follows distance from research: answers, source
 navigation and necessary decisions are direct; operation history is secondary;
 raw technical records are deeper. Each activity has one row and one disclosure for its retained command,
 parameters, output and errors. Single calls have no extra grouping layer.
+Delegation follows the same disclosure hierarchy: its collapsed row names the
+action and supplied task path or Agent count. Opaque identities, requests, reports
+and per-target navigation stay in its details. Coordination completion never
+claims target completion; failures and unavailable reported states remain visible.
 Unknown commands may show their literal identifier as secondary text without
 inferring purpose. Details expose reported exit code, duration and directory;
 missing values stay absent. Long output opens in the shared resizable read-only preview
@@ -110,8 +115,19 @@ Chat adds no duplicate file cards above or below those links. Reading and no-op
 records belong to activity details, where exact returned Note identities provide
 Open Note. The floating Changes entry counts confirmed, not-yet-viewed mutations
 in this conversation, never reads or runtime-only claims. Its native popover
-separates Open Note from View Changes and retains All Changes history when the
-pending list is empty. Input attachments remain separate draft materials.
+separates Open Note from View Changes. Both the entry and All Changes history remain
+when the pending list is empty; only the pending badge disappears. Input attachments
+remain separate draft materials.
+A compact Agent-count capsule sits beside Changes when retained child work exists,
+and remains available when no Changes await review. Its native popover lists
+the distinct Agents, including ended work, grouped by observed Active, Not Running
+and Unavailable states, with first-appearance order within each group. Opening and
+Refresh verify ancestry and read metadata; supplied names, observed states and
+observation times remain distinct from historical reports. Refresh failures retain
+prior information with an explicit failure label. Each row opens the existing verified Agent
+detail. The two entries stay together when narrow widths move the latest-reply action
+onto a second row. No empty accessory row remains when none of these entries applies.
+Opening the list neither starts nor refreshes Agent execution.
 Return to latest is a neutral downward-arrow button with an accessible name, shown
 only away from the latest content. Exact comparisons remain available
 only by explicit action.
@@ -126,14 +142,14 @@ promoting a different version or an uncovered cited line to verified reading.
 Runtime web access remains separately named. A compact Materials for This Turn
 disclosure reuses the existing Note/file/image previews and identifies the supplied
 representation; it never presents all materials as citations or adds another reader.
-Sources and conversation file-operation history have distinct scopes. A quiet row beneath each eligible message exposes Edit in New Branch,
-Branch from This Turn, Retry in New Branch and Quote in Reply through named SF
-Symbol buttons alongside reply Copy, Sources and Materials. Inapplicable actions
+Sources and conversation file-operation history have distinct scopes. A quiet row
+beneath each eligible message keeps reply Copy, Sources and Materials directly
+reachable. A named More menu groups Edit in New Branch, Branch from This Turn,
+Retry in New Branch and Quote in Reply at that exact message. Inapplicable actions
 stay absent; temporarily unavailable branch actions retain disabled state.
-Context menus remain equivalent routes. Clear action symbols replace repeated
-footer labels, retaining full Help and accessible names; counts and meaningful
-state text remain visible when an icon alone would be ambiguous. No swipe gesture
-is required.
+Context menus remain equivalent routes. Controls retain full Help and accessible
+names; counts and meaningful state text remain visible when an icon would be
+ambiguous. No hover or swipe gesture is required.
 Ratings and export actions are not part of this reply-action surface.
 Reply prose fills the available width between the shared sidebar grid insets,
 using ordinary line wrapping without paragraph-wide line balancing or extra
@@ -236,8 +252,8 @@ replacement is attached keeps the previous material and question.
 The conversation list has a native search field; the archived list retains its
 explicit scope. Matching rows show a passage containing the query. Changing the
 list query clears temporary archive/restore selection. Detail
-options provide Find in Conversation and Rename Conversation. A named Conversation
-Outline icon near the composer opens a searchable native question list with bounded
+options provide Find in Conversation and Rename Conversation. The named Conversation
+Outline command in the header's options menu opens a searchable native question list with bounded
 answer previews. Selecting a question loads its retained portion and jumps to that
 exchange without changing the draft or execution. Keyboard and accessibility
 activation provide the same navigation as pointer selection. Find opens a
@@ -247,16 +263,15 @@ Escape to dismiss. The current matching message is revealed and identified
 without relying solely on color. Search and Find state belong to the visible
 view; neither changes stored messages, drafts or execution selection implicitly.
 
-Detail options expose Branch Conversation with a choice of ended exchanges;
-the message menu offers the same action at its exact turn. A branch has a quiet
+The message More menu offers Branch from This Turn at an ended exchange;
+conversation options do not duplicate turn-selection controls. A branch has a quiet
 Open Original Conversation route. Creating it shows a cancellable pending state;
 failure stays with the source conversation. The branch is opened only if the
 researcher is still viewing its source; otherwise it appears in the list without
 pulling them out of another discussion.
 
-Edit in New Branch is available on an eligible researcher message and through
-Edit Earlier Request in conversation options. The choice identifies the request
-by its text. The new discussion opens with that request in the ordinary composer
+Edit in New Branch is available in the eligible researcher message's More menu.
+Its placement identifies the exact request. The new discussion opens with that request in the ordinary composer
 and its original materials and Skills visible, ready for editing and explicit
 Send. It reuses branch progress, cancellation and failure presentation; it adds
 no second message editor or confirmation sheet. Requests without an independent
@@ -284,23 +299,26 @@ additional input to its bound running turn; Send Next retains queue order while
 idle. Inspection cannot dispatch or reorder input. Edit Message opens a native editor
 for the queued text without replacing the composer draft or its materials.
 Saving preserves queue identity, position and attached context. If already sent,
-the edit is not applied and remains available to copy. The composer shows only
-its text and necessary delivery controls. Chat Actions groups materials, Skills,
-web search, model/reasoning and permissions; these do not occupy permanent
-rows or separate icons. Context and Usage additionally has one compact named
-icon near the composer, showing only last-reported occupancy when available.
-A running turn with a reported plan shows its current step and completed-step
-count in one compact disclosure near the input; full steps open on demand.
-This summary never invents a plan, progress or token measurement. Native menus and named pickers expose selected values;
-short labels and direct
-actions lead, with explanations only for unavailable or consequential states.
+the edit is not applied and remains available to copy. The composer places Add Material, the current model/reasoning selection and
+delivery in one bottom row. Chat Settings at the model label groups named Model,
+Reasoning, Permission and Web Search pickers. Selected values remain visible in
+those menus; long model labels truncate with complete Help and accessible values.
+Full Access retains a visible status beside the input when enabled. Add Material
+groups material and Skill selection. Execution controls do not belong in that menu.
+Transcript plans use one disclosure showing the current reported step while active
+and the completed-step count; full steps start collapsed and preserve explicit
+reading choices. There is no duplicate floating plan entry beside the composer.
+These summaries never invent plans, progress or token measurements. Short labels
+and direct actions lead, with explanations for unavailable or consequential states.
 An explicit web-search mode is distinguishable from Note Search.
 
-Conversation options expose Rename, Find, Branch, Context and Diagnostics.
-Context and Usage also remains reachable through Chat Actions, including when
-runtime usage is unavailable. It never shows a guessed percentage. Context
-separates last-reported occupancy from cumulative consumption,
-with bounded native progress, token details and a state-valid Compact Context action.
+Conversation options own Outline, Find, Rename, Context and Usage, and Diagnostics;
+a branch also offers Open Original Conversation. Changes has its existing entry
+beside Agents and is not repeated in the detail header. Context and Usage remains
+reachable while a request replaces the composer or usage is unavailable. It
+separates last-reported occupancy from cumulative consumption, with bounded native
+progress, token details and a state-valid Compact Context action. It never shows a
+guessed percentage.
 It never estimates subscription charges or invents unreported token breakdowns. Account quota
 has a separate labelled presentation. Search in the conversation list retains
 its scope and query; in-conversation Find provides match navigation and Close.
@@ -323,10 +341,14 @@ or leaves outgoing controls actionable.
 Request typography and spacing replace nested cards. One bottom row groups
 borderless previous-question and skip icons; delivery stays circular. No empty
 header action row is added. Scrolling leaves native field focus rings clear.
-Composing shows Chat Actions and one circular primary action: during work,
-Stop when delivery is unavailable, otherwise Send Now or Queue for Next Turn.
-Compaction shows Stop; interruption shows disabled Stopping. Chat Actions retains
-Stop with Command-Period. Command-Return means delivery only. Symbols retain position and accessible names.
+Composing keeps Stop at the trailing edge throughout active work, including while
+a draft can be sent. Available follow-up delivery sits beside it, with a native
+send menu offering Send Now and Queue for Next Turn for that message. The primary
+send action and Return retain the configured default; choosing the other menu
+action neither changes that default nor stops the turn. Idle composing has one
+circular Send action. Compaction shows Stop; interruption shows disabled Stopping.
+The trailing Stop button owns Command-Period. Command-Return means delivery only.
+Symbols retain position and accessible names.
 
 Research questions appear one at a time with a position indicator and Previous
 Question action when a request contains several. Clicking an offered answer advances
@@ -366,7 +388,7 @@ scope shows its unavailability without offering an unchecked grant. Waiting for
 confirmation replaces decision controls and preserves the inspected request.
 
 The latest actual activity is shown in the Agent process group in the transcript; Stop
-remains available through the composer's primary action or Chat Actions menu. Plans and each tool call retain native
+remains available through the composer's trailing Stop button. Plans and each tool call retain native
 disclosure for detail; live queries, sources, exact targets and outcomes remain inspectable. Cards distinguish source material, questions, approval and
 operation evidence without enclosing every prose paragraph. Source links and
 material previews retain provenance under §8.7. Technical payloads remain behind
@@ -398,12 +420,14 @@ Runtime-managed schedules live with the relevant conversation and expose timing
 and pause/remove actions;
 the interface never implies an unavailable background execution capability.
 
-Agent detail keeps an adjustment composer separate from its transcript, with
-Ask Parent naming the actual receiving role and a route to that parent
-conversation. Sent, unavailable and unconfirmed delivery remain distinct.
-Public messages and editable branches show the retained Agent target as a
-compact reference with inspection/removal where applicable; unavailable branch
-targets expose their original conversation without obscuring the text draft.
+Agent detail gives public requests, progress and replies the main reading area.
+The header retains identity, parent context, observed state, Refresh and Stop;
+failures and unconfirmed interruption remain visible. Ordinary tool records use
+compact disclosure. Exact identities, role and observation time sit behind one
+Details disclosure, without a separate tab. Open Parent and Done remain direct
+navigation actions. There is no adjustment composer or Ask Parent control.
+Public targeted messages and editable branches retain their compact target
+reference and applicable original-conversation and removal routes.
 
 Chat transient content is organized into native grouped cards: one request and
 its consequence per approval card, one question and its options per question
@@ -413,13 +437,9 @@ Cards use system content surfaces under §19.1 rather than glass over readable
 prose. Native menus, segmented tabs and floating controls retain their system
 material; a surrounding card never recreates their selection plate or effects.
 
-Agent detail uses Activity and Details tabs inside one native grouped content
-region. State, failure, Refresh and Stop remain outside the tabs and visible;
-the parent adjustment composer keeps its identity while tabs change. Details
-holds exact Agent and parent identities. Context and Account Usage use the same
-native grouped-tab navigation, retaining their distinct scope and valid actions.
-Tab selection and disclosure are local presentation only: switching cannot read,
-resume, cancel, send or clear a draft. Long tab content scrolls within its card.
+Context and Account Usage retain native grouped-tab navigation with distinct
+scope and valid actions. Switching tabs cannot read, resume, cancel, send or
+clear a draft. Long tab content scrolls within its card.
 
 Motion follows native controls and containers under §19. Card disclosure and tab
 selection use system transitions; request-to-confirmation feedback changes in

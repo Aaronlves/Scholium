@@ -74,7 +74,7 @@ struct AgentChatInputDockTests {
                         Spacer()
                         AgentChatComposerActionButton(
                             state: .ready, canSend: true, queuesInput: false,
-                            submit: { sent += 1 }, stop: {})
+                            submit: { sent += 1 }, submitAlternate: { sent += 1 }, stop: {})
                     }
                 }
             }.frame(width: 340, height: 600)

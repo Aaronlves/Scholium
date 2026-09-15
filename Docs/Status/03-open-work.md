@@ -107,15 +107,12 @@ target states and reports are displayed and retained with their original runtime
 identities. Reported child opening and exact-turn interruption have an
 implementation slice with verified parent chains, paginated inspection and
 unconfirmed-interruption handling. Complete real-runtime and native sheet
-acceptance. Ask Parent now retains separate child drafts, revalidates ancestry,
-and uses the parent conversation's ordinary send/steer path with explicit
-parent-receipt states. Closing the inspector preserves admitted input. Search
-and branches retain exact target references; edited branches cannot silently
-retarget an original child. Complete real parent-mediated delivery and native
-composer acceptance. Nested report navigation now retains original parent scope
-within one native detail; complete real-provider acceptance. Direct child
-messaging, child approval routing and scoped tool admission still need integration;
-inspection grants none of those capabilities.
+acceptance. The conversation Agent roster and read-only child monitor have
+native entries; complete real-provider observation and detail acceptance.
+Nested navigation retains original parent scope. Direct child messaging, child
+approval routing and scoped tool admission still need integration; inspection
+grants none of those capabilities. Retained target references cannot silently
+retarget an original Agent when a conversation branches.
 The installed 0.153.4 schema exposes `canAcceptDirectInput`; its published
 runtime source rejects direct App Server input for multi-agent v2 spawned
 threads. Child messaging must honor that capability and distinguish any request

@@ -1,57 +1,104 @@
 import ScholiumContracts
 import SwiftUI
 
-struct AgentChatModelMenu: View {
+struct AgentChatConfigurationMenu: View {
     @Environment(\.locale) private var locale
     let models: [AgentChatModel]
     let preferences: AgentChatPreferences
     let selectedModel: AgentChatModel?
+    var selectedEffort: String? = nil
+    let permission: AgentChatPermission
     let isEnabled: Bool
+    let canSelectModel: Bool
     let selectModel: (String?) -> Void
     let selectEffort: (String?) -> Void
+    let selectPermission: (AgentChatPermission) -> Void
+    let selectWebSearch: (AgentChatPreferences.WebSearch) -> Void
 
     var body: some View {
         Menu {
-            Picker(
-                "Model",
-                selection: Binding(
-                    get: { preferences.model ?? "" },
-                    set: { selectModel($0.isEmpty ? nil : $0) })
-            ) {
-                Text("Runtime Default", bundle: .module).tag("")
-                if let model = preferences.model, !models.contains(where: { $0.model == model }) {
-                    Text("Unavailable: \(model)").tag(model)
-                }
-                ForEach(models) { model in Text(model.name).tag(model.model) }
-            }
-            if let selectedModel, !selectedModel.efforts.isEmpty {
+            Menu {
                 Picker(
-                    "Reasoning",
+                    "Model",
                     selection: Binding(
-                        get: { preferences.effort ?? "" },
-                        set: { selectEffort($0.isEmpty ? nil : $0) })
+                        get: { preferences.model ?? "" },
+                        set: { selectModel($0.isEmpty ? nil : $0) })
                 ) {
                     Text("Runtime Default", bundle: .module).tag("")
-                    ForEach(selectedModel.efforts, id: \.self) { effort in
-                        Text(AgentChatControlLabels.effort(effort)).tag(effort)
+                    if let model = preferences.model, !models.contains(where: { $0.model == model }) {
+                        Text("Unavailable: \(model)").tag(model)
+                    }
+                    ForEach(models) { model in Text(model.name).tag(model.model) }
+                }
+                .pickerStyle(.inline)
+            } label: {
+                Text("Model", bundle: .module)
+            }.disabled(!canSelectModel)
+            if let selectedModel, !selectedModel.efforts.isEmpty {
+                Menu {
+                    Picker(
+                        "Reasoning",
+                        selection: Binding(
+                            get: { preferences.effort ?? "" },
+                            set: { selectEffort($0.isEmpty ? nil : $0) })
+                    ) {
+                        Text("Runtime Default", bundle: .module).tag("")
+                        ForEach(selectedModel.efforts, id: \.self) { effort in
+                            Text(AgentChatControlLabels.effort(effort)).tag(effort)
+                        }
+                    }
+                    .pickerStyle(.inline)
+                } label: {
+                    Text("Reasoning", bundle: .module)
+                }.disabled(!canSelectModel)
+            }
+            Divider()
+            Menu {
+                Picker("Permission", selection: Binding(get: { permission }, set: selectPermission)) {
+                    Text("Ask for Approval", bundle: .module).tag(AgentChatPermission.ask)
+                    Text("Full Access", bundle: .module).tag(AgentChatPermission.fullAccess)
+                }
+                .pickerStyle(.inline)
+            } label: {
+                Text("Permission", bundle: .module)
+            }
+            Menu {
+                Picker("Web Search", selection: Binding(get: { preferences.webSearch }, set: selectWebSearch)) {
+                    ForEach(AgentChatPreferences.WebSearch.allCases, id: \.self) { mode in
+                        Text(AgentChatControlLabels.webSearch(mode)).tag(mode)
                     }
                 }
+                .pickerStyle(.inline)
+            } label: {
+                Text("Web Search", bundle: .module)
             }
         } label: {
-            Text(
-                preferences.model == nil
-                    ? ScholiumL10n.string("Runtime Default", locale: locale)
-                    : selectedModel?.name ?? preferences.model ?? ""
-            )
-            .lineLimit(1)
+            Text(verbatim: modelLabel).lineLimit(1).truncationMode(.tail)
         }
         .disabled(!isEnabled)
-        .accessibilityLabel("Model and Reasoning")
+        .help(Text("Chat Settings", bundle: .module) + Text(verbatim: ": " + modelLabel))
+        .accessibilityLabel(Text("Chat Settings", bundle: .module))
+        .accessibilityIdentifier("scholium.chat.configuration")
         .accessibilityValue(
             [
                 selectedModel?.name ?? preferences.model ?? ScholiumL10n.string("Runtime Default", locale: locale),
-                preferences.effort.map(AgentChatControlLabels.effort),
+                (selectedEffort ?? preferences.effort).map(AgentChatControlLabels.effort),
+                permissionLabel,
+                AgentChatControlLabels.webSearch(preferences.webSearch),
             ].compactMap { $0 }.joined(separator: ", "))
+    }
+
+    private var permissionLabel: String {
+        permission == .ask
+            ? ScholiumL10n.string("Ask for Approval", locale: locale)
+            : ScholiumL10n.string("Full Access", locale: locale)
+    }
+
+    private var modelLabel: String {
+        [
+            selectedModel?.name ?? preferences.model ?? ScholiumL10n.string("Runtime Default", locale: locale),
+            (selectedEffort ?? preferences.effort).map(AgentChatControlLabels.effort),
+        ].compactMap { $0 }.joined(separator: " · ")
     }
 }
 
@@ -82,13 +129,14 @@ enum AgentChatControlLabels {
 
 struct AgentChatPlanView: View {
     let plan: AgentChatPlan
+    @Environment(\.locale) private var locale
     @State private var isExpanded: Bool
     @Binding private var savedExpansion: Bool?
 
     init(plan: AgentChatPlan, savedExpansion: Binding<Bool?> = .constant(nil)) {
         self.plan = plan
         _savedExpansion = savedExpansion
-        _isExpanded = State(initialValue: savedExpansion.wrappedValue ?? plan.runStatus.isActive)
+        _isExpanded = State(initialValue: savedExpansion.wrappedValue ?? false)
     }
 
     var body: some View {
@@ -128,7 +176,17 @@ struct AgentChatPlanView: View {
             }.frame(maxWidth: .infinity, alignment: .leading).padding(.top, 6)
         } label: {
             HStack {
-                Label("Plan", systemImage: ScholiumSidebarItem.plan.symbol)
+                Label {
+                    if !isExpanded, plan.runStatus.isActive,
+                        let current = plan.steps.first(where: { $0.status == .inProgress })
+                    {
+                        Text(verbatim: ScholiumL10n.string("Plan", locale: locale) + ": " + current.step).lineLimit(2)
+                    } else {
+                        Text("Plan", bundle: .module)
+                    }
+                } icon: {
+                    Image(systemName: ScholiumSidebarItem.plan.symbol)
+                }
                 Spacer(minLength: 6)
                 Text("\(plan.steps.filter { $0.status == .completed }.count)/\(plan.steps.count)")
                     .monospacedDigit().foregroundStyle(.secondary)

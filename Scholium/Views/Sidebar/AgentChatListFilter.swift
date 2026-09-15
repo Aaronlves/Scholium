@@ -20,7 +20,6 @@ enum AgentChatListFilter: String, CaseIterable {
         !conversation.draft.isEmpty || !conversation.attachments.isEmpty
             || !conversation.localMaterials.isEmpty || conversation.draftReplyQuotes?.isEmpty == false
             || conversation.selectedMethods?.isEmpty == false || !conversation.queuedMessages.isEmpty
-            || conversation.childDrafts.values.contains { !$0.isEmpty }
             || conversation.draftCoordinationTarget != nil
     }
 

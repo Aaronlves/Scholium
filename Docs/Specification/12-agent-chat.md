@@ -560,17 +560,25 @@ filesystem reports never masquerade as confirmed Scholium change receipts.
 
 ### 8.7.6 Concurrent, delegated and background work
 
-The runtime owns Agent execution, child Agents and scheduled execution. Chat
-observes their public state and exposes supported open, message, stop and
-continuation actions tied to exact identities. Delegated work retains its
-parent relation and evidence provenance. No child can enlarge the parent's
-Triptych or write scope merely by receiving a delegated request.
+The runtime owns Agent execution, child Agents and scheduling. Chat observes
+public state and exposes supported open, message, stop and continuation actions
+bound to exact identities. Delegation retains parentage and evidence provenance
+without enlarging the parent's Triptych or write scope.
 
-Public delegation reports retain the issuing runtime identity, exact target
-identities, requested work and each supplied result/state. A completed spawn,
-message or wait operation does not by itself mean the target Agent completed
-its research. Missing states remain unavailable. These are labelled observations
-at that point in the conversation; reopening cannot turn them into live status.
+The Agent count deduplicates retained creation/child-activity targets, including
+ended Agents, excluding parents and mere message/list/wait mentions. Inherited
+reports retain their scope. The count is cumulative, independent of current
+execution status. Opening or explicitly refreshing the list reads metadata after
+verifying each target's ancestry; it does not resume or subscribe execution.
+Fresh observations distinguish active, idle, unloaded and error states and show
+when they were read. Historical reports remain labelled separately; failed reads
+retain prior observations with explicit refresh failure rather than claiming a
+current state. Unloaded and unknown states never imply completion.
+
+Public delegation reports retain issuing and target runtime identities, requested
+work and supplied results/states. Completed coordination does not establish
+completed research. Missing states remain unavailable. Reports are labelled
+historical observations; reopening cannot make them live status.
 Only an explicit spawn relation or verified runtime parent metadata establishes
 parentage; messages between Agents do not. A reported result remains attributed
 Agent content, never a source document or confirmed Note modification.
@@ -578,20 +586,19 @@ Inspecting a report neither starts nor resumes its targets and grants no tool
 admission. Unverified or unsupported child control remains unavailable; arbitrary
 runtime identities cannot be adopted into the Triptych through a report.
 
-Opening a reported Agent verifies its exact runtime identity and follows its
-runtime-reported parent chain to the originating Scholium conversation. Missing,
-cyclic or unrelated ancestry is unavailable, without substituting another Agent.
-Forked reports retain their original parent scope. The detail shows the supplied
-name/role, current observed status and public history; it excludes private
-reasoning and makes paginated or unavailable history explicit. Reading and
-refreshing do not resume or subscribe a dormant execution. Closing the detail
-cancels its inspection tasks without stopping the Agent.
+Opening an Agent verifies its exact runtime identity and runtime-reported parent
+chain to the originating Scholium conversation. Missing, cyclic or unrelated
+ancestry is unavailable, without substitution. Forked reports retain original
+parent scope. Detail shows supplied name/role, observed status and public history,
+excluding private reasoning and identifying paginated or unavailable history.
+Reading and refreshing neither resume nor subscribe dormant execution. Closing
+cancels inspection tasks without stopping the Agent.
 
 Reports inside an Agent's public history offer the same exact-target opening
 route. Each destination verifies ancestry against the original local
 conversation, not against whichever Agent is currently visible. A reported
 interaction does not establish a new parent relation. Returning preserves the
-previous inspection and its separate adjustment draft; revisiting an Agent
+previous inspection; revisiting an Agent
 already in the navigation path returns to that inspection and refreshes its
 observation. Opening the originating parent returns to its existing conversation.
 Unavailable destinations retain Back and the original conversation route.
@@ -599,24 +606,13 @@ Popping or closing an inspection cancels its reads without cancelling admitted
 parent input or stopping any Agent. Connection replacement cannot make an old
 report a live control surface.
 
-Researcher adjustments can be addressed through the originating parent Agent.
-The child detail offers a separately labelled Ask Parent message, retaining that
-child's exact identity and the researcher's text. This is a request for the
-parent to coordinate the named child, not proof that the child received or acted
-on it. Direct child input is a separate capability and is offered only when the
-runtime explicitly permits it; no action forces another Agent mode to bypass
-runtime ownership.
+Agent detail centers on the reported task, public progress and output. It has no
+message composer or parent-mediated sending action. Refresh reads current
+observations; Stop retains the exact-turn contract below. Open Parent returns
+to the originating conversation without preparing or sending input. Closing or
+navigating the detail leaves execution and the parent's draft unchanged.
 
-Each child's adjustment draft is retained with the originating local conversation.
-It does not replace the parent's ordinary draft or include its unsubmitted
-materials or Skill choices. Sending revalidates the child's parent chain and
-uses the parent's ordinary current-turn input or new-turn admission, permission,
-delivery confirmation and uncertainty handling. Archived or unavailable parents
-cannot receive it; closed inspections do not erase the draft or cancel an already
-admitted parent request. A confirmed parent receipt is labelled as such, without
-claiming delivery to the child. Unknown delivery is never automatically resent.
-
-Public adjustment messages retain a distinct target reference alongside their
+Targeted user messages retain a distinct target reference alongside their
 exact user text. Search and branching retain that reference as provenance. Editing
 such a request in a new branch retains its target in the draft; an Agent belonging
 to the original conversation cannot be silently retargeted to the branch. Sending
