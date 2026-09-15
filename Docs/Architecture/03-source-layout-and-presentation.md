@@ -100,6 +100,9 @@ Search overlay or second query engine.
 `NSSegmentedControl` that projects the three role destinations. Native layout
 adapts complete labels to symbols; the coordinator publishes only selection
 intents. It is not a vertical workspace table or a custom selection plate.
+`ScholiumLibraryTransition` keeps one native host for the source region and
+uses Core Animation to crossfade committed role changes. The hosted source
+retains its identity and environment; the transition owns no navigation or input state.
 
 `ContextSearchField` lets AppKit own search text entry and its magnifying-glass
 options menu; query/scope values and commands come from the feature model.

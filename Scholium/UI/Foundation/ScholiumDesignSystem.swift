@@ -2881,6 +2881,8 @@ private struct ScholiumInkIconFocusModifier: ViewModifier {
 }
 
 enum ScholiumMotion {
+    static let libraryWorkspaceDuration: TimeInterval = 0.14
+
     /// Native preview window motion; reduced motion uses only a short fade.
     static func contentPreviewDuration(closing: Bool, reduceMotion: Bool) -> TimeInterval {
         reduceMotion ? 0.12 : closing ? 0.20 : 0.26

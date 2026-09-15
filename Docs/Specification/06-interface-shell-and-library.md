@@ -173,6 +173,12 @@ keyboard traversal, and active/inactive presentation.
 The Search field and workspace navigator form a compact fixed header. Library
 has one muted operation row; its native file tree occupies the remaining height
 and scrolls independently, retaining normal source-list row sizing.
+After a committed Analyses/Topics/Works switch, only the Library source region
+briefly crossfades, including empty and unavailable content. The fixed header,
+operation row and Document remain stationary. Pending or failed switches,
+folder disclosure, selection, filtering and refresh do not initiate this transition.
+Input remains immediate; another switch interrupts the transition, and Reduce
+Motion replaces content directly. The native navigator retains system feedback.
 
 Live opening may make the selected vault's trustworthy Library usable before
 cross-vault projections are complete. Unavailable workspace rows remain

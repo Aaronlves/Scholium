@@ -131,6 +131,17 @@ extension ScholiumUITests {
     func testNativeTriptychWorkspaceNavigatorUsesSelectionAndArrowKeys() throws {
         waitForCurrentDocumentSurface()
         let navigator = app.descendants(matching: .any)["scholium.workspaceNavigator"].firstMatch
+        let originalTitle = documentTitle()
+        let originalNavigatorFrame = navigator.frame
+        for (role, note) in [("Topics", "QA Topic.md"), ("Works", "QA Work.md"), ("Analyses", "QA Autosave A.md")] {
+            navigator.descendants(matching: .any)[role].firstMatch.click()
+            let destination = app.descendants(matching: .any)["scholium.noteRow.\(note)"].firstMatch
+            XCTAssertTrue(destination.waitForExistence(timeout: 5))
+            XCTAssertEqual(documentTitle(), originalTitle, "Browsing a Library role must retain the Document.")
+            XCTAssertEqual(navigator.frame, originalNavigatorFrame)
+            let list = app.descendants(matching: .any)["scholium.noteList"].firstMatch
+            XCTAssertGreaterThan(list.frame.height, 200, "The transition host must fill the source region.")
+        }
         let topics = navigator.descendants(matching: .any)["Topics"].firstMatch
         XCTAssertTrue(topics.waitForExistence(timeout: 5))
         topics.click()

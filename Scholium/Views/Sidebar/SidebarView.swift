@@ -127,7 +127,9 @@ struct SidebarView: View {
                 .padding(.top, ScholiumSidebarLayout.sectionSpacing)
                 .padding(.bottom, ScholiumSidebarLayout.controlGap)
 
-            sourceRegion
+            ScholiumLibraryTransition(slot: context.currentWorkspaceSlot) {
+                sourceRegion
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .onChange(of: treeProjection.revision) { _, _ in reconcileLibrarySelection() }
