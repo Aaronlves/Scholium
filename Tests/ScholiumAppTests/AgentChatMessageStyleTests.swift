@@ -248,7 +248,7 @@ struct AgentChatMessageStyleTests {
         }
         let long = "请比较 `works` 和 **topics**，保留中文、English 与引用的原始含义，不把解释混同于文献证据。"
         let rich =
-            "## 阅读方向\n\n这是一段用于检查完整讨论排版的合成回答。我们可以沿着一个问题继续追问，让解释有足够的篇幅展开，也让每段文字各自表达一个清楚的意思。\n\n- 核对 **原文**。\n- 比较 `works` 与 `topics`。\n  - 保留出处。\n\n> 这是一段引用。\n\n最后区分解释与评价。"
+            "## 阅读方向\n\n这是一段用于检查完整讨论排版的合成回答。我们可以沿着一个问题继续追问，让解释有足够的篇幅展开，也让每段文字各自表达一个清楚的意思。\n\n- 核对 **原文**。\n- 比较 `works` 与 `topics`。\n  - 保留出处。\n\n> 这是一段引用。\n>\n> > 引用中的引文也应保持清晰。\n\n```text\n中文与 English code\n```\n\n最后区分解释与评价。"
         var narrowHeight = 0.0
         for (source, user, width, contrast) in [
             ("好的。", true, 300.0, ColorSchemeContrast.standard),
@@ -280,6 +280,11 @@ struct AgentChatMessageStyleTests {
                             headingPadding: h ? getComputedStyle(h).paddingTop : null,
                             headingFont: h ? parseFloat(getComputedStyle(h).fontSize) : 0,
                             bodyFont: parseFloat(getComputedStyle(root).fontSize),
+                            bodyColor: getComputedStyle(root).color,
+                            quoteColors: [...root.querySelectorAll('blockquote')].map(q => getComputedStyle(q).color),
+                            codeFont: root.querySelector('pre code') ? parseFloat(getComputedStyle(root.querySelector('pre code')).fontSize) : null,
+                            codeLineHeight: root.querySelector('pre code') ? getComputedStyle(root.querySelector('pre code')).lineHeight : null,
+                            blockLineHeight: root.querySelector('pre') ? getComputedStyle(root.querySelector('pre')).lineHeight : null,
                             overflow: root.scrollWidth > window.innerWidth + 1};
                         })()
                         """) as? [String: Any], let height = value["height"] as? Double,
@@ -303,6 +308,11 @@ struct AgentChatMessageStyleTests {
             #expect(actual["paragraphPadding"] as? String == "0px")
             #expect(actual["overflow"] as? Bool == false)
             if source == rich {
+                let colors = try #require(actual["quoteColors"] as? [String])
+                #expect(colors.count == 2)
+                #expect(colors.allSatisfy { $0 == actual["bodyColor"] as? String })
+                #expect(actual["codeFont"] as? Double == actual["bodyFont"] as? Double)
+                #expect(actual["codeLineHeight"] as? String == actual["blockLineHeight"] as? String)
                 if !user {
                     let expected = width - 2 * ScholiumSidebarLayout.textInset
                     let viewport = try #require(actual["viewportWidth"] as? Double)

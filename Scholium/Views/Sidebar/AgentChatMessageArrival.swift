@@ -19,11 +19,23 @@ struct AgentChatMessageArrival: ViewModifier {
             .animation(ScholiumMotion.chatMessageArrival(reduceMotion: !animates)) { view in
                 view.opacity(animates && !appeared ? 0 : 1)
             }
-            .onAppear { if !waitsForContent { appeared = true } }
+            .onChange(of: animates, initial: true) { _, allowed in
+                // Once shown without motion, a later policy change must never
+                // hide the same message again while its reader is loading.
+                if !allowed { appeared = true }
+            }
+            .onChange(of: waitsForContent, initial: true) { _, waits in
+                if !waits { reveal() }
+            }
             .onPreferenceChange(AgentChatReplyReadyPreference.self) { ready in
                 // Later streaming revisions never reset the one-shot reveal.
-                if ready { appeared = true }
+                if ready { reveal() }
             }
+    }
+
+    private func reveal() {
+        guard !appeared else { return }
+        appeared = true
     }
 }
 

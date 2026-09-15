@@ -53,8 +53,10 @@ struct AgentChatProcessView<Row: View>: View {
                 isExpanded = true
             } else if let userExpansion {
                 isExpanded = userExpansion
-            } else if active {
-                isExpanded = userExpansion ?? true
+            } else if active || hasInspectedActivity {
+                // Restoring a completed process must also reveal its retained
+                // open child details. An explicit parent choice still wins.
+                isExpanded = true
             } else if !preservesReading && !hasInspectedActivity && userExpansion != true {
                 isExpanded = false
             }

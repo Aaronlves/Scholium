@@ -3137,6 +3137,7 @@ enum ScholiumChatAppearance {
     static var messageNSForeground: NSColor { ScholiumColorRole.primaryText.nsColor }
     static var messageLinkNSForeground: NSColor { ScholiumColorRole.accent.nsColor }
     static let messageLineHeight: CGFloat = 1.55
+    static var messageLoadingHeight: CGFloat { ceil(messageNSFont.pointSize * messageLineHeight) }
     static let messageSpacing: CGFloat = 20
     static let contentSpacing: CGFloat = 8
     static let userLeadingInset: CGFloat = 16
@@ -3168,7 +3169,10 @@ enum ScholiumChatAppearance {
         .scholium-document li { margin-block: .3em; }
         .scholium-document li > p { margin-block: .35em; padding: 0; }
         .scholium-document li > :is(ul, ol) { margin-block: .35em 0; }
-        .scholium-document blockquote {
+        .scholium-document li > :first-child { margin-top: 0; }
+        .scholium-document li > :last-child { margin-bottom: 0; }
+        .scholium-document blockquote,
+        .scholium-document blockquote blockquote:not(.scholium-callout-quotation) {
             margin: .85em 0; padding-block: 0;
             padding-inline: .85em 0;
             border-inline-start: 2px solid var(--scholium-color-separator);
@@ -3176,6 +3180,7 @@ enum ScholiumChatAppearance {
         }
         .scholium-document blockquote > :last-child { margin-bottom: 0; }
         .scholium-document pre { font-family: 'SFMono-Regular', ui-monospace, monospace; font-size: 1em; line-height: 1.5; }
+        .scholium-document pre code { font: inherit; color: inherit; }
         .scholium-document hr { margin-block: 1.1em; }
         .scholium-document > :first-child { margin-top: 0; padding-top: 0; }
         .scholium-document > :last-child { margin-bottom: 0; padding-bottom: 0; }

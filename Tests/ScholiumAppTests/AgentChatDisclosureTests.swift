@@ -1,4 +1,5 @@
 import AppKit
+import ScholiumContracts
 import SwiftUI
 import Testing
 import WebKit
@@ -32,6 +33,42 @@ struct AgentChatDisclosureTests {
                 RenderedStateProbe(expanded: model.expanded, record: { model.renderedExpanded = $0 }).frame(height: 1)
                 Spacer()
             }.padding(24)
+        }
+    }
+
+    @Test("Restored child details reopen a completed process unless its parent was explicitly collapsed")
+    func restoresInspectedProcess() async throws {
+        let message = AgentChatMessage(id: "retained-operation", role: .operation, text: "Read selected material")
+        for savedExpansion in [Optional<Bool>.none, false, true] {
+            var contentMounted = false
+            var parentMounted = false
+            let host = NSHostingView(
+                rootView: AgentChatProcessView(
+                    messages: [message], isActive: false, forceExpanded: false,
+                    status: .init(state: .completed), preservesReading: true,
+                    hasInspectedActivity: true, animates: false,
+                    userExpansion: .constant(savedExpansion)
+                ) { _ in
+                    RenderedStateProbe(expanded: true, record: { contentMounted = $0 })
+                        .frame(height: 60)
+                }
+                .background(RenderedStateProbe(expanded: true, record: { parentMounted = $0 })))
+            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 340, height: 240), styleMask: [.titled], backing: .buffered, defer: false)
+            window.isReleasedWhenClosed = false
+            window.contentView = host
+            defer {
+                window.contentView = nil
+                window.close()
+            }
+
+            let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+            repeat {
+                window.layoutIfNeeded()
+                host.layoutSubtreeIfNeeded()
+                await Task.yield()
+            } while (!parentMounted || (savedExpansion != false && !contentMounted)) && ContinuousClock.now < deadline
+            try #require(parentMounted)
+            #expect(contentMounted == (savedExpansion != false))
         }
     }
 

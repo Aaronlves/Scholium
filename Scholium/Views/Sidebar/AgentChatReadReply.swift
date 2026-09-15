@@ -16,7 +16,7 @@ struct AgentChatReadReply: View {
     @Environment(\.colorSchemeContrast) private var contrast
     @StateObject private var renderer = AgentChatReplyProjection()
     @State private var ready = false
-    @State private var height: CGFloat = 120
+    @State private var height = ScholiumChatAppearance.messageLoadingHeight
     @State private var intrinsicWidth: CGFloat?
     @State private var failure: String?
     @State private var preview = ScholiumContentPreview()

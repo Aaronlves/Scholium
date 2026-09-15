@@ -8,6 +8,55 @@ import Testing
 @Suite("Chat input transforms into requests", .serialized)
 @MainActor
 struct AgentChatInputDockTests {
+    private struct ComposerEnabledProbe: NSViewRepresentable {
+        @Environment(\.isEnabled) private var isEnabled
+        let record: (Bool) -> Void
+        func makeNSView(context: Context) -> NSView { NSView() }
+        func updateNSView(_ view: NSView, context: Context) { record(isEnabled) }
+    }
+
+    @Test("Resolving a request restores typing focus only when history reading has not taken over", arguments: [false, true])
+    func requestResolutionPreservesReadingFocus(readingHistory: Bool) async throws {
+        _ = NSApplication.shared
+        var focused = false
+        var composerEnabled: Bool?
+        func content(requestID: String?, readingHistory: Bool) -> some View {
+            AgentChatInputDock(
+                requestID: requestID, requestTitle: "Answer Agent", requestCount: requestID == nil ? 0 : 1,
+                isActive: true, isReadingHistory: readingHistory, isEditingDraft: false,
+                composerIsFocused: Binding(get: { focused }, set: { focused = $0 })
+            ) {
+                Text("A pending question")
+            } composer: {
+                ComposerEnabledProbe(record: { composerEnabled = $0 }).frame(height: 60)
+            }
+        }
+        let host = NSHostingView(rootView: content(requestID: "question", readingHistory: false))
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 340, height: 240), styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = host
+        defer {
+            window.contentView = nil
+            window.close()
+        }
+        func awaitComposer(enabled: Bool) async throws {
+            let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+            repeat {
+                window.layoutIfNeeded()
+                host.layoutSubtreeIfNeeded()
+                await Task.yield()
+            } while composerEnabled != enabled && ContinuousClock.now < deadline
+            try #require(composerEnabled == enabled)
+        }
+
+        try await awaitComposer(enabled: false)
+        #expect(!focused)
+        // The researcher can start reading after a request has already opened.
+        host.rootView = content(requestID: nil, readingHistory: readingHistory)
+        try await awaitComposer(enabled: true)
+        #expect(focused == !readingHistory)
+    }
+
     @Test("Request presentation defers while the researcher is occupied and restores the draft after resolution")
     func presentationLifecycle() {
         var state = AgentChatInputDockState()

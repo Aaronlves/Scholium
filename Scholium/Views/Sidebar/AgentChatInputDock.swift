@@ -85,7 +85,7 @@ struct AgentChatInputDock<Request: View, Composer: View>: View {
         .padding(ScholiumSidebarLayout.edgeInset)
         .tint(nil as Color?)
         .onChange(of: requestID, initial: true) { _, id in
-            if presentation.receive(id, mayExpand: isActive && !isEditingDraft && !isReadingHistory), isActive {
+            if presentation.receive(id, mayExpand: isActive && !isEditingDraft && !isReadingHistory), isActive && !isReadingHistory {
                 composerIsFocused = true
             } else if expanded {
                 composerIsFocused = false
