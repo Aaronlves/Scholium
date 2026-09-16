@@ -27,6 +27,7 @@
     "linkedom": "0.18.13",
     "type-fest": "5.8.0",
     "typescript": "7.0.2",
-    "vitest": "3.2.7"
+    "vite": "7.3.6",
+    "vitest": "5.0.1"
   }
 }
