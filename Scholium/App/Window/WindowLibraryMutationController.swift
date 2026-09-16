@@ -88,7 +88,7 @@ struct WindowLibraryMutationDependencies {
 }
 
 /// Owns Library mutation identity, operation serialization, cancellation, and
-/// system-Trash retry state. WindowModel supplies only cross-feature projection,
+/// pending drops, and system-Trash retry state. WindowModel supplies cross-feature projection,
 /// navigation, and presentation callbacks after authoritative mutations.
 @MainActor
 final class WindowLibraryMutationController: ObservableObject {
@@ -96,6 +96,27 @@ final class WindowLibraryMutationController: ObservableObject {
     @Published private(set) var isMutatingFolder = false
     @Published var isBatchWorking = false
     @Published var lastBatchOutcome: LibraryNoteBatchOutcome?
+
+    private enum DropTarget: Hashable {
+        case note(SidebarNoteDragID)
+        case folder(SidebarFolderDragID)
+    }
+
+    @Published private var dropOperations: [DropTarget: UUID] = [:]
+
+    var pendingNoteDrops: Set<SidebarNoteDragID> {
+        Set(dropOperations.keys.compactMap {
+            if case .note(let id) = $0 { return id }
+            return nil
+        })
+    }
+
+    var pendingFolderDrops: Set<SidebarFolderDragID> {
+        Set(dropOperations.keys.compactMap {
+            if case .folder(let id) = $0 { return id }
+            return nil
+        })
+    }
 
     let dependencies: WindowLibraryMutationDependencies
     private var operations: (any LibraryMutationUseCases)?
@@ -136,6 +157,86 @@ final class WindowLibraryMutationController: ObservableObject {
         folderMutationTask = nil
         mutationTaskCancellations.values.forEach { $0() }
         mutationTaskCancellations.removeAll()
+        dropOperations.removeAll()
+    }
+
+    /// The window owns drop work even if Library is hidden or its view is rebuilt.
+    /// Native drag validation remains a projection; the mutation use cases retain
+    /// final revision, path and filesystem authority.
+    @discardableResult
+    func requestNoteDrop(
+        _ target: NoteMutationTarget,
+        to destinationRelativePath: String
+    ) -> Task<Void, Never>? {
+        requestDrop(
+            .note(SidebarNoteDragID(
+                vaultID: target.documentID.vaultID,
+                relativePath: target.documentID.relativePath
+            )),
+            vaultID: target.documentID.vaultID,
+            failureMessage: { "Could not move this note. \($0.localizedDescription)" }
+        ) { [self] in
+            try await performMoveNote(target, to: destinationRelativePath)
+        }
+    }
+
+    @discardableResult
+    func requestFolderDrop(
+        _ target: FolderMutationTarget,
+        to destinationRelativePath: String
+    ) -> Task<Void, Never>? {
+        requestDrop(
+            .folder(SidebarFolderDragID(
+                vaultID: target.vaultID, relativePath: target.relativePath
+            )),
+            vaultID: target.vaultID,
+            failureMessage: { "Could not move this folder. \($0.localizedDescription)" }
+        ) { [self] in
+            try await performMoveFolder(target, to: destinationRelativePath)
+        }
+    }
+
+    private func requestDrop(
+        _ target: DropTarget,
+        vaultID: UUID,
+        failureMessage: @escaping @MainActor (Error) -> String,
+        perform: @escaping @MainActor () async throws -> Void
+    ) -> Task<Void, Never>? {
+        guard !isCreatingNote, !isMutatingFolder, !isBatchWorking,
+            dropOperations[target] == nil,
+            let context = dependencies.context(),
+            context.sourceScope == .library, context.vault.id == vaultID
+        else { return nil }
+        let operationID = UUID()
+        dropOperations[target] = operationID
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer {
+                self.mutationTaskCancellations[operationID] = nil
+                // A cancelled operation must never clear a newer drop for the
+                // same path after a window rebind.
+                if self.dropOperations[target] == operationID {
+                    self.dropOperations[target] = nil
+                }
+            }
+            do {
+                try Task.checkCancellation()
+                guard self.dependencies.context()?.assignmentID == context.assignmentID,
+                    self.dependencies.context()?.vault.id == context.vault.id
+                else { throw CancellationError() }
+                try await perform()
+            } catch is CancellationError {
+                return
+            } catch {
+                guard !Task.isCancelled,
+                    self.dependencies.context()?.assignmentID == context.assignmentID,
+                    self.dependencies.context()?.vault.id == context.vault.id
+                else { return }
+                self.dependencies.reportError(failureMessage(error))
+            }
+        }
+        mutationTaskCancellations[operationID] = { task.cancel() }
+        return task
     }
 
     func requestUntitledNoteCreation(in folderRelativePath: String?) {
@@ -228,6 +329,10 @@ final class WindowLibraryMutationController: ObservableObject {
         isMutatingFolder = true
         defer { isMutatingFolder = false }
         try await dependencies.flushEditors(context.assignmentID)
+        try Task.checkCancellation()
+        guard dependencies.context()?.assignmentID == context.assignmentID,
+            dependencies.context()?.vault.id == context.vault.id
+        else { throw CancellationError() }
         do {
             let outcome = try await requireOperations().moveFolder(
                 inVault: target.vaultID,
@@ -308,10 +413,14 @@ final class WindowLibraryMutationController: ObservableObject {
         _ target: NoteMutationTarget,
         to requestedPath: String
     ) async throws {
-        guard dependencies.context() != nil else {
+        guard let context = dependencies.context() else {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
         try await dependencies.flushActiveTarget(target)
+        try Task.checkCancellation()
+        guard dependencies.context()?.assignmentID == context.assignmentID,
+            dependencies.context()?.vault.id == context.vault.id
+        else { throw CancellationError() }
         let authorizedTarget = try currentTarget(target)
         do {
             let outcome = try await requireOperations().move(

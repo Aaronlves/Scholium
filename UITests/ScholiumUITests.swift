@@ -12,7 +12,8 @@ import notify
 func typeCommittedText(
     _ text: String,
     into field: XCUIElement,
-    in application: XCUIApplication
+    in application: XCUIApplication,
+    clickWithinVisibleFrame: Bool = false
 ) {
     let pasteboard = NSPasteboard.general
     let savedItems = pasteboard.pasteboardItems?.map { source in
@@ -40,9 +41,17 @@ func typeCommittedText(
         }
     }
 
-    field.click()
-    field.typeKey("a", modifierFlags: .command)
-    field.typeKey("v", modifierFlags: .command)
+    if clickWithinVisibleFrame {
+        // XCTest's automatic scroll-to-visible path cannot locate a floating
+        // safe-area input. A frame-relative click still exercises native hit testing.
+        field.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
+        application.typeKey("a", modifierFlags: .command)
+        application.typeKey("v", modifierFlags: .command)
+    } else {
+        field.click()
+        field.typeKey("a", modifierFlags: .command)
+        field.typeKey("v", modifierFlags: .command)
+    }
     XCTAssertEqual(
         field.value as? String,
         text,

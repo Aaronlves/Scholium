@@ -4,6 +4,50 @@ import CryptoKit
 import notify
 
 extension ScholiumUITests {
+    /// One offline Chat journey covers page lifetime without dispatching any message.
+    @MainActor
+    func testChatSidebarPageTransitionsRetainDraftAndFind() throws {
+        waitForCurrentDocumentSurface()
+        sidebarModeControl("Chat").click()
+        let create = app.buttons["scholium.chat.newConversation"]
+        XCTAssertTrue(create.waitForExistence(timeout: 5))
+        create.click()
+        let composer = app.textViews["scholium.chat.message"]
+        XCTAssertTrue(composer.waitForExistence(timeout: 5))
+        typeCommittedText("First sidebar draft", into: composer, in: app, clickWithinVisibleFrame: true)
+
+        app.descendants(matching: .any)["scholium.chat.options"].firstMatch.click()
+        app.menuItems["Find in Conversation"].click()
+        let find = app.descendants(matching: .any)["scholium.chat.find.query"].firstMatch
+        XCTAssertTrue(find.waitForExistence(timeout: 5))
+        typeCommittedText("retained query", into: find, in: app)
+        app.buttons["scholium.chat.back"].click()
+        let rows = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "scholium.chat.conversation."))
+        XCTAssertTrue(rows.firstMatch.waitForExistence(timeout: 5))
+        let originalRowID = rows.firstMatch.identifier
+        app.buttons[originalRowID].click()
+        XCTAssertTrue(find.waitForExistence(timeout: 5))
+        XCTAssertEqual(find.value as? String, "retained query")
+        XCTAssertEqual(composer.value as? String, "First sidebar draft")
+
+        create.click()
+        XCTAssertTrue(composer.waitForExistence(timeout: 5))
+        XCTAssertFalse(find.exists)
+        XCTAssertEqual(composer.value as? String, "")
+        typeCommittedText("Second sidebar draft", into: composer, in: app, clickWithinVisibleFrame: true)
+        sidebarModeControl("Library").click()
+        XCTAssertFalse(composer.exists)
+        sidebarModeControl("Chat").click()
+        XCTAssertTrue(composer.waitForExistence(timeout: 5))
+        XCTAssertEqual(composer.value as? String, "Second sidebar draft")
+        app.buttons["scholium.chat.back"].click()
+        XCTAssertTrue(app.buttons[originalRowID].waitForExistence(timeout: 5))
+        app.buttons[originalRowID].click()
+        XCTAssertTrue(composer.waitForExistence(timeout: 5))
+        XCTAssertEqual(composer.value as? String, "First sidebar draft")
+        XCTAssertFalse(find.exists)
+    }
+
     /// One settings journey covers stable geometry, draft lifetime, search and
     /// hidden-page input isolation. It writes only the disposable QA profile.
     @MainActor

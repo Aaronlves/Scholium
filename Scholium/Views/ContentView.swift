@@ -484,7 +484,6 @@ struct ContentView: View {
                 && !appState.libraryMutationController.isCreatingNote
                 && !appState.libraryMutationController.isMutatingFolder
                 && !appState.libraryMutationController.isBatchWorking,
-            sourceMutationGeneration: appState.sourceMutationGeneration,
             filterOptions: SidebarLibraryFilterOptions(
                 catalogIsAvailable: appState.workspaceCatalog != nil,
                 graphIsAvailable: appState.linkGraph != nil,
@@ -508,11 +507,13 @@ struct ContentView: View {
             createUntitledFolder: {
                 appState.libraryMutationController.requestUntitledFolderCreation(in: $0)
             },
-            moveNote: { target, destination in
-                try await appState.libraryMutationController.moveNote(target, to: destination)
+            pendingNoteMoves: libraryMutationController.pendingNoteDrops,
+            pendingFolderMoves: libraryMutationController.pendingFolderDrops,
+            requestNoteDrop: { target, destination in
+                libraryMutationController.requestNoteDrop(target, to: destination)
             },
-            moveFolder: { target, destination in
-                try await appState.libraryMutationController.moveFolder(target, to: destination)
+            requestFolderDrop: { target, destination in
+                libraryMutationController.requestFolderDrop(target, to: destination)
             },
             requestNoteBatchMove: appState.requestLibraryBatchMove,
             requestNoteBatchTrash: appState.requestLibraryBatchTrash,
@@ -545,8 +546,6 @@ struct ContentView: View {
                     appState.reportOperationIssue(error.localizedDescription, kind: .error)
                 }
             },
-            revealCurrentVault: { appState.revealVaultInFinder() },
-            openSettings: { openSettings() },
             selectSortOrder: { appState.discoveryController.selectSortOrder($0) },
             showError: { appState.reportOperationIssue($0, kind: .error) }
         )

@@ -20,15 +20,16 @@ struct SidebarLayoutTests {
             disclosureScope: .init(vaultID: UUID(), sourceScope: .library),
             selectedDocumentPath: nil, libraryFocusRequestGeneration: 0,
             currentVaultRole: .topicKnowledge, currentWorkspaceSlot: .topicKnowledge,
-            requestedWorkspaceSlot: nil, canMutateLibrary: true, sourceMutationGeneration: 0,
+            requestedWorkspaceSlot: nil, canMutateLibrary: true,
             filterOptions: .init(catalogIsAvailable: true, graphIsAvailable: true, tags: [], authors: [], propertyKeys: [], propertyValues: [:]),
             openNote: { _, _ in }, canAddNoteToChat: { _ in false }, addNoteToChat: { _ in },
             selectTriptychWorkspace: { _ in }, createUntitledNote: { _ in }, createUntitledFolder: { _ in },
-            moveNote: { _, _ in }, moveFolder: { _, _ in }, requestNoteBatchMove: { _ in },
+            pendingNoteMoves: [], pendingFolderMoves: [],
+            requestNoteDrop: { _, _ in }, requestFolderDrop: { _, _ in }, requestNoteBatchMove: { _ in },
             requestNoteBatchTrash: { _ in }, moveNotesDrop: { _, _ in }, hasBatchOutcome: true, showBatchOutcome: {},
             requestFolderFileOperation: { _ in }, requestFolderSystemTrash: { _ in },
             copyRelativePath: { _ in }, revealNote: { _ in }, requestSystemTrash: { _ in },
-            revealCurrentVault: {}, openSettings: {}, selectSortOrder: { _ in }, showError: { _ in })
+            selectSortOrder: { _ in }, showError: { _ in })
         let host = NSHostingView(rootView: SidebarView(controller: controller, context: context))
         host.sizingOptions = []
         let window = NSWindow(

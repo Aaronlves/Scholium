@@ -141,14 +141,18 @@ Chat has four presentation responsibilities, independently of its
 
 | Responsibility | Current owner and boundary |
 | --- | --- |
-| Shell and routing | `AgentChatView` selects list/detail, connects window actions and presents conversation destinations. It consumes controller state without owning transport or permission. |
-| Conversation layout | The transcript's native viewport owns vertical scroll position. `AgentChatInputArea` owns queue/dock placement and candidate anchoring; its occupied size enters the transcript through one bottom safe-area inset. |
+| Shell and routing | `AgentChatView` selects list/detail, retains window-local page state and reading sessions, and owns shared destinations and cross-conversation navigation. It consumes controller state without owning transport or permission. |
+| Page composition | `AgentChatConversationListView` owns filtering, ordering and row actions; `AgentChatConversationDetailView` assembles transcript, Find, composer and requests. The native viewport owns scrolling; `AgentChatInputArea` owns one bottom inset for the input dock and candidates. |
 | Content components | Message, activity, queue, request and material views render supplied values and emit named actions. Disclosure and copy confirmation are local presentation state. |
 | Native interaction | The composer owns its `NSTextView`, composition and Undo; the safe reader owns WebKit content and selection; shared native previews own temporary-window geometry and dismissal. |
 
 These are responsibility boundaries, not four new services or runtime layers.
-Shell and conversation assembly still share `AgentChatView`; the window-local
-reading store outlives each displayed conversation. Child components do not
+The shell retains list query/scope and the selected conversation's
+`AgentChatDetailPresentation` across list/detail visits. Changing conversation
+replaces that transient presentation; the reading store retains independent
+conversation anchors and disclosure. Re-entering detail refreshes retained Find
+matches against current messages. Shared headers and connection-status views
+project supplied state and actions. Child components do not
 compensate for sibling geometry with their own margins, report guessed popup
 heights to the shell, or read another window's responder to determine input state.
 Queue content owns its disclosure; the input-area layout owns its backing surface

@@ -33,7 +33,6 @@ struct SidebarContext {
     let currentWorkspaceSlot: WorkspaceVaultSlot?
     let requestedWorkspaceSlot: WorkspaceVaultSlot?
     let canMutateLibrary: Bool
-    let sourceMutationGeneration: UInt64
     let filterOptions: SidebarLibraryFilterOptions
     let openNote: (WindowDocumentLocation, WindowOpenDisposition) -> Void
     let canAddNoteToChat: (WindowDocumentLocation) -> Bool
@@ -41,8 +40,10 @@ struct SidebarContext {
     let selectTriptychWorkspace: (WorkspaceVaultSlot) -> Void
     let createUntitledNote: (String?) -> Void
     let createUntitledFolder: (String?) -> Void
-    let moveNote: (NoteMutationTarget, String) async throws -> Void
-    let moveFolder: (FolderMutationTarget, String) async throws -> Void
+    let pendingNoteMoves: Set<SidebarNoteDragID>
+    let pendingFolderMoves: Set<SidebarFolderDragID>
+    let requestNoteDrop: (NoteMutationTarget, String) -> Void
+    let requestFolderDrop: (FolderMutationTarget, String) -> Void
     let requestNoteBatchMove: ([NoteMutationTarget]) -> Void
     let requestNoteBatchTrash: ([NoteMutationTarget]) -> Void
     let moveNotesDrop: ([NoteMutationTarget], String?) -> Void
@@ -53,8 +54,6 @@ struct SidebarContext {
     let copyRelativePath: (String) -> Void
     let revealNote: (String) -> Void
     let requestSystemTrash: (NoteMutationTarget) async throws -> Void
-    let revealCurrentVault: () -> Void
-    let openSettings: () -> Void
     let selectSortOrder: (NoteSortOrder) -> Void
     let showError: (String) -> Void
 }
@@ -66,8 +65,6 @@ struct SidebarView: View {
     let context: SidebarContext
 
     @State private var requestedRowFocusPath: String?
-    @State private var noteDragMovesInProgress: Set<SidebarNoteDragID> = []
-    @State private var folderDragMovesInProgress: Set<SidebarFolderDragID> = []
 
     init(controller: DiscoveryController, context: SidebarContext) {
         self.controller = controller
@@ -409,8 +406,8 @@ struct SidebarView: View {
             notes: context.allNotes,
             folderRelativePaths: Set(context.folders),
             pathComparisonPolicy: context.pathComparisonPolicy,
-            pendingNoteMoves: noteDragMovesInProgress,
-            pendingFolderMoves: folderDragMovesInProgress
+            pendingNoteMoves: context.pendingNoteMoves,
+            pendingFolderMoves: context.pendingFolderMoves
         )
     }
 
@@ -418,27 +415,15 @@ struct SidebarView: View {
         _ items: [SidebarNoteDragItem],
         into folderRelativePath: String?
     ) {
+        guard let destinations = sidebarValidatedNotesDropDestinations(
+            items: items,
+            folderRelativePath: folderRelativePath,
+            inventory: dropInventory
+        ) else { return }
         if items.count > 1 {
             context.moveNotesDrop(items.map(\.mutationTarget), folderRelativePath)
-            return
-        }
-        guard let item = items.first else { return }
-        guard
-            let destination = sidebarValidatedNoteDropDestination(
-                item: item,
-                folderRelativePath: folderRelativePath,
-                inventory: dropInventory
-            )
-        else { return }
-        let target = item.mutationTarget
-        noteDragMovesInProgress.insert(item.id)
-        Task { @MainActor in
-            defer { noteDragMovesInProgress.remove(item.id) }
-            do {
-                try await context.moveNote(target, destination)
-            } catch {
-                context.showError("Could not move this note. \(error.localizedDescription)")
-            }
+        } else if let item = items.first, let destination = destinations.first {
+            context.requestNoteDrop(item.mutationTarget, destination)
         }
     }
 
@@ -446,27 +431,14 @@ struct SidebarView: View {
         _ items: [SidebarFolderDragItem],
         into folderRelativePath: String?
     ) {
-        guard items.count == 1, let item = items.first else {
-            context.showError("Move one folder at a time.")
-            return
-        }
-        guard
+        guard items.count == 1, let item = items.first,
             let destination = sidebarValidatedFolderDropDestination(
                 item: item,
                 folderRelativePath: folderRelativePath,
                 inventory: dropInventory
             )
         else { return }
-        let target = item.mutationTarget
-        folderDragMovesInProgress.insert(item.id)
-        Task { @MainActor in
-            defer { folderDragMovesInProgress.remove(item.id) }
-            do {
-                try await context.moveFolder(target, destination)
-            } catch {
-                context.showError("Could not move this folder. \(error.localizedDescription)")
-            }
-        }
+        context.requestFolderDrop(item.mutationTarget, destination)
     }
 
     // MARK: Library filters

@@ -482,7 +482,11 @@ self, descendant, and occupied-target preflight. A missing policy fails closed,
 while every accepted move still repeats containment, collision, identity, and
 revision checks inside Core immediately before commit. A stale or repeated
 gesture therefore cannot advertise or start a second move, and presentation
-preflight never becomes filesystem authority.
+preflight never becomes filesystem authority. The window mutation controller
+owns drop identities, tasks, cancellation and errors; Sidebar
+consumes pending snapshots and emits validated intents. Cancelled tasks cannot
+clear newer pending drops, and a changed window assignment cannot resume an
+old move after editor flushing.
 
 `WindowModel` owns one exact-window `LibraryTreeProjectionCache`. It returns an
 immutable version whose revision advances only when the ordered Note cohort or
