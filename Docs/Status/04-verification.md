@@ -4,6 +4,26 @@
 
 ## Current verification snapshot
 
+**2026-09-17 — Derived refresh performance:** The identical expanded standard
+500-Note Triptych (6,973,820 bytes; exact source bytes and query provenance
+checked) reduces Debug cold configuration from 35.91 s to 13.05 s, reopened
+usable state from 10.94–11.03 s to 2.99–3.10 s, completion after the
+presentation signal from 17.33–17.45 s to 4.87–4.93 s, and unchanged refresh
+from 2.26–2.30 s to 0.750–0.756 s. Reopening restores all 500 Search projections
+with no projection recomputation; source authorization and semantic parsing
+remain fresh. Source preparation is 2.32–2.38 s. Independent three-sample
+index opening falls from 4.74–4.83 s to 2.39–2.50 s while retaining complete
+SOM1 validation and corruption recovery. ASCII normalization reduces isolated
+projection work by 43.7%; all 501 complete projections match the baseline
+with unordered Set encoding canonicalized. Scoped Contracts, Application,
+cache, codec and paragraph-recovery checks pass. The current-checkout full
+`verify.sh` gate passes 355 Web, 423 Core, three Core performance, 96 Contracts,
+171 Application, one architecture measurement and 1,002 App tests, public-symbol
+guards, Release compilation and bundled-helper isolation. These schema-19 diagnostics
+exclude presentation wait and do not establish packaged performance or native
+click-to-paint acceptance. Evidence: `.build/refresh-optimization/`,
+`.build/projection-cost/`, and `.build/search-opening-diagnostics/`.
+
 **2026-09-17 — `v0.2.2-beta` packaged artifact:** The clean exact-tagged
 commit `ea4918ec1958293879786a889108d0b186d33744` produced the arm64 DMG
 `Scholium-v0.2.2-beta-macos-arm64.dmg` with marketing version `0.2.2`, build
@@ -193,7 +213,7 @@ tests passed, but the six-minute App phase was not rerun. Release compilation,
 symbol-boundary checks and helper protocol isolation passed. This is staged
 evidence, not one uninterrupted green `verify.sh` run.
 
-Search contract 20 uses schema 18 and ranking policy 4. The unchanged 2,056-Note
+That measured build used Search contract 20, schema 18, and ranking policy 4. Its 2,056-Note
 benchmark reports warm-query p95 of 97 ms, first-five-page p95 of 466 ms, and
 incremental-publication p95 of 27 ms against the unchanged 100/500/250 ms
 budgets. Current Saved Searches use the ordinary parser only; unsupported stored

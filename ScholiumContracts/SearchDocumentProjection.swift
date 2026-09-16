@@ -69,6 +69,11 @@ public struct SearchTextSegment: Codable, Hashable, Sendable {
 public struct SearchParagraphProjection: Codable, Hashable, Sendable {
     public let range: SearchSourceRange
     public let segments: [SearchTextSegment]
+
+    package init(range: SearchSourceRange, segments: [SearchTextSegment]) {
+        self.range = range
+        self.segments = segments
+    }
 }
 
 public struct SearchDocumentProjection: Codable, Hashable, Sendable {
@@ -90,6 +95,49 @@ public struct SearchDocumentProjection: Codable, Hashable, Sendable {
     public private(set) var segments: [SearchTextSegment]
     public let paragraphs: [SearchParagraphProjection]
     public private(set) var projectionHash: String
+
+    /// Restores a disposable projection through the package-owned cache codec.
+    /// The cache owner must bind these values to the exact source fingerprint
+    /// and validate stored coordinates before supplying them to Search.
+    package init(
+        title: String,
+        aliases: [String],
+        headings: [String],
+        summary: String?,
+        authors: [String],
+        publicationDate: String?,
+        tags: [String],
+        body: String,
+        callouts: String,
+        calloutRoles: Set<String>,
+        footnotes: String,
+        linkAnnotations: String,
+        path: String,
+        hasBrokenLink: Bool,
+        sourceLineStartsUTF16: [Int],
+        segments: [SearchTextSegment],
+        paragraphs: [SearchParagraphProjection],
+        projectionHash: String
+    ) {
+        self.title = title
+        self.aliases = aliases
+        self.headings = headings
+        self.summary = summary
+        self.authors = authors
+        self.publicationDate = publicationDate
+        self.tags = tags
+        self.body = body
+        self.callouts = callouts
+        self.calloutRoles = calloutRoles
+        self.footnotes = footnotes
+        self.linkAnnotations = linkAnnotations
+        self.path = path
+        self.hasBrokenLink = hasBrokenLink
+        self.sourceLineStartsUTF16 = sourceLineStartsUTF16
+        self.segments = segments
+        self.paragraphs = paragraphs
+        self.projectionHash = projectionHash
+    }
 
     public init(
         document: NoteDocument,
@@ -548,7 +596,16 @@ private enum SearchProjectionBuilder {
                     hasPendingWhitespace = false
                     pendingWhitespaceSource = nil
                 }
-                let folded = SearchTextNormalization.lexicalNormalize(String(character))
+                // ASCII folding is a single case conversion; retain the lexical
+                // policy's Foundation normalization for every other grapheme,
+                // including composed accents and case-folding expansions.
+                let folded: String
+                if let ascii = character.asciiValue {
+                    let scalar = ascii >= 65 && ascii <= 90 ? ascii + 32 : ascii
+                    folded = String(UnicodeScalar(scalar))
+                } else {
+                    folded = SearchTextNormalization.lexicalNormalize(String(character))
+                }
                 let lower = normalizedUTF16Count
                 normalized += folded
                 normalizedUTF16Count += folded.utf16.count

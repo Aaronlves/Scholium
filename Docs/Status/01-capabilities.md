@@ -18,7 +18,7 @@
   native system Trash, and recoverable uncertainty.
 - Note creation accepts exact complete Markdown; GUI New Note starts empty.
   Source, stable identity, Settlement and recovery retain their existing owners.
-- Search contract 20/schema 18 indexes user-authored YAML through `property:`
+- Search contract 20/schema 19 indexes user-authored YAML through `property:`
   without a managed catalog. Quoted keys, scalar/direct-list values and block
   summaries retain source locations. Filename owns Note display identity.
   AND/OR/NOT, parentheses, field groups and multiple direct-link predicates share

@@ -117,11 +117,11 @@ source-bound part of
 `SearchDocumentProjection` as disposable state. Review and broken-link fields
 are reapplied with a lightweight projection-hash update, so ordinary Search
 deltas do not rebuild visible text and exact offset maps for unchanged notes.
-An opening-Vault catalog pass retains the exact document and Library semantic
-projection while deferring Search-specific visible text and offset maps. The
-same catalog actor completes those missing maps from its retained exact
-documents, without a second source read, before any complete Triptych Search
-generation may publish.
+Opening retains exact documents and fresh Library semantics, deferring Search
+text and coordinates. The same catalog restores compatible machine-local
+Search projections or computes missing ones before complete publication;
+restoration follows descriptor reads and fresh fingerprints, never replacing
+source authorization or semantic parsing.
 Projection construction advances monotonic UTF-16 cursors, preserving exact
 source mapping without repeatedly rescanning an accumulated String.
 Watchers start before initial reconcile; precise events update entries. Event

@@ -3,6 +3,15 @@ import Darwin
 import Foundation
 import SQLite3
 import ScholiumContracts
+import os
+
+struct SearchSynchronizationTimings: Sendable {
+    let documentCount: Int
+    let changedCount: Int
+    let hashMissCount: Int
+    let preparationMilliseconds: Double
+    let publicationMilliseconds: Double
+}
 
 public struct TriptychSearchIndexOpenResult: Sendable {
     public let index: TriptychSearchIndex
@@ -36,10 +45,15 @@ public struct SearchIndexDocumentEligibility: Hashable, Sendable {
 struct SearchIndexDelta: Sendable {
     let workspaceGeneration: UInt64
     let upserts: [SearchIndexDocument]
+    /// Prepared comparison hashes reused by the writer; source generations and
+    /// exact document fingerprints remain publication authority.
+    let indexedProjectionHashes: [String: String]
     let deletions: [VaultQualifiedNoteID]
 }
 
 public actor TriptychSearchIndex {
+    private static let logger = Logger(subsystem: "com.scholium.app", category: "SearchIndex")
+    private(set) var lastSynchronizationTimings: SearchSynchronizationTimings?
     private let triptychID: UUID
     private let databaseURL: URL
     private let configuredVaults: [UUID: RegisteredVault]
@@ -266,12 +280,14 @@ public actor TriptychSearchIndex {
         }
         latestWorkspaceGeneration = workspaceGeneration
 
+        let preparationStarted = ContinuousClock.now
         let desired = try Self.validatedDocuments(documents)
         let manifestHash = Self.manifestHash(for: Array(desired.values))
         let previous = try generation()
         let stored = try Self.indexedProjectionState(in: database)
         var desiredState: [String: IndexedProjectionState] = [:]
         var nextProjectionHashes: [String: (input: ProjectionHashInput, hash: String)] = [:]
+        var hashMissCount = 0
         for (key, value) in desired {
             let fingerprint = value.document.fingerprint
             let input = ProjectionHashInput(
@@ -282,6 +298,7 @@ public actor TriptychSearchIndex {
             if let cached = projectionHashes[key], cached.input == input {
                 hash = cached.hash
             } else {
+                hashMissCount += 1
                 hash = try Self.indexedProjectionHash(value)
             }
             nextProjectionHashes[key] = (input, hash)
@@ -300,10 +317,13 @@ public actor TriptychSearchIndex {
         let delta = SearchIndexDelta(
             workspaceGeneration: workspaceGeneration,
             upserts: changedKeys.compactMap { desired[$0] },
+            indexedProjectionHashes: desiredState.mapValues(\.projectionHash),
             deletions: try removedKeys.map {
                 try Self.noteReference(documentKey: $0)
             }
         )
+        let preparationMilliseconds = Self.milliseconds(since: preparationStarted)
+        let publicationStarted = ContinuousClock.now
         if previous?.sourceManifestHash == manifestHash, stored == desiredState,
             let previous
         {
@@ -318,6 +338,10 @@ public actor TriptychSearchIndex {
                 )
             }
             currentAvailability = .current(previous)
+            recordSynchronizationTimings(
+                documentCount: desired.count, changedCount: changedKeys.count,
+                hashMissCount: hashMissCount, preparationMilliseconds: preparationMilliseconds,
+                publicationStarted: publicationStarted)
             return TriptychSearchIndexSyncResult(
                 generation: previous,
                 disposition: .unchanged
@@ -377,7 +401,31 @@ public actor TriptychSearchIndex {
             task: task
         )
         activeSynchronization = active
-        return try await finishSynchronization(active)
+        let result = try await finishSynchronization(active)
+        recordSynchronizationTimings(
+            documentCount: desired.count, changedCount: changedKeys.count,
+            hashMissCount: hashMissCount, preparationMilliseconds: preparationMilliseconds,
+            publicationStarted: publicationStarted)
+        return result
+    }
+
+    private nonisolated static func milliseconds(since started: ContinuousClock.Instant) -> Double {
+        let parts = started.duration(to: .now).components
+        return Double(parts.seconds) * 1_000 + Double(parts.attoseconds) / 1_000_000_000_000_000
+    }
+
+    private func recordSynchronizationTimings(
+        documentCount: Int, changedCount: Int, hashMissCount: Int,
+        preparationMilliseconds: Double, publicationStarted: ContinuousClock.Instant
+    ) {
+        let publicationMilliseconds = Self.milliseconds(since: publicationStarted)
+        lastSynchronizationTimings = SearchSynchronizationTimings(
+            documentCount: documentCount, changedCount: changedCount, hashMissCount: hashMissCount,
+            preparationMilliseconds: preparationMilliseconds,
+            publicationMilliseconds: publicationMilliseconds)
+        Self.logger.info(
+            "sync documents=\(documentCount, privacy: .public) changed=\(changedCount, privacy: .public) hash_misses=\(hashMissCount, privacy: .public) preparation_ms=\(preparationMilliseconds, privacy: .public) publication_ms=\(publicationMilliseconds, privacy: .public)"
+        )
     }
 
     private func recordInitialBuildProgress(
@@ -478,8 +526,11 @@ public actor TriptychSearchIndex {
                     vaultID: document.vaultID,
                     path: document.relativePath
                 )
+                guard let projectionHash = delta.indexedProjectionHashes[key] else {
+                    throw SearchIndexError.invalidDocuments("Search delta is missing its prepared projection hash.")
+                }
                 try deleteDocument(key: key, from: database)
-                try insert(document, into: database)
+                try insert(document, projectionHash: projectionHash, into: database)
                 let completed = offset + 1
                 if completed == orderedUpserts.count || completed.isMultiple(of: 32) {
                     progress?(completed)
@@ -1351,7 +1402,7 @@ public actor TriptychSearchIndex {
             }
             let offsets = try SearchOffsetMapCodec.decode(row.data(at: 10))
             guard
-                Self.valid(
+                SearchProjectionValidation.valid(
                     offsets: offsets,
                     normalizedUTF16Count: normalized.utf16.count,
                     sourceUTF16Bounds: sourceRange.map {
@@ -1514,9 +1565,20 @@ public actor TriptychSearchIndex {
         let evidentialLayer: EvidentialLayer
     }
 
-    /// Covers every value persisted for one indexed Note. The source-derived
-    /// projection hash alone cannot detect a managed-Metadata-only property
-    /// change because those fields deliberately have no Markdown range.
+    nonisolated static func encodedParagraphs(_ paragraphs: [SearchParagraphProjection]) throws
+        -> Data
+    {
+        try JSONEncoder.searchIndex.encode(paragraphs.map(StoredParagraph.init))
+    }
+
+    nonisolated static func decodedStoredParagraphs(from json: String?) throws
+        -> [SearchParagraphProjection]
+    {
+        try decodeGeneratedJSON([StoredParagraph].self, from: json).map { try $0.projection() }
+    }
+
+    /// Binds source-derived text, authored-property entries and issues, and
+    /// complete paragraph projections to each indexed Note comparison.
     private nonisolated static func indexedProjectionHash(
         _ document: SearchIndexDocument
     ) throws -> String {
@@ -1527,7 +1589,7 @@ public actor TriptychSearchIndex {
         material.append(0)
         material.append(propertyData)
         material.append(try JSONEncoder.searchIndex.encode(document.propertyProjection.issues))
-        material.append(try JSONEncoder.searchIndex.encode(document.projection.paragraphs))
+        material.append(try encodedParagraphs(document.projection.paragraphs))
         return SHA256.hash(data: material)
             .map { String(format: "%02x", $0) }
             .joined()
@@ -1591,6 +1653,7 @@ public actor TriptychSearchIndex {
 
     private static func insert(
         _ item: SearchIndexDocument,
+        projectionHash: String,
         into database: SearchSQLiteDatabase
     ) throws {
         let projection = item.projection
@@ -1625,11 +1688,11 @@ public actor TriptychSearchIndex {
                 .text(item.evidentialLayer.rawValue),
                 .text(" " + projection.calloutRoles.sorted().joined(separator: " ") + " "),
                 .int(projection.hasBrokenLink ? 1 : 0),
-                .text(try indexedProjectionHash(item)),
+                .text(projectionHash),
                 .text(lineStarts),
                 .int(item.document.rawContent.utf16.count),
                 .text(String(decoding: try JSONEncoder.searchIndex.encode(item.propertyProjection.issues), as: UTF8.self)),
-                .text(String(decoding: try JSONEncoder.searchIndex.encode(projection.paragraphs), as: UTF8.self)),
+                .text(String(decoding: try encodedParagraphs(projection.paragraphs), as: UTF8.self)),
                 .int(item.document.hasProvableBodyBoundary ? 1 : 0),
             ]
         )
@@ -1645,7 +1708,7 @@ public actor TriptychSearchIndex {
         }
         for segment in projection.segments {
             guard
-                valid(
+                SearchProjectionValidation.valid(
                     offsets: segment.offsetMap,
                     normalizedUTF16Count: segment.normalizedText.utf16.count,
                     sourceUTF16Bounds: segment.sourceRange.map {
@@ -1941,16 +2004,14 @@ public actor TriptychSearchIndex {
     }
 
     private static func decodeParagraphs(_ json: String?, sourceUTF16Count: Int) throws -> [SearchParagraphProjection] {
-        let paragraphs = try decodeGeneratedJSON([SearchParagraphProjection].self, from: json)
+        let paragraphs = try decodedStoredParagraphs(from: json)
         for paragraph in paragraphs {
             let range = paragraph.range
-            guard range.utf16LowerBound >= 0, range.utf16UpperBound <= sourceUTF16Count,
-                range.utf16LowerBound < range.utf16UpperBound, range.line > 0, range.endLine >= range.line,
-                range.column > 0, range.endColumn > 0
+            guard SearchProjectionValidation.valid(paragraphRange: range, sourceUTF16Count: sourceUTF16Count)
             else { throw SearchIndexError.corruptDatabase }
             for segment in paragraph.segments {
                 guard
-                    valid(
+                    SearchProjectionValidation.valid(
                         offsets: segment.offsetMap, normalizedUTF16Count: segment.normalizedText.utf16.count,
                         sourceUTF16Bounds: segment.sourceRange.map { (lower: $0.utf16LowerBound, upper: $0.utf16UpperBound) },
                         sourceUTF16Count: sourceUTF16Count)
@@ -1973,7 +2034,8 @@ public actor TriptychSearchIndex {
                 from: row.text(at: 0)
             )
             let sourceUTF16Count = row.int(at: 1)
-            _ = try decodeParagraphs(row.text(at: 2), sourceUTF16Count: sourceUTF16Count)
+            let paragraphs = try decodeGeneratedJSON([StoredParagraph].self, from: row.text(at: 2))
+            for paragraph in paragraphs { try paragraph.validate(sourceUTF16Count: sourceUTF16Count) }
             guard [0, 1].contains(row.int(at: 3)) else { throw SearchIndexError.corruptDatabase }
             guard sourceUTF16Count >= 0,
                 lineStarts.first == 0,
@@ -2007,17 +2069,9 @@ public actor TriptychSearchIndex {
                 }
                 sourceBounds = (lower: row.int(at: 1), upper: row.int(at: 2))
             }
-            let offsets = try SearchOffsetMapCodec.decode(row.data(at: 3))
-            guard
-                valid(
-                    offsets: offsets,
-                    normalizedUTF16Count: normalized.utf16.count,
-                    sourceUTF16Bounds: sourceBounds,
-                    sourceUTF16Count: row.int(at: 4)
-                )
-            else {
-                throw SearchIndexError.corruptDatabase
-            }
+            try SearchOffsetMapCodec.validate(
+                row.data(at: 3), normalizedUTF16Count: normalized.utf16.count,
+                sourceUTF16Bounds: sourceBounds, sourceUTF16Count: row.int(at: 4))
         }
     }
 
@@ -2032,37 +2086,6 @@ public actor TriptychSearchIndex {
             return try JSONDecoder().decode(type, from: data)
         } catch {
             throw SearchIndexError.corruptDatabase
-        }
-    }
-
-    private static func valid(
-        offsets: [SearchSegmentOffset],
-        normalizedUTF16Count: Int,
-        sourceUTF16Bounds: (lower: Int, upper: Int)?,
-        sourceUTF16Count: Int? = nil
-    ) -> Bool {
-        guard normalizedUTF16Count >= 0 else { return false }
-        guard let sourceUTF16Bounds else { return offsets.isEmpty }
-        guard sourceUTF16Bounds.lower >= 0,
-            sourceUTF16Bounds.upper >= sourceUTF16Bounds.lower,
-            sourceUTF16Count.map({ sourceUTF16Bounds.upper <= $0 }) ?? true
-        else {
-            return false
-        }
-        guard
-            offsets.allSatisfy({ offset in
-                offset.normalizedUTF16LowerBound >= 0
-                    && offset.normalizedUTF16UpperBound >= offset.normalizedUTF16LowerBound
-                    && offset.normalizedUTF16UpperBound <= normalizedUTF16Count
-                    && offset.sourceUTF16LowerBound >= 0
-                    && offset.sourceUTF16UpperBound >= offset.sourceUTF16LowerBound
-                    && offset.sourceUTF16LowerBound >= sourceUTF16Bounds.lower
-                    && offset.sourceUTF16UpperBound <= sourceUTF16Bounds.upper
-            })
-        else { return false }
-        return zip(offsets, offsets.dropFirst()).allSatisfy { previous, next in
-            previous.normalizedUTF16LowerBound <= next.normalizedUTF16LowerBound
-                && previous.sourceUTF16LowerBound <= next.sourceUTF16LowerBound
         }
     }
 
@@ -3233,104 +3256,6 @@ private extension JSONEncoder {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         return encoder
-    }
-}
-
-/// A compact, private representation of exact normalized-to-source UTF-16
-/// spans. Search schema changes rebuild this disposable state instead of
-/// retaining a second decoder for older encodings.
-private enum SearchOffsetMapCodec {
-    private static let magic = Data([0x53, 0x4f, 0x4d, 0x31])  // SOM1
-    private static let headerByteCount = 8
-    private static let entryByteCount = 32
-
-    static func encode(_ offsets: [SearchSegmentOffset]) throws -> Data {
-        guard let count = UInt32(exactly: offsets.count),
-            offsets.allSatisfy({ offset in
-                offset.normalizedUTF16LowerBound >= 0
-                    && offset.normalizedUTF16UpperBound >= 0
-                    && offset.sourceUTF16LowerBound >= 0
-                    && offset.sourceUTF16UpperBound >= 0
-            })
-        else {
-            throw SearchIndexError.invalidDocuments(
-                "Search offset map contains an invalid generated range."
-            )
-        }
-        var data = Data(capacity: headerByteCount + offsets.count * entryByteCount)
-        data.append(magic)
-        append(count, to: &data)
-        for offset in offsets {
-            append(UInt64(offset.normalizedUTF16LowerBound), to: &data)
-            append(UInt64(offset.normalizedUTF16UpperBound), to: &data)
-            append(UInt64(offset.sourceUTF16LowerBound), to: &data)
-            append(UInt64(offset.sourceUTF16UpperBound), to: &data)
-        }
-        return data
-    }
-
-    static func decode(_ data: Data?) throws -> [SearchSegmentOffset] {
-        guard let data,
-            data.count >= headerByteCount,
-            data.prefix(magic.count) == magic
-        else {
-            throw SearchIndexError.corruptDatabase
-        }
-        return try data.withUnsafeBytes { bytes in
-            let count = Int(
-                UInt32(
-                    littleEndian: bytes.loadUnaligned(
-                        fromByteOffset: 4,
-                        as: UInt32.self
-                    )))
-            guard count <= (data.count - headerByteCount) / entryByteCount,
-                data.count == headerByteCount + count * entryByteCount
-            else {
-                throw SearchIndexError.corruptDatabase
-            }
-            var offsets: [SearchSegmentOffset] = []
-            offsets.reserveCapacity(count)
-            var cursor = headerByteCount
-            for _ in 0..<count {
-                func value(_ component: Int) -> UInt64 {
-                    UInt64(
-                        littleEndian: bytes.loadUnaligned(
-                            fromByteOffset: cursor + component * 8,
-                            as: UInt64.self
-                        ))
-                }
-                let normalizedLower = value(0)
-                let normalizedUpper = value(1)
-                let sourceLower = value(2)
-                let sourceUpper = value(3)
-                let maximum = max(
-                    max(normalizedLower, normalizedUpper),
-                    max(sourceLower, sourceUpper)
-                )
-                guard maximum <= UInt64(Int.max) else {
-                    throw SearchIndexError.corruptDatabase
-                }
-                offsets.append(
-                    SearchSegmentOffset(
-                        normalizedUTF16LowerBound: Int(normalizedLower),
-                        normalizedUTF16UpperBound: Int(normalizedUpper),
-                        sourceUTF16LowerBound: Int(sourceLower),
-                        sourceUTF16UpperBound: Int(sourceUpper)
-                    ))
-                cursor += entryByteCount
-            }
-            return offsets
-        }
-    }
-
-    private static func append<Value: FixedWidthInteger>(
-        _ value: Value,
-        to data: inout Data
-    ) {
-        var littleEndian = value.littleEndian
-        withUnsafeBytes(of: &littleEndian) { bytes in
-            data.append(contentsOf: bytes)
-        }
     }
 }
 

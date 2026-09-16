@@ -7,6 +7,75 @@ import Testing
 
 @Suite("Paragraph Search")
 struct ParagraphSearchTests {
+    @Test(
+        "Malformed binary paragraph offset maps rebuild only the generated index",
+        arguments: [false, true])
+    func corruptParagraphOffsetMapRecovery(outOfBounds: Bool) async throws {
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent().appendingPathComponent(".build/paragraph-codec-\(UUID())")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let vault = RegisteredVault(name: "Topics", role: .topicKnowledge, canonicalPath: root.path)
+        let triptychID = UUID()
+        let url = root.appendingPathComponent("search.sqlite")
+        let source = "\u{FEFF}中文😀 alpha beta\r\n\r\nalpha gamma\r\n"
+        let document = SearchIndexDocument(
+            vaultID: vault.id, vaultName: vault.name, vaultRole: vault.role,
+            document: NoteDocument(relativePath: "Exact.md", rawContent: source))
+        var index: TriptychSearchIndex? = try .init(
+            databaseURL: url, triptychID: triptychID, vaults: [vault])
+        _ = try await index?.synchronize([document])
+        index = nil
+        var database: OpaquePointer?
+        #expect(sqlite3_open(url.path, &database) == SQLITE_OK)
+        var statement: OpaquePointer?
+        #expect(
+            sqlite3_prepare_v2(database, "SELECT paragraphs FROM search_documents;", -1, &statement, nil)
+                == SQLITE_OK)
+        #expect(sqlite3_step(statement) == SQLITE_ROW)
+        let stored = String(cString: try #require(sqlite3_column_text(statement, 0)))
+        sqlite3_finalize(statement)
+        var paragraphs = try #require(
+            JSONSerialization.jsonObject(with: Data(stored.utf8)) as? [[String: Any]])
+        var first = try #require(paragraphs.first)
+        var segments = try #require(first["segments"] as? [[String: Any]])
+        _ = try #require(segments.first?["offsetMap"] as? String)
+        // A truncated record, or a well-formed record whose normalized upper
+        // bound is outside the owning segment. Format and semantic checks differ.
+        var malformed = Data([0x53, 0x4f, 0x4d, 0x31, 1, 0, 0, 0])
+        if outOfBounds {
+            for value: UInt64 in [0, 100_000, 0, 1] {
+                var littleEndian = value.littleEndian
+                withUnsafeBytes(of: &littleEndian) { malformed.append(contentsOf: $0) }
+            }
+        }
+        segments[0]["offsetMap"] = malformed.base64EncodedString()
+        first["segments"] = segments
+        paragraphs[0] = first
+        let damaged = String(
+            decoding: try JSONSerialization.data(withJSONObject: paragraphs), as: UTF8.self)
+        let escaped = damaged.replacingOccurrences(of: "'", with: "''")
+        #expect(
+            sqlite3_exec(
+                database, "UPDATE search_documents SET paragraphs = '\(escaped)';", nil, nil, nil)
+                == SQLITE_OK)
+        sqlite3_close(database)
+        let reopened = try TriptychSearchIndex.openRecovering(
+            databaseURL: url, triptychID: triptychID, vaults: [vault])
+        #expect(reopened.recoveredCorruption)
+        _ = try await reopened.index.synchronize([document])
+        let response = try await reopened.index.testSearch(
+            .init(
+                query: "paragraph:(alpha NOT beta)",
+                presentationScope: .triptych, executionScope: .triptych, limit: 20))
+        let result = try #require(response.noteResults.first)
+        #expect(result.relativePath == "Exact.md")
+        #expect(result.fingerprint == document.document.fingerprint)
+        #expect(result.paragraphRanges.first == document.projection.paragraphs.last?.range)
+        #expect(Data(document.document.rawContent.utf8) == Data(source.utf8))
+    }
+
     @Test("Existential paragraph predicates keep containers, negation, and exact ranges distinct")
     func paragraphSemantics() async throws {
         let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent(

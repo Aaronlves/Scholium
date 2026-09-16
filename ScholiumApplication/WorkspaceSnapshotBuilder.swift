@@ -8,11 +8,15 @@ struct WorkspaceRefreshMeasurement: Sendable {
     let readFiles: Int
     let parsedDocuments: Int
     let projectedDocuments: Int
+    let restoredSearchProjections: Int
     let enumerationDuration: Duration
     let readDuration: Duration
     let parseDuration: Duration
     let projectionDuration: Duration
+    let cacheReadDuration: Duration
+    let cacheWriteDuration: Duration
     let identityProjectionDuration: Duration
+    let linkCatalogProjectionDuration: Duration
     let graphDuration: Duration
     let researchStateDuration: Duration
     let searchDocumentProjectionDuration: Duration
@@ -20,6 +24,18 @@ struct WorkspaceRefreshMeasurement: Sendable {
     let snapshotAssemblyDuration: Duration
     let totalDuration: Duration
     let snapshotSourceBytes: Int
+}
+
+/// Elapsed time for one coordinator cycle, including preparation performed
+/// before the snapshot builder starts. Catalog per-file timings are summed
+/// work durations and are not a substitute for this wall-clock measurement.
+struct WorkspaceRefreshCycleMeasurement: Sendable {
+    let workspaceGeneration: UInt64
+    let gateWaitDuration: Duration
+    let sourcePreparationDuration: Duration
+    let buildDuration: Duration
+    let publicationDuration: Duration
+    let totalDuration: Duration
 }
 
 struct WorkspaceSnapshotBuildResult: Sendable {
@@ -259,11 +275,15 @@ enum WorkspaceSnapshotBuilder {
                 readFiles: measurement.readFiles,
                 parsedDocuments: measurement.parsedDocuments,
                 projectedDocuments: measurement.projectedDocuments,
+                restoredSearchProjections: measurement.restoredSearchProjections,
                 enumerationDuration: measurement.enumerationDuration,
                 readDuration: measurement.readDuration,
                 parseDuration: measurement.parseDuration,
                 projectionDuration: measurement.projectionDuration,
+                cacheReadDuration: measurement.cacheReadDuration,
+                cacheWriteDuration: measurement.cacheWriteDuration,
                 identityProjectionDuration: identityProjectionDuration,
+                linkCatalogProjectionDuration: .zero,
                 graphDuration: .zero,
                 researchStateDuration: .zero,
                 searchDocumentProjectionDuration: .zero,
@@ -292,6 +312,7 @@ enum WorkspaceSnapshotBuilder {
         var linkCatalog: [LinkCatalogNote] = []
         var sourceMeasurements: [VaultSourceCatalogMeasurement] = []
         var identityProjectionDuration = Duration.zero
+        var linkCatalogProjectionDuration = Duration.zero
 
         var sourceInputs: [SourceInput] = []
         for (order, slot) in WorkspaceVaultSlot.allCases.enumerated() {
@@ -413,6 +434,8 @@ enum WorkspaceSnapshotBuilder {
                     "Portable note identity for \(vault.name): \(error.localizedDescription)"
                 )
             }
+            identityProjectionDuration += identityProjectionStart.duration(to: clock.now)
+            let linkCatalogStart = clock.now
             for document in activeDocuments {
                 linkCatalog.append(
                     LinkCatalogNote(
@@ -438,9 +461,7 @@ enum WorkspaceSnapshotBuilder {
                     identityHealthIssues: identityHealthIssues
                 )
             )
-            identityProjectionDuration += identityProjectionStart.duration(
-                to: clock.now
-            )
+            linkCatalogProjectionDuration += linkCatalogStart.duration(to: clock.now)
         }
 
         let sourceManifestHash = SearchSourceManifest.hash(
@@ -676,6 +697,9 @@ enum WorkspaceSnapshotBuilder {
                 projectedDocuments: sourceMeasurements.reduce(0) {
                     $0 + $1.projectedDocuments
                 },
+                restoredSearchProjections: sourceMeasurements.reduce(0) {
+                    $0 + $1.restoredSearchProjections
+                },
                 enumerationDuration: sourceMeasurements.reduce(.zero) {
                     $0 + $1.enumerationDuration
                 },
@@ -688,7 +712,14 @@ enum WorkspaceSnapshotBuilder {
                 projectionDuration: sourceMeasurements.reduce(.zero) {
                     $0 + $1.projectionDuration
                 },
+                cacheReadDuration: sourceMeasurements.reduce(.zero) {
+                    $0 + $1.cacheReadDuration
+                },
+                cacheWriteDuration: sourceMeasurements.reduce(.zero) {
+                    $0 + $1.cacheWriteDuration
+                },
                 identityProjectionDuration: identityProjectionDuration,
+                linkCatalogProjectionDuration: linkCatalogProjectionDuration,
                 graphDuration: graphDuration,
                 researchStateDuration: researchStateDuration,
                 searchDocumentProjectionDuration:

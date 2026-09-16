@@ -5,6 +5,33 @@ import Testing
 
 @Suite("Current paragraph identities")
 struct ParagraphAnchorPlannerTests {
+    @Test("Cached anchors cannot outlive their authored marker or replace current source spans")
+    func staleSuppliedAnchorProjection() throws {
+        let previous = NoteDocument(relativePath: "A.md", rawContent: "Old. ^old")
+        let stale = MarkdownSemanticDocument(parsing: previous)
+        for raw in [
+            "\u{FEFF}---\r\nunknown: 'unchanged' # comment\r\n---\r\n当前 🦉 e\u{301}.",
+            "\u{FEFF}---\r\nunknown: 'unchanged' # comment\r\n---\r\n当前 🦉 e\u{301}. ^current",
+        ] {
+            let current = NoteDocument(relativePath: "A.md", rawContent: raw)
+            let before = current.sourceBytes
+            let anchors = ParagraphAnchorPlanner.anchors(in: current, semantic: stale)
+            #expect(anchors == ParagraphAnchorPlanner.anchors(in: current))
+            #expect(!anchors.contains { $0.id == "old" })
+            if let markerRange = raw.range(of: "^current") {
+                let anchor = try #require(anchors.first)
+                #expect(anchor.id == "current")
+                let lowerByte = raw.utf8.distance(from: raw.utf8.startIndex, to: markerRange.lowerBound)
+                let upperByte = raw.utf8.distance(from: raw.utf8.startIndex, to: markerRange.upperBound)
+                #expect(anchor.markerSpan.utf8Range == lowerByte..<upperByte)
+                #expect((raw as NSString).substring(with: anchor.paragraphSpan.nsRange) == "当前 🦉 e\u{301}. ^current")
+            } else {
+                #expect(anchors.isEmpty)
+            }
+            #expect(current.sourceBytes == before)
+        }
+    }
+
     @Test("A matching fingerprint cannot authorize malformed cached source coordinates")
     func malformedSuppliedProjection() throws {
         let document = NoteDocument(relativePath: "A.md", rawContent: "😀 Current. ^one\r\n\r\nTail.")

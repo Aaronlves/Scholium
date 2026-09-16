@@ -195,7 +195,8 @@ struct ArchitectureStabilityMeasurementTests {
             #expect(initial.enumeratedFiles == 800)
             #expect(initial.readFiles == 800)
             #expect(initial.parsedDocuments == 800)
-            #expect(initial.projectedDocuments == 800)
+            #expect(initial.projectedDocuments == 0)
+            #expect(initial.restoredSearchProjections == 800)
             for measurement in [added, edited, renamed] {
                 #expect(measurement.enumeratedFiles == 0)
                 #expect(measurement.readFiles == 1)
@@ -244,6 +245,9 @@ struct ArchitectureStabilityMeasurementTests {
             "read_files": measurement.readFiles,
             "parsed_documents": measurement.parsedDocuments,
             "projected_documents": measurement.projectedDocuments,
+            "restored_search_projections": measurement.restoredSearchProjections,
+            "cache_read_work_ms": milliseconds(measurement.cacheReadDuration),
+            "cache_write_work_ms": milliseconds(measurement.cacheWriteDuration),
             "snapshot_source_bytes": measurement.snapshotSourceBytes,
             "enumeration_ms": milliseconds(measurement.enumerationDuration),
             "read_ms": milliseconds(measurement.readDuration),

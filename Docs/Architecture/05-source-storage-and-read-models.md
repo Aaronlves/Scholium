@@ -136,13 +136,26 @@ proves source ranges, refusing ambiguous keys or unbounded scalar tokens.
 aliases, author text and publication date. These are discovery projections,
 not bibliographic validation or writable source.
 
-Search contract 20 and disposable schema 18 use the existing `property:`
+`SourceSearchProjectionCache` persists disposable Search text and coordinates
+under machine-local `Vaults/<vault-id>/source-projections-v1/`. The pooled
+`VaultSourceCatalog` restores them only after fresh descriptor-backed source
+reads and semantic parsing. Records bind exact path bytes, fingerprint, vault,
+role/profile, parser and Search policies, and validate payload digests and
+coordinates against fresh source. Bounded no-follow reads, atomic writes and
+pruning use `SecureRecordDirectory`; missing, incompatible, corrupt or unwritable
+cache records cause recomputation. The store contains no authoritative source,
+file facts, stable identity or dynamic graph state.
+
+Search contract 20 and disposable schema 19 use the existing `property:`
 grammar with quoted literal keys and normalized scalar/direct-list equality.
 All property rows and persisted projection-completeness issues come from source.
 `SearchDocumentProjection` also derives top-level paragraph text, exact offset maps and
-ranges. The index stores the complete paragraph projections and body-completeness flag;
-negation never evaluates a cropped passage. Generated paragraph bounds are validated
-against the indexed source size. `SearchTermGroupStore` owns the app-local versioned
+ranges. The index stores complete paragraphs through private records that reuse
+the lexical segments' binary offset-map encoding; the public paragraph projection
+and exact coordinate arrays are unchanged. It also stores the body-completeness flag;
+negation never evaluates a cropped passage. Opening validates complete paragraphs
+and offset maps against indexed source bounds, scanning stored binary coordinates
+without reconstructing discarded projections. `SearchTermGroupStore` owns the app-local versioned
 `search-term-groups.json` beside Saved Searches, using bounded reads, group-level
 preimage comparison and atomic persistence through WorkspaceRuntime. It stores literal
 input alternatives, not ASTs or hidden query expansion.

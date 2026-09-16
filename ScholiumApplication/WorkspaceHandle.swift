@@ -386,6 +386,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     private let leases: [SecurityScopeLease]
     var currentSnapshot: WorkspaceSnapshot
     private(set) var latestRefreshMeasurement: WorkspaceRefreshMeasurement
+    private(set) var latestRefreshCycleMeasurement: WorkspaceRefreshCycleMeasurement?
     private var nextGraphGeneration = 2
     private var refreshCoordinator:
         WorkspaceRefreshCoordinator<
@@ -841,6 +842,10 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     public func openingPresentationDidComplete() {
         openingPresentationSignal.continuation.yield()
         openingPresentationSignal.continuation.finish()
+    }
+
+    func awaitOpeningCompletionForTesting() async {
+        await openingCompletionTask?.value
     }
 
     func importMarkdown(
@@ -2412,12 +2417,18 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         requestID: RefreshRequestID,
         payloads: [WorkspaceRefreshPayload]
     ) async throws -> WorkspaceSnapshot {
+        let clock = ContinuousClock()
+        let cycleStart = clock.now
         let refreshLease = try await beginRefreshCycle()
+        let gateWaitDuration = cycleStart.duration(to: clock.now)
         defer { endRefreshCycle(refreshLease) }
         let payload = try WorkspaceRefreshPayload.merged(payloads)
         let snapshot: WorkspaceSnapshot
         let measurement: WorkspaceRefreshMeasurement
+        let sourcePreparationDuration: Duration
+        let buildDuration: Duration
         do {
+            let preparationStart = clock.now
             if mode == .live,
                 !currentSnapshot.phase.isComplete,
                 !didCompleteActivationReconciliation
@@ -2434,6 +2445,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             } else {
                 try await prepareSourceCatalogs(payload.sourceCatalogPreparation)
             }
+            sourcePreparationDuration = preparationStart.duration(to: clock.now)
             guard nextGraphGeneration < Int.max else {
                 throw WorkspaceRefreshCycleError.graphGenerationExhausted
             }
@@ -2450,6 +2462,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             )
             let graphGeneration = nextGraphGeneration
             nextGraphGeneration += 1
+            let buildStart = clock.now
             let build = try await WorkspaceSnapshotBuilder.build(
                 assignment: assignment,
                 mode: mode,
@@ -2457,6 +2470,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 graphGeneration: graphGeneration,
                 workspaceGeneration: workspaceGeneration,
             )
+            buildDuration = buildStart.duration(to: clock.now)
             snapshot = build.snapshot
             measurement = build.measurement
             latestRefreshMeasurement = measurement
@@ -2482,16 +2496,26 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         sourceAheadIdentityRecords.removeAll(keepingCapacity: true)
         let confirmsEarlierFailure = derivedStateRequiresRefresh
         derivedStateRequiresRefresh = false
-        let publicationStart = ContinuousClock().now
+        let publicationStart = clock.now
         await publish(
             payload.publication,
             previous: previous,
             snapshot: snapshot,
             confirmsEarlierFailure: confirmsEarlierFailure
         )
-        Self.logRefresh(
-            measurement,
-            publicationDuration: publicationStart.duration(to: ContinuousClock().now)
+        let publicationDuration = publicationStart.duration(to: clock.now)
+        let cycleMeasurement = WorkspaceRefreshCycleMeasurement(
+            workspaceGeneration: measurement.workspaceGeneration,
+            gateWaitDuration: gateWaitDuration,
+            sourcePreparationDuration: sourcePreparationDuration,
+            buildDuration: buildDuration,
+            publicationDuration: publicationDuration,
+            totalDuration: cycleStart.duration(to: clock.now)
+        )
+        latestRefreshCycleMeasurement = cycleMeasurement
+        Self.logRefresh(measurement, publicationDuration: publicationDuration)
+        Self.refreshLogger.info(
+            "cycle generation=\(cycleMeasurement.workspaceGeneration, privacy: .public) gateWait=\(String(describing: cycleMeasurement.gateWaitDuration), privacy: .public) sourcePreparation=\(String(describing: cycleMeasurement.sourcePreparationDuration), privacy: .public) build=\(String(describing: cycleMeasurement.buildDuration), privacy: .public) publish=\(String(describing: cycleMeasurement.publicationDuration), privacy: .public) total=\(String(describing: cycleMeasurement.totalDuration), privacy: .public)"
         )
         return snapshot
     }
@@ -2501,7 +2525,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         publicationDuration: Duration?
     ) {
         refreshLogger.info(
-            "generation=\(measurement.workspaceGeneration, privacy: .public) files=\(measurement.enumeratedFiles, privacy: .public) reads=\(measurement.readFiles, privacy: .public) parses=\(measurement.parsedDocuments, privacy: .public) projections=\(measurement.projectedDocuments, privacy: .public) sourceBytes=\(measurement.snapshotSourceBytes, privacy: .public) enumerate=\(String(describing: measurement.enumerationDuration), privacy: .public) read=\(String(describing: measurement.readDuration), privacy: .public) parse=\(String(describing: measurement.parseDuration), privacy: .public) project=\(String(describing: measurement.projectionDuration), privacy: .public) identity=\(String(describing: measurement.identityProjectionDuration), privacy: .public) graph=\(String(describing: measurement.graphDuration), privacy: .public) research=\(String(describing: measurement.researchStateDuration), privacy: .public) searchProjection=\(String(describing: measurement.searchDocumentProjectionDuration), privacy: .public) search=\(String(describing: measurement.searchDuration), privacy: .public) assemble=\(String(describing: measurement.snapshotAssemblyDuration), privacy: .public) publish=\(String(describing: publicationDuration), privacy: .public) total=\(String(describing: measurement.totalDuration), privacy: .public)"
+            "generation=\(measurement.workspaceGeneration, privacy: .public) files=\(measurement.enumeratedFiles, privacy: .public) reads=\(measurement.readFiles, privacy: .public) parses=\(measurement.parsedDocuments, privacy: .public) projections=\(measurement.projectedDocuments, privacy: .public) restored=\(measurement.restoredSearchProjections, privacy: .public) sourceBytes=\(measurement.snapshotSourceBytes, privacy: .public) enumerate=\(String(describing: measurement.enumerationDuration), privacy: .public) read=\(String(describing: measurement.readDuration), privacy: .public) parse=\(String(describing: measurement.parseDuration), privacy: .public) project=\(String(describing: measurement.projectionDuration), privacy: .public) cacheRead=\(String(describing: measurement.cacheReadDuration), privacy: .public) cacheWrite=\(String(describing: measurement.cacheWriteDuration), privacy: .public) identity=\(String(describing: measurement.identityProjectionDuration), privacy: .public) links=\(String(describing: measurement.linkCatalogProjectionDuration), privacy: .public) graph=\(String(describing: measurement.graphDuration), privacy: .public) research=\(String(describing: measurement.researchStateDuration), privacy: .public) searchProjection=\(String(describing: measurement.searchDocumentProjectionDuration), privacy: .public) search=\(String(describing: measurement.searchDuration), privacy: .public) assemble=\(String(describing: measurement.snapshotAssemblyDuration), privacy: .public) publish=\(String(describing: publicationDuration), privacy: .public) total=\(String(describing: measurement.totalDuration), privacy: .public)"
         )
     }
 
@@ -2726,9 +2750,16 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         if completesOpeningInBackground {
             let presentationEvents = openingPresentationSignal.stream
             openingCompletionTask = Task(priority: .utility) { [weak self] in
+                let clock = ContinuousClock()
+                let openingStart = clock.now
                 await Self.waitForOpeningPresentationOrFallback(presentationEvents)
                 guard !Task.isCancelled, let self else { return }
+                let presentationWait = openingStart.duration(to: clock.now)
+                let completionStart = clock.now
                 await self.completeLiveOpening()
+                Self.refreshLogger.info(
+                    "openingBackground presentationWait=\(String(describing: presentationWait), privacy: .public) completionWork=\(String(describing: completionStart.duration(to: clock.now)), privacy: .public) total=\(String(describing: openingStart.duration(to: clock.now)), privacy: .public)"
+                )
             }
             return
         }

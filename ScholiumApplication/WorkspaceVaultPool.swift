@@ -357,7 +357,9 @@ actor WorkspaceVaultPool {
                 repository: repository,
                 sourceCatalog: VaultSourceCatalog(
                     repository: repository,
-                    vaultRole: registeredVault.role
+                    vaultRole: registeredVault.role,
+                    applicationSupportURL: applicationSupportURL,
+                    vaultID: registeredVault.id
                 ),
                 securityScopeURL: securityScopeURL,
                 watcher: watcher

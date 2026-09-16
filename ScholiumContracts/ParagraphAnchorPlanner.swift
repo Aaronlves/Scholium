@@ -37,6 +37,9 @@ public enum ParagraphAnchorPlanner {
         in document: NoteDocument,
         semantic supplied: MarkdownSemanticDocument? = nil
     ) -> [ParagraphAnchor] {
+        // Authored anchors require an ASCII caret in the exact source. Avoid
+        // constructing and validating source coordinates when none can exist.
+        guard document.sourceBytes.contains(0x5e) else { return [] }
         let source = document.rawContent as NSString
         let mapper = SemanticSourceMapper(document.rawContent)
         let semantic =
