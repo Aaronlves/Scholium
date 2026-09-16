@@ -36,7 +36,8 @@ Library and Chat share native header controls and a spacing grid; headings,
 dates and row text align. The bottom
 composer and compact conversation-files entry float above the transcript using
 native Liquid Glass. Transcript content scrolls beneath these controls, with no
-extra opaque backing, gradient mask or simulated blur. A measured bottom inset
+extra opaque backing, gradient mask or simulated blur. One bottom area arranges
+the queue, input/request surface and candidate anchor. Its measured inset
 lets the latest message and every action scroll fully clear of the controls;
 growing drafts and material changes update that inset without moving a researcher
 reading earlier messages. New replies follow the bottom only while already there;
@@ -311,7 +312,9 @@ The composer uses `/` for supported conversation controls, `@` for Note/material
 selection and `$` for Skills. A small native candidate popover filters
 the current query, supports arrows, Return and Escape, and never consumes marked
 text or sends the message on selection. Literal punctuation outside an active
-candidate query remains ordinary prose. Selection replaces only that query and
+candidate query remains ordinary prose. Candidate placement follows its measured
+content and input anchor rather than a row-count estimate in the conversation.
+Selection replaces only that query and
 preserves surrounding text, native Undo and the captured conversation. A single
 discoverable actions entry offers the same routes without requiring memorized
 syntax: file selection, Note mentions, Skills and commands. Menu labels name

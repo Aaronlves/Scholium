@@ -6,6 +6,78 @@ import Testing
 
 @Suite("Native chat input") @MainActor
 struct AgentChatComposerInputTests {
+    @Test("Composition is published by the attached composer and blocks its delivery until committed")
+    func composerCompositionDelivery() {
+        let host = AgentChatComposerHost()
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 300, height: 80), styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = host
+        defer { window.close() }
+        let id = UUID()
+        let completion = AgentChatComposerCompletion()
+        host.conversationID = id
+        host.editor.completionConversationID = id
+        host.completion = completion
+        completion.attach(to: host.editor, in: id)
+        #expect(completion.canSubmit(in: id) && !completion.isComposing)
+        host.editor.setMarkedText("pin", selectedRange: NSRange(location: 3, length: 0), replacementRange: NSRange(location: NSNotFound, length: 0))
+        #expect(completion.isComposing && !completion.canSubmit(in: id))
+        host.editor.insertText("拼", replacementRange: NSRange(location: NSNotFound, length: 0))
+        #expect(!completion.isComposing && completion.canSubmit(in: id))
+        #expect(host.editor.string == "拼")
+        host.editor.isEditable = false
+        #expect(!completion.canSubmit(in: id))
+        host.editor.isEditable = true
+        #expect(!completion.canSubmit(in: UUID()) && !completion.canSubmit(in: nil))
+        completion.detach(from: host.editor)
+        #expect(!completion.canSubmit(in: id) && !completion.isComposing)
+        host.editor.setMarkedText("pin", selectedRange: NSRange(location: 3, length: 0), replacementRange: NSRange(location: NSNotFound, length: 0))
+        completion.refresh(from: host.editor, in: id)
+        #expect(
+            completion.editor == nil && completion.conversationID == nil && !completion.isComposing,
+            "A late native callback cannot attach an input after teardown")
+    }
+
+    @Test("Delivery uses the bound conversation input after focus moves and ignores a retired composer")
+    func composerDeliveryIdentity() {
+        let first = AgentChatComposerHost()
+        let second = AgentChatComposerHost()
+        let windows = [first, second].map { host in
+            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 300, height: 80), styleMask: [.titled], backing: .buffered, defer: false)
+            window.isReleasedWhenClosed = false
+            window.contentView = host
+            return window
+        }
+        defer { windows.forEach { $0.close() } }
+        let firstID = UUID()
+        let secondID = UUID()
+        let completion = AgentChatComposerCompletion()
+        first.conversationID = firstID
+        first.editor.completionConversationID = firstID
+        first.completion = completion
+        completion.attach(to: first.editor, in: firstID)
+        second.conversationID = secondID
+        second.editor.completionConversationID = secondID
+        second.completion = completion
+        completion.attach(to: second.editor, in: secondID)
+        first.editor.setMarkedText("pin", selectedRange: NSRange(location: 3, length: 0), replacementRange: NSRange(location: NSNotFound, length: 0))
+        #expect(completion.editor === second.editor && !completion.isComposing)
+        #expect(!completion.canSubmit(in: firstID) && completion.canSubmit(in: secondID))
+        windows[1].makeFirstResponder(nil)
+        #expect(completion.canSubmit(in: secondID), "Activating a native Send control need not retain editor focus")
+        first.completion?.detach(from: first.editor)
+        #expect(completion.editor === second.editor)
+        second.editor.completionConversationID = firstID
+        completion.refresh(from: second.editor, in: firstID)
+        #expect(
+            completion.conversationID == secondID,
+            "Draft replacement notifications cannot transfer the bound conversation")
+        #expect(!completion.canSubmit(in: secondID), "A reused editor cannot deliver for its previous conversation")
+        second.editor.completionConversationID = secondID
+        windows[1].contentView = nil
+        #expect(!completion.canSubmit(in: secondID))
+    }
+
     @Test("Send clearing or replacing a draft discards invalid typing ranges and retains new typing Undo", arguments: ["", "short"])
     func replacedDraftResetsOnlyItsTypingHistory(replacement: String) throws {
         let host = AgentChatComposerHost()
@@ -47,7 +119,10 @@ struct AgentChatComposerInputTests {
         let secondWindow = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 300, height: 80), styleMask: [.titled], backing: .buffered, defer: false)
         firstWindow.isReleasedWhenClosed = false
         secondWindow.isReleasedWhenClosed = false
-        defer { firstWindow.close(); secondWindow.close() }
+        defer {
+            firstWindow.close()
+            secondWindow.close()
+        }
         let root = try #require(firstWindow.contentView)
         first.frame = NSRect(x: 0, y: 0, width: 300, height: 70)
         second.frame = NSRect(x: 0, y: 80, width: 300, height: 70)
@@ -59,7 +134,10 @@ struct AgentChatComposerInputTests {
         let nativeUndo = try #require(native.undoManager)
         #expect(firstUndo !== secondUndo && firstUndo !== nativeUndo && secondUndo !== nativeUndo)
 
-        for (editor, manager, text) in [(first.editor as NSTextView, firstUndo, "first draft"), (second.editor as NSTextView, secondUndo, "second draft"), (native, nativeUndo, "window input")] {
+        for (editor, manager, text) in [
+            (first.editor as NSTextView, firstUndo, "first draft"), (second.editor as NSTextView, secondUndo, "second draft"),
+            (native, nativeUndo, "window input"),
+        ] {
             manager.groupsByEvent = false
             manager.beginUndoGrouping()
             editor.insertText(text, replacementRange: NSRange(location: 0, length: 0))
@@ -146,6 +224,7 @@ struct AgentChatComposerInputTests {
         host.completion = completion
         host.editor.string = "中文 😀 @论证 后文"
         host.editor.setSelectedRange(NSRange(location: 9, length: 0))
+        completion.attach(to: host.editor, in: id)
         completion.refresh(from: host.editor, in: id)
         let candidate = AgentChatComposerCandidate(id: "note", title: "论证", detail: "", symbol: "doc", action: .notePicker)
         var choices = 0
@@ -207,7 +286,7 @@ struct AgentChatComposerInputTests {
         window.contentView = host
         defer { window.close() }
         let completion = AgentChatComposerCompletion()
-        completion.editor = host.editor
+        completion.attach(to: host.editor, in: nil)
         host.editor.string = "前文 后文"
         host.editor.setSelectedRange(NSRange(location: 0, length: 2))
         completion.begin("@")
@@ -235,6 +314,7 @@ struct AgentChatComposerInputTests {
         host.editor.insertText("/skills", replacementRange: NSRange(location: 0, length: 0))
         undo.endUndoGrouping()
         host.editor.setSelectedRange(NSRange(location: 7, length: 0))
+        completion.attach(to: host.editor, in: id)
         completion.refresh(from: host.editor, in: id)
         let candidate = AgentChatComposerCandidate(id: "skills", title: "/skills", detail: "", symbol: "doc", action: .methods)
         completion.candidates = [candidate]

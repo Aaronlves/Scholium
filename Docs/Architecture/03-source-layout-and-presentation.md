@@ -136,23 +136,31 @@ without a separate review or Ready-stage controller. The root keeps workspace
 routing closed until registration completes and waits for window readiness
 before dismissal.
 
-Agent execution and tool selection remain in the external runtime. Optional
-Triptych-level Chat uses the official Codex App Server client described in the
-Agent architecture chapter; it adds no Run or portable result browser. The
-Chat presentation uses standard `GroupBox` content groups and macOS grouped
-`TabView` navigation for Agent activity/details and context/account usage.
-Tab selection belongs only to the containing view; the child composer remains
-outside the tab subtree. Cards borrow existing request, material and execution
-values and add no transport, storage, policy or animation coordinator. Native
-symbol replacement is scoped to the delivery indicator; reduced motion keeps
-its textual state without an animated replacement.
+Chat has four presentation responsibilities, independently of its
+[runtime and durable conversation owners](02-agent-collaboration.md#native-chat-client):
+
+| Responsibility | Current owner and boundary |
+| --- | --- |
+| Shell and routing | `AgentChatView` selects list/detail, connects window actions and presents conversation destinations. It consumes controller state without owning transport or permission. |
+| Conversation layout | The transcript's native viewport owns vertical scroll position. `AgentChatInputArea` owns queue/dock placement and candidate anchoring; its occupied size enters the transcript through one bottom safe-area inset. |
+| Content components | Message, activity, queue, request and material views render supplied values and emit named actions. Disclosure and copy confirmation are local presentation state. |
+| Native interaction | The composer owns its `NSTextView`, composition and Undo; the safe reader owns WebKit content and selection; shared native previews own temporary-window geometry and dismissal. |
+
+These are responsibility boundaries, not four new services or runtime layers.
+Shell and conversation assembly still share `AgentChatView`; the window-local
+reading store outlives each displayed conversation. Child components do not
+compensate for sibling geometry with their own margins, report guessed popup
+heights to the shell, or read another window's responder to determine input state.
+Queue content owns its disclosure; the input-area layout owns its backing surface
+and the empty overlap margin. Candidate placement uses measured view alignment
+without a second focus session. The dock retains its native editor while a
+request occupies its surface; changing the queue or candidates does not replace it.
 `AgentChatReplyProjection` serially projects received Markdown off the UI actor;
 the retained reader updates its sanitized content without a character-reveal queue.
 `AgentChatMessageArrival` owns one local opacity reveal after reader readiness.
 History reading, adaptation and inactive presentation show content immediately
 and consume that reveal; subsequent policy changes cannot hide the message again.
-The
-Settings **Agents & Chat** destination shows exact Codex and Claude Code MCP
+Settings **Agents & Chat** shows exact Codex and Claude Code MCP
 registration commands and reveals the bundled Core Protocol Skill. It does not
 store credentials or choose an Agent application.
 

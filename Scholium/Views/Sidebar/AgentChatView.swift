@@ -1408,27 +1408,26 @@ struct AgentChatView: View {
                 ? String(localized: "Answer Agent", bundle: .module)
                 : String(localized: "Review Permission", bundle: .module)
         let turnID = controller.currentTurnID
-        return VStack(spacing: 0) {
-            if !controller.queuedMessages.isEmpty {
-                AgentChatQueueView(
-                    messages: controller.queuedMessages,
-                    canSend: { controller.canSendQueuedMessage($0.id) },
-                    send: { _ = controller.sendQueuedMessage($0) },
-                    canSteer: { controller.canSteerQueuedMessage($0.id) },
-                    steer: { id in if let turnID { _ = controller.steerQueuedMessage(id, expectedTurnID: turnID) } },
-                    remove: { controller.removeQueuedMessage($0) },
-                    edit: { message in
-                        guard let conversationID else { return }
-                        queueEditTarget = .init(conversationID: conversationID, message: message)
-                    })
-            }
+        return AgentChatInputArea(hasQueue: !controller.queuedMessages.isEmpty) {
+            AgentChatQueueView(
+                messages: controller.queuedMessages,
+                canSend: { controller.canSendQueuedMessage($0.id) },
+                send: { _ = controller.sendQueuedMessage($0) },
+                canSteer: { controller.canSteerQueuedMessage($0.id) },
+                steer: { id in if let turnID { _ = controller.steerQueuedMessage(id, expectedTurnID: turnID) } },
+                remove: { controller.removeQueuedMessage($0) },
+                edit: { message in
+                    guard let conversationID else { return }
+                    queueEditTarget = .init(conversationID: conversationID, message: message)
+                })
+        } input: {
             AgentChatInputDock(
                 requestID: pending.map { "approval:\($0.id)" } ?? asyncMessage.map { "question:\($0.id)" }, requestTitle: title,
                 requestCount: controller.approvals.count + (asyncMessage == nil ? 0 : 1), isActive: isVisible && !showsConversationList,
                 isReadingHistory: isAwayFromLatest || readingIsPaused || transcriptIsScrolling,
                 isEditingDraft: messageIsFocused
                     && (controller.selected?.draft.isEmpty == false
-                        || (NSApp.keyWindow?.firstResponder as? NSTextView)?.hasMarkedText() == true),
+                        || completion.isComposing),
                 composerIsFocused: $messageIsFocused,
                 onRequestExpanded: {
                     completion.dismiss()
@@ -1452,15 +1451,11 @@ struct AgentChatView: View {
             } composer: {
                 composer
             }
-            .padding(.top, controller.queuedMessages.isEmpty ? 0 : -28)
             .onChange(of: pending?.id) { _, _ in contextAnchor = nil }
             .onChange(of: asyncMessage?.id) { _, _ in contextAnchor = nil }
-        }
-        .overlay(alignment: .top) {
+        } candidates: {
             if completion.query != nil {
                 AgentChatComposerCandidates(completion: completion, candidates: completionCandidates)
-                    .padding(.horizontal, ScholiumSidebarLayout.edgeInset)
-                    .offset(y: -AgentChatComposerCandidates.presentationHeight(for: completionCandidates.count))
             }
         }
     }
@@ -1539,7 +1534,10 @@ struct AgentChatView: View {
                 isFocused: Binding(get: { messageIsFocused }, set: { messageIsFocused = $0 }),
                 conversationID: conversationID,
                 isEnabled: controller.isLoaded,
-                submit: { controller.submitDraft(whileWorking: inputBehavior) },
+                submit: {
+                    guard controller.selectedID == conversationID, completion.canSubmit(in: conversationID) else { return }
+                    controller.submitDraft(whileWorking: inputBehavior)
+                },
                 completion: completion, candidates: completionCandidates, candidateQuery: completion.query,
                 canChooseCompletion: { canChooseCompletion($0, in: conversationID) },
                 chooseCompletion: { candidate in chooseCompletion(candidate, in: conversationID) },
@@ -1604,11 +1602,11 @@ struct AgentChatView: View {
                     state: controller.state, canSend: controller.canSend,
                     queuesInput: inputBehavior == .queue,
                     submit: {
-                        guard (NSApp.keyWindow?.firstResponder as? NSTextView)?.hasMarkedText() != true else { return }
+                        guard controller.selectedID == conversationID, completion.canSubmit(in: conversationID) else { return }
                         controller.submitDraft(whileWorking: inputBehavior)
                     },
                     submitAlternate: {
-                        guard (NSApp.keyWindow?.firstResponder as? NSTextView)?.hasMarkedText() != true else { return }
+                        guard controller.selectedID == conversationID, completion.canSubmit(in: conversationID) else { return }
                         controller.submitDraft(whileWorking: inputBehavior == .queue ? .steer : .queue)
                     }, stop: controller.stop)
             }

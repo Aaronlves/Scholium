@@ -15,6 +15,118 @@ struct AgentChatInputDockTests {
         func updateNSView(_ view: NSView, context: Context) { record(isEnabled) }
     }
 
+    private struct LayoutProbe: NSViewRepresentable {
+        let name: String
+
+        func makeNSView(context: Context) -> NSView {
+            let view = NSView()
+            view.identifier = NSUserInterfaceItemIdentifier(name)
+            return view
+        }
+
+        func updateNSView(_ view: NSView, context: Context) {}
+    }
+
+    @Test("Input-area layout preserves the native draft while queue and measured candidates change")
+    func inputAreaKeepsEditorAndAnchorsCandidates() async throws {
+        _ = NSApplication.shared
+        let conversation = UUID()
+        let originalDraft = "Draft with 尚未发送的选区."
+        var draft = originalDraft
+        var focused = false
+        func content(queueHeight: CGFloat?, candidateHeight: CGFloat) -> some View {
+            VStack(spacing: 0) {
+                Spacer(minLength: 0)
+                AgentChatInputArea(hasQueue: queueHeight != nil) {
+                    Text("Queued input").frame(height: queueHeight ?? 0)
+                        .frame(maxWidth: .infinity)
+                        .background(LayoutProbe(name: "queue-content"))
+                } input: {
+                    AgentChatInputDock(
+                        requestID: nil, requestTitle: "", requestCount: 0,
+                        isActive: true, isReadingHistory: false, isEditingDraft: false,
+                        composerIsFocused: Binding(get: { focused }, set: { focused = $0 })
+                    ) {
+                        EmptyView()
+                    } composer: {
+                        AgentChatComposerInput(
+                            text: Binding(get: { draft }, set: { draft = $0 }),
+                            isFocused: Binding(get: { focused }, set: { focused = $0 }),
+                            conversationID: conversation, isEnabled: true, submit: {})
+                    }
+                } candidates: {
+                    Text("Measured candidates").frame(height: candidateHeight)
+                        .frame(maxWidth: .infinity)
+                        .background(LayoutProbe(name: "candidates"))
+                }
+                .background(LayoutProbe(name: "input-area"))
+            }
+            .frame(width: 340, height: 600)
+        }
+
+        let host = NSHostingView(rootView: content(queueHeight: nil, candidateHeight: 35))
+        host.frame = NSRect(x: 0, y: 0, width: 340, height: 600)
+        let window = NSWindow(contentRect: host.frame, styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = host
+        defer {
+            window.contentView = nil
+            window.close()
+        }
+        func descendants(_ view: NSView) -> [NSView] {
+            [view] + view.subviews.flatMap { descendants($0) }
+        }
+        func frame(_ name: String) -> CGRect? {
+            guard let view = descendants(host).first(where: { $0.identifier?.rawValue == name }) else { return nil }
+            return view.convert(view.bounds, to: host)
+        }
+        func settle(queueHeight: CGFloat?, candidateHeight: CGFloat) async throws {
+            let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+            repeat {
+                await Task.yield()
+                window.layoutIfNeeded()
+                host.layoutSubtreeIfNeeded()
+                if let candidate = frame("candidates"), abs(candidate.height - candidateHeight) < 0.5,
+                    let area = frame("input-area"), area.height > 0,
+                    queueHeight.map({ abs((frame("queue-content")?.height ?? -1) - $0) < 0.5 })
+                        ?? (frame("queue-content") == nil)
+                {
+                    return
+                }
+            } while ContinuousClock.now < deadline
+            Issue.record("Input area did not lay out the requested queue and candidate sizes")
+        }
+
+        try await settle(queueHeight: nil, candidateHeight: 35)
+        let editor = try #require(descendants(host).compactMap { $0 as? AgentChatComposerHost }.first)
+        let selection = NSRange(location: 11, length: 5)
+        editor.editor.setSelectedRange(selection)
+        let initialArea = try #require(frame("input-area"))
+        var lastQueuedHeight: CGFloat?
+        let states: [(CGFloat?, CGFloat)] = [(nil, 35), (40, 84), (112, 51), (nil, 120)]
+        for (queueHeight, candidateHeight) in states {
+            host.rootView = content(queueHeight: queueHeight, candidateHeight: candidateHeight)
+            try await settle(queueHeight: queueHeight, candidateHeight: candidateHeight)
+            let editors = descendants(host).compactMap { $0 as? AgentChatComposerHost }
+            #expect(editors.count == 1 && editors.first === editor)
+            #expect(editor.editor.string == originalDraft && draft == originalDraft)
+            #expect(editor.editor.selectedRange() == selection)
+
+            let area = try #require(frame("input-area"))
+            let candidate = try #require(frame("candidates"))
+            let areaTop = host.isFlipped ? area.minY : area.maxY
+            let candidateBottom = host.isFlipped ? candidate.maxY : candidate.minY
+            #expect(abs(candidateBottom - areaTop) < 0.5)
+            #expect(candidate.minY >= host.bounds.minY && candidate.maxY <= host.bounds.maxY)
+            if queueHeight != nil {
+                #expect(area.height > (lastQueuedHeight ?? initialArea.height))
+                lastQueuedHeight = area.height
+            } else {
+                #expect(abs(area.height - initialArea.height) < 0.5)
+            }
+        }
+    }
+
     @Test("Resolving a request restores typing focus only when history reading has not taken over", arguments: [false, true])
     func requestResolutionPreservesReadingFocus(readingHistory: Bool) async throws {
         _ = NSApplication.shared
@@ -162,9 +274,16 @@ struct AgentChatInputDockTests {
                     window.layoutIfNeeded()
                     host.layoutSubtreeIfNeeded()
                 }
+                let enabledDeadline = ContinuousClock.now.advanced(by: .seconds(3))
+                while editor.editor.isEditable != (requestID == nil), ContinuousClock.now < enabledDeadline {
+                    await Task.yield()
+                    window.layoutIfNeeded()
+                    host.layoutSubtreeIfNeeded()
+                }
                 #expect(editors(host).first === editor)
                 #expect(editor.editor.string == draft && draft == "尚未发送的草稿，保留选区。")
                 #expect(editor.editor.selectedRange() == range)
+                #expect(editor.editor.isEditable == (requestID == nil))
                 #expect(sent == 0)
                 if requestID != nil { #expect(requestExpansions > 0) }
                 if ProcessInfo.processInfo.environment["SCHOLIUM_RENDER_CHAT"] == "1" {

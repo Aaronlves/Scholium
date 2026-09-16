@@ -82,7 +82,6 @@ struct AgentChatInputDock<Request: View, Composer: View>: View {
         .padding(ScholiumSidebarLayout.rowInset)
         .scholiumFloatingSurface(in: RoundedRectangle(cornerRadius: 24))
         .animation(ScholiumMotion.disclosure(reduceMotion: reduceMotion), value: expanded)
-        .padding(ScholiumSidebarLayout.edgeInset)
         .tint(nil as Color?)
         .onChange(of: requestID, initial: true) { _, id in
             if presentation.receive(id, mayExpand: isActive && !isEditingDraft && !isReadingHistory), isActive && !isReadingHistory {

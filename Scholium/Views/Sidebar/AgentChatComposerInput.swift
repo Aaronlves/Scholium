@@ -5,6 +5,7 @@ import SwiftUI
 /// One native multiline editor owns the entire message input region, including
 /// whitespace, selection, Undo, marked text and Return commands.
 struct AgentChatComposerInput: NSViewRepresentable {
+    @Environment(\.isEnabled) private var environmentIsEnabled
     @Binding var text: String
     @Binding var isFocused: Bool
     let conversationID: UUID?
@@ -22,9 +23,8 @@ struct AgentChatComposerInput: NSViewRepresentable {
     }
 
     func updateNSView(_ host: AgentChatComposerHost, context: Context) {
+        if host.completion !== completion { host.completion?.detach(from: host.editor) }
         host.completion = completion
-        host.editor.completionConversationID = conversationID
-        completion?.editor = host.editor
         completion?.candidates = candidates
         completion?.candidateQuery = candidateQuery
         completion?.canAccept = canChooseCompletion
@@ -42,12 +42,17 @@ struct AgentChatComposerInput: NSViewRepresentable {
             host.editor.replaceDraft(text, selection: NSRange(location: min(selection.location, (text as NSString).length), length: 0))
             host.lastPublishedText = text
         }
+        host.editor.completionConversationID = conversationID
+        completion?.attach(to: host.editor, in: conversationID)
+        // Replacement notifications occur before the new identity is attached;
+        // publish the initialized draft's query only after that handoff finishes.
+        completion?.refresh(from: host.editor, in: conversationID)
         host.onEdit = { text = $0 }
         host.onFocus = { if isFocused != $0 { isFocused = $0 } }
         host.editor.onSubmit = submit
         host.editor.onTransferMaterials = transferMaterials
-        host.editor.isEditable = isEnabled
-        host.editor.isSelectable = isEnabled
+        host.editor.isEditable = isEnabled && environmentIsEnabled
+        host.editor.isSelectable = isEnabled && environmentIsEnabled
         if host.focusValue != isFocused {
             host.focusValue = isFocused
             host.requestedFocus = isFocused
@@ -73,6 +78,7 @@ struct AgentChatComposerInput: NSViewRepresentable {
         host.editor.onSubmit = nil
         host.editor.onTransferMaterials = nil
         host.editor.onFocusChange = nil
+        host.editor.onCompositionChange = nil
         host.editor.delegate = nil
         host.editor.onCompletionKey = nil
         host.completion?.detach(from: host.editor)
@@ -111,6 +117,10 @@ struct AgentChatComposerInput: NSViewRepresentable {
         editor.textContainer?.widthTracksTextView = true
         editor.textContainer?.heightTracksTextView = false
         editor.onFocusChange = { [weak self] in self?.onFocus?($0) }
+        editor.onCompositionChange = { [weak self] in
+            guard let self else { return }
+            self.completion?.refresh(from: self.editor, in: self.conversationID)
+        }
         editor.delegate = self
         editor.setAccessibilityLabel(String(localized: "Message", bundle: .module))
         editor.setAccessibilityHelp(AgentChatComposerTextView.placeholder)
@@ -217,20 +227,24 @@ struct AgentChatComposerInput: NSViewRepresentable {
 
     override func setMarkedText(_ string: Any, selectedRange: NSRange, replacementRange: NSRange) {
         super.setMarkedText(string, selectedRange: selectedRange, replacementRange: replacementRange)
+        onCompositionChange?()
         needsDisplay = true
     }
 
     override func unmarkText() {
         super.unmarkText()
+        onCompositionChange?()
         needsDisplay = true
     }
 
     override func didChangeText() {
         super.didChangeText()
+        onCompositionChange?()
         needsDisplay = true
     }
 
     var onFocusChange: ((Bool) -> Void)?
+    var onCompositionChange: (() -> Void)?
     override func becomeFirstResponder() -> Bool {
         let accepted = super.becomeFirstResponder()
         if accepted { onFocusChange?(true) }

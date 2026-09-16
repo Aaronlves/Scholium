@@ -111,6 +111,21 @@ machine state unchanged. This Beta is ad-hoc signed and not Developer ID
 signed or notarized; human accessibility and interaction acceptance remain
 separate open boundaries.
 
+**2026-09-16 — Chat input-area responsibility cleanup:** The input-area owner
+now measures queue/dock geometry and anchors candidates to their actual size;
+the shell no longer compensates with negative queue padding or estimated popup
+height. Submission and composition use the explicitly attached conversation
+editor, and request disclosure disables that native editor. Xcode 27 Debug build,
+25 focused composer/catalog/dock tests, scoped Swift formatting and documentation
+validation pass. Disposable 500-Note QA at a 300-point sidebar covered candidate
+resizing and selection, expanded queued input, question completion, Stop and
+cross-conversation draft retention. Native tests additionally cover light/dark
+request presentation, selection/identity preservation and marked-text callbacks.
+Installed IME and full assistive-technology/adaptation acceptance remain open.
+The shell's conversation-state lifetime, duplicate rich-object projection and
+implicit reader-mode selection remain separate structural work. Evidence:
+`.build/chat-layering/verification.md`.
+
 **2026-09-15 — In-app Chat presentation and runtime controls:** Focused slices
 report 19 final-panel checks, 29 composer-entry checks, 32 context/message
 checks, and 31 Agent-roster checks, with overlapping coverage rather than an

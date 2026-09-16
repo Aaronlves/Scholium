@@ -41,11 +41,6 @@ struct AgentChatQueueView: View {
         .buttonStyle(.borderless)
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
-        // The front input surface overlaps only this empty glass margin.
-        .padding(.bottom, 16)
-        .scholiumFloatingSurface(in: RoundedRectangle(cornerRadius: 16))
-        .padding(.horizontal, ScholiumSidebarLayout.edgeInset + 8)
-        .padding(.top, ScholiumSidebarLayout.edgeInset)
         .tint(nil as Color?)
         .popover(item: $inspectedMessage) { message in
             AgentChatContentScroll {

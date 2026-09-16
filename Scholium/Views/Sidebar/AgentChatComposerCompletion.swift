@@ -40,24 +40,48 @@ struct AgentChatComposerCandidate: Identifiable {
 /// The native editor owns the query range and its Undo. Suggestions never replace a draft wholesale.
 @MainActor @Observable final class AgentChatComposerCompletion {
     private(set) var query: AgentChatComposerQuery?
+    private(set) var isComposing = false
     private var selectedCandidateID: String?
     var selectedIndex: Int {
         get { selectedCandidateID.flatMap { id in candidates.firstIndex { $0.id == id } } ?? 0 }
         set { selectedCandidateID = candidates.indices.contains(newValue) ? candidates[newValue].id : nil }
     }
-    @ObservationIgnored weak var editor: AgentChatComposerTextView?
-    @ObservationIgnored var conversationID: UUID?
+    @ObservationIgnored private(set) weak var editor: AgentChatComposerTextView?
+    @ObservationIgnored private(set) var conversationID: UUID?
     @ObservationIgnored var candidateQuery: AgentChatComposerQuery?
     @ObservationIgnored var candidates: [AgentChatComposerCandidate] = []
     @ObservationIgnored var canAccept: ((AgentChatComposerCandidate) -> Bool)?
     @ObservationIgnored var choose: ((AgentChatComposerCandidate) -> Void)?
     @ObservationIgnored private var dismissedQuery: AgentChatComposerQuery?
 
-    func refresh(from editor: AgentChatComposerTextView, in conversationID: UUID?) {
+    func attach(to editor: AgentChatComposerTextView, in conversationID: UUID?) {
+        if self.editor !== editor || self.conversationID != conversationID {
+            dismissedQuery = nil
+            query = nil
+            selectedCandidateID = nil
+        }
         self.editor = editor
-        if self.conversationID != conversationID { dismissedQuery = nil }
         self.conversationID = conversationID
-        let current = AgentChatComposerQuery.read(text: editor.string, selection: editor.selectedRange(), isComposing: editor.hasMarkedText())
+        let composing = editor.hasMarkedText()
+        if isComposing != composing { isComposing = composing }
+    }
+
+    /// Delivery checks the attached input at activation time. Focus may already
+    /// have moved to the Send button, so another window's responder is irrelevant.
+    func canSubmit(in conversationID: UUID?) -> Bool {
+        guard let conversationID, let editor, editor.window != nil, editor.isEditable,
+            self.conversationID == conversationID, editor.completionConversationID == conversationID
+        else { return false }
+        return !editor.hasMarkedText()
+    }
+
+    func refresh(from editor: AgentChatComposerTextView, in conversationID: UUID?) {
+        guard self.editor === editor, self.conversationID == conversationID,
+            editor.completionConversationID == conversationID
+        else { return }
+        let composing = editor.hasMarkedText()
+        if isComposing != composing { isComposing = composing }
+        let current = AgentChatComposerQuery.read(text: editor.string, selection: editor.selectedRange(), isComposing: composing)
         if current != dismissedQuery { dismissedQuery = nil }
         let next = current == dismissedQuery ? nil : current
         if query != next {
@@ -69,11 +93,13 @@ struct AgentChatComposerCandidate: Identifiable {
     func detach(from editor: AgentChatComposerTextView) {
         guard self.editor === editor else { return }
         self.editor = nil
+        conversationID = nil
         choose = nil
         canAccept = nil
         candidates = []
         candidateQuery = nil
         query = nil
+        isComposing = false
     }
 
     /// Enter a picker without replacing selected draft prose or committing IME.
@@ -145,8 +171,6 @@ struct AgentChatComposerCandidates: View {
     let candidates: [AgentChatComposerCandidate]
 
     static func listHeight(for count: Int) -> CGFloat { CGFloat(min(6, max(1, count))) * 44 }
-    static func presentationHeight(for count: Int) -> CGFloat { listHeight(for: count) + 18 }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             if candidates.isEmpty {
