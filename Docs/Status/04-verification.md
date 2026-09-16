@@ -4,6 +4,17 @@
 
 ## Current verification snapshot
 
+**2026-09-16 — Note switching:** Window-local editor-page reuse passes five
+native regressions for exact source, Undo/selection isolation, direct replacement,
+pool invalidation and unfinished dispatch. Two isolated 500-Note QA journeys pass
+for mode/Library handoff and dirty-buffer process recovery. In a Debug synthetic
+60-paragraph Edit scenario (2 warmups + 5 samples per path), median attached-editor
+preparation falls from 197.438 to 50.358 ms. The boundary includes state capture,
+pool clearing, bridge readiness and DOM layout; WebKit throttled frame delivery
+in the test host, so no paint latency or Release gate is claimed. Cold startup
+and human IME/accessibility acceptance remain outside this evidence.
+Details: `.build/note-switch/RESULTS.md`.
+
 **2026-09-16 — Settings performance:** Xcode 27 Debug build and 31 scoped
 Settings tests pass. In the same disposable 500-Note, Time Profiler + Hangs
 scenario, six warm Appearance selections reduce median hosting-layout CPU sample

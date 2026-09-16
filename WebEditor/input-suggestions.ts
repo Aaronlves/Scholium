@@ -71,6 +71,7 @@ export interface EditorInputSuggestionsController {
   readonly analysisReferenceCompletionSource: CompletionSource;
   readonly slashCompletionSource: CompletionSource;
   readonly calloutCompletionSource: CompletionSource;
+  resetDocument(): void;
   resolveLinkCompletionQuery(requestID: string, candidates: unknown): void;
 }
 
@@ -624,6 +625,7 @@ export function createEditorInputSuggestions(
 
   let nativeID = 0;
   const nativePresentation = ViewPlugin.fromClass(class {
+    private destroyed = false;
     private signature = "";
     private revision = 0;
     private measureFallback: number | undefined;
@@ -642,6 +644,7 @@ export function createEditorInputSuggestions(
       };
     }
     private write({items, anchor, selected, state, status}: {state: EditorState; status: ReturnType<typeof completionStatus>; items: Array<{label: string; detail: string}>; anchor: {left: number; top: number; bottom: number} | null; selected: number}) {
+      if (this.destroyed) return;
       window.clearTimeout(this.measureFallback);
       this.measureFallback = undefined;
       if (!anchor || this.view.root.activeElement !== this.view.contentDOM || this.view.composing) {
@@ -657,7 +660,7 @@ export function createEditorInputSuggestions(
         this.signature = "";
         return;
       }
-      const valid = () => state.doc === this.view.state.doc
+      const valid = () => !this.destroyed && state.doc === this.view.state.doc
         && state.selection.eq(this.view.state.selection)
         && !this.view.composing && this.view.root.activeElement === this.view.contentDOM;
       const signature = JSON.stringify({items, anchor, selected, revision: this.revision});
@@ -682,6 +685,7 @@ export function createEditorInputSuggestions(
       });
     }
     refresh() {
+      if (this.destroyed) return;
       window.clearTimeout(this.measureFallback);
       // WKWebView can throttle animation frames independently of keyboard input.
       // The same public geometry read runs once at idle if its keyed measure stalls.
@@ -694,7 +698,7 @@ export function createEditorInputSuggestions(
       options.nativeFloating.hide(nativeID);
       this.signature = "";
     }
-    destroy() { this.suspend(); }
+    destroy() { this.destroyed = true; this.suspend(); }
   }, {
     eventHandlers: {
       compositionstart() { this.suspend(); },
@@ -703,6 +707,13 @@ export function createEditorInputSuggestions(
   });
 
   return {
+    resetDocument() {
+      for (const pending of pendingLinkQueries.values()) {
+        globalThis.clearTimeout(pending.timeout);
+        pending.resolve([]);
+      }
+      pendingLinkQueries.clear();
+    },
     writingCompletionSource,
     extension: [autocompletion({
       override: [

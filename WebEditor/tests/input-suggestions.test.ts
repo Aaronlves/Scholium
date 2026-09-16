@@ -288,6 +288,28 @@ describe("Edit input suggestions", () => {
     expect(result.options).toEqual([]);
   });
 
+  it("cancels pending candidates when the retained editor changes document", async () => {
+    const {suggestions, request} = controller();
+    const state = EditorState.create({doc: "[[old", selection: {anchor: 5}});
+    const pending = suggestions.wikilinkCompletionSource(
+      new CompletionContext(state, 5, false),
+    ) as Promise<CompletionResult>;
+    const oldID = request()!.id;
+    suggestions.resetDocument();
+    suggestions.resolveLinkCompletionQuery(oldID, [{
+      label: "Old note", insertion: "Old note", detail: "", path: "old.md", isAmbiguous: false,
+    }]);
+    expect((await pending).options).toEqual([]);
+
+    const next = suggestions.wikilinkCompletionSource(
+      new CompletionContext(state, 5, false),
+    ) as Promise<CompletionResult>;
+    suggestions.resolveLinkCompletionQuery(request()!.id, [{
+      label: "New note", insertion: "New note", detail: "", path: "new.md", isAmbiguous: false,
+    }]);
+    expect((await next).options.map(option => option.label)).toEqual(["New note"]);
+  });
+
   it("formats the inserted date as a local ISO calendar date", () => {
     expect(inputSuggestionTesting.localISODate(new Date(2026, 7, 3, 12, 30)))
       .toBe("2026-08-03");

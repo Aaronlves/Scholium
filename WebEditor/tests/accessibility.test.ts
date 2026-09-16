@@ -3,6 +3,7 @@ import {describe, expect, it, vi} from "vitest";
 import {
   activeConstructAccessibilityDescription,
   announceEditorMessage,
+  cancelEditorAnnouncement,
   editorAccessibilityAttributes,
   updateEditorAccessibility,
 } from "../accessibility";
@@ -62,5 +63,19 @@ describe("editor accessibility contract", () => {
     updateEditorAccessibility(content, "livePreview", context(["Callout"]));
     expect(setAttribute).not.toHaveBeenCalled();
     expect(removeAttribute).not.toHaveBeenCalled();
+  });
+
+  it("cannot restore an old document's description after runtime reuse", () => {
+    vi.useFakeTimers();
+    const {document, window} = parseHTML("<div id='editor'></div>");
+    Object.assign(globalThis, {window});
+    const content = document.getElementById("editor") as unknown as HTMLElement;
+    updateEditorAccessibility(content, "livePreview", context(["ATXHeading3"]));
+    announceEditorMessage(content, "Recovered.");
+    cancelEditorAnnouncement(content);
+    updateEditorAccessibility(content, "source", context());
+    vi.advanceTimersByTime(4_000);
+    expect(content.getAttribute("aria-description")).toBe("Exact Markdown and YAML source");
+    vi.useRealTimers();
   });
 });

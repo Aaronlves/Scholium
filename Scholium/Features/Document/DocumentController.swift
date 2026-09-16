@@ -1304,6 +1304,7 @@ final class DocumentController: ObservableObject {
     }
 
     func handleMemoryPressure(_ level: DocumentMemoryPressureLevel) {
+        sessions.editorWebViewPool.removeAll()
         Task { await readProjectionCache.removeAll() }
         Task { await linkCompletionIndex.removeAll() }
         switch level {

@@ -68,79 +68,85 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             proposedSource: source,
             documentID: documentID
         )
-        let contentController = WKUserContentController()
+        let reusedWebView = session.webViewPool?.take()
+        let contentController = reusedWebView?.configuration.userContentController ?? WKUserContentController()
         contentController.add(context.coordinator, name: "scholium")
         let interfaceLocalization = WebKitInterfaceLocalization.current()
-        let editorStartFailure = Self.jsonLiteral(
-            interfaceLocalization.string("The Markdown editor could not start.")
-        )
-        contentController.addUserScript(
-            WKUserScript(
-                source: """
-                    window.addEventListener('error', function(event) {
-                        window.webkit.messageHandlers.scholium.postMessage({
-                            type: 'editorError',
-                            message: event.message || \(editorStartFailure)
+        let webView: WindowAttachedWebView
+        if let reusedWebView {
+            webView = reusedWebView
+        } else {
+            let editorStartFailure = Self.jsonLiteral(
+                interfaceLocalization.string("The Markdown editor could not start.")
+            )
+            contentController.addUserScript(
+                WKUserScript(
+                    source: """
+                        window.addEventListener('error', function(event) {
+                            window.webkit.messageHandlers.scholium.postMessage({
+                                type: 'editorError',
+                                message: event.message || \(editorStartFailure)
+                            });
                         });
-                    });
-                    """,
-                injectionTime: .atDocumentStart,
-                forMainFrameOnly: true
-            ))
-        if PerformanceProbe.shared.measuresEditorKeyToPaint
-            || PerformanceProbe.shared.measuresEditorCachedPreview
-            || PerformanceProbe.shared.measuresEditorVisibleProjection
-        {
-            let metric: String
-            if PerformanceProbe.shared.measuresEditorCachedPreview {
-                metric = "editor_cached_preview"
-            } else if PerformanceProbe.shared.measuresEditorVisibleProjection {
-                metric = "editor_visible_projection"
-            } else {
-                metric = "editor_key_to_paint"
+                        """,
+                    injectionTime: .atDocumentStart,
+                    forMainFrameOnly: true
+                ))
+            if PerformanceProbe.shared.measuresEditorKeyToPaint
+                || PerformanceProbe.shared.measuresEditorCachedPreview
+                || PerformanceProbe.shared.measuresEditorVisibleProjection
+            {
+                let metric: String
+                if PerformanceProbe.shared.measuresEditorCachedPreview {
+                    metric = "editor_cached_preview"
+                } else if PerformanceProbe.shared.measuresEditorVisibleProjection {
+                    metric = "editor_visible_projection"
+                } else {
+                    metric = "editor_key_to_paint"
+                }
+                contentController.addUserScript(
+                    WKUserScript(
+                        source: "window.scholiumPerformanceMetric = '\(metric)';",
+                        injectionTime: .atDocumentStart,
+                        forMainFrameOnly: true
+                    ))
+            }
+            if requiresMathRuntime, !ScholiumMathAssets.runtimeJavaScript.isEmpty {
+                contentController.addUserScript(
+                    WKUserScript(
+                        source: ScholiumMathAssets.runtimeJavaScript,
+                        injectionTime: .atDocumentStart,
+                        forMainFrameOnly: true
+                    ))
+            }
+            if let editorScript = Self.editorScript {
+                contentController.addUserScript(
+                    WKUserScript(
+                        source: editorScript,
+                        injectionTime: .atDocumentEnd,
+                        forMainFrameOnly: true
+                    ))
             }
             contentController.addUserScript(
                 WKUserScript(
-                    source: "window.scholiumPerformanceMetric = '\(metric)';",
-                    injectionTime: .atDocumentStart,
-                    forMainFrameOnly: true
-                ))
-        }
-        if requiresMathRuntime, !ScholiumMathAssets.runtimeJavaScript.isEmpty {
-            contentController.addUserScript(
-                WKUserScript(
-                    source: ScholiumMathAssets.runtimeJavaScript,
-                    injectionTime: .atDocumentStart,
-                    forMainFrameOnly: true
-                ))
-        }
-        if let editorScript = Self.editorScript {
-            contentController.addUserScript(
-                WKUserScript(
-                    source: editorScript,
+                    source: """
+                        window.webkit.messageHandlers.scholium.postMessage({
+                            type: 'documentEnded',
+                            editorReady: typeof window.scholiumEditor === 'object'
+                        });
+                        """,
                     injectionTime: .atDocumentEnd,
                     forMainFrameOnly: true
                 ))
+
+            let configuration = WKWebViewConfiguration()
+            configuration.userContentController = contentController
+            configuration.websiteDataStore = ScholiumWebKitRuntime.nonPersistentDataStore
+            configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
+            ScholiumWebFontResources.install(in: configuration)
+
+            webView = WindowAttachedWebView(frame: .zero, configuration: configuration)
         }
-        contentController.addUserScript(
-            WKUserScript(
-                source: """
-                    window.webkit.messageHandlers.scholium.postMessage({
-                        type: 'documentEnded',
-                        editorReady: typeof window.scholiumEditor === 'object'
-                    });
-                    """,
-                injectionTime: .atDocumentEnd,
-                forMainFrameOnly: true
-            ))
-
-        let configuration = WKWebViewConfiguration()
-        configuration.userContentController = contentController
-        configuration.websiteDataStore = ScholiumWebKitRuntime.nonPersistentDataStore
-        configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
-        ScholiumWebFontResources.install(in: configuration)
-
-        let webView = WindowAttachedWebView(frame: .zero, configuration: configuration)
         context.coordinator.activeWebView = webView
         webView.editorSession = session
         webView.onPasteImage = onPasteImage
@@ -174,9 +180,16 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             session.reportError(String(localized: "The bundled Markdown editor resources could not be found.", table: "Localizable", bundle: .module))
             return DocumentWebViewContainer(webView: webView)
         }
-        context.coordinator.awaitingEditorLoad = true
-        webView.onFirstWindowAttachment = { [weak webView] in
-            webView?.loadHTMLString(editorHTML, baseURL: nil)
+        if reusedWebView != nil {
+            webView.onFirstWindowAttachment = { [weak webView, weak coordinator = context.coordinator] in
+                guard let webView else { return }
+                coordinator?.resumePreparedPage(in: webView, editorHTML: editorHTML)
+            }
+        } else {
+            context.coordinator.awaitingEditorLoad = true
+            webView.onFirstWindowAttachment = { [weak webView] in
+                webView?.loadHTMLString(editorHTML, baseURL: nil)
+            }
         }
         return DocumentWebViewContainer(webView: webView)
     }
@@ -235,9 +248,12 @@ struct MarkdownEditorWebView: NSViewRepresentable {
 
     static func dismantleNSView(_ container: DocumentWebViewContainer, coordinator: Coordinator) {
         let webView = container.webView
+        let canRecycle = coordinator.session.canRecycleWebView
         if let webView = webView as? WindowAttachedWebView {
+            webView.onFirstWindowAttachment = nil
             webView.editorSession = nil
             webView.onPasteImage = nil
+            webView.onPassageAction = nil
         }
         webView.configuration.userContentController.removeScriptMessageHandler(forName: "scholium")
         webView.navigationDelegate = nil
@@ -249,6 +265,9 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         coordinator.cancelLinkCompletionQuery()
         coordinator.cancelDocumentTitleRename()
         coordinator.session.detach(webView)
+        if canRecycle {
+            coordinator.session.webViewPool?.recycle(webView)
+        }
     }
 
     private static var editorScript: String? {
@@ -329,6 +348,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         var initialScrollFraction: Double = 0
         var initialScrollAnchor: EditorScrollAnchor?
         private var hasSignaledReady = false
+        private var pageGeneration: UInt64 = 0
         private var mermaidRuntimeLoadTask: Task<Void, Never>?
         private var mermaidRuntimeLoadID: UUID?
         private var mathRuntimeLoadTask: Task<Void, Never>?
@@ -601,6 +621,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         }
 
         func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+            pageGeneration &+= 1
             session.webContentProcessTerminated()
             cancelMermaidRuntimeLoad()
             cancelMathRuntimeLoad()
@@ -765,6 +786,29 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                 url?.absoluteString == "about:blank"
             else { return .cancel }
             return .allow
+        }
+
+        /// Rebinding never inherits the outgoing document's ready state.
+        /// A WebKit process may have died while idle: validate the page after
+        /// native attachment, then use the ordinary initialization boundary.
+        func resumePreparedPage(in webView: WKWebView, editorHTML: String) {
+            let expectedGeneration = pageGeneration
+            Task { @MainActor [weak self, weak webView] in
+                guard let self, let webView, webView.navigationDelegate === self else { return }
+                let available = try? await webView.callAsyncJavaScript(
+                    "return typeof window.scholiumEditor?.dispatch === 'function'",
+                    arguments: [:], in: nil, contentWorld: .page
+                ) as? Bool
+                guard webView.navigationDelegate === self,
+                    self.session.webView === webView,
+                    self.pageGeneration == expectedGeneration else { return }
+                if available == true {
+                    self.signalReady()
+                } else {
+                    self.awaitingEditorLoad = true
+                    webView.loadHTMLString(editorHTML, baseURL: nil)
+                }
+            }
         }
 
         private func signalReady() {

@@ -55,12 +55,21 @@ export function updateEditorAccessibility(
   }
 }
 
+const announcementTimers = new WeakMap<HTMLElement, number>();
+
+export function cancelEditorAnnouncement(content: HTMLElement) {
+  window.clearTimeout(announcementTimers.get(content));
+  announcementTimers.delete(content);
+}
+
 export function announceEditorMessage(content: HTMLElement, message: string) {
+  cancelEditorAnnouncement(content);
   const previous = content.getAttribute("aria-description");
   content.setAttribute("aria-description", message);
-  window.setTimeout(() => {
+  announcementTimers.set(content, window.setTimeout(() => {
+    announcementTimers.delete(content);
     if (content.getAttribute("aria-description") !== message) return;
     if (previous) content.setAttribute("aria-description", previous);
     else content.removeAttribute("aria-description");
-  }, 4_000);
+  }, 4_000));
 }

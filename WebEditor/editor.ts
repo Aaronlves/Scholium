@@ -112,13 +112,16 @@ import {
 import {captureExactHistory, exactSourceHistory, exactSourceState, restoreExactHistory, setExactSource} from "./exact-source-history";
 import {
   announceEditorMessage,
+  cancelEditorAnnouncement,
   editorAccessibilityAttributes,
   unsupportedFilePasteMessage,
   updateEditorAccessibility,
 } from "./accessibility";
 import {CompositionRequestGate, compositionRequestPolicy} from "./composition";
-import {createMarkdownEditor} from "./bootstrap";
+import {createMarkdownDocumentState, createMarkdownEditor} from "./bootstrap";
+import {createMermaidRuntimeLoader} from "./mermaid-runtime-loader";
 import {
+  clearEditorPerformanceSamples,
   editorPerformanceSamples,
   recordEditorMetric,
   sampleEditorMemory,
@@ -182,6 +185,7 @@ interface ScholiumWindow extends Window {
 interface SourceDelta { from: number; to: number; insert: string; exactInsert: string }
 interface ScholiumEditorAPI {
   dispatch(request: unknown): Promise<EditorCommandResult>;
+  prepareForReuse(): boolean;
   resolveLinkCompletionQuery(requestID: string, candidates: unknown): void;
   resolveDocumentTitleRename(
     requestID: string,
@@ -193,7 +197,10 @@ interface ScholiumEditorAPI {
 }
 
 const webkitWindow = window as ScholiumWindow;
-const nativeHandler = webkitWindow.webkit?.messageHandlers?.scholium;
+// WKWebView can be attached to a new native coordinator without reloading.
+// Resolve its proxy for each message instead of retaining the previous owner.
+const nativeHandler = () => webkitWindow.webkit?.messageHandlers?.scholium;
+let documentAttachment = 0;
 let bridgeSessionID = "";
 let bridgeDocumentID = "";
 let bridgeFingerprint = "";
@@ -209,7 +216,7 @@ let modeTransitionSequence = 0;
 const liveWidgetReuseCounts = {table: 0, footnote: 0};
 let lastUndoLabel: string | undefined;
 let lastRedoLabel: string | undefined;
-const post = (message: Record<string, unknown>) => nativeHandler?.postMessage({
+const post = (message: Record<string, unknown>) => nativeHandler()?.postMessage({
   protocolVersion: EDITOR_PROTOCOL_VERSION,
   sessionID: bridgeSessionID,
   documentID: bridgeDocumentID,
@@ -228,29 +235,15 @@ function postConfiguredPerformanceSample(
   post({type: "performanceSample", metric, durationMilliseconds});
 }
 
-let mermaidRuntimePromise: Promise<NonNullable<typeof window.scholiumMermaid> | null> | null = null;
+const mermaidRuntimeLoader = createMermaidRuntimeLoader(window, () => {
+  post({type: "requestMermaidRuntime"});
+});
 
 function ensureMermaidRuntime() {
   const current = window.scholiumMermaid;
   if (current?.version === 2) return Promise.resolve(current);
-  if (!nativeHandler) return Promise.resolve(null);
-  if (mermaidRuntimePromise) return mermaidRuntimePromise;
-  mermaidRuntimePromise = new Promise((resolve) => {
-    let settled = false;
-    const finish = () => {
-      if (settled) return;
-      settled = true;
-      window.clearTimeout(timeout);
-      window.scholiumMermaidRuntimeDidLoad = undefined;
-      const loaded = window.scholiumMermaid;
-      if (loaded?.version !== 2) mermaidRuntimePromise = null;
-      resolve(loaded?.version === 2 ? loaded : null);
-    };
-    const timeout = window.setTimeout(finish, 8_000);
-    window.scholiumMermaidRuntimeDidLoad = finish;
-    post({type: "requestMermaidRuntime"});
-  });
-  return mermaidRuntimePromise;
+  if (!nativeHandler()) return Promise.resolve(null);
+  return mermaidRuntimeLoader.ensure();
 }
 
 function exactEditorSource() {
@@ -272,6 +265,7 @@ let mermaidThemeRevision = 0;
 let documentTitle = "";
 let documentTitleDraft: string | null = null;
 let documentTitleError: string | null = null;
+let documentTitleComposing = false;
 let documentTitleRenameRequest: {
   requestID: string;
   expectedTitle: string;
@@ -305,6 +299,7 @@ class DocumentTitleWidget extends WidgetType {
   }
 
   toDOM() {
+    const attachment = documentAttachment;
     const wrapper = document.createElement("div");
     wrapper.className = "cm-live-note-title scholium-note-title";
     wrapper.setAttribute("role", "heading");
@@ -336,6 +331,7 @@ class DocumentTitleWidget extends WidgetType {
     let composing = false;
     let commitAfterComposition = false;
     const normalizeInput = () => {
+      if (attachment !== documentAttachment) return;
       if (composing) {
         documentTitleDraft = input.value;
         wrapper.setAttribute("aria-label", input.value || this.title);
@@ -353,6 +349,7 @@ class DocumentTitleWidget extends WidgetType {
       resize();
     };
     const commit = () => {
+      if (attachment !== documentAttachment) return;
       if (documentTitleRenameRequest) return;
       const requestedTitle = input.value.replace(/[\r\n]+/g, " ");
       documentTitleDraft = requestedTitle;
@@ -379,11 +376,18 @@ class DocumentTitleWidget extends WidgetType {
     let cancelling = false;
     input.addEventListener("input", normalizeInput);
     input.addEventListener("focus", () => {
+      if (attachment !== documentAttachment) return;
       setDocumentFocusTarget("title");
     });
-    input.addEventListener("compositionstart", () => { composing = true; });
+    input.addEventListener("compositionstart", () => {
+      if (attachment !== documentAttachment) return;
+      composing = true;
+      documentTitleComposing = true;
+    });
     input.addEventListener("compositionend", () => {
+      if (attachment !== documentAttachment) return;
       composing = false;
+      documentTitleComposing = false;
       normalizeInput();
       if (commitAfterComposition) {
         commitAfterComposition = false;
@@ -391,6 +395,7 @@ class DocumentTitleWidget extends WidgetType {
       }
     });
     input.addEventListener("keydown", (event) => {
+      if (attachment !== documentAttachment) return;
       if (composing || event.isComposing) return;
       if (event.key === "Enter") {
         event.preventDefault();
@@ -406,6 +411,7 @@ class DocumentTitleWidget extends WidgetType {
       }
     });
     input.addEventListener("blur", () => {
+      if (attachment !== documentAttachment) return;
       if (cancelling) {
         cancelling = false;
         return;
@@ -484,7 +490,9 @@ function resolveDocumentTitleRename(
   documentTitlePresentationRevision += 1;
   editor.dispatch({effects: refreshDocumentTitleEffect.of(null)});
   if (!accepted) {
+    const attachment = documentAttachment;
     queueMicrotask(() => {
+      if (attachment !== documentAttachment) return;
       const input = document.querySelector<HTMLTextAreaElement>(
         ".scholium-note-title-input",
       );
@@ -1578,7 +1586,9 @@ const stateReporter = EditorView.updateListener.of((update) => {
       const paintedFingerprint = bridgeFingerprint;
       const paintedDocumentVersion = documentVersion;
       const paintedDocumentLength = update.state.doc.length;
+      const attachment = documentAttachment;
       scheduleAfterNextPaint(() => {
+        if (attachment !== documentAttachment) return;
         if (input !== null) {
           recordEditorMetric("input-to-paint", input.startedAt, {
             composing: input.composing ? 1 : 0,
@@ -1869,8 +1879,11 @@ function selectionActionTarget() {
 }
 const selectionActions = createSelectionActions(nativeFloating, selectionActionTarget);
 function measureSelectionAction(view: EditorView) {
+  const attachment = documentAttachment;
   view.requestMeasure({key: selectionActions, read: selectionActionTarget,
-    write: target => selectionActions.update(target)});
+    write: target => {
+      if (attachment === documentAttachment) selectionActions.update(target);
+    }});
 }
 
 
@@ -2214,14 +2227,11 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
         || new TextEncoder().encode(operation.text).byteLength > MAX_SOURCE_UTF8_BYTES) {
       return rejected(request.requestID, documentVersion, "invalid initialization");
     }
-    bridgeSessionID = request.sessionID;
-    bridgeDocumentID = request.documentID;
-    bridgeFingerprint = request.startingFingerprint;
     editingDialect = operation.dialect;
     editorOperations.setDocument(
       operation.text, request.sessionID, request.documentID, request.startingFingerprint,
     );
-    await editorOperations.setMode(operation.mode);
+    editorOperations.setMode(operation.mode);
     if (operation.initialSelection) {
       editorOperations.revealSourceRange(
         operation.initialSelection.anchor,
@@ -2245,7 +2255,7 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
     return rejected(request.requestID, documentVersion, "stale editor generation");
   }
   switch (operation.type) {
-  case "setMode": await editorOperations.setMode(operation.mode); break;
+  case "setMode": editorOperations.setMode(operation.mode); break;
   case "setDocumentTitle": editorOperations.setDocumentTitle(operation.value); break;
   case "setPresentationCSS": editorOperations.setPresentationCSS(operation.value); break;
   case "setUserCSS": editorOperations.setUserCSS(operation.value); break;
@@ -2336,7 +2346,7 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
     const restoredMode = configuredEditorMode(editor.state);
     editor.setState(recoveredState);
     lastDocumentFocusTarget = snapshot.focusTarget;
-    await editorOperations.setMode(restoredMode);
+    editorOperations.setMode(restoredMode);
     dirty = snapshot.dirty;
     documentVersion = snapshot.generation;
     return {...successfulResult(request.requestID), recovery: {...snapshot, undoHistoryPreserved: restoredHistory}};
@@ -2444,7 +2454,8 @@ async function dispatchEditorRequest(value: unknown): Promise<EditorCommandResul
     return rejected("invalid", documentVersion, "malformed editor request");
   }
   const compositionPolicy = compositionRequestPolicy(value.operation.type);
-  if ((editor.composing || compositionGate.active) && compositionPolicy === "reject") {
+  if ((editor.composing || compositionGate.active || documentTitleComposing)
+      && compositionPolicy === "reject") {
     return rejected(value.requestID, documentVersion, "editor identity cannot change during composition");
   }
   if ((editor.composing || compositionGate.active) && compositionPolicy === "defer") {
@@ -2475,7 +2486,9 @@ editor.contentDOM.addEventListener("compositionend", () => {
   // WebKit may deliver the final input/change notification after
   // compositionend. A task boundary lets CodeMirror publish that delta and
   // advance the generation before queued native mutations are validated.
+  const attachment = documentAttachment;
   window.setTimeout(() => {
+    if (attachment !== documentAttachment) return;
     const pending = compositionGate.finish();
     for (const item of pending) void dispatchEditorRequest(item.request).then(item.resolve);
     publishEditorContext();
@@ -2483,7 +2496,10 @@ editor.contentDOM.addEventListener("compositionend", () => {
 });
 editor.contentDOM.addEventListener("compositionstart", () => {
   compositionGate.begin();
-  window.queueMicrotask(publishEditorContext);
+  const attachment = documentAttachment;
+  window.queueMicrotask(() => {
+    if (attachment === documentAttachment) publishEditorContext();
+  });
 });
 
 function pasteTransfer(
@@ -2541,7 +2557,9 @@ function setDynamicStyle(id: string, css: string) {
   style.textContent = css;
   scrollCoordinator.scheduleGeometryReport(geometry);
   if (document.fonts.status !== "loaded") {
+    const attachment = documentAttachment;
     void document.fonts.ready.then(() => {
+      if (attachment !== documentAttachment) return;
       scrollCoordinator.scheduleGeometryReport(geometry);
     });
   }
@@ -2667,8 +2685,16 @@ window.matchMedia("(prefers-reduced-motion: reduce)").addEventListener("change",
 const editorOperations = {
   /** @param {string} text @param {string} sessionID @param {string} documentID */
   setDocument(text: string, sessionID: string, documentID: string, startingFingerprint: string) {
+    documentAttachment += 1;
+    interactionReporter.cancel();
+    cancelEditorAnnouncement(editor.contentDOM);
     cancelPendingSmoothReveal();
     previewPopover.hide();
+    selectionActions.dismiss();
+    selectionActions.update(null);
+    inputSuggestions.resetDocument();
+    mermaidRuntimeLoader.resetDocument();
+    scrollCoordinator.resetDocument();
     compositionGate.rejectAll((pending) => rejected(
       pending.requestID,
       documentVersion,
@@ -2680,18 +2706,27 @@ const editorOperations = {
     documentTitle = "";
     documentTitleDraft = null;
     documentTitleError = null;
+    documentTitleComposing = false;
     documentTitleRenameRequest = null;
     documentTitlePresentationRevision += 1;
     lastDocumentFocusTarget = undefined;
+    linkPreviews = [];
+    linkPreviewIndexByRange = new Map();
+    lastUndoLabel = undefined;
+    lastRedoLabel = undefined;
+    selectingForAgent = false;
+    pendingKeyDownStartedAt = null;
+    pendingCommittedKeyStartedAt = null;
+    pendingInputStartedAt = null;
+    liveWidgetReuseCounts.table = 0;
+    liveWidgetReuseCounts.footnote = 0;
+    // The first attachment retains the page's measured startup sample.
+    // Subsequent attachments report only their own document work.
+    if (documentAttachment > 1) clearEditorPerformanceSamples();
     documentVersion = 0;
-    editor.dispatch({
-      changes: replacementChange(editor.state.doc.toString(), text),
-      effects: setExactSource.of(text),
-      annotations: [
-        Transaction.addToHistory.of(false),
-        programmaticDocumentChange.of(true),
-      ],
-    });
+    // setState destroys old view plugins as well as replacing all fields.
+    // Recovery is a separate, identity-checked operation after initialization.
+    editor.setState(createMarkdownDocumentState(text, editorExtensions));
     dirty = false;
     lastInteractionAvailabilitySignature = null;
     scheduleEditorInteractionReport(true);
@@ -2711,10 +2746,11 @@ const editorOperations = {
   },
 
   /** @param {string} mode */
-  async setMode(mode: string) {
+  setMode(mode: string) {
     cancelPendingSmoothReveal();
     const startedAt = performance.now();
     const transitionSequence = ++modeTransitionSequence;
+    const attachment = documentAttachment;
     previewPopover.hide();
     const scrollSnapshot = editor.scrollSnapshot();
     const nextMode = mode === "livePreview" ? "livePreview" : "source";
@@ -2733,13 +2769,14 @@ const editorOperations = {
     });
     editor.requestMeasure({
       read: () => editor.state.doc.length,
-      write: (documentLength) => window.requestAnimationFrame(() => recordEditorMetric(
-        "mode-toggle",
-        startedAt,
-        {documentLength, transitionSequence},
-      )),
+      write: (documentLength) => window.requestAnimationFrame(() => {
+        if (attachment !== documentAttachment) return;
+        recordEditorMetric("mode-toggle", startedAt, {documentLength, transitionSequence});
+      }),
     });
-    window.setTimeout(scrollCoordinator.postCurrent, 0);
+    window.setTimeout(() => {
+      if (attachment === documentAttachment) scrollCoordinator.postCurrent();
+    }, 0);
     if (appliedMode === "livePreview") convergeLivePreviewProjection();
     // The typed response is the native visibility boundary. Ensure the
     // compartment, semantic projection, cascade, and representative geometry
@@ -2871,6 +2908,18 @@ const editorOperations = {
 
 webkitWindow.scholiumEditor = {
   dispatch: dispatchEditorRequest,
+  prepareForReuse() {
+    if (editor.composing || compositionGate.active || documentTitleComposing) return false;
+    editorOperations.blur();
+    editingDialect = null;
+    editorOperations.setDocument("", "", "", "");
+    interactionReporter.cancel();
+    // Session-specific CSS and detached title focus must not survive parking.
+    document.getElementById("scholium-user-css")?.replaceChildren();
+    document.getElementById("scholium-presentation-css")?.replaceChildren();
+    updateEditorAccessibility(editor.contentDOM, "source", currentEditorContext());
+    return true;
+  },
   resolveLinkCompletionQuery: inputSuggestions.resolveLinkCompletionQuery,
   resolveDocumentTitleRename,
   refreshMathRuntime() {

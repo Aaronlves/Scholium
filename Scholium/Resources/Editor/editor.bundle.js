@@ -31023,6 +31023,11 @@ ${fence}
       return { ...sample, observed: { ...sample.observed } };
     });
   }
+  function clearEditorPerformanceSamples() {
+    samples.length = 0;
+    sampleStart = 0;
+    sampleCount = 0;
+  }
 
   // exact-source-history.ts
   var setExactSource = StateEffect.define();
@@ -31406,14 +31411,21 @@ ${fence}
       content2.removeAttribute("aria-description");
     }
   }
+  var announcementTimers = /* @__PURE__ */ new WeakMap();
+  function cancelEditorAnnouncement(content2) {
+    window.clearTimeout(announcementTimers.get(content2));
+    announcementTimers.delete(content2);
+  }
   function announceEditorMessage(content2, message) {
+    cancelEditorAnnouncement(content2);
     const previous = content2.getAttribute("aria-description");
     content2.setAttribute("aria-description", message);
-    window.setTimeout(() => {
+    announcementTimers.set(content2, window.setTimeout(() => {
+      announcementTimers.delete(content2);
       if (content2.getAttribute("aria-description") !== message) return;
       if (previous) content2.setAttribute("aria-description", previous);
       else content2.removeAttribute("aria-description");
-    }, 4e3);
+    }, 4e3));
   }
 
   // composition.ts
@@ -31460,8 +31472,48 @@ ${fence}
   };
 
   // bootstrap.ts
+  function createMarkdownDocumentState(source, extensions) {
+    return EditorState.create({ doc: normalizedDocumentText(source), extensions }).update({
+      effects: setExactSource.of(source),
+      annotations: Transaction.addToHistory.of(false)
+    }).state;
+  }
   function createMarkdownEditor(parent, extensions) {
     return new EditorView({ parent, state: EditorState.create({ doc: "", extensions }) });
+  }
+
+  // mermaid-runtime-loader.ts
+  function createMermaidRuntimeLoader(host, requestRuntime) {
+    let pending = null;
+    return {
+      ensure() {
+        if (host.scholiumMermaid?.version === 2) return Promise.resolve(host.scholiumMermaid);
+        if (pending) return pending.promise;
+        let resolve;
+        const promise = new Promise((complete2) => {
+          resolve = complete2;
+        });
+        let settled = false;
+        const complete = (runtime) => {
+          if (settled) return;
+          settled = true;
+          host.clearTimeout(timeout);
+          if (host.scholiumMermaidRuntimeDidLoad === finish) host.scholiumMermaidRuntimeDidLoad = void 0;
+          if (pending === load) pending = null;
+          resolve(runtime);
+        };
+        const finish = () => complete(host.scholiumMermaid?.version === 2 ? host.scholiumMermaid : null);
+        const timeout = host.setTimeout(finish, 8e3);
+        const load = { promise, cancel: () => complete(null) };
+        pending = load;
+        host.scholiumMermaidRuntimeDidLoad = finish;
+        requestRuntime();
+        return promise;
+      },
+      resetDocument() {
+        pending?.cancel();
+      }
+    };
   }
 
   // preview-popover.ts
@@ -31497,6 +31549,7 @@ ${fence}
   }
   function createPreviewPopoverController(options) {
     let nativeID = 0;
+    let presentationRevision = 0;
     let nativeHovered = false;
     let editor2 = null;
     let root = null;
@@ -31537,6 +31590,7 @@ ${fence}
       armedLink?.classList.add("scholium-link-preview-armed");
     }
     function hide(retainHoveredLink = false) {
+      presentationRevision += 1;
       nativeHovered = false;
       options.nativeFloating.hide(nativeID);
       window.clearTimeout(showTimer);
@@ -31591,7 +31645,9 @@ ${fence}
       });
       if (startedAt !== void 0) {
         const activeEditor = editor2;
+        const revision = presentationRevision;
         scheduleAfterNextPaint(() => {
+          if (revision !== presentationRevision) return;
           recordEditorMetric("cached-preview", startedAt, { documentLength: activeEditor.state.doc.length });
           options.postPerformanceSample("editor_cached_preview", Math.max(0, performance.now() - startedAt));
         });
@@ -32898,13 +32954,16 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       );
     }
     let geometryReportScheduled = false;
+    let geometryReportGeneration = 0;
     let pendingGeometrySnapshot;
     function scheduleGeometryReport(snapshot) {
       if (snapshot && snapshot.revision !== scrollRevision) return;
       pendingGeometrySnapshot ??= snapshot;
       if (geometryReportScheduled) return;
       geometryReportScheduled = true;
+      const generation = ++geometryReportGeneration;
       queueMicrotask(() => {
+        if (generation !== geometryReportGeneration) return;
         geometryReportScheduled = false;
         const geometrySnapshot = pendingGeometrySnapshot;
         pendingGeometrySnapshot = void 0;
@@ -32992,6 +33051,23 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       }, 80);
     }
     return {
+      resetDocument() {
+        scrollRevision += 1;
+        geometryReportGeneration += 1;
+        geometryReportScheduled = false;
+        pendingGeometrySnapshot = void 0;
+        window.clearTimeout(reportTimer);
+        reportTimer = void 0;
+        if (measurementFrame !== null) window.cancelAnimationFrame(measurementFrame);
+        measurementFrame = null;
+        sessionStartedAt = null;
+        previousFrameAt = null;
+        sessionFrameCount = 0;
+        sessionLongestFrame = 0;
+        sessionDroppedFrameCount = 0;
+        editor2.scrollDOM.scrollTop = 0;
+        editor2.scrollDOM.scrollLeft = 0;
+      },
       captureGeometry,
       currentAnchor,
       postCurrent,
@@ -33540,6 +33616,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         this.refresh();
       }
       view;
+      destroyed = false;
       signature = "";
       revision = 0;
       measureFallback;
@@ -33557,6 +33634,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         };
       }
       write({ items, anchor, selected, state, status }) {
+        if (this.destroyed) return;
         window.clearTimeout(this.measureFallback);
         this.measureFallback = void 0;
         if (!anchor || this.view.root.activeElement !== this.view.contentDOM || this.view.composing) {
@@ -33570,7 +33648,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
           this.signature = "";
           return;
         }
-        const valid = () => state.doc === this.view.state.doc && state.selection.eq(this.view.state.selection) && !this.view.composing && this.view.root.activeElement === this.view.contentDOM;
+        const valid = () => !this.destroyed && state.doc === this.view.state.doc && state.selection.eq(this.view.state.selection) && !this.view.composing && this.view.root.activeElement === this.view.contentDOM;
         const signature = JSON.stringify({ items, anchor, selected, revision: this.revision });
         if (signature === this.signature) return;
         this.signature = signature;
@@ -33601,6 +33679,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         });
       }
       refresh() {
+        if (this.destroyed) return;
         window.clearTimeout(this.measureFallback);
         this.measureFallback = window.setTimeout(() => this.write(this.read()), 50);
         this.view.requestMeasure({ key: this, read: () => this.read(), write: (value) => this.write(value) });
@@ -33612,6 +33691,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         this.signature = "";
       }
       destroy() {
+        this.destroyed = true;
         this.suspend();
       }
     }, {
@@ -33625,6 +33705,13 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       }
     });
     return {
+      resetDocument() {
+        for (const pending of pendingLinkQueries.values()) {
+          globalThis.clearTimeout(pending.timeout);
+          pending.resolve([]);
+        }
+        pendingLinkQueries.clear();
+      },
       writingCompletionSource,
       extension: [autocompletion({
         override: [
@@ -37150,7 +37237,8 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
   // editor.ts
   var editorStartupStartedAt = performance.now();
   var webkitWindow = window;
-  var nativeHandler = webkitWindow.webkit?.messageHandlers?.scholium;
+  var nativeHandler = () => webkitWindow.webkit?.messageHandlers?.scholium;
+  var documentAttachment = 0;
   var bridgeSessionID = "";
   var bridgeDocumentID = "";
   var bridgeFingerprint = "";
@@ -37166,7 +37254,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
   var liveWidgetReuseCounts = { table: 0, footnote: 0 };
   var lastUndoLabel;
   var lastRedoLabel;
-  var post = (message) => nativeHandler?.postMessage({
+  var post = (message) => nativeHandler()?.postMessage({
     protocolVersion: EDITOR_PROTOCOL_VERSION,
     sessionID: bridgeSessionID,
     documentID: bridgeDocumentID,
@@ -37178,28 +37266,14 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     if (webkitWindow.scholiumPerformanceMetric !== metric || !Number.isFinite(durationMilliseconds) || durationMilliseconds <= 0) return;
     post({ type: "performanceSample", metric, durationMilliseconds });
   }
-  var mermaidRuntimePromise = null;
+  var mermaidRuntimeLoader = createMermaidRuntimeLoader(window, () => {
+    post({ type: "requestMermaidRuntime" });
+  });
   function ensureMermaidRuntime() {
     const current = window.scholiumMermaid;
     if (current?.version === 2) return Promise.resolve(current);
-    if (!nativeHandler) return Promise.resolve(null);
-    if (mermaidRuntimePromise) return mermaidRuntimePromise;
-    mermaidRuntimePromise = new Promise((resolve) => {
-      let settled = false;
-      const finish = () => {
-        if (settled) return;
-        settled = true;
-        window.clearTimeout(timeout);
-        window.scholiumMermaidRuntimeDidLoad = void 0;
-        const loaded = window.scholiumMermaid;
-        if (loaded?.version !== 2) mermaidRuntimePromise = null;
-        resolve(loaded?.version === 2 ? loaded : null);
-      };
-      const timeout = window.setTimeout(finish, 8e3);
-      window.scholiumMermaidRuntimeDidLoad = finish;
-      post({ type: "requestMermaidRuntime" });
-    });
-    return mermaidRuntimePromise;
+    if (!nativeHandler()) return Promise.resolve(null);
+    return mermaidRuntimeLoader.ensure();
   }
   function exactEditorSource() {
     return editor.state.field(exactSourceState).text;
@@ -37219,6 +37293,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
   var documentTitle = "";
   var documentTitleDraft = null;
   var documentTitleError = null;
+  var documentTitleComposing = false;
   var documentTitleRenameRequest = null;
   var documentTitlePresentationRevision = 0;
   var lastDocumentFocusTarget;
@@ -37245,6 +37320,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       return other.title === this.title && other.presentationRevision === this.presentationRevision;
     }
     toDOM() {
+      const attachment = documentAttachment;
       const wrapper = document.createElement("div");
       wrapper.className = "cm-live-note-title scholium-note-title";
       wrapper.setAttribute("role", "heading");
@@ -37274,6 +37350,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       let composing = false;
       let commitAfterComposition = false;
       const normalizeInput = () => {
+        if (attachment !== documentAttachment) return;
         if (composing) {
           documentTitleDraft = input.value;
           wrapper.setAttribute("aria-label", input.value || this.title);
@@ -37291,6 +37368,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         resize();
       };
       const commit = () => {
+        if (attachment !== documentAttachment) return;
         if (documentTitleRenameRequest) return;
         const requestedTitle = input.value.replace(/[\r\n]+/g, " ");
         documentTitleDraft = requestedTitle;
@@ -37317,13 +37395,18 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       let cancelling = false;
       input.addEventListener("input", normalizeInput);
       input.addEventListener("focus", () => {
+        if (attachment !== documentAttachment) return;
         setDocumentFocusTarget("title");
       });
       input.addEventListener("compositionstart", () => {
+        if (attachment !== documentAttachment) return;
         composing = true;
+        documentTitleComposing = true;
       });
       input.addEventListener("compositionend", () => {
+        if (attachment !== documentAttachment) return;
         composing = false;
+        documentTitleComposing = false;
         normalizeInput();
         if (commitAfterComposition) {
           commitAfterComposition = false;
@@ -37331,6 +37414,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         }
       });
       input.addEventListener("keydown", (event) => {
+        if (attachment !== documentAttachment) return;
         if (composing || event.isComposing) return;
         if (event.key === "Enter") {
           event.preventDefault();
@@ -37346,6 +37430,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         }
       });
       input.addEventListener("blur", () => {
+        if (attachment !== documentAttachment) return;
         if (cancelling) {
           cancelling = false;
           return;
@@ -37409,7 +37494,9 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     documentTitlePresentationRevision += 1;
     editor.dispatch({ effects: refreshDocumentTitleEffect.of(null) });
     if (!accepted) {
+      const attachment = documentAttachment;
       queueMicrotask(() => {
+        if (attachment !== documentAttachment) return;
         const input = document.querySelector(
           ".scholium-note-title-input"
         );
@@ -38261,7 +38348,9 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         const paintedFingerprint = bridgeFingerprint;
         const paintedDocumentVersion = documentVersion;
         const paintedDocumentLength = update.state.doc.length;
+        const attachment = documentAttachment;
         scheduleAfterNextPaint(() => {
+          if (attachment !== documentAttachment) return;
           if (input !== null) {
             recordEditorMetric("input-to-paint", input.startedAt, {
               composing: input.composing ? 1 : 0,
@@ -38490,10 +38579,13 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
   }
   var selectionActions = createSelectionActions(nativeFloating, selectionActionTarget);
   function measureSelectionAction(view) {
+    const attachment = documentAttachment;
     view.requestMeasure({
       key: selectionActions,
       read: selectionActionTarget,
-      write: (target) => selectionActions.update(target)
+      write: (target) => {
+        if (attachment === documentAttachment) selectionActions.update(target);
+      }
     });
   }
   var previewPopover = createPreviewPopoverController({
@@ -38836,9 +38928,6 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       if (request.knownGeneration !== 0 || new TextEncoder().encode(operation.text).byteLength > MAX_SOURCE_UTF8_BYTES) {
         return rejected(request.requestID, documentVersion, "invalid initialization");
       }
-      bridgeSessionID = request.sessionID;
-      bridgeDocumentID = request.documentID;
-      bridgeFingerprint = request.startingFingerprint;
       editingDialect = operation.dialect;
       editorOperations.setDocument(
         operation.text,
@@ -38846,7 +38935,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         request.documentID,
         request.startingFingerprint
       );
-      await editorOperations.setMode(operation.mode);
+      editorOperations.setMode(operation.mode);
       if (operation.initialSelection) {
         editorOperations.revealSourceRange(
           operation.initialSelection.anchor,
@@ -38870,7 +38959,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     }
     switch (operation.type) {
       case "setMode":
-        await editorOperations.setMode(operation.mode);
+        editorOperations.setMode(operation.mode);
         break;
       case "setDocumentTitle":
         editorOperations.setDocumentTitle(operation.value);
@@ -38986,7 +39075,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         const restoredMode = configuredEditorMode(editor.state);
         editor.setState(recoveredState);
         lastDocumentFocusTarget = snapshot.focusTarget;
-        await editorOperations.setMode(restoredMode);
+        editorOperations.setMode(restoredMode);
         dirty = snapshot.dirty;
         documentVersion = snapshot.generation;
         return { ...successfulResult(request.requestID), recovery: { ...snapshot, undoHistoryPreserved: restoredHistory } };
@@ -39117,7 +39206,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       return rejected("invalid", documentVersion, "malformed editor request");
     }
     const compositionPolicy = compositionRequestPolicy(value.operation.type);
-    if ((editor.composing || compositionGate.active) && compositionPolicy === "reject") {
+    if ((editor.composing || compositionGate.active || documentTitleComposing) && compositionPolicy === "reject") {
       return rejected(value.requestID, documentVersion, "editor identity cannot change during composition");
     }
     if ((editor.composing || compositionGate.active) && compositionPolicy === "defer") {
@@ -39145,7 +39234,9 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     }
   }
   editor.contentDOM.addEventListener("compositionend", () => {
+    const attachment = documentAttachment;
     window.setTimeout(() => {
+      if (attachment !== documentAttachment) return;
       const pending = compositionGate.finish();
       for (const item of pending) void dispatchEditorRequest(item.request).then(item.resolve);
       publishEditorContext();
@@ -39153,7 +39244,10 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
   });
   editor.contentDOM.addEventListener("compositionstart", () => {
     compositionGate.begin();
-    window.queueMicrotask(publishEditorContext);
+    const attachment = documentAttachment;
+    window.queueMicrotask(() => {
+      if (attachment === documentAttachment) publishEditorContext();
+    });
   });
   function pasteTransfer(transfer, dropPosition, requestNativeImageImport = false) {
     if (Array.from(transfer.files).length > 0 || Array.from(transfer.items).some((item) => item.kind === "file")) {
@@ -39198,7 +39292,9 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     style.textContent = css2;
     scrollCoordinator.scheduleGeometryReport(geometry);
     if (document.fonts.status !== "loaded") {
+      const attachment = documentAttachment;
       void document.fonts.ready.then(() => {
+        if (attachment !== documentAttachment) return;
         scrollCoordinator.scheduleGeometryReport(geometry);
       });
     }
@@ -39297,8 +39393,16 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
   var editorOperations = {
     /** @param {string} text @param {string} sessionID @param {string} documentID */
     setDocument(text, sessionID, documentID, startingFingerprint) {
+      documentAttachment += 1;
+      interactionReporter.cancel();
+      cancelEditorAnnouncement(editor.contentDOM);
       cancelPendingSmoothReveal();
       previewPopover.hide();
+      selectionActions.dismiss();
+      selectionActions.update(null);
+      inputSuggestions.resetDocument();
+      mermaidRuntimeLoader.resetDocument();
+      scrollCoordinator.resetDocument();
       compositionGate.rejectAll((pending) => rejected(
         pending.requestID,
         documentVersion,
@@ -39310,18 +39414,23 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       documentTitle = "";
       documentTitleDraft = null;
       documentTitleError = null;
+      documentTitleComposing = false;
       documentTitleRenameRequest = null;
       documentTitlePresentationRevision += 1;
       lastDocumentFocusTarget = void 0;
+      linkPreviews = [];
+      linkPreviewIndexByRange = /* @__PURE__ */ new Map();
+      lastUndoLabel = void 0;
+      lastRedoLabel = void 0;
+      selectingForAgent = false;
+      pendingKeyDownStartedAt = null;
+      pendingCommittedKeyStartedAt = null;
+      pendingInputStartedAt = null;
+      liveWidgetReuseCounts.table = 0;
+      liveWidgetReuseCounts.footnote = 0;
+      if (documentAttachment > 1) clearEditorPerformanceSamples();
       documentVersion = 0;
-      editor.dispatch({
-        changes: replacementChange(editor.state.doc.toString(), text),
-        effects: setExactSource.of(text),
-        annotations: [
-          Transaction.addToHistory.of(false),
-          programmaticDocumentChange.of(true)
-        ]
-      });
+      editor.setState(createMarkdownDocumentState(text, editorExtensions));
       dirty = false;
       lastInteractionAvailabilitySignature = null;
       scheduleEditorInteractionReport(true);
@@ -39336,10 +39445,11 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       editor.dispatch({ effects: refreshDocumentTitleEffect.of(null) });
     },
     /** @param {string} mode */
-    async setMode(mode) {
+    setMode(mode) {
       cancelPendingSmoothReveal();
       const startedAt = performance.now();
       const transitionSequence = ++modeTransitionSequence;
+      const attachment = documentAttachment;
       previewPopover.hide();
       const scrollSnapshot = editor.scrollSnapshot();
       const nextMode = mode === "livePreview" ? "livePreview" : "source";
@@ -39358,13 +39468,14 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       });
       editor.requestMeasure({
         read: () => editor.state.doc.length,
-        write: (documentLength) => window.requestAnimationFrame(() => recordEditorMetric(
-          "mode-toggle",
-          startedAt,
-          { documentLength, transitionSequence }
-        ))
+        write: (documentLength) => window.requestAnimationFrame(() => {
+          if (attachment !== documentAttachment) return;
+          recordEditorMetric("mode-toggle", startedAt, { documentLength, transitionSequence });
+        })
       });
-      window.setTimeout(scrollCoordinator.postCurrent, 0);
+      window.setTimeout(() => {
+        if (attachment === documentAttachment) scrollCoordinator.postCurrent();
+      }, 0);
       if (appliedMode === "livePreview") convergeLivePreviewProjection();
       flushPresentationStyleAndGeometry();
     },
@@ -39470,6 +39581,17 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
   };
   webkitWindow.scholiumEditor = {
     dispatch: dispatchEditorRequest,
+    prepareForReuse() {
+      if (editor.composing || compositionGate.active || documentTitleComposing) return false;
+      editorOperations.blur();
+      editingDialect = null;
+      editorOperations.setDocument("", "", "", "");
+      interactionReporter.cancel();
+      document.getElementById("scholium-user-css")?.replaceChildren();
+      document.getElementById("scholium-presentation-css")?.replaceChildren();
+      updateEditorAccessibility(editor.contentDOM, "source", currentEditorContext());
+      return true;
+    },
     resolveLinkCompletionQuery: inputSuggestions.resolveLinkCompletionQuery,
     resolveDocumentTitleRename,
     refreshMathRuntime() {

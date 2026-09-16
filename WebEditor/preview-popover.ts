@@ -71,6 +71,7 @@ export function createPreviewPopoverController(
   },
 ): PreviewPopoverController {
   let nativeID = 0;
+  let presentationRevision = 0;
   let nativeHovered = false;
   let editor: EditorView | null = null;
   let root: HTMLElement | null = null;
@@ -117,6 +118,7 @@ export function createPreviewPopoverController(
   }
 
   function hide(retainHoveredLink = false) {
+    presentationRevision += 1;
     nativeHovered = false;
     options.nativeFloating.hide(nativeID);
     window.clearTimeout(showTimer);
@@ -165,7 +167,9 @@ export function createPreviewPopoverController(
     });
     if (startedAt !== undefined) {
       const activeEditor = editor;
+      const revision = presentationRevision;
       scheduleAfterNextPaint(() => {
+        if (revision !== presentationRevision) return;
         recordEditorMetric("cached-preview", startedAt, {documentLength: activeEditor.state.doc.length});
         options.postPerformanceSample("editor_cached_preview", Math.max(0, performance.now() - startedAt));
       });

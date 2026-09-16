@@ -155,6 +155,16 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
 
     let floatingSurfaces = DocumentFloatingSurfaceController()
     var webView: WKWebView?
+    var webViewPool: MarkdownEditorWebViewPool?
+
+    /// A bridge request already executing in WebKit cannot be cancelled by
+    /// cancelling its Swift task. Only hand an idle, acknowledged page to a
+    /// different document; other detach paths keep their recovery behavior.
+    var canRecycleWebView: Bool {
+        isReady && isLoaded && errorMessage == nil && !isComposing
+            && inFlightRequestTasks.isEmpty && unfinishedBridgeDispatches.isEmpty
+            && webView?.isLoading == false
+    }
     private var pendingSource: String?
     private var pendingDocumentID = ""
     private var pendingDocumentTitle = ""
@@ -176,6 +186,9 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     private var automaticFocusTarget: WindowDocumentFocusTarget = .editor
     private var sourceMutationBarrier: Task<Void, Never>?
     private var inFlightRequestTasks: [UUID: Task<MarkdownEditorCommandResult, Error>] = [:]
+    // Unlike the caller's request queue, this survives cancellation and
+    // deadline expiry until the actual WebKit dispatch has returned.
+    private var unfinishedBridgeDispatches: Set<UUID> = []
     private var requestEpoch: UInt64 = 0
     private var modeTransitionEpoch: UInt64 = 0
     private var modeTransitionTask: Task<Void, Never>?
@@ -1922,7 +1935,11 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                 try await withScholiumLifecycleDeadline(
                     phase: .bridgeRequest,
                     timeout: lifecyclePolicy.bridgeRequest
-                ) { [bridgeDispatcher] in
+                ) { [self, bridgeDispatcher] in
+                    guard isCurrentIdentity(context) else { throw SessionError.staleRequest }
+                    let dispatchID = UUID()
+                    unfinishedBridgeDispatches.insert(dispatchID)
+                    defer { unfinishedBridgeDispatches.remove(dispatchID) }
                     dispatchedResult = try await bridgeDispatcher.dispatch(
                         requestJSON: requestJSON,
                         in: webView

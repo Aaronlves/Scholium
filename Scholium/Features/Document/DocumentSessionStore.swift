@@ -356,6 +356,7 @@ final class DocumentSessionStore {
     }
 
     private var entries: [DocumentEditingTarget: Entry] = [:]
+    private(set) var editorWebViewPool = MarkdownEditorWebViewPool()
 
     var retainedSessions: [DocumentEditingTarget: DocumentSessionModel] {
         entries.mapValues(\.session)
@@ -365,6 +366,7 @@ final class DocumentSessionStore {
         if let existing = entries[target]?.session { return existing }
         let key: DocumentSessionKey? = if case .workspace(let key) = target { key } else { nil }
         let session = DocumentSessionModel(key: key)
+        session.editorSession.webViewPool = editorWebViewPool
         entries[target] = Entry(session: session)
         return session
     }
@@ -387,6 +389,7 @@ final class DocumentSessionStore {
 
     func receiveSession(_ session: DocumentSessionModel, for target: DocumentEditingTarget) {
         precondition(entries[target] == nil)
+        session.editorSession.webViewPool = editorWebViewPool
         entries[target] = Entry(session: session, leaseCount: 1, isForeground: true)
     }
 
@@ -445,6 +448,8 @@ final class DocumentSessionStore {
     }
 
     func removeAll() {
+        editorWebViewPool.invalidate()
+        editorWebViewPool = MarkdownEditorWebViewPool()
         for entry in entries.values {
             if entry.session.editorSession.hasAttachedWebView {
                 entry.session.cancelScheduledWork()

@@ -10,6 +10,7 @@ export interface EditorGeometrySnapshot {
 }
 
 export interface EditorScrollCoordinator {
+  resetDocument(): void;
   captureGeometry(): EditorGeometrySnapshot;
   currentAnchor(): EditorScrollAnchor;
   postCurrent(): void;
@@ -140,13 +141,16 @@ export function createEditorScrollCoordinator(
   }
 
   let geometryReportScheduled = false;
+  let geometryReportGeneration = 0;
   let pendingGeometrySnapshot: EditorGeometrySnapshot | undefined;
   function scheduleGeometryReport(snapshot?: EditorGeometrySnapshot) {
     if (snapshot && snapshot.revision !== scrollRevision) return;
     pendingGeometrySnapshot ??= snapshot;
     if (geometryReportScheduled) return;
     geometryReportScheduled = true;
+    const generation = ++geometryReportGeneration;
     queueMicrotask(() => {
+      if (generation !== geometryReportGeneration) return;
       geometryReportScheduled = false;
       const geometrySnapshot = pendingGeometrySnapshot;
       pendingGeometrySnapshot = undefined;
@@ -247,6 +251,23 @@ export function createEditorScrollCoordinator(
   }
 
   return {
+    resetDocument() {
+      scrollRevision += 1;
+      geometryReportGeneration += 1;
+      geometryReportScheduled = false;
+      pendingGeometrySnapshot = undefined;
+      window.clearTimeout(reportTimer);
+      reportTimer = undefined;
+      if (measurementFrame !== null) window.cancelAnimationFrame(measurementFrame);
+      measurementFrame = null;
+      sessionStartedAt = null;
+      previousFrameAt = null;
+      sessionFrameCount = 0;
+      sessionLongestFrame = 0;
+      sessionDroppedFrameCount = 0;
+      editor.scrollDOM.scrollTop = 0;
+      editor.scrollDOM.scrollLeft = 0;
+    },
     captureGeometry,
     currentAnchor,
     postCurrent,

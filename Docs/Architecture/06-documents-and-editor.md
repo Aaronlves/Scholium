@@ -120,9 +120,12 @@ Only dirty/activity state reaches the document model during input. Complete
 snapshots are reserved for persistence, conflict, recovery, reconstruction,
 commands and diagnostics. Persistence reconciles the live complete source first.
 
-`MarkdownEditorSession` alone owns the retained
-WebView lifecycle, checked source mirror, generation, recovery, and pending
-requests. `MarkdownEditorBridgeAdapter` owns typed inbound decoding and
+`MarkdownEditorSession` owns the attached WebView, checked mirror, generation,
+recovery and requests. A window-local pool admits one idle page after completed
+dispatches and source/history clearing. Reattachment validates readiness and
+restores destination-only state. Composition/errors prevent reuse; memory
+pressure clears the pool; workspace teardown invalidates admission.
+`MarkdownEditorBridgeAdapter` owns typed inbound decoding and
 outbound JavaScript dispatch;
 `MarkdownEditorNativeWebView` owns AppKit
 attachment, image paste, and the context menu; and
