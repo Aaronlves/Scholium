@@ -232,16 +232,26 @@ final class DocumentWindowLocationStore {
         defer { destination.transferInProgress = false }
         await destination.waitForDocumentTransitions()
         let previousDestination = destination.documentController.selectedDocument
+        var destinationSuspensionID: String?
+        var sourceSuspensionID: String?
         defer {
             if let previousDestination {
-                destination.documentController.resumeAutosave(afterTransferOf: previousDestination)
+                destination.documentController.resumeAutosave(
+                    afterTransferOf: previousDestination, suspensionID: destinationSuspensionID
+                )
             }
-            source.documentController.resumeAutosave(afterTransferOf: tab.document)
+            source.documentController.resumeAutosave(afterTransferOf: tab.document, suspensionID: sourceSuspensionID)
         }
         if let previousDestination {
             try await destination.documentController.prepareSessionTransfer(previousDestination)
+            destinationSuspensionID =
+                destination.documentController.session(for: previousDestination.editingTarget)
+                .editorSession.detachmentSuspensionID
         }
         try await source.documentController.prepareSessionTransfer(tab.document)
+        sourceSuspensionID =
+            source.documentController.session(for: tab.document.editingTarget)
+            .editorSession.detachmentSuspensionID
         guard source.documentTabController.tabs.contains(tab),
             destination.documentController.canReceiveSessionTransfer(tab.document)
         else {

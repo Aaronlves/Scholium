@@ -50,11 +50,18 @@ struct AgentChatSidebarLifecycleTests {
         first.editor.setSelectedRange(NSRange(location: firstDraft.utf16.count, length: 0))
         first.editor.insertText("/find", replacementRange: first.editor.selectedRange())
         try await settle(host) {
-            first.completion?.candidates.contains { if case .find = $0.action { return true }; return false } == true
+            first.completion?.candidates.contains {
+                if case .find = $0.action { return true }
+                return false
+            } == true
                 && first.completion?.candidateQuery == first.completion?.query
         }
         let completion = try #require(first.completion)
-        let candidate = try #require(completion.candidates.first { if case .find = $0.action { return true }; return false })
+        let candidate = try #require(
+            completion.candidates.first {
+                if case .find = $0.action { return true }
+                return false
+            })
         completion.accept(candidate)
         try await settle(host) { findField(in: host) != nil }
         let query = try #require(findField(in: host))
@@ -159,7 +166,8 @@ struct AgentChatSidebarLifecycleTests {
                 guard let marker = session.markers[retainedAnchor.id]?.view,
                     let scroll = marker.enclosingScrollView, let document = scroll.documentView
                 else { return false }
-                let offset = marker.convert(marker.bounds, to: document).minY
+                let offset =
+                    marker.convert(marker.bounds, to: document).minY
                     - scroll.contentView.bounds.minY - scroll.contentInsets.top
                 return abs(offset - retainedAnchor.offset) < 2
             }

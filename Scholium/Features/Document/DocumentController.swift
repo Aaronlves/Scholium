@@ -621,13 +621,52 @@ final class DocumentController: ObservableObject {
             && !existing.isSavingEdit && !existing.editorSession.hasAttachedWebView
     }
 
-    func resumeAutosave(afterTransferOf document: WindowSelectedDocument) {
+    func resumeAutosave(afterTransferOf document: WindowSelectedDocument, suspensionID: String? = nil) {
         guard let session = sessions.retainedSession(for: document.editingTarget) else { return }
+        if selectedDocument?.editingTarget == document.editingTarget,
+            session.editorSession.hasAttachedWebView,
+            let suspensionID
+        {
+            let token = UUID()
+            session.detachmentResumeToken = token
+            session.detachmentResumeTask = Task { @MainActor [weak self, weak session] in
+                guard let self, let session else { return }
+                defer {
+                    if session.detachmentResumeToken == token {
+                        session.detachmentResumeTask = nil
+                        session.detachmentResumeToken = nil
+                    }
+                }
+                do {
+                    guard self.selectedDocument?.editingTarget == document.editingTarget,
+                        session.editorSession.hasAttachedWebView
+                    else {
+                        self.scheduleAutosave(session: session, target: document.editingTarget)
+                        return
+                    }
+                    let acknowledgedPendingCommit = session.pendingEditorCommit != nil
+                    try await self.acknowledgePendingEditorCommit(session: session)
+                    try await session.editorSession.resumeAfterDetachment(suspensionID: suspensionID)
+                    if acknowledgedPendingCommit, session.conflict == nil {
+                        session.editError = nil
+                        session.canRetrySave = false
+                        if self.selectedDocument?.editingTarget == document.editingTarget { self.setSaveError(nil) }
+                    }
+                    self.scheduleAutosave(session: session, target: document.editingTarget)
+                } catch {
+                    await self.presentSaveFailure(error, session: session, target: document.editingTarget)
+                }
+            }
+            return
+        }
         scheduleAutosave(session: session, target: document.editingTarget)
     }
 
     func prepareSessionTransfer(_ document: WindowSelectedDocument) async throws {
         let session = session(for: document.editingTarget)
+        // A previous transition's completion may have queued resumption on
+        // this actor. Finish it before freezing the next navigation snapshot.
+        if let resume = session.detachmentResumeTask { await resume.value }
         guard !session.editorSession.isComposing else { throw DocumentControllerError.editorUnavailable }
         session.cancelAutosave()
         do {
@@ -640,11 +679,11 @@ final class DocumentController: ObservableObject {
                 guard !session.isSavingEdit else { throw DocumentControllerError.changedDuringSave }
             }
             if session.editorSession.hasAttachedWebView {
-                try await session.editorSession.captureStateForViewReconstruction()
+                try await session.editorSession.captureStateForViewReconstruction(suspendForDetachment: true)
             }
             guard !session.editorSession.isComposing else { throw DocumentControllerError.editorUnavailable }
         } catch {
-            resumeAutosave(afterTransferOf: document)
+            resumeAutosave(afterTransferOf: document, suspensionID: session.editorSession.detachmentSuspensionID)
             throw error
         }
     }
@@ -1362,7 +1401,9 @@ final class DocumentController: ObservableObject {
     ) throws {
         guard !session.editorSession.isComposing else { throw DocumentControllerError.editorUnavailable }
         if let conflict = repositoryConflict(for: session) { throw conflict }
-        guard !session.hasUnsavedChanges, !session.isSavingEdit, session.activeSaveTask == nil else {
+        guard !session.hasUnsavedChanges, !session.isSavingEdit, session.activeSaveTask == nil,
+            session.pendingEditorCommit == nil
+        else {
             throw DocumentControllerError.changedDuringSave
         }
         session.cancelScheduledWork()
@@ -1533,7 +1574,7 @@ final class DocumentController: ObservableObject {
         guard let conflict = session.conflict else { return }
         let comparedConflict = session.conflictComparison ?? conflict
         let attemptedPath = relativePath(for: target)
-        let sourceBeforeReload = session.editorSession.isLoaded ? session.editorSession.checkedSource : session.editingSource
+        let sourceBeforeReload = session.retainedExactSource
         do {
             let document = try await loadDocument(for: target)
             guard document.fingerprint == comparedConflict.diskRevision else {
@@ -1543,7 +1584,7 @@ final class DocumentController: ObservableObject {
                 )
             }
             await documentDidCommit(SaveResult(document: document))
-            let currentSource = session.editorSession.isLoaded ? session.editorSession.checkedSource : session.editingSource
+            let currentSource = session.retainedExactSource
             guard session.conflict == conflict,
                 conflict.diskRevision == comparedConflict.diskRevision,
                 currentSource.utf8.elementsEqual(sourceBeforeReload.utf8),
@@ -1557,6 +1598,7 @@ final class DocumentController: ObservableObject {
             session.editingSource = document.rawContent
             session.originalEditingSource = document.rawContent
             session.editingRevision = document.fingerprint
+            session.pendingEditorCommit = nil
             session.editorSession.loadDocument(
                 document.rawContent,
                 documentID: session.editorSession.bridgeDocumentID,
@@ -1678,7 +1720,9 @@ final class DocumentController: ObservableObject {
         }
         let path = relativePath(for: target)
         guard !path.isEmpty else { throw DocumentControllerError.documentUnavailable }
-        if !session.editorSession.isReady || !session.editorSession.isLoaded {
+        if (!session.editorSession.isReady || !session.editorSession.isLoaded)
+            && !session.editorSession.hasDetachedPersistenceSnapshot
+        {
             guard session.hasUnsavedChanges else { return .clean }
             guard try await session.editorSession.waitUntilLoadedForSave() else {
                 throw DocumentControllerError.editorUnavailable
@@ -1692,9 +1736,9 @@ final class DocumentController: ObservableObject {
             )
         }
 
-        let editorSnapshot = try await session.editorSession.currentTextSnapshot(
-            for: session.editorSession.bridgeDocumentID
-        )
+        try await acknowledgePendingEditorCommit(session: session)
+
+        let editorSnapshot = try await session.editorSession.persistenceSnapshot(expectedRevision: revision)
         let sourceBeingSaved = editorSnapshot.text
         try Task.checkCancellation()
         guard relativePath(for: target) == path else {
@@ -1704,7 +1748,7 @@ final class DocumentController: ObservableObject {
         session.editingSource = sourceBeingSaved
         defer { session.suppressAutosave = false }
         guard
-            sourceBeingSaved != session.originalEditingSource
+            !sourceBeingSaved.utf8.elementsEqual(session.originalEditingSource.utf8)
                 || session.editorSession.isDirty
         else {
             if editingDocumentPath == path { editingDocumentPath = nil }
@@ -1720,14 +1764,15 @@ final class DocumentController: ObservableObject {
         receipt.document = saved
         session.editingRevision = saved.fingerprint
         session.originalEditingSource = saved.rawContent
+        session.pendingEditorCommit = (editorSnapshot, saved)
         await documentDidCommit(result)
 
-        let acknowledgement = try await session.editorSession.acknowledgeCommittedSnapshot(
-            expectedText: sourceBeingSaved,
+        let acknowledgement = try await session.editorSession.acknowledgePersistenceSnapshot(
+            editorSnapshot,
             committedText: saved.rawContent,
-            fingerprint: saved.fingerprint,
-            documentID: session.editorSession.bridgeDocumentID
+            fingerprint: saved.fingerprint
         )
+        session.pendingEditorCommit = nil
         switch acknowledgement {
         case .clean:
             session.editingSource = saved.rawContent
@@ -1738,6 +1783,20 @@ final class DocumentController: ObservableObject {
             editingDocumentPath = path
             return .changedDuringSave
         }
+    }
+
+    private func acknowledgePendingEditorCommit(session: DocumentSessionModel) async throws {
+        guard let pending = session.pendingEditorCommit else { return }
+        guard pending.document.fingerprint == session.editingRevision else {
+            throw DocumentControllerError.changedDuringSave
+        }
+        _ = try await session.editorSession.acknowledgePersistenceSnapshot(
+            pending.snapshot, committedText: pending.document.rawContent,
+            fingerprint: pending.document.fingerprint
+        )
+        guard session.pendingEditorCommit?.document.fingerprint == pending.document.fingerprint else { return }
+        session.pendingEditorCommit = nil
+        session.editingSource = session.editorSession.checkedSource
     }
 
     private func saveDocument(
@@ -1783,10 +1842,7 @@ final class DocumentController: ObservableObject {
             let diskDocument = try? await loadDocument(for: target),
             let baseRevision = session.editingRevision
         {
-            let editorSource =
-                session.editorSession.isLoaded
-                ? session.editorSession.checkedSource
-                : session.editingSource
+            let editorSource = session.retainedExactSource
             session.editingSource = editorSource
             session.conflict = DocumentConflictSnapshot(
                 relativePath: relativePath(for: target),
@@ -2054,10 +2110,7 @@ final class DocumentController: ObservableObject {
 
         if session.hasUnsavedChanges || session.editorSession.isComposing {
             session.cancelAutosave()
-            let editorSource =
-                session.editorSession.isLoaded
-                ? session.editorSession.checkedSource
-                : session.editingSource
+            let editorSource = session.retainedExactSource
             session.editingSource = editorSource
             session.conflict = DocumentConflictSnapshot(
                 relativePath: snapshot.id.relativePath,
@@ -2080,6 +2133,7 @@ final class DocumentController: ObservableObject {
         session.originalEditingSource = diskSource
         session.editingRevision = snapshot.fingerprint
         session.conflict = nil
+        session.pendingEditorCommit = nil
         session.editError = nil
         session.canRetrySave = false
         let managedBodyStart =
@@ -2093,7 +2147,7 @@ final class DocumentController: ObservableObject {
             editingDocumentPath = nil
         }
         session.suppressAutosave = false
-        if session.isEditing || session.editorSession.hasAttachedWebView {
+        if session.isEditing || !session.editorSession.documentID.isEmpty {
             session.editorSession.loadDocument(
                 diskSource,
                 documentID: session.editorSession.bridgeDocumentID,

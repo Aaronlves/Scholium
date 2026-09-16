@@ -79,6 +79,16 @@ struct MarkdownEditorTextSnapshot: Equatable, Sendable {
     let generation: Int
 }
 
+/// A persistence input is bound to the editing base as well as exact source.
+/// A suspension ID proves a detached snapshot came from an input-frozen page.
+struct MarkdownEditorPersistenceSnapshot: Sendable {
+    let text: String
+    let generation: Int
+    let documentID: String
+    let fingerprint: String
+    let suspensionID: String?
+}
+
 enum MarkdownEditorCommitAcknowledgement: Equatable, Sendable {
     case clean
     case superseded
@@ -206,6 +216,16 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     private var checkedEditorUTF16Length = 0
     private var sourceOffsetMap = EditorSourceOffsetMap(source: "")
     private var recoverySnapshot: MarkdownEditorRecoverySnapshot?
+    private struct DetachmentCapture {
+        let suspensionID: String
+        let transportSessionID: UUID
+        let snapshot: MarkdownEditorRecoverySnapshot
+    }
+    private var detachmentCapture: DetachmentCapture?
+    private var pendingDetachmentSuspensionID: String?
+    var detachmentSuspensionID: String? {
+        pendingDetachmentSuspensionID ?? detachmentCapture?.suspensionID
+    }
     private var lastKnownSelectionSnapshot: MarkdownEditorSelectionSnapshot?
     private var pendingWindowPresentation: WindowDocumentPresentationSnapshot?
     private(set) var preferredDocumentFocusTarget: WindowDocumentFocusTarget?
@@ -377,6 +397,8 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     /// recovery pin. Closed documents intentionally do not retain undo state.
     func shutdownDetachedSession() {
         precondition(webView == nil)
+        detachmentCapture = nil
+        pendingDetachmentSuspensionID = nil
         floatingSurfaces.reset()
         invalidateRequestQueue(clearingRecoveryReport: false)
         startupTask?.cancel()
@@ -492,6 +514,8 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         mode: MarkdownEditorMode,
         initialSourceRange: Range<Int>? = nil
     ) {
+        detachmentCapture = nil
+        pendingDetachmentSuspensionID = nil
         floatingSurfaces.reset()
         let isFirstDocumentLoad = self.documentID != documentID
         let publishesLoadingState = isReady
@@ -515,7 +539,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             recoverySnapshot.map {
                 $0.documentID == documentID
                     && $0.fingerprint == startingFingerprint
-                    && $0.source == source
+                    && $0.source.utf8.elementsEqual(source.utf8)
             } ?? false
         let retainedStartingFingerprint = preservesRecovery ? startingFingerprint : nil
         if !preservesRecovery {
@@ -815,7 +839,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
 
     func setLinkPreviews(_ previews: [DocumentLinkPreview], in source: String) {
         let offsetMap =
-            source == checkedSource
+            source.utf8.elementsEqual(checkedSource.utf8)
             ? sourceOffsetMap
             : EditorSourceOffsetMap(source: source)
         pendingLinkPreviews = previews.prefix(DocumentPreviewCatalogBuilder.maximumLinkCount).compactMap { preview in
@@ -857,7 +881,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     ) async {
         guard canAttemptPreview, isReady, isLoaded, let webView else { return }
         let offsetMap =
-            source == checkedSource
+            source.utf8.elementsEqual(checkedSource.utf8)
             ? sourceOffsetMap
             : EditorSourceOffsetMap(source: source)
         guard
@@ -1015,13 +1039,61 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     /// Captures CodeMirror's exact source, selection, and bounded history before
     /// SwiftUI removes the WKWebView during a note collapse or replacement.
     /// The retained document session replays this snapshot into the next view.
-    func captureStateForViewReconstruction() async throws {
+    func captureStateForViewReconstruction(suspendForDetachment: Bool = false) async throws {
         cancelScheduledRecoveryCapture()
         let expectedKey = RecoveryCaptureKey(
             requestEpoch: requestEpoch,
             generation: generation
         )
-        try await captureRecoverySnapshot(expectedKey: expectedKey)
+        if suspendForDetachment {
+            guard !isComposing, isReady, isLoaded, let webView else {
+                throw SessionError.unavailable
+            }
+            let existingCapture = detachmentCapture.flatMap { capture -> DetachmentCapture? in
+                guard capture.transportSessionID == sessionID,
+                    capture.snapshot.documentID == documentID,
+                    capture.snapshot.fingerprint == startingFingerprint,
+                    capture.snapshot.generation == generation,
+                    capture.snapshot.source.utf8.elementsEqual(checkedSource.utf8)
+                else { return nil }
+                return capture
+            }
+            let suspensionID =
+                existingCapture?.suspensionID
+                ?? pendingDetachmentSuspensionID
+                ?? UUID().uuidString
+            pendingDetachmentSuspensionID = suspensionID
+            do {
+                let result = try await send(.suspendForDetachment(suspensionID: suspensionID), in: webView)
+                guard self.webView === webView,
+                    pendingDetachmentSuspensionID == suspensionID,
+                    let snapshot = result.recovery,
+                    snapshot.documentID == documentID,
+                    snapshot.fingerprint == startingFingerprint,
+                    snapshot.generation == generation,
+                    snapshot.source.utf8.elementsEqual(checkedSource.utf8),
+                    markdownEditorSelectionRangesAreValid(snapshot.ranges, forEditorUTF16Length: checkedEditorUTF16Length)
+                else { throw SessionError.invalidResult }
+                recoverySnapshot = snapshot
+                detachmentCapture = DetachmentCapture(
+                    suspensionID: suspensionID, transportSessionID: sessionID, snapshot: snapshot
+                )
+                pendingDetachmentSuspensionID = nil
+                lastKnownSelectionSnapshot = MarkdownEditorSelectionSnapshot(
+                    documentID: snapshot.documentID, fingerprint: snapshot.fingerprint,
+                    generation: snapshot.generation, ranges: snapshot.ranges
+                )
+                if let focusTarget = snapshot.focusTarget {
+                    preferredDocumentFocusTarget = focusTarget
+                    automaticFocusTarget = focusTarget
+                }
+            } catch {
+                try? await resumeAfterDetachment(suspensionID: suspensionID)
+                throw error
+            }
+        } else {
+            try await captureRecoverySnapshot(expectedKey: expectedKey)
+        }
         guard
             expectedKey
                 == RecoveryCaptureKey(
@@ -1038,6 +1110,102 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                 )
         else { throw SessionError.invalidResult }
         reconstructionScrollAnchor = capturedScrollAnchor ?? pendingScrollAnchor
+    }
+
+    /// Failed/cancelled navigation may keep the original page visible. An old
+    /// completion cannot unfreeze a newer suspension of that same document.
+    func resumeAfterDetachment(suspensionID: String) async throws {
+        guard detachmentSuspensionID == suspensionID,
+            let webView, isReady, isLoaded
+        else { return }
+        // Dispatch can unfreeze WebKit before its reply returns. From this
+        // point an independent detach cannot retain the old no-input proof.
+        detachmentCapture = nil
+        pendingDetachmentSuspensionID = suspensionID
+        _ = try await send(.resumeAfterDetachment(suspensionID: suspensionID), in: webView)
+        guard self.webView === webView, detachmentSuspensionID == suspensionID else { return }
+        detachmentCapture = nil
+        pendingDetachmentSuspensionID = nil
+    }
+
+    private var validDetachmentCapture: DetachmentCapture? {
+        guard !hasAttachedWebView, !isComposing,
+            let capture = detachmentCapture,
+            capture.snapshot.documentID == documentID,
+            capture.snapshot.fingerprint == startingFingerprint,
+            capture.snapshot.generation == generation,
+            capture.snapshot.source.utf8.elementsEqual(checkedSource.utf8)
+        else { return nil }
+        return capture
+    }
+
+    var hasDetachedPersistenceSnapshot: Bool { validDetachmentCapture != nil }
+
+    func persistenceSnapshot(expectedRevision: DocumentFingerprint) async throws -> MarkdownEditorPersistenceSnapshot {
+        if !hasAttachedWebView {
+            guard let capture = validDetachmentCapture else { throw SessionError.unavailable }
+            guard startingFingerprint == expectedRevision.sha256 else { throw SessionError.staleRequest }
+            return MarkdownEditorPersistenceSnapshot(
+                text: capture.snapshot.source, generation: generation,
+                documentID: documentID, fingerprint: startingFingerprint,
+                suspensionID: capture.suspensionID
+            )
+        }
+        let snapshot = try await currentTextSnapshot(for: documentID)
+        // A durable write may already have advanced Document's repository base
+        // while its live acknowledgement failed. A fresh full WebKit read is
+        // still authoritative; the repository separately checks that base.
+        return MarkdownEditorPersistenceSnapshot(
+            text: snapshot.text, generation: snapshot.generation,
+            documentID: documentID, fingerprint: startingFingerprint,
+            suspensionID: nil
+        )
+    }
+
+    func acknowledgePersistenceSnapshot(
+        _ snapshot: MarkdownEditorPersistenceSnapshot,
+        committedText: String,
+        fingerprint: DocumentFingerprint
+    ) async throws -> MarkdownEditorCommitAcknowledgement {
+        guard snapshot.documentID == documentID, snapshot.fingerprint == startingFingerprint else {
+            throw SessionError.staleRequest
+        }
+        // Reattachment may have resumed editing while the repository saved.
+        // Its live acknowledgement then decides whether newer input wins.
+        if hasAttachedWebView {
+            guard try await waitUntilLoadedForSave() else { throw SessionError.unavailable }
+            return try await acknowledgeCommittedSnapshot(
+                expectedText: snapshot.text, committedText: committedText,
+                fingerprint: fingerprint, documentID: snapshot.documentID
+            )
+        }
+        guard let capture = validDetachmentCapture,
+            capture.snapshot.generation >= snapshot.generation,
+            capture.snapshot.generation != snapshot.generation
+                || capture.snapshot.source.utf8.elementsEqual(snapshot.text.utf8),
+            DocumentFingerprint(content: committedText) == fingerprint
+        else { throw SessionError.invalidResult }
+        let recovered = capture.snapshot
+        let superseded = !recovered.source.utf8.elementsEqual(committedText.utf8)
+        let committed = MarkdownEditorRecoverySnapshot(
+            documentID: documentID, fingerprint: fingerprint.sha256,
+            generation: generation, ranges: recovered.ranges,
+            source: recovered.source, stateJSON: recovered.stateJSON,
+            undoHistoryPreserved: recovered.undoHistoryPreserved, dirty: superseded,
+            focusTarget: recovered.focusTarget
+        )
+        startingFingerprint = fingerprint.sha256
+        recoverySnapshot = committed
+        detachmentCapture = DetachmentCapture(
+            suspensionID: capture.suspensionID, transportSessionID: capture.transportSessionID, snapshot: committed
+        )
+        lastKnownSelectionSnapshot = MarkdownEditorSelectionSnapshot(
+            documentID: documentID, fingerprint: fingerprint.sha256,
+            generation: generation, ranges: recovered.ranges
+        )
+        updatePublished(\.isDirty, to: superseded)
+        committedTextSynchronizer?(recovered.source, fingerprint.sha256)
+        return superseded ? .superseded : .clean
     }
 
     private func captureRecoverySnapshot(
@@ -1057,7 +1225,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             snapshot.documentID == documentID,
             snapshot.fingerprint == startingFingerprint,
             snapshot.generation == generation,
-            snapshot.source == checkedSource,
+            snapshot.source.utf8.elementsEqual(checkedSource.utf8),
             markdownEditorSelectionRangesAreValid(
                 snapshot.ranges,
                 forEditorUTF16Length: checkedEditorUTF16Length
@@ -1136,8 +1304,8 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             intendedFingerprint == startingFingerprint,
             self.webView === webView,
             let exactSource = result.text,
-            exactSource == checkedSource,
-            source == nil || source == exactSource,
+            exactSource.utf8.elementsEqual(checkedSource.utf8),
+            source.map({ $0.utf8.elementsEqual(exactSource.utf8) }) ?? true,
             markdownEditorSelectionRangesAreValid(
                 result.selections,
                 forEditorUTF16Length: checkedEditorUTF16Length
@@ -1203,7 +1371,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             let currentText = result.text,
             let commitSuperseded = result.commitSuperseded,
             result.resultingGeneration == generation,
-            currentText == checkedSource
+            currentText.utf8.elementsEqual(checkedSource.utf8)
         else { throw SessionError.invalidResult }
         let rebasedRanges = currentValidSelectionRanges()
         invalidateRequestQueue()
@@ -1568,7 +1736,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             snapshot.documentID == documentID,
             snapshot.fingerprint == startingFingerprint,
             snapshot.generation == generation,
-            snapshot.source == checkedSource,
+            snapshot.source.utf8.elementsEqual(checkedSource.utf8),
             markdownEditorSelectionRangesAreValid(
                 snapshot.ranges,
                 forEditorUTF16Length: checkedEditorUTF16Length
@@ -1628,7 +1796,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                     snapshot.documentID == documentID
                         && snapshot.fingerprint == startingFingerprint
                         && snapshot.generation >= 0
-                        && snapshot.source == source
+                        && snapshot.source.utf8.elementsEqual(source.utf8)
                         && markdownEditorSelectionRangesAreValid(
                             snapshot.ranges,
                             forEditorUTF16Length: checkedEditorUTF16Length
@@ -1677,7 +1845,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                 }
                 if let snapshot = matchingRecovery,
                     snapshot.fingerprint == startingFingerprint,
-                    snapshot.source == checkedSource
+                    snapshot.source.utf8.elementsEqual(checkedSource.utf8)
                 {
                     let recovered = try await send(
                         .restoreRecovery(snapshot),
@@ -1917,6 +2085,12 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         in webView: WKWebView,
         requiringRequestEpoch requiredRequestEpoch: UInt64? = nil
     ) async throws -> MarkdownEditorCommandResult {
+        let requestDeadline = ContinuousClock.now.advanced(by: lifecyclePolicy.bridgeRequest)
+        let duration = lifecyclePolicy.bridgeRequest.components
+        let durationMilliseconds =
+            Double(duration.seconds) * 1_000
+            + Double(duration.attoseconds) / 1_000_000_000_000_000
+        let expiresAt = Int64((Date().timeIntervalSince1970 * 1_000 + durationMilliseconds).rounded(.down))
         let previous = operation.serializesSourceMutation ? sourceMutationBarrier : nil
         let context = BridgeRequestContext(
             requestEpoch: requiredRequestEpoch ?? requestEpoch,
@@ -1929,19 +2103,25 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         let trackingID = UUID()
         let task = Task.immediate { @MainActor in
             await previous?.value
+            try Task.checkCancellation()
             guard isCurrentIdentity(context) else {
                 throw SessionError.staleRequest
+            }
+            let remaining = ContinuousClock.now.duration(to: requestDeadline)
+            guard remaining > .zero else {
+                throw ScholiumWindowLifecycleError.timedOut(.bridgeRequest)
             }
             let request = MarkdownEditorRequest(
                 sessionID: context.sessionID,
                 documentID: context.documentID,
                 startingFingerprint: context.startingFingerprint,
                 knownGeneration: context.generation,
+                expiresAt: expiresAt,
                 operation: operation
             )
             let encoder = JSONEncoder()
             let requestData = try encoder.encode(request)
-            guard requestData.count <= MarkdownEditorDeltaApplier.maximumResultUTF8Bytes + 512_000,
+            guard requestData.count <= markdownEditorMaximumSourceEnvelopeBytes,
                 let requestJSON = String(data: requestData, encoding: .utf8)
             else {
                 throw SessionError.invalidResult
@@ -1951,7 +2131,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                 var dispatchedResult: Any?
                 try await withScholiumLifecycleDeadline(
                     phase: .bridgeRequest,
-                    timeout: lifecyclePolicy.bridgeRequest
+                    timeout: remaining
                 ) { [self, bridgeDispatcher] in
                     guard isCurrentIdentity(context) else { throw SessionError.staleRequest }
                     let dispatchID = UUID()
@@ -1970,7 +2150,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             guard isCurrentIdentity(context) else { throw SessionError.staleRequest }
             guard JSONSerialization.isValidJSONObject(rawResult as Any),
                 let resultData = try? JSONSerialization.data(withJSONObject: rawResult as Any),
-                resultData.count <= MarkdownEditorDeltaApplier.maximumResultUTF8Bytes + 512_000,
+                resultData.count <= markdownEditorMaximumSourceEnvelopeBytes,
                 let result = try? JSONDecoder().decode(MarkdownEditorCommandResult.self, from: resultData),
                 result.requestID == request.requestID
             else {
@@ -1983,19 +2163,15 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                 throw SessionError.invalidResult
             }
 
-            // A response describes one atomic CodeMirror snapshot. It may be
-            // newer than the native delta mirror when WebKit delivers the
-            // reply first, or older when the researcher continued typing.
-            // Reconcile only forward; an older snapshot remains valid for
-            // saving but can never rewind live source authority.
-            if let text = result.text,
-                result.resultingGeneration >= generation
-            {
-                try reconcileMirror(with: text, publish: result.resultingGeneration > generation)
-                generation = result.resultingGeneration
-            } else if result.sourceChanged, result.text == nil {
-                throw SessionError.invalidResult
-            }
+            // Validate the complete response before changing the checked mirror.
+            // A bounded JSON envelope does not establish a bounded exact source.
+            guard result.text.map({ $0.utf8.count <= MarkdownEditorDeltaApplier.maximumResultUTF8Bytes }) ?? true,
+                result.recovery.map({
+                    $0.source.utf8.count <= MarkdownEditorDeltaApplier.maximumResultUTF8Bytes
+                        && ($0.stateJSON?.utf8.count ?? 0) <= markdownEditorMaximumInboundBytes
+                }) ?? true,
+                !result.sourceChanged || result.text != nil
+            else { throw SessionError.invalidResult }
 
             let responseEditorLength =
                 result.text.map {
@@ -2011,6 +2187,19 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                 )
             {
                 throw SessionError.invalidResult
+            }
+            // A later full snapshot can overtake queued deltas. An unexplained
+            // same-generation mismatch cannot silently replace the checked source.
+            if let text = result.text, result.resultingGeneration >= generation {
+                if result.resultingGeneration == generation,
+                    !checkedSourceBuffer.isEqual(to: text)
+                {
+                    updatePublished(\.isDirty, to: true)
+                    sourceChangeHandler?()
+                    throw SessionError.invalidResult
+                }
+                try reconcileMirror(with: text, publish: result.resultingGeneration > generation)
+                generation = result.resultingGeneration
             }
             if result.resultingGeneration == generation,
                 responseEditorLength != nil
@@ -2135,7 +2324,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             snapshot.documentID == documentID,
             snapshot.fingerprint == startingFingerprint,
             snapshot.generation == generation,
-            snapshot.source == checkedSource,
+            snapshot.source.utf8.elementsEqual(checkedSource.utf8),
             markdownEditorSelectionRangesAreValid(
                 snapshot.ranges,
                 forEditorUTF16Length: checkedEditorUTF16Length
@@ -2168,7 +2357,10 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         checkedSourceBuffer.replace(with: text)
         sourceOffsetMap = EditorSourceOffsetMap(source: text)
         checkedEditorUTF16Length = sourceOffsetMap.editorUTF16Length
-        if publish { sourceChangeHandler?() }
+        if publish {
+            updatePublished(\.isDirty, to: true)
+            sourceChangeHandler?()
+        }
     }
 
     private static func normalizedEditorUTF16Length(of source: String) -> Int {

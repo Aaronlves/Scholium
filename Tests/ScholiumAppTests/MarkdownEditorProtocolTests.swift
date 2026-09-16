@@ -96,6 +96,7 @@ struct MarkdownEditorProtocolTests {
             documentID: "analyses:Argument.md",
             startingFingerprint: String(repeating: "a", count: 64),
             knownGeneration: 7,
+            expiresAt: 2_000_000_000_000,
             operation: .command(.bold, argument: nil)
         )
 
@@ -105,6 +106,7 @@ struct MarkdownEditorProtocolTests {
 
         let object = try #require(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
         #expect(object["protocolVersion"] as? Int == markdownEditorProtocolVersion)
+        #expect(object["expiresAt"] as? Int64 == 2_000_000_000_000)
         let operation = try #require(object["operation"] as? [String: Any])
         #expect(operation["type"] as? String == "command")
         #expect(operation["command"] as? String == "bold")
@@ -184,7 +186,7 @@ struct MarkdownEditorProtocolTests {
             """
             {
               "type": "contextMenuRequested",
-              "protocolVersion": 38,
+              "protocolVersion": 39,
               "sessionID": "11111111-2222-3333-4444-555555555555",
               "documentID": "topics:Scope.md",
               "startingFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -222,7 +224,7 @@ struct MarkdownEditorProtocolTests {
     func documentTitleRenameMessageDecoding() throws {
         let object: [String: Any] = [
             "type": "requestDocumentTitleRename",
-            "protocolVersion": 38,
+            "protocolVersion": 39,
             "sessionID": "11111111-2222-3333-4444-555555555555",
             "documentID": "topics:Scope.md",
             "startingFingerprint": String(repeating: "a", count: 64),
@@ -253,7 +255,7 @@ struct MarkdownEditorProtocolTests {
     @Test("Inbound bridge rejects unknown, stale-version, and extra-field messages")
     func inboundBridgeRejectsUnrecognizedContracts() {
         let envelope: [String: Any] = [
-            "protocolVersion": 38,
+            "protocolVersion": 39,
             "sessionID": "11111111-2222-3333-4444-555555555555",
             "documentID": "session-document",
             "startingFingerprint": String(repeating: "a", count: 64),
@@ -294,7 +296,7 @@ struct MarkdownEditorProtocolTests {
     func interactionFocusTargetDecoding() throws {
         let envelope: [String: Any] = [
             "type": "interactionChanged",
-            "protocolVersion": 38,
+            "protocolVersion": 39,
             "sessionID": "11111111-2222-3333-4444-555555555555",
             "documentID": "session-document",
             "startingFingerprint": String(repeating: "a", count: 64),
@@ -321,7 +323,7 @@ struct MarkdownEditorProtocolTests {
     func dropFocusRequestUsesExactEnvelope() throws {
         let object: [String: Any] = [
             "type": "requestEditorFocus",
-            "protocolVersion": 38,
+            "protocolVersion": 39,
             "sessionID": "11111111-2222-3333-4444-555555555555",
             "documentID": "session-document",
             "startingFingerprint": String(repeating: "a", count: 64),
@@ -354,7 +356,7 @@ struct MarkdownEditorProtocolTests {
     func inboundDeltaUsesTypedDirectDecoder() throws {
         let object: [String: Any] = [
             "type": "documentChanged",
-            "protocolVersion": 38,
+            "protocolVersion": 39,
             "sessionID": "11111111-2222-3333-4444-555555555555",
             "documentID": "session-document",
             "startingFingerprint": String(repeating: "a", count: 64),
@@ -429,6 +431,7 @@ struct MarkdownEditorProtocolTests {
             documentID: "topics:Scope.md",
             startingFingerprint: "fingerprint",
             knownGeneration: 0,
+            expiresAt: 2_000_000_000_000,
             operation: .initialize(
                 text: "\u{FEFF}---\r\ntitle: Scope\r\n---\r\nBody\r\n",
                 mode: .livePreview,

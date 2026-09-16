@@ -10,6 +10,170 @@ import WebKit
 @Suite("Markdown editor WKWebView integration", .serialized)
 @MainActor
 struct MarkdownEditorWebViewIntegrationTests {
+    @Test("A lost commit acknowledgement can be replayed without replacing later input", arguments: [false, true])
+    func lostCommitAcknowledgementCanBeReplayed(withLaterInput: Bool) async throws {
+        let source = "Original.\r\n"
+        let dispatcher = LostCommitReplyBridgeDispatcher()
+        let harness = EditorHarness(source: source, bridgeDispatcher: dispatcher)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        try await harness.session.perform(.pastePlain, argument: "saved ")
+        let saved = try await harness.session.currentText(for: harness.documentID)
+        let fingerprint = DocumentFingerprint(content: saved)
+        dispatcher.dropNextCommitReply = true
+        do {
+            _ = try await harness.session.acknowledgeCommittedSnapshot(
+                expectedText: saved, committedText: saved,
+                fingerprint: fingerprint, documentID: harness.documentID
+            )
+            Issue.record("The injected lost reply unexpectedly succeeded")
+        } catch LostCommitReplyBridgeDispatcher.LostReply.afterExecution {
+            #expect(harness.session.startingFingerprint != fingerprint.sha256)
+        }
+        if withLaterInput {
+            _ = try await harness.callPageJavaScript(
+                """
+                const transfer = new DataTransfer();
+                transfer.setData('text/plain', 'later ');
+                document.querySelector('.cm-content').dispatchEvent(
+                  new ClipboardEvent('paste', {bubbles: true, cancelable: true, clipboardData: transfer}));
+                """
+            )
+        }
+        let outcome = try await harness.session.acknowledgeCommittedSnapshot(
+            expectedText: saved, committedText: saved,
+            fingerprint: fingerprint, documentID: harness.documentID
+        )
+        #expect(outcome == (withLaterInput ? .superseded : .clean))
+        #expect(harness.session.isDirty == withLaterInput)
+        let current = try await harness.session.currentText(for: harness.documentID)
+        #expect(current == (withLaterInput ? "saved later " + source : saved))
+        await harness.closeAndDrain()
+    }
+
+    @MainActor
+    private final class LostCommitReplyBridgeDispatcher: MarkdownEditorBridgeDispatching {
+        enum LostReply: Error { case afterExecution }
+        var dropNextCommitReply = false
+        private let production = WKWebViewMarkdownEditorBridgeDispatcher()
+
+        func dispatch(requestJSON: String, in webView: WKWebView) async throws -> Any? {
+            let request = try JSONDecoder().decode(MarkdownEditorRequest.self, from: Data(requestJSON.utf8))
+            let result = try await production.dispatch(requestJSON: requestJSON, in: webView)
+            if dropNextCommitReply, case .acknowledgeCommittedSnapshot = request.operation {
+                dropNextCommitReply = false
+                throw LostReply.afterExecution
+            }
+            return result
+        }
+    }
+
+    @Test("An expired native command cannot execute after cancelled composition")
+    func expiredCommandCannotOutliveCompositionWait() async throws {
+        let source = "Untouched exact source.\r\n"
+        var policy = ScholiumLifecyclePolicy()
+        policy.bridgeRequest = .milliseconds(500)
+        let harness = EditorHarness(
+            source: source,
+            bridgeDispatcher: WKWebViewMarkdownEditorBridgeDispatcher(),
+            lifecyclePolicy: policy
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        try await harness.session.testingDispatchCompositionEvent("compositionstart")
+        do {
+            try await harness.session.perform(.pastePlain, argument: "EXPIRED")
+            Issue.record("The composition-held command unexpectedly completed")
+        } catch let error as ScholiumWindowLifecycleError {
+            #expect(error == .timedOut(.bridgeRequest))
+        } catch MarkdownEditorSession.SessionError.bridgeRejected(let message) {
+            #expect(message == "editor request expired")
+        }
+        // No text was committed by this synthetic composition. The old
+        // generation therefore still matches and cannot be the rejection gate.
+        try await harness.session.testingDispatchCompositionEvent("compositionend")
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        #expect(harness.session.generation == 0)
+        try await harness.session.perform(.pastePlain, argument: "CURRENT")
+        #expect(try await harness.session.currentText(for: harness.documentID) == "CURRENT" + source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Malformed or inconsistent full snapshots cannot change the checked mirror")
+    func invalidFullSnapshotPreservesCheckedSource() async throws {
+        let source = "Original bytes.\r\n"
+        let dispatcher = InvalidSnapshotBridgeDispatcher()
+        let harness = EditorHarness(source: source, bridgeDispatcher: dispatcher)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        for corruption in InvalidSnapshotBridgeDispatcher.Corruption.allCases {
+            dispatcher.corruption = corruption
+            do {
+                _ = try await harness.session.currentText(for: harness.documentID)
+                Issue.record("An invalid snapshot unexpectedly entered source authority")
+            } catch MarkdownEditorSession.SessionError.invalidResult {
+                #expect(harness.session.checkedSource.utf8.elementsEqual(source.utf8))
+                #expect(harness.session.generation == 0)
+            }
+        }
+        dispatcher.corruption = nil
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("A detachment snapshot freezes input until its matching transition resumes")
+    func detachmentCaptureOwnsInputUntilResume() async throws {
+        let source = "\u{FEFF}原文 e\u{301} 🙂\r\n"
+        let harness = EditorHarness(source: source)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        try await harness.session.perform(.pastePlain, argument: "retained ")
+        let before = try await harness.session.currentText(for: harness.documentID)
+        try await harness.session.captureStateForViewReconstruction(suspendForDetachment: true)
+        let suspensionID = try #require(harness.session.detachmentSuspensionID)
+        do {
+            try await harness.session.perform(.pastePlain, argument: "FORBIDDEN")
+            Issue.record("A frozen document accepted a source command")
+        } catch MarkdownEditorSession.SessionError.bridgeRejected {
+            #expect(harness.session.checkedSource.utf8.elementsEqual(before.utf8))
+        }
+        try await harness.session.resumeAfterDetachment(suspensionID: suspensionID)
+        try await harness.session.perform(.pastePlain, argument: "resumed ")
+        let after = try await harness.session.currentText(for: harness.documentID)
+        #expect(after.contains("resumed "))
+        #expect(!after.contains("FORBIDDEN"))
+        #expect(after.hasSuffix(source))
+        await harness.closeAndDrain()
+    }
+
+    @MainActor
+    private final class InvalidSnapshotBridgeDispatcher: MarkdownEditorBridgeDispatching {
+        enum Corruption: CaseIterable { case sameGeneration, selection, oversized }
+        var corruption: Corruption?
+        private let production = WKWebViewMarkdownEditorBridgeDispatcher()
+
+        func dispatch(requestJSON: String, in webView: WKWebView) async throws -> Any? {
+            let request = try JSONDecoder().decode(MarkdownEditorRequest.self, from: Data(requestJSON.utf8))
+            let raw = try await production.dispatch(requestJSON: requestJSON, in: webView)
+            guard case .queryText = request.operation, let corruption,
+                var result = raw as? [String: Any]
+            else { return raw }
+            result["text"] = "Corrupt source"
+            switch corruption {
+            case .sameGeneration:
+                break
+            case .selection:
+                result["resultingGeneration"] = request.knownGeneration + 1
+                result["selections"] = [["anchor": -1, "head": -1]]
+                result.removeValue(forKey: "context")
+            case .oversized:
+                result["resultingGeneration"] = request.knownGeneration + 1
+                result["text"] = String(repeating: "x", count: MarkdownEditorDeltaApplier.maximumResultUTF8Bytes + 1)
+            }
+            return result
+        }
+    }
+
     @Test(
         "Native text drag payloads preserve internal move, Option-copy and exact Undo",
         arguments: [MarkdownEditorMode.livePreview, .source], [false, true])

@@ -1,6 +1,9 @@
-export const EDITOR_PROTOCOL_VERSION = 38;
+export const EDITOR_PROTOCOL_VERSION = 39;
 export const MAX_INBOUND_BYTES = 2_500_000;
-export const MAX_SOURCE_UTF8_BYTES = 8_000_000;
+import {MAX_SOURCE_UTF8_BYTES, exactSourceFits} from "./source-capacity";
+export {MAX_SOURCE_UTF8_BYTES} from "./source-capacity";
+// Two exact source fields, each with worst-case JSON escaping, plus metadata.
+export const MAX_SOURCE_ENVELOPE_BYTES = MAX_SOURCE_UTF8_BYTES * 12 + 512_000;
 
 export type EditorMode = "livePreview" | "source";
 export type MarkdownEditorCommand =
@@ -124,10 +127,13 @@ export type EditorOperation =
   | {type: "insertReference"; selection: SelectionRange; generation: number; target: string}
   | {type: "replacePassage"; expectedText: string; fromUTF16: number; toUTF16: number; replacement: string; preserveSelection: boolean}
   | {type: "command"; command: MarkdownEditorCommand; argument?: string}
+  | {type: "suspendForDetachment"; suspensionID: string}
+  | {type: "resumeAfterDetachment"; suspensionID: string}
   | {type: "markClean"} | {type: "focus"} | {type: "focusTitle"} | {type: "blur"};
 export interface EditorRequest {
   protocolVersion: number;
   requestID: string;
+  expiresAt: number;
   sessionID: string;
   documentID: string;
   startingFingerprint: string;
@@ -153,7 +159,7 @@ export interface EditorCommandResult {
 }
 
 const operationTypes = new Set([
-  "initialize", "setMode", "setDocumentTitle", "setPresentationCSS", "setUserCSS", "setLinkPreviews", "showPreview", "measureVisibleProjection", "showPreviewAt", "announceStatus",
+  "suspendForDetachment", "resumeAfterDetachment", "initialize", "setMode", "setDocumentTitle", "setPresentationCSS", "setUserCSS", "setLinkPreviews", "showPreview", "measureVisibleProjection", "showPreviewAt", "announceStatus",
   "goToLine", "revealSourceRange", "setScrollFraction", "setScrollAnchor", "queryText", "querySelection", "queryContext", "queryScrollAnchor", "queryPerformance",
   "captureRecovery", "restoreRecovery", "acknowledgeCommittedSnapshot", "replacePassage", "insertReference", "command", "documentFind", "clearDocumentFind", "markClean", "focus", "focusTitle", "blur",
 ]);
@@ -188,7 +194,7 @@ function validRecoverySnapshot(value: unknown): value is RecoverySnapshot {
   if (typeof snapshot.documentID !== "string" || snapshot.documentID.length > 4_096
       || typeof snapshot.fingerprint !== "string" || snapshot.fingerprint.length > 256
       || !Number.isSafeInteger(snapshot.generation) || snapshot.generation! < 0
-      || typeof snapshot.source !== "string"
+      || typeof snapshot.source !== "string" || !exactSourceFits(snapshot.source)
       || typeof snapshot.undoHistoryPreserved !== "boolean"
       || typeof snapshot.dirty !== "boolean"
       || (snapshot.focusTarget !== undefined
@@ -196,7 +202,7 @@ function validRecoverySnapshot(value: unknown): value is RecoverySnapshot {
         && snapshot.focusTarget !== "editor")
       || !Array.isArray(snapshot.ranges) || snapshot.ranges.length === 0
       || snapshot.ranges.length > 256
-      || (snapshot.stateJSON !== undefined && typeof snapshot.stateJSON !== "string")) return false;
+      || (snapshot.stateJSON !== undefined && (typeof snapshot.stateJSON !== "string" || new TextEncoder().encode(snapshot.stateJSON).byteLength > MAX_INBOUND_BYTES))) return false;
   const normalizedLength = snapshot.source.replaceAll("\r\n", "\n").length;
   return snapshot.ranges.every((range) => Boolean(range)
     && Number.isSafeInteger(range.anchor) && range.anchor >= 0 && range.anchor <= normalizedLength
@@ -285,7 +291,7 @@ function validDialect(value: unknown): value is MarkdownEditingDialect {
 function validOperation(operation: Record<string, unknown>) {
   switch (operation.type) {
   case "initialize":
-    return typeof operation.text === "string" && validMode(operation.mode)
+    return typeof operation.text === "string" && exactSourceFits(operation.text) && validMode(operation.mode)
       && validDialect(operation.dialect)
       && validInitialSelection(
         operation.initialSelection,
@@ -323,7 +329,8 @@ function validOperation(operation: Record<string, unknown>) {
   }
   case "restoreRecovery": return validRecoverySnapshot(operation.snapshot);
   case "acknowledgeCommittedSnapshot":
-    return typeof operation.expectedText === "string" && typeof operation.committedText === "string"
+    return typeof operation.expectedText === "string" && exactSourceFits(operation.expectedText)
+      && typeof operation.committedText === "string" && exactSourceFits(operation.committedText)
       && typeof operation.committedFingerprint === "string";
   case "insertReference": {
     const selection = operation.selection as Partial<SelectionRange> | undefined;
@@ -334,11 +341,13 @@ function validOperation(operation: Record<string, unknown>) {
       && selection?.anchor === selection?.head;
   }
   case "replacePassage":
-    return typeof operation.expectedText === "string" && typeof operation.replacement === "string"
+    return typeof operation.expectedText === "string" && exactSourceFits(operation.expectedText) && typeof operation.replacement === "string"
       && typeof operation.preserveSelection === "boolean"
       && operation.replacement.length > 0 && operation.replacement.length <= 500_000
       && Number.isSafeInteger(operation.fromUTF16) && Number.isSafeInteger(operation.toUTF16)
       && Number(operation.fromUTF16) >= 0 && Number(operation.toUTF16) >= Number(operation.fromUTF16);
+  case "suspendForDetachment": case "resumeAfterDetachment":
+    return typeof operation.suspensionID === "string" && operation.suspensionID.length > 0 && operation.suspensionID.length <= 128;
   case "command":
     return typeof operation.command === "string" && commandTypes.has(operation.command as MarkdownEditorCommand)
       && (operation.argument === undefined || typeof operation.argument === "string");
@@ -367,6 +376,7 @@ export function isEditorRequest(value: unknown): value is EditorRequest {
       || typeof request.sessionID !== "string" || request.sessionID.length > 128
       || typeof request.documentID !== "string" || request.documentID.length > 4096
       || typeof request.startingFingerprint !== "string" || request.startingFingerprint.length > 256
+      || !Number.isSafeInteger(request.expiresAt) || request.expiresAt! <= 0
       || !Number.isSafeInteger(request.knownGeneration) || request.knownGeneration! < 0
       || !request.operation || typeof request.operation !== "object") return false;
   const type = (request.operation as {type?: unknown}).type;
@@ -374,7 +384,7 @@ export function isEditorRequest(value: unknown): value is EditorRequest {
   if (!validOperation(request.operation as unknown as Record<string, unknown>)) return false;
   try {
     const sourceBearing = ["initialize", "acknowledgeCommittedSnapshot", "restoreRecovery", "replacePassage"].includes(type);
-    return encodedByteLength(value) <= (sourceBearing ? MAX_SOURCE_UTF8_BYTES + 512_000 : MAX_INBOUND_BYTES);
+    return encodedByteLength(value) <= (sourceBearing ? MAX_SOURCE_ENVELOPE_BYTES : MAX_INBOUND_BYTES);
   } catch { return false; }
 }
 export function rejected(requestID: string, generation: number, error: string): EditorCommandResult {

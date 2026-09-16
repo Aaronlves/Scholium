@@ -2926,16 +2926,36 @@ final class WindowModel: ObservableObject {
         didFinish: (@MainActor () -> Void)? = nil
     ) {
         guard !transferInProgress else { return }
+        var preservedEditor: (document: WindowSelectedDocument, suspensionID: String?)?
         documentTransitionCoordinator.enqueue(
             prepare: { [weak self] in
                 guard let self else { throw CancellationError() }
                 if let target, self.currentDocumentDescriptor?.sessionKey == target { return }
                 switch preparation {
                 case .saveOpenDocuments:
-                    try await self.flushRegisteredEditorIfNeeded(capturingEditorState: preservingCurrentEditorState)
+                    if let document = self.documentController.selectedDocument {
+                        let session = self.documentController.session(for: document.editingTarget)
+                        defer {
+                            preservedEditor = (document, session.editorSession.detachmentSuspensionID)
+                        }
+                        // Freeze before the final save: input accepted while
+                        // opening a destination must not escape the saved base.
+                        try await self.documentController.prepareSessionTransfer(document)
+                        try await self.flushRegisteredEditorIfNeeded(capturingEditorState: false)
+                        if session.editorSession.hasAttachedWebView {
+                            // A commit rebases the editor identity. Capture its
+                            // final source/history while input remains frozen.
+                            try await session.editorSession.captureStateForViewReconstruction(suspendForDetachment: true)
+                        }
+                    } else {
+                        try await self.flushRegisteredEditorIfNeeded(capturingEditorState: preservingCurrentEditorState)
+                    }
                 case .preserveSelectedDocument:
                     if let document = self.documentController.selectedDocument {
-                        defer { self.documentController.resumeAutosave(afterTransferOf: document) }
+                        let session = self.documentController.session(for: document.editingTarget)
+                        defer {
+                            preservedEditor = (document, session.editorSession.detachmentSuspensionID)
+                        }
                         try await self.documentController.prepareSessionTransfer(document)
                     }
                 case .operationOnly:
@@ -2976,7 +2996,15 @@ final class WindowModel: ObservableObject {
                 }
                 didSucceed?()
             },
-            didFinish: { didFinish?() }
+            didFinish: { [weak self] in
+                if let preservedEditor {
+                    self?.documentController.resumeAutosave(
+                        afterTransferOf: preservedEditor.document,
+                        suspensionID: preservedEditor.suspensionID
+                    )
+                }
+                didFinish?()
+            }
         )
     }
 

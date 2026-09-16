@@ -415,11 +415,13 @@ struct SidebarView: View {
         _ items: [SidebarNoteDragItem],
         into folderRelativePath: String?
     ) {
-        guard let destinations = sidebarValidatedNotesDropDestinations(
-            items: items,
-            folderRelativePath: folderRelativePath,
-            inventory: dropInventory
-        ) else { return }
+        guard
+            let destinations = sidebarValidatedNotesDropDestinations(
+                items: items,
+                folderRelativePath: folderRelativePath,
+                inventory: dropInventory
+            )
+        else { return }
         if items.count > 1 {
             context.moveNotesDrop(items.map(\.mutationTarget), folderRelativePath)
         } else if let item = items.first, let destination = destinations.first {

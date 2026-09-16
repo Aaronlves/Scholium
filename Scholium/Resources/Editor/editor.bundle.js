@@ -1,5 +1,30 @@
 "use strict";
 (() => {
+  // committed-snapshot-receipt.ts
+  var CommittedSnapshotReceipt = class {
+    receipt = null;
+    clear() {
+      this.receipt = null;
+    }
+    remember(identity, operation) {
+      this.receipt = {
+        sessionID: identity.sessionID,
+        documentID: identity.documentID,
+        startingFingerprint: identity.startingFingerprint,
+        ...operation
+      };
+    }
+    replay(request, current, source, dirty2) {
+      if (!this.canReplay(request, current) || request.operation.type !== "acknowledgeCommittedSnapshot") return null;
+      return { text: source, commitSuperseded: dirty2 || source !== request.operation.committedText };
+    }
+    canReplay(request, current) {
+      const receipt = this.receipt;
+      const operation = request.operation;
+      return receipt !== null && operation.type === "acknowledgeCommittedSnapshot" && request.startingFingerprint !== current.startingFingerprint && receipt.sessionID === current.sessionID && request.sessionID === receipt.sessionID && receipt.documentID === current.documentID && request.documentID === receipt.documentID && request.startingFingerprint === receipt.startingFingerprint && current.startingFingerprint === receipt.committedFingerprint && operation.committedFingerprint === receipt.committedFingerprint && operation.expectedText === receipt.expectedText && operation.committedText === receipt.committedText;
+    }
+  };
+
   // node_modules/@marijn/find-cluster-break/src/index.js
   var rangeFrom = [];
   var rangeTo = [];
@@ -3446,194 +3471,6 @@
       i2 = findClusterBreak2(string2, i2);
     }
     return strict === true ? -1 : string2.length;
-  }
-
-  // state.ts
-  function normalizedDocumentText(text) {
-    return text.replace(/\r\n/g, "\n");
-  }
-  function replacementChange(currentText, requestedText) {
-    const targetText = normalizedDocumentText(requestedText);
-    let prefix = 0;
-    const sharedLength = Math.min(currentText.length, targetText.length);
-    while (prefix < sharedLength && currentText.charCodeAt(prefix) === targetText.charCodeAt(prefix)) prefix += 1;
-    let currentSuffix = currentText.length;
-    let targetSuffix = targetText.length;
-    while (currentSuffix > prefix && targetSuffix > prefix && currentText.charCodeAt(currentSuffix - 1) === targetText.charCodeAt(targetSuffix - 1)) {
-      currentSuffix -= 1;
-      targetSuffix -= 1;
-    }
-    return { from: prefix, to: currentSuffix, insert: targetText.slice(prefix, targetSuffix) };
-  }
-  function rope(source) {
-    return Text.of(source.split("\n"));
-  }
-  function crlfCount(source) {
-    let count2 = 0;
-    for (let index = source.indexOf("\r\n"); index >= 0; index = source.indexOf("\r\n", index + 2)) count2 += 1;
-    return count2;
-  }
-  function exactOffset(exact, normalized2, requestedOffset) {
-    if (!Number.isSafeInteger(requestedOffset) || requestedOffset < 0 || requestedOffset > normalized2.length) return null;
-    const normalizedLine = normalized2.lineAt(requestedOffset);
-    const exactLine = exact.line(normalizedLine.number);
-    const column = requestedOffset - normalizedLine.from;
-    return exactLine.from + column;
-  }
-  var ExactSourceMirror = class _ExactSourceMirror {
-    exact;
-    normalized;
-    crlfLineBreakCount;
-    constructor(source = "") {
-      this.exact = rope(source);
-      this.normalized = rope(normalizedDocumentText(source));
-      this.crlfLineBreakCount = crlfCount(source);
-    }
-    /**
-     * Materializing the complete String is intentionally an explicit snapshot
-     * boundary. Ordinary input only edits the persistent Text ropes below.
-     */
-    get text() {
-      return this.exact.toString();
-    }
-    get usesCRLF() {
-      return this.crlfLineBreakCount > 0;
-    }
-    copy() {
-      const result = new _ExactSourceMirror();
-      result.exact = this.exact;
-      result.normalized = this.normalized;
-      result.crlfLineBreakCount = this.crlfLineBreakCount;
-      return result;
-    }
-    slice(from, to) {
-      const exactFrom = exactOffset(this.exact, this.normalized, from);
-      const exactTo = exactOffset(this.exact, this.normalized, to);
-      if (exactFrom === null || exactTo === null || exactTo < exactFrom) throw new RangeError("Invalid exact source range");
-      return this.exact.sliceString(exactFrom, exactTo);
-    }
-    replace(source) {
-      this.exact = rope(source);
-      this.normalized = rope(normalizedDocumentText(source));
-      this.crlfLineBreakCount = crlfCount(source);
-    }
-    apply(changes) {
-      if (changes.length === 0) return true;
-      const ordered = [...changes].map((change) => ({ ...change, insert: normalizedDocumentText(change.insert) })).sort((left, right) => left.from - right.from || left.to - right.to);
-      let previousTo = -1;
-      for (const change of ordered) {
-        if (change.from < previousTo || change.to < change.from) return false;
-        previousTo = change.to;
-      }
-      const usesCRLF = this.crlfLineBreakCount > 0;
-      const exactChanges = ordered.map((change) => {
-        const from = exactOffset(this.exact, this.normalized, change.from);
-        const to = exactOffset(this.exact, this.normalized, change.to);
-        if (from === null || to === null || to < from) return null;
-        if (change.removed !== void 0 && this.normalized.sliceString(change.from, change.to) !== change.removed) return null;
-        const exactInsert = change.exactInsert ?? (usesCRLF ? change.insert.replaceAll("\n", "\r\n") : change.insert);
-        if (normalizedDocumentText(exactInsert) !== change.insert) return null;
-        return {
-          ...change,
-          exactFrom: from,
-          exactTo: to,
-          exactInsert,
-          removedCRLFCount: crlfCount(this.exact.sliceString(from, to)),
-          insertedCRLFCount: crlfCount(exactInsert)
-        };
-      });
-      if (exactChanges.some((change) => change === null)) return false;
-      for (const change of exactChanges.filter((candidate) => candidate !== null).sort((left, right) => right.from - left.from)) {
-        this.exact = this.exact.replace(
-          change.exactFrom,
-          change.exactTo,
-          rope(change.exactInsert)
-        );
-        this.normalized = this.normalized.replace(
-          change.from,
-          change.to,
-          rope(change.insert)
-        );
-        this.crlfLineBreakCount += change.insertedCRLFCount - change.removedCRLFCount;
-      }
-      return true;
-    }
-  };
-  function isFrontmatterOpening(text) {
-    return /^---[ \t]*$/.test(text.replace(/^\uFEFF/, ""));
-  }
-  function frontmatterBoundary(doc2) {
-    if (!isFrontmatterOpening(doc2.line(1).text)) {
-      return { endLine: 0, unclosed: false };
-    }
-    if (doc2.lines < 2) return { endLine: 0, unclosed: true };
-    for (let number2 = 2; number2 <= doc2.lines; number2 += 1) {
-      if (/^---[ \t]*$/.test(doc2.line(number2).text)) {
-        return { endLine: number2, unclosed: false };
-      }
-    }
-    return { endLine: 0, unclosed: true };
-  }
-
-  // passage-replacement.ts
-  function passageReplacement(source, expected, from, to, replacement) {
-    if (source !== expected || !Number.isSafeInteger(from) || !Number.isSafeInteger(to) || from < 0 || to < from || to > source.length || replacement.length === 0 || from === 0 && to === 0 && source.charCodeAt(0) === 65279) return null;
-    function boundary(offset) {
-      if (offset <= 0 || offset >= source.length) return true;
-      const before = source.charCodeAt(offset - 1), after = source.charCodeAt(offset);
-      return !(before === 13 && after === 10) && !(before >= 55296 && before <= 56319 && after >= 56320 && after <= 57343);
-    }
-    if (!boundary(from) || !boundary(to)) return null;
-    return {
-      from: normalizedDocumentText(source.slice(0, from)).length,
-      to: normalizedDocumentText(source.slice(0, to)).length,
-      insert: normalizedDocumentText(replacement)
-    };
-  }
-
-  // selection-actions.ts
-  function createSelectionActions(floating, current) {
-    let id2 = null;
-    let key = null;
-    let dismissed = null;
-    function hide() {
-      if (id2 !== null) floating.hide(id2);
-      id2 = null;
-      key = null;
-    }
-    function dismiss() {
-      const visible = id2 !== null;
-      if (key !== null) dismissed = key;
-      hide();
-      return visible;
-    }
-    return {
-      dismiss,
-      update(target = current()) {
-        if (!target) {
-          hide();
-          dismissed = null;
-          return;
-        }
-        if (target.key === key || target.key === dismissed) return;
-        hide();
-        key = target.key;
-        id2 = floating.show({
-          kind: "selection",
-          ...target.anchor,
-          html: "",
-          css: "",
-          items: [],
-          selected: -1
-        }, {
-          dismiss,
-          choose: () => {
-            const valid = current()?.key === target.key;
-            return valid;
-          }
-        });
-      }
-    };
   }
 
   // node_modules/style-mod/src/style-mod.js
@@ -13893,6 +13730,227 @@
     return last;
   }
 
+  // editor-suspension.ts
+  var setEditorSuspension = StateEffect.define();
+  var editorSuspensionState = StateField.define({
+    create: () => null,
+    update(value, transaction) {
+      if (value !== null && transaction.docChanged) throw new Error("editor is suspended for detachment");
+      const change = transaction.effects.find((effect) => effect.is(setEditorSuspension));
+      return change ? change.value : value;
+    }
+  });
+  var editorSuspension = [
+    editorSuspensionState,
+    EditorState.readOnly.from(editorSuspensionState, (token) => token !== null),
+    EditorView.editable.from(editorSuspensionState, (token) => token === null),
+    EditorView.editorAttributes.from(editorSuspensionState, (token) => token === null ? {} : { inert: "" }),
+    EditorState.transactionFilter.of((transaction) => transaction.startState.field(editorSuspensionState) !== null && transaction.docChanged ? [] : transaction)
+  ];
+  function titleAllowsDetachment(title, draft, renamePending) {
+    return !renamePending && (draft === null || draft === title);
+  }
+
+  // state.ts
+  function normalizedDocumentText(text) {
+    return text.replace(/\r\n/g, "\n");
+  }
+  function replacementChange(currentText, requestedText) {
+    const targetText = normalizedDocumentText(requestedText);
+    let prefix = 0;
+    const sharedLength = Math.min(currentText.length, targetText.length);
+    while (prefix < sharedLength && currentText.charCodeAt(prefix) === targetText.charCodeAt(prefix)) prefix += 1;
+    let currentSuffix = currentText.length;
+    let targetSuffix = targetText.length;
+    while (currentSuffix > prefix && targetSuffix > prefix && currentText.charCodeAt(currentSuffix - 1) === targetText.charCodeAt(targetSuffix - 1)) {
+      currentSuffix -= 1;
+      targetSuffix -= 1;
+    }
+    return { from: prefix, to: currentSuffix, insert: targetText.slice(prefix, targetSuffix) };
+  }
+  function rope(source) {
+    return Text.of(source.split("\n"));
+  }
+  function crlfCount(source) {
+    let count2 = 0;
+    for (let index = source.indexOf("\r\n"); index >= 0; index = source.indexOf("\r\n", index + 2)) count2 += 1;
+    return count2;
+  }
+  function exactOffset(exact, normalized2, requestedOffset) {
+    if (!Number.isSafeInteger(requestedOffset) || requestedOffset < 0 || requestedOffset > normalized2.length) return null;
+    const normalizedLine = normalized2.lineAt(requestedOffset);
+    const exactLine = exact.line(normalizedLine.number);
+    const column = requestedOffset - normalizedLine.from;
+    return exactLine.from + column;
+  }
+  var ExactSourceMirror = class _ExactSourceMirror {
+    exact;
+    normalized;
+    crlfLineBreakCount;
+    byteCount;
+    constructor(source = "") {
+      this.exact = rope(source);
+      this.normalized = rope(normalizedDocumentText(source));
+      this.crlfLineBreakCount = crlfCount(source);
+      this.byteCount = new TextEncoder().encode(source).byteLength;
+    }
+    /**
+     * Materializing the complete String is intentionally an explicit snapshot
+     * boundary. Ordinary input only edits the persistent Text ropes below.
+     */
+    get text() {
+      return this.exact.toString();
+    }
+    get utf8ByteCount() {
+      return this.byteCount;
+    }
+    get usesCRLF() {
+      return this.crlfLineBreakCount > 0;
+    }
+    copy() {
+      const result = new _ExactSourceMirror();
+      result.exact = this.exact;
+      result.normalized = this.normalized;
+      result.crlfLineBreakCount = this.crlfLineBreakCount;
+      result.byteCount = this.byteCount;
+      return result;
+    }
+    slice(from, to) {
+      const exactFrom = exactOffset(this.exact, this.normalized, from);
+      const exactTo = exactOffset(this.exact, this.normalized, to);
+      if (exactFrom === null || exactTo === null || exactTo < exactFrom) throw new RangeError("Invalid exact source range");
+      return this.exact.sliceString(exactFrom, exactTo);
+    }
+    replace(source) {
+      this.exact = rope(source);
+      this.normalized = rope(normalizedDocumentText(source));
+      this.crlfLineBreakCount = crlfCount(source);
+      this.byteCount = new TextEncoder().encode(source).byteLength;
+    }
+    apply(changes) {
+      if (changes.length === 0) return true;
+      const ordered = [...changes].map((change) => ({ ...change, insert: normalizedDocumentText(change.insert) })).sort((left, right) => left.from - right.from || left.to - right.to);
+      let previousTo = -1;
+      for (const change of ordered) {
+        if (change.from < previousTo || change.to < change.from) return false;
+        previousTo = change.to;
+      }
+      const usesCRLF = this.crlfLineBreakCount > 0;
+      const exactChanges = ordered.map((change) => {
+        const from = exactOffset(this.exact, this.normalized, change.from);
+        const to = exactOffset(this.exact, this.normalized, change.to);
+        if (from === null || to === null || to < from) return null;
+        if (change.removed !== void 0 && this.normalized.sliceString(change.from, change.to) !== change.removed) return null;
+        const exactInsert = change.exactInsert ?? (usesCRLF ? change.insert.replaceAll("\n", "\r\n") : change.insert);
+        if (normalizedDocumentText(exactInsert) !== change.insert) return null;
+        return {
+          ...change,
+          exactFrom: from,
+          exactTo: to,
+          exactInsert,
+          removedCRLFCount: crlfCount(this.exact.sliceString(from, to)),
+          insertedCRLFCount: crlfCount(exactInsert)
+        };
+      });
+      if (exactChanges.some((change) => change === null)) return false;
+      for (const change of exactChanges.filter((candidate) => candidate !== null).sort((left, right) => right.from - left.from)) {
+        const before = this.exact.sliceString(Math.max(0, change.exactFrom - 1), change.exactFrom);
+        const after = this.exact.sliceString(change.exactTo, Math.min(this.exact.length, change.exactTo + 1));
+        const removed = this.exact.sliceString(change.exactFrom, change.exactTo);
+        const encoder = new TextEncoder();
+        this.byteCount += encoder.encode(before + change.exactInsert + after).byteLength - encoder.encode(before + removed + after).byteLength;
+        this.exact = this.exact.replace(
+          change.exactFrom,
+          change.exactTo,
+          rope(change.exactInsert)
+        );
+        this.normalized = this.normalized.replace(
+          change.from,
+          change.to,
+          rope(change.insert)
+        );
+        this.crlfLineBreakCount += change.insertedCRLFCount - change.removedCRLFCount;
+      }
+      return true;
+    }
+  };
+  function isFrontmatterOpening(text) {
+    return /^---[ \t]*$/.test(text.replace(/^\uFEFF/, ""));
+  }
+  function frontmatterBoundary(doc2) {
+    if (!isFrontmatterOpening(doc2.line(1).text)) {
+      return { endLine: 0, unclosed: false };
+    }
+    if (doc2.lines < 2) return { endLine: 0, unclosed: true };
+    for (let number2 = 2; number2 <= doc2.lines; number2 += 1) {
+      if (/^---[ \t]*$/.test(doc2.line(number2).text)) {
+        return { endLine: number2, unclosed: false };
+      }
+    }
+    return { endLine: 0, unclosed: true };
+  }
+
+  // passage-replacement.ts
+  function passageReplacement(source, expected, from, to, replacement) {
+    if (source !== expected || !Number.isSafeInteger(from) || !Number.isSafeInteger(to) || from < 0 || to < from || to > source.length || replacement.length === 0 || from === 0 && to === 0 && source.charCodeAt(0) === 65279) return null;
+    function boundary(offset) {
+      if (offset <= 0 || offset >= source.length) return true;
+      const before = source.charCodeAt(offset - 1), after = source.charCodeAt(offset);
+      return !(before === 13 && after === 10) && !(before >= 55296 && before <= 56319 && after >= 56320 && after <= 57343);
+    }
+    if (!boundary(from) || !boundary(to)) return null;
+    return {
+      from: normalizedDocumentText(source.slice(0, from)).length,
+      to: normalizedDocumentText(source.slice(0, to)).length,
+      insert: normalizedDocumentText(replacement)
+    };
+  }
+
+  // selection-actions.ts
+  function createSelectionActions(floating, current) {
+    let id2 = null;
+    let key = null;
+    let dismissed = null;
+    function hide() {
+      if (id2 !== null) floating.hide(id2);
+      id2 = null;
+      key = null;
+    }
+    function dismiss() {
+      const visible = id2 !== null;
+      if (key !== null) dismissed = key;
+      hide();
+      return visible;
+    }
+    return {
+      dismiss,
+      update(target = current()) {
+        if (!target) {
+          hide();
+          dismissed = null;
+          return;
+        }
+        if (target.key === key || target.key === dismissed) return;
+        hide();
+        key = target.key;
+        id2 = floating.show({
+          kind: "selection",
+          ...target.anchor,
+          html: "",
+          css: "",
+          items: [],
+          selected: -1
+        }, {
+          dismiss,
+          choose: () => {
+            const valid = current()?.key === target.key;
+            return valid;
+          }
+        });
+      }
+    };
+  }
+
   // live-cursor-geometry.ts
   function readLiveCursorGeometry(view) {
     const selection = view.state.selection.main;
@@ -21609,11 +21667,20 @@
     return setSelectedEffect.of(index);
   }
 
-  // protocol.ts
-  var EDITOR_PROTOCOL_VERSION = 38;
-  var MAX_INBOUND_BYTES = 25e5;
+  // source-capacity.ts
   var MAX_SOURCE_UTF8_BYTES = 8e6;
+  var sourceCapacityMessage = "The edited Markdown document exceeds the supported editor size.";
+  function exactSourceFits(source) {
+    return new TextEncoder().encode(source).byteLength <= MAX_SOURCE_UTF8_BYTES;
+  }
+
+  // protocol.ts
+  var EDITOR_PROTOCOL_VERSION = 39;
+  var MAX_INBOUND_BYTES = 25e5;
+  var MAX_SOURCE_ENVELOPE_BYTES = MAX_SOURCE_UTF8_BYTES * 12 + 512e3;
   var operationTypes = /* @__PURE__ */ new Set([
+    "suspendForDetachment",
+    "resumeAfterDetachment",
     "initialize",
     "setMode",
     "setDocumentTitle",
@@ -21707,7 +21774,7 @@
   function validRecoverySnapshot(value) {
     if (!value || typeof value !== "object") return false;
     const snapshot = value;
-    if (typeof snapshot.documentID !== "string" || snapshot.documentID.length > 4096 || typeof snapshot.fingerprint !== "string" || snapshot.fingerprint.length > 256 || !Number.isSafeInteger(snapshot.generation) || snapshot.generation < 0 || typeof snapshot.source !== "string" || typeof snapshot.undoHistoryPreserved !== "boolean" || typeof snapshot.dirty !== "boolean" || snapshot.focusTarget !== void 0 && snapshot.focusTarget !== "title" && snapshot.focusTarget !== "editor" || !Array.isArray(snapshot.ranges) || snapshot.ranges.length === 0 || snapshot.ranges.length > 256 || snapshot.stateJSON !== void 0 && typeof snapshot.stateJSON !== "string") return false;
+    if (typeof snapshot.documentID !== "string" || snapshot.documentID.length > 4096 || typeof snapshot.fingerprint !== "string" || snapshot.fingerprint.length > 256 || !Number.isSafeInteger(snapshot.generation) || snapshot.generation < 0 || typeof snapshot.source !== "string" || !exactSourceFits(snapshot.source) || typeof snapshot.undoHistoryPreserved !== "boolean" || typeof snapshot.dirty !== "boolean" || snapshot.focusTarget !== void 0 && snapshot.focusTarget !== "title" && snapshot.focusTarget !== "editor" || !Array.isArray(snapshot.ranges) || snapshot.ranges.length === 0 || snapshot.ranges.length > 256 || snapshot.stateJSON !== void 0 && (typeof snapshot.stateJSON !== "string" || new TextEncoder().encode(snapshot.stateJSON).byteLength > MAX_INBOUND_BYTES)) return false;
     const normalizedLength = snapshot.source.replaceAll("\r\n", "\n").length;
     return snapshot.ranges.every((range) => Boolean(range) && Number.isSafeInteger(range.anchor) && range.anchor >= 0 && range.anchor <= normalizedLength && Number.isSafeInteger(range.head) && range.head >= 0 && range.head <= normalizedLength);
   }
@@ -21744,7 +21811,7 @@
   function validOperation(operation) {
     switch (operation.type) {
       case "initialize":
-        return typeof operation.text === "string" && validMode(operation.mode) && validDialect(operation.dialect) && validInitialSelection(
+        return typeof operation.text === "string" && exactSourceFits(operation.text) && validMode(operation.mode) && validDialect(operation.dialect) && validInitialSelection(
           operation.initialSelection,
           operation.text.replaceAll("\r\n", "\n").length
         );
@@ -21774,13 +21841,16 @@
       case "restoreRecovery":
         return validRecoverySnapshot(operation.snapshot);
       case "acknowledgeCommittedSnapshot":
-        return typeof operation.expectedText === "string" && typeof operation.committedText === "string" && typeof operation.committedFingerprint === "string";
+        return typeof operation.expectedText === "string" && exactSourceFits(operation.expectedText) && typeof operation.committedText === "string" && exactSourceFits(operation.committedText) && typeof operation.committedFingerprint === "string";
       case "insertReference": {
         const selection = operation.selection;
         return Number.isSafeInteger(operation.generation) && Number(operation.generation) >= 0 && typeof operation.target === "string" && operation.target.length > 0 && operation.target.length <= 1024 && !/[\r\n\[\]]/u.test(operation.target) && Number.isSafeInteger(selection?.anchor) && Number(selection?.anchor) >= 0 && selection?.anchor === selection?.head;
       }
       case "replacePassage":
-        return typeof operation.expectedText === "string" && typeof operation.replacement === "string" && typeof operation.preserveSelection === "boolean" && operation.replacement.length > 0 && operation.replacement.length <= 5e5 && Number.isSafeInteger(operation.fromUTF16) && Number.isSafeInteger(operation.toUTF16) && Number(operation.fromUTF16) >= 0 && Number(operation.toUTF16) >= Number(operation.fromUTF16);
+        return typeof operation.expectedText === "string" && exactSourceFits(operation.expectedText) && typeof operation.replacement === "string" && typeof operation.preserveSelection === "boolean" && operation.replacement.length > 0 && operation.replacement.length <= 5e5 && Number.isSafeInteger(operation.fromUTF16) && Number.isSafeInteger(operation.toUTF16) && Number(operation.fromUTF16) >= 0 && Number(operation.toUTF16) >= Number(operation.fromUTF16);
+      case "suspendForDetachment":
+      case "resumeAfterDetachment":
+        return typeof operation.suspensionID === "string" && operation.suspensionID.length > 0 && operation.suspensionID.length <= 128;
       case "command":
         return typeof operation.command === "string" && commandTypes.has(operation.command) && (operation.argument === void 0 || typeof operation.argument === "string");
       case "documentFind": {
@@ -21811,13 +21881,13 @@
   function isEditorRequest(value) {
     if (!value || typeof value !== "object") return false;
     const request = value;
-    if (request.protocolVersion !== EDITOR_PROTOCOL_VERSION || typeof request.requestID !== "string" || request.requestID.length > 128 || typeof request.sessionID !== "string" || request.sessionID.length > 128 || typeof request.documentID !== "string" || request.documentID.length > 4096 || typeof request.startingFingerprint !== "string" || request.startingFingerprint.length > 256 || !Number.isSafeInteger(request.knownGeneration) || request.knownGeneration < 0 || !request.operation || typeof request.operation !== "object") return false;
+    if (request.protocolVersion !== EDITOR_PROTOCOL_VERSION || typeof request.requestID !== "string" || request.requestID.length > 128 || typeof request.sessionID !== "string" || request.sessionID.length > 128 || typeof request.documentID !== "string" || request.documentID.length > 4096 || typeof request.startingFingerprint !== "string" || request.startingFingerprint.length > 256 || !Number.isSafeInteger(request.expiresAt) || request.expiresAt <= 0 || !Number.isSafeInteger(request.knownGeneration) || request.knownGeneration < 0 || !request.operation || typeof request.operation !== "object") return false;
     const type = request.operation.type;
     if (typeof type !== "string" || !operationTypes.has(type)) return false;
     if (!validOperation(request.operation)) return false;
     try {
       const sourceBearing = ["initialize", "acknowledgeCommittedSnapshot", "restoreRecovery", "replacePassage"].includes(type);
-      return encodedByteLength(value) <= (sourceBearing ? MAX_SOURCE_UTF8_BYTES + 512e3 : MAX_INBOUND_BYTES);
+      return encodedByteLength(value) <= (sourceBearing ? MAX_SOURCE_ENVELOPE_BYTES : MAX_INBOUND_BYTES);
     } catch {
       return false;
     }
@@ -22283,13 +22353,6 @@ ${fence}`;
       return selection;
     });
     return { changes, selections: resultSelections, undoLabel: values2[0].label };
-  }
-  function applySourceChanges(source, changes) {
-    let result = source;
-    for (const change of [...changes].sort((left, right) => right.from - left.from)) {
-      result = result.slice(0, change.from) + change.insert + result.slice(change.to);
-    }
-    return result;
   }
 
   // interaction.ts
@@ -23128,6 +23191,11 @@ ${fence}
 
   // exact-source-history.ts
   var setExactSource = StateEffect.define();
+  var sourceCapacityExceeded = StateEffect.define();
+  function admittedMirror(source) {
+    if (!exactSourceFits(source)) throw new Error(sourceCapacityMessage);
+    return new ExactSourceMirror(source);
+  }
   var eventInverses = /* @__PURE__ */ new WeakMap();
   var detachedHistoryDepth = 0;
   function detachedHistory(operation) {
@@ -23172,20 +23240,21 @@ ${fence}
     return changes;
   }
   var exactSourceState = StateField.define({
-    create: (state) => new ExactSourceMirror(state.doc.toString()),
+    create: (state) => admittedMirror(state.doc.toString()),
     update(mirror, transaction) {
       const replacement = transaction.effects.find((effect) => effect.is(setExactSource));
       if (replacement) {
         if (normalizedDocumentText(replacement.value) !== transaction.newDoc.toString()) {
           throw new Error("Exact source does not match the editor document");
         }
-        return new ExactSourceMirror(replacement.value);
+        return admittedMirror(replacement.value);
       }
       if (!transaction.docChanged) return mirror;
       const startedAt = performance.now();
       const changes = transactionChanges(transaction, mirror);
       const next = mirror.copy();
       if (!next.apply(changes)) throw new Error("Exact source change is invalid");
+      if (next.utf8ByteCount > MAX_SOURCE_UTF8_BYTES) throw new Error(sourceCapacityMessage);
       if (detachedHistoryDepth === 0) recordEditorMetric("exact-source-update", startedAt, {
         changeCount: changes.length,
         documentLength: transaction.newDoc.length
@@ -23195,6 +23264,14 @@ ${fence}
   });
   var exactSourceHistory = [
     exactSourceState,
+    EditorState.transactionFilter.of((transaction) => {
+      const replacement = transaction.effects.find((effect) => effect.is(setExactSource));
+      const admitted = replacement ? exactSourceFits(replacement.value) : !transaction.docChanged || exactSourceFitsChanges(
+        transaction.startState,
+        transactionChanges(transaction, transaction.startState.field(exactSourceState))
+      );
+      return admitted ? transaction : { effects: sourceCapacityExceeded.of(null) };
+    }),
     EditorState.transactionExtender.of((transaction) => {
       if (transaction.docChanged && transaction.annotation(Transaction.addToHistory) === false) {
         for (const command2 of [undo, redo]) {
@@ -23229,19 +23306,29 @@ ${fence}
     })
   ];
   function exactSourceFitsChanges(state, changes) {
-    const source = state.field(exactSourceState);
+    const source = state.field(exactSourceState, false) ?? new ExactSourceMirror(state.doc.toString());
+    if (changes.length <= 1) {
+      const next = source.copy();
+      return next.apply(changes) && next.utf8ByteCount <= MAX_SOURCE_UTF8_BYTES;
+    }
     const encoder = new TextEncoder();
-    let previous = 0, bytes = 0;
+    let bytes = 0, previous = 0, pendingHigh = "";
+    const append = (piece) => {
+      const text = pendingHigh + piece;
+      const last = text.charCodeAt(text.length - 1);
+      pendingHigh = last >= 55296 && last <= 56319 ? text.slice(-1) : "";
+      bytes += encoder.encode(pendingHigh ? text.slice(0, -1) : text).byteLength;
+      return bytes <= MAX_SOURCE_UTF8_BYTES;
+    };
     for (const change of [...changes].sort((left, right) => left.from - right.from || left.to - right.to)) {
       if (!Number.isSafeInteger(change.from) || !Number.isSafeInteger(change.to) || change.from < previous || change.to < change.from || change.to > state.doc.length) return false;
       const normalized2 = normalizedDocumentText(change.insert);
       const insertion = change.exactInsert ?? (source.usesCRLF ? normalized2.replaceAll("\n", "\r\n") : normalized2);
       if (normalizedDocumentText(insertion) !== normalized2) return false;
-      bytes += encoder.encode(source.slice(previous, change.from)).byteLength + encoder.encode(insertion).byteLength;
-      if (bytes > MAX_SOURCE_UTF8_BYTES) return false;
+      if (!append(source.slice(previous, change.from)) || !append(insertion)) return false;
       previous = change.to;
     }
-    return bytes + encoder.encode(source.slice(previous, state.doc.length)).byteLength <= MAX_SOURCE_UTF8_BYTES;
+    return append(source.slice(previous, state.doc.length)) && bytes + encoder.encode(pendingHigh).byteLength <= MAX_SOURCE_UTF8_BYTES;
   }
   function lineEndings(source) {
     return Array.from(source.matchAll(/\r?\n/g), (match) => match[0] === "\r\n" ? "c" : "l").join("");
@@ -23295,6 +23382,7 @@ ${fence}
     }
   }
   function restoreExactHistory(serialized, source, extensions) {
+    if (!exactSourceFits(source)) throw new Error(sourceCapacityMessage);
     if (new TextEncoder().encode(serialized).byteLength > MAX_INBOUND_BYTES) throw new Error("History is too large");
     const payload = JSON.parse(serialized);
     const validEndings = (value) => Array.isArray(value) && value.length <= maximumRecoveryEvents && value.every((item) => item === null || typeof item === "string" && /^[cl]*$/.test(item));
@@ -23367,9 +23455,8 @@ ${fence}
       ...copy ? [] : [{ from: range.from, to: range.to, insert: "", exactInsert: "" }],
       { from: position, to: position, insert: insert2, exactInsert: exact }
     ];
-    if (mirror && !exactSourceFitsChanges(state, specs)) return null;
+    if (!exactSourceFitsChanges(state, specs)) return null;
     const changes = state.changes(specs);
-    if (!mirror && new TextEncoder().encode(changes.apply(state.doc).toString()).length > MAX_SOURCE_UTF8_BYTES) return null;
     const from = changes.mapPos(position, -1);
     view.dispatch({
       changes,
@@ -23546,7 +23633,7 @@ ${fence}
       argument: insert2,
       protectedRanges: protection(targetState)
     });
-    if (!transformed || new TextEncoder().encode(applySourceChanges(source, transformed.changes)).byteLength > MAX_SOURCE_UTF8_BYTES) return null;
+    if (!transformed || !exactSourceFitsChanges(state, transformed.changes)) return null;
     view.dispatch({
       changes: transformed.changes,
       selection: EditorSelection.create(transformed.selections.map((range) => EditorSelection.range(range.anchor, range.head))),
@@ -31458,6 +31545,8 @@ ${fence}
   var webInterfaceLocalizationKeys = [
     "Tab",
     "Accept suggestion: {text} (Tab)",
+    "The edited Markdown document exceeds the supported editor size.",
+    "Finish editing the note title before switching documents.",
     "Copy",
     "Expand",
     "YAML frontmatter",
@@ -31661,50 +31750,102 @@ ${fence}
   }
 
   // composition.ts
+  var policies = {
+    initialize: "reject",
+    replacePassage: "reject",
+    insertReference: "reject",
+    queryText: "defer",
+    querySelection: "defer",
+    captureRecovery: "defer",
+    markClean: "defer",
+    setMode: "defer",
+    setDocumentTitle: "defer",
+    setPresentationCSS: "defer",
+    setUserCSS: "defer",
+    setLinkPreviews: "defer",
+    goToLine: "defer",
+    revealSourceRange: "defer",
+    restoreRecovery: "defer",
+    acknowledgeCommittedSnapshot: "defer",
+    command: "defer",
+    documentFind: "defer",
+    clearDocumentFind: "defer",
+    showPreview: "defer",
+    showPreviewAt: "defer",
+    measureVisibleProjection: "defer",
+    setScrollFraction: "defer",
+    setScrollAnchor: "defer",
+    focus: "defer",
+    focusTitle: "defer",
+    blur: "defer",
+    queryContext: "allow",
+    queryScrollAnchor: "allow",
+    queryPerformance: "allow",
+    announceStatus: "allow",
+    suspendForDetachment: "defer",
+    resumeAfterDetachment: "allow"
+  };
   function compositionRequestPolicy(operationType) {
-    if (operationType === "initialize" || operationType === "replacePassage") return "reject";
-    if ([
-      "queryText",
-      "querySelection",
-      "captureRecovery",
-      "markClean",
-      "setMode",
-      "setPresentationCSS",
-      "setUserCSS",
-      "setLinkPreviews",
-      "goToLine",
-      "restoreRecovery",
-      "acknowledgeCommittedSnapshot",
-      "command",
-      "documentFind",
-      "clearDocumentFind"
-    ].includes(operationType)) return "defer";
-    return "allow";
+    return policies[operationType];
   }
   var CompositionRequestGate = class {
-    requests = [];
-    composing = false;
-    get active() {
-      return this.composing;
+    constructor(expired) {
+      this.expired = expired;
     }
-    begin() {
-      this.composing = true;
+    expired;
+    requests = /* @__PURE__ */ new Map();
+    owners = /* @__PURE__ */ new Map();
+    sequence = 0;
+    get active() {
+      return this.owners.size > 0;
+    }
+    begin(owner = "editor") {
+      this.owners.set(owner, ++this.sequence);
+    }
+    revision(owner) {
+      return this.owners.get(owner);
     }
     enqueue(request) {
-      return new Promise((resolve) => this.requests.push({ request, resolve }));
+      if (request.expiresAt <= Date.now()) return Promise.resolve(this.expired(request));
+      return new Promise((resolve) => {
+        const pending = { request, resolve };
+        const expire = () => {
+          if (request.expiresAt > Date.now()) {
+            this.requests.set(pending, setTimeout(expire, Math.min(2147483647, request.expiresAt - Date.now())));
+            return;
+          }
+          this.requests.delete(pending);
+          resolve(this.expired(request));
+        };
+        this.requests.set(pending, setTimeout(expire, Math.min(2147483647, request.expiresAt - Date.now())));
+      });
     }
-    finish() {
-      this.composing = false;
-      return this.requests.splice(0);
+    finish(owner = "editor", revision = this.owners.get(owner)) {
+      if (revision !== this.owners.get(owner)) return [];
+      this.owners.delete(owner);
+      if (this.active) return [];
+      const pending = [...this.requests.keys()];
+      for (const timer of this.requests.values()) clearTimeout(timer);
+      this.requests.clear();
+      return pending.filter((item) => {
+        if (item.request.expiresAt > Date.now()) return true;
+        item.resolve(this.expired(item.request));
+        return false;
+      });
     }
     rejectAll(result) {
-      this.composing = false;
-      for (const pending of this.requests.splice(0)) pending.resolve(result(pending.request));
+      this.owners.clear();
+      for (const [pending, timer] of this.requests) {
+        clearTimeout(timer);
+        pending.resolve(result(pending.request));
+      }
+      this.requests.clear();
     }
   };
 
   // bootstrap.ts
   function createMarkdownDocumentState(source, extensions) {
+    if (!exactSourceFits(source)) throw new Error(sourceCapacityMessage);
     return EditorState.create({ doc: normalizedDocumentText(source), extensions }).update({
       effects: setExactSource.of(source),
       annotations: Transaction.addToHistory.of(false)
@@ -33449,8 +33590,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         }
       );
       if (!transformed) return;
-      const transformedSource = applySourceChanges(source, transformed.changes);
-      if (new TextEncoder().encode(transformedSource).byteLength > MAX_SOURCE_UTF8_BYTES) return;
+      if (!exactSourceFitsChanges(view.state, transformed.changes)) return;
       view.dispatch({
         changes: transformed.changes,
         selection: EditorSelection.create(
@@ -33638,7 +33778,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
             apply: (view) => {
               if (view.composing || options.isComposing() || view.state.doc !== context.state.doc || !view.state.selection.eq(context.state.selection)) return;
               const text = termSuffix(context.state, context.pos, candidate);
-              if (new TextEncoder().encode(view.state.doc.toString() + text).length > MAX_SOURCE_UTF8_BYTES) return;
+              if (!exactSourceFitsChanges(view.state, [{ from: context.pos, to: context.pos, insert: text }])) return;
               view.dispatch({
                 changes: { from: context.pos, insert: text },
                 selection: { anchor: context.pos + text.length },
@@ -37478,6 +37618,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
   var bridgeSessionID = "";
   var bridgeDocumentID = "";
   var bridgeFingerprint = "";
+  var committedSnapshotReceipt = new CommittedSnapshotReceipt();
   var documentVersion = 0;
   var linkPreviews = [];
   var linkPreviewIndexByRange = /* @__PURE__ */ new Map();
@@ -37529,7 +37670,6 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
   var documentTitle = "";
   var documentTitleDraft = null;
   var documentTitleError = null;
-  var documentTitleComposing = false;
   var documentTitleRenameRequest = null;
   var documentTitlePresentationRevision = 0;
   var lastDocumentFocusTarget;
@@ -37604,7 +37744,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         resize();
       };
       const commit = () => {
-        if (attachment !== documentAttachment) return;
+        if (attachment !== documentAttachment || editor.state.field(editorSuspensionState) !== null) return;
         if (documentTitleRenameRequest) return;
         const requestedTitle = input.value.replace(/[\r\n]+/g, " ");
         documentTitleDraft = requestedTitle;
@@ -37637,12 +37777,13 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       input.addEventListener("compositionstart", () => {
         if (attachment !== documentAttachment) return;
         composing = true;
-        documentTitleComposing = true;
+        compositionGate.begin("title");
+        publishEditorContext();
       });
       input.addEventListener("compositionend", () => {
         if (attachment !== documentAttachment) return;
         composing = false;
-        documentTitleComposing = false;
+        finishComposition("title");
         normalizeInput();
         if (commitAfterComposition) {
           commitAfterComposition = false;
@@ -38553,6 +38694,9 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       selectionActions.dismiss();
       return;
     }
+    if (update.transactions.some((transaction) => transaction.effects.some((effect) => effect.is(sourceCapacityExceeded)))) {
+      announceEditorMessage(update.view.contentDOM, localized(sourceCapacityMessage));
+    }
     if (update.docChanged) dirty = true;
     if (!update.docChanged && !update.selectionSet) return;
     selectionActions.dismiss();
@@ -38654,8 +38798,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       }
     );
     if (!transformed) return null;
-    const transformedSource = applySourceChanges(source, transformed.changes);
-    if (new TextEncoder().encode(transformedSource).byteLength > MAX_SOURCE_UTF8_BYTES) {
+    if (!exactSourceFitsChanges(state, transformed.changes)) {
       return null;
     }
     return transformed;
@@ -38912,7 +39055,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     textSelectionPresentation,
     createEditorTextTransfer({
       documentIdentity: () => documentAttachment,
-      compositionActive: () => compositionGate.active || documentTitleComposing,
+      compositionActive: () => compositionGate.active,
       projectedPosition: (view, event) => configuredEditorMode(view.state) === "livePreview" ? projectedHeadingSourceOffset(view, event) : null,
       protection: (state) => commandProtection("pastePlain", state),
       unsupportedFile: () => announceEditorMessage(editor.contentDOM, unsupportedFilePasteMessage()),
@@ -38948,6 +39091,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     EditorState.lineSeparator.of("\n"),
     exactSourceHistory,
     modeCompartment.of(sourceMode),
+    editorSuspension,
     EditorView.theme({
       "&": { height: "100%" },
       ".cm-scroller": { overflow: "auto" }
@@ -39125,8 +39269,8 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       activeInlineConstructs: [...inline],
       activeBlockConstructs: [...block],
       tablePosition: currentTablePosition,
-      composing: view.composing,
-      availableCommands: view.composing ? [] : editingFrontmatterSelection(state) ? ["pastePlain", "pasteMarkdown"] : protectedSelection ? [] : availableCommands,
+      composing: view.composing || compositionGate.active,
+      availableCommands: view.composing || compositionGate.active ? [] : editingFrontmatterSelection(state) ? ["pastePlain", "pasteMarkdown"] : protectedSelection ? [] : availableCommands,
       undoLabel: undoDepth(state) > 0 ? lastUndoLabel || "Undo Editing" : void 0,
       redoLabel: redoDepth(state) > 0 ? lastRedoLabel || "Redo Editing" : void 0
     };
@@ -39168,11 +39312,48 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       accepted: true
     };
   }
+  function captureRecovery() {
+    const historyState = editor.state.update({ effects: setEditorSuspension.of(null) }).state;
+    const stateJSON = captureExactHistory(historyState);
+    return {
+      documentID: bridgeDocumentID,
+      fingerprint: bridgeFingerprint,
+      generation: documentVersion,
+      ranges: editorSelections(),
+      source: exactEditorSource(),
+      stateJSON,
+      undoHistoryPreserved: stateJSON !== void 0,
+      dirty,
+      focusTarget: lastDocumentFocusTarget
+    };
+  }
+  var frozenReadableOperations = /* @__PURE__ */ new Set([
+    "queryText",
+    "querySelection",
+    "queryContext",
+    "queryScrollAnchor",
+    "queryPerformance",
+    "captureRecovery",
+    "announceStatus",
+    "initialize",
+    "suspendForDetachment",
+    "resumeAfterDetachment",
+    "acknowledgeCommittedSnapshot"
+  ]);
   async function executeEditorRequest(request) {
     const operation = request.operation;
+    if (request.expiresAt <= Date.now()) return rejected(request.requestID, documentVersion, "editor request expired");
+    const replayedCommit = committedSnapshotReceipt.canReplay(request, {
+      sessionID: bridgeSessionID,
+      documentID: bridgeDocumentID,
+      startingFingerprint: bridgeFingerprint
+    });
+    if (editor.state.field(editorSuspensionState) !== null && !replayedCommit && !frozenReadableOperations.has(operation.type)) {
+      return rejected(request.requestID, documentVersion, "editor is suspended for detachment");
+    }
     if (operation.type === "initialize") {
       const loadStartedAt = performance.now();
-      if (request.knownGeneration !== 0 || new TextEncoder().encode(operation.text).byteLength > MAX_SOURCE_UTF8_BYTES) {
+      if (request.knownGeneration !== 0 || !exactSourceFits(operation.text)) {
         return rejected(request.requestID, documentVersion, "invalid initialization");
       }
       editingDialect = operation.dialect;
@@ -39194,7 +39375,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       sampleEditorMemory(editor.state.doc.length);
       return successfulResult(request.requestID);
     }
-    if (request.sessionID !== bridgeSessionID || request.documentID !== bridgeDocumentID || request.startingFingerprint !== bridgeFingerprint) {
+    if (request.sessionID !== bridgeSessionID || request.documentID !== bridgeDocumentID || request.startingFingerprint !== bridgeFingerprint && !replayedCommit) {
       return rejected(request.requestID, documentVersion, "stale editor identity");
     }
     if (!generationCanExecuteEditorRequest(
@@ -39203,6 +39384,14 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       documentVersion
     )) {
       return rejected(request.requestID, documentVersion, "stale editor generation");
+    }
+    if (replayedCommit && operation.type === "acknowledgeCommittedSnapshot") {
+      const replay = committedSnapshotReceipt.replay(request, {
+        sessionID: bridgeSessionID,
+        documentID: bridgeDocumentID,
+        startingFingerprint: bridgeFingerprint
+      }, exactEditorSource(), dirty);
+      return { ...successfulResult(request.requestID), ...replay };
     }
     switch (operation.type) {
       case "setMode":
@@ -39273,23 +39462,23 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
           performanceSamples: editorPerformanceSamples()
         };
       case "captureRecovery": {
-        const stateJSON = captureExactHistory(editor.state);
-        const recovery = {
-          documentID: bridgeDocumentID,
-          fingerprint: bridgeFingerprint,
-          generation: documentVersion,
-          ranges: editorSelections(),
-          source: exactEditorSource(),
-          stateJSON,
-          undoHistoryPreserved: stateJSON !== void 0,
-          dirty,
-          focusTarget: lastDocumentFocusTarget
-        };
-        return { ...successfulResult(request.requestID), recovery };
+        return { ...successfulResult(request.requestID), recovery: captureRecovery() };
+      }
+      case "suspendForDetachment": {
+        if (!titleAllowsDetachment(documentTitle, documentTitleDraft, documentTitleRenameRequest !== null)) {
+          return rejected(request.requestID, documentVersion, localized("Finish editing the note title before switching documents."));
+        }
+        editor.dispatch({ effects: setEditorSuspension.of(operation.suspensionID) });
+        return { ...successfulResult(request.requestID), recovery: captureRecovery() };
+      }
+      case "resumeAfterDetachment": {
+        if (editor.state.field(editorSuspensionState) !== operation.suspensionID) return rejected(request.requestID, documentVersion, "stale editor suspension");
+        editor.dispatch({ effects: setEditorSuspension.of(null) });
+        break;
       }
       case "restoreRecovery": {
         const snapshot = operation.snapshot;
-        if (snapshot.documentID !== bridgeDocumentID || snapshot.fingerprint !== bridgeFingerprint || !recoveryGenerationCanReplaceCurrent(snapshot.generation, documentVersion) || new TextEncoder().encode(snapshot.source).byteLength > MAX_SOURCE_UTF8_BYTES) {
+        if (snapshot.documentID !== bridgeDocumentID || snapshot.fingerprint !== bridgeFingerprint || !recoveryGenerationCanReplaceCurrent(snapshot.generation, documentVersion) || !exactSourceFits(snapshot.source)) {
           return rejected(request.requestID, documentVersion, "stale recovery snapshot");
         }
         const recoveredSelection = EditorSelection.create(snapshot.ranges.map((range) => EditorSelection.range(range.anchor, range.head)));
@@ -39328,7 +39517,10 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         return { ...successfulResult(request.requestID), recovery: { ...snapshot, undoHistoryPreserved: restoredHistory } };
       }
       case "acknowledgeCommittedSnapshot": {
-        if (new TextEncoder().encode(operation.committedText).byteLength > MAX_SOURCE_UTF8_BYTES) {
+        if (editor.state.field(editorSuspensionState) !== null && operation.committedText !== operation.expectedText) {
+          return rejected(request.requestID, documentVersion, "a suspended editor cannot replace its captured source");
+        }
+        if (!exactSourceFits(operation.committedText)) {
           return rejected(request.requestID, documentVersion, "committed source is too large");
         }
         const superseded = editorOperations.acknowledgeCommittedSnapshot(
@@ -39339,6 +39531,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         if (superseded === null) {
           return rejected(request.requestID, documentVersion, "editor source did not reconcile");
         }
+        committedSnapshotReceipt.remember(request, operation);
         return {
           ...successfulResult(request.requestID),
           text: exactEditorSource(),
@@ -39351,7 +39544,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
           return rejected(request.requestID, documentVersion, "The insertion position changed. Confirm the cursor again.");
         }
         const text = `[[${operation.target}]]`;
-        if (new TextEncoder().encode(editor.state.doc.toString() + text).length > MAX_SOURCE_UTF8_BYTES) {
+        if (!exactSourceFitsChanges(editor.state, [{ from: selection.head, to: selection.head, insert: text }])) {
           return rejected(request.requestID, documentVersion, "The reference is too large.");
         }
         editor.dispatch({
@@ -39373,7 +39566,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
           operation.replacement
         );
         if (!change) return rejected(request.requestID, documentVersion, "The passage changed. Request a new suggestion.");
-        if (new TextEncoder().encode(applySourceChanges(editor.state.doc.toString(), [change])).byteLength > MAX_SOURCE_UTF8_BYTES) {
+        if (!exactSourceFitsChanges(editor.state, [change])) {
           return rejected(request.requestID, documentVersion, "The suggestion is too large.");
         }
         editor.dispatch({
@@ -39438,7 +39631,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     }
     return successfulResult(request.requestID);
   }
-  var compositionGate = new CompositionRequestGate();
+  var compositionGate = new CompositionRequestGate((request) => rejected(request.requestID, documentVersion, "editor request expired"));
   async function dispatchEditorRequest(value) {
     const bridgeStartedAt = performance.now();
     const requestBytes = (() => {
@@ -39452,8 +39645,9 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       recordEditorMetric("bridge-request", bridgeStartedAt, { requestBytes });
       return rejected("invalid", documentVersion, "malformed editor request");
     }
+    if (value.expiresAt <= Date.now()) return rejected(value.requestID, documentVersion, "editor request expired");
     const compositionPolicy = compositionRequestPolicy(value.operation.type);
-    if ((editor.composing || compositionGate.active || documentTitleComposing) && compositionPolicy === "reject") {
+    if ((editor.composing || compositionGate.active) && compositionPolicy === "reject") {
       return rejected(value.requestID, documentVersion, "editor identity cannot change during composition");
     }
     if ((editor.composing || compositionGate.active) && compositionPolicy === "defer") {
@@ -39480,16 +39674,24 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       return result;
     }
   }
-  editor.contentDOM.addEventListener("compositionend", () => {
+  function finishComposition(owner) {
+    const revision = compositionGate.revision(owner);
     const attachment = documentAttachment;
     window.setTimeout(() => {
       if (attachment !== documentAttachment) return;
-      const pending = compositionGate.finish();
+      const pending = compositionGate.finish(owner, revision);
       for (const item of pending) void dispatchEditorRequest(item.request).then(item.resolve);
       publishEditorContext();
     }, 0);
+  }
+  function isTitleComposition(event) {
+    return event.target instanceof Element && event.target.closest("[data-scholium-title-input]") !== null;
+  }
+  editor.contentDOM.addEventListener("compositionend", (event) => {
+    if (!isTitleComposition(event)) finishComposition("editor");
   });
-  editor.contentDOM.addEventListener("compositionstart", () => {
+  editor.contentDOM.addEventListener("compositionstart", (event) => {
+    if (isTitleComposition(event)) return;
     compositionGate.begin();
     const attachment = documentAttachment;
     window.queueMicrotask(() => {
@@ -39497,7 +39699,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     });
   });
   function pasteTransfer(transfer, requestNativeImageImport = false) {
-    if (editor.state.readOnly || !editor.state.facet(EditorView.editable) || editor.composing || compositionGate.active || documentTitleComposing) return true;
+    if (editor.state.readOnly || !editor.state.facet(EditorView.editable) || editor.composing || compositionGate.active) return true;
     if (Array.from(transfer.files).length > 0 || Array.from(transfer.items).some((item) => item.kind === "file")) {
       const image = Array.from(transfer.files).some((file) => file.type.startsWith("image/")) || Array.from(transfer.items).some((item) => item.kind === "file" && item.type.startsWith("image/"));
       if (requestNativeImageImport && image) {
@@ -39636,6 +39838,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     /** @param {string} text @param {string} sessionID @param {string} documentID */
     setDocument(text, sessionID, documentID, startingFingerprint) {
       documentAttachment += 1;
+      committedSnapshotReceipt.clear();
       interactionReporter.cancel();
       cancelEditorAnnouncement(editor.contentDOM);
       cancelPendingSmoothReveal();
@@ -39656,7 +39859,6 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       documentTitle = "";
       documentTitleDraft = null;
       documentTitleError = null;
-      documentTitleComposing = false;
       documentTitleRenameRequest = null;
       documentTitlePresentationRevision += 1;
       lastDocumentFocusTarget = void 0;
@@ -39824,7 +40026,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
   webkitWindow.scholiumEditor = {
     dispatch: dispatchEditorRequest,
     prepareForReuse() {
-      if (editor.composing || compositionGate.active || documentTitleComposing) return false;
+      if (editor.composing || compositionGate.active) return false;
       editorOperations.blur();
       editingDialect = null;
       editorOperations.setDocument("", "", "", "");

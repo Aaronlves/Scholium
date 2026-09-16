@@ -1,11 +1,18 @@
 import {ChangeSet, Compartment, EditorState, StateEffect, StateField, Transaction, type ChangeDesc, type Extension} from "@codemirror/state";
 import {historyField, invertedEffects, redo, redoDepth, redoSelection, undo, undoDepth, undoSelection} from "@codemirror/commands";
 import {ExactSourceMirror, normalizedDocumentText, type NormalizedSourceChange} from "./state";
-import {MAX_INBOUND_BYTES, MAX_SOURCE_UTF8_BYTES} from "./protocol";
+import {MAX_INBOUND_BYTES} from "./protocol";
+import {MAX_SOURCE_UTF8_BYTES, exactSourceFits, sourceCapacityMessage} from "./source-capacity";
+export {exactSourceFits, sourceCapacityMessage} from "./source-capacity";
 import {recordEditorMetric} from "./performance";
 
 /** Exact bytes are part of the retained editor state, alongside its history. */
 export const setExactSource = StateEffect.define<string>();
+export const sourceCapacityExceeded = StateEffect.define<null>();
+function admittedMirror(source: string) {
+  if (!exactSourceFits(source)) throw new Error(sourceCapacityMessage);
+  return new ExactSourceMirror(source);
+}
 type LineEnding = {at: number; ending: string};
 // Derived, nonowning context for CodeMirror's lazy nonhistory mappings. Values
 // are the current complete event inverses, obtained through public Undo/Redo.
@@ -60,20 +67,21 @@ function transactionChanges(transaction: Transaction, mirror: ExactSourceMirror)
 }
 
 export const exactSourceState = StateField.define<ExactSourceMirror>({
-  create: state => new ExactSourceMirror(state.doc.toString()),
+  create: state => admittedMirror(state.doc.toString()),
   update(mirror, transaction) {
     const replacement = transaction.effects.find(effect => effect.is(setExactSource));
     if (replacement) {
       if (normalizedDocumentText(replacement.value) !== transaction.newDoc.toString()) {
         throw new Error("Exact source does not match the editor document");
       }
-      return new ExactSourceMirror(replacement.value);
+      return admittedMirror(replacement.value);
     }
     if (!transaction.docChanged) return mirror;
     const startedAt = performance.now();
     const changes = transactionChanges(transaction, mirror);
     const next = mirror.copy();
     if (!next.apply(changes)) throw new Error("Exact source change is invalid");
+    if (next.utf8ByteCount > MAX_SOURCE_UTF8_BYTES) throw new Error(sourceCapacityMessage);
     if (detachedHistoryDepth === 0) recordEditorMetric("exact-source-update", startedAt, {
       changeCount: changes.length, documentLength: transaction.newDoc.length});
     return next;
@@ -81,6 +89,14 @@ export const exactSourceState = StateField.define<ExactSourceMirror>({
 });
 
 export const exactSourceHistory: Extension = [exactSourceState,
+  EditorState.transactionFilter.of(transaction => {
+    const replacement = transaction.effects.find(effect => effect.is(setExactSource));
+    const admitted = replacement ? exactSourceFits(replacement.value)
+      : !transaction.docChanged || exactSourceFitsChanges(transaction.startState,
+          transactionChanges(transaction, transaction.startState.field(exactSourceState)));
+    // Refusal preserves text, selection and history as one atomic boundary.
+    return admitted ? transaction : {effects: sourceCapacityExceeded.of(null)};
+  }),
   EditorState.transactionExtender.of(transaction => {
     if (transaction.docChanged && transaction.annotation(Transaction.addToHistory) === false) {
       for (const command of [undo, redo]) {
@@ -113,22 +129,33 @@ export const exactSourceHistory: Extension = [exactSourceState,
 })];
 
 export function exactSourceFitsChanges(state: EditorState, changes: readonly NormalizedSourceChange[]) {
-  const source = state.field(exactSourceState);
+  const source = state.field(exactSourceState, false) ?? new ExactSourceMirror(state.doc.toString());
+  if (changes.length <= 1) {
+    const next = source.copy();
+    return next.apply(changes) && next.utf8ByteCount <= MAX_SOURCE_UTF8_BYTES;
+  }
+  // Bound multi-range expansion before constructing ropes (for example Replace
+  // All). Carry a high surrogate between pieces so UTF-8 is counted exactly.
   const encoder = new TextEncoder();
-  let previous = 0, bytes = 0;
-  // Count monotonic output pieces before allocating a potentially enormous
-  // Replace All result. Untouched CRLF bytes count toward the same source cap.
+  let bytes = 0, previous = 0, pendingHigh = "";
+  const append = (piece: string) => {
+    const text = pendingHigh + piece;
+    const last = text.charCodeAt(text.length - 1);
+    pendingHigh = last >= 0xD800 && last <= 0xDBFF ? text.slice(-1) : "";
+    bytes += encoder.encode(pendingHigh ? text.slice(0, -1) : text).byteLength;
+    return bytes <= MAX_SOURCE_UTF8_BYTES;
+  };
   for (const change of [...changes].sort((left, right) => left.from - right.from || left.to - right.to)) {
     if (!Number.isSafeInteger(change.from) || !Number.isSafeInteger(change.to)
         || change.from < previous || change.to < change.from || change.to > state.doc.length) return false;
     const normalized = normalizedDocumentText(change.insert);
     const insertion = change.exactInsert ?? (source.usesCRLF ? normalized.replaceAll("\n", "\r\n") : normalized);
     if (normalizedDocumentText(insertion) !== normalized) return false;
-    bytes += encoder.encode(source.slice(previous, change.from)).byteLength + encoder.encode(insertion).byteLength;
-    if (bytes > MAX_SOURCE_UTF8_BYTES) return false;
+    if (!append(source.slice(previous, change.from)) || !append(insertion)) return false;
     previous = change.to;
   }
-  return bytes + encoder.encode(source.slice(previous, state.doc.length)).byteLength <= MAX_SOURCE_UTF8_BYTES;
+  return append(source.slice(previous, state.doc.length))
+    && bytes + encoder.encode(pendingHigh).byteLength <= MAX_SOURCE_UTF8_BYTES;
 }
 
 function lineEndings(source: string) {
@@ -191,6 +218,7 @@ export function captureExactHistory(state: EditorState): string | undefined {
 /** Rebuild both branches using public history transactions, keeping their
  * original grouping. The temporary extender exists only during restoration. */
 export function restoreExactHistory(serialized: string, source: string, extensions: Extension): EditorState {
+  if (!exactSourceFits(source)) throw new Error(sourceCapacityMessage);
   if (new TextEncoder().encode(serialized).byteLength > MAX_INBOUND_BYTES) throw new Error("History is too large");
   const payload = JSON.parse(serialized);
   const validEndings = (value: unknown): value is (string | null)[] => Array.isArray(value)

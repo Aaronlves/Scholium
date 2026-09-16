@@ -60,7 +60,7 @@ struct ScrollRestoreRequest: Equatable, Sendable {
 @MainActor
 final class DocumentSessionModel: ObservableObject {
     let key: DocumentSessionKey?
-    let editorSession = MarkdownEditorSession()
+    let editorSession: MarkdownEditorSession
 
     @Published private(set) var presentation = DocumentPresentationState()
     @Published var editingSource = ""
@@ -104,11 +104,15 @@ final class DocumentSessionModel: ObservableObject {
     var activeSaveTask: Task<EditorSaveOutcome, Error>?
     var activeSaveCommitReceipt: EditorSaveCommitReceipt?
     var activeSaveToken: UUID?
+    var pendingEditorCommit: (snapshot: MarkdownEditorPersistenceSnapshot, document: NoteDocument)?
+    var detachmentResumeTask: Task<Void, Never>?
+    var detachmentResumeToken: UUID?
     private var editorCancellable: AnyCancellable?
     private var nextScrollRestoreRequestID: UInt64 = 0
 
-    init(key: DocumentSessionKey?) {
+    init(key: DocumentSessionKey?, editorSession: MarkdownEditorSession = MarkdownEditorSession()) {
         self.key = key
+        self.editorSession = editorSession
         editorCancellable = editorSession.objectWillChange.sink { [weak self] in
             self?.objectWillChange.send()
         }
@@ -221,6 +225,9 @@ final class DocumentSessionModel: ObservableObject {
 
     func cancelScheduledWork() {
         cancelAutosave()
+        detachmentResumeTask?.cancel()
+        detachmentResumeTask = nil
+        detachmentResumeToken = nil
         activeSaveTask?.cancel()
         activeSaveTask = nil
         activeSaveCommitReceipt = nil
@@ -253,6 +260,7 @@ final class DocumentSessionModel: ObservableObject {
         editingSource = ""
         originalEditingSource = ""
         editingRevision = nil
+        pendingEditorCommit = nil
         renderedReadHTML = ""
         renderedReadFingerprint = ""
         renderedReadReadyFingerprint = ""
@@ -272,7 +280,15 @@ final class DocumentSessionModel: ObservableObject {
     /// flight, so an external publication may replace the buffer only when
     /// both agree that the session is clean.
     var hasUnsavedChanges: Bool {
-        editorSession.isDirty || editingSource != originalEditingSource
+        editorSession.isDirty || !editingSource.utf8.elementsEqual(originalEditingSource.utf8)
+    }
+
+    /// Presentation readiness does not determine source ownership. A detached
+    /// editor retains the checked mirror even though its WebView is unavailable.
+    var retainedExactSource: String {
+        editorSession.documentID == editorSession.bridgeDocumentID
+            ? editorSession.checkedSource
+            : editingSource
     }
 
     var scrollFraction: Double {
@@ -413,7 +429,9 @@ final class DocumentSessionStore {
         if session.hasUnsavedChanges { reasons.insert(.dirty) }
         if session.editorSession.isComposing { reasons.insert(.composition) }
         if session.conflict != nil { reasons.insert(.conflict) }
-        if session.isSavingEdit || session.activeSaveTask != nil { reasons.insert(.saveInFlight) }
+        if session.isSavingEdit || session.activeSaveTask != nil || session.pendingEditorCommit != nil {
+            reasons.insert(.saveInFlight)
+        }
         if session.canRetrySave { reasons.insert(.retryableRecovery) }
         if session.editorSession.hasRecoverableBuffer { reasons.insert(.recoveryBuffer) }
         return reasons

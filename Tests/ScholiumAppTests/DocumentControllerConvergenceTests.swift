@@ -722,11 +722,89 @@ struct DocumentControllerConvergenceTests {
         #expect(!session.hasUnsavedChanges)
 
         session.suppressAutosave = true
-        session.editingSource = "Researcher's newer draft.\n"
+        let newerDraft = "Researcher's newer draft.\n"
+        #expect(
+            session.editorSession.acceptEditorChanges(
+                [
+                    .init(
+                        from: 0, to: EditorSourceOffsetMap(source: saved.document.rawContent).editorUTF16Length,
+                        insert: newerDraft, exactInsert: newerDraft)
+                ],
+                baseGeneration: session.editorSession.generation,
+                resultingGeneration: session.editorSession.generation + 1))
         let later = note(vaultID: vault, noteID: noteID, path: "Source.md", source: "External change.\n")
         controller.recordCommittedSnapshot(later, vaultName: "Topics", vaultRole: .topicKnowledge)
         #expect(session.editingSource == "Researcher's newer draft.\n")
         #expect(session.conflict != nil)
+    }
+
+    @Test("A detached Review session adopts external bytes before its editor is reconstructed", arguments: [false, true])
+    func detachedReviewAdoptsExternalSource(normalizationOnly: Bool) throws {
+        let vaultID = UUID()
+        let noteID = UUID()
+        let original = note(vaultID: vaultID, noteID: noteID, path: "Source.md", source: "\u{FEFF}Old café\r\n")
+        let external = note(
+            vaultID: vaultID, noteID: noteID, path: "Source.md",
+            source: normalizationOnly ? "\u{FEFF}Old cafe\u{301}\r\n" : "\u{FEFF}External cafe\u{301} 🦉\r\n")
+        let other = note(vaultID: vaultID, noteID: UUID(), path: "Other.md", source: "Other\n")
+        let controller = DocumentController()
+        controller.installOpenedDocument(original, vaultName: "Topics", vaultRole: .topicKnowledge)
+        let document = try #require(controller.selectedDocument)
+        let session = controller.session(for: document.editingTarget)
+        controller.beginEditing(
+            session: session, target: document.editingTarget,
+            source: original.document.rawContent, revision: original.fingerprint, mode: .source)
+        session.editorSession.loadDocument(
+            original.document.rawContent,
+            documentID: session.editorSession.bridgeDocumentID, mode: .source)
+        try controller.finishEditing(session: session, target: document.editingTarget)
+        controller.installOpenedDocument(other, vaultName: "Topics", vaultRole: .topicKnowledge)
+        let selected = controller.selectedDocument
+        #expect(!session.isEditing && !session.editorSession.hasAttachedWebView && session.retainsEditorSurface)
+
+        controller.recordCommittedSnapshot(external, vaultName: "Topics", vaultRole: .topicKnowledge)
+
+        #expect(controller.selectedDocument == selected)
+        #expect(session.editingRevision == external.fingerprint)
+        let reconstructed = session.editorSession.sourceForViewAttachment(
+            proposedSource: session.editingSource, documentID: session.editorSession.bridgeDocumentID)
+        #expect(Data(reconstructed.utf8) == Data(external.document.rawContent.utf8))
+        #expect(session.editorSession.startingFingerprint == external.fingerprint.sha256)
+        #expect(!session.hasUnsavedChanges)
+    }
+
+    @Test("A detached conflict compares incremental editor input rather than the last lifecycle snapshot")
+    func detachedConflictUsesCheckedSource() throws {
+        let vaultID = UUID()
+        let noteID = UUID()
+        let original = note(vaultID: vaultID, noteID: noteID, path: "Source.md", source: "Original\r\n")
+        let external = note(vaultID: vaultID, noteID: noteID, path: "Source.md", source: "External\r\n")
+        let other = note(vaultID: vaultID, noteID: UUID(), path: "Other.md", source: "Other\n")
+        let controller = DocumentController()
+        controller.installOpenedDocument(original, vaultName: "Topics", vaultRole: .topicKnowledge)
+        let document = try #require(controller.selectedDocument)
+        let session = controller.session(for: document.editingTarget)
+        controller.beginEditing(
+            session: session, target: document.editingTarget,
+            source: original.document.rawContent, revision: original.fingerprint, mode: .source)
+        session.editorSession.loadDocument(
+            original.document.rawContent,
+            documentID: session.editorSession.bridgeDocumentID, mode: .source)
+        let insertion = "Researcher's cafe\u{301} 🦉\r\n"
+        #expect(
+            session.editorSession.acceptEditorChanges(
+                [.init(from: 0, to: 0, insert: insertion.replacingOccurrences(of: "\r\n", with: "\n"), exactInsert: insertion)],
+                baseGeneration: 0, resultingGeneration: 1))
+        #expect(session.editingSource == original.document.rawContent)
+        #expect(session.hasUnsavedChanges && !session.editorSession.isLoaded)
+        controller.installOpenedDocument(other, vaultName: "Topics", vaultRole: .topicKnowledge)
+
+        controller.recordCommittedSnapshot(external, vaultName: "Topics", vaultRole: .topicKnowledge)
+
+        let conflict = try #require(session.conflict)
+        #expect(Data(conflict.editorSource.utf8) == Data((insertion + original.document.rawContent).utf8))
+        #expect(Data(session.retainedExactSource.utf8) == Data(conflict.editorSource.utf8))
+        #expect(session.editingRevision == original.fingerprint)
     }
 
     @Test("Joining a save retains its confirmed commit when editor acknowledgement fails", arguments: [false, true])

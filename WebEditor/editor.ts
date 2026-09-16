@@ -1,3 +1,5 @@
+import {CommittedSnapshotReceipt} from "./committed-snapshot-receipt";
+import {editorSuspension, editorSuspensionState, setEditorSuspension, titleAllowsDetachment} from "./editor-suspension";
 import {passageReplacement} from "./passage-replacement";
 import {createSelectionActions} from "./selection-actions";
 import {canRetainSyntax, syntaxToken, syntaxPresentation} from "./syntax-presentation";
@@ -62,7 +64,6 @@ import {
 import {
   EDITOR_PROTOCOL_VERSION,
   MAX_INBOUND_BYTES,
-  MAX_SOURCE_UTF8_BYTES,
   type EditorCommandResult,
   type EditorContext,
   type EditorFocusTarget,
@@ -79,7 +80,6 @@ import {
   rejected,
 } from "./protocol";
 import {
-  applySourceChanges,
   transformMarkdown,
 } from "./transformations";
 import {continueCallout, continueList, indentList} from "./interaction";
@@ -110,7 +110,7 @@ import {
   normalizedDocumentText,
   replacementChange,
 } from "./state";
-import {captureExactHistory, exactSourceHistory, exactSourceState, restoreExactHistory, setExactSource} from "./exact-source-history";
+import {captureExactHistory, exactSourceFits, exactSourceFitsChanges, sourceCapacityExceeded, sourceCapacityMessage, exactSourceHistory, exactSourceState, restoreExactHistory, setExactSource} from "./exact-source-history";
 import {
   announceEditorMessage,
   cancelEditorAnnouncement,
@@ -205,6 +205,7 @@ let documentAttachment = 0;
 let bridgeSessionID = "";
 let bridgeDocumentID = "";
 let bridgeFingerprint = "";
+const committedSnapshotReceipt = new CommittedSnapshotReceipt();
 let documentVersion = 0;
 let linkPreviews: LinkPreview[] = [];
 let linkPreviewIndexByRange = new Map<string, number>();
@@ -266,7 +267,6 @@ let mermaidThemeRevision = 0;
 let documentTitle = "";
 let documentTitleDraft: string | null = null;
 let documentTitleError: string | null = null;
-let documentTitleComposing = false;
 let documentTitleRenameRequest: {
   requestID: string;
   expectedTitle: string;
@@ -350,7 +350,7 @@ class DocumentTitleWidget extends WidgetType {
       resize();
     };
     const commit = () => {
-      if (attachment !== documentAttachment) return;
+      if (attachment !== documentAttachment || editor.state.field(editorSuspensionState) !== null) return;
       if (documentTitleRenameRequest) return;
       const requestedTitle = input.value.replace(/[\r\n]+/g, " ");
       documentTitleDraft = requestedTitle;
@@ -383,12 +383,13 @@ class DocumentTitleWidget extends WidgetType {
     input.addEventListener("compositionstart", () => {
       if (attachment !== documentAttachment) return;
       composing = true;
-      documentTitleComposing = true;
+      compositionGate.begin("title");
+      publishEditorContext();
     });
     input.addEventListener("compositionend", () => {
       if (attachment !== documentAttachment) return;
       composing = false;
-      documentTitleComposing = false;
+      finishComposition("title");
       normalizeInput();
       if (commitAfterComposition) {
         commitAfterComposition = false;
@@ -1550,6 +1551,9 @@ const stateReporter = EditorView.updateListener.of((update) => {
     (transaction) => transaction.annotation(programmaticDocumentChange) === true,
   );
   if (isProgrammatic) { selectionActions.dismiss(); return; }
+  if (update.transactions.some(transaction => transaction.effects.some(effect => effect.is(sourceCapacityExceeded)))) {
+    announceEditorMessage(update.view.contentDOM, localized(sourceCapacityMessage));
+  }
   if (update.docChanged) dirty = true;
   if (!update.docChanged && !update.selectionSet) return;
   selectionActions.dismiss();
@@ -1688,8 +1692,7 @@ function markdownCommandTransformation(
     },
   );
   if (!transformed) return null;
-  const transformedSource = applySourceChanges(source, transformed.changes);
-  if (new TextEncoder().encode(transformedSource).byteLength > MAX_SOURCE_UTF8_BYTES) {
+  if (!exactSourceFitsChanges(state, transformed.changes)) {
     return null;
   }
   return transformed;
@@ -1995,7 +1998,7 @@ const editorExtensions = [
   textSelectionPresentation,
   createEditorTextTransfer({
     documentIdentity: () => documentAttachment,
-    compositionActive: () => compositionGate.active || documentTitleComposing,
+    compositionActive: () => compositionGate.active,
     projectedPosition: (view, event) => configuredEditorMode(view.state) === "livePreview"
       ? projectedHeadingSourceOffset(view, event) : null,
     protection: state => commandProtection("pastePlain", state),
@@ -2034,6 +2037,7 @@ const editorExtensions = [
   EditorState.lineSeparator.of("\n"),
   exactSourceHistory,
   modeCompartment.of(sourceMode),
+  editorSuspension,
   EditorView.theme({
     "&": { height: "100%" },
     ".cm-scroller": { overflow: "auto" },
@@ -2185,8 +2189,8 @@ function currentEditorContext(view = editor): EditorContext {
     activeInlineConstructs: [...inline],
     activeBlockConstructs: [...block],
     tablePosition: currentTablePosition,
-    composing: view.composing,
-    availableCommands: view.composing ? [] : editingFrontmatterSelection(state)
+    composing: view.composing || compositionGate.active,
+    availableCommands: view.composing || compositionGate.active ? [] : editingFrontmatterSelection(state)
       ? ["pastePlain", "pasteMarkdown"] : protectedSelection ? [] : availableCommands,
     undoLabel: undoDepth(state) > 0 ? lastUndoLabel || "Undo Editing" : undefined,
     redoLabel: redoDepth(state) > 0 ? lastRedoLabel || "Redo Editing" : undefined,
@@ -2234,12 +2238,32 @@ function successfulResult(requestID: string, sourceChanged = false, undoLabel?: 
   };
 }
 
+function captureRecovery(): RecoverySnapshot {
+  const historyState = editor.state.update({effects: setEditorSuspension.of(null)}).state;
+  const stateJSON = captureExactHistory(historyState);
+  return {
+    documentID: bridgeDocumentID, fingerprint: bridgeFingerprint, generation: documentVersion,
+    ranges: editorSelections(), source: exactEditorSource(), stateJSON,
+    undoHistoryPreserved: stateJSON !== undefined, dirty, focusTarget: lastDocumentFocusTarget,
+  };
+}
+const frozenReadableOperations = new Set<EditorRequest["operation"]["type"]>([
+  "queryText", "querySelection", "queryContext", "queryScrollAnchor", "queryPerformance", "captureRecovery", "announceStatus",
+  "initialize", "suspendForDetachment", "resumeAfterDetachment", "acknowledgeCommittedSnapshot",
+]);
 async function executeEditorRequest(request: EditorRequest): Promise<EditorCommandResult> {
   const operation = request.operation;
+  if (request.expiresAt <= Date.now()) return rejected(request.requestID, documentVersion, "editor request expired");
+  const replayedCommit = committedSnapshotReceipt.canReplay(request, {
+    sessionID: bridgeSessionID, documentID: bridgeDocumentID, startingFingerprint: bridgeFingerprint,
+  });
+  if (editor.state.field(editorSuspensionState) !== null && !replayedCommit && !frozenReadableOperations.has(operation.type)) {
+    return rejected(request.requestID, documentVersion, "editor is suspended for detachment");
+  }
   if (operation.type === "initialize") {
     const loadStartedAt = performance.now();
     if (request.knownGeneration !== 0
-        || new TextEncoder().encode(operation.text).byteLength > MAX_SOURCE_UTF8_BYTES) {
+        || !exactSourceFits(operation.text)) {
       return rejected(request.requestID, documentVersion, "invalid initialization");
     }
     editingDialect = operation.dialect;
@@ -2259,7 +2283,7 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
     return successfulResult(request.requestID);
   }
   if (request.sessionID !== bridgeSessionID || request.documentID !== bridgeDocumentID
-      || request.startingFingerprint !== bridgeFingerprint) {
+      || (request.startingFingerprint !== bridgeFingerprint && !replayedCommit)) {
     return rejected(request.requestID, documentVersion, "stale editor identity");
   }
   if (!generationCanExecuteEditorRequest(
@@ -2268,6 +2292,14 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
     documentVersion,
   )) {
     return rejected(request.requestID, documentVersion, "stale editor generation");
+  }
+  if (replayedCommit && operation.type === "acknowledgeCommittedSnapshot") {
+    // The original JS acknowledgement completed, but its native response was
+    // lost. Report today's buffer without reapplying or marking it clean.
+    const replay = committedSnapshotReceipt.replay(request, {
+      sessionID: bridgeSessionID, documentID: bridgeDocumentID, startingFingerprint: bridgeFingerprint,
+    }, exactEditorSource(), dirty)!;
+    return {...successfulResult(request.requestID), ...replay};
   }
   switch (operation.type) {
   case "setMode": editorOperations.setMode(operation.mode); break;
@@ -2310,25 +2342,25 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
     performanceSamples: editorPerformanceSamples(),
   };
   case "captureRecovery": {
-    const stateJSON = captureExactHistory(editor.state);
-    const recovery: RecoverySnapshot = {
-      documentID: bridgeDocumentID,
-      fingerprint: bridgeFingerprint,
-      generation: documentVersion,
-      ranges: editorSelections(),
-      source: exactEditorSource(),
-      stateJSON,
-      undoHistoryPreserved: stateJSON !== undefined,
-      dirty,
-      focusTarget: lastDocumentFocusTarget,
-    };
-    return {...successfulResult(request.requestID), recovery};
+    return {...successfulResult(request.requestID), recovery: captureRecovery()};
+  }
+  case "suspendForDetachment": {
+    if (!titleAllowsDetachment(documentTitle, documentTitleDraft, documentTitleRenameRequest !== null)) {
+      return rejected(request.requestID, documentVersion, localized("Finish editing the note title before switching documents."));
+    }
+    editor.dispatch({effects: setEditorSuspension.of(operation.suspensionID)});
+    return {...successfulResult(request.requestID), recovery: captureRecovery()};
+  }
+  case "resumeAfterDetachment": {
+    if (editor.state.field(editorSuspensionState) !== operation.suspensionID) return rejected(request.requestID, documentVersion, "stale editor suspension");
+    editor.dispatch({effects: setEditorSuspension.of(null)});
+    break;
   }
   case "restoreRecovery": {
     const snapshot = operation.snapshot;
     if (snapshot.documentID !== bridgeDocumentID || snapshot.fingerprint !== bridgeFingerprint
         || !recoveryGenerationCanReplaceCurrent(snapshot.generation, documentVersion)
-        || new TextEncoder().encode(snapshot.source).byteLength > MAX_SOURCE_UTF8_BYTES) {
+        || !exactSourceFits(snapshot.source)) {
       return rejected(request.requestID, documentVersion, "stale recovery snapshot");
     }
     const recoveredSelection = EditorSelection.create(snapshot.ranges.map((range) =>
@@ -2367,7 +2399,12 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
     return {...successfulResult(request.requestID), recovery: {...snapshot, undoHistoryPreserved: restoredHistory}};
   }
   case "acknowledgeCommittedSnapshot": {
-    if (new TextEncoder().encode(operation.committedText).byteLength > MAX_SOURCE_UTF8_BYTES) {
+    // Equal expected/committed snapshots only advance the disk base: they
+    // either mark this captured source clean or leave newer input dirty.
+    if (editor.state.field(editorSuspensionState) !== null && operation.committedText !== operation.expectedText) {
+      return rejected(request.requestID, documentVersion, "a suspended editor cannot replace its captured source");
+    }
+    if (!exactSourceFits(operation.committedText)) {
       return rejected(request.requestID, documentVersion, "committed source is too large");
     }
     const superseded = editorOperations.acknowledgeCommittedSnapshot(
@@ -2376,6 +2413,7 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
     if (superseded === null) {
       return rejected(request.requestID, documentVersion, "editor source did not reconcile");
     }
+    committedSnapshotReceipt.remember(request, operation);
     return {
       ...successfulResult(request.requestID),
       text: exactEditorSource(),
@@ -2390,7 +2428,7 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
       return rejected(request.requestID, documentVersion, "The insertion position changed. Confirm the cursor again.");
     }
     const text = `[[${operation.target}]]`;
-    if (new TextEncoder().encode(editor.state.doc.toString() + text).length > MAX_SOURCE_UTF8_BYTES) {
+    if (!exactSourceFitsChanges(editor.state, [{from: selection.head, to: selection.head, insert: text}])) {
       return rejected(request.requestID, documentVersion, "The reference is too large.");
     }
     editor.dispatch({changes: {from: selection.head, insert: text}, selection: {anchor: selection.head + text.length},
@@ -2404,7 +2442,7 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
     const change = passageReplacement(exactEditorSource(), operation.expectedText,
       operation.fromUTF16, operation.toUTF16, operation.replacement);
     if (!change) return rejected(request.requestID, documentVersion, "The passage changed. Request a new suggestion.");
-    if (new TextEncoder().encode(applySourceChanges(editor.state.doc.toString(), [change])).byteLength > MAX_SOURCE_UTF8_BYTES) {
+    if (!exactSourceFitsChanges(editor.state, [change])) {
       return rejected(request.requestID, documentVersion, "The suggestion is too large.");
     }
     editor.dispatch({changes: change,
@@ -2460,7 +2498,8 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
   return successfulResult(request.requestID);
 }
 
-const compositionGate = new CompositionRequestGate<EditorRequest, EditorCommandResult>();
+const compositionGate = new CompositionRequestGate<EditorRequest, EditorCommandResult>(request =>
+  rejected(request.requestID, documentVersion, "editor request expired"));
 async function dispatchEditorRequest(value: unknown): Promise<EditorCommandResult> {
   const bridgeStartedAt = performance.now();
   const requestBytes = (() => { try { return encodedByteLength(value); } catch { return 0; } })();
@@ -2468,8 +2507,9 @@ async function dispatchEditorRequest(value: unknown): Promise<EditorCommandResul
     recordEditorMetric("bridge-request", bridgeStartedAt, {requestBytes});
     return rejected("invalid", documentVersion, "malformed editor request");
   }
+  if (value.expiresAt <= Date.now()) return rejected(value.requestID, documentVersion, "editor request expired");
   const compositionPolicy = compositionRequestPolicy(value.operation.type);
-  if ((editor.composing || compositionGate.active || documentTitleComposing)
+  if ((editor.composing || compositionGate.active)
       && compositionPolicy === "reject") {
     return rejected(value.requestID, documentVersion, "editor identity cannot change during composition");
   }
@@ -2497,19 +2537,26 @@ async function dispatchEditorRequest(value: unknown): Promise<EditorCommandResul
     return result;
   }
 }
-editor.contentDOM.addEventListener("compositionend", () => {
-  // WebKit may deliver the final input/change notification after
-  // compositionend. A task boundary lets CodeMirror publish that delta and
-  // advance the generation before queued native mutations are validated.
+function finishComposition(owner: "editor" | "title") {
+  const revision = compositionGate.revision(owner);
+  // WebKit's final input can arrive after compositionend. Keep the shared
+  // gate closed until that task has published its source generation.
   const attachment = documentAttachment;
   window.setTimeout(() => {
     if (attachment !== documentAttachment) return;
-    const pending = compositionGate.finish();
+    const pending = compositionGate.finish(owner, revision);
     for (const item of pending) void dispatchEditorRequest(item.request).then(item.resolve);
     publishEditorContext();
   }, 0);
+}
+function isTitleComposition(event: Event) {
+  return event.target instanceof Element && event.target.closest("[data-scholium-title-input]") !== null;
+}
+editor.contentDOM.addEventListener("compositionend", event => {
+  if (!isTitleComposition(event)) finishComposition("editor");
 });
-editor.contentDOM.addEventListener("compositionstart", () => {
+editor.contentDOM.addEventListener("compositionstart", event => {
+  if (isTitleComposition(event)) return;
   compositionGate.begin();
   const attachment = documentAttachment;
   window.queueMicrotask(() => {
@@ -2522,7 +2569,7 @@ function pasteTransfer(
   requestNativeImageImport = false,
 ) {
   if (editor.state.readOnly || !editor.state.facet(EditorView.editable)
-      || editor.composing || compositionGate.active || documentTitleComposing) return true;
+      || editor.composing || compositionGate.active) return true;
   if (Array.from(transfer.files).length > 0
       || Array.from(transfer.items).some((item) => item.kind === "file")) {
     const image = Array.from(transfer.files).some((file) => file.type.startsWith("image/"))
@@ -2696,6 +2743,7 @@ const editorOperations = {
   /** @param {string} text @param {string} sessionID @param {string} documentID */
   setDocument(text: string, sessionID: string, documentID: string, startingFingerprint: string) {
     documentAttachment += 1;
+    committedSnapshotReceipt.clear();
     interactionReporter.cancel();
     cancelEditorAnnouncement(editor.contentDOM);
     cancelPendingSmoothReveal();
@@ -2716,7 +2764,6 @@ const editorOperations = {
     documentTitle = "";
     documentTitleDraft = null;
     documentTitleError = null;
-    documentTitleComposing = false;
     documentTitleRenameRequest = null;
     documentTitlePresentationRevision += 1;
     lastDocumentFocusTarget = undefined;
@@ -2919,7 +2966,7 @@ const editorOperations = {
 webkitWindow.scholiumEditor = {
   dispatch: dispatchEditorRequest,
   prepareForReuse() {
-    if (editor.composing || compositionGate.active || documentTitleComposing) return false;
+    if (editor.composing || compositionGate.active) return false;
     editorOperations.blur();
     editingDialect = null;
     editorOperations.setDocument("", "", "", "");

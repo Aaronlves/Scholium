@@ -1,3 +1,4 @@
+import {exactSourceFitsChanges} from "./exact-source-history";
 import {isolateHistory} from "@codemirror/commands";
 import {
   CompletionContext,
@@ -22,11 +23,10 @@ import {
   type Extension,
 } from "@codemirror/state";
 import {
-  MAX_SOURCE_UTF8_BYTES,
   type EditorMode,
   type MarkdownEditingDialect,
 } from "./protocol";
-import {applySourceChanges, transformMarkdown} from "./transformations";
+import {transformMarkdown} from "./transformations";
 import {systemSymbolElement, type WebSystemSymbolKey} from "./system-symbols";
 import {Decoration, WidgetType, keymap, EditorView, ViewPlugin, type DecorationSet, type ViewUpdate} from "@codemirror/view";
 import type {NativeFloatingBridge} from "./native-floating";
@@ -201,8 +201,7 @@ function replaceSlashWithFootnote(
       },
     );
     if (!transformed) return;
-    const transformedSource = applySourceChanges(source, transformed.changes);
-    if (new TextEncoder().encode(transformedSource).byteLength > MAX_SOURCE_UTF8_BYTES) return;
+    if (!exactSourceFitsChanges(view.state, transformed.changes)) return;
     view.dispatch({
       changes: transformed.changes,
       selection: EditorSelection.create(
@@ -412,7 +411,7 @@ export function createEditorInputSuggestions(
             if (view.composing || options.isComposing() || view.state.doc !== context.state.doc
               || !view.state.selection.eq(context.state.selection)) return;
             const text = termSuffix(context.state, context.pos, candidate)!;
-            if (new TextEncoder().encode(view.state.doc.toString() + text).length > MAX_SOURCE_UTF8_BYTES) return;
+            if (!exactSourceFitsChanges(view.state, [{from: context.pos, to: context.pos, insert: text}])) return;
             view.dispatch({changes: {from: context.pos, insert: text}, selection: {anchor: context.pos + text.length},
               annotations: [Transaction.userEvent.of("input.complete.scholium.writing"), isolateHistory.of("full")]});
             options.didApply("Complete Term");

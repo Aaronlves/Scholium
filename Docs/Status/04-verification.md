@@ -4,6 +4,21 @@
 
 ## Current verification snapshot
 
+**2026-09-16 — Editor state authority:** Xcode 27.0 (27A5218g), Swift 6.4
+and macOS 27.0 SDK verification covers detached exact-source persistence,
+background Review revision adoption (including NFC/NFD byte differences),
+conflict source fidelity, suspension/resume ordering, lost commit-reply replay,
+composition request expiry and exact UTF-8 capacity admission. `verify.sh`
+passes 355 Web tests, 410 Core, 92 Contracts, 165 Application and 1,002 App
+tests, plus four performance/architecture measurements, resource reproduction,
+public-symbol guards, Release compilation and bundled-helper checks. Two
+isolated 500-Note QA journeys pass: retained native tabs preserve background
+saves and external revisions through further editing; dirty external edits
+retain exact conflict/recovery behavior. Final copy-only localization changes
+pass resource rebuild/typecheck and localization validation. QA app/state are
+removed. Installed-release, physical IME and human accessibility acceptance
+remain separate. Evidence: `.build/editor-boundary-evidence/`.
+
 **2026-09-16 — Bootstrap simplification:** Xcode 27 Debug compilation and 102
 scoped architecture/window-lifecycle tests pass. Two isolated QA journeys pass
 for connecting/restoring a 500-Note Triptych and creating a new one after a

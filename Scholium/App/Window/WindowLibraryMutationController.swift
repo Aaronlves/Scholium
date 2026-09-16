@@ -105,17 +105,19 @@ final class WindowLibraryMutationController: ObservableObject {
     @Published private var dropOperations: [DropTarget: UUID] = [:]
 
     var pendingNoteDrops: Set<SidebarNoteDragID> {
-        Set(dropOperations.keys.compactMap {
-            if case .note(let id) = $0 { return id }
-            return nil
-        })
+        Set(
+            dropOperations.keys.compactMap {
+                if case .note(let id) = $0 { return id }
+                return nil
+            })
     }
 
     var pendingFolderDrops: Set<SidebarFolderDragID> {
-        Set(dropOperations.keys.compactMap {
-            if case .folder(let id) = $0 { return id }
-            return nil
-        })
+        Set(
+            dropOperations.keys.compactMap {
+                if case .folder(let id) = $0 { return id }
+                return nil
+            })
     }
 
     let dependencies: WindowLibraryMutationDependencies
@@ -169,10 +171,11 @@ final class WindowLibraryMutationController: ObservableObject {
         to destinationRelativePath: String
     ) -> Task<Void, Never>? {
         requestDrop(
-            .note(SidebarNoteDragID(
-                vaultID: target.documentID.vaultID,
-                relativePath: target.documentID.relativePath
-            )),
+            .note(
+                SidebarNoteDragID(
+                    vaultID: target.documentID.vaultID,
+                    relativePath: target.documentID.relativePath
+                )),
             vaultID: target.documentID.vaultID,
             failureMessage: { "Could not move this note. \($0.localizedDescription)" }
         ) { [self] in
@@ -186,9 +189,10 @@ final class WindowLibraryMutationController: ObservableObject {
         to destinationRelativePath: String
     ) -> Task<Void, Never>? {
         requestDrop(
-            .folder(SidebarFolderDragID(
-                vaultID: target.vaultID, relativePath: target.relativePath
-            )),
+            .folder(
+                SidebarFolderDragID(
+                    vaultID: target.vaultID, relativePath: target.relativePath
+                )),
             vaultID: target.vaultID,
             failureMessage: { "Could not move this folder. \($0.localizedDescription)" }
         ) { [self] in

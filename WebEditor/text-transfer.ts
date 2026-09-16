@@ -1,9 +1,8 @@
 import {isolateHistory} from "@codemirror/commands";
 import {EditorSelection, EditorState, type SelectionRange, type Text, type TransactionSpec} from "@codemirror/state";
 import {EditorView, ViewPlugin} from "@codemirror/view";
-import {MAX_SOURCE_UTF8_BYTES} from "./protocol";
 import {normalizedDocumentText} from "./state";
-import {applySourceChanges, transformMarkdown} from "./transformations";
+import {transformMarkdown} from "./transformations";
 import {containsCompleteHeading, lineContentStart} from "./text-transfer-ranges";
 import {exactInsertionEffects, exactSourceFitsChanges, exactSourceState} from "./exact-source-history";
 
@@ -76,9 +75,8 @@ export function moveSelectedText(view: TextDropView, range: SelectionRange, posi
   const insert = normalizedDocumentText(exact);
   const specs = [...(copy ? [] : [{from: range.from, to: range.to, insert: "", exactInsert: ""}]),
     {from: position, to: position, insert, exactInsert: exact}];
-  if (mirror && !exactSourceFitsChanges(state, specs)) return null;
+  if (!exactSourceFitsChanges(state, specs)) return null;
   const changes = state.changes(specs);
-  if (!mirror && new TextEncoder().encode(changes.apply(state.doc).toString()).length > MAX_SOURCE_UTF8_BYTES) return null;
   const from = changes.mapPos(position, -1);
   view.dispatch({changes, selection: EditorSelection.single(from, from + insert.length),
     effects: exactInsertionEffects(exact, from),
@@ -241,7 +239,7 @@ export function insertDroppedText(
     argument: insert,
     protectedRanges: protection(targetState),
   });
-  if (!transformed || new TextEncoder().encode(applySourceChanges(source, transformed.changes)).byteLength > MAX_SOURCE_UTF8_BYTES) return null;
+  if (!transformed || !exactSourceFitsChanges(state, transformed.changes)) return null;
   view.dispatch({
     changes: transformed.changes,
     selection: EditorSelection.create(transformed.selections.map(range => EditorSelection.range(range.anchor, range.head))),

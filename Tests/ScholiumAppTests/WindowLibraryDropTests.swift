@@ -40,9 +40,10 @@ struct WindowLibraryDropTests {
     func dropFailure(folder: Bool) async throws {
         let fixture = DropFixture()
         fixture.operations.shouldFail = true
-        let task = try #require(folder
-            ? fixture.controller.requestFolderDrop(fixture.folder, to: "Filed/Folder")
-            : fixture.controller.requestNoteDrop(fixture.note, to: "Filed/Note.md"))
+        let task = try #require(
+            folder
+                ? fixture.controller.requestFolderDrop(fixture.folder, to: "Filed/Folder")
+                : fixture.controller.requestNoteDrop(fixture.note, to: "Filed/Note.md"))
         await task.value
         #expect(fixture.errors.count == 1)
         #expect(fixture.errors.first?.contains(folder ? "folder" : "note") == true)
@@ -85,9 +86,10 @@ struct WindowLibraryDropTests {
         let fixture = DropFixture()
         let gate = DropFlushGate()
         fixture.flush = { await gate.suspend() }
-        let task = try #require(folder
-            ? fixture.controller.requestFolderDrop(fixture.folder, to: "Filed/Folder")
-            : fixture.controller.requestNoteDrop(fixture.note, to: "Filed/Note.md"))
+        let task = try #require(
+            folder
+                ? fixture.controller.requestFolderDrop(fixture.folder, to: "Filed/Folder")
+                : fixture.controller.requestNoteDrop(fixture.note, to: "Filed/Note.md"))
         await gate.waitUntilSuspended()
         fixture.context = .init(assignmentID: UUID(), vault: fixture.vault, sourceScope: .library)
         gate.resume()
@@ -152,20 +154,21 @@ private final class DropFixture {
         stableNoteID: UUID(), revision: DocumentFingerprint(content: "Exact source\n"))
     var folder: FolderMutationTarget { .init(vaultID: vault.id, relativePath: "Folder") }
     lazy var controller: WindowLibraryMutationController = {
-        let controller = WindowLibraryMutationController(dependencies: .init(
-            context: { [unowned self] in context },
-            enqueueDocumentTransition: { _, _, _ in },
-            flushEditors: { [unowned self] _ in await flush() },
-            flushActiveTarget: { [unowned self] _ in await flush() },
-            expectedRevision: { $0.revision }, captureBatchTargets: { $0 },
-            committedNoteCreated: { _, _ in }, committedFolderCreated: { _ in },
-            committedFolderMoved: { [unowned self] _ in committedFolders += 1 },
-            committedNoteDuplicated: { _, _, _ in },
-            committedNoteMoved: { [unowned self] _, _ in committedNotes += 1 },
-            committedSystemTrash: { _, _ in }, importedDocumentsCommitted: { _ in },
-            presentImportOutcome: { _ in }, presentSystemTrash: { _ in }, clearPresentedAlert: {},
-            reportError: { [unowned self] in errors.append($0) }, reportInformation: { _ in },
-            refreshTransactionRecovery: { [unowned self] in recoveryRefreshes += 1 }))
+        let controller = WindowLibraryMutationController(
+            dependencies: .init(
+                context: { [unowned self] in context },
+                enqueueDocumentTransition: { _, _, _ in },
+                flushEditors: { [unowned self] _ in await flush() },
+                flushActiveTarget: { [unowned self] _ in await flush() },
+                expectedRevision: { $0.revision }, captureBatchTargets: { $0 },
+                committedNoteCreated: { _, _ in }, committedFolderCreated: { _ in },
+                committedFolderMoved: { [unowned self] _ in committedFolders += 1 },
+                committedNoteDuplicated: { _, _, _ in },
+                committedNoteMoved: { [unowned self] _, _ in committedNotes += 1 },
+                committedSystemTrash: { _, _ in }, importedDocumentsCommitted: { _ in },
+                presentImportOutcome: { _ in }, presentSystemTrash: { _ in }, clearPresentedAlert: {},
+                reportError: { [unowned self] in errors.append($0) }, reportInformation: { _ in },
+                refreshTransactionRecovery: { [unowned self] in recoveryRefreshes += 1 }))
         controller.bind(to: operations)
         return controller
     }()
@@ -182,26 +185,42 @@ private final class DropOperations: LibraryMutationUseCases {
     func move(_ target: NoteMutationTarget, to destinationRelativePath: String) async throws -> WorkspaceMutationOutcome<TriptychMoveCommit> {
         if shouldFail { throw CocoaError(.fileWriteNoPermission) }
         noteMoves.append(destinationRelativePath)
-        return .init(committedValue: .init(
-            movedNote: target.documentID,
-            destination: .init(vaultID: target.documentID.vaultID, relativePath: destinationRelativePath),
-            previousRevision: target.revision, committedRevision: target.revision, graphGeneration: 1, rewrites: []))
+        return .init(
+            committedValue: .init(
+                movedNote: target.documentID,
+                destination: .init(vaultID: target.documentID.vaultID, relativePath: destinationRelativePath),
+                previousRevision: target.revision, committedRevision: target.revision, graphGeneration: 1, rewrites: []))
     }
 
-    func moveFolder(inVault vaultID: UUID, from sourceRelativePath: String, to destinationRelativePath: String) async throws -> WorkspaceMutationOutcome<FolderMoveCommit> {
+    func moveFolder(inVault vaultID: UUID, from sourceRelativePath: String, to destinationRelativePath: String) async throws -> WorkspaceMutationOutcome<
+        FolderMoveCommit
+    > {
         if shouldFail { throw CocoaError(.fileWriteNoPermission) }
         folderMoves.append(destinationRelativePath)
-        return .init(committedValue: .init(
-            vaultID: vaultID, sourceFolder: try .init(sourceRelativePath), destinationFolder: try .init(destinationRelativePath),
-            graphGeneration: 1, noteMoves: [], rewrites: []))
+        return .init(
+            committedValue: .init(
+                vaultID: vaultID, sourceFolder: try .init(sourceRelativePath), destinationFolder: try .init(destinationRelativePath),
+                graphGeneration: 1, noteMoves: [], rewrites: []))
     }
 
-    func importMarkdown(at sourceURL: URL, intoVault vaultID: UUID) async throws -> WorkspaceMutationOutcome<NoteDocument> { throw CocoaError(.featureUnsupported) }
-    func createManagedNote(_ request: ManagedNoteCreationRequest) async throws -> WorkspaceMutationOutcome<WorkspaceManagedNoteCommit> { throw CocoaError(.featureUnsupported) }
-    func createUntitledFolder(inVault vaultID: UUID, parentRelativePath: String?) async throws -> WorkspaceMutationOutcome<VaultRelativeFolderPath> { throw CocoaError(.featureUnsupported) }
-    func prepareFolderSystemTrash(inVault vaultID: UUID, relativePath: String) async throws -> SystemTrashDeletionPreview { throw CocoaError(.featureUnsupported) }
-    func duplicate(_ target: NoteMutationTarget, to destinationRelativePath: String) async throws -> WorkspaceMutationOutcome<NoteDocument> { throw CocoaError(.featureUnsupported) }
+    func importMarkdown(at sourceURL: URL, intoVault vaultID: UUID) async throws -> WorkspaceMutationOutcome<NoteDocument> {
+        throw CocoaError(.featureUnsupported)
+    }
+    func createManagedNote(_ request: ManagedNoteCreationRequest) async throws -> WorkspaceMutationOutcome<WorkspaceManagedNoteCommit> {
+        throw CocoaError(.featureUnsupported)
+    }
+    func createUntitledFolder(inVault vaultID: UUID, parentRelativePath: String?) async throws -> WorkspaceMutationOutcome<VaultRelativeFolderPath> {
+        throw CocoaError(.featureUnsupported)
+    }
+    func prepareFolderSystemTrash(inVault vaultID: UUID, relativePath: String) async throws -> SystemTrashDeletionPreview {
+        throw CocoaError(.featureUnsupported)
+    }
+    func duplicate(_ target: NoteMutationTarget, to destinationRelativePath: String) async throws -> WorkspaceMutationOutcome<NoteDocument> {
+        throw CocoaError(.featureUnsupported)
+    }
     func prepareSystemTrash(_ target: NoteMutationTarget) async throws -> SystemTrashDeletionPreview { throw CocoaError(.featureUnsupported) }
-    func moveToSystemTrash(_ preview: SystemTrashDeletionPreview) async throws -> WorkspaceMutationOutcome<SystemTrashDeletionCommit> { throw CocoaError(.featureUnsupported) }
+    func moveToSystemTrash(_ preview: SystemTrashDeletionPreview) async throws -> WorkspaceMutationOutcome<SystemTrashDeletionCommit> {
+        throw CocoaError(.featureUnsupported)
+    }
     func recoverInterruptedTransactions() async throws -> [String] { [] }
 }

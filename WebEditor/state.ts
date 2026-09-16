@@ -77,11 +77,13 @@ export class ExactSourceMirror {
   private exact: Text;
   private normalized: Text;
   private crlfLineBreakCount: number;
+  private byteCount: number;
 
   constructor(source = "") {
     this.exact = rope(source);
     this.normalized = rope(normalizedDocumentText(source));
     this.crlfLineBreakCount = crlfCount(source);
+    this.byteCount = new TextEncoder().encode(source).byteLength;
   }
 
   /**
@@ -90,6 +92,8 @@ export class ExactSourceMirror {
    */
   get text() { return this.exact.toString(); }
 
+  get utf8ByteCount() { return this.byteCount; }
+
   get usesCRLF() { return this.crlfLineBreakCount > 0; }
 
   copy() {
@@ -97,6 +101,7 @@ export class ExactSourceMirror {
     result.exact = this.exact;
     result.normalized = this.normalized;
     result.crlfLineBreakCount = this.crlfLineBreakCount;
+    result.byteCount = this.byteCount;
     return result;
   }
 
@@ -111,6 +116,7 @@ export class ExactSourceMirror {
     this.exact = rope(source);
     this.normalized = rope(normalizedDocumentText(source));
     this.crlfLineBreakCount = crlfCount(source);
+    this.byteCount = new TextEncoder().encode(source).byteLength;
   }
 
   apply(changes: readonly NormalizedSourceChange[]) {
@@ -148,6 +154,14 @@ export class ExactSourceMirror {
     for (const change of exactChanges
       .filter((candidate): candidate is NonNullable<typeof candidate> => candidate !== null)
       .sort((left, right) => right.from - left.from)) {
+      // Include adjacent UTF-16 units: inserting or deleting half a surrogate
+      // pair can change its neighbor's UTF-8 representation too.
+      const before = this.exact.sliceString(Math.max(0, change.exactFrom - 1), change.exactFrom);
+      const after = this.exact.sliceString(change.exactTo, Math.min(this.exact.length, change.exactTo + 1));
+      const removed = this.exact.sliceString(change.exactFrom, change.exactTo);
+      const encoder = new TextEncoder();
+      this.byteCount += encoder.encode(before + change.exactInsert + after).byteLength
+        - encoder.encode(before + removed + after).byteLength;
       this.exact = this.exact.replace(
         change.exactFrom,
         change.exactTo,

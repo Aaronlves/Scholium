@@ -7,6 +7,7 @@ import {
 const request = {
   protocolVersion: EDITOR_PROTOCOL_VERSION,
   requestID: "request",
+  expiresAt: Date.now() + 8_000,
   sessionID: "session",
   documentID: "document",
   startingFingerprint: "fingerprint",
@@ -31,7 +32,7 @@ const dialect = {
 
 describe("editor protocol", () => {
   it("uses the exact-insertion byte bridge protocol", () => {
-    expect(EDITOR_PROTOCOL_VERSION).toBe(38);
+    expect(EDITOR_PROTOCOL_VERSION).toBe(39);
   });
   it("accepts a complete versioned request", () => expect(isEditorRequest(request)).toBe(true));
   it("rejects retired title positioning while retaining blur", () => {
@@ -248,4 +249,21 @@ describe("guarded reference insertion", () => {
     }
     expect(generationCanExecuteEditorRequest("insertReference", 3, 4)).toBe(false);
   });
+  it("requires a finite deadline and bounded suspension token", () => {
+    for (const expiresAt of [undefined, 0, -1, Infinity, 1.5]) {
+      expect(isEditorRequest({...request, expiresAt})).toBe(false);
+    }
+    for (const type of ["suspendForDetachment", "resumeAfterDetachment"]) {
+      expect(isEditorRequest({...request, operation: {type, suspensionID: "lease"}})).toBe(true);
+      expect(isEditorRequest({...request, operation: {type, suspensionID: ""}})).toBe(false);
+    }
+  });
+  it("admits escaped double-source acknowledgements while bounding each exact source", () => {
+    const source = "\u0001".repeat(700_000);
+    expect(isEditorRequest({...request, operation: {type: "acknowledgeCommittedSnapshot",
+      expectedText: source, committedText: source, committedFingerprint: "next"}})).toBe(true);
+    expect(isEditorRequest({...request, operation: {type: "acknowledgeCommittedSnapshot",
+      expectedText: "a".repeat(8_000_001), committedText: "", committedFingerprint: "next"}})).toBe(false);
+  });
+
 });

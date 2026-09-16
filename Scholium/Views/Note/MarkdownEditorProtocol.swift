@@ -1,9 +1,12 @@
 import Foundation
 import ScholiumContracts
 
-let markdownEditorProtocolVersion = 38
+let markdownEditorProtocolVersion = 39
 let markdownEditorMaximumInboundBytes = 2_500_000
 let markdownEditorMaximumSelectionRangeCount = 128
+// Two exact-source strings may each require six JSON bytes per source byte.
+// Transport size is distinct from the source capacity enforced on each field.
+let markdownEditorMaximumSourceEnvelopeBytes = MarkdownEditorDeltaApplier.maximumResultUTF8Bytes * 12 + 512_000
 
 enum MarkdownEditorCommand: String, Codable, CaseIterable, Sendable {
     case bold, emphasis, strikethrough, highlight, inlineCode, markdownComment
@@ -228,6 +231,8 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
     case queryText, querySelection, queryContext, queryScrollAnchor, queryPerformance, captureRecovery
     case documentFind(DocumentFindQuery)
     case clearDocumentFind
+    case suspendForDetachment(suspensionID: String)
+    case resumeAfterDetachment(suspensionID: String)
     case restoreRecovery(MarkdownEditorRecoverySnapshot)
     case acknowledgeCommittedSnapshot(expected: String, committed: String, fingerprint: String)
     case replacePassage(expectedText: String, fromUTF16: Int, toUTF16: Int, replacement: String, preserveSelection: Bool)
@@ -240,7 +245,8 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
     /// queue behind one another or behind an obsolete content generation.
     var serializesSourceMutation: Bool {
         switch self {
-        case .initialize, .restoreRecovery, .acknowledgeCommittedSnapshot, .replacePassage, .insertReference, .command:
+        case .initialize, .restoreRecovery, .acknowledgeCommittedSnapshot, .replacePassage, .insertReference, .command,
+            .suspendForDetachment, .resumeAfterDetachment:
             true
         case .documentFind(let query):
             query.action == .replaceCurrent || query.action == .replaceAll
@@ -251,13 +257,14 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case type, text, mode, dialect, initialSelection, value, line, focusesEditor, fromUTF16, toUTF16, fraction, anchor, snapshot, x, y
-        case selection, generation, target, replacement, preserveSelection, expectedText, committedText, committedFingerprint, command, argument
+        case selection, generation, target, replacement, preserveSelection, expectedText, committedText, committedFingerprint, command, argument, suspensionID
     }
     private enum Kind: String, Codable {
         case initialize, setMode, setDocumentTitle, setPresentationCSS, setUserCSS, setLinkPreviews, showPreview, measureVisibleProjection, showPreviewAt,
             announceStatus
         case goToLine, revealSourceRange, setScrollFraction, setScrollAnchor, queryText, querySelection, queryContext, queryScrollAnchor, queryPerformance
-        case captureRecovery, restoreRecovery, acknowledgeCommittedSnapshot, replacePassage, insertReference, command, documentFind, clearDocumentFind,
+        case captureRecovery, suspendForDetachment, resumeAfterDetachment, restoreRecovery, acknowledgeCommittedSnapshot, replacePassage, insertReference,
+            command, documentFind, clearDocumentFind,
             markClean, focus,
             focusTitle, blur
     }
@@ -305,6 +312,10 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
         case .documentFind: self = try .documentFind(container.decode(DocumentFindQuery.self, forKey: .value))
         case .clearDocumentFind: self = .clearDocumentFind
         case .captureRecovery: self = .captureRecovery
+        case .suspendForDetachment:
+            self = try .suspendForDetachment(suspensionID: container.decode(String.self, forKey: .suspensionID))
+        case .resumeAfterDetachment:
+            self = try .resumeAfterDetachment(suspensionID: container.decode(String.self, forKey: .suspensionID))
         case .restoreRecovery: self = try .restoreRecovery(container.decode(MarkdownEditorRecoverySnapshot.self, forKey: .snapshot))
         case .acknowledgeCommittedSnapshot:
             self = try .acknowledgeCommittedSnapshot(
@@ -379,6 +390,10 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
         case .documentFind(let value): try pair(.documentFind, value, .value, into: &container)
         case .clearDocumentFind: try container.encode(Kind.clearDocumentFind, forKey: .type)
         case .captureRecovery: try container.encode(Kind.captureRecovery, forKey: .type)
+        case .suspendForDetachment(let suspensionID):
+            try pair(.suspendForDetachment, suspensionID, .suspensionID, into: &container)
+        case .resumeAfterDetachment(let suspensionID):
+            try pair(.resumeAfterDetachment, suspensionID, .suspensionID, into: &container)
         case .restoreRecovery(let snapshot): try pair(.restoreRecovery, snapshot, .snapshot, into: &container)
         case .acknowledgeCommittedSnapshot(let expected, let committed, let fingerprint):
             try container.encode(Kind.acknowledgeCommittedSnapshot, forKey: .type)
@@ -426,11 +441,12 @@ struct MarkdownEditorRequest: Codable, Hashable, Sendable {
     let documentID: String
     let startingFingerprint: String
     let knownGeneration: Int
+    let expiresAt: Int64
     let operation: MarkdownEditorOperation
 
     init(
         requestID: UUID = UUID(), sessionID: UUID, documentID: String,
-        startingFingerprint: String, knownGeneration: Int,
+        startingFingerprint: String, knownGeneration: Int, expiresAt: Int64,
         operation: MarkdownEditorOperation
     ) {
         protocolVersion = markdownEditorProtocolVersion
@@ -439,6 +455,7 @@ struct MarkdownEditorRequest: Codable, Hashable, Sendable {
         self.documentID = documentID
         self.startingFingerprint = startingFingerprint
         self.knownGeneration = knownGeneration
+        self.expiresAt = expiresAt
         self.operation = operation
     }
 }

@@ -36,70 +36,53 @@ Each retained `DocumentSessionModel` owns:
 CodeMirror owns editing. The boundary uses generation-bound full-buffer reads
 at lifecycle edges, an incremental exact-source mirror, fingerprint-gated save,
 committed-text synchronization, conflict comparison and flush-before-agent-work.
-SwiftUI reconstruction retains these facts; HTML, parsed YAML and other
-projections never reconstruct writable Markdown.
+Before tab detachment, a token-bound suspension atomically freezes input and
+captures exact source, selection and history. Detached persistence requires that
+unchanged document/revision/generation proof; transition cancellation resumes
+only its matching suspension. Committed detached saves rebase recovery without
+mounting WebKit. SwiftUI reconstruction retains these facts; HTML, parsed YAML
+and other projections never reconstruct writable Markdown.
 `DocumentConflictSnapshot` supplies exact editor/disk inputs to the Contracts-
 owned `ExactSourceComparisonBuilder`, the sole line-diff owner. Document still
 owns conflict actions and buffer authority, while the
 comparison value and future shared sheet remain pure disposable presentation.
-Save tasks record confirmed commits before editor acknowledgement; flush callers
-receive receipts after failure or when joining autosave. Committed snapshots reconcile
-clean detached sessions without selection changes; dirty sessions retain conflicts.
+Save tasks retain confirmed commits until editor acknowledgement; lost replies
+replay idempotently against their exact commit. Flush callers retain receipts. Committed snapshots reconcile
+clean detached sessions, including Review, by updating source and revision
+together; dirty sessions retain their checked source for conflict comparison.
 
-`DocumentEditorHost` is the persistent presentation boundary for one selected
-document session. Review is mounted continuously; after first editor allocation,
-the retained CodeMirror surface is also mounted continuously. Review, Edit,
-and Source transitions change opacity, stacking, hit testing,
-accessibility exposure, and first-responder focus rather than view identity.
-`MarkdownEditorSession.presentedMode` advances after typed acknowledgement.
-Editor readiness belongs to one document identity. Pending Edit/Source shows
-an opaque document plane above live WebKit until measured positioning completes.
-Same-document mode changes
-retain CodeMirror; another document cannot inherit its readiness. First
-ordinary Edit focuses the exact body start after YAML, or an exactly mapped
-Review selection. A retained/restored open Note returns to its valid title/body
-target and selection; an explicit locator takes precedence. Source retains its
-exact-source selection.
-Focus request revisions prevent delayed navigation callbacks from overriding newer focus requests.
-Managed New Note skips Review-first presentation. `DocumentController`
-installs its snapshot, exact source, active Edit phase, and body-start offset in
-one MainActor transaction. Until typed acknowledgement, the host exposes
-neither Review nor Empty Note. Typed initialization maps one collapsed
-body-boundary selection into CodeMirror UTF-16 and returns it with the mode.
-Native code verifies that range, converges style and scroll, awaits focus, then
-publishes readiness, announces once, and consumes the intent. A clean external
-publication first replaces the pending buffer and body boundary together.
-Failure blurs the hidden editor and retains committed source behind **Retry
-Edit** and **Source**; retry replaces only that WebView from the checked mirror.
-Pending editor intent is not an active mode. An Edit or Source intent supplied
-to a newly selected session remains inside the Review phase until
-`DocumentController` begins the editing lifecycle; only that atomic transition
-allocates the retained surface and makes
-the session writable. Conversely, finishing editing commits one transition to
-Review while retaining the hidden editor's last Edit/Source configuration.
-The session therefore publishes no separately mutable `isEditing`, mode,
-retained-mode, or surface-allocation flags.
-`NoteContentView` observes that exact `DocumentSessionModel` directly; it does
-not depend on an ancestor's forwarded change notification to reveal a new
-mode. This ensures the editor surface is invalidated as soon as the persistent
-session changes instead of waiting for an unrelated pointer or layout event.
-The hidden surface cannot receive pointer, keyboard, or accessibility input.
-The fingerprint-bound Review HTML is prepared and loaded when the committed
-revision changes even while Edit or Source is visible. Hidden Review scroll
-reports cannot mutate the shared scroll anchor, and a newly committed revision
-invalidates older Review readiness before the handoff becomes visible.
-Clean external revisions synchronize the retained editor through the same
-generation-checked path; dirty buffers still enter Conflict. A complete
-generation also reconciles every open tab by stable identity. A clean document
-that disappeared externally releases its tab and activates a surviving
-neighbor or the no-document state, while dirty, conflicted, retryable,
-save-in-flight, or recovery-buffer sessions retain their exact bytes. The
-generation gate is checked before any document or path projection changes, so
-an older event cannot close or rename a newer tab. Window resizing, split
-changes, theme, text scale, document measure, and ordinary SwiftUI
-reconstruction may reconfigure presentation but cannot recreate the retained
-`WKWebView` or `EditorState`. Retained-surface memory remains a measured
-acceptance concern rather than permission to weaken this lifecycle contract.
+`DocumentEditorHost` retains Review and, once allocated, CodeMirror for the
+selected session. Modes change stacking, hit testing, accessibility and focus,
+not view identity. Hidden surfaces receive no input. Typed acknowledgement
+advances `presentedMode`; document-bound readiness keeps pending Edit/Source
+behind an opaque plane until positioning completes. Ordinary Edit restores a
+valid title/body selection or mapped Review selection, otherwise the body start
+after YAML. Explicit locators take precedence; Source keeps its exact selection.
+Focus revisions prevent delayed callbacks from overriding newer requests.
+
+Managed New Note atomically installs source, Edit phase and body-start offset
+through `DocumentController`. Initialization acknowledges the mapped UTF-16
+selection; native code verifies it, converges style/scroll, awaits focus, then
+publishes readiness and announces once. Until then neither Review nor Empty
+Note appears. Clean external publication replaces pending source and body
+boundary together. Failure blurs the hidden editor and retains source behind
+**Retry Edit** and **Source**; retry replaces only that WebView.
+
+Pending editor intent stays in Review until the controller atomically begins
+editing and allocates the surface. Finishing returns to Review while retaining
+the editor configuration. `DocumentPresentationState` owns these transitions;
+separate mutable mode/editing/allocation flags do not exist. `NoteContentView`
+observes its session directly, without ancestor notification forwarding.
+
+Committed revisions refresh hidden Review HTML and invalidate older readiness;
+hidden scroll reports cannot change the shared anchor. Generation-checked
+external reconciliation updates every open tab by stable identity before path
+or document projection changes. Clean deleted Notes release their tabs and
+activate a neighbor or no-document state; dirty, conflicted, retryable, saving
+and recovery sessions retain exact bytes. Layout, theme, scaling and ordinary
+SwiftUI reconstruction reconfigure presentation without recreating retained
+`WKWebView` or `EditorState`. Memory remains a measured acceptance concern,
+not permission to weaken this lifecycle.
 
 ### Editor boundary contract
 
@@ -111,17 +94,27 @@ StateField; CodeMirror inverted effects restore original newline bytes.
 Persistent `Text` ropes retain normalized and exact source, including BOM,
 CRLF/LF, Unicode and final newlines. Derived offsets map their coordinates.
 Transactions validate deleted spans and apply deltas atomically without a
-whole-document scan or a second editing owner.
+whole-document scan or a second editing owner. The exact-source state owns
+incremental UTF-8 capacity admission for ordinary input and commands;
+initialization and recovery use the same source limit. JSON transport capacity
+accounts separately for escaped source and multi-source acknowledgements.
 
 Swift maintains a checked mutable UTF-16 mirror, cached UTF-8 count and derived
 CRLF offsets. Generation-ordered deltas carry normalized text and required exact
 insertions; the receiver validates agreement before applying their exact bytes.
 Only dirty/activity state reaches the document model during input. Complete
 snapshots are reserved for persistence, conflict, recovery, reconstruction,
-commands and diagnostics. Persistence reconciles the live complete source first.
+commands and diagnostics. Attached persistence reconciles the live complete
+source first; detached persistence consumes the validated suspension capture.
+Full replies validate source capacity and selection before changing the mirror;
+an unexplained same-generation disagreement remains dirty and fails validation.
 
 `MarkdownEditorSession` owns the attached WebView, checked mirror, generation,
-recovery and requests. A window-local pool admits one idle page after completed
+recovery and requests. Native requests carry one expiration through queueing,
+dispatch and composition deferral; the Web owner rejects expired work before
+execution. A compile-time exhaustive operation policy coordinates title and
+body composition. An unsettled filename draft prevents suspension rather than
+being discarded. A window-local pool admits one idle page after completed
 dispatches and source/history clearing. Reattachment validates readiness and
 restores destination-only state. Composition/errors prevent reuse; memory
 pressure clears the pool; workspace teardown invalidates admission.

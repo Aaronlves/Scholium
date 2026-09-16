@@ -662,7 +662,10 @@ extension ScholiumUITests {
             identifier: "scholium.folderRow.格式与检索"
         ).firstMatch
         XCTAssertTrue(sharedFolder.waitForExistence(timeout: 8))
-        if sharedFolder.value as? String != "Expanded" {
+        // The app exposes expansion on the named folder content; AppKit's
+        // structural OutlineRow does not publish that value.
+        let sharedFolderLabel = noteList.staticTexts["scholium.folderRow.格式与检索"]
+        if sharedFolderLabel.value as? String != "Expanded" {
             let disclosure = sharedFolder.descendants(
                 matching: .disclosureTriangle
             ).firstMatch
@@ -675,7 +678,7 @@ extension ScholiumUITests {
             ).click()
             if !waitUntil(
                 timeout: 2,
-                condition: { sharedFolder.value as? String == "Expanded" }
+                condition: { sharedFolderLabel.value as? String == "Expanded" }
             ) {
                 // If the triangle itself is not exposed as a hit target at
                 // the viewport edge, select the row and use NSOutlineView's
@@ -688,7 +691,7 @@ extension ScholiumUITests {
         }
         XCTAssertTrue(
             waitUntil(timeout: 5) {
-                sharedFolder.value as? String == "Expanded"
+                sharedFolderLabel.value as? String == "Expanded"
             })
 
         let documentTabs = app.descendants(matching: .any)["scholium.documentTabs"]
@@ -703,7 +706,7 @@ extension ScholiumUITests {
         nativeTabsScreenshot.lifetime = .keepAlways
         add(nativeTabsScreenshot)
 
-        let sharedFolderIdentifier = sharedFolder.identifier
+        let sharedFolderIdentifier = "scholium.folderRow.格式与检索"
         func currentSharedFolder() -> XCUIElement {
             self.app.descendants(matching: .any)[sharedFolderIdentifier]
         }
@@ -740,11 +743,43 @@ extension ScholiumUITests {
                 sharedPresentationIsPreserved(expectedNote: "QA Autosave A")
             })
 
+        let firstURL = triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md")
+        let backgroundToken = " BACKGROUND-\(UUID().uuidString)"
+        try enterLivePreviewAndAppend(backgroundToken)
+        XCTAssertFalse(try source(at: firstURL).contains(backgroundToken))
         secondTab.click()
         XCTAssertTrue(
             waitUntil(timeout: 5) {
                 sharedPresentationIsPreserved(expectedNote: "QA Autosave B")
             })
+        XCTAssertTrue(
+            waitUntil(timeout: 10) {
+                (try? self.source(at: firstURL).contains(backgroundToken)) == true
+            }, "The retained background editor must save without being selected again.")
+
+        firstTab.click()
+        XCTAssertTrue(waitUntil(timeout: 5) { self.documentTitle() == "QA Autosave A" })
+        selectDocumentMode("Review")
+        waitForCurrentDocumentSurface()
+        secondTab.click()
+        XCTAssertTrue(waitUntil(timeout: 5) { self.documentTitle() == "QA Autosave B" })
+        let externalParagraph = "External revision \(UUID().uuidString)."
+        let externalToken = "\n\(externalParagraph)\n"
+        try (source(at: firstURL) + externalToken).write(to: firstURL, atomically: true, encoding: .utf8)
+        firstTab.click()
+        XCTAssertTrue(waitUntil(timeout: 8) { self.documentTitle() == "QA Autosave A" })
+        XCTAssertTrue(
+            app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", externalParagraph, externalParagraph)).firstMatch
+                .waitForExistence(timeout: 8))
+        let laterToken = " LATER-\(UUID().uuidString)"
+        try enterLivePreviewAndAppend(laterToken)
+        XCTAssertTrue(
+            waitUntil(timeout: 10) {
+                guard let saved = try? self.source(at: firstURL) else { return false }
+                return saved.contains(laterToken) && saved.contains(externalToken) && saved.contains(backgroundToken)
+            }, "Reattaching a Review editor must preserve the adopted external revision.")
+        secondTab.click()
+        XCTAssertTrue(waitUntil(timeout: 5) { self.documentTitle() == "QA Autosave B" })
         app.menuBars.menuBarItems["File"].click()
         let closeTab = app.menuItems["Close Tab"].firstMatch
         XCTAssertTrue(closeTab.waitForExistence(timeout: 3))

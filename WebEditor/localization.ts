@@ -2,6 +2,8 @@ export const webInterfaceLocalizationKeys = [
   "Tab",
   "Accept suggestion: {text} (Tab)",
 
+  "The edited Markdown document exceeds the supported editor size.",
+  "Finish editing the note title before switching documents.",
   "Copy",
   "Expand",
   "YAML frontmatter",
