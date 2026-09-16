@@ -323,7 +323,7 @@ async function initializeReader(value: unknown): Promise<void> {
   readerWindow.scholiumMermaidReady = renderMermaidNodes();
   await readerWindow.scholiumMermaidReady;
   if (config.chatReply === true) {
-    const disposeReply = installChatReply(documentRoot, post, localized);
+    const disposeReply = installChatReply(documentRoot, post);
     replyProjection!.commit();
     readerWindow.scholiumUpdateReply = async value => {
       if (!value || typeof value !== 'object') return false;

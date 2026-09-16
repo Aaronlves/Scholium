@@ -99,6 +99,41 @@ struct ScholiumSidebarCopyIcon: View {
     }
 }
 
+/// All content copies share confirmed success, native symbol replacement and
+/// a restartable feedback lifetime. The caller retains clipboard-content authority.
+struct ScholiumCopyButton: View {
+    var label: LocalizedStringKey = "Copy"
+    var contentIdentity = ""
+    let copy: () -> Bool
+    @State private var copied = false
+    @State private var confirmation = 0
+
+    var body: some View {
+        Button {
+            copied = copy()
+            confirmation += 1
+            if copied {
+                NSAccessibility.post(
+                    element: NSApp as Any, notification: .announcementRequested,
+                    userInfo: [.announcement: ScholiumL10n.string("Copied"), .priority: NSAccessibilityPriorityLevel.medium.rawValue])
+            }
+        } label: {
+            ScholiumSidebarCopyIcon(copied: copied)
+        }
+        .help(copied ? Text("Copied") : Text(label))
+        .accessibilityLabel(copied ? Text("Copied") : Text(label))
+        .onChange(of: contentIdentity) { _, _ in
+            copied = false
+            confirmation += 1
+        }
+        .task(id: confirmation) {
+            guard copied else { return }
+            do { try await Task.sleep(for: .seconds(2)) } catch { return }
+            copied = false
+        }
+    }
+}
+
 /// Used only by custom disclosures; native Outline/DisclosureGroup arrows stay native.
 struct ScholiumSidebarDisclosureIndicator: View {
     let isExpanded: Bool

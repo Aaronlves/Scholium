@@ -9,6 +9,22 @@ import WebKit
 @Suite("Chat content and viewed changes")
 @MainActor
 struct AgentChatContentTests {
+    @Test func objectGeometryRejectsInvalidOrAmbiguousIdentity() throws {
+        let entry: [String: Any] = ["index": 0, "identity": 7, "left": 0.0, "top": 35.0,
+            "width": 300.0, "height": 120.0, "naturalWidth": 800.0, "naturalHeight": 90.0]
+        let object = try #require(ReadReplyObject.decode([entry])?.first)
+        #expect(object.id == 7 && object.index == 0 && object.naturalSize.width == 800)
+        for (key, value) in [("width", Double.nan), ("top", Double.infinity), ("height", -1.0)] {
+            var bad = entry
+            bad[key] = value
+            #expect(ReadReplyObject.decode([bad]) == nil)
+        }
+        var duplicate = entry
+        duplicate["index"] = 1
+        #expect(ReadReplyObject.decode([entry, duplicate]) == nil)
+        #expect(ReadReplyObject.decode([entry.merging(["index": 2]) { _, new in new }]) == nil)
+    }
+
     @Test func richReplyForwardsCompleteVerticalGesture() throws {
         _ = NSApplication.shared
         let route = AgentChatWheelRoute()

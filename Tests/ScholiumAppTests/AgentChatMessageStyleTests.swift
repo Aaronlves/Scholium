@@ -84,6 +84,8 @@ struct AgentChatMessageStyleTests {
                   && document.querySelector('.scholium-reply-object') === window.retainedCode
                   && window.getSelection().toString() === window.retainedSelection
                   && document.querySelectorAll('.scholium-reply-controls').length === 2
+                  && document.querySelectorAll('.scholium-reply-controls button').length === 0
+                  && !!document.querySelector('.scholium-reply-object').dataset.replyIdentity
                   && !!document.querySelector('.scholium-math-rendered');
                 """, arguments: [:], in: nil, contentWorld: SafeMarkdownReadWebView.bridgeContentWorld)
             as? Bool

@@ -291,6 +291,11 @@ outside-click/Escape dismissal and observer teardown. The initiating native view
 and rect anchor AppKit window animations; the child remains attached through closing. SwiftUI supplies read-only
 content and the shared Close/Copy header; exact object projection and live activity
 state remain caller-owned. Inline readers retain their selection and scroll owners.
+The reply reader reports bounded, revision-checked object geometry; sibling SwiftUI
+controls use the message action disclosure and shared `ScholiumCopyButton` above
+reserved DOM slots. WebKit owns text and local overflow, never a duplicate action
+or clipboard-success state. Preview diagrams supply native system colors and
+canvas sizing to the isolated Mermaid renderer through controlled CSS properties.
 
 `AgentChatComposerInput` embeds one native scroll view and `NSTextView` across the
 whole message input slot. AppKit owns hit testing, caret placement, selection, Undo

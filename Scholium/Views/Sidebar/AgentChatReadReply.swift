@@ -18,6 +18,8 @@ struct AgentChatReadReply: View {
     @State private var ready = false
     @State private var height = ScholiumChatAppearance.messageLoadingHeight
     @State private var intrinsicWidth: CGFloat?
+    @State private var objects: [ReadReplyObject] = []
+    @State private var objectsSource: String?
     @State private var failure: String?
     @State private var preview = ScholiumContentPreview()
 
@@ -43,6 +45,29 @@ struct AgentChatReadReply: View {
                 )
                 .frame(maxWidth: fitsContent ? intrinsicWidth ?? .infinity : .infinity)
                 .frame(height: height)
+                .overlay(alignment: .topLeading) {
+                    ZStack(alignment: .topLeading) {
+                        ForEach(objects) { object in
+                            AgentChatRichObjectActions(object: object, copy: {
+                                guard let objectsSource, let payload = objectContent(object.index, expectedSource: objectsSource) else { return false }
+                                readingInteraction()
+                                NSPasteboard.general.clearContents()
+                                return NSPasteboard.general.setString(payload.copyText, forType: .string)
+                            }, expand: { origin in
+                                guard let objectsSource, let payload = objectContent(object.index, expectedSource: objectsSource) else { return }
+                                readingInteraction()
+                                preview.present(title: payload.title, copyText: payload.copyText, from: origin) {
+                                    AgentChatRichContent(text: payload.text, diagramSource: payload.diagram,
+                                        naturalSize: object.naturalSize, openLink: openLink)
+                                }
+                            })
+                            .disabled(objectsSource != source || objectsSource != projection.document.rawContent)
+                            .frame(width: object.frame.width, height: object.frame.height, alignment: .topTrailing)
+                            .offset(x: object.frame.minX, y: object.frame.minY)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                }
             } else {
                 ProgressView("Loading…")
             }
@@ -64,9 +89,11 @@ struct AgentChatReadReply: View {
         guard expectedSource == renderer.snapshot?.document.rawContent else { return }
         switch event {
         case .interaction: readingInteraction()
-        case .layout(let value, let width):
+        case .layout(let value, let width, let objects):
             height = value
             intrinsicWidth = width
+            self.objects = objects
+            objectsSource = expectedSource
         case .quote(let text):
             guard expectedSource == source else { return }
             quote?(.reader(source: source, excerpt: text))
@@ -98,29 +125,19 @@ struct AgentChatReadReply: View {
             }
             menu.popUp(positioning: nil, at: point, in: view)
 
-        case .object(let index, let copy, let size, let anchor, let view):
-            guard expectedSource == source else { return }
-            let layout = AgentChatObjectProjection.layoutReply(source)
-            let objects = AgentChatRichSegment.collect(layout).filter(\.isObject)
-            guard objects.indices.contains(index) else { return }
-            let segment = objects[index]
-            if copy {
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(segment.code ?? layout.text.attributedSubstring(from: segment.range).string, forType: .string)
-            } else {
-                guard !anchor.intersection(view.visibleRect).isEmpty else { return }
-                let isDiagram = segment.language?.lowercased() == "mermaid"
-                preview.present(
-                    title: ScholiumL10n.string(isDiagram ? "Diagram" : segment.code != nil ? "Code" : "Table"),
-                    copyText: segment.code ?? layout.text.attributedSubstring(from: segment.range).string,
-                    from: view, anchor: anchor
-                ) {
-                    AgentChatRichContent(
-                        text: layout.text.attributedSubstring(from: segment.range),
-                        diagramSource: isDiagram ? segment.code : nil, naturalSize: size, openLink: openLink)
-                }
-            }
         }
+    }
+
+    private func objectContent(_ index: Int, expectedSource: String) -> (title: String, copyText: String, text: NSAttributedString, diagram: String?)? {
+        guard expectedSource == source, expectedSource == renderer.snapshot?.document.rawContent else { return nil }
+        let layout = AgentChatObjectProjection.layoutReply(expectedSource)
+        let segments = AgentChatRichSegment.collect(layout).filter(\.isObject)
+        guard segments.indices.contains(index) else { return nil }
+        let segment = segments[index]
+        let text = layout.text.attributedSubstring(from: segment.range)
+        let isDiagram = segment.language?.lowercased() == "mermaid"
+        return (ScholiumL10n.string(isDiagram ? "Diagram" : segment.code != nil ? "Code" : "Table"),
+                segment.code ?? text.string, text, isDiagram ? segment.code : nil)
     }
 
     private var css: String {
@@ -147,15 +164,53 @@ struct AgentChatReadReply: View {
                     background: var(--scholium-content-keyboard-focus-surface);
                 }
                 .scholium-reply-object { margin-block: .85em; }
-                .scholium-reply-controls { display: flex; justify-content: end; gap: 8px; user-select: none; }
-                .scholium-reply-controls button { border: 0; background: transparent; color: var(--scholium-color-secondary-text); width: 24px; height: 24px; font: inherit; cursor: pointer; }
-                .scholium-reply-controls button span { display: block; width: 16px; height: 16px; background: currentColor; -webkit-mask: var(--reply-symbol) center / contain no-repeat; mask: var(--reply-symbol) center / contain no-repeat; }
+                .scholium-reply-controls { height: \(ScholiumGrid.Dimension.preferredCustomTarget)px; margin-bottom: \(ScholiumGrid.Spacing.labelAccessoryGap)px; }
                 .scholium-table-scroll { margin-block: 0; }
-                .scholium-reply-controls button:focus-visible { outline: auto; }
                 .scholium-reply-object-scroll { overflow-x: auto; max-width: 100%; }
                 .scholium-reply-object table { width: max-content; min-width: 100%; border-collapse: collapse; }
                 .scholium-reply-object th, .scholium-reply-object td { min-width: 120px; padding: 6px 10px; text-align: start; }
                 .scholium-reply-object-scroll pre { width: max-content; min-width: 100%; margin: 0; }
                 """
+    }
+}
+
+/// Native actions sit above the reader as siblings, preserving WebKit selection
+/// and using the same pointer/focus disclosure and copy feedback as message actions.
+private struct AgentChatRichObjectActions: View {
+    let object: ReadReplyObject
+    let copy: () -> Bool
+    let expand: (NSView) -> Void
+    @State private var origin: NSView?
+
+    var body: some View {
+        AgentChatMessageActionVisibility(alignment: .trailing, actionsAbove: true) {
+            Color.clear
+                .frame(height: max(0, object.frame.height - ScholiumGrid.Dimension.preferredCustomTarget - ScholiumGrid.Spacing.labelAccessoryGap))
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+        } actions: {
+            HStack(spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+                ScholiumCopyButton(copy: copy)
+                    .accessibilityIdentifier("scholium.chat.copyObject")
+                Button {
+                    if let origin { expand(origin) }
+                } label: {
+                    ScholiumSidebarIcon(systemImage: ScholiumSidebarAction.expand.symbol, placement: .action)
+                }
+                .help("Expand").accessibilityLabel("Expand")
+                .accessibilityIdentifier("scholium.chat.expandObject")
+            }
+            .buttonStyle(ScholiumContentActionButtonStyle())
+        }
+        // The origin exists even while the action row's drawing is concealed.
+        // Accessibility activation must not depend on a prior pointer reveal.
+        .background(alignment: .topTrailing) {
+            ScholiumPreviewAttachment { origin = $0 }
+                .frame(width: ScholiumGrid.Dimension.preferredCustomTarget,
+                       height: ScholiumGrid.Dimension.preferredCustomTarget)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+        }
+        .onDisappear { origin = nil }
     }
 }

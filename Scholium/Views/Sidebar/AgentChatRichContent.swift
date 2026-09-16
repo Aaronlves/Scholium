@@ -102,12 +102,7 @@ struct AgentChatDiagram: View {
                 SafeMarkdownReadWebView(
                     documentID: "chat-diagram", fingerprint: projection.document.fingerprint.sha256,
                     source: source, htmlBody: projection.html,
-                    presentationCSS: Self.presentationCSS(dark: colorScheme == .dark, increasedContrast: contrast == .increased) + """
-                        html, body { height: 100%; }
-                        .scholium-document { height: 100%; box-sizing: border-box; }
-                        .scholium-mermaid-rendered { height: 100%; display: flex; align-items: center; justify-content: center; }
-                        .scholium-mermaid-output { width: 100%; }
-                        """,
+                    presentationCSS: Self.previewCSS(dark: colorScheme == .dark, increasedContrast: contrast == .increased),
                     userCSS: "", onLinkClick: { _ in }, onOpenExternalURL: { _ in }, selectionSurfaceIsActive: false,
                     renderingReadinessIsAcknowledged: ready,
                     onRenderingFailure: { failure = $0 }, onRenderingLoading: { ready = false },
@@ -121,6 +116,30 @@ struct AgentChatDiagram: View {
             ready = false
             projection = Projection(source)
         }
+    }
+    static func previewCSS(dark: Bool, increasedContrast: Bool) -> String {
+        presentationCSS(dark: dark, increasedContrast: increasedContrast)
+            + ScholiumPreviewStyles.diagramColorCSS(dark: dark, increasedContrast: increasedContrast) + """
+            :root {
+                --scholium-document-body-font-family: system-ui;
+                font-size: \(NSFont.systemFontSize)px;
+                --scholium-diagram-inline-size: 100%;
+                --scholium-diagram-block-size: 100%;
+                --scholium-diagram-max-block-size: 100%;
+            }
+            html, body { height: 100%; overflow: hidden; }
+            .scholium-document { height: 100%; box-sizing: border-box; padding: 0; font: 1rem/1.45 system-ui; }
+            .scholium-mermaid-rendered { height: 100%; display: flex; align-items: center; justify-content: center; }
+            .scholium-mermaid-output { width: 100%; height: 100%; }
+            .scholium-mermaid:not(.scholium-mermaid-rendered) { max-height: 100%; overflow: auto; }
+            .scholium-document .scholium-mermaid-source {
+                font: 1rem/1.45 ui-monospace, monospace;
+                color: var(--scholium-color-primary-text);
+                background: var(--scholium-color-document-background);
+            }
+            .scholium-document .scholium-mermaid-source code { font: inherit; color: inherit; background: transparent; }
+            .scholium-mermaid-diagnostic { font: inherit; }
+            """
     }
     static func presentationCSS(dark: Bool, increasedContrast: Bool) -> String {
         let colors: [(String, ScholiumColorRole)] = [

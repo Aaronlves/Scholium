@@ -1,6 +1,36 @@
 import AppKit
 
 enum ScholiumPreviewStyles {
+    /// Mermaid's theme parser requires concrete opaque colors. Resolve native
+    /// roles against the preview canvas rather than inheriting workspace Paper.
+    @MainActor static func diagramColorCSS(dark: Bool, increasedContrast: Bool) -> String {
+        let appearance: NSAppearance.Name = increasedContrast
+            ? (dark ? .accessibilityHighContrastDarkAqua : .accessibilityHighContrastAqua)
+            : (dark ? .darkAqua : .aqua)
+        var declarations = ""
+        NSAppearance(named: appearance)?.performAsCurrentDrawingAppearance {
+            guard let background = NSColor.textBackgroundColor.usingColorSpace(.sRGB) else { return }
+            for (variable, native) in [
+                ("document-background", NSColor.textBackgroundColor),
+                ("surface-background", .textBackgroundColor),
+                ("raised-surface-background", .textBackgroundColor),
+                ("primary-text", .labelColor), ("secondary-text", .secondaryLabelColor),
+                // Diagram connectors carry relationships, so they need stronger
+                // ink than a decorative native window separator.
+                ("separator", increasedContrast ? .labelColor : .secondaryLabelColor),
+                ("accent", .controlAccentColor),
+            ] {
+                guard let color = native.usingColorSpace(.sRGB) else { continue }
+                let alpha = color.alphaComponent
+                let rgb = zip([color.redComponent, color.greenComponent, color.blueComponent],
+                              [background.redComponent, background.greenComponent, background.blueComponent])
+                    .map { Int((($0 * alpha + $1 * (1 - alpha)) * 255).rounded()) }
+                declarations += String(format: "--scholium-color-%@: #%02x%02x%02x;", variable, rgb[0], rgb[1], rgb[2])
+            }
+        }
+        return ":root { \(declarations) }"
+    }
+
     /// Preview chrome and prose use system roles, independently of Document Appearance.
     @MainActor static var nativeCSS: String {
         func colors(_ name: NSAppearance.Name) -> String {

@@ -2,7 +2,6 @@
 export function installChatReply(
   root: HTMLElement,
   post: (type: string, value: Record<string, unknown>) => void,
-  localized: (key: string) => string,
 ) {
   const quote = () => {
     const selection = window.getSelection();
@@ -70,6 +69,7 @@ export function installChatReply(
   root.addEventListener('keydown', keydown);
   root.addEventListener('dragstart', dragstart);
   root.tabIndex = 0;
+  let nextObjectIdentity = 0;
   const decorateObjects = () => {
     root.querySelectorAll<HTMLElement>('table, pre, .scholium-mermaid').forEach((element) => {
       if (element.closest('.scholium-mermaid') !== element && element.closest('.scholium-mermaid')) return;
@@ -79,23 +79,11 @@ export function installChatReply(
     root.querySelectorAll<HTMLElement>('[data-reply-object]').forEach((element) => {
       if (element.closest('.scholium-reply-object')) return;
       const wrapper = document.createElement('div'); wrapper.className = 'scholium-reply-object';
+      wrapper.dataset.replyIdentity = String(++nextObjectIdentity);
       const controls = document.createElement('div'); controls.className = 'scholium-reply-controls';
-      controls.style.userSelect = 'none';
-      for (const [label, symbol, action] of [['Copy', 'doc-on-doc', 'copy'], ['Expand', 'arrow-up-left-and-arrow-down-right', 'open']]) {
-        const button = document.createElement('button');
-        button.type = 'button';
-        const icon = document.createElement('span'); icon.setAttribute('aria-hidden', 'true');
-        icon.style.setProperty('--reply-symbol', `var(--scholium-system-symbol-${symbol})`); button.append(icon);
-        button.title = localized(label); button.setAttribute('aria-label', localized(label));
-        button.addEventListener('click', () => {
-          const svg = element.querySelector('.scholium-mermaid-output')?.shadowRoot?.querySelector('svg');
-          const box = svg?.viewBox.baseVal;
-          const anchor = button.getBoundingClientRect();
-          const index = [...root.querySelectorAll('[data-reply-object]')].indexOf(element);
-          post('replyObject', {index, action, left: anchor.left, top: anchor.top, width: box?.width || element.scrollWidth,
-            height: box?.height || element.getBoundingClientRect().height});
-        }); controls.append(button);
-      }
+      // Native controls occupy this stable layout slot. WebKit retains all
+      // text, selection and horizontal scrolling; it reports geometry only.
+      controls.setAttribute('aria-hidden', 'true');
       // The renderer already supplies one table viewport; do not nest another
       // horizontal scroll owner inside it (or put the controls inside that viewport).
       const tableScroller = element.parentElement?.classList.contains('scholium-table-scroll') ? element.parentElement : null;
@@ -124,7 +112,16 @@ export function installChatReply(
       paragraph.style.width = width;
       paragraph.style.maxWidth = maximum;
     }
-    post('replyLayout', {height: Math.ceil(root.getBoundingClientRect().height), intrinsicWidth});
+    const objects = [...root.querySelectorAll<HTMLElement>('[data-reply-object]')].map((element, index) => {
+      const wrapper = element.closest<HTMLElement>('.scholium-reply-object')!;
+      const rect = wrapper.getBoundingClientRect();
+      const svg = element.querySelector('.scholium-mermaid-output')?.shadowRoot?.querySelector('svg');
+      const box = svg?.viewBox.baseVal;
+      return {index, identity: Number(wrapper.dataset.replyIdentity), left: rect.left, top: rect.top, width: rect.width, height: rect.height,
+        naturalWidth: box?.width || Math.max(1, element.scrollWidth),
+        naturalHeight: box?.height || Math.max(1, element.getBoundingClientRect().height)};
+    });
+    post('replyLayout', {height: Math.ceil(root.getBoundingClientRect().height), intrinsicWidth, objects});
   };
   const observer = new ResizeObserver(reportSize); observer.observe(root); reportSize();
   const dispose = () => {

@@ -704,7 +704,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                         payload["intrinsicWidth"] is NSNull
                             || width.map({ $0.isFinite && $0 > 0 && $0 < 1_000_000 }) == true
                     else { return }
-                    onReplyEvent?(.layout(height: height, intrinsicWidth: width.map { CGFloat($0) }))
+                    guard let objects = ReadReplyObject.decode(payload["objects"]) else { return }
+                    onReplyEvent?(.layout(height: height, intrinsicWidth: width.map { CGFloat($0) }, objects: objects))
                 }
             case "replyNoteContext":
                 guard let rawURL = payload["url"] as? String, rawURL.utf8.count <= 8_192,
@@ -724,20 +725,6 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             case "replyQuote":
                 if let text = payload["text"] as? String, !text.isEmpty, text.utf8.count <= 65_536 {
                     onReplyEvent?(.quote(text))
-                }
-            case "replyObject":
-                if let index = payload["index"] as? Int, index >= 0, index < 10_000,
-                    let action = payload["action"] as? String, ["copy", "open"].contains(action),
-                    let width = payload["width"] as? Double, let height = payload["height"] as? Double,
-                    width.isFinite, height.isFinite, width > 0, height > 0, width < 1_000_000,
-                    height < 1_000_000,
-                    let left = payload["left"] as? Double, let top = payload["top"] as? Double,
-                    left.isFinite, top.isFinite, let view = message.webView
-                {
-                    onReplyEvent?(
-                        .object(
-                            index, copy: action == "copy", size: CGSize(width: width, height: height),
-                            anchor: NSRect(x: left, y: top, width: 24, height: 24), view: view))
                 }
             case "floatingSurface":
                 guard let surface = DocumentFloatingSurface.decode(payload["surface"]),
@@ -1772,12 +1759,41 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
 
 enum ReadReplyEvent {
     case interaction
-    case layout(height: CGFloat, intrinsicWidth: CGFloat?)
+    case layout(height: CGFloat, intrinsicWidth: CGFloat?, objects: [ReadReplyObject])
     case quote(String)
     case selectionContext(String, point: NSPoint, view: NSView)
     case noteContext(URL, point: NSPoint, view: NSView)
-    case object(Int, copy: Bool, size: CGSize, anchor: NSRect, view: NSView)
 }
 
 /// Identifies inline rich content to the transcript-owned wheel boundary.
 final class AgentChatReadWebView: WKWebView {}
+
+/// Untrusted DOM geometry is a bounded presentation projection, never content authority.
+struct ReadReplyObject: Identifiable, Equatable {
+    let id: Int
+    let index: Int
+    let frame: CGRect
+    let naturalSize: CGSize
+
+    static func decode(_ value: Any?) -> [Self]? {
+        guard let entries = value as? [[String: Any]], entries.count < 10_000 else { return nil }
+        var result: [Self] = []
+        var identities: Set<Int> = []
+        for (index, entry) in entries.enumerated() {
+            guard entry["index"] as? Int == index,
+                let identity = entry["identity"] as? Int, identity > 0,
+                identities.insert(identity).inserted
+            else { return nil }
+            let keys = ["left", "top", "width", "height", "naturalWidth", "naturalHeight"]
+            let numbers = keys.compactMap { entry[$0] as? Double }
+            guard numbers.count == keys.count,
+                numbers.allSatisfy({ $0.isFinite && abs($0) < 1_000_000 }),
+                numbers.dropFirst(2).allSatisfy({ $0 > 0 })
+            else { return nil }
+            result.append(Self(id: identity, index: index,
+                frame: CGRect(x: numbers[0], y: numbers[1], width: numbers[2], height: numbers[3]),
+                naturalSize: CGSize(width: numbers[4], height: numbers[5])))
+        }
+        return result
+    }
+}

@@ -58,26 +58,16 @@ struct AgentChatReplyActions: View {
     @Environment(\.openURL) private var openURL
     @State private var showsSources = false
     @State private var showsMaterials = false
-    @State private var copied = false
 
     var body: some View {
         let sources = AgentChatReplySource.collect(text)
         let availability = AgentChatReplyActionAvailability(sources: sources, hasMaterials: context.hasMaterials)
         HStack(spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
-            Button {
+            ScholiumCopyButton(label: "Copy Markdown", contentIdentity: text) {
                 NSPasteboard.general.clearContents()
-                copied = NSPasteboard.general.setString(text, forType: .string)
-            } label: {
-                ScholiumSidebarCopyIcon(copied: copied)
+                return NSPasteboard.general.setString(text, forType: .string)
             }
-            .help(copied ? String(localized: "Copied") : String(localized: "Copy Markdown"))
-            .accessibilityLabel(copied ? "Copied" : "Copy Markdown")
             .accessibilityIdentifier("scholium.chat.copyReply")
-            .task(id: copied) {
-                guard copied else { return }
-                do { try await Task.sleep(for: .seconds(2)) } catch { return }
-                copied = false
-            }
             if availability.hasSources {
                 Button {
                     showsSources = true

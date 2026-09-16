@@ -118,11 +118,15 @@ final class ScholiumContentPreview: NSObject, NSWindowDelegate {
         let visible = sourceRect.intersection(sourceView.visibleRect)
         guard !visible.isEmpty else { return openingFrame == .zero ? frame : openingFrame }
         let anchor = window.convertToScreen(sourceView.convert(visible, to: nil))
-        let size = NSSize(width: max(320, frame.width * 0.4), height: max(240, frame.height * 0.4))
+        // A restrained, origin-directed transition avoids repeatedly reflowing
+        // a full reader through a tiny window on every open and close.
+        let size = NSSize(width: max(320, frame.width * 0.96), height: max(240, frame.height * 0.96))
+        let center = NSPoint(x: frame.midX + (anchor.midX - frame.midX) * 0.08,
+                             y: frame.midY + (anchor.midY - frame.midY) * 0.08)
         let screen = window.screen?.visibleFrame ?? window.frame
         return NSRect(
-            x: min(max(anchor.midX - size.width / 2, screen.minX), screen.maxX - size.width),
-            y: min(max(anchor.midY - size.height / 2, screen.minY), screen.maxY - size.height),
+            x: min(max(center.x - size.width / 2, screen.minX), screen.maxX - size.width),
+            y: min(max(center.y - size.height / 2, screen.minY), screen.maxY - size.height),
             width: size.width, height: size.height)
     }
 
@@ -201,7 +205,6 @@ private struct PreviewContents<Content: View>: View {
     let copyText: String
     let dismiss: () -> Void
     let content: Content
-    @State private var copied = false
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
@@ -212,27 +215,21 @@ private struct PreviewContents<Content: View>: View {
                 .accessibilityIdentifier("scholium.contentPreview.close")
                 Text(verbatim: title).font(.callout).foregroundStyle(.secondary).lineLimit(1)
                 Spacer(minLength: 0)
-                Button {
+                ScholiumCopyButton(contentIdentity: copyText) {
                     NSPasteboard.general.clearContents()
-                    copied = NSPasteboard.general.setString(copyText, forType: .string)
-                } label: {
-                    ScholiumSidebarCopyIcon(copied: copied)
+                    return NSPasteboard.general.setString(copyText, forType: .string)
                 }
-                .help(copied ? "Copied" : "Copy").accessibilityLabel(copied ? "Copied" : "Copy")
                 .accessibilityIdentifier("scholium.contentPreview.copy")
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(ScholiumContentActionButtonStyle())
             .padding(.horizontal, ScholiumGrid.Spacing.regionContentInset)
             .frame(height: ScholiumGrid.Dimension.regionHeaderHeight)
+            Divider()
             content.frame(maxWidth: .infinity, maxHeight: .infinity)
-                .padding([.horizontal, .bottom], ScholiumGrid.Spacing.regionContentInset)
+                .padding(ScholiumGrid.Spacing.regionContentInset)
+                .background(Color(nsColor: .textBackgroundColor))
         }
         .background(Color(nsColor: .windowBackgroundColor))
-        .task(id: copied) {
-            guard copied else { return }
-            do { try await Task.sleep(for: .seconds(2)) } catch { return }
-            copied = false
-        }
     }
 }
 

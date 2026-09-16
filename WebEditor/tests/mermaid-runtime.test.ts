@@ -148,7 +148,7 @@ describe("shared Mermaid runtime boundary", () => {
       .join("\n");
     expect(isolatedStyle).toContain("min-inline-size: 0 !important");
     expect(isolatedStyle).toContain("max-inline-size: 100% !important");
-    expect(isolatedStyle).toContain("max-block-size: min(70vh, 42rem) !important");
+    expect(isolatedStyle).toContain("max-block-size: var(--scholium-diagram-max-block-size, min(70vh, 42rem)) !important");
     expect(isolatedStyle).not.toContain("min-inline-size: min(100%, 32rem)");
     expect(scholiumMermaidRuntime.mount(host, sanitized!)).toBe(false);
     const untrusted = parser.parseFromString(

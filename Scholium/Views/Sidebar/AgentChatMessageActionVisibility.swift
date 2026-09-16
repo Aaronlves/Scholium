@@ -15,6 +15,7 @@ extension FocusedValues {
 /// keyboard traversal, accessibility elements, or action ownership.
 struct AgentChatMessageActionVisibility<Content: View, Actions: View>: View {
     var alignment: HorizontalAlignment = .leading
+    var actionsAbove = false
     @ViewBuilder let content: () -> Content
     @ViewBuilder let actions: () -> Actions
     @State private var isHovered = false
@@ -29,22 +30,22 @@ struct AgentChatMessageActionVisibility<Content: View, Actions: View>: View {
 
     var body: some View {
         VStack(alignment: alignment, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+            if actionsAbove { actionRow }
             content()
-            actions()
-                .focusedValue(\.agentChatMessageActionScope, scope)
-                // Only the drawing mask changes. The native buttons retain
-                // their opacity, availability, focus and accessibility tree.
-                .mask {
-                    Rectangle().opacity(showsActions ? 1 : 0)
-                        .accessibilityHidden(true)
-                }
+            if !actionsAbove { actionRow }
         }
-        .contentShape(Rectangle())
         .overlay {
             AgentChatMessagePointerReader(isHovered: $isHovered)
                 .accessibilityHidden(true)
         }
         .onDisappear { isHovered = false }
+    }
+
+    private var actionRow: some View {
+        actions()
+            .focusedValue(\.agentChatMessageActionScope, scope)
+            // Conceal drawing only; native focus and accessibility remain intact.
+            .mask { Rectangle().opacity(showsActions ? 1 : 0).accessibilityHidden(true) }
     }
 }
 

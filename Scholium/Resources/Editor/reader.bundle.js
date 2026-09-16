@@ -86,7 +86,7 @@
   }
 
   // chat-reply.ts
-  function installChatReply(root, post, localized) {
+  function installChatReply(root, post) {
     const quote = () => {
       const selection = window.getSelection();
       if (!selection?.rangeCount || selection.isCollapsed || !root.contains(selection.anchorNode) || !root.contains(selection.focusNode)) return;
@@ -146,6 +146,7 @@
     root.addEventListener("keydown", keydown);
     root.addEventListener("dragstart", dragstart);
     root.tabIndex = 0;
+    let nextObjectIdentity = 0;
     const decorateObjects = () => {
       root.querySelectorAll("table, pre, .scholium-mermaid").forEach((element) => {
         if (element.closest(".scholium-mermaid") !== element && element.closest(".scholium-mermaid")) return;
@@ -156,34 +157,10 @@
         if (element.closest(".scholium-reply-object")) return;
         const wrapper = document.createElement("div");
         wrapper.className = "scholium-reply-object";
+        wrapper.dataset.replyIdentity = String(++nextObjectIdentity);
         const controls = document.createElement("div");
         controls.className = "scholium-reply-controls";
-        controls.style.userSelect = "none";
-        for (const [label, symbol, action] of [["Copy", "doc-on-doc", "copy"], ["Expand", "arrow-up-left-and-arrow-down-right", "open"]]) {
-          const button = document.createElement("button");
-          button.type = "button";
-          const icon = document.createElement("span");
-          icon.setAttribute("aria-hidden", "true");
-          icon.style.setProperty("--reply-symbol", `var(--scholium-system-symbol-${symbol})`);
-          button.append(icon);
-          button.title = localized(label);
-          button.setAttribute("aria-label", localized(label));
-          button.addEventListener("click", () => {
-            const svg = element.querySelector(".scholium-mermaid-output")?.shadowRoot?.querySelector("svg");
-            const box = svg?.viewBox.baseVal;
-            const anchor = button.getBoundingClientRect();
-            const index = [...root.querySelectorAll("[data-reply-object]")].indexOf(element);
-            post("replyObject", {
-              index,
-              action,
-              left: anchor.left,
-              top: anchor.top,
-              width: box?.width || element.scrollWidth,
-              height: box?.height || element.getBoundingClientRect().height
-            });
-          });
-          controls.append(button);
-        }
+        controls.setAttribute("aria-hidden", "true");
         const tableScroller = element.parentElement?.classList.contains("scholium-table-scroll") ? element.parentElement : null;
         if (tableScroller) {
           tableScroller.before(wrapper);
@@ -210,7 +187,23 @@
         paragraph.style.width = width;
         paragraph.style.maxWidth = maximum;
       }
-      post("replyLayout", { height: Math.ceil(root.getBoundingClientRect().height), intrinsicWidth });
+      const objects = [...root.querySelectorAll("[data-reply-object]")].map((element, index) => {
+        const wrapper = element.closest(".scholium-reply-object");
+        const rect = wrapper.getBoundingClientRect();
+        const svg = element.querySelector(".scholium-mermaid-output")?.shadowRoot?.querySelector("svg");
+        const box = svg?.viewBox.baseVal;
+        return {
+          index,
+          identity: Number(wrapper.dataset.replyIdentity),
+          left: rect.left,
+          top: rect.top,
+          width: rect.width,
+          height: rect.height,
+          naturalWidth: box?.width || Math.max(1, element.scrollWidth),
+          naturalHeight: box?.height || Math.max(1, element.getBoundingClientRect().height)
+        };
+      });
+      post("replyLayout", { height: Math.ceil(root.getBoundingClientRect().height), intrinsicWidth, objects });
     };
     const observer = new ResizeObserver(reportSize);
     observer.observe(root);
@@ -1036,7 +1029,7 @@
     readerWindow.scholiumMermaidReady = renderMermaidNodes();
     await readerWindow.scholiumMermaidReady;
     if (config.chatReply === true) {
-      const disposeReply = installChatReply(documentRoot, post, localized);
+      const disposeReply = installChatReply(documentRoot, post);
       replyProjection.commit();
       readerWindow.scholiumUpdateReply = async (value2) => {
         if (!value2 || typeof value2 !== "object") return false;

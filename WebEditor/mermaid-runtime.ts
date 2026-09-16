@@ -58,11 +58,11 @@ const isolatedSVGStyle = `
 }
 svg {
   display: block !important;
-  inline-size: auto !important;
+  inline-size: var(--scholium-diagram-inline-size, auto) !important;
   min-inline-size: 0 !important;
   max-inline-size: 100% !important;
-  block-size: auto !important;
-  max-block-size: min(70vh, 42rem) !important;
+  block-size: var(--scholium-diagram-block-size, auto) !important;
+  max-block-size: var(--scholium-diagram-max-block-size, min(70vh, 42rem)) !important;
   margin-inline: auto !important;
 }
 *, *::before, *::after {
