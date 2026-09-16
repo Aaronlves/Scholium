@@ -154,8 +154,10 @@ already-visible Chat does not toggle the Sidebar closed.
 - Settings uses five sidebar categories, static bilingual search, and native
   Interaction/Integrations child selectors. The compact toolbar keeps the pane
   title; category changes retain window dimensions. Previously opened pages
-  retain their draft state in native tabless hosts; only the selected page is
-  attached for layout, input and accessibility. Preferences use native grouped
+  retain their draft state in attached native hosts; inactive hosts are hidden,
+  excluded from accessibility, and unregister their default actions. Only the
+  selected host follows window resizing. Appearance font pickers share an
+  asynchronously refreshed catalogue. Preferences use native grouped
   forms, including shortcut rows; Selection Actions retains its native table
   with adjacent actions and an accessible fixed footer. Notifications drafts bind
   their original Triptych and revision, with explicit reload after a mismatch.

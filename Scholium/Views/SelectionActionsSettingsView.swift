@@ -149,7 +149,7 @@ struct SelectionActionsSettingsView: View {
                 Button("Save") {
                     saveDraft()
                 }
-                .keyboardShortcut(.defaultAction)
+                .scholiumSettingsDefaultAction()
                 .disabled(
                     SelectionActionPreferences.validationError(draft) != nil
                         || draft == preferences.actions

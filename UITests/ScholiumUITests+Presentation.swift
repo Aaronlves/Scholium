@@ -38,6 +38,11 @@ extension ScholiumUITests {
         app.typeKey(.tab, modifierFlags: [])
         XCTAssertTrue(window.buttons["Save Appearance"].isEnabled)
         capture("settings-appearance-draft")
+        select("notifications")
+        app.typeKey(.return, modifierFlags: [])
+        select("document")
+        XCTAssertEqual(size.value as? String, "17")
+        XCTAssertTrue(window.buttons["Save Appearance"].isEnabled, "Return saved a hidden Appearance draft")
         window.descendants(matching: .any)["scholium.appearance.manage"].firstMatch.click()
         app.menuItems["Rename Appearance…"].click()
         let cancelRename = window.sheets.buttons["Cancel"].firstMatch

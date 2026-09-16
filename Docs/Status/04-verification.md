@@ -4,6 +4,36 @@
 
 ## Current verification snapshot
 
+**2026-09-16 — Settings performance:** Xcode 27 Debug build and 31 scoped
+Settings tests pass. In the same disposable 500-Note, Time Profiler + Hangs
+scenario, six warm Appearance selections reduce median hosting-layout CPU sample
+weight from 72 to 40 ms; total action-window main-thread weight falls from 225.5
+to 200.5 ms. Workspace totals overlap the baseline range. No >250 ms hang is
+detected after the change, versus the baseline's 267.9 ms first-Appearance event.
+These are sampled Debug measurements, not click-to-paint or Release acceptance.
+Computer Use verifies drafts, hidden default-action isolation, active Return
+save, Revert, search recovery, sidebar keyboard focus, child selectors, loaded
+font menus and English/Chinese Light presentation. The subsequent scoped UI
+audit below supplies deterministic interaction evidence. Native containment
+tests cover resize and field-editor ownership. Dark and human adaptation
+acceptance remain open. Evidence: `.build/settings-performance-fix/`.
+
+**2026-09-16 — Settings UI automation:** After restarting the idle test service,
+three scoped XCTest journeys pass separately on the same isolated Debug build.
+Navigation covers five categories, drafts, rename/cancel, empty search/recovery,
+hidden default actions, sidebar arrows, native 780-point resizing and Chinese
+presentation. Notifications covers draft retention, reload cancellation and
+confirmed discard, explicit save and relaunch persistence. Selection Actions
+covers editor validation/cancel, nested and root hidden-action isolation,
+positive search/restore, explicit save, window reopening and relaunch persistence.
+Two new journeys are registered in the UI test project. Initial test-only
+failures corrected native Outline/title queries and restored a saved QA
+preference baseline before repetition. Scoped lint, project syntax and
+documentation checks pass. This is staged scoped evidence, not the complete UI
+suite or human acceptance. Dark/system adaptations, shortcut conflict recording
+and live integration operations remain outside this run. Evidence:
+`.build/settings-ui-audit/`.
+
 **2026-09-16 — Settings redesign:** Xcode 27.0 (27A5218g), Swift 6.4
 and macOS 27 SDK Debug compilation pass. The 26 scoped Settings tests and one
 representative disposable 500-Note UI journey pass. The journey covers category

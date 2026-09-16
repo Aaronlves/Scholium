@@ -1,10 +1,30 @@
 import AppKit
 import SwiftUI
 
-/// SwiftUI owns the selected category and each pane's feature state. NSTabView
-/// owns attachment, layout and responder membership for the selected pane;
-/// the coordinator retains previously visited hosts without another selection
-/// model, geometry policy or transition animation.
+extension EnvironmentValues {
+    /// A projection of category selection, including any containing Settings pane.
+    @Entry var scholiumSettingsPaneIsActive = true
+}
+
+extension View {
+    /// Register the default action only while its Settings page is active.
+    func scholiumSettingsDefaultAction() -> some View {
+        modifier(SettingsDefaultAction())
+    }
+}
+
+private struct SettingsDefaultAction: ViewModifier {
+    @Environment(\.scholiumSettingsPaneIsActive) private var isActive
+
+    func body(content: Content) -> some View {
+        content.keyboardShortcut(isActive ? .defaultAction : nil)
+    }
+}
+
+/// SwiftUI owns selection and feature state. The native container retains visited
+/// hosts in the window, hides inactive content and sizes only the selected host.
+/// The coordinator projects selection into visibility and activation; it owns no
+/// independent navigation, draft, geometry or animation policy.
 struct ScholiumSettingsPaneHost<Selection: Hashable, Content: View>: NSViewRepresentable {
     @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
     @Environment(\.agentChatSettingsController) private var chatController
@@ -15,6 +35,7 @@ struct ScholiumSettingsPaneHost<Selection: Hashable, Content: View>: NSViewRepre
     @Environment(\.layoutDirection) private var layoutDirection
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.controlSize) private var controlSize
+    @Environment(\.scholiumSettingsPaneIsActive) private var ancestorIsActive
 
     let selection: Selection
     let identifier: String?
@@ -28,17 +49,13 @@ struct ScholiumSettingsPaneHost<Selection: Hashable, Content: View>: NSViewRepre
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
-    func makeNSView(context: Context) -> SettingsPaneTabView {
-        let tabView = SettingsPaneTabView()
-        tabView.tabPosition = .none
-        tabView.tabViewBorderType = .none
-        tabView.drawsBackground = false
-        if let identifier { tabView.setAccessibilityIdentifier(identifier) }
-        tabView.delegate = context.coordinator
-        return tabView
+    func makeNSView(context: Context) -> SettingsPaneContainerView {
+        let container = SettingsPaneContainerView()
+        if let identifier { container.setAccessibilityIdentifier(identifier) }
+        return container
     }
 
-    func updateNSView(_ tabView: SettingsPaneTabView, context: Context) {
+    func updateNSView(_ container: SettingsPaneContainerView, context: Context) {
         // Forward declared Settings dependencies and public presentation values.
         // Each host owns its accessibility graph and reads system adaptation
         // directly instead of inheriting the outer hosting graph's context.
@@ -58,88 +75,127 @@ struct ScholiumSettingsPaneHost<Selection: Hashable, Content: View>: NSViewRepre
                     .buttonStyle(.automatic)
                     .tint(nil)
             ),
-            in: tabView
+            isActive: ancestorIsActive,
+            in: container
         )
     }
 
-    static func dismantleNSView(_ tabView: SettingsPaneTabView, coordinator: Coordinator) {
-        coordinator.dismantle(tabView)
+    static func dismantleNSView(_ container: SettingsPaneContainerView, coordinator: Coordinator) {
+        coordinator.dismantle(container)
     }
 
     @MainActor
-    final class Coordinator: NSObject, NSTabViewDelegate {
-        private var items: [Selection: NSTabViewItem] = [:]
-        private weak var requestedItem: NSTabViewItem?
+    final class Coordinator {
+        @MainActor
+        private final class Entry {
+            let host: NSHostingView<AnyView>
+            var content: AnyView
+            private(set) var isActive = false
 
-        func present(_ selection: Selection, root: AnyView, in tabView: NSTabView) {
-            let item: NSTabViewItem
-            if let existing = items[selection], let host = existing.view as? NSHostingView<AnyView> {
-                item = existing
-                host.rootView = root
-            } else {
-                let host = NSHostingView(rootView: root)
-                // The containing Settings scene supplies the available size.
-                // A pane's intrinsic size must not resize its window.
+            init(content: AnyView) {
+                self.content = content
+                host = NSHostingView(rootView: content)
                 host.sizingOptions = []
                 host.sceneBridgingOptions = []
-                host.autoresizingMask = [.width, .height]
-                item = NSTabViewItem(identifier: selection)
-                item.view = host
-                items[selection] = item
+                host.isHidden = true
             }
 
-            requestedItem = item
-            if item.tabView == nil {
-                tabView.addTabViewItem(item)
+            func update(isActive: Bool) {
+                self.isActive = isActive
+                host.rootView = AnyView(
+                    content
+                        .environment(\.scholiumSettingsPaneIsActive, isActive)
+                )
             }
-            guard tabView.selectedTabViewItem !== item else { return }
-            releaseFirstResponder(in: tabView.selectedTabViewItem?.view)
-            tabView.selectTabViewItem(item)
-            NSAccessibility.post(element: tabView, notification: .layoutChanged)
         }
 
-        func tabView(_ tabView: NSTabView, shouldSelect tabViewItem: NSTabViewItem?) -> Bool {
-            // Hidden tabs have no navigation controls. Reject native next/previous
-            // responder actions that would bypass the SwiftUI selection owner.
-            tabViewItem === requestedItem
-        }
+        private var entries: [Selection: Entry] = [:]
 
-        func dismantle(_ tabView: NSTabView) {
-            releaseFirstResponder(in: tabView.selectedTabViewItem?.view)
-            tabView.delegate = nil
-            tabView.tabViewItems = []
-            requestedItem = nil
-            items.removeAll()
-        }
-
-        private func releaseFirstResponder(in outgoingView: NSView?) {
-            guard let outgoingView, let window = outgoingView.window,
-                let responder = window.firstResponder as? NSView
-            else { return }
-
-            let fieldOwner = (responder as? NSTextView)?.delegate as? NSView
-            if responder.isDescendant(of: outgoingView)
-                || fieldOwner?.isDescendant(of: outgoingView) == true
-            {
-                window.makeFirstResponder(nil)
+        func present(_ selection: Selection, root: AnyView, isActive: Bool, in container: SettingsPaneContainerView) {
+            let entry: Entry
+            if let existing = entries[selection] {
+                entry = existing
+                entry.content = root
+            } else {
+                entry = Entry(content: root)
+                entries[selection] = entry
             }
+            for other in entries.values where other !== entry && other.isActive {
+                other.update(isActive: false)
+            }
+            entry.update(isActive: isActive)
+            container.show(entry.host)
+        }
+
+        func dismantle(_ container: SettingsPaneContainerView) {
+            container.removeContents()
+            entries.removeAll()
         }
     }
 }
 
-/// Borderless tabs are an attachment mechanism, not a second category picker.
-/// Project only the selected host's existing accessibility elements; NSTabView's
-/// default tab-strip accessibility does not expose these tabless contents.
-final class SettingsPaneTabView: NSTabView {
-    override func isAccessibilityElement() -> Bool { true }
+/// Keeping visited hosts attached avoids NSTabView's eager key-view-loop layout
+/// on every selection. Native hiding excludes inactive input and drawing; the
+/// accessibility projection exposes only the active host. SwiftUI's inherited
+/// active flag also unregisters hidden default actions and gates activation tasks.
+final class SettingsPaneContainerView: NSView {
+    private(set) weak var selectedView: NSView?
 
-    override func accessibilityRole() -> NSAccessibility.Role? { .group }
-
-    override func accessibilityChildren() -> [Any]? {
-        guard let selectedView = selectedTabViewItem?.view else { return [] }
-        return NSAccessibility.unignoredChildren(from: [selectedView])
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        autoresizesSubviews = false
     }
 
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        autoresizesSubviews = false
+    }
+
+    func show(_ view: NSView) {
+        guard selectedView !== view else { return }
+        releaseFirstResponder()
+        selectedView?.isHidden = true
+        if view.superview !== self {
+            view.isHidden = true
+            view.frame = bounds
+            addSubview(view)
+        }
+        selectedView = view
+        if view.frame != bounds { view.frame = bounds }
+        view.isHidden = false
+        needsLayout = true
+        NSAccessibility.post(element: self, notification: .layoutChanged)
+    }
+
+    override func layout() {
+        super.layout()
+        if let selectedView, selectedView.frame != bounds { selectedView.frame = bounds }
+    }
+
+    func removeContents() {
+        releaseFirstResponder()
+        selectedView = nil
+        subviews.forEach { $0.removeFromSuperview() }
+    }
+
+    private func releaseFirstResponder() {
+        guard let selectedView, let window,
+            let responder = window.firstResponder as? NSView
+        else { return }
+        let fieldOwner = (responder as? NSTextView)?.delegate as? NSView
+        if responder.isDescendant(of: selectedView)
+            || fieldOwner?.isDescendant(of: selectedView) == true
+        {
+            window.makeFirstResponder(nil)
+        }
+    }
+
+    override func isAccessibilityElement() -> Bool { true }
+    override func accessibilityRole() -> NSAccessibility.Role? { .group }
+    override func accessibilityChildren() -> [Any]? {
+        guard let selectedView else { return [] }
+        return NSAccessibility.unignoredChildren(from: [selectedView])
+    }
     override func accessibilityChildrenInNavigationOrder() -> [any NSAccessibilityElementProtocol]? {
         accessibilityChildren()?.compactMap { $0 as? any NSAccessibilityElementProtocol }
     }

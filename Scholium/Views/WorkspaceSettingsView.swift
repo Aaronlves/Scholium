@@ -256,6 +256,7 @@ private struct SettingsWindowAttachment: NSViewRepresentable {
 }
 
 struct ZoteroSettingsView: View {
+    @Environment(\.scholiumSettingsPaneIsActive) private var isPaneActive
     @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
     @State private var info = ZoteroLibraryInfo(status: .appUnavailable, lastSuccessfulConnection: nil)
     @State private var isTesting = false
@@ -292,7 +293,12 @@ struct ZoteroSettingsView: View {
                     .foregroundStyle(.red)
             }
         }
-        .task { info = await settingsModel.zoteroConnectionInfo() }
+        .task(id: isPaneActive) {
+            guard isPaneActive else { return }
+            let current = await settingsModel.zoteroConnectionInfo()
+            guard !Task.isCancelled else { return }
+            info = current
+        }
         .accessibilityIdentifier("scholium.settings.zotero.connection")
     }
 
@@ -343,6 +349,7 @@ struct ZoteroSettingsView: View {
 }
 
 struct WorkspaceSettingsView: View {
+    @Environment(\.scholiumSettingsPaneIsActive) private var isPaneActive
     @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
     @State private var selectedTriptychID: UUID?
     let openTriptych: (UUID) -> Void
@@ -387,8 +394,10 @@ struct WorkspaceSettingsView: View {
             }
         }
         .scholiumSettingsPaneSurface()
-        .task {
+        .task(id: isPaneActive) {
+            guard isPaneActive else { return }
             await settingsModel.refreshRegisteredVaults()
+            guard !Task.isCancelled else { return }
             if selectedTriptychID == nil {
                 selectedTriptychID =
                     settingsModel.workspaceAssignment?.id
@@ -466,6 +475,7 @@ private func settingsTriptychLabel(
 private struct AppearanceSettingsView: View {
     @Environment(\.scholiumFileSelectionPresenter) private var fileSelectionPresenter
     @ObservedObject var store: CSSSnippetStore
+    @StateObject private var fontCatalog = ScholiumSettingsFontCatalog()
     @State private var draft: DocumentAppearanceProfile?
     @State private var importError: String?
     @State private var showRename = false
@@ -494,6 +504,7 @@ private struct AppearanceSettingsView: View {
         }
         .scholiumSettingsPaneSurface()
         .accessibilityIdentifier("scholium.appearance.form")
+        .task { await fontCatalog.loadIfNeeded() }
         .onAppear { if draft == nil { loadSelectedDraft() } }
         .onChange(of: store.selectedAppearanceProfileID) { _, _ in loadSelectedDraft() }
         .onChange(of: store.appearanceProfiles) { previous, _ in
@@ -588,8 +599,8 @@ private struct AppearanceSettingsView: View {
     ) -> some View {
         Form {
             configurationSection
-            AppearanceReadingEditor(profile: profile)
-            TypographySettingsView(profile: profile) { showsCSSSnippets = true }
+            AppearanceReadingEditor(profile: profile, fontCatalog: fontCatalog)
+            TypographySettingsView(profile: profile, fontCatalog: fontCatalog) { showsCSSSnippets = true }
             configurationFileSection
         }
         .formStyle(.grouped)
@@ -675,7 +686,7 @@ private struct AppearanceSettingsView: View {
                 guard let draft else { return }
                 store.updateAppearance(draft)
             }
-            .keyboardShortcut(.defaultAction)
+            .scholiumSettingsDefaultAction()
             .disabled(!hasUnsavedChanges || !store.canModify)
             .accessibilityLabel("Save Appearance")
         }
@@ -855,16 +866,17 @@ private struct AppearanceSettingsView: View {
 
 private struct AppearanceReadingEditor: View {
     @Binding var profile: DocumentAppearanceProfile
-    private let fontFamilies = NSFontManager.shared.availableFontFamilies.sorted {
-        $0.localizedStandardCompare($1) == .orderedAscending
-    }
+    @ObservedObject var fontCatalog: ScholiumSettingsFontCatalog
 
     var body: some View {
         Section("Reading") {
             Picker("Body Font", selection: $profile.settings.body.fontFamily) {
                 ForEach(DocumentAppearanceFontFamily.presets, id: \.self) { Text($0.label).tag($0) }
                 Divider()
-                ForEach(retaining(profile.settings.body.fontFamily.rawValue), id: \.self) { family in
+                ForEach(
+                    fontCatalog.families(retaining: profile.settings.body.fontFamily.rawValue, excluding: DocumentAppearanceFontFamily.presets.map(\.rawValue)),
+                    id: \.self
+                ) { family in
                     Text(verbatim: family).tag(DocumentAppearanceFontFamily(rawValue: family))
                 }
             }
@@ -892,7 +904,7 @@ private struct AppearanceReadingEditor: View {
         }
         Section("Source Font") {
             Picker("Source Font", selection: $profile.settings.source.fontFamily) {
-                ForEach(retaining(profile.settings.source.fontFamily), id: \.self) { Text(verbatim: $0).tag($0) }
+                ForEach(fontCatalog.families(retaining: profile.settings.source.fontFamily), id: \.self) { Text(verbatim: $0).tag($0) }
             }
             .accessibilityIdentifier("scholium.appearance.sourceFont")
             LabeledContent("Source font size") {
@@ -905,18 +917,13 @@ private struct AppearanceReadingEditor: View {
         }
     }
 
-    private func retaining(_ selected: String) -> [String] {
-        fontFamilies.contains(selected) ? fontFamilies : fontFamilies + [selected]
-    }
 }
 
 private struct TypographySettingsView: View {
     @Binding var profile: DocumentAppearanceProfile
+    @ObservedObject var fontCatalog: ScholiumSettingsFontCatalog
     let onShowAdvancedCSS: () -> Void
     @State private var showsHeadingLevelDetails = false
-    private let fontFamilies = NSFontManager.shared.availableFontFamilies.sorted {
-        $0.localizedStandardCompare($1) == .orderedAscending
-    }
 
     var body: some View {
         Group {
@@ -981,12 +988,13 @@ private struct TypographySettingsView: View {
     }
 
     private var headingFamilies: [String] {
-        let selected = profile.settings.headings.fontFamily.rawValue
-        return fontFamilies.contains(selected) ? fontFamilies : fontFamilies + [selected]
+        fontCatalog.families(
+            retaining: profile.settings.headings.fontFamily.rawValue,
+            excluding: DocumentHeadingFontFamily.presets.map(\.rawValue))
     }
 
     private func roleFont(_ title: LocalizedStringResource, selection: Binding<String?>) -> some View {
-        AppearanceRoleFontPicker(title: title, selection: selection, availableFamilies: fontFamilies)
+        AppearanceRoleFontPicker(title: title, selection: selection, availableFamilies: fontCatalog.families(retaining: selection.wrappedValue))
     }
 
 }
@@ -1418,14 +1426,6 @@ private struct AppearanceRoleFontPicker: View {
     @Binding var selection: String?
     let availableFamilies: [String]
 
-    private var choices: [String] {
-        var values = availableFamilies
-        if let selection, !selection.isEmpty { values.append(selection) }
-        return Array(Set(values)).sorted {
-            $0.localizedStandardCompare($1) == .orderedAscending
-        }
-    }
-
     private var choiceBinding: Binding<String> {
         Binding(
             get: {
@@ -1451,7 +1451,7 @@ private struct AppearanceRoleFontPicker: View {
                 .tag(Self.defaultChoice)
             Text("Use role font")
                 .tag(Self.automaticChoice)
-            ForEach(choices, id: \.self) { family in
+            ForEach(availableFamilies, id: \.self) { family in
                 Text(verbatim: family).tag(family)
             }
         }
@@ -1667,7 +1667,7 @@ private struct WorkspacePathEditor: View {
                 Spacer()
                 Button(completionTitle) { save() }
                     .buttonStyle(.bordered)
-                    .keyboardShortcut(.defaultAction)
+                    .scholiumSettingsDefaultAction()
                     .disabled(!canSave || isSaving)
             }
             .padding(.horizontal, ScholiumMetrics.Settings.pathHorizontalInset)

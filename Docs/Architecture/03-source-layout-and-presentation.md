@@ -398,14 +398,20 @@ Settings search indexes static interface metadata only. It never searches
 research content, reads external Skill files, or supplies Agent permission.
 
 `ScholiumSettingsView` owns the native `NavigationSplitView` sidebar.
-`ScholiumSettingsPaneHost` translates its selected destination into a borderless
-`NSTabView`: it creates hosts on first use, retains their SwiftUI identities,
-and attaches only the selected host. Its native accessibility projection exposes
-only that host's actual children; selection releases only an outgoing responder.
+`ScholiumSettingsPaneHost` retains visited hosting views in one native content
+container. Selection controls visibility and only the active host follows the
+container's bounds; selection releases only an outgoing responder. Its native
+accessibility projection exposes only the selected host. A derived activation
+flag unregisters inactive default actions, propagates through nested Settings hosts, and
+restarts Workspace/Zotero refresh tasks on return without resetting drafts.
 Each host receives explicit Settings dependencies and public appearance values;
-its own hosting graph resolves native accessibility state. Inactive panes do not
-participate in window layout or input. `SettingsWindowAttachment` configures
-compact native window chrome; category selection never resizes the window.
+its own hosting graph resolves native accessibility state. `SettingsWindowAttachment`
+configures compact native window chrome; category selection never resizes the window.
+`ScholiumSettingsFontCatalog` belongs to the retained Appearance page. One
+background Core Text query supplies all font pickers; only font-name strings
+cross to the main actor. Font-registry notifications invalidate the result,
+coalesce refreshes and reject stale publication. Pickers retain presets and the
+saved selection while the catalogue loads or a font is unavailable.
 Native grouped `Form` sections compose preferences; `settingsGroup` uses native
 `GroupBox` surfaces around collections. Feature owners retain persistence.
 Native search filters static page/control metadata and restores browsing context.
