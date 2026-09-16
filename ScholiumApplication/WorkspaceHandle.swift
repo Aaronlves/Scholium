@@ -1389,11 +1389,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         _ request: ManagedNoteCreationRequest
     ) async throws -> WorkspaceMutationOutcome<WorkspaceManagedNoteCommit> {
         try requireActive()
-        guard
-            let slot = services.manifest.vaultIDs.first(where: {
-                $0.value == request.vaultID
-            })?.key
-        else {
+        guard services.manifest.vaultIDs.contains(where: { $0.value == request.vaultID }) else {
             throw ScholiumApplicationError.vaultNotInWorkspace(request.vaultID)
         }
         if let barrier = managedCreationPreLeaseBarrierForTesting {
@@ -1800,7 +1796,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         var committedDocument = document
         var identityRecoveryWarning: String?
         do {
-            let duplicateIdentity = try await services.controlStore.duplicateIdentity(
+            _ = try await services.controlStore.duplicateIdentity(
                 from: identity.id,
                 to: destinationRelativePath,
                 fingerprint: document.fingerprint
@@ -4126,10 +4122,6 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         for id in documents.keys.sorted() {
             guard let document = documents[id] else { continue }
             let role = vaultRoles[id.vaultID] ?? .other
-            let identity = try await services.controlStore.identityRecord(
-                vaultID: id.vaultID,
-                relativePath: id.relativePath
-            )
             catalog.append(
                 LinkCatalogNote(
                     vaultID: id.vaultID,

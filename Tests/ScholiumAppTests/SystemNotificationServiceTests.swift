@@ -1,5 +1,6 @@
 import Foundation
 import ScholiumContracts
+import Synchronization
 import Testing
 import UserNotifications
 
@@ -79,11 +80,11 @@ struct SystemNotificationServiceTests {
     func activationDuringAuthorization() async throws {
         let transport = FakeNotificationTransport()
         transport.authorizationDelay = .milliseconds(30)
-        var active = false
-        let service = SystemNotificationService(transport: transport, delay: .zero, isActive: { active })
+        let active = Mutex(false)
+        let service = SystemNotificationService(transport: transport, delay: .zero, isActive: { active.withLock { $0 } })
         service.receive(change())
         try await eventually { transport.authorizationRequests == 1 }
-        active = true
+        active.withLock { $0 = true }
         service.applicationBecameActive()
         try await eventually { transport.status == .authorized }
         #expect(transport.delivered.isEmpty)

@@ -1275,50 +1275,6 @@ final class MCPAppBridgeRequestRouter {
         return value
     }
 
-    private func optionalString(
-        _ value: MCPJSONValue?,
-        name: String
-    ) throws -> String? {
-        guard let value else { return nil }
-        guard let string = value.stringValue else {
-            throw invalid(name, "Provide a string or omit this field.")
-        }
-        return string
-    }
-
-    private func optionalNullableString(
-        _ value: MCPJSONValue?,
-        name: String
-    ) throws -> String? {
-        guard let value else { return nil }
-        if case .null = value { return nil }
-        guard let string = value.stringValue else {
-            throw invalid(name, "Provide a string, null, or omit this field.")
-        }
-        return string
-    }
-
-    private func stringArray(
-        _ value: MCPJSONValue?,
-        name: String,
-        default defaultValue: [String]
-    ) throws -> [String] {
-        guard let value else { return defaultValue }
-        guard let values = value.arrayValue else {
-            throw invalid(name, "Provide an array of strings.")
-        }
-        let strings = try values.map { item -> String in
-            guard let string = item.stringValue else {
-                throw invalid(name, "Provide only strings.")
-            }
-            return string
-        }
-        guard Set(strings).count == strings.count else {
-            throw invalid(name, "Do not repeat a value.")
-        }
-        return strings
-    }
-
     private func requiredExternalRole(
         _ value: MCPJSONValue?
     ) throws -> VaultRole {

@@ -413,28 +413,6 @@ public enum WorkspaceCatalogBuilder {
         }
     }
 
-    private static func scholarlyRelianceDescription(
-        for occurrence: LinkOccurrence,
-        analysisTitle: String,
-        semantic: MarkdownSemanticDocument
-    ) -> String? {
-        if semantic.callouts.contains(where: {
-            $0.role == .cite && $0.span.contains(occurrence.span)
-        }) {
-            return "This note cites the Unqualified Analysis ‘\(analysisTitle)’ in a Source callout."
-        }
-        if semantic.footnoteDefinitions.contains(where: {
-            $0.span.contains(occurrence.span)
-        }) {
-            return "This note cites the Unqualified Analysis ‘\(analysisTitle)’ in a footnote."
-        }
-        if semantic.callouts.contains(where: {
-            $0.role == .quote && $0.span.contains(occurrence.span)
-        }) {
-            return "This note uses the Unqualified Analysis ‘\(analysisTitle)’ as the source anchor for a quotation."
-        }
-        return nil
-    }
 }
 
 private extension SourceSpan {

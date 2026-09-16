@@ -152,7 +152,7 @@ extension MCPAppBridgeRequestRouterTests {
         #expect(!FileManager.default.fileExists(atPath: fixture.topicsURL.appendingPathComponent("Nested/Renamed.md").path))
         #expect(await call(.undoChange, undo).error != nil)
         let final = try await handle.discovery.refresh()
-        let restored = try #require(final.vaults.flatMap(\.documents).first { $0.stableIdentity.resolvedID == fixture.topicNoteID })
+        _ = try #require(final.vaults.flatMap(\.documents).first { $0.stableIdentity.resolvedID == fixture.topicNoteID })
         let changes = try await handle.agentCollaboration.agentChanges()
         #expect(changes.count == 1 && changes[0].state == .undone && changes[0].moveEffects?.count == 3)
     }

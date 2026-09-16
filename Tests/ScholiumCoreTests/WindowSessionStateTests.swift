@@ -172,7 +172,7 @@ struct WindowSessionStateTests {
         let analyses = try #require(
             migrated.workspaceSession(for: .paperAnalysis)
         )
-        let topics = try #require(
+        _ = try #require(
             migrated.workspaceSession(for: .topicKnowledge)
         )
         #expect(migrated.openDocuments.first?.relativePath == "New.md")

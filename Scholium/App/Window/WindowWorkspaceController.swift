@@ -411,8 +411,6 @@ final class WindowWorkspaceController: ObservableObject {
         }
     }
 
-    @discardableResult
-
     func removeUnavailableTriptychRegistration() async throws {
         try await performRecovery { [self] in
             guard state.accessRecovery != nil,

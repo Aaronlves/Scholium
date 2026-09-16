@@ -54,7 +54,7 @@ struct AgentChatConfigurationMenu: View {
             }
             Divider()
             Menu {
-                Picker("Permission", selection: Binding(get: { permission }, set: selectPermission)) {
+                Picker("Permission", selection: Binding(get: { permission }, set: { selectPermission($0) })) {
                     Text("Ask for Approval", bundle: .module).tag(AgentChatPermission.ask)
                     Text("Full Access", bundle: .module).tag(AgentChatPermission.fullAccess)
                 }
@@ -63,7 +63,11 @@ struct AgentChatConfigurationMenu: View {
                 Text("Permission", bundle: .module)
             }
             Menu {
-                Picker("Web Search", selection: Binding(get: { preferences.webSearch }, set: selectWebSearch)) {
+                Picker(
+                    "Web Search",
+                    selection: Binding(
+                        get: { preferences.webSearch }, set: { selectWebSearch($0) })
+                ) {
                     ForEach(AgentChatPreferences.WebSearch.allCases, id: \.self) { mode in
                         Text(AgentChatControlLabels.webSearch(mode)).tag(mode)
                     }
@@ -78,7 +82,7 @@ struct AgentChatConfigurationMenu: View {
         }
         .scholiumContentActionMenu()
         .disabled(!isEnabled)
-        .help(Text("Chat Settings", bundle: .module) + Text(verbatim: ": " + modelLabel))
+        .help(Text(verbatim: "\(ScholiumL10n.string("Chat Settings", locale: locale)): \(modelLabel)"))
         .accessibilityLabel(Text("Chat Settings", bundle: .module))
         .accessibilityIdentifier("scholium.chat.configuration")
         .accessibilityValue(

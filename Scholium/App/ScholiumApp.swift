@@ -5315,13 +5315,6 @@ final class WindowModel: ObservableObject {
         )
     }
 
-    private static func markdownPath(_ requestedPath: String) -> String {
-        let trimmed = requestedPath.trimmingCharacters(in: .whitespacesAndNewlines)
-        return URL(fileURLWithPath: trimmed).pathExtension.caseInsensitiveCompare("md") == .orderedSame
-            ? trimmed
-            : trimmed + ".md"
-    }
-
     private func currentSearchResultEvidence(
         for result: SearchResult,
         scope: SearchPresentationScope

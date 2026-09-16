@@ -562,12 +562,7 @@ public actor TriptychControlStore {
         guard DocumentFingerprint(data: current) == expectedRevision.fingerprint else {
             throw TriptychControlError.settingsRevisionConflict
         }
-        guard
-            let currentSettings = try? decoder().decode(
-                TriptychSettings.self,
-                from: current
-            )
-        else {
+        guard (try? decoder().decode(TriptychSettings.self, from: current)) != nil else {
             throw TriptychControlError.settingsCorrupted
         }
         let candidate = try encodedData(settings)
@@ -1106,7 +1101,6 @@ public actor TriptychControlStore {
         }
         return try portableControlLock.withExclusiveLock {
             var snapshot = try identitySnapshot()
-            let originalPayload = snapshot.payload
             var payload = snapshot.payload
             let pathIdentity = payload.records.first(where: {
                 $0.vaultID == vaultID && $0.relativePath == relativePath

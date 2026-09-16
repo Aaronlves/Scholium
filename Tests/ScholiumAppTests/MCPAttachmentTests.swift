@@ -54,7 +54,7 @@ extension MCPAppBridgeRequestRouterTests {
         try bytes.write(to: source)
         let attachment = try await handle.documents.prepareDocumentAttachment(at: source, to: target, management: .copyIntoTriptych)
         let attachmentBefore = try await handle.documents.load(note.id)
-        let attachmentDocument = try await handle.documents.save(
+        _ = try await handle.documents.save(
             note.id,
             changeSet: .source(attachmentBefore.rawContent + "\n[Material](" + attachment.markdownDestination + ")\n"),
             expectedRevision: attachmentBefore.fingerprint

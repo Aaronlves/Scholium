@@ -118,7 +118,7 @@ final class WindowEditorFlushCoordinator {
             }
             aggregateTriptychID = triptychID
         }
-        let flush: @MainActor () async throws -> Void = { [weak self] in
+        let flush: @MainActor () async throws -> Void = {
             try await flushOwnedSessions()
         }
         aggregateFlush = flush

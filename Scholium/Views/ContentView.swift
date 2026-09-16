@@ -41,8 +41,6 @@ struct ContentView: View {
     @ObservedObject private var libraryMutationController: WindowLibraryMutationController
     let windowCoordinator: WorkspaceWindowCoordinator
     @Environment(\.scholiumReduceMotion) private var reduceMotion
-    @Environment(\.openSettings) private var openSettings
-    @Environment(\.openWindow) private var openWindow
 
     init(
         appState: WindowModel,
@@ -286,13 +284,6 @@ struct ContentView: View {
         appState.currentNote?.workspaceSnapshot?.stableIdentity.resolvedID
     }
 
-    private var currentSettlementRequirement: WorkspaceSettlementRequirement? {
-        guard let noteID = currentNoteStableID else { return nil }
-        return researchController.researchSnapshot?.settlementRequirements.first {
-            $0.noteID == noteID
-        }
-    }
-
     private var currentNoteDocumentSession: DocumentSessionModel? {
         if let descriptor = appState.currentDocumentDescriptor {
             return appState.documentController.session(for: descriptor.sessionKey)
@@ -303,13 +294,6 @@ struct ContentView: View {
         return appState.documentController.session(
             for: DocumentSessionKey(vaultID: vaultID, noteID: noteID)
         )
-    }
-
-    private var currentDocumentNotificationScope: VaultQualifiedNoteID? {
-        guard let note = appState.currentNote,
-            let vaultID = appState.currentDocumentVaultID
-        else { return nil }
-        return VaultQualifiedNoteID(vaultID: vaultID, relativePath: note.relativePath)
     }
 
     private var researchProjectionFreshness: ResearchProjectionFreshness {

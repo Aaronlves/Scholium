@@ -88,7 +88,7 @@ extension MCPAppBridgeRequestRouterTests {
         let context = try #require(read["context"]?.objectValue)
         #expect(context["attachments"]?.objectValue?["total"]?.intValue == 0)
         args["note_id"] = .string(fixture.analysisNoteID.uuidString)
-        let analysis = try result(await router.handle(.init(tool: .readNote, arguments: args)))
+        _ = try result(await router.handle(.init(tool: .readNote, arguments: args)))
         args["include_context"] = .string("true")
         #expect(await router.handle(.init(tool: .readNote, arguments: args)).error?.code == .invalidRequest)
         await #expect(throws: AgentCollaborationError.self) {

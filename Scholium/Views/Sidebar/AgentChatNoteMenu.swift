@@ -2,8 +2,15 @@ import AppKit
 import ScholiumContracts
 import SwiftUI
 
+private struct OpenChatNoteInSeparateWindowKey: EnvironmentKey {
+    static let defaultValue: (@MainActor @Sendable (URL) -> Void)? = nil
+}
+
 extension EnvironmentValues {
-    @Entry var openChatNoteInSeparateWindow: ((URL) -> Void)? = nil
+    var openChatNoteInSeparateWindow: (@MainActor @Sendable (URL) -> Void)? {
+        get { self[OpenChatNoteInSeparateWindowKey.self] }
+        set { self[OpenChatNoteInSeparateWindowKey.self] = newValue }
+    }
 }
 
 /// All native Chat note surfaces share the same document-location action.

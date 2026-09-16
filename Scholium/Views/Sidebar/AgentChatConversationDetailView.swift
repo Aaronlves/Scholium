@@ -9,7 +9,6 @@ struct AgentChatConversationDetailView: View {
     @Environment(\.openSettings) private var openSettings
     @Environment(\.scholiumFileSelectionPresenter) private var fileSelectionPresenter
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.controlActiveState) private var controlActiveState
     @ObservedObject var controller: AgentChatController
     let isVisible: Bool
     let addSelection: (UUID) async -> Bool
@@ -371,7 +370,7 @@ struct AgentChatConversationDetailView: View {
                 status: item.carriesTurnStatus(in: timelineMessages) ? turnPresentation(item.messages.first?.turnID) : nil,
                 preservesReading: isAwayFromLatest || readingIsPaused || presentation.transcriptIsScrolling,
                 hasInspectedActivity: item.messages.contains { expandedActivityIDs.contains($0.id) },
-                animates: isVisible && controller.approvals.isEmpty,
+                animates: isVisible && !reduceMotion && controller.approvals.isEmpty,
                 inspect: { readingIsPaused = true },
                 userExpansion: Binding(
                     get: { readingSession.processExpansions[item.id] },
@@ -393,11 +392,11 @@ struct AgentChatConversationDetailView: View {
             }
         } else if let message = item.messages.first {
             if message.role == .assistant && item.carriesTurnStatus(in: timelineMessages) {
-                AgentChatTurnStatus(presentation: turnPresentation(message.turnID), animates: isVisible)
+                AgentChatTurnStatus(presentation: turnPresentation(message.turnID), animates: isVisible && !reduceMotion)
             }
             messageView(message)
             if message.role == .user && item.carriesTurnStatus(in: timelineMessages) {
-                AgentChatTurnStatus(presentation: turnPresentation(message.turnID), animates: isVisible)
+                AgentChatTurnStatus(presentation: turnPresentation(message.turnID), animates: isVisible && !reduceMotion)
             }
         }
     }
@@ -576,11 +575,6 @@ struct AgentChatConversationDetailView: View {
         return AgentChatTimelineItem.activeActivityID(in: timelineMessages, turnID: controller.currentTurnID)
     }
 
-    private func activitySymbol(_ activity: AgentChatActivity) -> some View {
-        ScholiumSidebarIcon(systemImage: activity.status.isActive ? activity.kind.symbol : activity.status.symbol)
-            .accessibilityHidden(true)
-    }
-
     @ViewBuilder
     private func activityRow(_ message: AgentChatMessage) -> some View {
         if let activity = message.activity {
@@ -707,8 +701,11 @@ struct AgentChatConversationDetailView: View {
                 } ?? false
             if !hasHeader {
                 if controller.state == .working || controller.state == .stopping || controller.state == .compacting {
-                    AgentChatTurnStatus(presentation: turnPresentation(controller.currentTurnID), animates: isVisible)
-                        .accessibilityIdentifier("scholium.chat.currentActivity")
+                    AgentChatTurnStatus(
+                        presentation: turnPresentation(controller.currentTurnID),
+                        animates: isVisible && !reduceMotion
+                    )
+                    .accessibilityIdentifier("scholium.chat.currentActivity")
                 } else {
                     HStack {
                         Text(

@@ -61,7 +61,12 @@ struct AgentChatTurnStatus: View {
     @Environment(\.controlActiveState) private var activeState
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1, paused: !presentation.isWorking || !animates || !isEnabled || activeState == .inactive)) { context in
+        TimelineView(
+            .animation(
+                minimumInterval: 1,
+                paused: !presentation.isWorking || !animates || reduceMotion || !isEnabled || activeState == .inactive
+            )
+        ) { context in
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     if presentation.state == .completed, isActivityDisclosure {
@@ -85,10 +90,7 @@ struct AgentChatTurnStatus: View {
             }
             .font(.callout).monospacedDigit().foregroundStyle(.secondary)
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel(
-                (isActivityDisclosure ? Text("Activity Log", bundle: .module) + Text(verbatim: ": ") : Text(""))
-                    + Text(ScholiumL10n.string(presentation.titleKey, locale: locale))
-            )
+            .accessibilityLabel(Text(verbatim: accessibilityLabel))
             .accessibilityValue(
                 [
                     presentation.elapsedLabel(at: context.date, locale: locale),
@@ -98,5 +100,11 @@ struct AgentChatTurnStatus: View {
                 .compactMap { $0 }.joined(separator: ", ")
             )
         }
+    }
+
+    private var accessibilityLabel: String {
+        let title = ScholiumL10n.string(presentation.titleKey, locale: locale)
+        guard isActivityDisclosure else { return title }
+        return "\(ScholiumL10n.string("Activity Log", locale: locale)): \(title)"
     }
 }
