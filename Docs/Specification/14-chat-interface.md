@@ -55,7 +55,9 @@ whitespace, is editable; text clicks position the native caret. Return sends whe
 available; Shift-Return or Option-Return inserts a newline. Marked-text Return belongs
 to the input method. Native placeholder visibility includes composition and never overlaps marked text. Unavailable sending preserves the draft and selection, with a
 visible connection explanation when disconnected. Native selection and Undo remain
-within the current conversation. Back returns to conversations while work
+within the current conversation. Sending starts a fresh draft Undo history;
+Chat input never shares that history with Document or another input.
+Back returns to conversations while work
 continues. User messages align trailing in content-sized shared-Accent bubbles with
 legible full-opacity text. Repeated visible speaker labels are omitted; alignment
 and accessible speaker names retain authorship. Agent replies support natural long-form prose.
@@ -131,7 +133,7 @@ Opening the list neither starts nor refreshes Agent execution.
 Return to latest is a neutral downward-arrow button with an accessible name, shown
 only away from the latest content. Exact comparisons remain available
 only by explicit action.
-Each final reply provides a quiet Copy action and a Sources action when it contains
+Each final reply provides a quiet Copy Markdown action for its exact reply text and a Sources action when it contains
 locatable references or has supplied materials in its confirmed turn. Sources opens a native popover for that reply, including cited
 webpages, Notes and other supplied locators; it is not restricted to workspace Notes.
 It retains source titles and destinations without inventing previews or attributing
@@ -143,7 +145,7 @@ Runtime web access remains separately named. A compact Materials for This Turn
 disclosure reuses the existing Note/file/image previews and identifies the supplied
 representation; it never presents all materials as citations or adds another reader.
 Sources and conversation file-operation history have distinct scopes. Eligible
-message actions use familiar icon buttons for Copy, Sources, Materials, Edit in
+message actions use familiar icon buttons for Copy Markdown, Sources, Materials, Edit in
 New Branch, Branch from This Turn, Retry in New Branch and Quote in Reply. The
 row appears when the pointer enters that message or its controls receive keyboard
 focus. It remains visible with VoiceOver or Switch Control. Visual concealment
@@ -157,7 +159,23 @@ consistent pointer feedback, while native controls retain focus and disabled
 behavior. Revealing the row and highlighting one action are separate states.
 Floating Changes/Agents controls use native button chrome; menu items, primary
 delivery controls, disclosures and navigation rows retain their own categories.
-Context menus remain equivalent routes. Pointer hover is not the sole route.
+Native text selection retains Copy and Ask About Selection in its context menu;
+message actions retain context menus at their controls without covering the
+text's pointer interaction. Pointer hover is not the sole route.
+Selected reply text supports ordinary Copy/Paste and copy-only dragging into
+Edit or Source. The editor shows a valid insertion point and inserts the selected
+rendered text there, with focus ready for typing and one Undo step. An unavailable
+drop position, read-only surface or active composition cannot replace an existing
+selection or change source. Copy Markdown retains the complete original reply;
+selected-text copying does not reconstruct Markdown from its presentation.
+Dragging selected Document text into the composer inserts ordinary draft text
+at its native drop target without removing Note source or sending the draft.
+Both directions use native text dragging, including enabled three-finger trackpad
+dragging. The system owns gesture timing, selection-versus-drag disambiguation
+and the selection image; the app does not force immediate dragging or draw a
+replacement preview.
+Changing text focus preserves the other surface's selection while presenting
+it as inactive; two retained selections must not both imply current keyboard focus.
 Ratings and export actions are not part of this reply-action surface.
 Reply prose fills the available width between the shared sidebar grid insets,
 using ordinary line wrapping without paragraph-wide line balancing or extra

@@ -184,7 +184,7 @@ struct MarkdownEditorProtocolTests {
             """
             {
               "type": "contextMenuRequested",
-              "protocolVersion": 37,
+              "protocolVersion": 38,
               "sessionID": "11111111-2222-3333-4444-555555555555",
               "documentID": "topics:Scope.md",
               "startingFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -222,7 +222,7 @@ struct MarkdownEditorProtocolTests {
     func documentTitleRenameMessageDecoding() throws {
         let object: [String: Any] = [
             "type": "requestDocumentTitleRename",
-            "protocolVersion": 37,
+            "protocolVersion": 38,
             "sessionID": "11111111-2222-3333-4444-555555555555",
             "documentID": "topics:Scope.md",
             "startingFingerprint": String(repeating: "a", count: 64),
@@ -253,7 +253,7 @@ struct MarkdownEditorProtocolTests {
     @Test("Inbound bridge rejects unknown, stale-version, and extra-field messages")
     func inboundBridgeRejectsUnrecognizedContracts() {
         let envelope: [String: Any] = [
-            "protocolVersion": 37,
+            "protocolVersion": 38,
             "sessionID": "11111111-2222-3333-4444-555555555555",
             "documentID": "session-document",
             "startingFingerprint": String(repeating: "a", count: 64),
@@ -294,7 +294,7 @@ struct MarkdownEditorProtocolTests {
     func interactionFocusTargetDecoding() throws {
         let envelope: [String: Any] = [
             "type": "interactionChanged",
-            "protocolVersion": 37,
+            "protocolVersion": 38,
             "sessionID": "11111111-2222-3333-4444-555555555555",
             "documentID": "session-document",
             "startingFingerprint": String(repeating: "a", count: 64),
@@ -317,11 +317,44 @@ struct MarkdownEditorProtocolTests {
         #expect(EditorBridgeMessageDecoder.decode(malformed) == nil)
     }
 
+    @Test("A drop focus request admits only the current exact editor envelope")
+    func dropFocusRequestUsesExactEnvelope() throws {
+        let object: [String: Any] = [
+            "type": "requestEditorFocus",
+            "protocolVersion": 38,
+            "sessionID": "11111111-2222-3333-4444-555555555555",
+            "documentID": "session-document",
+            "startingFingerprint": String(repeating: "a", count: 64),
+            "documentVersion": 4,
+        ]
+        let decoded = try #require(EditorBridgeMessageDecoder.decode(object))
+        guard case .requestEditorFocus(let envelope) = decoded else {
+            Issue.record("The typed bridge did not decode the drop focus request.")
+            return
+        }
+        #expect(envelope.documentVersion == 4)
+        #expect(decoded.envelope == envelope)
+        for key in ["protocolVersion", "sessionID", "documentID", "startingFingerprint", "documentVersion"] {
+            var missing = object
+            missing.removeValue(forKey: key)
+            #expect(EditorBridgeMessageDecoder.decode(missing) == nil)
+        }
+        var malformed = object
+        malformed["selection"] = ["anchor": 0, "head": 0]
+        #expect(EditorBridgeMessageDecoder.decode(malformed) == nil)
+        malformed = object
+        malformed["protocolVersion"] = 37
+        #expect(EditorBridgeMessageDecoder.decode(malformed) == nil)
+        malformed = object
+        malformed["documentVersion"] = -1
+        #expect(EditorBridgeMessageDecoder.decode(malformed) == nil)
+    }
+
     @Test("High-frequency deltas use the shared typed envelope and bounds")
     func inboundDeltaUsesTypedDirectDecoder() throws {
         let object: [String: Any] = [
             "type": "documentChanged",
-            "protocolVersion": 37,
+            "protocolVersion": 38,
             "sessionID": "11111111-2222-3333-4444-555555555555",
             "documentID": "session-document",
             "startingFingerprint": String(repeating: "a", count: 64),
@@ -351,7 +384,7 @@ struct MarkdownEditorProtocolTests {
         malformed["changes"] = [["from": 1, "to": 2, "insert": "x", "exactInsert": "y"]]
         #expect(EditorBridgeMessageDecoder.decode(malformed) == nil)
         malformed = object
-        malformed["protocolVersion"] = 36
+        malformed["protocolVersion"] = 37
         #expect(EditorBridgeMessageDecoder.decode(malformed) == nil)
     }
 

@@ -35,14 +35,11 @@ struct AgentChatComposerInput: NSViewRepresentable {
             host.commitCurrentDraft()
             host.editor.unmarkText()
             host.conversationID = conversationID
-            host.editor.string = text
-            host.editor.setSelectedRange(NSRange(location: (text as NSString).length, length: 0))
-            host.editor.undoManager?.removeAllActions()
+            host.editor.replaceDraft(text, selection: NSRange(location: (text as NSString).length, length: 0))
             host.lastPublishedText = text
         } else if host.editor.string != text, !host.editor.hasMarkedText() {
             let selection = host.editor.selectedRange()
-            host.editor.string = text
-            host.editor.setSelectedRange(NSRange(location: min(selection.location, (text as NSString).length), length: 0))
+            host.editor.replaceDraft(text, selection: NSRange(location: min(selection.location, (text as NSString).length), length: 0))
             host.lastPublishedText = text
         }
         host.onEdit = { text = $0 }
@@ -180,6 +177,22 @@ struct AgentChatComposerInput: NSViewRepresentable {
 }
 
 @MainActor final class AgentChatComposerTextView: NSTextView {
+    // Native typing history belongs to this draft, never to another input or
+    // a document that happens to share its window's responder chain.
+    private let draftUndoManager = UndoManager()
+    override var undoManager: UndoManager? { draftUndoManager }
+
+    /// Application replacement (including Send clearing the draft) invalidates
+    /// native typing ranges. Ordinary typing and completion keep their history.
+    func replaceDraft(_ text: String, selection: NSRange) {
+        breakUndoCoalescing()
+        draftUndoManager.removeAllActions()
+        draftUndoManager.disableUndoRegistration()
+        defer { draftUndoManager.enableUndoRegistration() }
+        string = text
+        setSelectedRange(selection)
+    }
+
     static var placeholder: String { String(localized: "/ commands · @ notes · $ skills", bundle: .module) }
 
     // Placeholder visibility follows the native buffer, including uncommitted

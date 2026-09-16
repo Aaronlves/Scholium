@@ -127,6 +127,10 @@ body,
 }
 
 .cm-scholium-selected-text {
+  background: var(--scholium-native-inactive-text-selection) !important;
+}
+
+.cm-focused .cm-scholium-selected-text {
   background: color-mix(in srgb, var(--scholium-color-accent) 24%, transparent) !important;
 }
 

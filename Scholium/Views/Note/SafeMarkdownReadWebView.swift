@@ -40,7 +40,6 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
     var onRenderingLoading: (() -> Void)? = nil
     var onRenderingReady: (() -> Void)? = nil
     var onReplyEvent: ((ReadReplyEvent) -> Void)? = nil
-    var replyQuoteRequest: UUID? = nil
     var onRenderedDiagramSize: ((CGSize) -> Void)? = nil
     var findRequest: DocumentFindPresentationRequest? = nil
     var onFindResult: ((UInt64, Result<DocumentFindResult, any Error>) -> Void)? = nil
@@ -144,7 +143,6 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 testingScrollRestoreDelayMilliseconds
         #endif
         context.coordinator.onReplyEvent = onReplyEvent
-        context.coordinator.quoteReply(ifRequested: replyQuoteRequest, in: webView)
         context.coordinator.onRenderedDiagramSize = onRenderedDiagramSize
         context.coordinator.onAskAgent = onAskAgent
         context.coordinator.onPassageAction = onPassageAction
@@ -229,7 +227,6 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         private var replyPageFingerprint: String?
         private var replyUpdateTask: Task<Void, Never>?
 
-        private var consumedReplyQuote: UUID?
         var onRenderedDiagramSize: ((CGSize) -> Void)?
         private var onRenderingReady: (() -> Void)?
         private var scrollRestoration: SafeMarkdownReadScrollRestoration
@@ -717,6 +714,13 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                     view.bounds.contains(NSPoint(x: left, y: top))
                 else { return }
                 onReplyEvent?(.noteContext(url, point: NSPoint(x: left, y: top), view: view))
+            case "replySelectionContext":
+                guard let text = payload["text"] as? String, !text.isEmpty, text.utf8.count <= 65_536,
+                    let left = payload["left"] as? Double, let top = payload["top"] as? Double,
+                    left.isFinite, top.isFinite, let view = message.webView,
+                    view.bounds.contains(NSPoint(x: left, y: top))
+                else { return }
+                onReplyEvent?(.selectionContext(text, point: NSPoint(x: left, y: top), view: view))
             case "replyQuote":
                 if let text = payload["text"] as? String, !text.isEmpty, text.utf8.count <= 65_536 {
                     onReplyEvent?(.quote(text))
@@ -1046,14 +1050,6 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 WebKitInterfaceLocalization.current()
                     .string("The Review renderer stopped unexpectedly.")
             )
-        }
-
-        func quoteReply(ifRequested request: UUID?, in webView: WKWebView) {
-            guard let request, request != consumedReplyQuote, onReplyEvent != nil else { return }
-            consumedReplyQuote = request
-            webView.evaluateJavaScript(
-                "window.scholiumQuoteReplySelection?.()", in: nil,
-                in: SafeMarkdownReadWebView.bridgeContentWorld, completionHandler: nil)
         }
 
         /// Read-only SVG layout projection, never a source or viewport measurement.
@@ -1778,6 +1774,7 @@ enum ReadReplyEvent {
     case interaction
     case layout(height: CGFloat, intrinsicWidth: CGFloat?)
     case quote(String)
+    case selectionContext(String, point: NSPoint, view: NSView)
     case noteContext(URL, point: NSPoint, view: NSView)
     case object(Int, copy: Bool, size: CGSize, anchor: NSRect, view: NSView)
 }

@@ -26,7 +26,6 @@ import {
   WidgetType,
   ViewUpdate,
   drawSelection,
-  dropCursor,
   gutterLineClass,
   highlightSpecialChars,
   keymap,
@@ -86,6 +85,8 @@ import {
 import {continueCallout, continueList, indentList} from "./interaction";
 import {tableTabAction} from "./tables";
 import {decodeClipboardPayload, isSingleSafeURL, pasteAsMarkdown} from "./clipboard";
+import {createEditorTextTransfer} from "./text-transfer";
+import {completeHeadingSelection} from "./text-transfer-ranges";
 import {linkTargetAt} from "./link-target";
 import {scholiumNoteLanguage} from "./language";
 import {
@@ -733,6 +734,7 @@ function projectedWidgetPointerStart(view: EditorView, event: MouseEvent) {
 const liveSelection = createLiveSelectionController({
   handleModifiedLink: modifiedProjectedLink,
   handleProjectedPointerStart: projectedWidgetPointerStart,
+  completeSelection: completeHeadingSelection,
 });
 
 const liveMermaidProjection = createLiveMermaidProjection({
@@ -1991,7 +1993,20 @@ const editorExtensions = [
   history(),
   drawSelection({drawRangeCursor: false}),
   textSelectionPresentation,
-  dropCursor(),
+  createEditorTextTransfer({
+    documentIdentity: () => documentAttachment,
+    compositionActive: () => compositionGate.active || documentTitleComposing,
+    projectedPosition: (view, event) => configuredEditorMode(view.state) === "livePreview"
+      ? projectedHeadingSourceOffset(view, event) : null,
+    protection: state => commandProtection("pastePlain", state),
+    unsupportedFile: () => announceEditorMessage(editor.contentDOM, unsupportedFilePasteMessage()),
+    didInsert: label => {
+      lastUndoLabel = lastRedoLabel = label;
+      // DOM focus does not transfer AppKit's first responder from the Chat
+      // drag source. Request the native half after the source transaction.
+      post({type: "requestEditorFocus"});
+    },
+  }),
   EditorState.allowMultipleSelections.of(true),
   indentOnInput(),
   bidiIsolates(),
@@ -2504,9 +2519,10 @@ editor.contentDOM.addEventListener("compositionstart", () => {
 
 function pasteTransfer(
   transfer: DataTransfer,
-  dropPosition?: number,
   requestNativeImageImport = false,
 ) {
+  if (editor.state.readOnly || !editor.state.facet(EditorView.editable)
+      || editor.composing || compositionGate.active || documentTitleComposing) return true;
   if (Array.from(transfer.files).length > 0
       || Array.from(transfer.items).some((item) => item.kind === "file")) {
     const image = Array.from(transfer.files).some((file) => file.type.startsWith("image/"))
@@ -2521,7 +2537,6 @@ function pasteTransfer(
   }
   const text = normalizedDocumentText(transfer.getData("text/plain"));
   if (!text) return false;
-  if (dropPosition !== undefined) editor.dispatch({selection: {anchor: dropPosition}});
   const url = editingFrontmatterSelection() ? null : isSingleSafeURL(text);
   const command = url && editor.state.selection.ranges.every((selection) => !selection.empty)
     ? "linkSelectedText"
@@ -2535,12 +2550,7 @@ function pasteTransfer(
 
 editor.contentDOM.addEventListener("paste", (event) => {
   if (!event.clipboardData) return;
-  if (pasteTransfer(event.clipboardData, undefined, true)) event.preventDefault();
-}, {capture: true});
-editor.contentDOM.addEventListener("drop", (event) => {
-  if (!event.dataTransfer) return;
-  const position = editor.posAtCoords({x: event.clientX, y: event.clientY});
-  if (pasteTransfer(event.dataTransfer, position ?? undefined)) event.preventDefault();
+  if (pasteTransfer(event.clipboardData, true)) event.preventDefault();
 }, {capture: true});
 
 function refreshMermaidTheme() {

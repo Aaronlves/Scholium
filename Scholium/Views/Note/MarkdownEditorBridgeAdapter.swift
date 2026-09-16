@@ -119,6 +119,7 @@ enum EditorBridgeMessage: Equatable, Sendable {
     case documentChanged(EditorDocumentChangeMessage)
     case performanceSample(EditorPerformanceMessage)
     case requestSave(EditorBridgeEnvelope)
+    case requestEditorFocus(EditorBridgeEnvelope)
     case requestDocumentFind(EditorFindShortcutMessage)
     case requestDocumentTitleRename(EditorDocumentTitleRenameMessage)
     case requestImagePaste(EditorBridgeEnvelope)
@@ -138,6 +139,7 @@ enum EditorBridgeMessage: Equatable, Sendable {
         case .documentChanged(let message): message.envelope
         case .performanceSample(let message): message.envelope
         case .requestSave(let envelope),
+            .requestEditorFocus(let envelope),
             .requestImagePaste(let envelope),
             .requestMermaidRuntime(let envelope),
             .requestMathRuntime(let envelope):
@@ -278,6 +280,8 @@ enum EditorBridgeMessageDecoder {
                 ))
         case "requestSave":
             return exactEnvelopeMessage(object, envelope: envelope, case: .requestSave)
+        case "requestEditorFocus":
+            return exactEnvelopeMessage(object, envelope: envelope, case: .requestEditorFocus)
         case "requestDocumentTitleRename":
             guard
                 hasOnlyKeys(
@@ -392,6 +396,7 @@ enum EditorBridgeMessageDecoder {
 
     private enum EnvelopeOnlyCase {
         case requestSave
+        case requestEditorFocus
         case requestImagePaste
         case requestMermaidRuntime
         case requestMathRuntime
@@ -405,6 +410,7 @@ enum EditorBridgeMessageDecoder {
         guard hasOnlyKeys(object, additional: ["type"]) else { return nil }
         return switch messageCase {
         case .requestSave: .requestSave(envelope)
+        case .requestEditorFocus: .requestEditorFocus(envelope)
         case .requestImagePaste: .requestImagePaste(envelope)
         case .requestMermaidRuntime: .requestMermaidRuntime(envelope)
         case .requestMathRuntime: .requestMathRuntime(envelope)

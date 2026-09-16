@@ -6,6 +6,76 @@ import Testing
 
 @Suite("Native chat input") @MainActor
 struct AgentChatComposerInputTests {
+    @Test("Send clearing or replacing a draft discards invalid typing ranges and retains new typing Undo", arguments: ["", "short"])
+    func replacedDraftResetsOnlyItsTypingHistory(replacement: String) throws {
+        let host = AgentChatComposerHost()
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 300, height: 80), styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = host
+        defer { window.close() }
+        let undo = try #require(host.editor.undoManager)
+        undo.groupsByEvent = false
+        undo.beginUndoGrouping()
+        host.editor.insertText("A much longer sent request 中文 😀", replacementRange: NSRange(location: 0, length: 0))
+        undo.endUndoGrouping()
+        #expect(undo.canUndo)
+
+        // The same method serves same-conversation Send and conversation changes.
+        host.editor.replaceDraft(replacement, selection: NSRange(location: replacement.utf16.count, length: 0))
+        #expect(!undo.canUndo && !undo.canRedo)
+        undo.undo()
+        #expect(host.editor.string == replacement)
+        undo.beginUndoGrouping()
+        host.editor.insertText(" new", replacementRange: NSRange(location: replacement.utf16.count, length: 0))
+        undo.endUndoGrouping()
+        host.editor.breakUndoCoalescing()
+        #expect(undo.canUndo)
+        undo.undo()
+        #expect(host.editor.string == replacement)
+        undo.redo()
+        #expect(host.editor.string == replacement + " new")
+    }
+
+    @Test("Composer histories stay independent of other composers and native window text", arguments: [false, true])
+    func composerUndoIsIsolated(acrossWindows: Bool) throws {
+        let first = AgentChatComposerHost()
+        let second = AgentChatComposerHost()
+        let native = NSTextView(frame: NSRect(x: 0, y: 160, width: 300, height: 60))
+        native.isRichText = false
+        native.allowsUndo = true
+        let firstWindow = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 300, height: 240), styleMask: [.titled], backing: .buffered, defer: false)
+        let secondWindow = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 300, height: 80), styleMask: [.titled], backing: .buffered, defer: false)
+        firstWindow.isReleasedWhenClosed = false
+        secondWindow.isReleasedWhenClosed = false
+        defer { firstWindow.close(); secondWindow.close() }
+        let root = try #require(firstWindow.contentView)
+        first.frame = NSRect(x: 0, y: 0, width: 300, height: 70)
+        second.frame = NSRect(x: 0, y: 80, width: 300, height: 70)
+        root.addSubview(first)
+        root.addSubview(native)
+        if acrossWindows { secondWindow.contentView = second } else { root.addSubview(second) }
+        let firstUndo = try #require(first.editor.undoManager)
+        let secondUndo = try #require(second.editor.undoManager)
+        let nativeUndo = try #require(native.undoManager)
+        #expect(firstUndo !== secondUndo && firstUndo !== nativeUndo && secondUndo !== nativeUndo)
+
+        for (editor, manager, text) in [(first.editor as NSTextView, firstUndo, "first draft"), (second.editor as NSTextView, secondUndo, "second draft"), (native, nativeUndo, "window input")] {
+            manager.groupsByEvent = false
+            manager.beginUndoGrouping()
+            editor.insertText(text, replacementRange: NSRange(location: 0, length: 0))
+            manager.endUndoGrouping()
+            editor.breakUndoCoalescing()
+        }
+        first.editor.replaceDraft("", selection: NSRange(location: 0, length: 0))
+        #expect(!firstUndo.canUndo && secondUndo.canUndo && nativeUndo.canUndo)
+        secondUndo.undo()
+        #expect(first.editor.string.isEmpty && second.editor.string.isEmpty && native.string == "window input")
+        nativeUndo.undo()
+        #expect(first.editor.string.isEmpty && second.editor.string.isEmpty && native.string.isEmpty)
+        secondUndo.redo()
+        #expect(second.editor.string == "second draft" && first.editor.string.isEmpty && native.string.isEmpty)
+    }
+
     @Test("Placeholder yields to uncommitted Chinese input and returns after clearing")
     func nativePlaceholder() {
         let host = AgentChatComposerHost()

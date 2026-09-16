@@ -150,6 +150,7 @@ enum ScholiumColorRole: String, CaseIterable, Sendable {
 enum ScholiumNativeColorRole: Sendable {
     case label, secondaryLabel, windowBackground, controlBackground, textBackground, controlAccent
     case searchMatchHighlight
+    case inactiveTextSelection
     case structuralShadow
     case unreadAction, importantAction, archiveAction
 
@@ -162,6 +163,7 @@ enum ScholiumNativeColorRole: Sendable {
         case .textBackground: .textBackgroundColor
         case .controlAccent: .controlAccentColor
         case .searchMatchHighlight: .findHighlightColor
+        case .inactiveTextSelection: .unemphasizedSelectedTextBackgroundColor
         case .structuralShadow: .shadowColor
         case .unreadAction: .systemBlue
         case .importantAction: .systemOrange
@@ -681,19 +683,24 @@ enum ScholiumWebDesignTokens {
             let value = colorResolver.calloutTitleColor(role, isDark: isDark, increasedContrast: increasedContrast)
             return "--scholium-callout-\(role)-title: \(String(format: "#%06x", value));"
         }.joined(separator: "\n")
-        // Transport the same native secondary label used by the sidebar into WebKit.
-        var secondaryLabel = ""
+        // Transport native text colors into WebKit without adding palette inputs.
+        var nativeTextColors: [String] = []
         let appearance = NSAppearance(
             named: increasedContrast
                 ? (isDark ? .accessibilityHighContrastDarkAqua : .accessibilityHighContrastAqua)
                 : (isDark ? .darkAqua : .aqua))!
         appearance.performAsCurrentDrawingAppearance {
-            if let rgb = ScholiumNativeColorRole.secondaryLabel.nsColor.usingColorSpace(.sRGB) {
-                secondaryLabel =
-                    "--scholium-native-secondary-label: rgba(\(rgb.redComponent * 255), \(rgb.greenComponent * 255), \(rgb.blueComponent * 255), \(rgb.alphaComponent));"
+            for (role, name) in [
+                (ScholiumNativeColorRole.secondaryLabel, "--scholium-native-secondary-label"),
+                (.inactiveTextSelection, "--scholium-native-inactive-text-selection"),
+            ] {
+                if let rgb = role.nsColor.usingColorSpace(.sRGB) {
+                    nativeTextColors.append(
+                        "\(name): rgba(\(rgb.redComponent * 255), \(rgb.greenComponent * 255), \(rgb.blueComponent * 255), \(rgb.alphaComponent));")
+                }
             }
         }
-        return colors + "\n" + callouts + "\n" + secondaryLabel
+        return colors + "\n" + callouts + "\n" + nativeTextColors.joined(separator: "\n")
     }
 
     private static func elevationDeclarations(

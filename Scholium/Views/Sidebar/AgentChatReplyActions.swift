@@ -70,8 +70,8 @@ struct AgentChatReplyActions: View {
             } label: {
                 ScholiumSidebarCopyIcon(copied: copied)
             }
-            .help(copied ? String(localized: "Copied") : String(localized: "Copy Reply"))
-            .accessibilityLabel(copied ? "Copied" : "Copy Reply")
+            .help(copied ? String(localized: "Copied") : String(localized: "Copy Markdown"))
+            .accessibilityLabel(copied ? "Copied" : "Copy Markdown")
             .accessibilityIdentifier("scholium.chat.copyReply")
             .task(id: copied) {
                 guard copied else { return }

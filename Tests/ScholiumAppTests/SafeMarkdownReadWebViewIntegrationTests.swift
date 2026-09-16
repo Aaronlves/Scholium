@@ -34,7 +34,7 @@ extension MarkdownEditorWebViewIntegrationTests {
         #expect(snapshot["height"] as? Double == snapshot["finalHeight"] as? Double)
     }
 
-    @Test("Chat note context menus target the pointed link and leave web links native")
+    @Test("Chat selection menus stay inside the selection and preserve other Note and web link menus")
     func chatNoteContextTarget() async throws {
         let first = AgentChatReference.url(noteID: UUID())
         let second = AgentChatReference.url(noteID: UUID())
@@ -50,13 +50,16 @@ extension MarkdownEditorWebViewIntegrationTests {
             try await harness.callBridgeJavaScript(
                 """
                 const links = document.querySelectorAll('#scholium-document a');
-                return [links[1], links[2]].map(link => {
+                const selection = window.getSelection();
+                const range = document.createRange(); range.selectNodeContents(links[0]);
+                selection.removeAllRanges(); selection.addRange(range);
+                return [...links].map(link => {
                     const box = link.getBoundingClientRect();
                     const event = new MouseEvent('contextmenu', {bubbles:true, cancelable:true, clientX:box.x+1, clientY:box.y+1});
                     link.dispatchEvent(event); return event.defaultPrevented;
                 });
                 """) as? [Bool]
-        #expect(cancelled == [true, false])
+        #expect(cancelled == [true, true, false])
         let deadline = ContinuousClock.now.advanced(by: .seconds(3))
         while !harness.replyEvents.contains(where: {
             if case .noteContext = $0 { return true }
@@ -70,6 +73,11 @@ extension MarkdownEditorWebViewIntegrationTests {
             return nil
         }
         #expect(targets == [second])
+        let selections = harness.replyEvents.compactMap { event -> String? in
+            if case .selectionContext(let text, _, _) = event { return text }
+            return nil
+        }
+        #expect(selections == ["First"])
     }
 
     @Test("Chat reader quotes one selection across prose, table and code")
@@ -89,7 +97,10 @@ extension MarkdownEditorWebViewIntegrationTests {
                 const last = root.querySelector('pre code').firstChild;
                 const range = document.createRange(); range.setStart(first, 0); range.setEnd(last, last.length);
                 const selection = window.getSelection(); selection.removeAllRanges(); selection.addRange(range);
-                window.scholiumQuoteReplySelection(); return selection.toString();
+                root.dispatchEvent(new KeyboardEvent('keydown', {
+                    key: 'r', metaKey: true, shiftKey: true, bubbles: true, cancelable: true
+                }));
+                return selection.toString();
                 """) as? String)
         let deadline = ContinuousClock.now.advanced(by: .seconds(3))
         while !harness.replyEvents.contains(where: {
@@ -2131,7 +2142,7 @@ extension MarkdownEditorWebViewIntegrationTests {
                 }
                 if clock.now >= deadline {
                     let diagnostic = try? await callBridgeJavaScript(
-                        "return {state: document.readyState, fonts: document.fonts.status, native: typeof window.scholiumNativeFloatingEvent, ready: await Promise.race([Promise.resolve(window.scholiumReadReady).then(() => true, error => String(error)), new Promise(resolve => setTimeout(() => resolve('pending'), 500))]), quote: typeof window.scholiumQuoteReplySelection, width: innerWidth, height: innerHeight};"
+                        "return {state: document.readyState, fonts: document.fonts.status, native: typeof window.scholiumNativeFloatingEvent, ready: await Promise.race([Promise.resolve(window.scholiumReadReady).then(() => true, error => String(error)), new Promise(resolve => setTimeout(() => resolve('pending'), 500))]), width: innerWidth, height: innerHeight};"
                     )
                     print("READ READY DIAGNOSTIC", diagnostic ?? "nil")
                     Issue.record("The Read WKWebView did not report rendering readiness.")

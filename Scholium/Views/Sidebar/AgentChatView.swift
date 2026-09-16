@@ -859,7 +859,9 @@ struct AgentChatView: View {
                         messageActions(message, in: conversationID)
                             .labelStyle(ScholiumSidebarActionLabelStyle())
                     }
-                }.buttonStyle(ScholiumContentActionButtonStyle())
+                }
+                .buttonStyle(ScholiumContentActionButtonStyle())
+                .contextMenu { messageActions(message, in: conversationID) }
             }
         }
         .modifier(
@@ -869,7 +871,6 @@ struct AgentChatView: View {
         )
         .accessibilityElement(children: .contain)
         .accessibilityLabel(message.role == .user ? ScholiumL10n.string("You", locale: locale) : "Codex")
-        .contextMenu { messageActions(message, in: conversationID) }
     }
 
     private func hasMessageActions(_ message: AgentChatMessage) -> Bool {

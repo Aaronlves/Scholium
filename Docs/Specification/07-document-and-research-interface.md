@@ -298,18 +298,20 @@ may transition briefly. Typing, composition, selection dragging and Reduce
 Motion finish motion immediately; source, caret and Undo remain authoritative. Unrecognized or incomplete inline punctuation remains ordinary source,
 without inferred styling.
 
-A valid heading keeps its semantic size while typing and when the caret leaves
-or re-enters it. Editing its prefix immediately updates the level or returns
-it to prose; while editing, an empty ATX heading keeps a visible marker line.
-An inactive heading or quotation may de-emphasize its structural prefix.
-Entering it reveals the exact prefix at the same source location without moving
-the researcher to another block or losing selection, composition, or scroll
-context. The product contract does not prescribe a particular prefix track,
-line-box recipe, or pixel-identical Review/Edit geometry. Preserved spaces keep
-their exact width without acquiring visible whitespace markers in ordinary
-Edit prose. Ordinary prose follows language-aware line-breaking rules, and
-closing punctuation is not left alone at a visual-line start merely because it
-follows an interactive inline projection.
+A heading retains its semantic size through focus changes; editing its prefix
+updates its level or returns it to prose. Empty active ATX headings retain a
+visible marker. Activation reveals exact syntax in place, preserving selection,
+composition and scroll. Preserved spaces retain their width without visible
+markers; language-aware wrapping keeps closing punctuation off visual-line starts.
+
+Completing an Edit pointer selection over a whole visible heading includes its
+original structural markers; complete-line selections include the final authored
+newline. Partial text and explicit Source ranges never expand. The actual
+selection and revealed syntax agree before copy, cut or drag. Complete lines
+containing a heading drop at line boundaries; partial text at a caret. Feedback
+and insertion share one location. Moves preserve Markdown and line endings,
+adding only necessary missing boundary separators, and undo once. Source changes
+invalidate local drags. Selecting a heading never implicitly selects its section.
 
 Review and Edit Callouts share role-specific title colors, typography, quiet surfaces,
 and a single-column header/body order. Examples do not acquire a Review-only

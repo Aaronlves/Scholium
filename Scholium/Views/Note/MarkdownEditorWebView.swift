@@ -491,6 +491,11 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             case .requestSave(let envelope):
                 guard validEnvelope(envelope) else { return }
                 onRequestSave()
+            case .requestEditorFocus(let envelope):
+                guard validEnvelope(envelope), let webView = message.webView,
+                    activeWebView === webView
+                else { return }
+                session.acceptNativeFocusAfterDrop(from: webView)
             case .requestDocumentFind(let request):
                 guard validEnvelope(request.envelope) else { return }
                 onRequestFind(request.action)

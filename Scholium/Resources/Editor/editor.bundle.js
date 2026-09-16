@@ -12574,97 +12574,6 @@
       }
     }
   }));
-  var setDropCursorPos = /* @__PURE__ */ StateEffect.define({
-    map(pos, mapping) {
-      return pos == null ? null : mapping.mapPos(pos);
-    }
-  });
-  var dropCursorPos = /* @__PURE__ */ StateField.define({
-    create() {
-      return null;
-    },
-    update(pos, tr) {
-      if (pos != null)
-        pos = tr.changes.mapPos(pos);
-      return tr.effects.reduce((pos2, e) => e.is(setDropCursorPos) ? e.value : pos2, pos);
-    }
-  });
-  var drawDropCursor = /* @__PURE__ */ ViewPlugin.fromClass(class {
-    constructor(view) {
-      this.view = view;
-      this.cursor = null;
-      this.measureReq = { read: this.readPos.bind(this), write: this.drawCursor.bind(this) };
-    }
-    update(update) {
-      var _a2;
-      let cursorPos = update.state.field(dropCursorPos);
-      if (cursorPos == null) {
-        if (this.cursor != null) {
-          (_a2 = this.cursor) === null || _a2 === void 0 ? void 0 : _a2.remove();
-          this.cursor = null;
-        }
-      } else {
-        if (!this.cursor) {
-          this.cursor = this.view.scrollDOM.appendChild(document.createElement("div"));
-          this.cursor.className = "cm-dropCursor";
-        }
-        if (update.startState.field(dropCursorPos) != cursorPos || update.docChanged || update.geometryChanged)
-          this.view.requestMeasure(this.measureReq);
-      }
-    }
-    readPos() {
-      let { view } = this;
-      let pos = view.state.field(dropCursorPos);
-      let rect = pos != null && view.coordsAtPos(pos);
-      if (!rect)
-        return null;
-      let outer = view.scrollDOM.getBoundingClientRect();
-      return {
-        left: rect.left - outer.left + view.scrollDOM.scrollLeft * view.scaleX,
-        top: rect.top - outer.top + view.scrollDOM.scrollTop * view.scaleY,
-        height: rect.bottom - rect.top
-      };
-    }
-    drawCursor(pos) {
-      if (this.cursor) {
-        let { scaleX, scaleY } = this.view;
-        if (pos) {
-          this.cursor.style.left = pos.left / scaleX + "px";
-          this.cursor.style.top = pos.top / scaleY + "px";
-          this.cursor.style.height = pos.height / scaleY + "px";
-        } else {
-          this.cursor.style.left = "-100000px";
-        }
-      }
-    }
-    destroy() {
-      if (this.cursor)
-        this.cursor.remove();
-    }
-    setDropPos(pos) {
-      if (this.view.state.field(dropCursorPos) != pos)
-        this.view.dispatch({ effects: setDropCursorPos.of(pos) });
-    }
-  }, {
-    eventObservers: {
-      dragover(event) {
-        this.setDropPos(this.view.posAtCoords({ x: event.clientX, y: event.clientY }));
-      },
-      dragleave(event) {
-        if (event.target == this.view.contentDOM || !this.view.contentDOM.contains(event.relatedTarget))
-          this.setDropPos(null);
-      },
-      dragend() {
-        this.setDropPos(null);
-      },
-      drop() {
-        this.setDropPos(null);
-      }
-    }
-  });
-  function dropCursor() {
-    return [dropCursorPos, drawDropCursor];
-  }
   function iterMatches(doc2, re, from, to, f) {
     re.lastIndex = 0;
     for (let cursor = doc2.iterRange(from, to), pos = from, m; !cursor.next().done; pos += cursor.value.length) {
@@ -21701,7 +21610,7 @@
   }
 
   // protocol.ts
-  var EDITOR_PROTOCOL_VERSION = 37;
+  var EDITOR_PROTOCOL_VERSION = 38;
   var MAX_INBOUND_BYTES = 25e5;
   var MAX_SOURCE_UTF8_BYTES = 8e6;
   var operationTypes = /* @__PURE__ */ new Set([
@@ -22683,6 +22592,970 @@ ${fence}
   function isSingleSafeURL(value) {
     const trimmed = value.trim();
     return /^(https?:\/\/|mailto:)[^\s]+$/i.test(trimmed) ? trimmed : null;
+  }
+
+  // link-annotation.ts
+  function isEscaped(source, position) {
+    let backslashes = 0;
+    for (let cursor = position - 1; cursor >= 0 && source.charCodeAt(cursor) === 92; cursor -= 1) {
+      backslashes += 1;
+    }
+    return backslashes % 2 === 1;
+  }
+  function hasVisibleMarkdownContent(markdown2) {
+    let remaining = markdown2.replace(/(`+)[\s]*\1/g, "");
+    remaining = remaining.replace(/^[ \t]{0,3}(?:(?:\*[ \t]*){3,}|(?:-[ \t]*){3,}|(?:_[ \t]*){3,})$/gm, "").replace(/^[ \t]{0,3}(?:#{1,6}|>+|[-+*]|\d+[.)])[ \t]*$/gm, "");
+    return remaining.trim().length > 0;
+  }
+  function linkAnnotationAfter(source, linkTo) {
+    if (source.slice(linkTo, linkTo + 2) !== "{{") return null;
+    for (let cursor = linkTo + 2; cursor + 1 < source.length; cursor += 1) {
+      const pair2 = source.slice(cursor, cursor + 2);
+      if (pair2 === "{{" && !isEscaped(source, cursor)) return null;
+      if (pair2 !== "}}" || isEscaped(source, cursor)) continue;
+      const markdown2 = source.slice(linkTo + 2, cursor);
+      if (!hasVisibleMarkdownContent(markdown2)) return null;
+      return {
+        from: linkTo,
+        to: cursor + 2,
+        contentFrom: linkTo + 2,
+        contentTo: cursor,
+        markdown: markdown2
+      };
+    }
+    return null;
+  }
+
+  // semantic-projection.ts
+  function mapSemanticProjectionRanges(previous, mapPosition) {
+    const mapRange2 = (range) => ({
+      from: mapPosition(range.from),
+      to: mapPosition(range.to)
+    });
+    const blocks = previous.blocks.map((block) => ({
+      ...block,
+      from: mapPosition(block.from),
+      to: mapPosition(block.to),
+      parent: block.parent ? {
+        kind: block.parent.kind,
+        from: mapPosition(block.parent.from),
+        to: mapPosition(block.parent.to)
+      } : null,
+      markerRanges: block.markerRanges.map(mapRange2),
+      taskMarkerRange: block.taskMarkerRange ? mapRange2(block.taskMarkerRange) : null
+    }));
+    const inlines = previous.inlines.map((inline) => ({
+      ...inline,
+      from: mapPosition(inline.from),
+      to: mapPosition(inline.to),
+      markerRanges: inline.markerRanges.map(mapRange2),
+      visibleRanges: inline.visibleRanges.map(mapRange2),
+      targetRange: inline.targetRange ? mapRange2(inline.targetRange) : null,
+      aliasRange: inline.aliasRange ? mapRange2(inline.aliasRange) : null,
+      linkRange: inline.linkRange ? mapRange2(inline.linkRange) : null,
+      annotationRange: inline.annotationRange ? mapRange2(inline.annotationRange) : null,
+      annotationContentRange: inline.annotationContentRange ? mapRange2(inline.annotationContentRange) : null
+    }));
+    const literals2 = previous.literals.map((literal2) => ({
+      ...literal2,
+      from: mapPosition(literal2.from),
+      to: mapPosition(literal2.to)
+    }));
+    return { blocks, inlines, literals: literals2 };
+  }
+  var blockKinds = /* @__PURE__ */ new Map([
+    ["Paragraph", "paragraph"],
+    ["Blockquote", "blockQuote"],
+    ["FencedCode", "code"],
+    ["CodeBlock", "code"],
+    ["BulletList", "unorderedList"],
+    ["OrderedList", "orderedList"],
+    ["ListItem", "listItem"],
+    ["Table", "table"],
+    ["HorizontalRule", "thematicBreak"],
+    ["HTMLBlock", "html"],
+    // CommonMark exposes a block HTML comment as CommentBlock while Swift
+    // Markdown exposes the same inert source as HTMLBlock. Keep both adapters
+    // on one raw-HTML presentation path so Review and Edit cannot drift.
+    ["CommentBlock", "html"],
+    ["Callout", "callout"],
+    ["FootnoteDefinition", "footnoteDefinition"],
+    ["BlockMath", "displayMath"],
+    ["ObsidianCommentBlock", "comment"],
+    ["UnclosedObsidianCommentBlock", "comment"]
+  ]);
+  var inlineKinds = /* @__PURE__ */ new Map([
+    ["StrongEmphasis", "strong"],
+    ["Emphasis", "emphasis"],
+    ["Strikethrough", "strikethrough"],
+    ["InlineCode", "code"],
+    ["Link", "link"],
+    ["Autolink", "link"],
+    ["Image", "image"],
+    ["Highlight", "highlight"],
+    ["WikiLink", "wikilink"],
+    ["InlineMath", "inlineMath"],
+    ["FootnoteReference", "footnoteReference"],
+    ["InlineFootnote", "inlineFootnote"],
+    ["ObsidianComment", "comment"]
+  ]);
+  function childRanges(root, names, stopAt = /* @__PURE__ */ new Set()) {
+    const ranges = [];
+    const visit = (node) => {
+      if (names.has(node.name)) ranges.push({ from: node.from, to: node.to });
+      if (node !== root && stopAt.has(node.name)) return;
+      for (let child = node.firstChild; child; child = child.nextSibling) visit(child);
+    };
+    visit(root);
+    return ranges.sort((left, right) => left.from - right.from || left.to - right.to);
+  }
+  function complementRanges(from, to, excluded) {
+    const visible = [];
+    let position = from;
+    for (const range of excluded) {
+      if (range.from > position) visible.push({ from: position, to: range.from });
+      position = Math.max(position, range.to);
+    }
+    if (position < to) visible.push({ from: position, to });
+    return visible;
+  }
+  function presentationBlockMarkerRanges(state, node, kind, markerNames, stopAt) {
+    const ranges = childRanges(node, markerNames, stopAt);
+    if (kind !== "heading" || !node.name.startsWith("ATXHeading")) return ranges;
+    return ranges.map((range) => {
+      if (range.from !== node.from) return range;
+      let to = range.to;
+      while (to < node.to) {
+        const character = state.doc.sliceString(to, to + 1);
+        if (character !== " " && character !== "	") break;
+        to += 1;
+      }
+      return { from: range.from, to };
+    });
+  }
+  function inlinePresentation(node, kind, source) {
+    const markerNames = /* @__PURE__ */ new Set();
+    switch (kind) {
+      case "strong":
+      case "emphasis":
+        markerNames.add("EmphasisMark");
+        break;
+      case "strikethrough":
+        markerNames.add("StrikethroughMark");
+        break;
+      case "code":
+        markerNames.add("CodeMark");
+        break;
+      case "link":
+      case "image":
+        markerNames.add("LinkMark");
+        break;
+      case "highlight":
+        markerNames.add("HighlightMark");
+        break;
+      case "wikilink":
+        markerNames.add("WikiLinkOpenMark");
+        markerNames.add("WikiEmbedMark");
+        markerNames.add("WikiLinkAliasMark");
+        markerNames.add("WikiLinkCloseMark");
+        break;
+      case "inlineMath":
+        markerNames.add("MathMark");
+        break;
+      case "footnoteReference":
+        markerNames.add("FootnoteOpenMark");
+        markerNames.add("FootnoteCloseMark");
+        break;
+      case "inlineFootnote":
+        markerNames.add("InlineFootnoteOpenMark");
+        markerNames.add("FootnoteCloseMark");
+        break;
+      case "comment":
+        break;
+    }
+    const markerRanges = childRanges(node, markerNames);
+    let targetRange = null;
+    let aliasRange = null;
+    let linkRange = null;
+    let annotationRange = null;
+    let annotationContentRange = null;
+    let projectionTo = node.to;
+    let visibleRanges = complementRanges(node.from, node.to, markerRanges);
+    if (kind === "link" || kind === "image") {
+      const explicitVisible = childRanges(node, /* @__PURE__ */ new Set(["URL"]));
+      if (explicitVisible.length === 0) return null;
+      if (node.name === "Autolink") {
+        visibleRanges = explicitVisible;
+      } else {
+        const linkMarks = markerRanges;
+        visibleRanges = linkMarks.length >= 2 ? [{ from: linkMarks[0].to, to: linkMarks[1].from }] : [];
+      }
+    } else if (kind === "wikilink") {
+      const alias = childRanges(node, /* @__PURE__ */ new Set(["WikiLinkAlias"]));
+      const target = childRanges(node, /* @__PURE__ */ new Set(["WikiLinkTarget"]));
+      targetRange = target[0] ?? null;
+      aliasRange = alias[0] ?? null;
+      visibleRanges = alias.length > 0 ? alias : target;
+      linkRange = { from: node.from, to: node.to };
+      const embedded = markerRanges.some((range) => source.slice(range.from, range.to).startsWith("!"));
+      const annotation = embedded ? null : linkAnnotationAfter(source, node.to);
+      if (annotation) {
+        annotationRange = { from: annotation.from, to: annotation.to };
+        annotationContentRange = { from: annotation.contentFrom, to: annotation.contentTo };
+        projectionTo = annotation.to;
+      }
+    } else if (kind === "inlineMath") {
+      visibleRanges = childRanges(node, /* @__PURE__ */ new Set(["MathContent"]));
+    } else if (kind === "footnoteReference") {
+      visibleRanges = childRanges(node, /* @__PURE__ */ new Set(["FootnoteIdentifier"]));
+    } else if (kind === "inlineFootnote") {
+      visibleRanges = childRanges(node, /* @__PURE__ */ new Set(["FootnoteContent"]));
+    } else if (kind === "comment") {
+      visibleRanges = [];
+    }
+    return {
+      kind,
+      nodeName: node.name,
+      from: node.from,
+      to: projectionTo,
+      markerRanges,
+      visibleRanges,
+      targetRange,
+      aliasRange,
+      linkRange,
+      annotationRange,
+      annotationContentRange
+    };
+  }
+  function rangeKey(from, to) {
+    return `${from}:${to}`;
+  }
+  function boundedLinePrefix(doc2, position, limit = 512) {
+    const line = doc2.lineAt(Math.max(0, Math.min(position, doc2.length)));
+    return doc2.sliceString(line.from, Math.min(line.to, line.from + limit));
+  }
+  function boundedProjectionRanges(documentLength, visibleRanges, margin = 2e3) {
+    const expanded = visibleRanges.map((range) => ({
+      from: Math.max(0, range.from - margin),
+      to: Math.min(documentLength, range.to + margin)
+    })).sort((left, right) => left.from - right.from || left.to - right.to);
+    const merged = [];
+    for (const range of expanded) {
+      const previous = merged.at(-1);
+      if (previous && range.from <= previous.to) previous.to = Math.max(previous.to, range.to);
+      else merged.push({ ...range });
+    }
+    return merged;
+  }
+  function semanticProjectionRanges(state, visibleRanges, margin = 2e3, tree = syntaxTree(state)) {
+    const result = {
+      blocks: [],
+      inlines: [],
+      literals: []
+    };
+    if (visibleRanges.length === 0) return result;
+    const from = Math.max(0, Math.min(...visibleRanges.map((range) => range.from)) - margin);
+    const to = Math.min(state.doc.length, Math.max(...visibleRanges.map((range) => range.to)) + margin);
+    const blockStack = [];
+    const source = state.doc.toString();
+    tree.iterate({
+      from,
+      to,
+      enter(reference) {
+        const node = reference.node;
+        const heading2 = /^(?:ATX|Setext)Heading([1-6])$/.exec(node.name);
+        const kind = heading2 ? "heading" : blockKinds.get(node.name);
+        if (kind) {
+          const parent = blockStack.at(-1) ?? null;
+          const markerNames = /* @__PURE__ */ new Set();
+          if (kind === "heading") markerNames.add("HeaderMark");
+          if (kind === "blockQuote") markerNames.add("QuoteMark");
+          if (kind === "listItem") {
+            markerNames.add("ListMark");
+            markerNames.add("TaskMarker");
+          }
+          if (kind === "code") markerNames.add("CodeMark");
+          if (kind === "callout") {
+            markerNames.add("CalloutQuoteMark");
+            markerNames.add("CalloutRoleMark");
+          }
+          if (kind === "displayMath") markerNames.add("MathMark");
+          const markerRanges = presentationBlockMarkerRanges(
+            state,
+            node,
+            kind,
+            markerNames,
+            kind === "listItem" ? /* @__PURE__ */ new Set(["ListItem"]) : /* @__PURE__ */ new Set()
+          );
+          const block = {
+            kind,
+            nodeName: node.name,
+            from: node.from,
+            to: node.to,
+            depth: blockStack.length,
+            parent: parent ? { kind: parent.kind, from: parent.from, to: parent.to } : null,
+            headingLevel: heading2 ? Number(heading2[1]) : null,
+            listDepth: kind === "listItem" ? blockStack.filter((block2) => block2.kind === "listItem").length : null,
+            markerRanges,
+            taskMarkerRange: kind === "listItem" ? markerRanges.find((range) => state.doc.sliceString(range.from, range.to).startsWith("[")) ?? null : null
+          };
+          result.blocks.push(block);
+          blockStack.push(block);
+        }
+        if (node.name === "Task") {
+          const taskMarker = childRanges(node, /* @__PURE__ */ new Set(["TaskMarker"]))[0];
+          if (taskMarker) {
+            let contentFrom = taskMarker.to;
+            while (contentFrom < node.to) {
+              const character = state.doc.sliceString(contentFrom, contentFrom + 1);
+              if (character !== " " && character !== "	") break;
+              contentFrom += 1;
+            }
+            if (contentFrom < node.to) {
+              const parent = blockStack.at(-1) ?? null;
+              const paragraph = {
+                kind: "paragraph",
+                nodeName: "TaskContent",
+                from: contentFrom,
+                to: node.to,
+                depth: blockStack.length,
+                parent: parent ? { kind: parent.kind, from: parent.from, to: parent.to } : null,
+                headingLevel: null,
+                listDepth: null,
+                markerRanges: [],
+                taskMarkerRange: null
+              };
+              result.blocks.push(paragraph);
+            }
+          }
+        }
+        const inlineKind = inlineKinds.get(node.name);
+        if (inlineKind) {
+          const inline = inlinePresentation(node, inlineKind, source);
+          if (inline) result.inlines.push(inline);
+        }
+        if ([
+          "HTMLTag",
+          "CommentBlock",
+          "Comment",
+          "ObsidianComment",
+          "UnclosedObsidianComment"
+        ].includes(node.name)) {
+          result.literals.push({ from: node.from, to: node.to, nodeName: node.name });
+          return false;
+        }
+      },
+      leave(reference) {
+        const node = reference.node;
+        const heading2 = /^(?:ATX|Setext)Heading([1-6])$/.test(node.name);
+        if (!heading2 && !blockKinds.has(node.name)) return;
+        const current = blockStack.at(-1);
+        if (current?.from === node.from && current.to === node.to && current.nodeName === node.name) {
+          blockStack.pop();
+        }
+      }
+    });
+    const paragraphIsProtected = (block) => source.slice(block.from, block.to).includes("%%") || source.slice(block.from, block.to).includes("<!--") || result.inlines.some((inline) => ["inlineMath", "inlineFootnote"].includes(inline.kind) && inline.from < block.to && inline.to > block.from) || result.blocks.some((candidate) => ["footnoteDefinition", "displayMath", "comment", "blockQuote", "listItem", "orderedList", "unorderedList", "table"].includes(candidate.kind) && candidate.from < block.to && candidate.to > block.from);
+    for (const block of result.blocks) {
+      if (block.kind !== "paragraph" || paragraphIsProtected(block)) continue;
+      const paragraph = source.slice(block.from, block.to);
+      const match = /(?:^|[ \t\r\n])\^([A-Za-z0-9-]+)[ \t]*$/.exec(paragraph);
+      if (!match) continue;
+      const markerFrom = block.from + match.index + match[0].indexOf("^");
+      const markerTo = markerFrom + match[1].length + 1;
+      if (paragraph.trim() === source.slice(markerFrom, markerTo)) {
+        const preceding = result.blocks.filter((candidate) => candidate.to < block.from).at(-1);
+        if (!preceding || preceding.kind !== "paragraph" || source.slice(preceding.to, block.from).trim() !== "" || paragraphIsProtected(preceding)) continue;
+      }
+      if (result.inlines.some((inline) => inline.from < markerTo && inline.to > markerFrom) || result.blocks.some((candidate) => ["footnoteDefinition", "displayMath", "comment", "code", "html"].includes(candidate.kind) && candidate.from <= markerFrom && candidate.to >= markerTo) || result.literals.some((literal2) => literal2.from < markerTo && literal2.to > markerFrom)) continue;
+      result.inlines.push({
+        kind: "blockAnchor",
+        nodeName: "ParagraphAnchor",
+        from: markerFrom,
+        to: markerTo,
+        markerRanges: [{ from: markerFrom, to: markerTo }],
+        visibleRanges: [],
+        targetRange: null,
+        aliasRange: null,
+        linkRange: null,
+        annotationRange: null,
+        annotationContentRange: null
+      });
+    }
+    result.blocks.sort((left, right) => left.from - right.from || right.to - left.to || left.kind.localeCompare(right.kind));
+    result.inlines.sort((left, right) => left.from - right.from || right.to - left.to || left.kind.localeCompare(right.kind));
+    result.literals.sort((left, right) => left.from - right.from || right.to - left.to);
+    return result;
+  }
+
+  // text-transfer-ranges.ts
+  function bodyStart(state) {
+    const boundary = frontmatterBoundary(state.doc);
+    if (boundary.unclosed) return state.doc.length;
+    return boundary.endLine ? Math.min(state.doc.length, state.doc.line(boundary.endLine).to + 1) : 0;
+  }
+  function lineContentStart(state, position) {
+    const line = state.doc.lineAt(position);
+    return line.from === 0 && state.doc.sliceString(0, 1) === "\uFEFF" ? 1 : line.from;
+  }
+  function isCompleteLineSelection(state, range) {
+    if (!Number.isSafeInteger(range.from) || !Number.isSafeInteger(range.to) || range.from < 0 || range.to > state.doc.length || range.from >= range.to) return false;
+    const end = state.doc.lineAt(range.to);
+    return range.from === lineContentStart(state, range.from) && (range.to === state.doc.length || range.to === end.to || range.to === end.from);
+  }
+  function headingSourceRange(state, heading2) {
+    const start = lineContentStart(state, heading2.from);
+    const end = state.doc.lineAt(heading2.to).to;
+    return {
+      from: /^[ \t]*$/.test(state.doc.sliceString(start, heading2.from)) ? start : heading2.from,
+      to: /^[ \t]*$/.test(state.doc.sliceString(heading2.to, end)) ? end : heading2.to
+    };
+  }
+  function visibleHeadingRange(state, heading2, inlines) {
+    const hidden = [...heading2.markerRanges];
+    for (const inline of inlines) {
+      if (inline.from < heading2.from || inline.to > heading2.to) continue;
+      let from = inline.from;
+      for (const visible of inline.visibleRanges) {
+        if (visible.from > from) hidden.push({ from, to: visible.from });
+        from = Math.max(from, visible.to);
+      }
+      if (from < inline.to) hidden.push({ from, to: inline.to });
+    }
+    hidden.sort((a, b) => a.from - b.from || a.to - b.to);
+    let cursor = heading2.from;
+    let first;
+    let last = heading2.from;
+    for (const hiddenRange of [...hidden, { from: heading2.to, to: heading2.to }]) {
+      const end = Math.min(heading2.to, hiddenRange.from);
+      if (cursor < end) {
+        const text = state.doc.sliceString(cursor, end);
+        const trimmed = text.trim();
+        if (trimmed) {
+          first ??= cursor + text.length - text.trimStart().length;
+          last = end - (text.length - text.trimEnd().length);
+        }
+      }
+      cursor = Math.max(cursor, hiddenRange.to);
+    }
+    return first === void 0 ? null : { from: first, to: last };
+  }
+  function completeHeadingSelection(state, selection) {
+    const minimum = bodyStart(state);
+    const ranges = selection.ranges.map((range) => {
+      if (range.empty || range.from < minimum) return range;
+      const semantic = semanticProjectionRanges(state, [range], 0);
+      const headings = semantic.blocks.filter((heading2) => heading2.kind === "heading" && heading2.from >= minimum);
+      const inlines = semanticProjectionRanges(state, headings, 0).inlines;
+      let from = range.from, to = range.to, includesHeading = false;
+      for (const heading2 of headings) {
+        const visible = visibleHeadingRange(state, heading2, inlines);
+        if (!visible || range.from > visible.from || range.to < visible.to) continue;
+        const source = headingSourceRange(state, heading2);
+        includesHeading = true;
+        from = Math.min(from, source.from);
+        to = Math.max(to, source.to);
+      }
+      if (includesHeading && isCompleteLineSelection(state, { from, to }) && to < state.doc.length && state.doc.lineAt(to).to === to && state.doc.sliceString(to - 1, to) !== "\n") to += 1;
+      if (from === range.from && to === range.to) return range;
+      return range.anchor > range.head ? EditorSelection.range(to, from) : EditorSelection.range(from, to);
+    });
+    return ranges.every((range, index) => range === selection.ranges[index]) ? selection : EditorSelection.create(ranges, selection.mainIndex);
+  }
+  function containsCompleteHeading(state, range) {
+    const minimum = bodyStart(state);
+    if (range.from < minimum || !isCompleteLineSelection(state, range)) return false;
+    return semanticProjectionRanges(state, [range], 0).blocks.some((heading2) => {
+      if (heading2.kind !== "heading" || heading2.from < minimum) return false;
+      const source = headingSourceRange(state, heading2);
+      return source.from >= range.from && source.to <= range.to;
+    });
+  }
+
+  // performance.ts
+  var samples = [];
+  var sampleCapacity = 256;
+  var sampleStart = 0;
+  var sampleCount = 0;
+  function appendSample(sample) {
+    if (sampleCount < sampleCapacity) {
+      samples[(sampleStart + sampleCount) % sampleCapacity] = sample;
+      sampleCount += 1;
+      return;
+    }
+    samples[sampleStart] = sample;
+    sampleStart = (sampleStart + 1) % sampleCapacity;
+  }
+  function recordEditorMetric(name2, startedAt, observed = {}) {
+    const durationMilliseconds = Math.max(0, performance.now() - startedAt);
+    const safeObserved = Object.fromEntries(Object.entries(observed).filter(([, value]) => Number.isFinite(value) && value >= 0));
+    appendSample({ name: name2, durationMilliseconds, observed: safeObserved });
+    const measureName = `scholium-editor:${name2}`;
+    try {
+      performance.measure(measureName, { start: startedAt, duration: durationMilliseconds });
+    } catch {
+    } finally {
+      try {
+        performance.clearMeasures(measureName);
+      } catch {
+      }
+    }
+  }
+  function scheduleAfterNextPaint(callback, requestFrame = window.requestAnimationFrame.bind(window), scheduleTask = (task) => window.setTimeout(task, 0)) {
+    requestFrame(() => {
+      scheduleTask(callback);
+    });
+  }
+  function sampleEditorMemory(documentLength) {
+    const memory = performance.memory;
+    const usedBytes = memory?.usedJSHeapSize;
+    recordEditorMetric("memory-sample", performance.now(), {
+      documentLength,
+      ...typeof usedBytes === "number" ? { usedJSHeapBytes: usedBytes } : {}
+    });
+  }
+  function editorPerformanceSamples() {
+    return Array.from({ length: sampleCount }, (_, index) => {
+      const sample = samples[(sampleStart + index) % sampleCapacity];
+      return { ...sample, observed: { ...sample.observed } };
+    });
+  }
+  function clearEditorPerformanceSamples() {
+    samples.length = 0;
+    sampleStart = 0;
+    sampleCount = 0;
+  }
+
+  // exact-source-history.ts
+  var setExactSource = StateEffect.define();
+  var eventInverses = /* @__PURE__ */ new WeakMap();
+  var detachedHistoryDepth = 0;
+  function detachedHistory(operation) {
+    detachedHistoryDepth++;
+    try {
+      return operation();
+    } finally {
+      detachedHistoryDepth--;
+    }
+  }
+  var restoreLineEnding = StateEffect.define({
+    map(value, mapping) {
+      if (mapping instanceof ChangeSet) return { ...value, at: mapping.mapPos(value.at, 1) };
+      const inverse = eventInverses.get(value);
+      if (!inverse) throw new Error("Exact history mapping is unavailable");
+      const outputMapping = mapping.mapDesc(inverse, true);
+      const result = { ...value, at: outputMapping.mapPos(value.at, 1) };
+      eventInverses.set(result, inverse.mapDesc(mapping));
+      return result;
+    }
+  });
+  function exactInsertionEffects(source, at) {
+    const effects = [];
+    let position = at;
+    for (let offset = 0; offset < source.length; offset++, position++) {
+      const crlf = source[offset] === "\r" && source[offset + 1] === "\n";
+      if (crlf || source[offset] === "\n") {
+        effects.push(restoreLineEnding.of({ at: position, ending: crlf ? "\r\n" : "\n" }));
+        if (crlf) offset++;
+      }
+    }
+    return effects;
+  }
+  function transactionChanges(transaction, mirror) {
+    const endings = new Map(transaction.effects.filter((effect) => effect.is(restoreLineEnding)).map((effect) => [effect.value.at, effect.value.ending]));
+    const changes = [];
+    transaction.changes.iterChanges((from, to, fromB, _toB, inserted) => {
+      const insert2 = inserted.toString();
+      const exactInsert = insert2.replace(/\n/g, (_newline, offset) => endings.get(fromB + offset) ?? (mirror.usesCRLF ? "\r\n" : "\n"));
+      changes.push({ from, to, insert: insert2, exactInsert, removed: transaction.startState.doc.sliceString(from, to) });
+    });
+    return changes;
+  }
+  var exactSourceState = StateField.define({
+    create: (state) => new ExactSourceMirror(state.doc.toString()),
+    update(mirror, transaction) {
+      const replacement = transaction.effects.find((effect) => effect.is(setExactSource));
+      if (replacement) {
+        if (normalizedDocumentText(replacement.value) !== transaction.newDoc.toString()) {
+          throw new Error("Exact source does not match the editor document");
+        }
+        return new ExactSourceMirror(replacement.value);
+      }
+      if (!transaction.docChanged) return mirror;
+      const startedAt = performance.now();
+      const changes = transactionChanges(transaction, mirror);
+      const next = mirror.copy();
+      if (!next.apply(changes)) throw new Error("Exact source change is invalid");
+      if (detachedHistoryDepth === 0) recordEditorMetric("exact-source-update", startedAt, {
+        changeCount: changes.length,
+        documentLength: transaction.newDoc.length
+      });
+      return next;
+    }
+  });
+  var exactSourceHistory = [
+    exactSourceState,
+    EditorState.transactionExtender.of((transaction) => {
+      if (transaction.docChanged && transaction.annotation(Transaction.addToHistory) === false) {
+        for (const command2 of [undo, redo]) {
+          let detached = transaction.startState;
+          while (detachedHistory(() => command2({ state: detached, dispatch: (historical) => {
+            for (const effect of historical.effects) {
+              if (effect.is(restoreLineEnding)) eventInverses.set(effect.value, historical.changes.desc);
+            }
+            detached = historical.state;
+          } }))) {
+          }
+        }
+      }
+      return null;
+    }),
+    invertedEffects.of((transaction) => {
+      if (!transaction.docChanged) return [];
+      const mirror = transaction.startState.field(exactSourceState);
+      const effects = [];
+      transaction.changes.iterChanges((from, to) => {
+        const removed = mirror.slice(from, to);
+        let normalizedOffset = from;
+        for (let offset = 0; offset < removed.length; offset++, normalizedOffset++) {
+          const crlf = removed[offset] === "\r" && removed[offset + 1] === "\n";
+          if (crlf || removed[offset] === "\n") {
+            effects.push(restoreLineEnding.of({ at: normalizedOffset, ending: crlf ? "\r\n" : "\n" }));
+            if (crlf) offset++;
+          }
+        }
+      });
+      return effects;
+    })
+  ];
+  function exactSourceFitsChanges(state, changes) {
+    const source = state.field(exactSourceState);
+    const encoder = new TextEncoder();
+    let previous = 0, bytes = 0;
+    for (const change of [...changes].sort((left, right) => left.from - right.from || left.to - right.to)) {
+      if (!Number.isSafeInteger(change.from) || !Number.isSafeInteger(change.to) || change.from < previous || change.to < change.from || change.to > state.doc.length) return false;
+      const normalized2 = normalizedDocumentText(change.insert);
+      const insertion = change.exactInsert ?? (source.usesCRLF ? normalized2.replaceAll("\n", "\r\n") : normalized2);
+      if (normalizedDocumentText(insertion) !== normalized2) return false;
+      bytes += encoder.encode(source.slice(previous, change.from)).byteLength + encoder.encode(insertion).byteLength;
+      if (bytes > MAX_SOURCE_UTF8_BYTES) return false;
+      previous = change.to;
+    }
+    return bytes + encoder.encode(source.slice(previous, state.doc.length)).byteLength <= MAX_SOURCE_UTF8_BYTES;
+  }
+  function lineEndings(source) {
+    return Array.from(source.matchAll(/\r?\n/g), (match) => match[0] === "\r\n" ? "c" : "l").join("");
+  }
+  function sourceWithEndings(source, endings) {
+    let index = 0;
+    const exact = source.replace(/\n/g, () => {
+      const ending = endings[index++];
+      if (ending !== "c" && ending !== "l") throw new Error("Invalid history line endings");
+      return ending === "c" ? "\r\n" : "\n";
+    });
+    if (index !== endings.length) throw new Error("Invalid history line ending count");
+    return exact;
+  }
+  var maximumRecoveryEvents = 512;
+  function captureExactHistory(state) {
+    let remainingBytes = MAX_INBOUND_BYTES - new TextEncoder().encode(state.doc.toString()).byteLength;
+    const capture = (command2) => {
+      let detached = state;
+      const endings = [];
+      for (let index = 0; ; index++) {
+        let changed = false;
+        if (!detachedHistory(() => command2({ state: detached, dispatch: (transaction) => {
+          changed = transaction.docChanged;
+          transaction.changes.iterChanges((_from, _to, _fromB, _toB, inserted) => {
+            remainingBytes -= new TextEncoder().encode(inserted.toString()).byteLength;
+          });
+          if (remainingBytes < 0) throw new Error("History is too large");
+          detached = transaction.state;
+        } }))) break;
+        if (index >= maximumRecoveryEvents) throw new Error("History is too large");
+        const value = changed ? lineEndings(detached.field(exactSourceState).text) : null;
+        remainingBytes -= value?.length ?? 0;
+        if (remainingBytes < 0) throw new Error("History is too large");
+        endings.push(value);
+      }
+      return endings;
+    };
+    try {
+      if (remainingBytes < 0) return void 0;
+      const undoLineEndings = capture(undoSelection);
+      const redoLineEndings = capture(redoSelection);
+      const serialized = JSON.stringify({
+        state: state.toJSON({ history: historyField }),
+        undoLineEndings,
+        redoLineEndings
+      });
+      return new TextEncoder().encode(serialized).byteLength <= MAX_INBOUND_BYTES ? serialized : void 0;
+    } catch {
+      return void 0;
+    }
+  }
+  function restoreExactHistory(serialized, source, extensions) {
+    if (new TextEncoder().encode(serialized).byteLength > MAX_INBOUND_BYTES) throw new Error("History is too large");
+    const payload = JSON.parse(serialized);
+    const validEndings = (value) => Array.isArray(value) && value.length <= maximumRecoveryEvents && value.every((item) => item === null || typeof item === "string" && /^[cl]*$/.test(item));
+    if (!validEndings(payload.undoLineEndings) || !validEndings(payload.redoLineEndings)) {
+      throw new Error("Invalid history line endings");
+    }
+    let state = EditorState.fromJSON(payload.state, { extensions }, { history: historyField });
+    if (state.doc.toString() !== normalizedDocumentText(source) || undoDepth(state) !== payload.undoLineEndings.filter((value) => value !== null).length || redoDepth(state) !== payload.redoLineEndings.filter((value) => value !== null).length) {
+      throw new Error("History does not match the recovered source");
+    }
+    const recovery = new Compartment();
+    let targetEndings;
+    state = state.update({ effects: [setExactSource.of(source), StateEffect.appendConfig.of(recovery.of(
+      EditorState.transactionExtender.of((transaction) => targetEndings === void 0 ? null : {
+        effects: setExactSource.of(sourceWithEndings(transaction.newDoc.toString(), targetEndings))
+      })
+    ))], annotations: Transaction.addToHistory.of(false) }).state;
+    function replay(command2, endings) {
+      targetEndings = endings ?? void 0;
+      try {
+        if (!detachedHistory(() => command2({ state, dispatch: (transaction) => {
+          state = transaction.state;
+        } }))) throw new Error("History could not be restored");
+      } finally {
+        targetEndings = void 0;
+      }
+    }
+    for (const endings of payload.redoLineEndings) replay(redoSelection, endings);
+    for (const _ of payload.redoLineEndings) replay(undoSelection);
+    for (const endings of payload.undoLineEndings) replay(undoSelection, endings);
+    for (const _ of payload.undoLineEndings) replay(redoSelection);
+    state = state.update({ effects: recovery.reconfigure([]), annotations: Transaction.addToHistory.of(false) }).state;
+    if (state.field(exactSourceState).text !== source) throw new Error("History source did not restore exactly");
+    return state;
+  }
+
+  // text-transfer.ts
+  function createEditorTextTransfer(options) {
+    const handlers2 = createTextDropHandlers(options);
+    const resolve = (view, event) => handlers2.dropPosition(view, event);
+    return [
+      transferDropCursor(resolve, handlers2.dragend),
+      EditorView.domEventHandlers({
+        mousedown: handlers2.dragend,
+        dragend: handlers2.dragend,
+        drop: handlers2.drop,
+        dragstart(event, view) {
+          handlers2.dragend();
+          const selection = view.contentDOM.ownerDocument.getSelection();
+          if (!event.dataTransfer || view.composing || options.compositionActive() || !selection || selection.isCollapsed || selection.rangeCount !== 1 || !view.contentDOM.contains(selection.anchorNode) || !view.contentDOM.contains(selection.focusNode) || !Array.from(selection.getRangeAt(0).getClientRects()).some((rect) => event.clientX >= rect.left && event.clientX <= rect.right && event.clientY >= rect.top && event.clientY <= rect.bottom)) return false;
+          return handlers2.dragstart(event, view);
+        }
+      })
+    ];
+  }
+  function moveSelectedText(view, range, position, copy, linewise, protection) {
+    const state = view.state;
+    if (!acceptsDropTarget(view, position, false) || range.empty || !copy && position >= range.from && position <= range.to) return null;
+    const target = state.update({ selection: { anchor: position } }).state;
+    if (protection(target).some(({ from: from2, to }) => position > from2 && position < to) || !copy && protection(state).some(({ from: from2, to }) => range.from < to && range.to > from2)) return null;
+    const mirror = state.field(exactSourceState, false);
+    let exact = mirror?.slice(range.from, range.to) ?? state.sliceDoc(range.from, range.to);
+    const ending = mirror?.usesCRLF ? "\r\n" : "\n";
+    if (linewise) {
+      if (position > lineContentStart(state, position) && state.sliceDoc(position - 1, position) !== "\n") exact = ending + exact;
+      if (position < state.doc.length && !exact.endsWith("\n")) exact += ending;
+    }
+    const insert2 = normalizedDocumentText(exact);
+    const specs = [
+      ...copy ? [] : [{ from: range.from, to: range.to, insert: "", exactInsert: "" }],
+      { from: position, to: position, insert: insert2, exactInsert: exact }
+    ];
+    if (mirror && !exactSourceFitsChanges(state, specs)) return null;
+    const changes = state.changes(specs);
+    if (!mirror && new TextEncoder().encode(changes.apply(state.doc).toString()).length > MAX_SOURCE_UTF8_BYTES) return null;
+    const from = changes.mapPos(position, -1);
+    view.dispatch({
+      changes,
+      selection: EditorSelection.single(from, from + insert2.length),
+      effects: exactInsertionEffects(exact, from),
+      userEvent: copy ? "input.drop" : "move.drop",
+      annotations: isolateHistory.of("full"),
+      scrollIntoView: true
+    });
+    view.focus();
+    return copy ? "Paste" : "Move";
+  }
+  function transferDropCursor(resolve, ended) {
+    return ViewPlugin.fromClass(class {
+      constructor(view) {
+        this.view = view;
+      }
+      view;
+      cursor = null;
+      event = null;
+      clear() {
+        this.event = null;
+        this.cursor?.remove();
+        this.cursor = null;
+      }
+      measure = {
+        read: () => {
+          if (!this.event) return null;
+          const pos = resolve(this.view, this.event);
+          const rect = pos === null ? null : this.view.coordsAtPos(pos);
+          if (!rect) return null;
+          const outer = this.view.scrollDOM.getBoundingClientRect();
+          return {
+            left: (rect.left - outer.left) / this.view.scaleX + this.view.scrollDOM.scrollLeft,
+            top: (rect.top - outer.top) / this.view.scaleY + this.view.scrollDOM.scrollTop,
+            height: (rect.bottom - rect.top) / this.view.scaleY
+          };
+        },
+        write: (rect) => {
+          if (!this.event || !rect) {
+            this.cursor?.remove();
+            this.cursor = null;
+            return;
+          }
+          if (!this.cursor) {
+            this.cursor = this.view.scrollDOM.appendChild(document.createElement("div"));
+            this.cursor.className = "cm-dropCursor";
+            this.cursor.setAttribute("aria-hidden", "true");
+            this.cursor.style.pointerEvents = "none";
+          }
+          Object.assign(this.cursor.style, { left: `${rect.left}px`, top: `${rect.top}px`, height: `${rect.height}px` });
+        }
+      };
+      update() {
+        if (this.event) this.view.requestMeasure(this.measure);
+      }
+      destroy() {
+        this.clear();
+        ended();
+      }
+    }, { eventObservers: {
+      dragover(event) {
+        this.event = event;
+        this.view.requestMeasure(this.measure);
+      },
+      dragleave(event) {
+        if (!this.view.contentDOM.contains(event.relatedTarget)) this.clear();
+      },
+      dragend() {
+        this.clear();
+      },
+      drop() {
+        this.clear();
+      }
+    } });
+  }
+  function acceptsDropTarget(view, position, compositionActive) {
+    return !view.state.readOnly && view.state.facet(EditorView.editable) && !view.composing && !compositionActive && position !== null && Number.isInteger(position) && position >= 0 && position <= view.state.doc.length;
+  }
+  function createTextDropHandlers(options) {
+    let localDrag = null;
+    const rawPosition = (view, event) => {
+      if (localDrag && localDrag.document === options.documentIdentity() && localDrag.linewise) {
+        const editor2 = view;
+        const block = editor2.lineBlockAtHeight(event.clientY - editor2.documentTop);
+        const before = event.clientY - editor2.documentTop <= (block.top + block.bottom) / 2;
+        const line = view.state.doc.lineAt(before ? block.from : block.to);
+        return before ? lineContentStart(view.state, line.from) : Math.min(view.state.doc.length, line.to + 1);
+      }
+      return options.projectedPosition?.(view, event) ?? view.posAtCoords({ x: event.clientX, y: event.clientY }, false);
+    };
+    const moves = (view, event) => {
+      const policy = view.state.facet(EditorView.dragMovesSelection);
+      return policy.length ? policy[0](event) : !event.altKey;
+    };
+    const hasFiles = (event) => !!event.dataTransfer && (Array.from(event.dataTransfer.files).length > 0 || Array.from(event.dataTransfer.items).some((item) => item.kind === "file"));
+    const dropPosition = (view, event) => {
+      if (hasFiles(event)) return null;
+      const receipt = localDrag?.document === options.documentIdentity() ? localDrag : null;
+      if (receipt && receipt.doc !== view.state.doc) return null;
+      const position = rawPosition(view, event);
+      if (!acceptsDropTarget(view, position, options.compositionActive())) return null;
+      if (receipt && moves(view, event) && position >= receipt.range.from && position <= receipt.range.to) return null;
+      const target = view.state.update({ selection: { anchor: position } }).state;
+      if (options.protection(target).some(({ from, to }) => position > from && position < to)) return null;
+      return position;
+    };
+    return {
+      dropPosition,
+      dragstart(event, view) {
+        const range = view.state.selection.main;
+        localDrag = range.empty || view.state.selection.ranges.length !== 1 ? null : {
+          document: options.documentIdentity(),
+          doc: view.state.doc,
+          range,
+          linewise: containsCompleteHeading(view.state, range)
+        };
+        const receipt = localDrag;
+        setTimeout(() => {
+          if (event.defaultPrevented && localDrag === receipt) localDrag = null;
+        }, 0);
+        return false;
+      },
+      dragend() {
+        localDrag = null;
+        return false;
+      },
+      drop(event, view) {
+        const receipt = localDrag;
+        const internal = receipt !== null && receipt.document === options.documentIdentity();
+        const position = dropPosition(view, event);
+        localDrag = null;
+        const transfer = event.dataTransfer;
+        if (!transfer) return true;
+        if (hasFiles(event)) {
+          options.unsupportedFile();
+          return true;
+        }
+        if (!acceptsDropTarget(view, position, options.compositionActive())) return true;
+        if (internal) {
+          if (receipt.doc !== view.state.doc) return true;
+          const move = moves(view, event);
+          const label2 = moveSelectedText(
+            view,
+            receipt.range,
+            position,
+            !move,
+            receipt.linewise,
+            options.protection
+          );
+          if (label2) options.didInsert(label2);
+          return true;
+        }
+        const label = insertDroppedText(
+          view,
+          transfer.getData("text/plain"),
+          position,
+          options.compositionActive(),
+          options.protection
+        );
+        if (label) options.didInsert(label);
+        return true;
+      }
+    };
+  }
+  function insertDroppedText(view, text, position, compositionActive, protection) {
+    const state = view.state;
+    if (position === null || !acceptsDropTarget(view, position, compositionActive)) return null;
+    const insert2 = normalizedDocumentText(text);
+    if (!insert2) return null;
+    const targetState = state.update({ selection: { anchor: position } }).state;
+    const source = state.doc.toString();
+    const transformed = transformMarkdown(source, [{ anchor: position, head: position }], "pastePlain", {
+      argument: insert2,
+      protectedRanges: protection(targetState)
+    });
+    if (!transformed || new TextEncoder().encode(applySourceChanges(source, transformed.changes)).byteLength > MAX_SOURCE_UTF8_BYTES) return null;
+    view.dispatch({
+      changes: transformed.changes,
+      selection: EditorSelection.create(transformed.selections.map((range) => EditorSelection.range(range.anchor, range.head))),
+      userEvent: "input.drop",
+      annotations: isolateHistory.of("full"),
+      scrollIntoView: true
+    });
+    view.focus();
+    return transformed.undoLabel;
   }
 
   // link-target.ts
@@ -30014,7 +30887,7 @@ ${fence}
   function isHorizontalWhitespace(character) {
     return character === SPACE || character === TAB;
   }
-  function isEscaped(cx, position) {
+  function isEscaped2(cx, position) {
     let backslashes = 0;
     for (let cursor = position - 1; cursor >= cx.offset && cx.char(cursor) === 92; cursor -= 1) {
       backslashes += 1;
@@ -30095,7 +30968,7 @@ ${fence}
     for (let cursor = position + 2; cursor < cx.end; cursor += 1) {
       const character = cx.char(cursor);
       if (character === LINE_FEED || character === CARRIAGE_RETURN) return -1;
-      if (character !== 93 || isEscaped(cx, cursor)) continue;
+      if (character !== 93 || isEscaped2(cx, cursor)) continue;
       if (cx.slice(position + 2, cursor).trim().length === 0) return -1;
       return cx.addElement(cx.elt("InlineFootnote", position, cursor + 1, [
         cx.elt("InlineFootnoteOpenMark", position, position + 2),
@@ -30113,7 +30986,7 @@ ${fence}
     for (let cursor = openingTo; cursor < cx.end; cursor += 1) {
       const character = cx.char(cursor);
       if (character === LINE_FEED || character === CARRIAGE_RETURN) return -1;
-      if (character !== 36 || isEscaped(cx, cursor)) continue;
+      if (character !== 36 || isEscaped2(cx, cursor)) continue;
       let closingTo = cursor + 1;
       while (cx.char(closingTo) === 36) closingTo += 1;
       if (closingTo - cursor !== delimiterLength) {
@@ -30134,7 +31007,7 @@ ${fence}
     for (let cursor = position + 2; cursor < cx.end - 1; cursor += 1) {
       const character = cx.char(cursor);
       if (character === LINE_FEED || character === CARRIAGE_RETURN) return -1;
-      if (character !== 61 || cx.char(cursor + 1) !== 61 || cx.char(cursor + 2) === 61 || isEscaped(cx, cursor)) continue;
+      if (character !== 61 || cx.char(cursor + 1) !== 61 || cx.char(cursor + 2) === 61 || isEscaped2(cx, cursor)) continue;
       if (cx.slice(position + 2, cursor).trim().length === 0) return -1;
       return cx.addElement(cx.elt("Highlight", position, cursor + 2, [
         cx.elt("HighlightMark", position, position + 2),
@@ -30340,400 +31213,6 @@ ${fence}
   var scholiumNoteLanguage = yamlFrontmatter({
     content: scholiumMarkdownContentLanguage
   });
-
-  // link-annotation.ts
-  function isEscaped2(source, position) {
-    let backslashes = 0;
-    for (let cursor = position - 1; cursor >= 0 && source.charCodeAt(cursor) === 92; cursor -= 1) {
-      backslashes += 1;
-    }
-    return backslashes % 2 === 1;
-  }
-  function hasVisibleMarkdownContent(markdown2) {
-    let remaining = markdown2.replace(/(`+)[\s]*\1/g, "");
-    remaining = remaining.replace(/^[ \t]{0,3}(?:(?:\*[ \t]*){3,}|(?:-[ \t]*){3,}|(?:_[ \t]*){3,})$/gm, "").replace(/^[ \t]{0,3}(?:#{1,6}|>+|[-+*]|\d+[.)])[ \t]*$/gm, "");
-    return remaining.trim().length > 0;
-  }
-  function linkAnnotationAfter(source, linkTo) {
-    if (source.slice(linkTo, linkTo + 2) !== "{{") return null;
-    for (let cursor = linkTo + 2; cursor + 1 < source.length; cursor += 1) {
-      const pair2 = source.slice(cursor, cursor + 2);
-      if (pair2 === "{{" && !isEscaped2(source, cursor)) return null;
-      if (pair2 !== "}}" || isEscaped2(source, cursor)) continue;
-      const markdown2 = source.slice(linkTo + 2, cursor);
-      if (!hasVisibleMarkdownContent(markdown2)) return null;
-      return {
-        from: linkTo,
-        to: cursor + 2,
-        contentFrom: linkTo + 2,
-        contentTo: cursor,
-        markdown: markdown2
-      };
-    }
-    return null;
-  }
-
-  // semantic-projection.ts
-  function mapSemanticProjectionRanges(previous, mapPosition) {
-    const mapRange2 = (range) => ({
-      from: mapPosition(range.from),
-      to: mapPosition(range.to)
-    });
-    const blocks = previous.blocks.map((block) => ({
-      ...block,
-      from: mapPosition(block.from),
-      to: mapPosition(block.to),
-      parent: block.parent ? {
-        kind: block.parent.kind,
-        from: mapPosition(block.parent.from),
-        to: mapPosition(block.parent.to)
-      } : null,
-      markerRanges: block.markerRanges.map(mapRange2),
-      taskMarkerRange: block.taskMarkerRange ? mapRange2(block.taskMarkerRange) : null
-    }));
-    const inlines = previous.inlines.map((inline) => ({
-      ...inline,
-      from: mapPosition(inline.from),
-      to: mapPosition(inline.to),
-      markerRanges: inline.markerRanges.map(mapRange2),
-      visibleRanges: inline.visibleRanges.map(mapRange2),
-      targetRange: inline.targetRange ? mapRange2(inline.targetRange) : null,
-      aliasRange: inline.aliasRange ? mapRange2(inline.aliasRange) : null,
-      linkRange: inline.linkRange ? mapRange2(inline.linkRange) : null,
-      annotationRange: inline.annotationRange ? mapRange2(inline.annotationRange) : null,
-      annotationContentRange: inline.annotationContentRange ? mapRange2(inline.annotationContentRange) : null
-    }));
-    const literals2 = previous.literals.map((literal2) => ({
-      ...literal2,
-      from: mapPosition(literal2.from),
-      to: mapPosition(literal2.to)
-    }));
-    return { blocks, inlines, literals: literals2 };
-  }
-  var blockKinds = /* @__PURE__ */ new Map([
-    ["Paragraph", "paragraph"],
-    ["Blockquote", "blockQuote"],
-    ["FencedCode", "code"],
-    ["CodeBlock", "code"],
-    ["BulletList", "unorderedList"],
-    ["OrderedList", "orderedList"],
-    ["ListItem", "listItem"],
-    ["Table", "table"],
-    ["HorizontalRule", "thematicBreak"],
-    ["HTMLBlock", "html"],
-    // CommonMark exposes a block HTML comment as CommentBlock while Swift
-    // Markdown exposes the same inert source as HTMLBlock. Keep both adapters
-    // on one raw-HTML presentation path so Review and Edit cannot drift.
-    ["CommentBlock", "html"],
-    ["Callout", "callout"],
-    ["FootnoteDefinition", "footnoteDefinition"],
-    ["BlockMath", "displayMath"],
-    ["ObsidianCommentBlock", "comment"],
-    ["UnclosedObsidianCommentBlock", "comment"]
-  ]);
-  var inlineKinds = /* @__PURE__ */ new Map([
-    ["StrongEmphasis", "strong"],
-    ["Emphasis", "emphasis"],
-    ["Strikethrough", "strikethrough"],
-    ["InlineCode", "code"],
-    ["Link", "link"],
-    ["Autolink", "link"],
-    ["Image", "image"],
-    ["Highlight", "highlight"],
-    ["WikiLink", "wikilink"],
-    ["InlineMath", "inlineMath"],
-    ["FootnoteReference", "footnoteReference"],
-    ["InlineFootnote", "inlineFootnote"],
-    ["ObsidianComment", "comment"]
-  ]);
-  function childRanges(root, names, stopAt = /* @__PURE__ */ new Set()) {
-    const ranges = [];
-    const visit = (node) => {
-      if (names.has(node.name)) ranges.push({ from: node.from, to: node.to });
-      if (node !== root && stopAt.has(node.name)) return;
-      for (let child = node.firstChild; child; child = child.nextSibling) visit(child);
-    };
-    visit(root);
-    return ranges.sort((left, right) => left.from - right.from || left.to - right.to);
-  }
-  function complementRanges(from, to, excluded) {
-    const visible = [];
-    let position = from;
-    for (const range of excluded) {
-      if (range.from > position) visible.push({ from: position, to: range.from });
-      position = Math.max(position, range.to);
-    }
-    if (position < to) visible.push({ from: position, to });
-    return visible;
-  }
-  function presentationBlockMarkerRanges(state, node, kind, markerNames, stopAt) {
-    const ranges = childRanges(node, markerNames, stopAt);
-    if (kind !== "heading" || !node.name.startsWith("ATXHeading")) return ranges;
-    return ranges.map((range) => {
-      if (range.from !== node.from) return range;
-      let to = range.to;
-      while (to < node.to) {
-        const character = state.doc.sliceString(to, to + 1);
-        if (character !== " " && character !== "	") break;
-        to += 1;
-      }
-      return { from: range.from, to };
-    });
-  }
-  function inlinePresentation(node, kind, source) {
-    const markerNames = /* @__PURE__ */ new Set();
-    switch (kind) {
-      case "strong":
-      case "emphasis":
-        markerNames.add("EmphasisMark");
-        break;
-      case "strikethrough":
-        markerNames.add("StrikethroughMark");
-        break;
-      case "code":
-        markerNames.add("CodeMark");
-        break;
-      case "link":
-      case "image":
-        markerNames.add("LinkMark");
-        break;
-      case "highlight":
-        markerNames.add("HighlightMark");
-        break;
-      case "wikilink":
-        markerNames.add("WikiLinkOpenMark");
-        markerNames.add("WikiEmbedMark");
-        markerNames.add("WikiLinkAliasMark");
-        markerNames.add("WikiLinkCloseMark");
-        break;
-      case "inlineMath":
-        markerNames.add("MathMark");
-        break;
-      case "footnoteReference":
-        markerNames.add("FootnoteOpenMark");
-        markerNames.add("FootnoteCloseMark");
-        break;
-      case "inlineFootnote":
-        markerNames.add("InlineFootnoteOpenMark");
-        markerNames.add("FootnoteCloseMark");
-        break;
-      case "comment":
-        break;
-    }
-    const markerRanges = childRanges(node, markerNames);
-    let targetRange = null;
-    let aliasRange = null;
-    let linkRange = null;
-    let annotationRange = null;
-    let annotationContentRange = null;
-    let projectionTo = node.to;
-    let visibleRanges = complementRanges(node.from, node.to, markerRanges);
-    if (kind === "link" || kind === "image") {
-      const explicitVisible = childRanges(node, /* @__PURE__ */ new Set(["URL"]));
-      if (explicitVisible.length === 0) return null;
-      if (node.name === "Autolink") {
-        visibleRanges = explicitVisible;
-      } else {
-        const linkMarks = markerRanges;
-        visibleRanges = linkMarks.length >= 2 ? [{ from: linkMarks[0].to, to: linkMarks[1].from }] : [];
-      }
-    } else if (kind === "wikilink") {
-      const alias = childRanges(node, /* @__PURE__ */ new Set(["WikiLinkAlias"]));
-      const target = childRanges(node, /* @__PURE__ */ new Set(["WikiLinkTarget"]));
-      targetRange = target[0] ?? null;
-      aliasRange = alias[0] ?? null;
-      visibleRanges = alias.length > 0 ? alias : target;
-      linkRange = { from: node.from, to: node.to };
-      const embedded = markerRanges.some((range) => source.slice(range.from, range.to).startsWith("!"));
-      const annotation = embedded ? null : linkAnnotationAfter(source, node.to);
-      if (annotation) {
-        annotationRange = { from: annotation.from, to: annotation.to };
-        annotationContentRange = { from: annotation.contentFrom, to: annotation.contentTo };
-        projectionTo = annotation.to;
-      }
-    } else if (kind === "inlineMath") {
-      visibleRanges = childRanges(node, /* @__PURE__ */ new Set(["MathContent"]));
-    } else if (kind === "footnoteReference") {
-      visibleRanges = childRanges(node, /* @__PURE__ */ new Set(["FootnoteIdentifier"]));
-    } else if (kind === "inlineFootnote") {
-      visibleRanges = childRanges(node, /* @__PURE__ */ new Set(["FootnoteContent"]));
-    } else if (kind === "comment") {
-      visibleRanges = [];
-    }
-    return {
-      kind,
-      nodeName: node.name,
-      from: node.from,
-      to: projectionTo,
-      markerRanges,
-      visibleRanges,
-      targetRange,
-      aliasRange,
-      linkRange,
-      annotationRange,
-      annotationContentRange
-    };
-  }
-  function rangeKey(from, to) {
-    return `${from}:${to}`;
-  }
-  function boundedLinePrefix(doc2, position, limit = 512) {
-    const line = doc2.lineAt(Math.max(0, Math.min(position, doc2.length)));
-    return doc2.sliceString(line.from, Math.min(line.to, line.from + limit));
-  }
-  function boundedProjectionRanges(documentLength, visibleRanges, margin = 2e3) {
-    const expanded = visibleRanges.map((range) => ({
-      from: Math.max(0, range.from - margin),
-      to: Math.min(documentLength, range.to + margin)
-    })).sort((left, right) => left.from - right.from || left.to - right.to);
-    const merged = [];
-    for (const range of expanded) {
-      const previous = merged.at(-1);
-      if (previous && range.from <= previous.to) previous.to = Math.max(previous.to, range.to);
-      else merged.push({ ...range });
-    }
-    return merged;
-  }
-  function semanticProjectionRanges(state, visibleRanges, margin = 2e3, tree = syntaxTree(state)) {
-    const result = {
-      blocks: [],
-      inlines: [],
-      literals: []
-    };
-    if (visibleRanges.length === 0) return result;
-    const from = Math.max(0, Math.min(...visibleRanges.map((range) => range.from)) - margin);
-    const to = Math.min(state.doc.length, Math.max(...visibleRanges.map((range) => range.to)) + margin);
-    const blockStack = [];
-    const source = state.doc.toString();
-    tree.iterate({
-      from,
-      to,
-      enter(reference) {
-        const node = reference.node;
-        const heading2 = /^(?:ATX|Setext)Heading([1-6])$/.exec(node.name);
-        const kind = heading2 ? "heading" : blockKinds.get(node.name);
-        if (kind) {
-          const parent = blockStack.at(-1) ?? null;
-          const markerNames = /* @__PURE__ */ new Set();
-          if (kind === "heading") markerNames.add("HeaderMark");
-          if (kind === "blockQuote") markerNames.add("QuoteMark");
-          if (kind === "listItem") {
-            markerNames.add("ListMark");
-            markerNames.add("TaskMarker");
-          }
-          if (kind === "code") markerNames.add("CodeMark");
-          if (kind === "callout") {
-            markerNames.add("CalloutQuoteMark");
-            markerNames.add("CalloutRoleMark");
-          }
-          if (kind === "displayMath") markerNames.add("MathMark");
-          const markerRanges = presentationBlockMarkerRanges(
-            state,
-            node,
-            kind,
-            markerNames,
-            kind === "listItem" ? /* @__PURE__ */ new Set(["ListItem"]) : /* @__PURE__ */ new Set()
-          );
-          const block = {
-            kind,
-            nodeName: node.name,
-            from: node.from,
-            to: node.to,
-            depth: blockStack.length,
-            parent: parent ? { kind: parent.kind, from: parent.from, to: parent.to } : null,
-            headingLevel: heading2 ? Number(heading2[1]) : null,
-            listDepth: kind === "listItem" ? blockStack.filter((block2) => block2.kind === "listItem").length : null,
-            markerRanges,
-            taskMarkerRange: kind === "listItem" ? markerRanges.find((range) => state.doc.sliceString(range.from, range.to).startsWith("[")) ?? null : null
-          };
-          result.blocks.push(block);
-          blockStack.push(block);
-        }
-        if (node.name === "Task") {
-          const taskMarker = childRanges(node, /* @__PURE__ */ new Set(["TaskMarker"]))[0];
-          if (taskMarker) {
-            let contentFrom = taskMarker.to;
-            while (contentFrom < node.to) {
-              const character = state.doc.sliceString(contentFrom, contentFrom + 1);
-              if (character !== " " && character !== "	") break;
-              contentFrom += 1;
-            }
-            if (contentFrom < node.to) {
-              const parent = blockStack.at(-1) ?? null;
-              const paragraph = {
-                kind: "paragraph",
-                nodeName: "TaskContent",
-                from: contentFrom,
-                to: node.to,
-                depth: blockStack.length,
-                parent: parent ? { kind: parent.kind, from: parent.from, to: parent.to } : null,
-                headingLevel: null,
-                listDepth: null,
-                markerRanges: [],
-                taskMarkerRange: null
-              };
-              result.blocks.push(paragraph);
-            }
-          }
-        }
-        const inlineKind = inlineKinds.get(node.name);
-        if (inlineKind) {
-          const inline = inlinePresentation(node, inlineKind, source);
-          if (inline) result.inlines.push(inline);
-        }
-        if ([
-          "HTMLTag",
-          "CommentBlock",
-          "Comment",
-          "ObsidianComment",
-          "UnclosedObsidianComment"
-        ].includes(node.name)) {
-          result.literals.push({ from: node.from, to: node.to, nodeName: node.name });
-          return false;
-        }
-      },
-      leave(reference) {
-        const node = reference.node;
-        const heading2 = /^(?:ATX|Setext)Heading([1-6])$/.test(node.name);
-        if (!heading2 && !blockKinds.has(node.name)) return;
-        const current = blockStack.at(-1);
-        if (current?.from === node.from && current.to === node.to && current.nodeName === node.name) {
-          blockStack.pop();
-        }
-      }
-    });
-    const paragraphIsProtected = (block) => source.slice(block.from, block.to).includes("%%") || source.slice(block.from, block.to).includes("<!--") || result.inlines.some((inline) => ["inlineMath", "inlineFootnote"].includes(inline.kind) && inline.from < block.to && inline.to > block.from) || result.blocks.some((candidate) => ["footnoteDefinition", "displayMath", "comment", "blockQuote", "listItem", "orderedList", "unorderedList", "table"].includes(candidate.kind) && candidate.from < block.to && candidate.to > block.from);
-    for (const block of result.blocks) {
-      if (block.kind !== "paragraph" || paragraphIsProtected(block)) continue;
-      const paragraph = source.slice(block.from, block.to);
-      const match = /(?:^|[ \t\r\n])\^([A-Za-z0-9-]+)[ \t]*$/.exec(paragraph);
-      if (!match) continue;
-      const markerFrom = block.from + match.index + match[0].indexOf("^");
-      const markerTo = markerFrom + match[1].length + 1;
-      if (paragraph.trim() === source.slice(markerFrom, markerTo)) {
-        const preceding = result.blocks.filter((candidate) => candidate.to < block.from).at(-1);
-        if (!preceding || preceding.kind !== "paragraph" || source.slice(preceding.to, block.from).trim() !== "" || paragraphIsProtected(preceding)) continue;
-      }
-      if (result.inlines.some((inline) => inline.from < markerTo && inline.to > markerFrom) || result.blocks.some((candidate) => ["footnoteDefinition", "displayMath", "comment", "code", "html"].includes(candidate.kind) && candidate.from <= markerFrom && candidate.to >= markerTo) || result.literals.some((literal2) => literal2.from < markerTo && literal2.to > markerFrom)) continue;
-      result.inlines.push({
-        kind: "blockAnchor",
-        nodeName: "ParagraphAnchor",
-        from: markerFrom,
-        to: markerTo,
-        markerRanges: [{ from: markerFrom, to: markerTo }],
-        visibleRanges: [],
-        targetRange: null,
-        aliasRange: null,
-        linkRange: null,
-        annotationRange: null,
-        annotationContentRange: null
-      });
-    }
-    result.blocks.sort((left, right) => left.from - right.from || right.to - left.to || left.kind.localeCompare(right.kind));
-    result.inlines.sort((left, right) => left.from - right.from || right.to - left.to || left.kind.localeCompare(right.kind));
-    result.literals.sort((left, right) => left.from - right.from || right.to - left.to);
-    return result;
-  }
 
   // projection-index.ts
   function compareRanges(left, right) {
@@ -30973,253 +31452,6 @@ ${fence}
       0
     );
     return projectionTopologySignature(previousLocal) === projectionTopologySignature(nextLocal);
-  }
-
-  // performance.ts
-  var samples = [];
-  var sampleCapacity = 256;
-  var sampleStart = 0;
-  var sampleCount = 0;
-  function appendSample(sample) {
-    if (sampleCount < sampleCapacity) {
-      samples[(sampleStart + sampleCount) % sampleCapacity] = sample;
-      sampleCount += 1;
-      return;
-    }
-    samples[sampleStart] = sample;
-    sampleStart = (sampleStart + 1) % sampleCapacity;
-  }
-  function recordEditorMetric(name2, startedAt, observed = {}) {
-    const durationMilliseconds = Math.max(0, performance.now() - startedAt);
-    const safeObserved = Object.fromEntries(Object.entries(observed).filter(([, value]) => Number.isFinite(value) && value >= 0));
-    appendSample({ name: name2, durationMilliseconds, observed: safeObserved });
-    const measureName = `scholium-editor:${name2}`;
-    try {
-      performance.measure(measureName, { start: startedAt, duration: durationMilliseconds });
-    } catch {
-    } finally {
-      try {
-        performance.clearMeasures(measureName);
-      } catch {
-      }
-    }
-  }
-  function scheduleAfterNextPaint(callback, requestFrame = window.requestAnimationFrame.bind(window), scheduleTask = (task) => window.setTimeout(task, 0)) {
-    requestFrame(() => {
-      scheduleTask(callback);
-    });
-  }
-  function sampleEditorMemory(documentLength) {
-    const memory = performance.memory;
-    const usedBytes = memory?.usedJSHeapSize;
-    recordEditorMetric("memory-sample", performance.now(), {
-      documentLength,
-      ...typeof usedBytes === "number" ? { usedJSHeapBytes: usedBytes } : {}
-    });
-  }
-  function editorPerformanceSamples() {
-    return Array.from({ length: sampleCount }, (_, index) => {
-      const sample = samples[(sampleStart + index) % sampleCapacity];
-      return { ...sample, observed: { ...sample.observed } };
-    });
-  }
-  function clearEditorPerformanceSamples() {
-    samples.length = 0;
-    sampleStart = 0;
-    sampleCount = 0;
-  }
-
-  // exact-source-history.ts
-  var setExactSource = StateEffect.define();
-  var eventInverses = /* @__PURE__ */ new WeakMap();
-  var detachedHistoryDepth = 0;
-  function detachedHistory(operation) {
-    detachedHistoryDepth++;
-    try {
-      return operation();
-    } finally {
-      detachedHistoryDepth--;
-    }
-  }
-  var restoreLineEnding = StateEffect.define({
-    map(value, mapping) {
-      if (mapping instanceof ChangeSet) return { ...value, at: mapping.mapPos(value.at, 1) };
-      const inverse = eventInverses.get(value);
-      if (!inverse) throw new Error("Exact history mapping is unavailable");
-      const outputMapping = mapping.mapDesc(inverse, true);
-      const result = { ...value, at: outputMapping.mapPos(value.at, 1) };
-      eventInverses.set(result, inverse.mapDesc(mapping));
-      return result;
-    }
-  });
-  function transactionChanges(transaction, mirror) {
-    const endings = new Map(transaction.effects.filter((effect) => effect.is(restoreLineEnding)).map((effect) => [effect.value.at, effect.value.ending]));
-    const changes = [];
-    transaction.changes.iterChanges((from, to, fromB, _toB, inserted) => {
-      const insert2 = inserted.toString();
-      const exactInsert = insert2.replace(/\n/g, (_newline, offset) => endings.get(fromB + offset) ?? (mirror.usesCRLF ? "\r\n" : "\n"));
-      changes.push({ from, to, insert: insert2, exactInsert, removed: transaction.startState.doc.sliceString(from, to) });
-    });
-    return changes;
-  }
-  var exactSourceState = StateField.define({
-    create: (state) => new ExactSourceMirror(state.doc.toString()),
-    update(mirror, transaction) {
-      const replacement = transaction.effects.find((effect) => effect.is(setExactSource));
-      if (replacement) {
-        if (normalizedDocumentText(replacement.value) !== transaction.newDoc.toString()) {
-          throw new Error("Exact source does not match the editor document");
-        }
-        return new ExactSourceMirror(replacement.value);
-      }
-      if (!transaction.docChanged) return mirror;
-      const startedAt = performance.now();
-      const changes = transactionChanges(transaction, mirror);
-      const next = mirror.copy();
-      if (!next.apply(changes)) throw new Error("Exact source change is invalid");
-      if (detachedHistoryDepth === 0) recordEditorMetric("exact-source-update", startedAt, {
-        changeCount: changes.length,
-        documentLength: transaction.newDoc.length
-      });
-      return next;
-    }
-  });
-  var exactSourceHistory = [
-    exactSourceState,
-    EditorState.transactionExtender.of((transaction) => {
-      if (transaction.docChanged && transaction.annotation(Transaction.addToHistory) === false) {
-        for (const command2 of [undo, redo]) {
-          let detached = transaction.startState;
-          while (detachedHistory(() => command2({ state: detached, dispatch: (historical) => {
-            for (const effect of historical.effects) {
-              if (effect.is(restoreLineEnding)) eventInverses.set(effect.value, historical.changes.desc);
-            }
-            detached = historical.state;
-          } }))) {
-          }
-        }
-      }
-      return null;
-    }),
-    invertedEffects.of((transaction) => {
-      if (!transaction.docChanged) return [];
-      const mirror = transaction.startState.field(exactSourceState);
-      const effects = [];
-      transaction.changes.iterChanges((from, to) => {
-        const removed = mirror.slice(from, to);
-        let normalizedOffset = from;
-        for (let offset = 0; offset < removed.length; offset++, normalizedOffset++) {
-          const crlf = removed[offset] === "\r" && removed[offset + 1] === "\n";
-          if (crlf || removed[offset] === "\n") {
-            effects.push(restoreLineEnding.of({ at: normalizedOffset, ending: crlf ? "\r\n" : "\n" }));
-            if (crlf) offset++;
-          }
-        }
-      });
-      return effects;
-    })
-  ];
-  function exactSourceFitsChanges(state, changes) {
-    const source = state.field(exactSourceState);
-    const encoder = new TextEncoder();
-    let previous = 0, bytes = 0;
-    for (const change of [...changes].sort((left, right) => left.from - right.from || left.to - right.to)) {
-      if (!Number.isSafeInteger(change.from) || !Number.isSafeInteger(change.to) || change.from < previous || change.to < change.from || change.to > state.doc.length) return false;
-      const normalized2 = normalizedDocumentText(change.insert);
-      const insertion = change.exactInsert ?? (source.usesCRLF ? normalized2.replaceAll("\n", "\r\n") : normalized2);
-      if (normalizedDocumentText(insertion) !== normalized2) return false;
-      bytes += encoder.encode(source.slice(previous, change.from)).byteLength + encoder.encode(insertion).byteLength;
-      if (bytes > MAX_SOURCE_UTF8_BYTES) return false;
-      previous = change.to;
-    }
-    return bytes + encoder.encode(source.slice(previous, state.doc.length)).byteLength <= MAX_SOURCE_UTF8_BYTES;
-  }
-  function lineEndings(source) {
-    return Array.from(source.matchAll(/\r?\n/g), (match) => match[0] === "\r\n" ? "c" : "l").join("");
-  }
-  function sourceWithEndings(source, endings) {
-    let index = 0;
-    const exact = source.replace(/\n/g, () => {
-      const ending = endings[index++];
-      if (ending !== "c" && ending !== "l") throw new Error("Invalid history line endings");
-      return ending === "c" ? "\r\n" : "\n";
-    });
-    if (index !== endings.length) throw new Error("Invalid history line ending count");
-    return exact;
-  }
-  var maximumRecoveryEvents = 512;
-  function captureExactHistory(state) {
-    let remainingBytes = MAX_INBOUND_BYTES - new TextEncoder().encode(state.doc.toString()).byteLength;
-    const capture = (command2) => {
-      let detached = state;
-      const endings = [];
-      for (let index = 0; ; index++) {
-        let changed = false;
-        if (!detachedHistory(() => command2({ state: detached, dispatch: (transaction) => {
-          changed = transaction.docChanged;
-          transaction.changes.iterChanges((_from, _to, _fromB, _toB, inserted) => {
-            remainingBytes -= new TextEncoder().encode(inserted.toString()).byteLength;
-          });
-          if (remainingBytes < 0) throw new Error("History is too large");
-          detached = transaction.state;
-        } }))) break;
-        if (index >= maximumRecoveryEvents) throw new Error("History is too large");
-        const value = changed ? lineEndings(detached.field(exactSourceState).text) : null;
-        remainingBytes -= value?.length ?? 0;
-        if (remainingBytes < 0) throw new Error("History is too large");
-        endings.push(value);
-      }
-      return endings;
-    };
-    try {
-      if (remainingBytes < 0) return void 0;
-      const undoLineEndings = capture(undoSelection);
-      const redoLineEndings = capture(redoSelection);
-      const serialized = JSON.stringify({
-        state: state.toJSON({ history: historyField }),
-        undoLineEndings,
-        redoLineEndings
-      });
-      return new TextEncoder().encode(serialized).byteLength <= MAX_INBOUND_BYTES ? serialized : void 0;
-    } catch {
-      return void 0;
-    }
-  }
-  function restoreExactHistory(serialized, source, extensions) {
-    if (new TextEncoder().encode(serialized).byteLength > MAX_INBOUND_BYTES) throw new Error("History is too large");
-    const payload = JSON.parse(serialized);
-    const validEndings = (value) => Array.isArray(value) && value.length <= maximumRecoveryEvents && value.every((item) => item === null || typeof item === "string" && /^[cl]*$/.test(item));
-    if (!validEndings(payload.undoLineEndings) || !validEndings(payload.redoLineEndings)) {
-      throw new Error("Invalid history line endings");
-    }
-    let state = EditorState.fromJSON(payload.state, { extensions }, { history: historyField });
-    if (state.doc.toString() !== normalizedDocumentText(source) || undoDepth(state) !== payload.undoLineEndings.filter((value) => value !== null).length || redoDepth(state) !== payload.redoLineEndings.filter((value) => value !== null).length) {
-      throw new Error("History does not match the recovered source");
-    }
-    const recovery = new Compartment();
-    let targetEndings;
-    state = state.update({ effects: [setExactSource.of(source), StateEffect.appendConfig.of(recovery.of(
-      EditorState.transactionExtender.of((transaction) => targetEndings === void 0 ? null : {
-        effects: setExactSource.of(sourceWithEndings(transaction.newDoc.toString(), targetEndings))
-      })
-    ))], annotations: Transaction.addToHistory.of(false) }).state;
-    function replay(command2, endings) {
-      targetEndings = endings ?? void 0;
-      try {
-        if (!detachedHistory(() => command2({ state, dispatch: (transaction) => {
-          state = transaction.state;
-        } }))) throw new Error("History could not be restored");
-      } finally {
-        targetEndings = void 0;
-      }
-    }
-    for (const endings of payload.redoLineEndings) replay(redoSelection, endings);
-    for (const _ of payload.redoLineEndings) replay(undoSelection);
-    for (const endings of payload.undoLineEndings) replay(undoSelection, endings);
-    for (const _ of payload.undoLineEndings) replay(redoSelection);
-    state = state.update({ effects: recovery.reconfigure([]), annotations: Transaction.addToHistory.of(false) }).state;
-    if (state.field(exactSourceState).text !== source) throw new Error("History source did not restore exactly");
-    return state;
   }
 
   // localization.ts
@@ -34085,7 +34317,11 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         queueMicrotask(() => {
           if (this.destroyed || !this.gestureActive) return;
           this.gestureActive = false;
-          this.view.dispatch({ effects: commitPointerSelection.of(null) });
+          this.view.dispatch({
+            selection: this.view.composing ? void 0 : options.completeSelection?.(this.view.state, this.view.state.selection),
+            effects: commitPointerSelection.of(null),
+            userEvent: "select.pointer"
+          });
         });
       };
       addWindowListeners() {
@@ -37660,7 +37896,8 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
   }
   var liveSelection = createLiveSelectionController({
     handleModifiedLink: modifiedProjectedLink,
-    handleProjectedPointerStart: projectedWidgetPointerStart
+    handleProjectedPointerStart: projectedWidgetPointerStart,
+    completeSelection: completeHeadingSelection
   });
   var liveMermaidProjection = createLiveMermaidProjection({
     selection: liveSelection,
@@ -38673,7 +38910,17 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     history(),
     drawSelection({ drawRangeCursor: false }),
     textSelectionPresentation,
-    dropCursor(),
+    createEditorTextTransfer({
+      documentIdentity: () => documentAttachment,
+      compositionActive: () => compositionGate.active || documentTitleComposing,
+      projectedPosition: (view, event) => configuredEditorMode(view.state) === "livePreview" ? projectedHeadingSourceOffset(view, event) : null,
+      protection: (state) => commandProtection("pastePlain", state),
+      unsupportedFile: () => announceEditorMessage(editor.contentDOM, unsupportedFilePasteMessage()),
+      didInsert: (label) => {
+        lastUndoLabel = lastRedoLabel = label;
+        post({ type: "requestEditorFocus" });
+      }
+    }),
     EditorState.allowMultipleSelections.of(true),
     indentOnInput(),
     bidiIsolates(),
@@ -39249,7 +39496,8 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       if (attachment === documentAttachment) publishEditorContext();
     });
   });
-  function pasteTransfer(transfer, dropPosition, requestNativeImageImport = false) {
+  function pasteTransfer(transfer, requestNativeImageImport = false) {
+    if (editor.state.readOnly || !editor.state.facet(EditorView.editable) || editor.composing || compositionGate.active || documentTitleComposing) return true;
     if (Array.from(transfer.files).length > 0 || Array.from(transfer.items).some((item) => item.kind === "file")) {
       const image = Array.from(transfer.files).some((file) => file.type.startsWith("image/")) || Array.from(transfer.items).some((item) => item.kind === "file" && item.type.startsWith("image/"));
       if (requestNativeImageImport && image) {
@@ -39261,7 +39509,6 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     }
     const text = normalizedDocumentText(transfer.getData("text/plain"));
     if (!text) return false;
-    if (dropPosition !== void 0) editor.dispatch({ selection: { anchor: dropPosition } });
     const url = editingFrontmatterSelection() ? null : isSingleSafeURL(text);
     const command2 = url && editor.state.selection.ranges.every((selection) => !selection.empty) ? "linkSelectedText" : "pastePlain";
     const transformed = transformMarkdown(editor.state.doc.toString(), editorSelections(), command2, {
@@ -39272,12 +39519,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
   }
   editor.contentDOM.addEventListener("paste", (event) => {
     if (!event.clipboardData) return;
-    if (pasteTransfer(event.clipboardData, void 0, true)) event.preventDefault();
-  }, { capture: true });
-  editor.contentDOM.addEventListener("drop", (event) => {
-    if (!event.dataTransfer) return;
-    const position = editor.posAtCoords({ x: event.clientX, y: event.clientY });
-    if (pasteTransfer(event.dataTransfer, position ?? void 0)) event.preventDefault();
+    if (pasteTransfer(event.clipboardData, true)) event.preventDefault();
   }, { capture: true });
   function refreshMermaidTheme() {
     mermaidThemeRevision += 1;

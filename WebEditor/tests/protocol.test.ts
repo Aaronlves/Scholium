@@ -31,7 +31,7 @@ const dialect = {
 
 describe("editor protocol", () => {
   it("uses the exact-insertion byte bridge protocol", () => {
-    expect(EDITOR_PROTOCOL_VERSION).toBe(37);
+    expect(EDITOR_PROTOCOL_VERSION).toBe(38);
   });
   it("accepts a complete versioned request", () => expect(isEditorRequest(request)).toBe(true));
   it("rejects retired title positioning while retaining blur", () => {

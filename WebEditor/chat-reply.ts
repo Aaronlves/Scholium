@@ -17,6 +17,20 @@ export function installChatReply(
     }
   };
   const noteContextMenu = (event: MouseEvent) => {
+    const selection = window.getSelection();
+    if (selection?.rangeCount && !selection.isCollapsed
+        && root.contains(selection.anchorNode) && root.contains(selection.focusNode)
+        && [...selection.getRangeAt(0).getClientRects()].some(rect =>
+          event.clientX >= rect.left && event.clientX <= rect.right
+          && event.clientY >= rect.top && event.clientY <= rect.bottom)) {
+      const text = selection.toString();
+      if (text.trim() && new TextEncoder().encode(text).length <= 65_536) {
+        event.preventDefault();
+        event.stopPropagation();
+        post('replySelectionContext', {text, left: event.clientX, top: event.clientY});
+        return;
+      }
+    }
     const anchor = event.target instanceof Element ? event.target.closest<HTMLAnchorElement>('a[href]') : null;
     if (!anchor || !root.contains(anchor) || anchor.protocol !== 'scholium-note:') return;
     // SafeMarkdownRenderer wraps internal targets in an encoded navigation URL.
@@ -30,6 +44,21 @@ export function installChatReply(
     post('replyNoteContext', {url, left: event.clientX, top: event.clientY});
   };
   const interact = () => post('replyInteraction', {});
+  const dragstart = (event: DragEvent) => {
+    const selection = window.getSelection();
+    if (!event.dataTransfer || !selection || selection.isCollapsed || selection.rangeCount !== 1
+        || !root.contains(selection.anchorNode) || !root.contains(selection.focusNode)) return;
+    // Preserve ordinary link/image dragging outside the selected passage.
+    if (![...selection.getRangeAt(0).getClientRects()].some(rect =>
+      event.clientX >= rect.left && event.clientX <= rect.right
+      && event.clientY >= rect.top && event.clientY <= rect.bottom)) return;
+    const text = selection.toString();
+    if (!text) return;
+    event.dataTransfer.clearData();
+    event.dataTransfer.setData('text/plain', text);
+    event.dataTransfer.effectAllowed = 'copy';
+    interact();
+  };
   const selected = () => {
     const selection = window.getSelection();
     if (selection && !selection.isCollapsed && root.contains(selection.anchorNode)) interact();
@@ -39,6 +68,7 @@ export function installChatReply(
   root.ownerDocument.addEventListener('selectionchange', selected);
   root.addEventListener('contextmenu', noteContextMenu);
   root.addEventListener('keydown', keydown);
+  root.addEventListener('dragstart', dragstart);
   root.tabIndex = 0;
   const decorateObjects = () => {
     root.querySelectorAll<HTMLElement>('table, pre, .scholium-mermaid').forEach((element) => {
@@ -97,10 +127,10 @@ export function installChatReply(
     post('replyLayout', {height: Math.ceil(root.getBoundingClientRect().height), intrinsicWidth});
   };
   const observer = new ResizeObserver(reportSize); observer.observe(root); reportSize();
-  (window as Window & {scholiumQuoteReplySelection?: () => void}).scholiumQuoteReplySelection = quote;
   const dispose = () => {
     observer.disconnect();
     root.removeEventListener('keydown', keydown); root.removeEventListener('contextmenu', noteContextMenu);
+    root.removeEventListener('dragstart', dragstart);
     root.removeEventListener('pointerdown', interact); root.removeEventListener('keydown', interact);
     root.ownerDocument.removeEventListener('selectionchange', selected);
   };

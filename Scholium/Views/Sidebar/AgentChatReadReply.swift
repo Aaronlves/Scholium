@@ -20,7 +20,6 @@ struct AgentChatReadReply: View {
     @State private var intrinsicWidth: CGFloat?
     @State private var failure: String?
     @State private var preview = ScholiumContentPreview()
-    @State private var quoteRequest: UUID?
 
     var body: some View {
         Group {
@@ -40,16 +39,10 @@ struct AgentChatReadReply: View {
                     onLinkClick: { if let url = URL(string: $0) { openLink(url) } }, onOpenExternalURL: openLink,
                     selectionSurfaceIsActive: false, renderingReadinessIsAcknowledged: ready,
                     onRenderingFailure: { failure = $0 }, onRenderingLoading: { ready = false },
-                    onRenderingReady: { ready = true }, onReplyEvent: { receive($0, expectedSource: projection.document.rawContent) },
-                    replyQuoteRequest: quoteRequest
+                    onRenderingReady: { ready = true }, onReplyEvent: { receive($0, expectedSource: projection.document.rawContent) }
                 )
                 .frame(maxWidth: fitsContent ? intrinsicWidth ?? .infinity : .infinity)
                 .frame(height: height)
-                .contextMenu {
-                    if quote != nil {
-                        Button("Ask About Selection") { quoteRequest = UUID() }
-                    }
-                }
             } else {
                 ProgressView("Loading…")
             }
@@ -77,6 +70,24 @@ struct AgentChatReadReply: View {
         case .quote(let text):
             guard expectedSource == source else { return }
             quote?(.reader(source: source, excerpt: text))
+        case .selectionContext(let text, let point, let view):
+            guard expectedSource == source else { return }
+            let menu = NSMenu()
+            menu.addItem(AgentChatNoteMenuItem(ScholiumL10n.string("Copy")) {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(text, forType: .string)
+            })
+            if let quote {
+                menu.addItem(AgentChatNoteMenuItem(ScholiumL10n.string("Ask About Selection")) {
+                    quote(.reader(source: source, excerpt: text))
+                })
+            }
+            // Leave WebKit's script-message callback before AppKit starts the
+            // native menu event loop. Copy owns this exact selected snapshot.
+            DispatchQueue.main.async { [weak view] in
+                guard let view, view.window != nil else { return }
+                menu.popUp(positioning: nil, at: point, in: view)
+            }
         case .noteContext(let url, let point, let view):
             guard expectedSource == source else { return }
             guard AgentChatReplySource.collect(source).contains(where: { $0.url == url && $0.isNote }) else { return }

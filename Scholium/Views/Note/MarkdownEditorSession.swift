@@ -1264,6 +1264,23 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         requestFocus(.editor)
     }
 
+    /// Completes an admitted external text drop's native focus handoff. The
+    /// page already owns the inserted text and caret; do not send a selection
+    /// operation or revive the focus lease of a hidden Review document.
+    @discardableResult
+    func acceptNativeFocusAfterDrop(from requestingWebView: WKWebView) -> Bool {
+        guard webView === requestingWebView, isReady, isLoaded, errorMessage == nil,
+            automaticFocusIsAuthorized, !isComposing, presentedMode == pendingMode,
+            !requestingWebView.isHiddenOrHasHiddenAncestor,
+            let window = requestingWebView.window, window.isKeyWindow,
+            window.makeFirstResponder(requestingWebView)
+        else { return false }
+        focusRequestRevision &+= 1
+        automaticFocusTarget = .editor
+        preferredDocumentFocusTarget = .editor
+        return true
+    }
+
     func focusTitle() {
         requestFocus(.title)
     }

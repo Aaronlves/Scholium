@@ -59,6 +59,7 @@ export const textSelectionPresentation = EditorView.decorations.compute(
 export function createLiveSelectionController(options: {
   handleModifiedLink(view: EditorView, event: MouseEvent): boolean;
   handleProjectedPointerStart(view: EditorView, event: MouseEvent): boolean;
+  completeSelection?(state: EditorState, selection: EditorSelection): EditorSelection;
 }): LiveSelectionController {
   const beginPointerSelection = StateEffect.define<PointerProjectionPhase>();
   const commitPointerSelection = StateEffect.define<null>();
@@ -116,7 +117,12 @@ export function createLiveSelectionController(options: {
       queueMicrotask(() => {
         if (this.destroyed || !this.gestureActive) return;
         this.gestureActive = false;
-        this.view.dispatch({effects: commitPointerSelection.of(null)});
+        this.view.dispatch({
+          selection: this.view.composing ? undefined
+            : options.completeSelection?.(this.view.state, this.view.state.selection),
+          effects: commitPointerSelection.of(null),
+          userEvent: "select.pointer",
+        });
       });
     };
 

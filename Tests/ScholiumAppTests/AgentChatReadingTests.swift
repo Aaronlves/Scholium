@@ -8,6 +8,158 @@ import WebKit
 
 @Suite("Chat reading continuity", .serialized) @MainActor
 struct AgentChatReadingTests {
+    @Test("Reply pointer selection reaches WebKit through message actions and supports native Copy")
+    func nativeReplyPointerSelectionAndCopy() async throws {
+        _ = NSApplication.shared
+        let host = NSHostingView(rootView:
+            AgentChatMessageActionVisibility {
+                AgentChatMessageSurface(isUser: false) {
+                    AgentChatReadReply(
+                        source: "Alpha **selection** remains intact.\n\nSecond paragraph.",
+                        quote: { _ in }, openLink: { _ in })
+                }
+            } actions: {
+                Button("Copy Markdown") {}
+                    .contextMenu { Button("Quote in Reply") {} }
+            }
+            .padding(20)
+            .frame(width: 480, height: 240, alignment: .topLeading))
+        let window = NSWindow(
+            contentRect: NSRect(x: 100, y: 100, width: 480, height: 240),
+            styleMask: [.titled, .closable], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = host
+        window.orderFrontRegardless()
+        defer {
+            window.orderOut(nil)
+            window.contentView = nil
+            window.close()
+        }
+        func reader(in view: NSView) -> WKWebView? {
+            (view as? WKWebView) ?? view.subviews.lazy.compactMap { reader(in: $0) }.first
+        }
+        let deadline = ContinuousClock.now.advanced(by: .seconds(10))
+        var points: [String: Double]?
+        var mountedReader: WKWebView?
+        while ContinuousClock.now < deadline {
+            host.layoutSubtreeIfNeeded()
+            if let webView = reader(in: host) {
+                mountedReader = webView
+                // Read geometry only: selection must be created by native pointer events.
+                points = try await webView.callAsyncJavaScript("""
+                    const paragraph = document.querySelector('#scholium-document p');
+                    const emphasis = paragraph?.querySelector('strong');
+                    if (!paragraph || !emphasis) return null;
+                    const start = document.createRange();
+                    start.setStart(paragraph.firstChild, 0);
+                    start.setEnd(paragraph.firstChild, 1);
+                    const first = start.getBoundingClientRect();
+                    const last = emphasis.getBoundingClientRect();
+                    if (!first.width || !last.width) return null;
+                    return {startX: first.left + 0.5, startY: first.top + first.height / 2,
+                        endX: last.right - 0.5, endY: last.top + last.height / 2};
+                    """, arguments: [:], in: nil, contentWorld: .page) as? [String: Double]
+                if points != nil { break }
+            }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        let webView = try #require(mountedReader)
+        let geometry = try #require(points)
+        func point(_ prefix: String) throws -> NSPoint {
+            let x = try #require(geometry[prefix + "X"])
+            let y = try #require(geometry[prefix + "Y"])
+            return webView.convert(NSPoint(x: x, y: webView.isFlipped ? y : webView.bounds.height - y), to: nil)
+        }
+        let start = try point("start")
+        let end = try point("end")
+        let hit = try #require(host.hitTest(start))
+        try #require(hit === webView || hit.isDescendant(of: webView))
+        let timestamp = ProcessInfo.processInfo.systemUptime
+        for step in 0...9 {
+            let fraction = min(Double(step) / 8, 1)
+            let location = NSPoint(x: start.x + (end.x - start.x) * fraction, y: start.y + (end.y - start.y) * fraction)
+            let type: NSEvent.EventType = step == 0 ? .leftMouseDown : step == 9 ? .leftMouseUp : .leftMouseDragged
+            let event = try #require(NSEvent.mouseEvent(
+                with: type, location: location, modifierFlags: [], timestamp: timestamp + Double(step) * 0.025,
+                windowNumber: window.windowNumber, context: nil, eventNumber: step, clickCount: 1,
+                pressure: type == .leftMouseUp ? 0 : 1))
+            // SwiftPM's host has no key application window. Resolve the real
+            // native recipient through the complete SwiftUI hierarchy first.
+            switch type {
+            case .leftMouseDown: hit.mouseDown(with: event)
+            case .leftMouseDragged: hit.mouseDragged(with: event)
+            default: hit.mouseUp(with: event)
+            }
+            try await Task.sleep(for: .milliseconds(25))
+        }
+        let selectionDeadline = ContinuousClock.now.advanced(by: .seconds(3))
+        var selected = ""
+        repeat {
+            selected = try await webView.evaluateJavaScript("window.getSelection().toString()") as? String ?? ""
+            if selected == "Alpha selection" { break }
+            try await Task.sleep(for: .milliseconds(20))
+        } while ContinuousClock.now < selectionDeadline
+        try #require(selected == "Alpha selection")
+
+        let pasteboard = NSPasteboard.general
+        let savedItems = (pasteboard.pasteboardItems ?? []).map { item in
+            item.types.compactMap { type in item.data(forType: type).map { (type, $0) } }
+        }
+        defer {
+            pasteboard.clearContents()
+            let items = savedItems.map { entries in
+                let item = NSPasteboardItem()
+                for (type, data) in entries { item.setData(data, forType: type) }
+                return item
+            }
+            pasteboard.writeObjects(items)
+        }
+        pasteboard.clearContents()
+        #expect(NSApp.sendAction(#selector(NSText.copy(_:)), to: window.firstResponder, from: nil))
+        let copyDeadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while pasteboard.string(forType: .string) != selected && ContinuousClock.now < copyDeadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(pasteboard.string(forType: .string) == selected)
+        let transfer = try #require(try await webView.callAsyncJavaScript("""
+            const range = window.getSelection().getRangeAt(0);
+            const rect = range.getClientRects()[0];
+            const data = new DataTransfer();
+            const root = document.getElementById('scholium-document');
+            const x = rect.left + 1, y = rect.top + rect.height / 2;
+            const target = document.elementFromPoint(x, y);
+            target.dispatchEvent(new MouseEvent('mousedown', {bubbles: true, cancelable: true,
+                button: 0, buttons: 1, detail: 1, clientX: x, clientY: y}));
+            const rootIsNative = !root.hasAttribute('draggable');
+            let dragImageCalls = 0;
+            Object.defineProperty(data, 'setDragImage', {value: () => { dragImageCalls++; }});
+            const previewObserver = new MutationObserver(() => {});
+            previewObserver.observe(document.body, {childList: true});
+            // Verify the DOM payload contract without asserting the system's
+            // physical gesture recognition or native drag-image timing.
+            root.dispatchEvent(new DragEvent('dragstart', {bubbles: true, cancelable: true,
+                dataTransfer: data, clientX: x, clientY: y}));
+            const previewNodes = previewObserver.takeRecords()
+                .reduce((count, record) => count + record.addedNodes.length, 0);
+            previewObserver.disconnect();
+            const nativeDuringDrag = !root.hasAttribute('draggable');
+            root.dispatchEvent(new DragEvent('dragend', {bubbles: true}));
+            return {text: data.getData('text/plain'),
+                selected: window.getSelection().toString(), types: Array.from(data.types).join(','),
+                rootIsNative: String(rootIsNative), nativeDuringDrag: String(nativeDuringDrag),
+                dragImageCalls: String(dragImageCalls), previewNodes: String(previewNodes),
+                rootStillNative: String(!root.hasAttribute('draggable'))};
+            """, arguments: [:], in: nil, contentWorld: .page) as? [String: String])
+        #expect(transfer["text"] == selected)
+        #expect(transfer["selected"] == selected)
+        #expect(transfer["types"] == "text/plain")
+        #expect(transfer["rootIsNative"] == "true")
+        #expect(transfer["nativeDuringDrag"] == "true")
+        #expect(transfer["rootStillNative"] == "true")
+        #expect(transfer["dragImageCalls"] == "0")
+        #expect(transfer["previewNodes"] == "0")
+    }
+
     @Test("History navigation loads the target without discarding source or reversing page order")
     func historyWindow() {
         let ids = (0..<300).map(String.init)

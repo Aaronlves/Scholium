@@ -30,6 +30,22 @@ const restoreLineEnding = StateEffect.define<LineEnding>({
   },
 });
 
+/** Preserve the original separators of a source slice inserted by a move/copy.
+ * Positions are in the resulting document, just like inverse-history effects.
+ */
+export function exactInsertionEffects(source: string, at: number) {
+  const effects: StateEffect<LineEnding>[] = [];
+  let position = at;
+  for (let offset = 0; offset < source.length; offset++, position++) {
+    const crlf = source[offset] === "\r" && source[offset + 1] === "\n";
+    if (crlf || source[offset] === "\n") {
+      effects.push(restoreLineEnding.of({at: position, ending: crlf ? "\r\n" : "\n"}));
+      if (crlf) offset++;
+    }
+  }
+  return effects;
+}
+
 function transactionChanges(transaction: Transaction, mirror: ExactSourceMirror): NormalizedSourceChange[] {
   const endings = new Map(transaction.effects.filter(effect => effect.is(restoreLineEnding))
     .map(effect => [effect.value.at, effect.value.ending]));
