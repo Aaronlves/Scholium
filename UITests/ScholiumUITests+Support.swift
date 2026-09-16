@@ -745,7 +745,7 @@ extension ScholiumUITests {
 
     @MainActor
     func chooseSetupFolder(_ folder: URL, role: String) {
-        let openPanelButton = app.buttons["Choose Folder…"]
+        let openPanelButton = app.buttons["scholium.bootstrap.choose\(role)"]
         XCTAssertTrue(openPanelButton.waitForExistence(timeout: 5))
         openPanelButton.click()
 
@@ -777,7 +777,7 @@ extension ScholiumUITests {
         if let confirmFolder {
             confirmFolder.click()
         } else {
-            pathField.typeKey(.return, modifierFlags: [])
+            app.typeKey(.return, modifierFlags: [])
         }
         XCTAssertTrue(waitUntil(timeout: 5) { !goToFolderSheet.exists })
 
@@ -803,7 +803,7 @@ extension ScholiumUITests {
     func authorizePortableFolder(_ folder: URL, in owner: XCUIElement? = nil) {
         let authorizeButton =
             owner == nil
-            ? app.buttons["Authorize This Folder"]
+            ? app.buttons["scholium.bootstrap.authorizeParent"]
             : app.buttons["Authorize folder containing Works"]
         XCTAssertTrue(authorizeButton.waitForExistence(timeout: 5))
         authorizeButton.click()

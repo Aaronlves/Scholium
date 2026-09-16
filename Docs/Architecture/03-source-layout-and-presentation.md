@@ -37,10 +37,8 @@ native presentation, interface composition, integrations, and shared boundaries.
   their one controller, and reusable leaves receive immutable values and
   closures.
 - `Scholium/Resources/Artwork` contains approved product illustrations rather
-  than identity or state authority. One Bootstrap artwork owner combines the
-  fixed Point, Offer, Unlock Straight, and Lift hand assets with SwiftUI-drawn
-  Flow or Converge geometry. All compositions are decorative, noninteractive,
-  and absent from accessibility.
+  than identity or state authority. Bootstrap uses one small Welcome-only hand
+  composition. It is decorative, noninteractive, and absent from accessibility.
 
 ## Presentation
 
@@ -125,16 +123,18 @@ exact-directory constraint also canonicalizes aliases and rejects every sibling
 path before the feature may treat access as renewed or authorized.
 
 The Bootstrap root uses a transparent hidden-title titlebar over one full-size
-content view. Its Welcome, Triptych, and Ready stages share one
-adaptive full-bleed illustration field beside a linear native task pane and
-fixed footer; narrow windows move the field above the task. Triptych folder
-selection and bounded authorization remain the registration owner's native
-controls behind the specified path cards and review pages. An
-Application-owned structure preparer exclusively creates a confirmed new root
-and its four fixed children; it refuses an existing destination. The setup view
-returns a registration failure to the retained Triptych review and keeps
-workspace routing closed until registration completes. Ready explicitly opens
-the configured workspace.
+system-background content view. `WorkspaceSetupView` routes Welcome directly
+to create or connect setup. The setup view owns the retained draft; its create
+form combines name, location, and live structure preview, while its connect
+form keeps all three role selections and exact Works-parent authorization
+visible together. Both forms use the scene's native file-selection presenter.
+An Application-owned structure preparer exclusively creates a confirmed new
+root and its four fixed children; it refuses an existing destination.
+Registration failures stay on the populated form. A successful final action
+returns the registration to the Bootstrap owner for native workspace handoff,
+without a separate review or Ready-stage controller. The root keeps workspace
+routing closed until registration completes and waits for window readiness
+before dismissal.
 
 Agent execution and tool selection remain in the external runtime. Optional
 Triptych-level Chat uses the official Codex App Server client described in the

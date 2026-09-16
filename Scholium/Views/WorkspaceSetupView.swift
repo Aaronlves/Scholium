@@ -33,9 +33,11 @@ struct WorkspaceSetupView: View {
 
     var body: some View {
         BootstrapFlowView(context: context)
-            .frame(minWidth: 660, minHeight: 680)
+            .frame(
+                minWidth: ScholiumMetrics.Onboarding.minimumWidth,
+                minHeight: ScholiumMetrics.Onboarding.minimumHeight
+            )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .ignoresSafeArea(.container, edges: .top)
             .interactiveDismissDisabled()
     }
 }
@@ -47,25 +49,18 @@ private enum BootstrapSetupPath {
 
 private enum BootstrapStep: Hashable {
     case welcome
-    case choosePath
     case createStructure
-    case existingAnalyses
-    case existingTopics
-    case existingWorks
-    case authorizeParent
-    case reviewTriptych
-    case ready
+    case existingFolders
 }
 
 private struct BootstrapFlowView: View {
-    @Environment(\.scholiumReduceMotion) private var reduceMotion
     @Environment(\.scholiumFileSelectionPresenter) private var fileSelectionPresenter
+    @AccessibilityFocusState private var focusedHeading: BootstrapStep?
 
     let context: WorkspaceSetupContext
 
     @State private var step: BootstrapStep = .welcome
     @State private var setupPath: BootstrapSetupPath = .createNew
-    @State private var isMovingForward = true
     @State private var baseLocationURL: URL?
     @State private var paperAnalysisURL: URL?
     @State private var topicKnowledgeURL: URL?
@@ -74,44 +69,35 @@ private struct BootstrapFlowView: View {
     @State private var triptychName = ""
     @State private var errorMessage: String?
     @State private var isSaving = false
+    @State private var didConfigure = false
+    @State private var preparedSelection: WorkspaceSetupSelection?
     @State private var pendingPortableControlRecovery: WorkspaceSetupSelection?
     @State private var loadedCurrentValues = false
 
-    private let artRailWidth: CGFloat = 276
-
     var body: some View {
-        HStack(spacing: 0) {
-            BootstrapStageArtwork(stage: artworkStage)
-                .frame(width: artRailWidth)
-
-            ZStack(alignment: .bottom) {
-                stepContent
-                    .id(step)
-                    .transition(stepTransition)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(ScholiumColorRole.documentBackground.color)
-                    .clipped()
-
-                if let message = errorMessage ?? context.recoveryMessage {
-                    BootstrapSetupStatus(
-                        message: message,
-                        isError: errorMessage != nil
-                    )
-                    .padding(.horizontal, ScholiumMetrics.Onboarding.statusHorizontalInset)
-                    .padding(.bottom, ScholiumMetrics.Onboarding.statusBottomInset)
+        VStack(spacing: 0) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.regionContentInset) {
+                    stepContent
+                        .disabled(isSaving || didConfigure)
+                    if let message = errorMessage ?? context.recoveryMessage {
+                        Label(message, systemImage: "exclamationmark.triangle")
+                            .foregroundStyle(.red)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .textSelection(.enabled)
+                            .accessibilityIdentifier("scholium.bootstrap.error")
+                    }
                 }
-
-                BootstrapFooter(
-                    showsBack: canGoBack,
-                    primaryTitle: primaryTitle,
-                    primaryDisabled: primaryDisabled || isSaving,
-                    onBack: moveBack,
-                    onPrimary: performPrimary
-                )
+                .frame(maxWidth: ScholiumMetrics.Onboarding.contentMaximumWidth, alignment: .leading)
+                .frame(maxWidth: .infinity)
+                .padding(ScholiumMetrics.Onboarding.contentInset)
+            }
+            if step != .welcome {
+                Divider()
+                footer
             }
         }
-        .scholiumForeground(.primaryText)
-        .background(ScholiumColorRole.documentBackground.color)
+        .background(Color(nsColor: .windowBackgroundColor))
         .buttonStyle(.automatic)
         .task {
             await context.refreshAssignment()
@@ -119,13 +105,16 @@ private struct BootstrapFlowView: View {
             await loadPortableContainerIfAvailable()
         }
         .onChange(of: context.workspaceAssignment) { _, _ in
-            loadCurrentValuesIfNeeded(force: true)
-            Task { await loadPortableContainerIfAvailable() }
+            guard !isSaving, !didConfigure else { return }
+            loadCurrentValuesIfNeeded()
         }
         .onChange(of: outputURL) { oldValue, newValue in
             let oldParent = oldValue?.deletingLastPathComponent().standardizedFileURL.path
             let newParent = newValue?.deletingLastPathComponent().standardizedFileURL.path
-            if oldParent != newParent {
+            if oldParent != newParent,
+                portableContainerURL?.resolvingSymlinksInPath().standardizedFileURL
+                    != detectedParentURL
+            {
                 portableContainerURL = nil
             }
             Task { await loadPortableContainerIfAvailable() }
@@ -142,247 +131,258 @@ private struct BootstrapFlowView: View {
             Button("Archive and Rebuild", role: .destructive) {
                 recoverPortableControl()
             }
-            .scholiumActivationPointer()
             Button("Cancel", role: .cancel) {
                 pendingPortableControlRecovery = nil
             }
-            .scholiumActivationPointer()
         } message: {
             Text(
                 "Scholium will move the entire existing .scholium folder to a uniquely named sibling recovery folder, preserving its exact files without interpreting the old schema. Analyses, Topics, and Works will not be changed. Scholium will then create current portable control state."
             )
         }
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("scholium.bootstrap")
     }
 
-    private var artworkStage: BootstrapArtworkStage {
-        switch step {
-        case .welcome:
-            .welcome
-        case .choosePath, .createStructure, .existingAnalyses,
-            .existingTopics, .existingWorks, .authorizeParent,
-            .reviewTriptych:
-            .triptych
-        case .ready:
-            .ready
+    private var footer: some View {
+        HStack(spacing: ScholiumGrid.Spacing.nestedContentInset) {
+            Button("Back", action: moveBack)
+                .keyboardShortcut(.cancelAction)
+                .disabled(isSaving || didConfigure)
+            Spacer()
+            if isSaving || (didConfigure && context.recoveryMessage == nil) {
+                ProgressView()
+                    .controlSize(.small)
+                Text(isSaving ? "Setting Up Triptych…" : "Opening Workspace…")
+                    .foregroundStyle(.secondary)
+            } else {
+                Button {
+                    if didConfigure {
+                        openWorkspace()
+                    } else {
+                        save()
+                    }
+                } label: {
+                    Text(primaryTitle)
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(!didConfigure && !selectionIsReady)
+            }
         }
-    }
-
-    private var stepTransition: AnyTransition {
-        ScholiumMotion.bootstrapStepTransition(
-            movingForward: isMovingForward,
-            reduceMotion: reduceMotion
-        )
-    }
-
-    private var canGoBack: Bool {
-        step != .welcome && step != .ready
+        .padding(.horizontal, ScholiumMetrics.Onboarding.contentInset)
+        .padding(.vertical, ScholiumGrid.Spacing.sectionSeparation)
     }
 
     private var primaryTitle: LocalizedStringResource {
-        switch step {
-        case .welcome: "Get Started"
-        case .choosePath: "Continue"
-        case .createStructure: "Review Structure"
-        case .existingAnalyses, .existingTopics, .existingWorks: "Continue"
-        case .authorizeParent: "Authorize This Folder"
-        case .reviewTriptych:
-            setupPath == .createNew ? "Create Triptych" : "Use This Triptych"
-        case .ready: "Open Workspace"
-        }
-    }
-
-    private var primaryDisabled: Bool {
-        switch step {
-        case .welcome, .choosePath, .authorizeParent, .ready:
-            false
-        case .createStructure:
-            sanitizedTriptychName == nil || baseLocationURL == nil
-        case .existingAnalyses:
-            paperAnalysisURL == nil
-        case .existingTopics:
-            topicKnowledgeURL == nil
-        case .existingWorks:
-            outputURL == nil
-        case .reviewTriptych:
-            setupPath == .createNew
-                ? baseLocationURL == nil || sanitizedTriptychName == nil
-                : !existingSelectionIsReady
-        }
+        if didConfigure { return "Open Workspace" }
+        if setupPath == .createNew, preparedCurrentSelection != nil { return "Finish Setup and Open" }
+        return setupPath == .createNew ? "Create and Open" : "Connect and Open"
     }
 
     private var sanitizedTriptychName: String? {
-        let trimmed = triptychName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
-        return trimmed.replacingOccurrences(of: "/", with: "-")
+        let name = triptychName.trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "/", with: "-")
+        guard !name.isEmpty, name != ".", name != ".." else { return nil }
+        return name
     }
 
     private var proposedTriptychRootURL: URL? {
         guard let baseLocationURL, let sanitizedTriptychName else { return nil }
-        return baseLocationURL.appendingPathComponent(
-            sanitizedTriptychName,
-            isDirectory: true
-        )
+        return baseLocationURL.resolvingSymlinksInPath()
+            .appendingPathComponent(sanitizedTriptychName, isDirectory: true)
+    }
+
+    private var preparedCurrentSelection: WorkspaceSetupSelection? {
+        guard let preparedSelection,
+            preparedSelection.portableContainerURL.standardizedFileURL
+                == proposedTriptychRootURL?.standardizedFileURL
+        else { return nil }
+        return preparedSelection
     }
 
     private var detectedParentURL: URL? {
-        outputURL?
-            .deletingLastPathComponent()
-            .resolvingSymlinksInPath()
-            .standardizedFileURL
-    }
-
-    private var triptychRootURL: URL? {
-        switch setupPath {
-        case .createNew: proposedTriptychRootURL
-        case .existingFolders: portableContainerURL ?? detectedParentURL
-        }
-    }
-
-    private var effectiveAnalysesURL: URL? {
-        setupPath == .createNew
-            ? proposedTriptychRootURL?.appendingPathComponent("Analyses", isDirectory: true)
-            : paperAnalysisURL
-    }
-
-    private var effectiveTopicsURL: URL? {
-        setupPath == .createNew
-            ? proposedTriptychRootURL?.appendingPathComponent("Topics", isDirectory: true)
-            : topicKnowledgeURL
-    }
-
-    private var effectiveWorksURL: URL? {
-        setupPath == .createNew
-            ? proposedTriptychRootURL?.appendingPathComponent("Works", isDirectory: true)
-            : outputURL
+        outputURL?.deletingLastPathComponent().resolvingSymlinksInPath().standardizedFileURL
     }
 
     private var existingSelectionIsReady: Bool {
-        guard paperAnalysisURL != nil,
-            topicKnowledgeURL != nil,
-            outputURL != nil,
-            let portableContainerURL,
-            let detectedParentURL
+        guard paperAnalysisURL != nil, topicKnowledgeURL != nil, outputURL != nil,
+            let portableContainerURL, let detectedParentURL
         else { return false }
-        return portableContainerURL.resolvingSymlinksInPath().standardizedFileURL.path
-            == detectedParentURL.path
+        return portableContainerURL.resolvingSymlinksInPath().standardizedFileURL == detectedParentURL
+    }
+
+    private var selectionIsReady: Bool {
+        setupPath == .createNew ? proposedTriptychRootURL != nil : existingSelectionIsReady
     }
 
     @ViewBuilder
     private var stepContent: some View {
         switch step {
         case .welcome:
-            BootstrapWelcomeStep()
-        case .choosePath:
-            BootstrapChoosePathStep(
-                selection: setupPath,
-                chooseCreateNew: { setupPath = .createNew },
-                chooseExisting: { setupPath = .existingFolders }
-            )
+            welcome
         case .createStructure:
-            BootstrapCreateStructureStep(
-                triptychName: $triptychName,
-                parentURL: baseLocationURL,
-                chooseParent: chooseParentLocation
-            )
-        case .existingAnalyses:
-            BootstrapExistingFolderStep(
-                title: "Choose Analyses",
-                explanation: "Reusable analyses of papers and other sources.",
-                path: paperAnalysisURL,
-                chooseAction: {
-                    chooseDirectory(title: "Choose Analyses Folder") {
-                        paperAnalysisURL = $0
-                    }
-                }
-            )
-        case .existingTopics:
-            BootstrapExistingFolderStep(
-                title: "Choose Topics",
-                explanation: "Concepts, distinctions, debates, objections, and syntheses.",
-                path: topicKnowledgeURL,
-                chooseAction: {
-                    chooseDirectory(title: "Choose Topics Folder") {
-                        topicKnowledgeURL = $0
-                    }
-                }
-            )
-        case .existingWorks:
-            BootstrapExistingFolderStep(
-                title: "Choose Works",
-                explanation: "Researcher-governed plans, arguments, drafts, papers, and chapters.",
-                path: outputURL,
-                chooseAction: {
-                    chooseDirectory(title: "Choose Works Folder") {
-                        outputURL = $0
-                    }
-                }
-            )
-        case .authorizeParent:
-            BootstrapAuthorizeParentStep(rootURL: detectedParentURL)
-        case .reviewTriptych:
-            BootstrapReviewTriptychStep(
-                setupPath: setupPath,
-                rootURL: triptychRootURL,
-                analysesURL: effectiveAnalysesURL,
-                topicsURL: effectiveTopicsURL,
-                worksURL: effectiveWorksURL
-            )
-        case .ready:
-            BootstrapReadyStep(
-                triptychName: triptychName,
-                rootURL: triptychRootURL
-            )
+            createStructure
+        case .existingFolders:
+            existingFolders
         }
     }
 
-    private func performPrimary() {
-        guard !primaryDisabled else { return }
-        switch step {
-        case .welcome:
-            move(to: .choosePath)
-        case .choosePath:
-            move(to: setupPath == .createNew ? .createStructure : .existingAnalyses)
-        case .createStructure:
-            move(to: .reviewTriptych)
-        case .existingAnalyses:
-            move(to: .existingTopics)
-        case .existingTopics:
-            move(to: .existingWorks)
-        case .existingWorks:
-            move(to: .authorizeParent)
-        case .authorizeParent:
-            authorizeDetectedParent()
-        case .reviewTriptych:
-            save()
-        case .ready:
-            context.completeBootstrap()
-            context.dismiss()
+    private var welcome: some View {
+        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.regionContentInset) {
+            if let url = Bundle.module.url(forResource: "manicule-canonical", withExtension: "png"),
+                let image = NSImage(contentsOf: url)
+            {
+                Image(nsImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(height: ScholiumMetrics.Onboarding.welcomeArtworkHeight)
+                    .accessibilityHidden(true)
+            }
+            heading("Welcome to Scholium", subtitle: "A research space built around your Markdown files.")
+            GroupBox {
+                VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.sectionSeparation) {
+                    BootstrapRoleDescription(title: "Analyses", detail: "Sources and interpretations")
+                    BootstrapRoleDescription(title: "Topics", detail: "Concepts and debates")
+                    BootstrapRoleDescription(title: "Works", detail: "Arguments of your own")
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(ScholiumGrid.Spacing.inlineControlGap)
+            }
+            VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                Button("Create a New Triptych") { choose(.createNew) }
+                    .keyboardShortcut(.defaultAction)
+                    .accessibilityIdentifier("scholium.bootstrap.createNew")
+                Button("Connect Existing Folders") { choose(.existingFolders) }
+                    .accessibilityIdentifier("scholium.bootstrap.connectExisting")
+            }
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("scholium.bootstrap.welcome")
+    }
+
+    private var createStructure: some View {
+        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.regionContentInset) {
+            heading("Create a New Triptych")
+            VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                Text("Triptych Name").font(.headline)
+                TextField("Triptych Name", text: $triptychName)
+                    .textFieldStyle(.roundedBorder)
+                    .accessibilityIdentifier("scholium.triptychName")
+            }
+            BootstrapFolderRow(
+                title: "Location", path: baseLocationURL,
+                buttonTitle: "Choose Location…", identifier: "scholium.bootstrap.chooseLocation",
+                action: chooseParentLocation
+            )
+            GroupBox {
+                VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.sectionSeparation) {
+                    Text("Proposed Structure").font(.headline)
+                    if let root = proposedTriptychRootURL {
+                        BootstrapPath(path: root)
+                    } else {
+                        Text("Choose a name and location to preview the new folder.")
+                            .foregroundStyle(.secondary)
+                    }
+                    VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                        Label("Analyses", systemImage: "folder")
+                        Label("Topics", systemImage: "folder")
+                        Label("Works", systemImage: "folder")
+                    }
+                    Text("Scholium also creates a .scholium folder for portable control data.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(ScholiumGrid.Spacing.inlineControlGap)
+            }
+            Group {
+                if preparedCurrentSelection != nil {
+                    Text("The folders have been created. Retry to finish setting up this Triptych.")
+                } else {
+                    Text("A new folder will be created at this location. Existing folders will not be replaced.")
+                }
+            }
+            .font(.callout)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("scholium.bootstrap.createStructure")
+    }
+
+    private var existingFolders: some View {
+        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.regionContentInset) {
+            heading("Connect Existing Folders", subtitle: "Choose a folder for each part of your Triptych. Your research files stay in place.")
+            BootstrapFolderRow(
+                title: "Analyses", path: paperAnalysisURL,
+                buttonTitle: "Choose Analyses…", identifier: "scholium.bootstrap.chooseAnalyses"
+            ) {
+                chooseDirectory(title: "Choose Analyses Folder") { paperAnalysisURL = $0 }
+            }
+            BootstrapFolderRow(
+                title: "Topics", path: topicKnowledgeURL,
+                buttonTitle: "Choose Topics…", identifier: "scholium.bootstrap.chooseTopics"
+            ) {
+                chooseDirectory(title: "Choose Topics Folder") { topicKnowledgeURL = $0 }
+            }
+            BootstrapFolderRow(
+                title: "Works", path: outputURL,
+                buttonTitle: "Choose Works…", identifier: "scholium.bootstrap.chooseWorks"
+            ) {
+                chooseDirectory(title: "Choose Works Folder") { outputURL = $0 }
+            }
+            if let parent = detectedParentURL {
+                Divider()
+                VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                    Text("Folder Containing Works").font(.headline)
+                    BootstrapPath(path: parent)
+                    Text("Scholium needs access to this folder to store portable control data in .scholium beside Works.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if portableContainerURL?.resolvingSymlinksInPath().standardizedFileURL == parent {
+                        Label("Folder Access Granted", systemImage: "checkmark.circle")
+                    } else {
+                        Button("Authorize This Folder", action: authorizeDetectedParent)
+                            .accessibilityIdentifier("scholium.bootstrap.authorizeParent")
+                    }
+                }
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("scholium.bootstrap.existingFolders")
+    }
+
+    private func heading(_ title: LocalizedStringResource, subtitle: LocalizedStringResource? = nil) -> some View {
+        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+            Text(title)
+                .font(.title)
+                .accessibilityAddTraits(.isHeader)
+                .accessibilityFocused($focusedHeading, equals: step)
+            if let subtitle {
+                Text(subtitle)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private func choose(_ path: BootstrapSetupPath) {
+        setupPath = path
+        step = path == .createNew ? .createStructure : .existingFolders
+        errorMessage = nil
+        focusedHeading = step
     }
 
     private func moveBack() {
-        let destination: BootstrapStep?
-        switch step {
-        case .welcome: destination = nil
-        case .choosePath: destination = .welcome
-        case .createStructure, .existingAnalyses: destination = .choosePath
-        case .existingTopics: destination = .existingAnalyses
-        case .existingWorks: destination = .existingTopics
-        case .authorizeParent: destination = .existingWorks
-        case .reviewTriptych:
-            destination = setupPath == .createNew ? .createStructure : .authorizeParent
-        case .ready: destination = nil
-        }
-        guard let destination else { return }
-        move(to: destination, movingForward: false)
+        guard !isSaving, !didConfigure else { return }
+        step = .welcome
+        errorMessage = nil
+        focusedHeading = .welcome
     }
 
-    private func move(to destination: BootstrapStep, movingForward: Bool = true) {
-        isMovingForward = movingForward
-        withAnimation(ScholiumMotion.bootstrapStep(reduceMotion: reduceMotion)) {
-            step = destination
-        }
+    private func openWorkspace() {
+        context.completeBootstrap()
+        context.dismiss()
     }
 
     private func chooseParentLocation() {
@@ -447,7 +447,6 @@ private struct BootstrapFlowView: View {
                 else { return }
                 errorMessage = nil
                 portableContainerURL = selected
-                move(to: .reviewTriptych)
             } catch is CancellationError {
                 return
             } catch {
@@ -457,7 +456,7 @@ private struct BootstrapFlowView: View {
     }
 
     private func save() {
-        guard !isSaving else { return }
+        guard !isSaving, !didConfigure, selectionIsReady else { return }
         isSaving = true
         errorMessage = nil
         Task {
@@ -470,10 +469,22 @@ private struct BootstrapFlowView: View {
                         isSaving = false
                         return
                     }
-                    selection = try await context.prepareTriptychStructure(
-                        baseLocationURL,
-                        triptychName
-                    )
+                    if let preparedSelection = preparedCurrentSelection {
+                        selection = WorkspaceSetupSelection(
+                            paperAnalysisURL: preparedSelection.paperAnalysisURL,
+                            topicKnowledgeURL: preparedSelection.topicKnowledgeURL,
+                            outputURL: preparedSelection.outputURL,
+                            portableContainerURL: preparedSelection.portableContainerURL,
+                            triptychID: preparedSelection.triptychID,
+                            triptychName: triptychName.trimmingCharacters(in: .whitespacesAndNewlines)
+                        )
+                    } else {
+                        selection = try await context.prepareTriptychStructure(
+                            baseLocationURL,
+                            triptychName
+                        )
+                        preparedSelection = selection
+                    }
                     paperAnalysisURL = selection.paperAnalysisURL
                     topicKnowledgeURL = selection.topicKnowledgeURL
                     outputURL = selection.outputURL
@@ -500,7 +511,8 @@ private struct BootstrapFlowView: View {
 
                 try await context.configure(selection)
                 isSaving = false
-                move(to: .ready)
+                didConfigure = true
+                openWorkspace()
             } catch {
                 isSaving = false
                 if setupPath == .existingFolders,
@@ -531,7 +543,8 @@ private struct BootstrapFlowView: View {
                 )
                 try await context.configure(selection)
                 isSaving = false
-                move(to: .ready)
+                didConfigure = true
+                openWorkspace()
             } catch {
                 isSaving = false
                 errorMessage = error.localizedDescription
@@ -539,8 +552,8 @@ private struct BootstrapFlowView: View {
         }
     }
 
-    private func loadCurrentValuesIfNeeded(force: Bool = false) {
-        guard force || !loadedCurrentValues else { return }
+    private func loadCurrentValuesIfNeeded() {
+        guard !loadedCurrentValues else { return }
         loadedCurrentValues = true
         guard let assignment = targetAssignment else { return }
         setupPath = .existingFolders
@@ -555,7 +568,9 @@ private struct BootstrapFlowView: View {
             portableContainerURL = nil
             return
         }
-        if let registered = await context.portableContainerURL(outputURL) {
+        if let registered = await context.portableContainerURL(outputURL),
+            self.outputURL == outputURL
+        {
             portableContainerURL = registered
         }
     }
@@ -574,615 +589,51 @@ private struct BootstrapFlowView: View {
     }
 }
 
-private struct BootstrapFooter: View {
-    let showsBack: Bool
-    let primaryTitle: LocalizedStringResource
-    let primaryDisabled: Bool
-    let onBack: () -> Void
-    let onPrimary: () -> Void
-
-    var body: some View {
-        VStack(spacing: 0) {
-            Rectangle()
-                .fill(ScholiumColorRole.separator.color)
-                .frame(height: 1)
-            HStack(spacing: ScholiumGrid.Spacing.nestedContentInset) {
-                if showsBack {
-                    Button("Back", action: onBack)
-                        .scholiumActivationPointer()
-                        .keyboardShortcut(.cancelAction)
-                }
-                Spacer()
-                Button(action: onPrimary) {
-                    Text(primaryTitle)
-                }
-                .scholiumActivationPointer()
-                .buttonStyle(.bordered)
-                .keyboardShortcut(.defaultAction)
-                .disabled(primaryDisabled)
-            }
-            .padding(.horizontal, ScholiumMetrics.Onboarding.footerHorizontalInset)
-            .padding(.vertical, ScholiumMetrics.Onboarding.footerVerticalInset)
-        }
-        .background(ScholiumColorRole.documentBackground.color)
-    }
-}
-
-private struct BootstrapStepCanvas<Content: View>: View {
-    @ViewBuilder let content: Content
-
-    init(@ViewBuilder content: () -> Content) {
-        self.content = content()
-    }
-
-    var body: some View {
-        content
-            .frame(maxWidth: 420, maxHeight: .infinity, alignment: .top)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            .padding(.horizontal, ScholiumMetrics.Onboarding.stepHorizontalInset)
-            .padding(.top, ScholiumMetrics.Onboarding.stepTopInset)
-            .padding(.bottom, ScholiumMetrics.Onboarding.stepBottomInset)
-    }
-}
-
-private struct BootstrapStepHeading: View {
-    let title: LocalizedStringResource
-    var subtitle: LocalizedStringResource? = nil
-    var alignment: HorizontalAlignment = .leading
-
-    var body: some View {
-        VStack(alignment: alignment, spacing: ScholiumMetrics.Onboarding.headingDetailSpacing) {
-            Text(title)
-                .font(ScholiumTypography.Bootstrap.title)
-                .accessibilityAddTraits(.isHeader)
-            if let subtitle {
-                Text(subtitle)
-                    .font(ScholiumTypography.interface(.body))
-                    .scholiumForeground(.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-        .frame(
-            maxWidth: .infinity,
-            alignment: alignment == .center ? .center : .leading
-        )
-    }
-}
-
-private struct BootstrapWelcomeStep: View {
-    var body: some View {
-        BootstrapStepCanvas {
-            VStack(alignment: .leading, spacing: 0) {
-                Text("Scholium")
-                    .font(ScholiumTypography.Bootstrap.wordmark)
-                    .accessibilityAddTraits(.isHeader)
-
-                Text("A field of inquiry takes shape as a Triptych.")
-                    .font(ScholiumTypography.Bootstrap.statement)
-                    .tracking(-0.1)
-                    .lineSpacing(ScholiumMetrics.Onboarding.statementLineSpacing)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, ScholiumMetrics.Onboarding.welcomeStatementTopSpacing)
-
-                Text("A local-first research environment for philosophy and the humanities, where ordinary Markdown remains authoritative.")
-                    .font(ScholiumTypography.interface(.body))
-                    .scholiumForeground(.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, ScholiumGrid.Spacing.sectionSeparation)
-
-                Rectangle()
-                    .fill(ScholiumColorRole.separator.color)
-                    .frame(height: 1)
-                    .padding(.vertical, ScholiumMetrics.Onboarding.welcomeRuleVerticalInset)
-
-                HStack(alignment: .top, spacing: ScholiumGrid.Spacing.sectionSeparation) {
-                    BootstrapWelcomeTriptychRole(
-                        title: "Analyses",
-                        detail: "Sources and interpretations"
-                    )
-                    BootstrapWelcomeTriptychRole(
-                        title: "Topics",
-                        detail: "Concepts and debates"
-                    )
-                    BootstrapWelcomeTriptychRole(
-                        title: "Works",
-                        detail: "Arguments of your own"
-                    )
-                }
-                .padding(.top, ScholiumGrid.Spacing.sectionSeparation)
-            }
-            .frame(maxHeight: .infinity, alignment: .center)
-        }
-        .accessibilityIdentifier("scholium.bootstrap.welcome")
-    }
-}
-
-private struct BootstrapWelcomeTriptychRole: View {
+private struct BootstrapRoleDescription: View {
     let title: LocalizedStringResource
     let detail: LocalizedStringResource
 
     var body: some View {
         VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
-            Text(title)
-                .font(ScholiumTypography.interface(.sectionTitle))
-            Text(detail)
-                .font(ScholiumTypography.interface(.small))
-                .scholiumForeground(.secondaryText)
-                .fixedSize(horizontal: false, vertical: true)
+            Text(title).font(.headline)
+            Text(detail).foregroundStyle(.secondary)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
     }
 }
 
-private struct BootstrapChoosePathStep: View {
-    let selection: BootstrapSetupPath
-    let chooseCreateNew: () -> Void
-    let chooseExisting: () -> Void
-
-    var body: some View {
-        BootstrapStepCanvas {
-            VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.regionContentInset) {
-                BootstrapStepHeading(
-                    title: "Choose a Starting Point"
-                )
-                BootstrapSetupPathChoice(
-                    title: "Create a New Triptych",
-                    detail: "Choose one parent; Scholium creates Analyses, Topics, Works, and .scholium.",
-                    symbol: "folder.badge.plus",
-                    isSelected: selection == .createNew,
-                    action: chooseCreateNew
-                )
-                BootstrapSetupPathChoice(
-                    title: "Connect Existing Folders",
-                    detail: "Keep your existing folders; Scholium then asks for access beside Works.",
-                    symbol: "folder.badge.gearshape",
-                    isSelected: selection == .existingFolders,
-                    action: chooseExisting
-                )
-            }
-            .frame(maxHeight: .infinity, alignment: .center)
-        }
-        .accessibilityIdentifier("scholium.bootstrap.startingPoint")
-    }
-}
-
-private struct BootstrapSetupPathChoice: View {
+private struct BootstrapFolderRow: View {
     let title: LocalizedStringResource
-    let detail: LocalizedStringResource
-    let symbol: String
-    let isSelected: Bool
-    let action: () -> Void
-    @FocusState private var isFocused: Bool
-
-    var body: some View {
-        Button(action: action) {
-            HStack(alignment: .top, spacing: ScholiumMetrics.Onboarding.decisionRowSpacing) {
-                Image(systemName: symbol)
-                    .scholiumSymbolStyle(.prominent)
-                    .scholiumForeground(
-                        isSelected
-                            ? .accent
-                            : .secondaryText
-                    )
-                    .frame(width: 24)
-                    .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: ScholiumMetrics.Onboarding.decisionDetailSpacing) {
-                    Text(title)
-                        .font(ScholiumTypography.interface(.sectionTitle))
-                        .scholiumForeground(.primaryText)
-                    Text(detail)
-                        .font(ScholiumTypography.interface(.small))
-                        .scholiumForeground(.secondaryText)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                Spacer(minLength: ScholiumMetrics.Onboarding.decisionActionMinimumSpacing)
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .scholiumForeground(
-                        isSelected
-                            ? .accent
-                            : .secondaryText
-                    )
-                    .accessibilityHidden(true)
-            }
-            .padding(ScholiumGrid.Spacing.sectionSeparation)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .contentShape(Rectangle())
-        }
-        .scholiumActivationPointer()
-        .buttonStyle(
-            ScholiumContentControlButtonStyle(
-                isFocused: isFocused,
-                in: RoundedRectangle(
-                    cornerRadius: ScholiumShape.editorialPanelCornerRadius,
-                    style: .continuous
-                )
-            )
-        )
-        .focused($isFocused)
-        .background {
-            // Keep the resting fill beneath the shared transient surface so
-            // the opaque card does not cover its hover/press feedback.
-            RoundedRectangle(
-                cornerRadius: ScholiumShape.editorialPanelCornerRadius,
-                style: .continuous
-            )
-            .fill(
-                isSelected
-                    ? ScholiumColorRole.raisedSurfaceBackground.color
-                    : ScholiumColorRole.surfaceBackground.color
-            )
-        }
-        .overlay {
-            RoundedRectangle(
-                cornerRadius: ScholiumShape.editorialPanelCornerRadius,
-                style: .continuous
-            )
-            .stroke(
-                isSelected
-                    ? ScholiumColorRole.accent.color
-                    : ScholiumColorRole.separator.color,
-                lineWidth: isSelected ? 2 : 1
-            )
-            .allowsHitTesting(false)
-        }
-        .accessibilityValue(isSelected ? "Selected" : "Not selected")
-    }
-}
-
-private struct BootstrapCreateStructureStep: View {
-    @Binding var triptychName: String
-    let parentURL: URL?
-    let chooseParent: () -> Void
-
-    var body: some View {
-        BootstrapStepCanvas {
-            VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.regionContentInset) {
-                BootstrapStepHeading(
-                    title: "Create a New Triptych"
-                )
-                VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
-                    Text("Triptych Name")
-                        .font(ScholiumTypography.interface(.rowTitle))
-                    TextField("Triptych Name", text: $triptychName)
-                        .textFieldStyle(.roundedBorder)
-                        .accessibilityIdentifier("scholium.triptychName")
-                }
-                VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
-                    Text("Parent Location")
-                        .font(ScholiumTypography.interface(.rowTitle))
-                    BootstrapPathSelectionRow(
-                        path: parentURL,
-                        emptyText: "No location selected",
-                        buttonTitle: "Choose Location…",
-                        action: chooseParent
-                    )
-                }
-            }
-            .frame(maxHeight: .infinity, alignment: .center)
-        }
-        .accessibilityIdentifier("scholium.bootstrap.createStructure")
-    }
-}
-
-private struct BootstrapExistingFolderStep: View {
-    let title: LocalizedStringResource
-    let explanation: LocalizedStringResource
     let path: URL?
-    let chooseAction: () -> Void
-
-    var body: some View {
-        BootstrapStepCanvas {
-            VStack(alignment: .leading, spacing: ScholiumMetrics.Onboarding.formSectionSpacing) {
-                BootstrapStepHeading(title: title, subtitle: explanation)
-                BootstrapPathSelectionRow(
-                    path: path,
-                    emptyText: "No folder selected",
-                    buttonTitle: "Choose Folder…",
-                    action: chooseAction
-                )
-            }
-            .frame(maxHeight: .infinity, alignment: .center)
-        }
-    }
-}
-
-private struct BootstrapPathSelectionRow: View {
-    let path: URL?
-    let emptyText: LocalizedStringResource
     let buttonTitle: LocalizedStringResource
+    let identifier: String
     let action: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: ScholiumMetrics.Onboarding.formFieldSpacing) {
-            HStack(alignment: .firstTextBaseline, spacing: ScholiumMetrics.Onboarding.formTitleActionSpacing) {
-                Image(systemName: path == nil ? "folder" : "folder.fill")
-                    .scholiumForeground(
-                        path == nil
-                            ? .secondaryText
-                            : .accent
-                    )
-                    .frame(width: 18)
-                    .accessibilityHidden(true)
-                Group {
-                    if let path {
-                        Text(path.path(percentEncoded: false))
-                    } else {
-                        Text(emptyText)
-                    }
-                }
-                .font(ScholiumTypography.exact(.body))
-                .scholiumForeground(
-                    path == nil
-                        ? .secondaryText
-                        : .primaryText
-                )
-                .textSelection(.enabled)
-                .lineLimit(3)
-                .truncationMode(.middle)
-                Spacer(minLength: ScholiumMetrics.Onboarding.decisionActionMinimumSpacing)
-            }
-            Rectangle()
-                .fill(ScholiumColorRole.separator.color)
-                .frame(height: 1)
+        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
             HStack {
+                Text(title).font(.headline)
                 Spacer()
-                Button(action: action) {
-                    Text(buttonTitle)
-                }
-                .scholiumActivationPointer()
+                Button(action: action) { Text(buttonTitle) }
+                    .accessibilityIdentifier(identifier)
+            }
+            if let path {
+                BootstrapPath(path: path)
+            } else {
+                Text("No folder selected").foregroundStyle(.secondary)
             }
         }
-        .padding(ScholiumGrid.Spacing.sectionSeparation)
-        .background(ScholiumColorRole.surfaceBackground.color)
-        .clipShape(
-            RoundedRectangle(
-                cornerRadius: ScholiumShape.editorialPanelCornerRadius,
-                style: .continuous
-            )
-        )
     }
 }
 
-private struct BootstrapAuthorizeParentStep: View {
-    let rootURL: URL?
+private struct BootstrapPath: View {
+    let path: URL
 
     var body: some View {
-        BootstrapStepCanvas {
-            VStack(alignment: .leading, spacing: ScholiumMetrics.Onboarding.reviewSectionSpacing) {
-                BootstrapStepHeading(
-                    title: "Authorize the Folder Containing Works"
-                )
-                BootstrapExplanationBlock(
-                    symbol: "location.fill",
-                    title: "Folder Containing Works",
-                    detail: rootURL?.path(percentEncoded: false) ?? "Works has not been selected"
-                )
-                Label {
-                    Text("macOS will ask you to confirm this exact folder so Scholium can use the adjacent .scholium control folder.")
-                        .font(ScholiumTypography.interface(.body))
-                        .scholiumForeground(.secondaryText)
-                        .fixedSize(horizontal: false, vertical: true)
-                } icon: {
-                    Image(systemName: "lock.shield")
-                        .scholiumForeground(.accent)
-                }
-            }
-            .frame(maxHeight: .infinity, alignment: .center)
-        }
-        .accessibilityIdentifier("scholium.bootstrap.authorizeParent")
-    }
-}
-
-private struct BootstrapExplanationBlock: View {
-    let symbol: String
-    let title: LocalizedStringResource
-    let detail: String
-
-    var body: some View {
-        HStack(alignment: .top, spacing: ScholiumGrid.Spacing.nestedContentInset) {
-            Image(systemName: symbol)
-                .scholiumSymbolStyle(.prominent)
-                .scholiumForeground(.accent)
-                .frame(width: 24)
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
-                Text(title)
-                    .font(ScholiumTypography.interface(.rowTitle))
-                Text(detail)
-                    .font(ScholiumTypography.interface(.body))
-                    .scholiumForeground(.secondaryText)
-                    .textSelection(.enabled)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-        .padding(ScholiumGrid.Spacing.sectionSeparation)
-        .background(ScholiumColorRole.apparatusSurfaceBackground.color)
-        .clipShape(
-            RoundedRectangle(
-                cornerRadius: ScholiumShape.editorialPanelCornerRadius,
-                style: .continuous
-            )
-        )
-        .overlay {
-            RoundedRectangle(
-                cornerRadius: ScholiumShape.editorialPanelCornerRadius,
-                style: .continuous
-            )
-            .stroke(ScholiumColorRole.separator.color, lineWidth: 1)
-        }
-    }
-}
-
-private struct BootstrapReviewTriptychStep: View {
-    let setupPath: BootstrapSetupPath
-    let rootURL: URL?
-    let analysesURL: URL?
-    let topicsURL: URL?
-    let worksURL: URL?
-
-    var body: some View {
-        BootstrapStepCanvas {
-            VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.regionContentInset) {
-                BootstrapStepHeading(
-                    title: setupPath == .createNew
-                        ? "Review the New Triptych"
-                        : "Review the Connected Triptych",
-                    subtitle: "Research files remain ordinary folders; exact Markdown remains authoritative."
-                )
-                if setupPath == .createNew {
-                    BootstrapStructurePreview(rootURL: rootURL)
-                } else {
-                    VStack(spacing: ScholiumMetrics.Onboarding.folderSummarySpacing) {
-                        BootstrapFolderSummaryRow(title: "Analyses", path: analysesURL)
-                        BootstrapFolderSummaryRow(title: "Topics", path: topicsURL)
-                        BootstrapFolderSummaryRow(title: "Works", path: worksURL)
-                        BootstrapFolderSummaryRow(title: "Authorized Parent", path: rootURL)
-                    }
-                }
-            }
-            .frame(maxHeight: .infinity, alignment: .center)
-        }
-        .accessibilityIdentifier("scholium.bootstrap.review")
-    }
-}
-
-private struct BootstrapStructurePreview: View {
-    let rootURL: URL?
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.nestedContentInset) {
-            Text("Proposed Structure")
-                .font(ScholiumTypography.interface(.sectionTitle))
-            Text(rootURL?.path(percentEncoded: false) ?? "Chosen location/Triptych name")
-                .font(ScholiumTypography.exact(.small))
-                .scholiumForeground(.secondaryText)
-                .textSelection(.enabled)
-                .lineLimit(2)
-                .truncationMode(.middle)
-            Rectangle()
-                .fill(ScholiumColorRole.separator.color)
-                .frame(height: 1)
-            HStack(alignment: .top, spacing: ScholiumGrid.Spacing.sectionSeparation) {
-                BootstrapRoleSummary(title: "Analyses", detail: "Evidence")
-                BootstrapRoleSummary(title: "Topics", detail: "Synthesis")
-                BootstrapRoleSummary(title: "Works", detail: "Writing")
-            }
-            Text(".scholium/ · portable control folder")
-                .font(ScholiumTypography.interface(.small))
-                .scholiumForeground(.secondaryText)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-}
-
-private struct BootstrapRoleSummary: View {
-    let title: LocalizedStringResource
-    let detail: LocalizedStringResource
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: ScholiumMetrics.Onboarding.statusTitleDetailSpacing) {
-            Text(title)
-                .font(ScholiumTypography.interface(.sectionTitle))
-            Text(detail)
-                .font(ScholiumTypography.interface(.small))
-                .scholiumForeground(.secondaryText)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-}
-
-private struct BootstrapFolderSummaryRow: View {
-    let title: LocalizedStringResource
-    let path: URL?
-
-    var body: some View {
-        HStack(alignment: .top, spacing: ScholiumGrid.Spacing.nestedContentInset) {
-            Text(title)
-                .font(ScholiumTypography.interface(.rowTitle))
-                .frame(width: 112, alignment: .leading)
-            Text(path?.path(percentEncoded: false) ?? "Not selected")
-                .font(ScholiumTypography.exact(.small))
-                .scholiumForeground(.secondaryText)
-                .textSelection(.enabled)
-                .lineLimit(2)
-                .truncationMode(.middle)
-            Spacer(minLength: 0)
-        }
-        .padding(.vertical, ScholiumMetrics.Onboarding.folderSummaryVerticalInset)
-    }
-}
-
-private struct BootstrapReadyStep: View {
-    let triptychName: String
-    let rootURL: URL?
-
-    var body: some View {
-        BootstrapStepCanvas {
-            VStack(spacing: ScholiumMetrics.Onboarding.readySectionSpacing) {
-                BootstrapStepHeading(
-                    title: "Triptych Ready",
-                    alignment: .center
-                )
-                VStack(spacing: 0) {
-                    BootstrapCompletionStatusRow(
-                        symbol: "rectangle.3.group",
-                        title: triptychName.isEmpty ? "Triptych" : triptychName,
-                        detail: rootURL?.path(percentEncoded: false) ?? "Configured"
-                    )
-                }
-            }
-            .frame(maxHeight: .infinity, alignment: .center)
-        }
-        .accessibilityIdentifier("scholium.bootstrap.ready")
-    }
-
-}
-
-private struct BootstrapCompletionStatusRow: View {
-    let symbol: String
-    let title: String
-    let detail: String
-
-    var body: some View {
-        HStack(alignment: .top, spacing: ScholiumGrid.Spacing.nestedContentInset) {
-            Image(systemName: symbol)
-                .scholiumSymbolStyle(.prominent)
-                .scholiumForeground(.accent)
-                .frame(width: 24)
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: ScholiumMetrics.Onboarding.statusTitleDetailSpacing) {
-                Text(title)
-                    .font(ScholiumTypography.interface(.rowTitle))
-                Text(detail)
-                    .font(ScholiumTypography.interface(.small))
-                    .scholiumForeground(.secondaryText)
-                    .textSelection(.enabled)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(.vertical, ScholiumMetrics.Onboarding.readyStatusVerticalInset)
-    }
-}
-
-private struct BootstrapSetupStatus: View {
-    let message: String
-    let isError: Bool
-
-    var body: some View {
-        Label(
-            message,
-            systemImage: isError
-                ? "exclamationmark.triangle.fill"
-                : "folder.badge.questionmark"
-        )
-        .font(ScholiumTypography.interface(.small))
-        .scholiumForeground(isError ? .destructive : .attention)
-        .lineLimit(2)
-        .padding(.horizontal, ScholiumGrid.Spacing.nestedContentInset)
-        .padding(.vertical, ScholiumGrid.Spacing.inlineControlGap)
-        .background(ScholiumColorRole.documentBackground.color)
-        .accessibilityLabel("Workspace setup: \(message)")
+        Text(path.path(percentEncoded: false))
+            .font(.callout)
+            .foregroundStyle(.secondary)
+            .textSelection(.enabled)
+            .fixedSize(horizontal: false, vertical: true)
     }
 }

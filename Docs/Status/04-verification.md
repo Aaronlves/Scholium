@@ -4,6 +4,17 @@
 
 ## Current verification snapshot
 
+**2026-09-16 — Bootstrap simplification:** Xcode 27 Debug compilation and 102
+scoped architecture/window-lifecycle tests pass. Two isolated QA journeys pass
+for connecting/restoring a 500-Note Triptych and creating a new one after a
+non-replacing destination conflict. They cover picker cancellation, retained
+Back-navigation input, exact parent authorization, 480-point width, immediate
+workspace handoff, relaunch and registration editing. English/Light screenshots
+and Chinese/Light Computer Use were inspected; scoped lint, localization and
+documentation checks pass. Dark, system adaptations and human assistive-technology
+acceptance remain outside this evidence. QA app/state cleanup is recorded with
+commands and results in `.build/bootstrap-verification/RESULTS.md`.
+
 **2026-09-16 — Note switching:** Window-local editor-page reuse passes five
 native regressions for exact source, Undo/selection isolation, direct replacement,
 pool invalidation and unfinished dispatch. Two isolated 500-Note QA journeys pass

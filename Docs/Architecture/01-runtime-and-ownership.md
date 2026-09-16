@@ -731,11 +731,11 @@ Document retain Markdown, autosave, conflict, and recovery authority.
 
 Bootstrap is a separate data-routed `WindowGroup`; `ScholiumBootstrapModel`
 owns launch resolution and `WorkspaceSetupView` for first/new/missing setup,
-never the workspace split, toolbar, or `WindowModel`. After first registration,
-the model keeps workspace routing closed while optional Agent preparation
-copies immutable instructions. Prompt-copy and confirmation remain
-presentation-local and create no durable readiness, machine-status, or
-research-access owner. The App is the sole installation.
+never the workspace split, toolbar, or `WindowModel`. `WorkspaceSetupView`
+retains the create/connect draft and delegates registration to Application.
+Successful registration starts the existing native workspace handoff directly;
+optional Agent setup has no Bootstrap stage or workspace-routing authority.
+The App is the sole installation.
 In-app Chat uses a bundled `ScholiumAgentHelper`; Application owns its closed MCP
 service routes, while the executable owns process entry and error reporting.
 

@@ -424,6 +424,110 @@ extension ScholiumUITests {
     }
 
     @MainActor
+    func testBootstrapCreatePreservesDraftAfterDestinationConflictAndOpensWorkspace() throws {
+        app.terminate()
+        XCTAssertTrue(waitUntil(timeout: 10) { self.app.state == .notRunning })
+
+        let cleanHome = testDirectory.appendingPathComponent("create-home", isDirectory: true)
+        let parent = testDirectory.appendingPathComponent("New Triptychs", isDirectory: true)
+            .resolvingSymlinksInPath().standardizedFileURL
+        let existingName = "Existing Triptych"
+        let existingRoot = parent.appendingPathComponent(existingName, isDirectory: true)
+        try FileManager.default.createDirectory(at: cleanHome, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: existingRoot, withIntermediateDirectories: true)
+        let sentinel = existingRoot.appendingPathComponent("Preserve.md")
+        let sentinelBytes = Data("# Existing research\nDo not replace this folder.\n".utf8)
+        try sentinelBytes.write(to: sentinel)
+
+        app = XCUIApplication(bundleIdentifier: "com.scholium.qa")
+        app.launchArguments += ["-ApplePersistenceIgnoreState", "YES"]
+        app.launchEnvironment["SCHOLIUM_HOME"] = cleanHome.path
+        app.launchEnvironment["CFFIXED_USER_HOME"] = cleanHome.path
+        app.launchEnvironment["SCHOLIUM_UI_TEST_SESSION_ID"] = UUID().uuidString
+        app.launchEnvironment["SCHOLIUM_UI_TEST_OPEN_PANEL_DIRECTORY"] = parent.path
+        app.launch()
+
+        let createNew = app.buttons["scholium.bootstrap.createNew"]
+        XCTAssertTrue(createNew.waitForExistence(timeout: 15))
+        let welcomeShot = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+        welcomeShot.name = "Bootstrap welcome"
+        welcomeShot.lifetime = .keepAlways
+        add(welcomeShot)
+        createNew.click()
+        let createPage = app.descendants(matching: .any)["scholium.bootstrap.createStructure"]
+        XCTAssertTrue(createPage.waitForExistence(timeout: 5))
+        let complete = app.buttons["Create and Open"]
+        XCTAssertTrue(complete.exists)
+        XCTAssertFalse(complete.isEnabled)
+        let name = app.textFields["scholium.triptychName"]
+        XCTAssertTrue(name.waitForExistence(timeout: 5))
+        try paste(existingName, into: name)
+        chooseSetupFolder(parent, role: "Location")
+        XCTAssertTrue(app.staticTexts["Proposed Structure"].exists)
+        XCTAssertTrue(
+            app.staticTexts.matching(
+                NSPredicate(format: "value == %@ OR label == %@", existingRoot.path(percentEncoded: false), existingRoot.path(percentEncoded: false))
+            ).firstMatch.exists)
+        XCTAssertTrue(complete.isEnabled)
+        complete.click()
+
+        let error = app.descendants(matching: .any)["scholium.bootstrap.error"]
+        XCTAssertTrue(error.waitForExistence(timeout: 10))
+        XCTAssertTrue(createPage.exists, "A destination conflict must retain the setup form.")
+        XCTAssertEqual(name.value as? String, existingName)
+        XCTAssertTrue(
+            app.staticTexts.matching(NSPredicate(format: "value == %@ OR label == %@", parent.path(percentEncoded: false), parent.path(percentEncoded: false)))
+                .firstMatch.exists)
+        XCTAssertTrue(
+            app.staticTexts.matching(
+                NSPredicate(format: "value == %@ OR label == %@", existingRoot.path(percentEncoded: false), existingRoot.path(percentEncoded: false))
+            ).firstMatch.exists)
+        XCTAssertTrue(complete.isEnabled, "A failed creation must permit correction and retry.")
+        XCTAssertEqual(try Data(contentsOf: sentinel), sentinelBytes)
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: existingRoot.path), ["Preserve.md"])
+        XCTAssertFalse(app.splitGroups["scholium.workspaceSplitView"].exists)
+        let errorShot = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+        errorShot.name = "Bootstrap create with retained error"
+        errorShot.lifetime = .keepAlways
+        add(errorShot)
+
+        let newName = "Created Triptych"
+        let newRoot = parent.appendingPathComponent(newName, isDirectory: true)
+        try paste(newName, into: name)
+        XCTAssertTrue(
+            app.staticTexts.matching(
+                NSPredicate(format: "value == %@ OR label == %@", newRoot.path(percentEncoded: false), newRoot.path(percentEncoded: false))
+            ).firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(
+            app.staticTexts.matching(NSPredicate(format: "value == %@ OR label == %@", parent.path(percentEncoded: false), parent.path(percentEncoded: false)))
+                .firstMatch.exists, "Renaming must retain the selected parent.")
+        complete.click()
+        XCTAssertTrue(
+            waitUntil(timeout: 45) {
+                self.app.windows.count == 1
+                    && self.app.splitGroups["scholium.workspaceSplitView"].exists
+                    && self.app.descendants(matching: .any)["scholium.librarySurface"].exists
+                    && !self.app.descendants(matching: .any)["scholium.loadingOverlay"].exists
+                    && !self.app.descendants(matching: .any)["scholium.bootstrap"].exists
+            }, "Create and Open must directly replace Bootstrap with the new workspace."
+        )
+        XCTAssertEqual(
+            Set(try FileManager.default.contentsOfDirectory(atPath: newRoot.path)),
+            Set(["Analyses", "Topics", "Works", ".scholium"])
+        )
+        for directory in ["Analyses", "Topics", "Works", ".scholium"] {
+            let values = try newRoot.appendingPathComponent(directory)
+                .resourceValues(forKeys: [.isDirectoryKey])
+            XCTAssertEqual(values.isDirectory, true)
+        }
+        XCTAssertTrue(
+            FileManager.default.fileExists(
+                atPath: newRoot.appendingPathComponent(".scholium/manifest.json").path
+            ))
+        XCTAssertEqual(try Data(contentsOf: sentinel), sentinelBytes)
+    }
+
+    @MainActor
     func testCleanAccountConfiguresAndRestoresACompleteTriptych() throws {
         app.terminate()
         XCTAssertTrue(
@@ -456,62 +560,63 @@ extension ScholiumUITests {
             1,
             "First launch must present one setup surface, not root setup plus a duplicate sheet."
         )
-        XCTAssertTrue(app.staticTexts["Scholium"].exists)
+        XCTAssertTrue(app.staticTexts["Welcome to Scholium"].exists)
         let setupFrame = app.windows.firstMatch.frame
         XCTAssertEqual(
             setupFrame.width,
             QABootstrapMetricContract.preferredWidth,
             accuracy: QAWorkspaceMetricContract.frameTolerance,
-            "Bootstrap's 720pt contract is an initial size, not a minimum."
+            "Bootstrap's preferred width is an initial size, not a minimum."
         )
-        XCTAssertFalse(app.scrollViews.firstMatch.exists)
         XCTAssertFalse(app.splitGroups["scholium.workspaceSplitView"].exists)
         XCTAssertFalse(app.buttons["Show Sidebar"].exists)
         XCTAssertFalse(app.buttons["Hide Sidebar"].exists)
         XCTAssertFalse(app.buttons["Show Research Inspector"].exists)
         XCTAssertFalse(app.buttons["Hide Research Inspector"].exists)
 
-        let getStarted = app.buttons["Get Started"]
-        XCTAssertTrue(getStarted.waitForExistence(timeout: 5))
-        getStarted.click()
-        XCTAssertTrue(app.staticTexts["Choose a Starting Point"].waitForExistence(timeout: 5))
-        let connectExisting = app.buttons.matching(
-            NSPredicate(format: "label BEGINSWITH %@", "Connect Existing Folders")
-        ).firstMatch
+        XCTAssertTrue(
+            app.descendants(matching: .any)["scholium.bootstrap.welcome"].exists
+        )
+        let connectExisting = app.buttons["scholium.bootstrap.connectExisting"]
         XCTAssertTrue(connectExisting.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["scholium.bootstrap.createNew"].exists)
         connectExisting.click()
-        app.buttons["Continue"].click()
-        XCTAssertTrue(app.staticTexts["Choose Analyses"].waitForExistence(timeout: 3))
+        let existingFolders = app.descendants(matching: .any)["scholium.bootstrap.existingFolders"]
+        XCTAssertTrue(existingFolders.waitForExistence(timeout: 5))
+        let complete = app.buttons["Connect and Open"]
+        XCTAssertTrue(complete.exists)
+        XCTAssertFalse(complete.isEnabled)
 
         let analyses = triptychDirectory.appendingPathComponent("01-analyses", isDirectory: true)
         let topics = triptychDirectory.appendingPathComponent("02-topics", isDirectory: true)
         let works = triptychDirectory.appendingPathComponent("03-works", isDirectory: true)
         chooseSetupFolder(analyses, role: "Analyses")
-        app.buttons["Continue"].click()
-
-        XCTAssertTrue(app.staticTexts["Choose Topics"].waitForExistence(timeout: 3))
         chooseSetupFolder(topics, role: "Topics")
-        app.buttons["Continue"].click()
-
-        XCTAssertTrue(app.staticTexts["Choose Works"].waitForExistence(timeout: 3))
         chooseSetupFolder(works, role: "Works")
-        app.buttons["Continue"].click()
+        XCTAssertTrue(existingFolders.exists)
 
-        XCTAssertTrue(
-            app.staticTexts["Authorize the Folder Containing Works"]
-                .waitForExistence(timeout: 5)
-        )
+        // Reopening and cancelling one picker must retain all three selections.
+        app.buttons["scholium.bootstrap.chooseAnalyses"].click()
+        let panel = app.descendants(matching: .any)["open-panel"]
+        XCTAssertTrue(panel.waitForExistence(timeout: 5))
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(waitUntil(timeout: 5) { !panel.exists })
+        XCTAssertTrue(existingFolders.exists)
+
+        // Back revisits the two direct choices without resetting the draft.
+        app.buttons["Back"].click()
+        XCTAssertTrue(connectExisting.waitForExistence(timeout: 5))
+        connectExisting.click()
+        XCTAssertTrue(existingFolders.waitForExistence(timeout: 5))
         authorizePortableFolder(triptychDirectory)
-        XCTAssertTrue(app.staticTexts["Review the Connected Triptych"].waitForExistence(timeout: 5))
-        let complete = app.buttons["Use This Triptych"]
-        XCTAssertTrue(complete.waitForExistence(timeout: 3))
-        XCTAssertTrue(complete.isEnabled)
+        resizeProofWindow(app.windows.firstMatch, toWidth: 480)
+        let connectShot = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+        connectShot.name = "Bootstrap connected folders at minimum width"
+        connectShot.lifetime = .keepAlways
+        add(connectShot)
+        XCTAssertTrue(complete.waitForExistence(timeout: 5))
+        XCTAssertTrue(complete.isEnabled, "Cancelled selection and Back must retain the complete draft.")
         complete.click()
-
-        XCTAssertTrue(app.staticTexts["Triptych Ready"].waitForExistence(timeout: 30))
-        let openWorkspace = app.buttons["Open Workspace"]
-        XCTAssertTrue(openWorkspace.waitForExistence(timeout: 5))
-        openWorkspace.click()
 
         let analysesControl = app.descendants(matching: .any)[
             "Analyses"

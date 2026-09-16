@@ -1,6 +1,25 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Finish Setup and Open": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Finish Setup and Open"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "完成设置并打开"}}}},
+    "The folders have been created. Retry to finish setting up this Triptych.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "The folders have been created. Retry to finish setting up this Triptych."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "文件夹已创建。请重试以完成此脉络的设置。"}}}},
+
+    "Welcome to Scholium": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Welcome to Scholium"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "欢迎使用 Scholium"}}}},
+    "A research space built around your Markdown files.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "A research space built around your Markdown files."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "以你的 Markdown 文件为中心的研究空间。"}}}},
+    "Create and Open": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Create and Open"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "创建并打开"}}}},
+    "Connect and Open": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Connect and Open"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "连接并打开"}}}},
+    "Setting Up Triptych…": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Setting Up Triptych…"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "正在设置脉络…"}}}},
+    "Opening Workspace…": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Opening Workspace…"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "正在打开工作区…"}}}},
+    "Choose a name and location to preview the new folder.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Choose a name and location to preview the new folder."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "输入名称并选择位置，预览要创建的文件夹。"}}}},
+    "Scholium also creates a .scholium folder for portable control data.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Scholium also creates a .scholium folder for portable control data."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "Scholium 还会创建 .scholium 文件夹，用于存放可迁移的控制数据。"}}}},
+    "A new folder will be created at this location. Existing folders will not be replaced.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "A new folder will be created at this location. Existing folders will not be replaced."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "将在此位置创建新文件夹，不会替换已有文件夹。"}}}},
+    "Choose a folder for each part of your Triptych. Your research files stay in place.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Choose a folder for each part of your Triptych. Your research files stay in place."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "为脉络的每个部分选择文件夹。研究文件保留在原处。"}}}},
+    "Choose Analyses…": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Choose Analyses…"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "选择分析…"}}}},
+    "Choose Topics…": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Choose Topics…"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "选择议题…"}}}},
+    "Choose Works…": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Choose Works…"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "选择写作…"}}}},
+    "Scholium needs access to this folder to store portable control data in .scholium beside Works.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Scholium needs access to this folder to store portable control data in .scholium beside Works."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "Scholium 需要访问此文件夹，以便将可迁移的控制数据存放在“写作”旁的 .scholium 文件夹中。"}}}},
+    "Folder Access Granted": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Folder Access Granted"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "已获得文件夹访问权限"}}}},
+
     "Open a Triptych with readable portable settings to change reminder timing.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Open a Triptych with readable portable settings to change reminder timing."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "打开便携设置可读取的三联体，以修改提醒间隔。"}}}},
     "Reload Reminder Timing": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Reload Reminder Timing"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "重新载入提醒间隔"}}}},
     "Discard Unsaved Reminder Changes?": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Discard Unsaved Reminder Changes?"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "放弃尚未保存的提醒更改？"}}}},
@@ -8120,7 +8139,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "选择主题文件夹"
+            "value" : "选择议题文件夹"
           }
         }
       }
@@ -8146,7 +8165,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "选择作品文件夹"
+            "value" : "选择写作文件夹"
           }
         }
       }

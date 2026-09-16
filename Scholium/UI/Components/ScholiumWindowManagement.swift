@@ -1123,7 +1123,7 @@ struct BootstrapWindowAttachment: NSViewRepresentable {
             window.titleVisibility = .hidden
             window.titlebarAppearsTransparent = true
             window.titlebarSeparatorStyle = .none
-            window.backgroundColor = ScholiumColorRole.documentBackground.nsColor
+            window.backgroundColor = .windowBackgroundColor
             lifecycleRegistry.markReady(id: windowID)
         }
 

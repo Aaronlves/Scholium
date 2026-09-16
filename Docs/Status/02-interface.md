@@ -22,9 +22,13 @@ already-visible Chat does not toggle the Sidebar closed.
 - Starting, Registry Recovery, Ready, and Storage Unavailable are distinct app
   roots. Failure states retain Details, Retry, and the applicable recovery or
   Quit route while workspace commands remain disabled.
-- Bootstrap creates or connects one Triptych and explicitly enters the
-  workspace. Configured windows use one native Library–Document–Inspector split
-  and one stable toolbar.
+- Bootstrap now offers create/connect directly on Welcome. Each route uses one
+  scrollable form with directory preview or all three folder selections and inline
+  parent authorization; registration opens the workspace without review/Ready pages.
+  Input survives cancellation and failure, and a prepared new root is reused on
+  registration retry. System appearance replaces the illustration sidebar; the hand
+  artwork remains only on Welcome. Configured windows use one native
+  Library–Document–Inspector split and one stable toolbar.
 - View offers a window-local Focus Layout with a configurable Control–Command–L
   shortcut. It hides the native toolbar and both peripheral panes, then restores
   their prior visibility and widths; explicit pane-opening commands exit it.

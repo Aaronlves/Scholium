@@ -109,16 +109,33 @@ offer only their safe Retry, Relink, or Quit route. No temporary or implicit
 read-only workspace is constructed.
 
 First launch, **New Triptych…**, and missing registration use one Bootstrap
-window. After Welcome the researcher chooses:
+window. Welcome briefly explains Analyses, Topics, and Works and directly offers
+**Create a New Triptych** and **Connect Existing Folders**.
 
-- **Create a New Triptych**: select a name and parent, preview, then atomically
-  create Analyses, Topics, Works, and `.scholium` without replacement; or
-- **Connect Existing Folders**: select Analyses, Topics, Works, then authorize
-  the detected Works parent through standard Open panels.
+- **Create a New Triptych** keeps name, parent selection, and a live preview of
+  the destination and fixed directory structure on one page. **Create and Open**
+  atomically creates Analyses, Topics, Works, and `.scholium` without replacement,
+  registers the Triptych, and opens its workspace.
+- **Connect Existing Folders** shows the Analyses, Topics, and Works directory
+  rows together on one page. Each role has a named native folder picker and can
+  be changed without losing the other selections. The same page identifies the
+  detected Works parent and explains and requests its exact-directory access
+  through a standard Open panel. **Connect and Open** registers the selected
+  folders and opens their workspace.
 
-Bootstrap asks one decision at a time, preserves input on failure, and opens the
-configured workspace only after registration succeeds. It contains no inert
-workspace shell, project model, feature tour, or duplicate navigation.
+The selected destinations and operation's consequence remain visible beside the
+final action; no separate starting-point, review, or completion page is required.
+Back preserves the draft. Cancelling a picker retains its previous selection.
+Registration shows actual progress, prevents duplicate submission, and retains
+all input with persistent, actionable errors on the same setup page. Workspace
+routing remains closed until registration succeeds.
+
+Bootstrap uses the auxiliary-window presentation defined by Design (§19).
+One small decorative hand illustration may accompany Welcome; setup pages give
+space to the form and complete folder identities, without an illustration side
+field. Content reflows or scrolls at narrow widths and with enlarged text under
+§20. Bootstrap contains no inert workspace shell, project model, feature tour,
+or duplicate navigation.
 
 Agent setup is optional and deferred until after first launch. §8.2 owns
 external-host commands and Core Protocol discovery; §8.7 owns in-app runtime

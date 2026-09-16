@@ -179,8 +179,12 @@ final class ScholiumPerformanceUITests: XCTestCase {
             "A clean packaged Release launch must enter Bootstrap."
         )
         XCTAssertTrue(
-            application.buttons["Get Started"].waitForExistence(timeout: 5),
-            "Bootstrap must expose its ordinary first-launch action."
+            application.buttons["scholium.bootstrap.createNew"].waitForExistence(timeout: 5),
+            "Bootstrap must directly expose creation on first launch."
+        )
+        XCTAssertTrue(
+            application.buttons["scholium.bootstrap.connectExisting"].exists,
+            "Bootstrap must directly expose connecting existing folders on first launch."
         )
         XCTAssertFalse(
             application.descendants(matching: .any)["scholium.restoreAccess"].exists,

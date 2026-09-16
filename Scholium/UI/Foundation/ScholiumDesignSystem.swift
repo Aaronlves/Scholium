@@ -1444,34 +1444,16 @@ enum ScholiumMetrics {
     }
 
     enum Onboarding {
-        static let preferredWidth: CGFloat = 760
-        static let preferredHeight: CGFloat = 740
+        static let preferredWidth: CGFloat = 620
+        static let preferredHeight: CGFloat = 700
+        static let minimumWidth: CGFloat = 480
+        static let minimumHeight: CGFloat = 540
+        static let contentMaximumWidth: CGFloat = 540
+        static let contentInset = ScholiumGrid.Spacing.regionContentInset
+        static let welcomeArtworkHeight: CGFloat = 72
         static let rootSectionSpacing = ScholiumGrid.foundationUnit * 4.5
         static let rootDisclosureSpacing = ScholiumGrid.foundationUnit * 1.5
         static let rootContentInset = ScholiumGrid.foundationUnit * 7
-        static let statusHorizontalInset = ScholiumGrid.foundationUnit * 6
-        static let statusBottomInset = ScholiumGrid.foundationUnit * 15.5
-        static let footerHorizontalInset = ScholiumGrid.foundationUnit * 6
-        static let footerVerticalInset = ScholiumGrid.foundationUnit * 3.5
-        static let stepHorizontalInset = ScholiumGrid.foundationUnit * 8
-        static let stepTopInset = ScholiumGrid.foundationUnit * 17
-        static let stepBottomInset = ScholiumGrid.foundationUnit * 22
-        static let headingDetailSpacing = ScholiumGrid.foundationUnit * 1.5
-        static let statementLineSpacing = ScholiumGrid.foundationUnit * 0.75
-        static let welcomeStatementTopSpacing = ScholiumGrid.foundationUnit * 4.5
-        static let welcomeRuleVerticalInset = ScholiumGrid.foundationUnit * 6
-        static let decisionRowSpacing = ScholiumGrid.foundationUnit * 3.5
-        static let decisionDetailSpacing = ScholiumGrid.foundationUnit * 1.25
-        static let decisionActionMinimumSpacing = ScholiumGrid.Spacing.inlineControlGap
-        static let formSectionSpacing = ScholiumGrid.foundationUnit * 6
-        static let formFieldSpacing = ScholiumGrid.foundationUnit * 3.5
-        static let formTitleActionSpacing = ScholiumGrid.foundationUnit * 2.5
-        static let reviewSectionSpacing = ScholiumGrid.foundationUnit * 5.5
-        static let folderSummarySpacing = ScholiumGrid.foundationUnit * 2.5
-        static let folderSummaryVerticalInset = ScholiumGrid.Spacing.opticalAlignmentAdjustment
-        static let statusTitleDetailSpacing = ScholiumGrid.foundationUnit * 0.75
-        static let readySectionSpacing = ScholiumGrid.foundationUnit * 4.5
-        static let readyStatusVerticalInset = ScholiumGrid.foundationUnit * 3.5
     }
 
     enum Workspace {
@@ -2879,22 +2861,6 @@ enum ScholiumMotion {
     /// Native preview window motion; reduced motion uses only a short fade.
     static func contentPreviewDuration(closing: Bool, reduceMotion: Bool) -> TimeInterval {
         reduceMotion ? 0.12 : closing ? 0.20 : 0.26
-    }
-
-    static func bootstrapStep(reduceMotion: Bool) -> Animation? {
-        reduceMotion ? nil : .easeInOut(duration: 0.18)
-    }
-
-    static func bootstrapStepTransition(
-        movingForward: Bool,
-        reduceMotion: Bool
-    ) -> AnyTransition {
-        guard !reduceMotion else { return .identity }
-        let offset = movingForward ? 14.0 : -14.0
-        return .asymmetric(
-            insertion: .offset(x: offset).combined(with: .opacity),
-            removal: .opacity
-        )
     }
 
     static func documentReveal(reduceMotion: Bool) -> Animation? {

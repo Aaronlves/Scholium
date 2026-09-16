@@ -65,7 +65,7 @@ final class ScholiumUITests: XCTestCase {
     /// compact workspace shell: it never owns the three-region split or its
     /// toolbar, and it is replaced by the configured workspace on success.
     enum QABootstrapMetricContract {
-        static let preferredWidth: CGFloat = 760
+        static let preferredWidth: CGFloat = 620
     }
 
     enum QAAppearance: String, CaseIterable {

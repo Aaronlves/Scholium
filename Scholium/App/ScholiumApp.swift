@@ -319,7 +319,6 @@ private struct ScholiumBootstrapRoot: View {
             }
         }
         .buttonStyle(.automatic)
-        .ignoresSafeArea(.container, edges: .top)
         .background(
             BootstrapWindowAttachment(
                 windowID: route.windowID,
@@ -533,7 +532,8 @@ private final class ScholiumBootstrapModel: ObservableObject {
             triptychName: selection.triptychName
         )
         workspaceAssignment = capabilities.assignment
-        registeredTriptychs = try await workspaceStore.registeredTriptychs()
+        registeredTriptychs.removeAll { $0.id == capabilities.assignment.id }
+        registeredTriptychs.append(capabilities.assignment)
         recoveryMessage = nil
         isReadyToOpenWorkspace = false
     }

@@ -746,8 +746,8 @@ struct FrontendArchitectureTests {
         #expect(!appSource.contains("ScholiumWindowModelFocusedKey"))
     }
 
-    @Test("Bootstrap keeps one-decision copy and the canonical narrative artwork")
-    func bootstrapCopyAndBrandArtworkBoundary() throws {
+    @Test("Bootstrap defers optional integration setup")
+    func bootstrapDefersOptionalIntegrationSetup() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -758,36 +758,9 @@ struct FrontendArchitectureTests {
             ),
             encoding: .utf8
         )
-        let artworkSource = try String(
-            contentsOf: repositoryRoot.appendingPathComponent(
-                "Scholium/Views/BootstrapStageArtworkView.swift"
-            ),
-            encoding: .utf8
-        )
 
-        #expect(setupSource.contains("A field of inquiry takes shape as a Triptych."))
-        #expect(setupSource.contains("where ordinary Markdown remains authoritative."))
-        #expect(setupSource.contains("BootstrapStageArtwork(stage: artworkStage)"))
-        #expect(
-            setupSource.components(
-                separatedBy: "BootstrapStructurePreview(rootURL:"
-            ).count - 1 == 1
-        )
-        #expect(!setupSource.contains("The research document—not a dashboard"))
-        #expect(!setupSource.contains("You can manage Triptych locations later"))
-        #expect(!setupSource.contains("Only this folder is selected at this step."))
         #expect(!setupSource.contains("Research Guidance → Agent Integration"))
         #expect(!setupSource.contains("scholium.bootstrap.activityTracking"))
-
-        for assetName in [
-            "manicule-canonical",
-            "manicule-offer-v2",
-            "manicule-unlock-straight-v1",
-            "manicule-lift-v1",
-        ] {
-            #expect(artworkSource.contains(assetName))
-        }
-        #expect(artworkSource.contains(".accessibilityHidden(true)"))
     }
 
     @Test("The native split protects Document reachability and Library readability")
@@ -2803,17 +2776,10 @@ struct FrontendArchitectureTests {
             ),
             encoding: .utf8
         )
-        let bootstrap = try String(
-            contentsOf: repository.appendingPathComponent(
-                "Scholium/Views/WorkspaceSetupView.swift"
-            ),
-            encoding: .utf8
-        )
         #expect(designSystem.contains(".containerShape(shape)"))
         #expect(search.contains(".listStyle(.inset)"))
         #expect(search.contains("ResearchSearchField("))
         #expect(!search.contains("ScholiumShape.searchOverlayCornerRadius"))
-        #expect(bootstrap.contains("ScholiumShape.editorialPanelCornerRadius"))
     }
 
     @Test("Search and Properties consume purpose-named component dimensions")
@@ -3590,12 +3556,10 @@ struct FrontendArchitectureTests {
 
     @Test("Reduce Motion removes app-defined transitions")
     func reducedMotionRemovesTransitions() {
-        #expect(ScholiumMotion.bootstrapStep(reduceMotion: true) == nil)
         #expect(ScholiumMotion.documentReveal(reduceMotion: true) == nil)
         #expect(ScholiumMotion.disclosure(reduceMotion: true) == nil)
         #expect(ScholiumMotion.symbolReplacement(reduceMotion: true) == nil)
 
-        #expect(ScholiumMotion.bootstrapStep(reduceMotion: false) != nil)
         #expect(ScholiumMotion.documentReveal(reduceMotion: false) != nil)
         #expect(ScholiumMotion.disclosure(reduceMotion: false) != nil)
         #expect(ScholiumMotion.symbolReplacement(reduceMotion: false) != nil)

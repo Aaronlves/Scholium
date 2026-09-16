@@ -138,16 +138,6 @@ enum ScholiumTypography {
         )
     }
 
-    enum Bootstrap {
-        static let wordmark = ScholiumTypeface.scholarly(
-            size: 34,
-            relativeTo: .largeTitle,
-            bold: true
-        )
-        static let title = Font.system(size: 26, weight: .semibold)
-        static let statement = Font.system(size: 25, weight: .medium)
-    }
-
     static let controlPointSize: CGFloat = 13
 
     static func interface(
