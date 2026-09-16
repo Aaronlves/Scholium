@@ -70,13 +70,13 @@
 ## Gate and release boundary
 
 - The complete repository gate and the exact-tag Beta package for
-  `v0.2.1-beta.1` passed on 2026-09-15; the dated evidence and artifact
+  `v0.2.2-beta` passed on 2026-09-17; the dated evidence and artifact
   provenance are recorded in [Verification](04-verification.md). Repeat this
-  gate for the next release candidate rather than treating this result as
-  reusable proof.
+  gate for each subsequent release candidate rather than treating this result
+  as reusable proof.
 - Run the affected packaged performance series when the §21.3 change-trigger
   rule requires it; do not promote focused measurements to G7.
-- The `v0.2.1-beta.1` artifact, checksum, ad-hoc signature, source/license,
+- The `v0.2.2-beta` artifact, checksum, ad-hoc signature, source/license,
   package-content/private-path, and clean-account checks passed. Developer ID
   signing and notarization remain a future channel, outside the current
   ad-hoc source-first Beta profile.

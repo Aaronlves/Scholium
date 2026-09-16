@@ -4,6 +4,20 @@
 
 ## Current verification snapshot
 
+**2026-09-17 — `v0.2.2-beta` packaged artifact:** The clean exact-tagged
+commit `ea4918ec1958293879786a889108d0b186d33744` produced the arm64 DMG
+`Scholium-v0.2.2-beta-macos-arm64.dmg` with marketing version `0.2.2`, build
+`3`, minimum macOS `26.0`, and the version-matched bundled helper and Core
+Protocol resources. The exact-tag `verify.sh` run passed 355 Web tests, 410
+Core, three Core performance tests, 92 Contracts, 165 Application, one
+architecture measurement, and 1,002 App tests, plus resource reproduction,
+public-symbol guards, Release compilation and helper isolation. App/helper
+signatures, entitlements, architecture, provenance, package contents,
+read-only DMG mount/copy and SHA-256 checksum passed. Packaged first-launch
+Bootstrap passed with production machine state unchanged. This Beta is ad-hoc
+signed and not Developer ID signed or notarized; human accessibility and
+interaction acceptance remain separate open boundaries.
+
 **2026-09-16 — Editor state authority:** Xcode 27.0 (27A5218g), Swift 6.4
 and macOS 27.0 SDK verification covers detached exact-source persistence,
 background Review revision adoption (including NFC/NFD byte differences),
